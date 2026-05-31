@@ -1,0 +1,192 @@
+// Saale — Database Schema
+// Run: npx prisma migrate dev --name <description>
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── NextAuth models ───────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  accounts      Account[]
+  sessions      Session[]
+  chatSessions  ChatSession[]
+  emailAccounts EmailAccount[]
+  queueTasks    QueueTask[]
+  settings      AppSettings?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Chat ──────────────────────────────────────────────────────
+
+model ChatSession {
+  id             String        @id @default(cuid())
+  userId         String
+  title          String
+  modelProvider  String?
+  modelName      String?
+  thinkingLevel  String        @default("off")
+  messageCount   Int           @default(0)
+  messages       ChatMessage[]
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  sessionId   String
+  role        String   // "user" | "assistant" | "system"
+  content     String   @db.Text
+  toolCalls   String?  @db.Text // JSON array of tool calls
+  createdAt   DateTime @default(now())
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+// ─── Email ─────────────────────────────────────────────────────
+
+model EmailAccount {
+  id                 String   @id @default(cuid())
+  userId             String
+  email              String
+  imapHost           String
+  imapPort           Int
+  imapSecure         Boolean  @default(true)
+  smtpHost           String
+  smtpPort           Int
+  smtpSecure         Boolean  @default(true)
+  encryptedPassword  String   @db.Text
+  enabled            Boolean  @default(true)
+  lastSyncedAt       DateTime?
+  messages           EmailMessage[]
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([userId, email])
+}
+
+model EmailMessage {
+  id           String   @id @default(cuid())
+  accountId    String
+  uid          String   // IMAP UID
+  fromName     String?
+  fromEmail    String
+  to           String   @db.Text // JSON array
+  subject      String
+  date         DateTime
+  bodyPreview  String   @db.Text
+  bodyHtml     String?  @db.Text
+  bodyText     String?  @db.Text
+  isRead       Boolean  @default(false)
+  isStarred    Boolean  @default(false)
+  folder       String   @default("INBOX")
+  tags         String[] @default([])
+  aiSummary    String?  @db.Text
+  aiTags       String[] @default([])
+  spamScore    Float?
+  account      EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([accountId, uid])
+  @@index([accountId, folder, isRead])
+  @@index([accountId, date])
+}
+
+// ─── Queue Tasks ───────────────────────────────────────────────
+
+model QueueTask {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // "summarization" | "classification" | "spam_filtering"
+  enabled   Boolean  @default(true)
+  config    String   @default("{}") @db.Text // JSON
+  lastRunAt DateTime?
+  runCount  Int      @default(0)
+  runs      TaskRun[]
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, type])
+}
+
+model TaskRun {
+  id        String   @id @default(cuid())
+  taskId    String
+  status    String   // "pending" | "running" | "completed" | "error"
+  input     String?  @db.Text
+  output    String?  @db.Text
+  error     String?  @db.Text
+  startedAt DateTime?
+  completedAt DateTime?
+  task      QueueTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([taskId, status])
+}
+
+// ─── App Settings ──────────────────────────────────────────────
+
+model AppSettings {
+  id                   String @id @default(cuid())
+  userId               String @unique
+  defaultModelProvider String @default("anthropic")
+  defaultModelName     String @default("claude-sonnet-4-5-20250514")
+  defaultThinkingLevel String @default("off")
+  theme                String @default("system") // "dark" | "light" | "system"
+  emailSyncInterval    Int    @default(300) // seconds
+  user                 User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt            DateTime @updatedAt
+}
