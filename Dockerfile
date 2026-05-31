@@ -5,16 +5,15 @@ RUN apk add --no-cache curl
 FROM base AS development
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY . .
-# Don't run prepare (prisma generate) here — let the container do it
 CMD ["sh", "-c", "npx prisma generate && npm run dev"]
 
 # Build stage
 FROM base AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npx prisma generate
 RUN npm run build
