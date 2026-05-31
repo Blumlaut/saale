@@ -2,7 +2,8 @@
 
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useForm } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +22,7 @@ export default function LoginPage() {
     setError(onError === "CredentialsSignin" ? "Invalid email or password" : onError);
   }
 
-  const onSubmit = handleSubmit(async (data) => {
+  const onSubmit = handleSubmit(async (data: { email: string; password: string }) => {
     setLoading(true);
     setError("");
 
@@ -43,7 +44,7 @@ export default function LoginPage() {
   });
 
   return (
-    <Card className="w-full max-w-md mx-4">
+    <Card className="mx-4 w-full max-w-md">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl font-bold tracking-tight">Saale</CardTitle>
         <CardDescription>Sign in to your account</CardDescription>
@@ -51,7 +52,7 @@ export default function LoginPage() {
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
           {error && (
-            <div className="flex items-center gap-2 rounded-md bg-destructive/15 px-3 py-2 text-sm text-destructive">
+            <div className="bg-destructive/15 text-destructive flex items-center gap-2 rounded-md px-3 py-2 text-sm">
               <AlertCircle className="h-4 w-4" />
               {error}
             </div>
@@ -83,7 +84,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="mt-4 text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground mt-4 text-center text-sm">
           Don&apos;t have an account?{" "}
           <Button variant="link" className="p-0" onClick={() => router.push("/auth/register")}>
             Sign up

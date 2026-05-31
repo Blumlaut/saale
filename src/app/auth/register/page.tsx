@@ -70,7 +70,7 @@ export default function RegisterPage() {
   });
 
   return (
-    <Card className="w-full max-w-md mx-4">
+    <Card className="mx-4 w-full max-w-md">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl font-bold tracking-tight">Saale</CardTitle>
         <CardDescription>Create your account</CardDescription>
@@ -78,7 +78,7 @@ export default function RegisterPage() {
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
           {error && (
-            <div className="flex items-center gap-2 rounded-md bg-destructive/15 px-3 py-2 text-sm text-destructive">
+            <div className="bg-destructive/15 text-destructive flex items-center gap-2 rounded-md px-3 py-2 text-sm">
               <AlertCircle className="h-4 w-4" />
               {error}
             </div>
@@ -107,13 +107,9 @@ export default function RegisterPage() {
 
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm Password</Label>
-            <Input
-              id="confirmPassword"
-              type="password"
-              {...register("confirmPassword")}
-            />
+            <Input id="confirmPassword" type="password" {...register("confirmPassword")} />
             {watch("confirmPassword") && watch("confirmPassword") !== password && (
-              <p className="text-xs text-destructive">Passwords do not match</p>
+              <p className="text-destructive text-xs">Passwords do not match</p>
             )}
           </div>
 
@@ -122,7 +118,7 @@ export default function RegisterPage() {
           </Button>
         </form>
 
-        <div className="mt-4 text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground mt-4 text-center text-sm">
           Already have an account?{" "}
           <Button variant="link" className="p-0" onClick={() => router.push("/auth/login")}>
             Sign in

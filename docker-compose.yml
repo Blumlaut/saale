@@ -12,7 +12,6 @@ services:
       - .:/app
       - /app/node_modules
       - /app/.next
-      - prisma:/app/prisma
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
@@ -25,7 +24,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: npm run dev
+    command: sh -c "npx prisma generate && npm run dev"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
       interval: 15s
@@ -82,4 +81,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  prisma:

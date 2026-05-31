@@ -18,10 +18,10 @@ export function DashboardNav() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-64 flex-col border-r bg-muted/30">
+    <aside className="bg-muted/30 flex w-64 flex-col border-r">
       <div className="flex h-14 items-center px-4">
         <Link href="/dashboard/chat" className="flex items-center gap-2">
-          <ChevronRight className="h-5 w-5 text-primary" />
+          <ChevronRight className="text-primary h-5 w-5" />
           <span className="text-lg font-bold tracking-tight">Saale</span>
         </Link>
       </div>
@@ -53,7 +53,7 @@ export function DashboardNav() {
       </nav>
 
       <div className="border-t p-4">
-        <p className="text-xs text-muted-foreground">v0.1.0</p>
+        <p className="text-muted-foreground text-xs">v0.1.0</p>
       </div>
     </aside>
   );

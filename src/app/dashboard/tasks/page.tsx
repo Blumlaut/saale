@@ -9,7 +9,7 @@ export default function TasksPage() {
           <CardDescription>Automated AI tasks — coming soon</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-center text-sm">
             Configure email summarization, classification, and spam filtering.
           </p>
         </CardContent>

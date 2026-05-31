@@ -9,7 +9,7 @@ export default function SettingsPage() {
           <CardDescription>App configuration — coming soon</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-center text-sm">
             Manage API keys, email accounts, model preferences, and more.
           </p>
         </CardContent>
