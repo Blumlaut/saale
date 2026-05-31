@@ -6,8 +6,8 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
+import { AlertCircle, ChevronRight } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 export default function LoginPage() {
@@ -44,16 +44,22 @@ export default function LoginPage() {
   });
 
   return (
-    <Card className="mx-4 w-full max-w-md">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold tracking-tight">Saale</CardTitle>
-        <CardDescription>Sign in to your account</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <GlassPanel className="animate-in fade-in slide-in-from-bottom-2 w-full max-w-md duration-200">
+      <GlassPanelContent className="space-y-6">
+        {/* Brand */}
+        <div className="text-center">
+          <div className="mb-4 flex items-center justify-center gap-2">
+            <ChevronRight className="text-primary h-6 w-6" />
+            <span className="text-2xl font-bold tracking-tight">Saale</span>
+          </div>
+          <p className="text-muted-foreground text-sm">Sign in to your account</p>
+        </div>
+
+        {/* Form */}
         <form onSubmit={onSubmit} className="space-y-4">
           {error && (
-            <div className="bg-destructive/15 text-destructive flex items-center gap-2 rounded-md px-3 py-2 text-sm">
-              <AlertCircle className="h-4 w-4" />
+            <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-full px-4 py-2.5 text-sm">
+              <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
@@ -84,13 +90,14 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="text-muted-foreground mt-4 text-center text-sm">
+        {/* Sign up link */}
+        <p className="text-muted-foreground text-center text-sm">
           Don&apos;t have an account?{" "}
           <Button variant="link" className="p-0" onClick={() => router.push("/auth/register")}>
             Sign up
           </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </p>
+      </GlassPanelContent>
+    </GlassPanel>
   );
 }
