@@ -1,6 +1,5 @@
 import NextAuth, { type NextAuthOptions, getServerSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { type DefaultSession } from "next-auth";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -14,8 +13,13 @@ declare module "next-auth" {
   }
 }
 
+declare module "next-auth/jwt" {
+  interface JWT {
+    id: string;
+  }
+}
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   providers: [
     Credentials({
       credentials: {
@@ -56,23 +60,28 @@ export const authOptions: NextAuthOptions = {
     error: "/auth/login",
   },
   session: {
-    strategy: "database",
+    strategy: "jwt",
   },
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token.id) {
+        session.user.id = token.id;
       }
       return session;
     },
   },
 };
 
-// For [...nextauth] route handler
-const handler = NextAuth(authOptions);
-export { handler as handlers };
-
-// Helper for server components — wraps getServerSession with authOptions
+// Helper for server components
 export async function auth() {
   return getServerSession(authOptions);
 }
+
+// Export the NextAuth handler for the [...nextauth] route
+export const nextAuthHandler = NextAuth(authOptions);
