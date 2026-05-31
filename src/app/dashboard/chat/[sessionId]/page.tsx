@@ -6,12 +6,10 @@ export default function ChatSessionPage({ params }: { params: { sessionId: strin
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle>Chat Session</CardTitle>
-          <CardDescription>
-            Session {params.sessionId.slice(0, 8)} — coming soon
-          </CardDescription>
+          <CardDescription>Session {params.sessionId.slice(0, 8)} — coming soon</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-center text-sm">
             The chat interface with Pi streaming is being built.
           </p>
         </CardContent>

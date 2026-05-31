@@ -9,7 +9,7 @@ export default function MailPage() {
           <CardDescription>Email management — coming soon</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-center text-sm">
             Connect your email accounts and let Saale manage your inbox.
           </p>
         </CardContent>

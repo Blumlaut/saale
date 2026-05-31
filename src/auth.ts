@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthOptions, getServerSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { type DefaultSession } from "next-auth";
@@ -14,7 +14,7 @@ declare module "next-auth" {
   }
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     Credentials({
@@ -38,10 +38,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!user?.passwordHash) return null;
 
-        const isValid = await verifyPassword(
-          parsed.data.password,
-          user.passwordHash,
-        );
+        const isValid = await verifyPassword(parsed.data.password, user.passwordHash);
 
         if (!isValid) return null;
 
@@ -69,4 +66,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-});
+};
+
+// For [...nextauth] route handler
+const handler = NextAuth(authOptions);
+export { handler as handlers };
+
+// Helper for server components — wraps getServerSession with authOptions
+export async function auth() {
+  return getServerSession(authOptions);
+}

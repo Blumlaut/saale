@@ -9,11 +9,7 @@ export const metadata: Metadata = {
   description: "AI-powered productivity hub: email, chat, tasks — one interface.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>{children}</body>

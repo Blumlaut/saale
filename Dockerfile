@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 COPY . .
-CMD ["sh", "-c", "npx prisma generate && npm run dev"]
+CMD ["npm", "run", "dev"]
 
 # Build stage
 FROM base AS build
