@@ -18,7 +18,7 @@
 | Streaming | Server-Sent Events (SSE) | Simple, native browser support, one-way agent→UI |
 | Database | PostgreSQL 17 + Prisma | Proper relational DB, migrations, type-safe queries |
 | Queue | BullMQ + Redis 8 | Job queue with retries, rate limiting, concurrency, cron scheduling |
-| Auth | next-auth v5 (Credentials provider + Prisma adapter) | Email/password auth, session management, database adapter |
+| Auth | better-auth v1 (Credentials provider + Prisma adapter) | Email/password auth, session management, database adapter |
 | Email | IMAP/SMTP (`mailparser`) | Direct email access, no third-party API lock-in |
 | Files | Local filesystem (`/uploads/{userId}/`) | Simple per-user storage, upgradeable to object storage later |
 | Tests | Vitest (unit/integration) + Playwright (E2E) | Fast unit tests, real browser E2E |
@@ -126,6 +126,8 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 1 — Chat
 
 > Get the AI plumbing working. Everything else feeds into this.
+> 
+> **Decisions:** Model selector pulls from Pi's `modelRegistry` at runtime. File uploads via native Next.js RouteHandler (local fs, no UploadThing). BullMQ installed early for Phase 2 email sync.
 
 - [ ] Chat UI (message list, input bar, streaming render)
 - [ ] SSE streaming endpoint (`/api/chat/stream`)
@@ -143,6 +145,8 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 2 — Email
 
 > Background sync is core — not an afterthought. BullMQ recurring jobs + manual trigger.
+> 
+> **Decisions:** Incremental sync via IMAP UIDVALIDITY + HIGHESTMODSEQ. BullMQ infra built before this phase (per user preference). Phase 2 completes fully before Phase 3 starts.
 
 - [ ] Email account connection UI (IMAP/SMTP config form)
 - [ ] Password encryption/decryption (`ENCRYPTION_KEY` env)
@@ -160,6 +164,8 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 3 — Job Queue
 
 > BullMQ-powered job engine. Templates + custom jobs. Cron scheduling. Per-job AI model selection from Pi's registry.
+> 
+> **Decisions:** `QueueTask` schema extended with `name`, `cronExpression`, `modelId`, `retryPolicy` fields upfront. Sequential after Phase 2 — email-specific templates wired in here.
 
 - [ ] BullMQ infrastructure (connection, queue registry, worker process)
 - [ ] Job schema (explicit fields: `type`, `name`, `enabled`, `cronExpression`, `modelId`, `retryPolicy`; JSON `config` for job-specific settings)
@@ -181,6 +187,8 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 4 — Cross-Feature
 
 > Chat references email, jobs, files. Unified search. Notifications.
+> 
+> **Decisions:** Settings page replaced with floating draggable panel. Full browser push (Service Worker) + in-app notification center.
 
 - [ ] Chat can reference emails ("summarize my last 5 emails") — AI chains `mail_list` → `mail_read` → generates response
 - [ ] Chat can reference jobs ("disable spam filtering", "show me recent job logs")
