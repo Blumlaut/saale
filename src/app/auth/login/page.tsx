@@ -1,6 +1,5 @@
 "use client";
 
-import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -9,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,23 +19,23 @@ export default function LoginPage() {
 
   const onError = searchParams?.get("error");
   if (onError) {
-    setError(onError === "CredentialsSignin" ? "Invalid email or password" : onError);
+    setError(onError);
   }
 
   const onSubmit = handleSubmit(async (data: { email: string; password: string }) => {
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
+    const { error } = await authClient.signIn.email({
       email: data.email,
       password: data.password,
-      redirect: false,
+      callbackURL: "/dashboard/chat",
     });
 
     setLoading(false);
 
-    if (result?.error) {
-      setError("Invalid email or password");
+    if (error) {
+      setError(error.message || "Invalid email or password");
       return;
     }
 

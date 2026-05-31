@@ -16,8 +16,8 @@ services:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
       - REDIS_URL=redis://redis:6379
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=http://localhost:3000
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=http://localhost:3000
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (32-char hex)}
     depends_on:
       postgres:
