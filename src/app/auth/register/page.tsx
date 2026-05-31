@@ -6,8 +6,8 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
+import { AlertCircle, CheckCircle, ChevronRight } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 interface RegisterForm {
@@ -56,22 +56,28 @@ export default function RegisterPage() {
   });
 
   return (
-    <Card className="mx-4 w-full max-w-md">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold tracking-tight">Saale</CardTitle>
-        <CardDescription>Create your account</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <GlassPanel className="animate-in fade-in slide-in-from-bottom-2 w-full max-w-md duration-200">
+      <GlassPanelContent className="space-y-6">
+        {/* Brand */}
+        <div className="text-center">
+          <div className="mb-4 flex items-center justify-center gap-2">
+            <ChevronRight className="text-primary h-6 w-6" />
+            <span className="text-2xl font-bold tracking-tight">Saale</span>
+          </div>
+          <p className="text-muted-foreground text-sm">Create your account</p>
+        </div>
+
+        {/* Form */}
         <form onSubmit={onSubmit} className="space-y-4">
           {error && (
-            <div className="bg-destructive/15 text-destructive flex items-center gap-2 rounded-md px-3 py-2 text-sm">
-              <AlertCircle className="h-4 w-4" />
+            <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-full px-4 py-2.5 text-sm">
+              <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
           {success && (
-            <div className="flex items-center gap-2 rounded-md bg-green-500/15 px-3 py-2 text-sm text-green-600 dark:text-green-400">
-              <CheckCircle className="h-4 w-4" />
+            <div className="flex items-center gap-2 rounded-full bg-green-500/10 px-4 py-2.5 text-sm text-green-600 dark:text-green-400">
+              <CheckCircle className="h-4 w-4 shrink-0" />
               {success}
             </div>
           )}
@@ -92,7 +98,7 @@ export default function RegisterPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Label htmlFor="confirmPassword">Confirm password</Label>
             <Input id="confirmPassword" type="password" {...register("confirmPassword")} />
             {watch("confirmPassword") && watch("confirmPassword") !== password && (
               <p className="text-destructive text-xs">Passwords do not match</p>
@@ -104,13 +110,14 @@ export default function RegisterPage() {
           </Button>
         </form>
 
-        <div className="text-muted-foreground mt-4 text-center text-sm">
+        {/* Sign in link */}
+        <p className="text-muted-foreground text-center text-sm">
           Already have an account?{" "}
           <Button variant="link" className="p-0" onClick={() => router.push("/auth/login")}>
             Sign in
           </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </p>
+      </GlassPanelContent>
+    </GlassPanel>
   );
 }

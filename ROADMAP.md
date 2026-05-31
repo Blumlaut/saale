@@ -140,7 +140,7 @@ defineTool({ name: "task_logs", ... })      // View task run history
 - [ ] Chat can reference emails ("summarize my last 5 emails")
 - [ ] Chat can reference tasks ("disable spam filtering")
 - [ ] Unified search (chat + email + tasks)
-- [ ] Settings page (API keys, email accounts, model prefs, theme)
+- [ ] Settings Panel (API keys, email accounts, model prefs, theme) - Movable Window, not a seperate page!
 - [ ] Notifications (new email, task completed)
 - [ ] Dark/light theme toggle
 
