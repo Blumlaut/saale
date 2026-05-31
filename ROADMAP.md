@@ -19,7 +19,7 @@
 | Database | PostgreSQL 17 + Prisma | Proper relational DB, migrations, type-safe queries |
 | Queue | BullMQ + Redis 8 | Job queue with retries, rate limiting, concurrency, cron scheduling |
 | Auth | better-auth v1 (Credentials provider + Prisma adapter) | Email/password auth, session management, database adapter |
-| Email | IMAP/SMTP (`mailparser`) | Direct email access, no third-party API lock-in |
+| Email | IMAP: `imapflow`, SMTP: `nodemailer`, Parsing: `mailparser` | Direct email access, no third-party API lock-in |
 | Files | Local filesystem (`/uploads/{userId}/`) | Simple per-user storage, upgradeable to object storage later |
 | Tests | Vitest (unit/integration) + Playwright (E2E) | Fast unit tests, real browser E2E |
 | Linting | ESLint + Prettier | Consistent code style, Tailwind class sorting |
@@ -146,7 +146,7 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 
 > Background sync is core — not an afterthought. BullMQ recurring jobs + manual trigger.
 > 
-> **Decisions:** Incremental sync via IMAP UIDVALIDITY + HIGHESTMODSEQ. BullMQ infra built before this phase (per user preference). Phase 2 completes fully before Phase 3 starts.
+> **Decisions:** `imapflow` for IMAP (auto-handles extensions, mailbox locking, async iterators), `nodemailer` for SMTP. Incremental sync via IMAP UIDVALIDITY + HIGHESTMODSEQ. BullMQ infra built before this phase (per user preference). Phase 2 completes fully before Phase 3 starts.
 
 - [ ] Email account connection UI (IMAP/SMTP config form)
 - [ ] Password encryption/decryption (`ENCRYPTION_KEY` env)
