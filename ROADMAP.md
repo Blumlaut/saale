@@ -2,6 +2,13 @@
 
 > AI-powered productivity hub: email, chat, tasks — one interface.
 
+## Principles
+
+- **Production-grade from day one.** No hacks, no "we'll refactor later." Every decision assumes a team of 30 will maintain this.
+- **Multi-user from the start.** Per-user data isolation, per-user Pi sessions. Workspace support deferred to post-v1.
+- **Composable tools.** Tools accept arrays, pagination, filters — the AI chains them. No separate "bulk" variants.
+- **BullMQ for everything queued.** Consistent architecture: retries, rate limiting, concurrency, observability — all native.
+
 ## Tech Stack
 
 | Layer | Choice | Why |
@@ -10,9 +17,10 @@
 | AI Engine | Pi SDK (`@earendil-works/pi-coding-agent`) | Streaming events, custom tools via `defineTool()`, session management. **No MCP** — tools are registered internally on the session. |
 | Streaming | Server-Sent Events (SSE) | Simple, native browser support, one-way agent→UI |
 | Database | PostgreSQL 17 + Prisma | Proper relational DB, migrations, type-safe queries |
-| Queue / Cache | Redis 8 | Task queue, session state, rate limiting |
+| Queue | BullMQ + Redis 8 | Job queue with retries, rate limiting, concurrency, cron scheduling |
 | Auth | next-auth v5 (Credentials provider + Prisma adapter) | Email/password auth, session management, database adapter |
 | Email | IMAP/SMTP (`mailparser`) | Direct email access, no third-party API lock-in |
+| Files | Local filesystem (`/uploads/{userId}/`) | Simple per-user storage, upgradeable to object storage later |
 | Tests | Vitest (unit/integration) + Playwright (E2E) | Fast unit tests, real browser E2E |
 | Linting | ESLint + Prettier | Consistent code style, Tailwind class sorting |
 | CI/CD | Docker Compose (dev + prod) | Hot reload in dev, standalone build for prod |
@@ -29,8 +37,9 @@
 │  ┌────▼──────────────────────────────────────────────┐ │
 │  │              Next.js Server                        │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌─────────┐ │ │
-│  │  │ Pi Session   │  │ Email Client │  │  Tasks  │ │ │
-│  │  │ (SDK)        │  │ (IMAP/SMTP)  │  │ Engine  │ │ │
+│  │  │ Pi Session   │  │ Email Client │  │  Jobs   │ │ │
+│  │  │ (SDK, per-   │  │ (IMAP/SMTP)  │  │ Engine  │ │ │
+│  │  │  user)       │  │              │  │ (BullMQ)│ │ │
 │  │  └──────┬───────┘  └──────┬───────┘  └───┬─────┘ │ │
 │  │         │                 │               │       │ │
 │  │  ┌──────▼─────────────────▼───────────────▼─────┐ │ │
@@ -38,22 +47,22 @@
 │  │  │  ┌──────────┬──────────┬──────────┬────────┐ │ │ │
 │  │  │  │  Mail    │  Tasks   │  Files   │ Chat   │ │ │ │
 │  │  │  └──────────┴──────────┴──────────┴────────┘ │ │ │
-│  │  └──────────────────────────────────────────────┘ │ │
+│  │  └───────────────────────────────────────────────┘ │ │
 │  └───────────────────────────────────────────────────┘ │
-│                       │  │                              │
-│              ┌────────▼──▼────────┐                     │
-│              │   PostgreSQL 17    │                     │
-│              └────────────────────┘                     │
-│                       │                                 │
-│              ┌────────▼──────────┐                      │
-│              │     Redis 8       │                      │
-│              └───────────────────┘                      │
+│                       │                                │
+│              ┌────────▼────────┐                       │
+│              │   PostgreSQL 17 │                       │
+│              └─────────────────┘                       │
+│                       │                                │
+│              ┌────────▼────────┐                       │
+│              │     Redis 8     │ ← BullMQ queues       │
+│              └─────────────────┘                       │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Pi Integration (No MCP)
 
-Pi's philosophy is "No MCP" — tools are registered directly on the agent session via `defineTool()`. This gives the agent native access to email, tasks, and file operations without protocol overhead or subprocess boundaries.
+Pi's philosophy is "No MCP" — tools are registered directly on the agent session via `defineTool()`. Each user gets an isolated Pi session with access only to their own data.
 
 ```typescript
 // lib/pi/session.ts
@@ -62,7 +71,7 @@ export async function createSession(userId, customTools) {
     sessionManager: SessionManager.inMemory(),
     customTools,  // mail_list, mail_read, task_toggle, etc.
     authStorage,
-    modelRegistry,
+    modelRegistry,  // pulled from Pi's registry
   });
   return session;
 }
@@ -70,20 +79,32 @@ export async function createSession(userId, customTools) {
 
 ### Custom Tool Design
 
+Tools are composable — they accept arrays, pagination, and filters. The AI chains them as needed.
+
 ```typescript
 // Email tools
-defineTool({ name: "mail_list", ... })      // List emails (filters: folder, unread, since)
-defineTool({ name: "mail_read", ... })      // Read email by ID
-defineTool({ name: "mail_search", ... })    // Search emails by query
-defineTool({ name: "mail_send", ... })      // Send email
-defineTool({ name: "mail_tag", ... })       // Tag/untag emails
-defineTool({ name: "mail_move", ... })      // Move email between folders
+defineTool({ name: "mail_list", ... })       // List emails (filters: folder, unread, since, limit, offset)
+defineTool({ name: "mail_read", ... })       // Read email(s) by ID(s) — accepts array
+defineTool({ name: "mail_search", ... })     // Search emails by query
+defineTool({ name: "mail_send", ... })       // Send email
+defineTool({ name: "mail_tag", ... })        // Tag/untag email(s) — accepts array of IDs
+defineTool({ name: "mail_move", ... })       // Move email(s) between folders — accepts array
+defineTool({ name: "mail_delete", ... })     // Delete email(s) — accepts array
 
-// Task tools
-defineTool({ name: "task_list", ... })      // List all tasks + status
-defineTool({ name: "task_toggle", ... })    // Enable/disable a task
-defineTool({ name: "task_run", ... })       // Run a task manually
-defineTool({ name: "task_logs", ... })      // View task run history
+// Task/Job tools
+defineTool({ name: "job_list", ... })        // List all jobs + status
+defineTool({ name: "job_enable", ... })      // Enable/disable a job
+defineTool({ name: "job_run", ... })         // Run a job manually
+defineTool({ name: "job_logs", ... })        // View job run history
+
+// File tools
+defineTool({ name: "file_read", ... })       // Read file from user's workspace
+defineTool({ name: "file_write", ... })      // Write file to user's workspace
+defineTool({ name: "file_list", ... })       // List files in user's workspace
+defineTool({ name: "file_attach", ... })     // Attach file to current chat
+
+// Chat tools
+defineTool({ name: "chat_search", ... })     // Search chat history
 ```
 
 ## Phases
@@ -102,57 +123,102 @@ defineTool({ name: "task_logs", ... })      // View task run history
 - [x] AGENTS.md (commit rules, testing rules, architecture)
 - [x] Pi SDK integration layer (`lib/pi/session.ts`)
 
-### Phase 1 — Chat (Week 1-2)
+### Phase 1 — Chat
+
+> Get the AI plumbing working. Everything else feeds into this.
 
 - [ ] Chat UI (message list, input bar, streaming render)
 - [ ] SSE streaming endpoint (`/api/chat/stream`)
-- [ ] Session management (new session, list, resume)
+- [ ] Per-user Pi session management (create, list, resume, isolate)
 - [ ] Markdown rendering in messages (react-markdown + rehype-highlight)
-- [ ] Tool call visibility (show when agent uses tools)
-- [ ] Model/Thinking level selector
+- [ ] Tool call visibility (show when agent uses tools, with status)
+- [ ] Model selector (pull from Pi's `modelRegistry`)
+- [ ] Thinking level selector
 - [ ] Copy, delete, regenerate messages
 - [ ] Chat history persistence in PostgreSQL
+- [ ] File attachments (user → agent): upload, preview, attach to messages
+- [ ] File tools for agent (`file_read`, `file_write`, `file_list`, `file_attach`)
+- [ ] Per-user file workspace (`/uploads/{userId}/`)
 
-### Phase 2 — Email (Week 2-4)
+### Phase 2 — Email
+
+> Background sync is core — not an afterthought. BullMQ recurring jobs + manual trigger.
 
 - [ ] Email account connection UI (IMAP/SMTP config form)
-- [ ] Password encryption/decryption (ENCRYPTION_KEY)
-- [ ] IMAP sync service (background polling)
-- [ ] Inbox view (message list, threading, read/unread)
+- [ ] Password encryption/decryption (`ENCRYPTION_KEY` env)
+- [ ] IMAP sync service as BullMQ recurring job (configurable interval per account)
+- [ ] Manual sync trigger (button in UI, also exposed as API endpoint)
+- [ ] Sync status visibility (last synced, in-progress, errors)
+- [ ] Inbox view (flat chronological list, read/unread, starred)
 - [ ] Message detail view (render HTML/plain text)
 - [ ] Compose & send emails (SMTP)
-- [ ] Folder/tag management
-- [ ] Search across emails
-- [ ] Pi email tools (`defineTool` registrations)
+- [ ] Folder management (list, move between folders)
+- [ ] Tag system (apply/remove tags, filter by tag)
+- [ ] Search across emails (PostgreSQL full-text search)
+- [ ] Pi email tool registrations (`mail_list`, `mail_read`, `mail_search`, `mail_send`, `mail_tag`, `mail_move`, `mail_delete`)
 
-### Phase 3 — Queue Tasks (Week 4-5)
+### Phase 3 — Job Queue
 
-- [ ] Task engine (Redis-backed queue, enable/disable per task)
-- [ ] Email Summarization task (auto-summarize new mail with Pi)
-- [ ] Classification + Tags task (auto-tag incoming mail with Pi)
-- [ ] Spam Filtering task (Pi evaluates spam score)
-- [ ] Task run history & logs (viewable in UI)
-- [ ] Task scheduling (IMAP poll interval, cron-like triggers)
-- [ ] Task tools for Pi agent access
+> BullMQ-powered job engine. Templates + custom jobs. Cron scheduling. Per-job AI model selection from Pi's registry.
 
-### Phase 4 — Cross-Feature (Week 5-6)
+- [ ] BullMQ infrastructure (connection, queue registry, worker process)
+- [ ] Job schema (explicit fields: `type`, `name`, `enabled`, `cronExpression`, `modelId`, `retryPolicy`; JSON `config` for job-specific settings)
+- [ ] Job run tracking (status, input, output, error, timestamps, duration)
+- [ ] Predefined job templates:
+  - Email Summarization (auto-summarize new mail with Pi)
+  - Classification + Tags (auto-tag incoming mail with Pi)
+  - Spam Filtering (Pi evaluates spam score)
+- [ ] Custom job creation (user-defined name, cron schedule, model, config)
+- [ ] Job admin UI:
+  - Job list with status, next run, run count
+  - Job detail card (settings, model selector, cron editor, enable/disable)
+  - Run history per job (logs, output, errors)
+  - Manual "run now" trigger
+- [ ] Job tools for Pi agent access (`job_list`, `job_enable`, `job_run`, `job_logs`)
+- [ ] Rate limiting per job (concurrency, max executes per interval)
+- [ ] Retry policy per job (attempts, backoff strategy)
 
-- [ ] Chat can reference emails ("summarize my last 5 emails")
-- [ ] Chat can reference tasks ("disable spam filtering")
-- [ ] Unified search (chat + email + tasks)
-- [ ] Settings Panel (API keys, email accounts, model prefs, theme) - Movable Window, not a seperate page!
-- [ ] Notifications (new email, task completed)
-- [ ] Dark/light theme toggle
+### Phase 4 — Cross-Feature
 
-### Phase 5 — Polish (Week 6-7)
+> Chat references email, jobs, files. Unified search. Notifications.
+
+- [ ] Chat can reference emails ("summarize my last 5 emails") — AI chains `mail_list` → `mail_read` → generates response
+- [ ] Chat can reference jobs ("disable spam filtering", "show me recent job logs")
+- [ ] Chat can reference files ("what's in my notes?", "create a summary doc")
+- [ ] Unified search (chat + email) via PostgreSQL full-text search
+  - Single search bar, tabbed or mixed results
+  - **Future:** vector search (pgvector) for semantic matching
+- [ ] Settings Panel — floating draggable window (not a separate page)
+  - API keys / model preferences (from Pi registry)
+  - Email accounts (add, edit, test connection, sync now)
+  - Theme (dark/light/system)
+  - Email sync interval
+- [ ] Notifications:
+  - Browser push (Notification API)
+  - In-app notification center (bell icon, dropdown with history)
+  - Triggers: new email, job completed/failed, chat response ready
+
+### Phase 5 — Polish
+
+> Responsive, accessible, deployable.
 
 - [ ] Responsive design (mobile support)
-- [ ] Keyboard shortcuts
+- [ ] Keyboard shortcuts (new chat, search, navigate, compose)
 - [ ] Error boundaries throughout
 - [ ] Loading states and skeletons
-- [ ] Docker production build optimization
-- [ ] Deployment docs
+- [ ] Docker production build optimization (multi-stage, minimal image)
+- [ ] Deployment documentation
 - [ ] README, branding, logo
+
+## Post-v1 (Future)
+
+- [ ] Vector search (pgvector) for semantic email/chat search
+- [ ] Shared workspaces (multi-user collaboration on jobs, shared email accounts)
+- [ ] Event-based job triggers (chat thresholds, email patterns, external webhooks)
+- [ ] Object storage migration (S3/minio) for file workspace
+- [ ] Email threading (conversation grouping by References/In-Reply-To)
+- [ ] Additional email providers (Gmail API, Microsoft Graph)
+- [ ] Plugin system for custom job types
 
 ## Development
 
