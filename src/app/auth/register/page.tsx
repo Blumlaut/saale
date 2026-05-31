@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CheckCircle } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
 
 interface RegisterForm {
   name: string;
@@ -36,37 +37,22 @@ export default function RegisterPage() {
       return;
     }
 
-    if (data.password.length < 8) {
-      setError("Password must be at least 8 characters");
-      setLoading(false);
+    const { error } = await authClient.signUp.email({
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      callbackURL: "/dashboard/chat",
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setError(error.message || "Registration failed");
       return;
     }
 
-    try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          password: data.password,
-        }),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        setError(json.error || "Registration failed");
-        return;
-      }
-
-      setSuccess("Account created! Redirecting to login...");
-      setTimeout(() => router.push("/auth/login"), 1500);
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    setSuccess("Account created! Redirecting...");
+    setTimeout(() => router.push("/dashboard/chat"), 1500);
   });
 
   return (
