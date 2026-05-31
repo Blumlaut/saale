@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { MessageSquare, Mail, ListTodo, Settings, ChevronRight } from "lucide-react";
 
@@ -34,20 +33,17 @@ export function DashboardNav() {
           const Icon = item.icon;
 
           return (
-            <Button
+            <Link
               key={item.href}
-              variant={isActive ? "secondary" : "ghost"}
+              href={item.href}
               className={cn(
-                "w-full justify-start gap-2 font-normal",
-                isActive && "bg-muted font-medium",
+                "focus-visible:ring-ring inline-flex w-full items-center justify-start gap-2 rounded-lg px-3 py-2 text-sm font-normal transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                isActive ? "bg-muted font-medium" : "hover:bg-accent hover:text-accent-foreground",
               )}
-              asChild
             >
-              <Link href={item.href}>
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            </Button>
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </Link>
           );
         })}
       </nav>
