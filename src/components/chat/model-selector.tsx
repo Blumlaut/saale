@@ -76,7 +76,7 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
           ) : (
             <Brain className="text-muted-foreground h-3.5 w-3.5" />
           )}
-          <SelectValue placeholder={loading ? "Loading..." : selected?.name || "Select model"} />
+          {loading ? "Loading..." : (selected?.name ?? <SelectValue placeholder="Select model" />)}
         </SelectTrigger>
         <SelectContent>
           {models.length === 0 ? (

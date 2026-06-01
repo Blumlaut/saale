@@ -286,7 +286,9 @@ export function ReplyForwardDialog({
             <Label className="text-xs">From</Label>
             <Select value={accountId} onValueChange={(v) => v && setAccountId(v)}>
               <SelectTrigger className="h-8">
-                <SelectValue placeholder="Select account" />
+                {accounts.find((a) => a.id === accountId)?.email ?? (
+                  <SelectValue placeholder="Select account" />
+                )}
               </SelectTrigger>
               <SelectContent>
                 {accounts

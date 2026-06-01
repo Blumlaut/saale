@@ -134,7 +134,9 @@ export function ProvidersTab({
               <Label htmlFor="provider-select">Provider</Label>
               <Select value={newProvider} onValueChange={(v) => setNewProvider(v ?? "")}>
                 <SelectTrigger id="provider-select">
-                  <SelectValue placeholder="Select provider" />
+                  {availableProviders.find((p) => p.id === newProvider)?.name ?? (
+                    <SelectValue placeholder="Select provider" />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {availableProviders.map((p) => (
