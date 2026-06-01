@@ -8,6 +8,7 @@ import {
   type CreateAgentSessionResult,
 } from "@earendil-works/pi-coding-agent";
 import { buildModelRegistry } from "@/lib/pi/models";
+import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 /**
  * POST /api/email/draft — Generate an AI email draft reply
@@ -64,15 +65,12 @@ export async function POST(request: NextRequest) {
   // Build model registry with user's providers
   const { modelRegistry, authStorage } = await buildModelRegistry(authSession.user.id);
 
-  // Resolve the user's configured default model and email writing style
-  const settings = await prisma.appSettings.findUnique({
-    where: { userId: authSession.user.id },
-    select: { defaultModelProvider: true, defaultModelName: true, emailWritingStyle: true },
-  });
+  // Resolve model for email_draft purpose (purpose override → global default)
+  const modelInfo = await resolveModelForPurpose(authSession.user.id, "email_draft");
 
   let model;
-  if (settings?.defaultModelProvider && settings?.defaultModelName) {
-    model = modelRegistry.find(settings.defaultModelProvider, settings.defaultModelName);
+  if (modelInfo) {
+    model = modelRegistry.find(modelInfo.provider, modelInfo.name);
   }
 
   if (!model) {
@@ -95,17 +93,23 @@ export async function POST(request: NextRequest) {
 
   const { session: piSession } = result;
 
+  // Fetch user's email writing style
+  const emailSettings = await prisma.appSettings.findUnique({
+    where: { userId: authSession.user.id },
+    select: { emailWritingStyle: true },
+  });
+
   // Custom system prompt — focused purely on email drafting, no Pi agent noise
-  // Incorporate user's custom writing style/persona if defined
+  // Incorporate user's custom writing style if defined
   const modeInstruction =
     mode === "forward"
       ? `You are forwarding this email to someone else. Write a brief introductory note before the forwarded content. Do NOT include the original message body — only the intro note.`
       : `You are replying to this email. Write a natural response addressing the content of the original message.`;
 
   const userStyleInstructions =
-    settings?.emailWritingStyle && settings.emailWritingStyle.trim()
+    emailSettings?.emailWritingStyle && emailSettings.emailWritingStyle.trim()
       ? `\n\nWriting style (defined by user):
-${settings.emailWritingStyle}`
+${emailSettings.emailWritingStyle}`
       : "";
 
   piSession.agent.state.systemPrompt = `You are an email drafting assistant. Your only job is to write clear, concise email responses.

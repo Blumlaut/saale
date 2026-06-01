@@ -65,40 +65,6 @@ export async function updateJobRun(
   });
 }
 
-// ─── Model Resolution ────────────────────────────────────────────────────────
-
-/**
- * Resolve a modelId string ("provider:modelName") to { provider, name }.
- * Falls back to user settings if no modelId is set.
- * Returns undefined if no model can be resolved (caller should handle gracefully).
- */
-export async function resolveModel(
-  userId: string,
-  modelId?: string | null,
-): Promise<{ provider: string; name: string } | undefined> {
-  // Job-level override takes priority
-  if (modelId && modelId.includes(":")) {
-    const [provider, ...nameParts] = modelId.split(":");
-    if (!provider) return undefined;
-    return { provider, name: nameParts.join(":") };
-  }
-
-  // Fall back to user settings
-  const settings = await prisma.appSettings.findUnique({
-    where: { userId },
-    select: { defaultModelProvider: true, defaultModelName: true },
-  });
-
-  if (settings?.defaultModelProvider && settings?.defaultModelName) {
-    return {
-      provider: settings.defaultModelProvider,
-      name: settings.defaultModelName,
-    };
-  }
-
-  return undefined;
-}
-
 // ─── Worker creation ─────────────────────────────────────────────────────────
 
 /**

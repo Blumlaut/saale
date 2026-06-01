@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { moveMessage } from "@/lib/email/imap";
 import { buildModelRegistry } from "@/lib/pi/models";
-import { addJobRun, updateJobRun, resolveModel } from "@/lib/queue";
+import { addJobRun, updateJobRun } from "@/lib/queue";
+import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ import { addJobRun, updateJobRun, resolveModel } from "@/lib/queue";
  * @param userId - The user whose API keys and model registry to use
  * @param prompt - The prompt to send to the AI
  * @param systemPrompt - Optional system prompt (defaults to a task-oriented prompt)
- * @param modelId - Optional model override ("provider:modelName"), resolved via resolveModel()
+ * @param modelId - Optional model override ("provider:modelName")
  * @returns The AI's text response
  */
 export async function dispatchAiTask(
@@ -26,7 +27,7 @@ export async function dispatchAiTask(
     modelId?: string | null;
   },
 ): Promise<string> {
-  const modelInfo = await resolveModel(userId, options?.modelId);
+  const modelInfo = await resolveModelForPurpose(userId, "", options?.modelId);
 
   // Build a minimal model registry (no tools, no extensions — just the model)
   const { modelRegistry, authStorage } = await buildModelRegistry(userId);
