@@ -20,14 +20,28 @@ import {
   Plus,
   X,
   ChevronLeft,
+  Reply,
+  ReplyAll,
+  Forward,
+  MoreHorizontal,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { formatDistanceToNow, format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { ReplyForwardDialog } from "@/components/mail/reply-forward-dialog";
+import { toast } from "sonner";
 
 interface EmailMessage {
   id: string;
+  uid: string;
   fromName: string | null;
   fromEmail: string;
   to: unknown;
@@ -72,6 +86,148 @@ function getSender(msg: EmailMessage): string {
   if (msg.fromName) return msg.fromName;
   if (msg.fromEmail) return msg.fromEmail;
   return "Unknown Sender";
+}
+
+/** Shared toolbar for desktop detail and mobile drawer */
+function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefresh: () => void }) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyMode, setReplyMode] = useState<"reply" | "reply_all" | "forward">("reply");
+
+  const openReply = (mode: "reply" | "reply_all" | "forward") => {
+    setReplyMode(mode);
+    setReplyOpen(true);
+  };
+
+  const handleTrash = async () => {
+    try {
+      const res = await fetch(`/api/email/messages/${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "trash" }),
+      });
+      if (res.ok) {
+        toast.success("Email moved to trash");
+        onRefresh();
+      }
+    } catch {
+      toast.error("Failed to trash email");
+    }
+  };
+
+  const handleArchive = async () => {
+    try {
+      const res = await fetch(`/api/email/messages/${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive" }),
+      });
+      if (res.ok) {
+        toast.success("Email archived");
+        onRefresh();
+      }
+    } catch {
+      toast.error("Failed to archive email");
+    }
+  };
+
+  const toolbarButtons = (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 gap-1.5 rounded-full text-xs"
+        onClick={() => openReply("reply")}
+        title="Reply"
+      >
+        <Reply className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Reply</span>
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 gap-1.5 rounded-full text-xs"
+        onClick={() => openReply("reply_all")}
+        title="Reply All"
+      >
+        <ReplyAll className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">All</span>
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 gap-1.5 rounded-full text-xs"
+        onClick={() => openReply("forward")}
+        title="Forward"
+      >
+        <Forward className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Forward</span>
+      </Button>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 rounded-full text-xs"
+            title="More actions"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem onClick={handleArchive}>
+            <Archive className="mr-2 h-4 w-4" />
+            Archive
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleTrash}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Move to Trash
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={async () => {
+              const newStarred = !message.isStarred;
+              try {
+                await fetch(`/api/email/messages/${message.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ isStarred: newStarred }),
+                });
+                onRefresh();
+              } catch {
+                toast.error("Failed to update star");
+              }
+            }}
+          >
+            <Star className="mr-2 h-4 w-4" />
+            {message.isStarred ? "Unstar" : "Star"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+
+  return (
+    <>
+      <div className="flex items-center gap-1">{toolbarButtons}</div>
+      <ReplyForwardDialog
+        open={replyOpen}
+        onOpenChange={setReplyOpen}
+        mode={replyMode}
+        originalMessage={{
+          id: message.id,
+          fromName: message.fromName,
+          fromEmail: message.fromEmail,
+          to: message.to,
+          subject: message.subject,
+          bodyText: message.bodyText,
+          bodyPreview: message.bodyPreview,
+          accountId: message.accountId,
+        }}
+        onSuccess={onRefresh}
+      />
+    </>
+  );
 }
 
 export function Inbox() {
@@ -129,6 +285,10 @@ export function Inbox() {
     }
   }, [activeAccountId, folder, search, tagFilter]);
 
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadAccounts(), loadMessages()]);
+  }, [loadAccounts, loadMessages]);
+
   useEffect(() => {
     loadAccounts();
     loadMessages();
@@ -153,7 +313,7 @@ export function Inbox() {
           fetch(`/api/email/accounts/${acc.id}/sync`, { method: "POST" }),
         ),
       );
-      await Promise.all([loadMessages(), loadAccounts()]);
+      await refreshAll();
     } catch {
       // Ignore
     } finally {
@@ -169,7 +329,6 @@ export function Inbox() {
     }
     if (!msg.isRead) {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
-      // Also update selected message
       setSelectedMsg((prev) => (prev ? { ...prev, isRead: true } : prev));
     }
   };
@@ -521,31 +680,25 @@ export function Inbox() {
       <GlassPanel className="hidden flex-1 flex-col overflow-hidden md:flex">
         {selectedMessage ? (
           <>
-            {/* Detail header */}
-            <div className="border-border/50 flex items-center justify-between border-b px-6 py-4">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  {selectedMessage.subject || "(no subject)"}
-                </h2>
-                <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
-                  <span>{getSender(selectedMessage)}</span>
-                  <span>→</span>
-                  <span>{parseToField(selectedMessage.to).join(", ")}</span>
+            {/* Detail header with toolbar */}
+            <div className="border-border/50 flex flex-col gap-3 border-b px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-lg font-semibold">
+                    {selectedMessage.subject || "(no subject)"}
+                  </h2>
+                  <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
+                    <span className="truncate">{getSender(selectedMessage)}</span>
+                    <span>→</span>
+                    <span className="truncate">{parseToField(selectedMessage.to).join(", ")}</span>
+                  </div>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
+                  </p>
                 </div>
-                <p className="text-muted-foreground mt-0.5 text-xs">
-                  {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
-                </p>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <ReplyIcon className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Archive className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="shrink-0">
+                  <MessageToolbar message={selectedMessage} onRefresh={refreshAll} />
+                </div>
               </div>
             </div>
 
@@ -669,76 +822,65 @@ export function Inbox() {
           </DrawerHeader>
 
           {selectedMessage && (
-            <div className="flex flex-col gap-0 px-4">
-              {/* Sender info */}
-              <div className="border-border/30 border-b pb-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium">{getSender(selectedMessage)}</span>
-                  <span className="text-muted-foreground">→</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {parseToField(selectedMessage.to).join(", ")}
-                  </span>
+            <div className="flex flex-col gap-0">
+              {/* Toolbar row */}
+              <div className="border-border/30 flex items-center justify-between border-b px-4 py-2">
+                <div className="flex items-center gap-1">
+                  <MessageToolbar message={selectedMessage} onRefresh={refreshAll} />
                 </div>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
-                </p>
               </div>
 
-              {/* Tags */}
-              {selectedMessage.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 py-2">
-                  {selectedMessage.tags.map((tag) => (
-                    <Badge
-                      key={tag}
-                      className={cn(
-                        "cursor-pointer rounded-full px-2 py-0.5 text-xs",
-                        getTagColor(tag),
-                      )}
-                      onClick={() => handleRemoveTag(selectedMessage.id, tag)}
-                    >
-                      {tag}
-                    </Badge>
-                  ))}
+              <div className="flex flex-col gap-0 px-4">
+                {/* Sender info */}
+                <div className="border-border/30 border-b py-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">{getSender(selectedMessage)}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-muted-foreground truncate text-xs">
+                      {parseToField(selectedMessage.to).join(", ")}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
+                  </p>
                 </div>
-              )}
 
-              {/* Message body */}
-              <div className="max-h-[60vh] overflow-y-auto pb-4">
-                {selectedMessage.bodyHtml ? (
-                  <div
-                    className="prose prose-sm dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
-                  />
-                ) : (
-                  <pre className="text-sm whitespace-pre-wrap">
-                    {selectedMessage.bodyText || selectedMessage.bodyPreview}
-                  </pre>
+                {/* Tags */}
+                {selectedMessage.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 py-2">
+                    {selectedMessage.tags.map((tag) => (
+                      <Badge
+                        key={tag}
+                        className={cn(
+                          "cursor-pointer rounded-full px-2 py-0.5 text-xs",
+                          getTagColor(tag),
+                        )}
+                        onClick={() => handleRemoveTag(selectedMessage.id, tag)}
+                      >
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
                 )}
+
+                {/* Message body */}
+                <div className="max-h-[60vh] overflow-y-auto py-3 pb-4">
+                  {selectedMessage.bodyHtml ? (
+                    <div
+                      className="prose prose-sm dark:prose-invert max-w-none"
+                      dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
+                    />
+                  ) : (
+                    <pre className="text-sm whitespace-pre-wrap">
+                      {selectedMessage.bodyText || selectedMessage.bodyPreview}
+                    </pre>
+                  )}
+                </div>
               </div>
             </div>
           )}
         </DrawerContent>
       </Drawer>
     </div>
-  );
-}
-
-function ReplyIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 17-5-5 5-5" />
-      <path d="M20 18v-2a4 4 0 0 0-4-4H7" />
-    </svg>
   );
 }

@@ -1,0 +1,193 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/db";
+import { headers } from "next/headers";
+import {
+  createAgentSession,
+  SessionManager,
+  type CreateAgentSessionResult,
+} from "@earendil-works/pi-coding-agent";
+import { buildModelRegistry } from "@/lib/pi/models";
+
+/**
+ * POST /api/email/draft — Generate an AI email draft reply
+ *
+ * Uses a dedicated system prompt (no Pi agent noise) for clean email drafting.
+ * Streams the response via SSE: token (cumulative text), done
+ *
+ * Body: {
+ *   messageId: string,    // original email to reply to
+ *   mode: "reply" | "reply_all" | "forward",
+ * }
+ */
+export async function POST(request: NextRequest) {
+  const authSession = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!authSession?.user) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const body = await request.json();
+  const { messageId, mode = "reply" } = body as {
+    messageId: string;
+    mode?: "reply" | "reply_all" | "forward";
+  };
+
+  if (!messageId) {
+    return NextResponse.json({ error: "messageId is required" }, { status: 400 });
+  }
+
+  const message = await prisma.emailMessage.findFirst({
+    where: {
+      id: messageId,
+      account: { userId: authSession.user.id },
+    },
+    select: {
+      id: true,
+      fromName: true,
+      fromEmail: true,
+      to: true,
+      subject: true,
+      bodyText: true,
+      bodyHtml: true,
+      bodyPreview: true,
+      date: true,
+    },
+  });
+
+  if (!message) {
+    return NextResponse.json({ error: "Message not found" }, { status: 404 });
+  }
+
+  // Build model registry with user's providers
+  const { modelRegistry, authStorage } = await buildModelRegistry(authSession.user.id);
+
+  // Resolve default model
+  const available = modelRegistry.getAvailable();
+  const model = available.length > 0 ? available[0] : null;
+  if (!model) {
+    return NextResponse.json(
+      { error: "No AI model available. Add a provider in settings." },
+      { status: 422 },
+    );
+  }
+
+  // Create a lightweight agent session — no tools, no thinking, just text completion
+  const result: CreateAgentSessionResult = await createAgentSession({
+    sessionManager: SessionManager.inMemory(),
+    authStorage,
+    modelRegistry,
+    noTools: "builtin",
+    model,
+    customTools: [],
+    thinkingLevel: "off",
+  });
+
+  const { session: piSession } = result;
+
+  // Custom system prompt — focused purely on email drafting, no Pi agent noise
+  const modeInstruction =
+    mode === "forward"
+      ? `You are forwarding this email to someone else. Write a brief introductory note before the forwarded content. Do NOT include the original message body — only the intro note.`
+      : `You are replying to this email. Write a natural, professional response addressing the content of the original message.`;
+
+  piSession.agent.state.systemPrompt = `You are an email drafting assistant. Your only job is to write clear, concise email responses.
+
+${modeInstruction}
+
+Rules:
+- Write only the email body text — no explanations, no meta-commentary
+- Match the tone of the original message (professional, casual, urgent, etc.)
+- Keep it concise and natural
+- Do not include greetings like "Dear X" or sign-offs unless they match the original tone
+- If the original message asks questions, answer them directly
+- If the original message makes a request, acknowledge it clearly
+- Output plain text only — no markdown formatting`;
+
+  // Build the user prompt from the original email
+  const originalBody = message.bodyText || message.bodyPreview || "";
+  const fromName = message.fromName || message.fromEmail;
+  const toField = typeof message.to === "string" ? message.to : JSON.stringify(message.to || "");
+
+  const userPrompt =
+    mode === "forward"
+      ? `Forward this email:\n\nFrom: ${fromName} <${message.fromEmail}>\nSubject: ${message.subject}\n\n${originalBody}`
+      : `Reply to this email:\n\nFrom: ${fromName} <${message.fromEmail}>\nTo: ${toField}\nSubject: ${message.subject}\n\n${originalBody}`;
+
+  // Create SSE stream
+  const encoder = new TextEncoder();
+  let aborted = false;
+  let currentText = "";
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const unsubscribe = piSession.subscribe((event) => {
+        if (aborted) return;
+
+        if (event.type === "message_update" && event.message.role === "assistant") {
+          const msg = event.message as { content: unknown[] };
+          const textBlocks = msg.content.filter(
+            (c) =>
+              typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
+          );
+          currentText = textBlocks
+            .map((c) => ((c as Record<string, unknown>).text as string) || "")
+            .join("");
+          if (currentText) {
+            controller.enqueue(
+              encoder.encode(`event: token\ndata: ${JSON.stringify({ text: currentText })}\n\n`),
+            );
+          }
+        }
+
+        if (event.type === "agent_end") {
+          // Extract final text
+          const assistantMessages = (
+            event.messages as { role: string; content: unknown[] }[]
+          ).filter((m) => m.role === "assistant");
+          const lastAssistant = assistantMessages[assistantMessages.length - 1];
+
+          let finalText = currentText;
+          if (lastAssistant) {
+            const textBlocks = lastAssistant.content.filter(
+              (c) =>
+                typeof c === "object" &&
+                c !== null &&
+                (c as Record<string, unknown>).type === "text",
+            );
+            finalText = textBlocks
+              .map((c) => ((c as Record<string, unknown>).text as string) || "")
+              .join("");
+          }
+
+          controller.enqueue(
+            encoder.encode(`event: done\ndata: ${JSON.stringify({ text: finalText })}\n\n`),
+          );
+          controller.close();
+        }
+      });
+
+      // Send the prompt
+      piSession.prompt(userPrompt);
+
+      // Handle client disconnect
+      request.signal.addEventListener("abort", () => {
+        aborted = true;
+        unsubscribe();
+        piSession.abort();
+        controller.close();
+      });
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
