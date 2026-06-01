@@ -153,7 +153,7 @@ model EmailMessage {
   folder      String      @default("INBOX")
   tags        String[]    @default([])
   aiSummary   String?     @db.Text
-  aiTags      String[]    @default([])
+  classified  Boolean     @default(false) // has the classification job processed this email?
   spamScore   Float?
   account     EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt   DateTime    @default(now())

@@ -249,7 +249,7 @@ export async function processJob(job: Job): Promise<void> {
             where: { id: classification.id },
             data: {
               tags: newTags,
-              aiTags: classification.tags,
+              classified: true,
             },
           });
         }
