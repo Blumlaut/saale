@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
-import { syncMessageFlags } from "@/lib/email/imap";
+import { syncMessageFlags, deleteMessage, moveMessage } from "@/lib/email/imap";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /**
@@ -100,6 +100,55 @@ export async function PATCH(
   }
 
   const body = await request.json();
+
+  // ── Trash action ──────────────────────────────────────────────
+  if (body.action === "trash") {
+    // Delete on IMAP server (best-effort, non-blocking)
+    deleteMessage(message.accountId, message.folder, message.uid).catch(() => {
+      // Already logged inside deleteMessage
+    });
+
+    // Remove from local DB
+    await prisma.emailMessage.delete({ where: { id: messageId } });
+    return NextResponse.json({ trashed: true });
+  }
+
+  // ── Archive action ────────────────────────────────────────────
+  if (body.action === "archive") {
+    // Determine archive folder from the account's cached folders
+    const account = await prisma.emailAccount.findUnique({
+      where: { id: message.accountId },
+      select: { cachedFolders: true },
+    });
+
+    // Find the archive folder name
+    let archiveFolder = "Archive";
+    if (account?.cachedFolders && Array.isArray(account.cachedFolders)) {
+      const folders = account.cachedFolders as string[];
+      const archiveMatch = folders.find(
+        (f) =>
+          f.toUpperCase() === "ARCHIVE" ||
+          f.toUpperCase() === "ALL MAIL" ||
+          f.toLowerCase() === "all mail",
+      );
+      if (archiveMatch) archiveFolder = archiveMatch;
+    }
+
+    // Move on IMAP server (best-effort, non-blocking)
+    moveMessage(message.accountId, message.folder, message.uid, archiveFolder).catch(() => {
+      // Already logged inside moveMessage
+    });
+
+    // Update local DB
+    await prisma.emailMessage.update({
+      where: { id: messageId },
+      data: { folder: archiveFolder },
+    });
+
+    return NextResponse.json({ archived: true, folder: archiveFolder });
+  }
+
+  // ── Standard field updates ────────────────────────────────────
   const updateData: Record<string, unknown> = {};
 
   if (body.isStarred !== undefined) {
