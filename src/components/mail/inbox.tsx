@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2 } from "lucide-react";
+import { getTagColor, collectTags } from "@/lib/email/tags";
+import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2, Plus, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface EmailMessage {
@@ -53,7 +55,6 @@ function parseToField(raw: unknown): string[] {
   return ["unknown"];
 }
 
-/** Get a displayable sender string */
 function getSender(msg: EmailMessage): string {
   if (msg.fromName) return msg.fromName;
   if (msg.fromEmail) return msg.fromEmail;
@@ -72,6 +73,7 @@ export function Inbox() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMsg, setSelectedMsg] = useState<EmailMessage | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [_total, setTotal] = useState(0);
   const [togglingStar, setTogglingStar] = useState<string | null>(null);
 
@@ -97,6 +99,7 @@ export function Inbox() {
       if (activeAccountId) params.set("accountId", activeAccountId);
       if (folder) params.set("folder", folder);
       if (search) params.set("search", search);
+      if (tagFilter) params.set("tag", tagFilter);
 
       const res = await fetch(`/api/email/messages?${params}`);
       if (res.ok) {
@@ -109,12 +112,12 @@ export function Inbox() {
     } finally {
       setLoading(false);
     }
-  }, [activeAccountId, folder, search]);
+  }, [activeAccountId, folder, search, tagFilter]);
 
   useEffect(() => {
     loadAccounts();
     loadMessages();
-  }, [activeAccountId, folder, loadAccounts, loadMessages]);
+  }, [activeAccountId, folder, tagFilter, loadAccounts, loadMessages]);
 
   const handleSyncAll = async () => {
     setSyncing(true);
@@ -185,6 +188,61 @@ export function Inbox() {
   };
 
   const selectedMessage = selectedMsg;
+
+  // Collect all unique tags with counts from loaded messages
+  const allTags = useMemo(() => collectTags(messages), [messages]);
+
+  // Tag management
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTagInput, setNewTagInput] = useState("");
+
+  const handleAddTag = async (msgId: string, tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    const msg = messages.find((m) => m.id === msgId);
+    if (!msg || msg.tags.includes(trimmed)) return;
+
+    const newTags = [...msg.tags, trimmed];
+    try {
+      const res = await fetch(`/api/email/messages/${msgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: newTags }),
+      });
+      if (res.ok) {
+        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
+        if (selectedMsg?.id === msgId) {
+          setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    setAddingTag(false);
+    setNewTagInput("");
+  };
+
+  const handleRemoveTag = async (msgId: string, tag: string) => {
+    const msg = messages.find((m) => m.id === msgId);
+    if (!msg) return;
+
+    const newTags = msg.tags.filter((t) => t !== tag);
+    try {
+      const res = await fetch(`/api/email/messages/${msgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: newTags }),
+      });
+      if (res.ok) {
+        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
+        if (selectedMsg?.id === msgId) {
+          setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  };
 
   // Active account info
   const activeAccount = activeAccountId ? accounts.find((a) => a.id === activeAccountId) : null;
@@ -305,6 +363,39 @@ export function Inbox() {
           </div>
         )}
 
+        {/* Tag filter bar */}
+        {allTags.length > 0 && (
+          <div className="border-border/30 flex gap-1.5 overflow-x-auto border-b px-3 py-1.5">
+            {tagFilter && (
+              <button
+                onClick={() => setTagFilter(null)}
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
+                  "bg-white/20 dark:bg-white/5",
+                )}
+              >
+                <X className="mr-0.5 inline h-3 w-3" />
+                {tagFilter}
+              </button>
+            )}
+            {allTags.map(({ name, count }) => (
+              <button
+                key={name}
+                onClick={() => setTagFilter(tagFilter === name ? null : name)}
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
+                  tagFilter === name
+                    ? getTagColor(name)
+                    : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
+                )}
+              >
+                {name}
+                <span className="ml-1 opacity-60">{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Message list */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
@@ -367,15 +458,25 @@ export function Inbox() {
                       </div>
                       {msg.tags.length > 0 && (
                         <div className="mt-1 flex gap-1">
-                          {msg.tags.map((tag) => (
+                          {msg.tags.slice(0, 3).map((tag) => (
                             <Badge
                               key={tag}
-                              variant="secondary"
-                              className="rounded-full px-1.5 py-0 text-[10px]"
+                              className={cn(
+                                "rounded-full px-1.5 py-0 text-[10px]",
+                                getTagColor(tag),
+                              )}
                             >
                               {tag}
                             </Badge>
                           ))}
+                          {msg.tags.length > 3 && (
+                            <Badge
+                              variant="secondary"
+                              className="rounded-full px-1.5 py-0 text-[10px]"
+                            >
+                              +{msg.tags.length - 3}
+                            </Badge>
+                          )}
                         </div>
                       )}
                     </div>
@@ -421,15 +522,80 @@ export function Inbox() {
             </div>
 
             {/* Message tags */}
-            {selectedMessage.tags.length > 0 && (
-              <div className="border-border/30 flex gap-1.5 border-b px-6 py-2">
-                {selectedMessage.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="rounded-full px-2 py-0.5 text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <div className="border-border/30 flex items-center gap-1.5 border-b px-6 py-2">
+              {selectedMessage.tags.map((tag) => (
+                <Badge
+                  key={tag}
+                  className={cn(
+                    "cursor-pointer rounded-full px-2 py-0.5 text-xs",
+                    getTagColor(tag),
+                  )}
+                  onClick={() => handleRemoveTag(selectedMessage.id, tag)}
+                  title={`Remove "${tag}"`}
+                >
+                  {tag}
+                  <X className="ml-0.5 h-2.5 w-2.5 opacity-50 hover:opacity-100" />
+                </Badge>
+              ))}
+              <Popover open={addingTag} onOpenChange={setAddingTag}>
+                <PopoverTrigger>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" title="Add tag">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56" align="start">
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-medium">Add tag</p>
+                    <div className="flex gap-1.5">
+                      <Input
+                        autoFocus
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleAddTag(selectedMessage.id, newTagInput);
+                          }
+                          if (e.key === "Escape") {
+                            setAddingTag(false);
+                            setNewTagInput("");
+                          }
+                        }}
+                        placeholder="Tag name"
+                        className="h-8"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        onClick={() => handleAddTag(selectedMessage.id, newTagInput)}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    {/* Suggest existing tags not yet on this message */}
+                    {allTags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {allTags
+                          .filter(({ name }) => !selectedMessage.tags.includes(name))
+                          .slice(0, 6)
+                          .map(({ name }) => (
+                            <button
+                              key={name}
+                              onClick={() => handleAddTag(selectedMessage.id, name)}
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-xs transition-colors",
+                                getTagColor(name),
+                                "hover:opacity-80",
+                              )}
+                            >
+                              + {name}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
 
             {/* Message body */}
             <GlassPanelContent className="flex-1 overflow-y-auto">
