@@ -122,16 +122,12 @@ export async function syncEmailAccount(accountId: string): Promise<{
 
     // Discover actual folder names from the server
     const { allFolders, special } = await discoverFolders(mailbox);
-    const folders: string[] = ["INBOX"];
-    for (const folderName of Object.values(special)) {
-      if (folderName) {
-        folders.push(folderName);
-      }
-    }
+    // Sync all folders, not just special-use ones
+    const folders: string[] = ["INBOX", ...allFolders];
     // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
-    console.log(`[email-sync] Discovered folders: ${folders.join(", ")}`);
+    console.log(`[email-sync] Syncing folders: ${folders.join(", ")}`);
     // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
-    console.log(`[email-sync] All remote folders: ${allFolders.join(", ")}`);
+    console.log(`[email-sync] Special-use map: ${JSON.stringify(special)}`);
 
     // Cache all remote folders on the account
     await prisma.emailAccount.update({
