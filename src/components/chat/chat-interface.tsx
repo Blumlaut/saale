@@ -42,6 +42,8 @@ interface StreamingState {
 }
 
 const DEFAULT_TOOL_CONFIG: ToolConfig = {
+  bash: true,
+  edit: true,
   files: true,
   email: true,
   jobs: true,
