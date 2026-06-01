@@ -1,7 +1,81 @@
-import { ImapFlow } from "imapflow";
+import { ImapFlow, ListResponse } from "imapflow";
 import { simpleParser } from "mailparser";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+
+/**
+ * Special-use folder attribute → fallback names to try if SPECIAL-USE discovery fails.
+ */
+const SPECIAL_USE_FALLBACKS: Record<string, string[]> = {
+  "\\Inbox": ["INBOX", "Inbox"],
+  "\\Sent": ["Sent", "Sent Messages", "Sent Items", "Gesendet"],
+  "\\Drafts": ["Drafts", "Drafts Messages", "Entwurf", "Entwürfe"],
+  "\\Trash": ["Trash", "Deleted Messages", "Deleted Items", "Gelöscht", "Papierkorb"],
+  "\\Archive": ["Archive", "Archiv", "All Mail"],
+};
+
+/**
+ * Discover mailbox folders using IMAP SPECIAL-USE flags.
+ * Falls back to common folder name patterns if SPECIAL-USE is unavailable.
+ */
+async function discoverFolders(
+  mailbox: ImapFlow,
+): Promise<{ inbox: string; special: Record<string, string | null> }> {
+  const special: Record<string, string | null> = {
+    "\\Sent": null,
+    "\\Drafts": null,
+    "\\Trash": null,
+    "\\Archive": null,
+  };
+
+  try {
+    const mailboxes: ListResponse[] = await mailbox.list();
+
+    for (const mb of mailboxes) {
+      const attrs = mb.flags ?? new Set<string>();
+      const name = mb.name;
+
+      // Match special-use attributes (check both flags set and specialUse field)
+      if ((attrs.has("\\Sent") || mb.specialUse === "\\Sent") && !special["\\Sent"]) {
+        special["\\Sent"] = name;
+      }
+      if ((attrs.has("\\Drafts") || mb.specialUse === "\\Drafts") && !special["\\Drafts"]) {
+        special["\\Drafts"] = name;
+      }
+      if ((attrs.has("\\Trash") || mb.specialUse === "\\Trash") && !special["\\Trash"]) {
+        special["\\Trash"] = name;
+      }
+      if ((attrs.has("\\Archive") || mb.specialUse === "\\Archive") && !special["\\Archive"]) {
+        special["\\Archive"] = name;
+      }
+    }
+
+    // Fill in any gaps with fallback name matching (case-insensitive)
+    for (const [attr, fallbacks] of Object.entries(SPECIAL_USE_FALLBACKS)) {
+      if (attr === "\\Inbox") continue; // INBOX is always "INBOX"
+      if (special[attr as keyof typeof special]) continue; // already found
+
+      for (const fallback of fallbacks) {
+        const match = mailboxes.find((mb) => mb.name.toLowerCase() === fallback.toLowerCase());
+        if (match) {
+          special[attr as keyof typeof special] = match.name;
+          break;
+        }
+      }
+    }
+  } catch {
+    // If listing fails, rely purely on fallback names
+    for (const attr of Object.keys(special)) {
+      const fallbacks = SPECIAL_USE_FALLBACKS[attr];
+      const firstFallback = fallbacks?.[0];
+      if (firstFallback) {
+        special[attr as keyof typeof special] = firstFallback;
+      }
+    }
+  }
+
+  return { inbox: "INBOX", special };
+}
 
 /**
  * Sync a single email account via IMAP.
@@ -38,8 +112,16 @@ export async function syncEmailAccount(accountId: string): Promise<{
   try {
     await mailbox.connect();
 
+    // Discover actual folder names from the server
+    const { inbox, special } = await discoverFolders(mailbox);
+    const folders: string[] = [inbox];
+    for (const folderName of Object.values(special)) {
+      if (folderName) {
+        folders.push(folderName);
+      }
+    }
+
     const lastSyncedAt = account.lastSyncedAt;
-    const folders = ["INBOX", "Sent", "Drafts", "Archive", "Trash"];
 
     for (const folder of folders) {
       try {
@@ -62,7 +144,6 @@ export async function syncEmailAccount(accountId: string): Promise<{
 
         // Fetch messages
         const fetchOpts: Record<string, unknown> = {
-          bodies: ["TEXT"],
           source: true,
         };
 
