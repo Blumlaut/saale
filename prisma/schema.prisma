@@ -124,6 +124,7 @@ model EmailAccount {
   encryptedPassword  String         @db.Text
   enabled            Boolean        @default(true)
   lastSyncedAt       DateTime?
+  cachedFolders      Json?          // Array of folder names discovered from IMAP
   messages           EmailMessage[]
   user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt          DateTime       @default(now())

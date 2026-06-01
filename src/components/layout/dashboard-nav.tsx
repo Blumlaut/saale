@@ -15,6 +15,7 @@ import {
   ListTodo,
   Settings,
   ChevronRight,
+  ChevronDown,
   Moon,
   Sun,
   Search,
@@ -25,10 +26,16 @@ import { useTheme } from "next-themes";
 
 const navItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
-  { href: "/dashboard/mail", label: "Mail", icon: Mail },
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
+
+interface EmailAccount {
+  id: string;
+  email: string;
+  enabled: boolean;
+  messageCount: number;
+}
 
 interface SearchResult {
   type: "chat" | "email";
@@ -46,7 +53,21 @@ export function DashboardNav() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [mailExpanded, setMailExpanded] = useState(false);
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [emailLoading, setEmailLoading] = useState(true);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Load email accounts
+  useEffect(() => {
+    fetch("/api/email/accounts")
+      .then((r) => r.json())
+      .then((data) => {
+        setEmailAccounts(data.accounts ?? []);
+        setEmailLoading(false);
+      })
+      .catch(() => setEmailLoading(false));
+  }, []);
 
   // Close search on Escape
   useEffect(() => {
@@ -119,6 +140,8 @@ export function DashboardNav() {
       router.push("/dashboard/mail");
     }
   };
+
+  const isMailActive = pathname === "/dashboard/mail" || pathname.startsWith("/dashboard/mail/");
 
   return (
     <nav className="sticky top-6 h-fit w-56 shrink-0">
@@ -236,6 +259,90 @@ export function DashboardNav() {
                 </Link>
               );
             })}
+
+            {/* Mail with expandable accounts */}
+            <div>
+              <button
+                onClick={() => {
+                  if (emailAccounts.length > 0) {
+                    setMailExpanded((prev) => !prev);
+                  } else {
+                    router.push("/dashboard/mail");
+                  }
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                  isMailActive
+                    ? "bg-white/20 font-medium dark:bg-white/5"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                )}
+              >
+                {emailAccounts.length > 0 ? (
+                  mailExpanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )
+                ) : (
+                  <Mail className="h-4 w-4" />
+                )}
+                <Mail className="h-4 w-4" />
+                Mail
+              </button>
+
+              {/* Expanded email accounts */}
+              {mailExpanded && emailAccounts.length > 0 && (
+                <div className="mt-0.5 space-y-0.5 pl-4">
+                  {/* All Mail */}
+                  <Link
+                    href="/dashboard/mail"
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
+                      pathname === "/dashboard/mail"
+                        ? "bg-white/20 font-medium dark:bg-white/5"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                    )}
+                  >
+                    All Mail
+                  </Link>
+
+                  {emailLoading ? (
+                    <div className="px-3 py-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    </div>
+                  ) : (
+                    emailAccounts.map((acc) => {
+                      const shortName = acc.email.split("@")[0];
+                      const domain = acc.email.split("@")[1] ?? "";
+
+                      return (
+                        <Link
+                          key={acc.id}
+                          href={`/dashboard/mail?accountId=${acc.id}`}
+                          className={cn(
+                            "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
+                            pathname === "/dashboard/mail" &&
+                              new URLSearchParams(window.location.search).get("accountId") ===
+                                acc.id
+                              ? "bg-white/20 font-medium dark:bg-white/5"
+                              : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                          )}
+                        >
+                          <div className="bg-muted/50 flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold">
+                            {acc.email[0]?.toUpperCase() ?? "?"}
+                          </div>
+                          <span className="truncate">{shortName}</span>
+                          <span className="text-muted-foreground/50">@{domain}</span>
+                          {!acc.enabled && (
+                            <span className="ml-auto text-[9px] opacity-50">off</span>
+                          )}
+                        </Link>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </GlassPanelContent>
       </GlassPanel>
