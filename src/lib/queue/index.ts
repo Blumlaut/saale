@@ -270,7 +270,7 @@ export async function processJob(job: Job): Promise<void> {
  * Create a BullMQ worker that processes all task queues.
  */
 export function createWorker(concurrency = 5): Worker {
-  return new Worker("saale-tasks-*", processJob, {
+  return new Worker("saale-task-*", processJob, {
     connection: { url: getConnection() },
     concurrency,
     limiter: {
