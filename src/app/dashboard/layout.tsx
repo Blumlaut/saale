@@ -17,7 +17,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <KeyboardShortcutsProvider>
       <div className="min-h-screen">
-        <div className="mx-auto flex max-w-[1600px] gap-6 p-4 md:p-5 lg:p-6">
+        <div className="flex gap-6 p-4 md:p-5 lg:p-6">
           <DashboardNav />
           <main className="min-w-0 flex-1">
             {/* Top bar with notifications */}
