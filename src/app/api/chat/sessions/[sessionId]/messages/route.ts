@@ -43,7 +43,9 @@ export async function GET(
       id: true,
       role: true,
       content: true,
+      thinking: true,
       toolCalls: true,
+      parentMessageId: true,
       createdAt: true,
     },
   });
@@ -61,13 +63,17 @@ export async function GET(
         id: string;
         role: string;
         content: string;
+        thinking: string | null;
         toolCalls: string | null;
+        parentMessageId: string | null;
         createdAt: Date;
       }) => ({
         id: m.id,
         role: m.role,
         content: m.content,
+        thinking: m.thinking || undefined,
         toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
+        parentMessageId: m.parentMessageId || undefined,
         createdAt: m.createdAt.toISOString(),
       }),
     ),
