@@ -3,6 +3,169 @@ import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email/smtp";
+import { syncEmailAccount } from "@/lib/email/sync";
+
+// ─── mail_accounts ───────────────────────────────────────────────────────────
+
+export const mailAccountsTool = defineTool({
+  name: "mail_accounts",
+  label: "List Email Accounts",
+  description:
+    "List all connected email accounts with their metadata: IDs, addresses, enabled status, last sync time, folder list, and message counts per folder.",
+  parameters: Type.Object({}),
+  execute: async (_toolCallId) => {
+    const accounts = await prisma.emailAccount.findMany({
+      select: {
+        id: true,
+        email: true,
+        enabled: true,
+        lastSyncedAt: true,
+        cachedFolders: true,
+      },
+    });
+
+    // Get per-folder message counts for each account
+    const results = await Promise.all(
+      accounts.map(async (acc) => {
+        const folderCounts = await prisma.emailMessage.groupBy({
+          by: ["folder"],
+          where: { accountId: acc.id },
+          _count: { folder: true },
+        });
+
+        const totalMessages = folderCounts.reduce((sum, f) => sum + f._count.folder, 0);
+        const unreadCount = await prisma.emailMessage.count({
+          where: { accountId: acc.id, isRead: false },
+        });
+
+        return {
+          id: acc.id,
+          email: acc.email,
+          enabled: acc.enabled,
+          lastSyncedAt: acc.lastSyncedAt?.toISOString() ?? null,
+          folders: (acc.cachedFolders as string[] | null) ?? [],
+          messageCounts: Object.fromEntries(folderCounts.map((f) => [f.folder, f._count.folder])),
+          totalMessages,
+          unreadCount,
+        };
+      }),
+    );
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ accounts: results }, null, 2),
+        },
+      ],
+      details: { count: results.length },
+    };
+  },
+});
+
+// ─── mail_folders ────────────────────────────────────────────────────────────
+
+export const mailFoldersTool = defineTool({
+  name: "mail_folders",
+  label: "List Folders",
+  description:
+    "List all folders for a specific email account with message counts (total, unread, starred) per folder.",
+  parameters: Type.Object({
+    accountId: Type.String({
+      description: "The email account ID.",
+    }),
+  }),
+  execute: async (_toolCallId, params) => {
+    const account = await prisma.emailAccount.findUnique({
+      where: { id: params.accountId },
+      select: { id: true, email: true, cachedFolders: true },
+    });
+
+    if (!account) {
+      throw new Error(`Email account ${params.accountId} not found`);
+    }
+
+    const folderStats = await prisma.emailMessage.groupBy({
+      by: ["folder"],
+      where: { accountId: account.id },
+      _count: { id: true },
+    });
+
+    // Get unread and starred counts per folder
+    const folderDetails = await Promise.all(
+      folderStats.map(async (f) => {
+        const unread = await prisma.emailMessage.count({
+          where: { accountId: account.id, folder: f.folder, isRead: false },
+        });
+        const starred = await prisma.emailMessage.count({
+          where: { accountId: account.id, folder: f.folder, isStarred: true },
+        });
+
+        return {
+          name: f.folder,
+          total: f._count.id,
+          unread,
+          starred,
+        };
+      }),
+    );
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              accountId: account.id,
+              email: account.email,
+              remoteFolders: (account.cachedFolders as string[] | null) ?? [],
+              folders: folderDetails,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+      details: { count: folderDetails.length },
+    };
+  },
+});
+
+// ─── mail_sync ───────────────────────────────────────────────────────────────
+
+export const mailSyncTool = defineTool({
+  name: "mail_sync",
+  label: "Sync Email Account",
+  description:
+    "Trigger an IMAP sync for a specific email account to fetch new messages. Returns sync results.",
+  parameters: Type.Object({
+    accountId: Type.String({
+      description: "The email account ID to sync.",
+    }),
+  }),
+  execute: async (_toolCallId, params) => {
+    const result = await syncEmailAccount(params.accountId);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              accountId: params.accountId,
+              newMessages: result.newMessages,
+              updatedMessages: result.updatedMessages,
+              errors: result.errors.length > 0 ? result.errors : undefined,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+      details: { newMessages: result.newMessages, updatedMessages: result.updatedMessages },
+    };
+  },
+});
 
 // ─── mail_list ───────────────────────────────────────────────────────────────
 
@@ -576,6 +739,9 @@ export const mailDeleteTool = defineTool({
 // ─── Export all mail tools ───────────────────────────────────────────────────
 
 export const mailTools = [
+  mailAccountsTool,
+  mailFoldersTool,
+  mailSyncTool,
   mailListTool,
   mailReadTool,
   mailSearchTool,
