@@ -21,7 +21,7 @@ export function getConnection(): string {
  */
 export function getQueue(taskId: string): Queue {
   return new Queue(`saale-task-${taskId}`, {
-    connection: getConnection() as any,
+    connection: { url: getConnection() },
   });
 }
 
@@ -258,7 +258,7 @@ export async function processJob(job: Job): Promise<void> {
  */
 export function createWorker(concurrency = 5): Worker {
   return new Worker("saale-tasks-*", processJob, {
-    connection: getConnection() as any,
+    connection: { url: getConnection() },
     concurrency,
     limiter: {
       max: 10,

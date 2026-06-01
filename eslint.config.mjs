@@ -19,10 +19,15 @@ const eslintConfig = defineConfig([
     rules: {
       // --- Existing ---
       "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "prefer-const": "error",
       "react-hooks/incompatible-library": "off",
+      // Data fetching in useEffect is a legitimate pattern; this rule is too strict
+      "react-hooks/set-state-in-effect": "off",
 
       // --- Strictness ---
 

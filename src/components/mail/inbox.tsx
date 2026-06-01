@@ -7,17 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import {
-  Mail,
-  Search,
-  Star,
-  RefreshCw,
-  Loader2,
-  ChevronLeft,
-  Send,
-  Archive,
-  Trash2,
-} from "lucide-react";
+import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface EmailMessage {
@@ -53,14 +43,9 @@ export function Inbox() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMsg, setSelectedMsg] = useState<EmailMessage | null>(null);
   const [folder, setFolder] = useState("INBOX");
-  const [total, setTotal] = useState(0);
+  const [_total, setTotal] = useState(0);
 
-  useEffect(() => {
-    loadAccounts();
-    loadMessages();
-  }, [folder]);
-
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     try {
       const res = await fetch("/api/email/accounts");
       if (res.ok) {
@@ -70,9 +55,9 @@ export function Inbox() {
     } catch {
       // Ignore
     }
-  };
+  }, []);
 
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -92,7 +77,12 @@ export function Inbox() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [folder, search]);
+
+  useEffect(() => {
+    loadAccounts();
+    loadMessages();
+  }, [folder, loadAccounts, loadMessages]);
 
   const handleSync = async (accountId: string) => {
     setSyncing(accountId);
@@ -101,7 +91,6 @@ export function Inbox() {
         method: "POST",
       });
       if (res.ok) {
-        const data = await res.json();
         loadMessages();
         loadAccounts();
       }
@@ -123,7 +112,7 @@ export function Inbox() {
 
   const handleSearch = useCallback(() => {
     loadMessages();
-  }, [search, folder]);
+  }, [search, folder, loadMessages]);
 
   const selectedMessage = selectedMsg;
 

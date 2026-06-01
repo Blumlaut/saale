@@ -88,7 +88,7 @@ export function DashboardNav() {
   // Search handler
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setSearchResults([]);
+      setSearchLoading(false);
       return;
     }
 
@@ -177,7 +177,7 @@ export function DashboardNav() {
                       <div className="flex items-center justify-center py-4">
                         <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
                       </div>
-                    ) : searchResults.length === 0 && searchQuery ? (
+                    ) : !searchQuery ? null : searchResults.length === 0 ? (
                       <div className="text-muted-foreground py-4 text-center text-sm">
                         No results found
                       </div>

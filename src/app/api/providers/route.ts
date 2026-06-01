@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
-import { encrypt, decrypt } from "@/lib/crypto";
+import { encrypt } from "@/lib/crypto";
 
 // Known providers with their labels
 const PROVIDERS = {
@@ -54,7 +54,7 @@ async function fetchOpenAIModels(
     }
 
     return {
-      models: data.data.map((m: any) => m.id).slice(0, 200),
+      models: data.data.map((m: { id: string }) => m.id).slice(0, 200),
     };
   } catch (err) {
     return {

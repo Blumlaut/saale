@@ -3,8 +3,6 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { encrypt } from "@/lib/crypto";
-import { testImapConnection } from "@/lib/email/sync";
-import { testSmtpConnection } from "@/lib/email/smtp";
 
 /**
  * GET /api/email/accounts — List user's email accounts

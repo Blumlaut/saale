@@ -34,7 +34,7 @@ async function fetchOpenAIModels(
     if (!data?.data?.length) return [];
 
     return data.data
-      .map((m: any) => ({
+      .map((m: { id: string }) => ({
         id: m.id,
         name: m.id,
       }))

@@ -82,11 +82,11 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   }, [streaming]);
 
   // Load messages
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     loadMessages();
   }, [sessionId]);
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Send message
   const handleSend = useCallback(
