@@ -64,12 +64,20 @@ export async function POST(request: NextRequest) {
   // Build model registry with user's providers
   const { modelRegistry, authStorage } = await buildModelRegistry(authSession.user.id);
 
-  // Resolve default model
-  const available = modelRegistry.getAvailable();
-  const model = available.length > 0 ? available[0] : null;
+  // Resolve the user's configured default model
+  const settings = await prisma.appSettings.findUnique({
+    where: { userId: authSession.user.id },
+    select: { defaultModelProvider: true, defaultModelName: true },
+  });
+
+  let model;
+  if (settings?.defaultModelProvider && settings?.defaultModelName) {
+    model = modelRegistry.find(settings.defaultModelProvider, settings.defaultModelName);
+  }
+
   if (!model) {
     return NextResponse.json(
-      { error: "No AI model available. Add a provider in settings." },
+      { error: "No AI model configured. Set a default model in settings." },
       { status: 422 },
     );
   }
