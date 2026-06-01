@@ -65,6 +65,15 @@ export function DashboardNav() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [searchOpen]);
 
+  // Listen for focus-search event from keyboard shortcuts
+  useEffect(() => {
+    const handleFocusSearch = () => {
+      setSearchOpen(true);
+    };
+    window.addEventListener("focus-search", handleFocusSearch);
+    return () => window.removeEventListener("focus-search", handleFocusSearch);
+  }, []);
+
   // Close search on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
