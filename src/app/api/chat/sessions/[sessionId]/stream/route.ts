@@ -3,6 +3,11 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { createPiSession, type ToolConfig } from "@/lib/pi/session";
+import {
+  normalizeToolResult,
+  buildHistoryMessages,
+  type StoredMessage,
+} from "@/lib/pi/message-replay";
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -75,94 +80,23 @@ export async function GET(
   piSession.agent.state.systemPrompt =
     "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
 
-  // Load conversation history into agent (all messages except the last user message,
-  // because prompt() will add the last user message itself).
-  // Assistant messages with toolCalls are expanded into: assistant (with toolCall blocks)
-  // + toolResult messages, so the LLM retains context of what tools were called and their results.
-  //
-  // CRITICAL for cache hits: the reconstructed messages must be byte-identical to what
-  // the live agent produced. This means:
-  // - api/provider/model must match the resolved model (transformMessages checks isSameModel)
-  // - toolResult must use toolCallId (not toolUseId) so provider adapters map it correctly
-  // - thinking blocks must be preserved (not downgraded to text on cross-model mismatch)
-  // - content block order must be consistent: thinking → text → toolCall
-  const historyMessages: unknown[] = [];
-  const baseTimestamp = Date.now();
-
-  for (let i = 0; i < messages.length - 1; i++) {
-    const m = messages[i]!;
-
-    if (m.role === "user") {
-      historyMessages.push({
-        role: "user",
-        content: [{ type: "text", text: m.content }],
-        timestamp: baseTimestamp,
-      });
-    } else if (m.role === "assistant") {
-      // Parse stored tool calls (JSON string or null)
-      let toolCallsData: Array<{
-        id: string;
-        name: string;
-        args: Record<string, unknown>;
-        result: string | undefined;
-        isError: boolean | undefined;
-      }> | null = null;
-      if (m.toolCalls) {
-        try {
-          toolCallsData = JSON.parse(m.toolCalls);
-        } catch {
-          // Malformed JSON — skip tool calls for this message
-          toolCallsData = null;
-        }
-      }
-
-      // Build content blocks in canonical order: thinking → text → toolCall
-      const assistantContent: unknown[] = [];
-      if (m.thinking) {
-        assistantContent.push({ type: "thinking", thinking: m.thinking });
-      }
-      if (m.content) {
-        assistantContent.push({ type: "text", text: m.content });
-      }
-      if (toolCallsData && toolCallsData.length > 0) {
-        for (const tc of toolCallsData) {
-          assistantContent.push({
-            type: "toolCall",
-            id: tc.id,
-            name: tc.name,
-            arguments: tc.args,
-          });
-        }
-      }
-
-      // Use resolved model metadata so transformMessages treats this as same-model
-      // (isSameModel check: provider + api + model id must all match)
-      historyMessages.push({
-        role: "assistant",
-        content: assistantContent,
-        api: model?.api,
-        provider: model?.provider,
-        model: model?.id,
-        stopReason: toolCallsData && toolCallsData.length > 0 ? "tool_use" : "end_turn",
-        timestamp: baseTimestamp,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
-      });
-
-      // Add toolResult messages — must use toolCallId (not toolUseId)
-      // so provider adapters (Anthropic tool_use_id, OpenAI tool_call_id, etc.)
-      // map it correctly. If toolUseId is used, the adapter reads undefined.
-      if (toolCallsData && toolCallsData.length > 0) {
-        for (const tc of toolCallsData) {
-          historyMessages.push({
-            role: "toolResult",
-            toolCallId: tc.id,
-            content: [{ type: "text", text: tc.result ?? "(no result)" }],
-            timestamp: baseTimestamp,
-          });
-        }
-      }
-    }
-  }
+  // Reconstruct conversation history from DB messages.
+  // buildHistoryMessages ensures byte-identical output to the live agent:
+  // - toolCallId (not toolUseId) for correct provider adapter mapping
+  // - resolved model metadata for same-model detection in transformMessages
+  // - canonical content block order: thinking → text → toolCall
+  // - toolResult text extracted (not double-encoded)
+  const storedMessages: StoredMessage[] = messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    thinking: m.thinking,
+    toolCalls: m.toolCalls,
+  }));
+  const historyMessages = buildHistoryMessages(storedMessages, {
+    api: model?.api,
+    provider: model?.provider,
+    id: model?.id,
+  });
 
   // Create SSE stream
   const encoder = new TextEncoder();
@@ -272,30 +206,9 @@ export async function GET(
 
           case "tool_execution_end": {
             // Normalize result to string for consistent frontend typing.
-            // Tools return { content: [{ type: "text", text: "..." }] } — extract the text
-            // instead of JSON-stringifying the whole object (which double-encodes on replay).
-            let resultStr: string;
-            if (typeof event.result === "string") {
-              resultStr = event.result;
-            } else if (
-              event.result &&
-              typeof event.result === "object" &&
-              "content" in event.result &&
-              Array.isArray(event.result.content)
-            ) {
-              resultStr = event.result.content
-                .filter(
-                  (c: unknown) =>
-                    c &&
-                    typeof c === "object" &&
-                    "type" in c &&
-                    (c as Record<string, unknown>).type === "text",
-                )
-                .map((c: Record<string, unknown>) => String(c.text ?? ""))
-                .join("");
-            } else {
-              resultStr = JSON.stringify(event.result);
-            }
+            // Uses the same logic as buildHistoryMessages to ensure the stored
+            // result matches what would be replayed — critical for cache hits.
+            const resultStr = normalizeToolResult(event.result);
             const existing = toolCallResults.get(event.toolCallId);
             if (existing) {
               existing.result = resultStr;
