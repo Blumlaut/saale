@@ -23,6 +23,13 @@ export async function GET(
   // Verify session belongs to user
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: session.user.id },
+    select: {
+      id: true,
+      modelProvider: true,
+      modelName: true,
+      thinkingLevel: true,
+      toolConfig: true,
+    },
   });
 
   if (!chatSession) {
@@ -47,6 +54,7 @@ export async function GET(
       modelProvider: chatSession.modelProvider,
       modelName: chatSession.modelName,
       thinkingLevel: chatSession.thinkingLevel,
+      toolConfig: chatSession.toolConfig,
     },
     messages: messages.map(
       (m: {

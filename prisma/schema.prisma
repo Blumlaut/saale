@@ -88,6 +88,7 @@ model ChatSession {
   modelProvider  String?
   modelName      String?
   thinkingLevel  String        @default("off")
+  toolConfig     Json?         // { files: true, email: true, jobs: true, chatSearch: true }
   messageCount   Int           @default(0)
   messages       ChatMessage[]
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)

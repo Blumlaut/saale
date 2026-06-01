@@ -2,9 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
-import { createPiSession } from "@/lib/pi/session";
-import { mailTools } from "@/lib/pi/tools/mail-tools";
-import { jobTools } from "@/lib/pi/tools/job-tools";
+import { createPiSession, type ToolConfig } from "@/lib/pi/session";
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -29,6 +27,13 @@ export async function GET(
 
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authSession.user.id },
+    select: {
+      id: true,
+      modelProvider: true,
+      modelName: true,
+      thinkingLevel: true,
+      toolConfig: true,
+    },
   });
 
   if (!chatSession) {
@@ -46,10 +51,11 @@ export async function GET(
     },
   });
 
-  // Create Pi session with custom tools
+  // Create Pi session with custom tools (filtered by toolConfig)
   const { session: piSession } = await createPiSession({
     userId: authSession.user.id,
-    customTools: [...mailTools, ...jobTools],
+    customTools: [],
+    ...(chatSession.toolConfig && { toolConfig: chatSession.toolConfig as ToolConfig }),
     ...(chatSession.modelProvider && { modelProvider: chatSession.modelProvider }),
     ...(chatSession.modelName && { modelName: chatSession.modelName }),
     thinkingLevel: chatSession.thinkingLevel || "off",
