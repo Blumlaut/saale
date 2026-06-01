@@ -34,7 +34,6 @@ export async function GET() {
       defaultModelName: settings.defaultModelName,
       defaultThinkingLevel: settings.defaultThinkingLevel,
       theme: settings.theme,
-      emailSyncInterval: settings.emailSyncInterval,
     },
   });
 }
@@ -68,7 +67,6 @@ export async function PATCH(request: NextRequest) {
       defaultModelName: settings.defaultModelName,
       defaultThinkingLevel: settings.defaultThinkingLevel,
       theme: settings.theme,
-      emailSyncInterval: settings.emailSyncInterval,
     },
   });
 }

@@ -170,11 +170,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="email" className="space-y-6">
-          <EmailTab
-            settings={settings}
-            onSettingsChange={setSettings}
-            onSave={handleSaveSettings}
-          />
+          <EmailTab />
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-6">
