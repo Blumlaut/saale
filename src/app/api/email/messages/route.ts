@@ -4,6 +4,9 @@ import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
+/** Folder names that indicate a trash/deleted mailbox (case-insensitive match) */
+const TRASH_FOLDER_NAMES = ["Trash", "Deleted Messages", "Deleted Items", "Gelöscht", "Papierkorb"];
+
 /**
  * GET /api/email/messages — List emails across user's accounts
  * Query params: accountId, folder, unread, starred, since, until, limit, offset, search, tag
@@ -38,6 +41,11 @@ export async function GET(request: NextRequest) {
   }
   if (folder) {
     where.folder = folder;
+  } else {
+    // "All" view: exclude trash/deleted folders
+    where.NOT = TRASH_FOLDER_NAMES.map((name) => ({
+      folder: { equals: name, mode: "insensitive" as const },
+    }));
   }
   if (tag) {
     where.tags = { has: tag };
