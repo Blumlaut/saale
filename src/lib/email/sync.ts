@@ -39,11 +39,12 @@ async function discoverFolders(
   try {
     const mailboxes: ListResponse[] = await mailbox.list();
 
-    // Collect all folder names (skip INBOX since it's always there)
+    // Collect all folder names (skip INBOX and \Noselect parent folders)
     for (const mb of mailboxes) {
-      if (mb.name.toUpperCase() !== "INBOX") {
-        allFolders.push(mb.name);
-      }
+      if (mb.name.toUpperCase() === "INBOX") continue;
+      const attrs = mb.flags ?? new Set<string>();
+      if (attrs.has("\\Noselect")) continue; // parent container, not selectable
+      allFolders.push(mb.name);
     }
 
     for (const mb of mailboxes) {
