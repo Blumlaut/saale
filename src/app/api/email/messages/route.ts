@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
+import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /**
  * GET /api/email/messages — List emails across user's accounts
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
         subject: m.subject,
         date: m.date.toISOString(),
         bodyPreview: m.bodyPreview,
-        bodyHtml: m.bodyHtml,
+        bodyHtml: sanitizeEmailHtml(m.bodyHtml),
         bodyText: m.bodyText,
         isRead: m.isRead,
         isStarred: m.isStarred,
