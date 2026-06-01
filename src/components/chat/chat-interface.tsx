@@ -10,37 +10,47 @@ import { Loader2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 
+interface ToolCallData {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+  isError?: boolean;
+  status?: "running" | "completed" | "error";
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-    result?: string;
-    error?: string;
-    status?: "running" | "completed" | "error";
-  }>;
+  thinking?: string;
+  toolCalls?: ToolCallData[];
   createdAt: string;
 }
 
-interface ToolCallDisplay {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  status: "running" | "done" | "error";
-  result?: string;
-  error?: string;
+interface StreamingState {
+  text: string;
+  thinking: string;
+  toolCalls: Array<{
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    status: "running" | "completed" | "error";
+    result?: string;
+    error?: string;
+  }>;
 }
 
 export function ChatInterface({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCallDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [streamingText, setStreamingText] = useState("");
-  const streamingTextRef = useRef("");
+  const [streaming, setStreaming] = useState<StreamingState>({
+    text: "",
+    thinking: "",
+    toolCalls: [],
+  });
+  const streamingRef = useRef<StreamingState>(streaming);
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const abortRef = useRef<AbortController | null>(null);
@@ -52,7 +62,6 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages);
-        // Initialize model/thinking from session config (first load only)
         if (data.session) {
           const modelStr =
             data.session.modelProvider && data.session.modelName
@@ -67,10 +76,10 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     }
   };
 
-  // Keep streamingTextRef in sync
+  // Keep streamingRef in sync
   useEffect(() => {
-    streamingTextRef.current = streamingText;
-  }, [streamingText]);
+    streamingRef.current = streaming;
+  }, [streaming]);
 
   // Load messages
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
@@ -82,7 +91,6 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   // Send message
   const handleSend = useCallback(
     async (content: string) => {
-      // Add user message optimistically
       const userMsg: Message = {
         id: `temp-${Date.now()}`,
         role: "user",
@@ -91,15 +99,12 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
-      setStreamingText("");
-      setStreamingToolCalls([]);
+      setStreaming({ text: "", thinking: "", toolCalls: [] });
 
-      // Create abort controller
       const abortController = new AbortController();
       abortRef.current = abortController;
 
       try {
-        // Save message to server
         const res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -110,7 +115,6 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
         const data = await res.json();
 
-        // Replace optimistic user message with the server-saved one
         if (data.message) {
           setMessages((prev) =>
             prev.map((m) =>
@@ -121,76 +125,88 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           );
         }
 
-        // Connect to SSE stream
         const eventSource = new EventSource(data.streamUrl);
         eventSourceRef.current = eventSource;
 
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (event.type === "token" || event.type === "message") {
-            // Handle token events
-            if (event.data) {
-              const parsed = JSON.parse(event.data);
-              if (parsed.text !== undefined) {
-                setStreamingText(parsed.text);
-              }
-            }
-          }
-        };
-
-        // Custom event handlers
         eventSource.addEventListener("token", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
-          setStreamingText(parsed.text);
+          setStreaming((prev) => ({ ...prev, text: parsed.text }));
+        });
+
+        eventSource.addEventListener("thinking", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          setStreaming((prev) => ({ ...prev, thinking: parsed.thinking }));
         });
 
         eventSource.addEventListener("tool_start", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
-          setStreamingToolCalls((prev) => [
+          setStreaming((prev) => ({
             ...prev,
-            {
-              toolCallId: parsed.toolCallId,
-              toolName: parsed.toolName,
-              args: parsed.args,
-              status: "running",
-            },
-          ]);
+            toolCalls: [
+              ...prev.toolCalls,
+              {
+                toolCallId: parsed.toolCallId,
+                toolName: parsed.toolName,
+                args: parsed.args,
+                status: "running" as const,
+              },
+            ],
+          }));
         });
 
         eventSource.addEventListener("tool_end", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
-          setStreamingToolCalls((prev) =>
-            prev.map((tc) =>
+          setStreaming((prev) => ({
+            ...prev,
+            toolCalls: prev.toolCalls.map((tc) =>
               tc.toolCallId === parsed.toolCallId
                 ? {
                     ...tc,
-                    status: parsed.isError ? "error" : "done",
+                    status: parsed.isError ? ("error" as const) : ("completed" as const),
                     result: parsed.result,
                     error: parsed.isError ? parsed.result : undefined,
                   }
                 : tc,
             ),
-          );
+          }));
         });
 
         eventSource.addEventListener("done", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
           setIsLoading(false);
-          setStreamingToolCalls([]);
           eventSource.close();
           eventSourceRef.current = null;
 
-          // Push the final assistant message directly instead of reloading,
-          // avoiding a flash where the message disappears between streaming end
-          // and the async fetch completing. Keep the optimistic user message
-          // as-is — it displays correctly and will be replaced on next load.
+          // Convert streaming tool calls to message format
+          const finalToolCalls: ToolCallData[] | undefined =
+            parsed.toolCalls?.length > 0
+              ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                  id: tc.id,
+                  name: tc.name,
+                  args: tc.args,
+                  result: tc.result,
+                  isError: tc.isError,
+                  status: tc.isError ? "error" : "completed",
+                }))
+              : streamingRef.current.toolCalls.length > 0
+                ? streamingRef.current.toolCalls.map((tc) => ({
+                    id: tc.toolCallId,
+                    name: tc.toolName,
+                    args: tc.args,
+                    result: tc.result,
+                    isError: tc.error !== undefined,
+                    status: tc.status === "running" ? "completed" : tc.status,
+                  }))
+                : undefined;
+
           setMessages((prev) => [
             ...prev,
             {
               id: `assistant-${Date.now()}`,
               role: "assistant" as const,
               content: parsed.text,
+              thinking: parsed.thinking || undefined,
+              toolCalls: finalToolCalls,
               createdAt: new Date().toISOString(),
             },
           ]);
@@ -200,17 +216,27 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           eventSource.close();
           eventSourceRef.current = null;
           setIsLoading(false);
-          setStreamingToolCalls([]);
-          // On error, keep any accumulated streaming text using the ref
-          // (streamingText state is stale in this closure due to useCallback deps)
-          const finalText = streamingTextRef.current;
-          if (finalText) {
+          const final = streamingRef.current;
+          if (final.text || final.thinking || final.toolCalls.length > 0) {
+            const errorToolCalls: ToolCallData[] | undefined =
+              final.toolCalls.length > 0
+                ? final.toolCalls.map((tc) => ({
+                    id: tc.toolCallId,
+                    name: tc.toolName,
+                    args: tc.args,
+                    result: tc.result,
+                    isError: tc.error !== undefined,
+                    status: tc.status === "running" ? "completed" : tc.status,
+                  }))
+                : undefined;
             setMessages((prev) => [
               ...prev,
               {
                 id: `assistant-${Date.now()}`,
                 role: "assistant" as const,
-                content: finalText,
+                content: final.text,
+                thinking: final.thinking || undefined,
+                toolCalls: errorToolCalls,
                 createdAt: new Date().toISOString(),
               },
             ]);
@@ -218,7 +244,6 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         };
       } catch (err) {
         setIsLoading(false);
-        setStreamingToolCalls([]);
         console.error("Send error:", err);
       }
     },
@@ -235,16 +260,27 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       eventSourceRef.current = null;
     }
     setIsLoading(false);
-    setStreamingToolCalls([]);
-    // Preserve any partial text accumulated before stopping
-    const partialText = streamingTextRef.current;
-    if (partialText) {
+    const partial = streamingRef.current;
+    if (partial.text || partial.thinking || partial.toolCalls.length > 0) {
+      const stopToolCalls: ToolCallData[] | undefined =
+        partial.toolCalls.length > 0
+          ? partial.toolCalls.map((tc) => ({
+              id: tc.toolCallId,
+              name: tc.toolName,
+              args: tc.args,
+              result: tc.result,
+              isError: tc.error !== undefined,
+              status: tc.status === "running" ? "completed" : tc.status,
+            }))
+          : undefined;
       setMessages((prev) => [
         ...prev,
         {
           id: `assistant-${Date.now()}`,
           role: "assistant" as const,
-          content: partialText,
+          content: partial.text,
+          thinking: partial.thinking || undefined,
+          toolCalls: stopToolCalls,
           createdAt: new Date().toISOString(),
         },
       ]);
@@ -280,7 +316,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           }),
         });
       } catch {
-        // Silently fail — model preference is local-only in this case
+        // Silently fail
       }
     }, 300);
     return () => clearTimeout(saveTimer);
@@ -288,11 +324,23 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
   // Build display messages (including streaming)
   const displayMessages = [...messages];
-  if (isLoading && streamingText) {
+  if (isLoading && (streaming.text || streaming.thinking || streaming.toolCalls.length > 0)) {
     displayMessages.push({
       id: "streaming-assistant",
       role: "assistant",
-      content: streamingText,
+      content: streaming.text,
+      thinking: streaming.thinking || undefined,
+      toolCalls:
+        streaming.toolCalls.length > 0
+          ? streaming.toolCalls.map((tc) => ({
+              id: tc.toolCallId,
+              name: tc.toolName,
+              args: tc.args,
+              result: tc.result,
+              isError: tc.error !== undefined,
+              status: tc.status === "running" ? "running" : "completed",
+            }))
+          : undefined,
       createdAt: new Date().toISOString(),
     });
   }
@@ -320,7 +368,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* Messages */}
-      <MessageList messages={displayMessages} />
+      <MessageList messages={displayMessages} isLoading={isLoading} />
 
       {/* Input */}
       <InputBar onSend={handleSend} isLoading={isLoading} onStop={handleStop} />
