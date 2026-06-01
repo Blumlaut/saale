@@ -162,17 +162,19 @@ model EmailMessage {
 // ─── Queue Tasks ───────────────────────────────────────────────
 
 model QueueTask {
-  id        String    @id @default(cuid())
-  userId    String
-  type      String // "summarization" | "classification" | "spam_filtering"
-  enabled   Boolean   @default(true)
-  config    String    @default("{}") @db.Text // JSON
-  lastRunAt DateTime?
-  runCount  Int       @default(0)
-  runs      TaskRun[]
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  userId         String
+  name           String?   // User-defined name
+  type           String    // "summarization" | "classification" | "spam_filtering" | "email_sync"
+  enabled        Boolean   @default(true)
+  modelId        String?   // Per-job AI model selection
+  config         String    @default("{}") @db.Text // JSON: cronExpression, retryPolicy, etc.
+  lastRunAt      DateTime?
+  runCount       Int       @default(0)
+  runs           TaskRun[]
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([userId, type])
 }
