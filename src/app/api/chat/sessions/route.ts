@@ -32,16 +32,27 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    sessions: sessions.map((s: { id: string; title: string; messageCount: number; modelProvider: string | null; modelName: string | null; thinkingLevel: string; createdAt: Date; updatedAt: Date }) => ({
-      id: s.id,
-      title: s.title,
-      messageCount: s.messageCount,
-      modelProvider: s.modelProvider,
-      modelName: s.modelName,
-      thinkingLevel: s.thinkingLevel,
-      createdAt: s.createdAt.toISOString(),
-      updatedAt: s.updatedAt.toISOString(),
-    })),
+    sessions: sessions.map(
+      (s: {
+        id: string;
+        title: string;
+        messageCount: number;
+        modelProvider: string | null;
+        modelName: string | null;
+        thinkingLevel: string;
+        createdAt: Date;
+        updatedAt: Date;
+      }) => ({
+        id: s.id,
+        title: s.title,
+        messageCount: s.messageCount,
+        modelProvider: s.modelProvider,
+        modelName: s.modelName,
+        thinkingLevel: s.thinkingLevel,
+        createdAt: s.createdAt.toISOString(),
+        updatedAt: s.updatedAt.toISOString(),
+      }),
+    ),
   });
 }
 

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
+import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
 import { ModelSelector } from "./model-selector";
 import { ThinkingSelector } from "./thinking-selector";
-import { Loader2, ChevronLeft, Sparkles } from "lucide-react";
+import { Loader2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 
@@ -40,7 +40,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCallDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [modelId, setModelId] = useState("claude-sonnet-4-5-20250514");
+  const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -56,6 +56,15 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages);
+        // Initialize model/thinking from session config (first load only)
+        if (data.session) {
+          const modelStr =
+            data.session.modelProvider && data.session.modelName
+              ? `${data.session.modelProvider}/${data.session.modelName}`
+              : "";
+          if (modelStr) setModelId(modelStr);
+          if (data.session.thinkingLevel) setThinkingLevel(data.session.thinkingLevel);
+        }
       }
     } catch {
       // Ignore
@@ -83,14 +92,11 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
       try {
         // Save message to server
-        const res = await fetch(
-          `/api/chat/sessions/${sessionId}/messages`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content }),
-          },
-        );
+        const res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        });
 
         if (!res.ok) throw new Error("Failed to send message");
 
@@ -202,6 +208,29 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     };
   }, []);
 
+  // Persist model/thinking changes to the session
+  useEffect(() => {
+    if (!modelId && thinkingLevel === "off") return;
+    const saveTimer = setTimeout(async () => {
+      const [provider, ...modelParts] = modelId.split("/");
+      const modelName = modelParts.join("/");
+      try {
+        await fetch(`/api/chat/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            modelProvider: provider || undefined,
+            modelName: modelName || undefined,
+            thinkingLevel,
+          }),
+        });
+      } catch {
+        // Silently fail — model preference is local-only in this case
+      }
+    }, 300);
+    return () => clearTimeout(saveTimer);
+  }, [modelId, thinkingLevel, sessionId]);
+
   // Build display messages (including streaming)
   const displayMessages = [...messages];
   if (isLoading && streamingText) {
@@ -226,9 +255,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <span className="text-sm font-medium">Chat</span>
-        {isLoading && (
-          <Loader2 className="ml-auto h-4 w-4 animate-spin text-muted-foreground" />
-        )}
+        {isLoading && <Loader2 className="text-muted-foreground ml-auto h-4 w-4 animate-spin" />}
 
         {/* Model & thinking selectors */}
         <div className="ml-auto flex items-center gap-1">
@@ -241,11 +268,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       <MessageList messages={displayMessages} />
 
       {/* Input */}
-      <InputBar
-        onSend={handleSend}
-        isLoading={isLoading}
-        onStop={handleStop}
-      />
+      <InputBar onSend={handleSend} isLoading={isLoading} onStop={handleStop} />
     </GlassPanel>
   );
 }

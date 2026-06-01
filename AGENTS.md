@@ -1,5 +1,14 @@
 # Saale — Agent Rules
 
+## Project Maturity
+
+This project is in its early stages. Heavy reworks and structural changes are expected and encouraged.
+
+- **Do not aim for backwards compatibility.** There is no legacy code worth preserving.
+- Feel free to refactor, rename, move, or delete code freely if it improves the design.
+- If something feels wrong or could be done better, do it better — don't carry forward bad decisions "to be safe."
+- Breaking changes are the default, not an exception.
+
 ## Investigate Before Using
 
 - **Never assume an API, method, or type exists.** Always inspect the actual source, docs, or type declarations before writing code that depends on a library's API.

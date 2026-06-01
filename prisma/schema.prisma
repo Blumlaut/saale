@@ -199,8 +199,8 @@ model TaskRun {
 model AppSettings {
   id                   String   @id @default(cuid())
   userId               String   @unique
-  defaultModelProvider String   @default("anthropic")
-  defaultModelName     String   @default("claude-sonnet-4-5-20250514")
+  defaultModelProvider String   @default("")
+  defaultModelName     String   @default("")
   defaultThinkingLevel String   @default("off")
   theme                String   @default("system") // "dark" | "light" | "system"
   emailSyncInterval    Int      @default(300) // seconds
