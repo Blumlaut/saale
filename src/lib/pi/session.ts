@@ -1,19 +1,28 @@
+import fs from "fs/promises";
+import path from "path";
 import {
   createAgentSession,
-  type CreateAgentSessionResult,
+  createBashTool,
+  createEditTool,
+  createReadTool,
+  createWriteTool,
   SessionManager,
+  type CreateAgentSessionResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { buildModelRegistry } from "./models";
-import { createFileTool } from "./tools/file-tools";
 import { createChatSearchTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
+
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
 /**
  * Configuration for which tool categories are enabled.
  */
 export interface ToolConfig {
+  bash?: boolean;
+  edit?: boolean;
   files?: boolean;
   email?: boolean;
   jobs?: boolean;
@@ -21,6 +30,8 @@ export interface ToolConfig {
 }
 
 const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
+  bash: true,
+  edit: true,
   files: true,
   email: true,
   jobs: true,
@@ -33,6 +44,89 @@ const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
 function resolveToolConfig(config: ToolConfig | null | undefined): Required<ToolConfig> {
   if (!config) return DEFAULT_TOOL_CONFIG;
   return { ...DEFAULT_TOOL_CONFIG, ...config };
+}
+
+/**
+ * Get the isolated workspace directory for a user.
+ */
+function getUserDir(userId: string): string {
+  return path.join(UPLOADS_DIR, userId);
+}
+
+/**
+ * Validate that a resolved path stays within the allowed base directory.
+ * Throws if the path escapes the sandbox.
+ */
+function validatePath(baseDir: string, filePath: string): void {
+  const resolved = path.resolve(baseDir, filePath);
+  if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
+    throw new Error(`Access denied: path "${filePath}" escapes user workspace`);
+  }
+}
+
+/**
+ * Create scoped Pi built-in tools locked to the user's workspace.
+ */
+function createScopedTools(userId: string) {
+  const userDir = getUserDir(userId);
+
+  return {
+    // Scoped read tool — locked to user directory
+    read: createReadTool(userDir, {
+      operations: {
+        readFile: async (absolutePath: string) => {
+          validatePath(userDir, absolutePath);
+          return await fs.readFile(absolutePath);
+        },
+        access: async (absolutePath: string) => {
+          validatePath(userDir, absolutePath);
+          await fs.access(absolutePath);
+        },
+      },
+    }),
+
+    // Scoped write tool — locked to user directory
+    write: createWriteTool(userDir, {
+      operations: {
+        writeFile: async (absolutePath: string, content: string) => {
+          validatePath(userDir, absolutePath);
+          await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+          await fs.writeFile(absolutePath, content, "utf8");
+        },
+        mkdir: async (dir: string) => {
+          validatePath(userDir, dir);
+          await fs.mkdir(dir, { recursive: true });
+        },
+      },
+    }),
+
+    // Scoped edit tool — locked to user directory
+    edit: createEditTool(userDir, {
+      operations: {
+        readFile: async (absolutePath: string) => {
+          validatePath(userDir, absolutePath);
+          return await fs.readFile(absolutePath);
+        },
+        writeFile: async (absolutePath: string, content: string) => {
+          validatePath(userDir, absolutePath);
+          await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+          await fs.writeFile(absolutePath, content, "utf8");
+        },
+        access: async (absolutePath: string) => {
+          validatePath(userDir, absolutePath);
+          await fs.access(absolutePath);
+        },
+      },
+    }),
+
+    // Scoped bash tool — cwd forced to user directory on every invocation
+    bash: createBashTool(userDir, {
+      spawnHook: (ctx) => ({
+        ...ctx,
+        cwd: userDir,
+      }),
+    }),
+  };
 }
 
 /**
@@ -55,14 +149,19 @@ export async function createPiSession(options: {
   // Build user-scoped custom tools (only if enabled)
   const allCustomTools: ToolDefinition[] = [...options.customTools];
 
+  // Pi built-in tools — scoped to user workspace
+  const scoped = createScopedTools(options.userId);
+
   if (enabled.files) {
-    const fileTools = createFileTool(options.userId);
-    allCustomTools.push(
-      fileTools.fileRead,
-      fileTools.fileWrite,
-      fileTools.fileList,
-      fileTools.fileDelete,
-    );
+    allCustomTools.push(scoped.read, scoped.write);
+  }
+
+  if (enabled.edit) {
+    allCustomTools.push(scoped.edit);
+  }
+
+  if (enabled.bash) {
+    allCustomTools.push(scoped.bash);
   }
 
   if (enabled.chatSearch) {
@@ -105,6 +204,7 @@ export async function createPiSession(options: {
     sessionManager: SessionManager.inMemory(),
     authStorage,
     modelRegistry,
+    noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
     thinkingLevel:
