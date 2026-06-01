@@ -470,10 +470,12 @@ export function createMailTools(userId: string) {
       name: "mail_search",
       label: "Search Emails",
       description:
-        "Search emails across all connected accounts using PostgreSQL full-text search. Searches subject, body, and sender.",
+        "Search emails across all connected accounts. Searches subject, body, and sender. " +
+        'Each word in the query is matched independently (OR logic), so "invoice march" finds emails containing either word.',
       parameters: Type.Object({
         query: Type.String({
-          description: "Search query (free text).",
+          description:
+            'Search keyword(s). Use 1-2 words — each word is matched independently (OR logic). e.g. "invoice march" finds emails with either word.',
         }),
         accountId: Type.Optional(
           Type.String({
@@ -495,15 +497,20 @@ export function createMailTools(userId: string) {
         });
         const accountIds = userAccounts.map((a) => a.id);
 
+        // Split multi-word queries into individual terms so "hello world" matches emails
+        // containing either "hello" OR "world" (not just the exact phrase "hello world")
+        const terms = params.query.split(/\s+/).filter(Boolean);
+        const searchTerms = terms.length > 0 ? terms : [params.query];
+
         const where: Record<string, unknown> = {
           accountId: { in: accountIds },
-          OR: [
-            { subject: { contains: params.query, mode: "insensitive" } },
-            { bodyText: { contains: params.query, mode: "insensitive" } },
-            { bodyPreview: { contains: params.query, mode: "insensitive" } },
-            { fromEmail: { contains: params.query, mode: "insensitive" } },
-            { fromName: { contains: params.query, mode: "insensitive" } },
-          ],
+          OR: searchTerms.flatMap((term: string) => [
+            { subject: { contains: term, mode: "insensitive" } },
+            { bodyText: { contains: term, mode: "insensitive" } },
+            { bodyPreview: { contains: term, mode: "insensitive" } },
+            { fromEmail: { contains: term, mode: "insensitive" } },
+            { fromName: { contains: term, mode: "insensitive" } },
+          ]),
         };
 
         if (params.accountId) {
