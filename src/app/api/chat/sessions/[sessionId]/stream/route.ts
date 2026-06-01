@@ -269,9 +269,31 @@ export async function GET(
           }
 
           case "tool_execution_end": {
-            // Normalize result to string for consistent frontend typing
-            const resultStr =
-              typeof event.result === "string" ? event.result : JSON.stringify(event.result);
+            // Normalize result to string for consistent frontend typing.
+            // Tools return { content: [{ type: "text", text: "..." }] } — extract the text
+            // instead of JSON-stringifying the whole object (which double-encodes on replay).
+            let resultStr: string;
+            if (typeof event.result === "string") {
+              resultStr = event.result;
+            } else if (
+              event.result &&
+              typeof event.result === "object" &&
+              "content" in event.result &&
+              Array.isArray(event.result.content)
+            ) {
+              resultStr = event.result.content
+                .filter(
+                  (c: unknown) =>
+                    c &&
+                    typeof c === "object" &&
+                    "type" in c &&
+                    (c as Record<string, unknown>).type === "text",
+                )
+                .map((c: Record<string, unknown>) => String(c.text ?? ""))
+                .join("");
+            } else {
+              resultStr = JSON.stringify(event.result);
+            }
             const existing = toolCallResults.get(event.toolCallId);
             if (existing) {
               existing.result = resultStr;
