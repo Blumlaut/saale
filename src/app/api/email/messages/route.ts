@@ -4,8 +4,40 @@ import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
-/** Folder names that indicate a trash/deleted mailbox (case-insensitive match) */
-const TRASH_FOLDER_NAMES = ["Trash", "Deleted Messages", "Deleted Items", "Gelöscht", "Papierkorb"];
+/** Fallback trash folder names for accounts that haven't synced yet */
+const KNOWN_TRASH_FOLDERS = [
+  "Trash",
+  "Deleted Messages",
+  "Deleted Items",
+  "Gelöscht",
+  "Papierkorb",
+];
+
+/**
+ * Collect the actual trash folder names for a user's accounts from the
+ * IMAP SPECIAL-USE discovery (`\\Trash` attribute). Falls back to
+ * well-known names for accounts that haven't synced yet.
+ */
+async function collectTrashFolders(userId: string, accountId?: string): Promise<string[]> {
+  const accounts = await prisma.emailAccount.findMany({
+    where: { userId, ...(accountId ? { id: accountId } : {}) },
+    select: { specialFolders: true },
+  });
+  const trashNames = new Set<string>();
+  for (const acc of accounts) {
+    const special = acc.specialFolders as Record<string, string | null> | null;
+    const trashFolder = special?.["\\Trash"];
+    if (trashFolder) {
+      trashNames.add(trashFolder);
+    } else {
+      // Account hasn't synced yet — use fallback names
+      for (const name of KNOWN_TRASH_FOLDERS) {
+        trashNames.add(name);
+      }
+    }
+  }
+  return Array.from(trashNames);
+}
 
 /**
  * GET /api/email/messages — List emails across user's accounts
@@ -42,10 +74,13 @@ export async function GET(request: NextRequest) {
   if (folder) {
     where.folder = folder;
   } else {
-    // "All" view: exclude trash/deleted folders
-    where.NOT = TRASH_FOLDER_NAMES.map((name) => ({
-      folder: { equals: name, mode: "insensitive" as const },
-    }));
+    // "All" view: exclude trash/deleted folders (per-account, from IMAP SPECIAL-USE)
+    const trashFolders = await collectTrashFolders(session.user.id, accountId ?? undefined);
+    if (trashFolders.length > 0) {
+      where.NOT = trashFolders.map((name) => ({
+        folder: { equals: name, mode: "insensitive" as const },
+      }));
+    }
   }
   if (tag) {
     where.tags = { has: tag };
