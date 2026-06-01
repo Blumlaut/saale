@@ -154,6 +154,8 @@ export async function syncEmailAccount(accountId: string): Promise<{
     for (const folder of folders) {
       try {
         await mailbox.mailboxOpen(folder);
+        // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
+        console.log(`[email-sync] Folder ${folder}: opened`);
 
         // Build search criteria
         const searchOpts: Record<string, unknown> = {};
@@ -286,11 +288,42 @@ export async function syncEmailAccount(accountId: string): Promise<{
               newMessages++;
             }
           } catch (err) {
-            errors.push(`Failed to parse message UID ${msg.uid}: ${(err as Error).message}`);
+            const msgErr = err as Error;
+            console.error(
+              `[email-sync] Failed to parse message UID ${msg.uid} in ${folder}:`,
+              msgErr.message,
+              msgErr.cause,
+            );
+            errors.push(
+              `Failed to parse message UID ${msg.uid}: ${msgErr.message}${msgErr.cause ? ` (${String(msgErr.cause)})` : ""}`,
+            );
           }
         }
       } catch (err) {
-        errors.push(`Failed to sync folder ${folder}: ${(err as Error).message}`);
+        const folderErr = err as Error & {
+          responseStatus?: string;
+          responseText?: string;
+          executedCommand?: string;
+          response?: unknown;
+        };
+        console.error(
+          `[email-sync] Failed to sync folder ${folder}:`,
+          folderErr.message,
+          folderErr.responseStatus,
+          folderErr.responseText,
+          folderErr.executedCommand,
+          folderErr.cause,
+        );
+        const detail = [
+          folderErr.responseStatus,
+          folderErr.responseText,
+          folderErr.cause ? String(folderErr.cause) : null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        errors.push(
+          `Failed to sync folder ${folder}: ${folderErr.message}${detail ? ` (${detail})` : ""}`,
+        );
       } finally {
         try {
           await mailbox.mailboxClose();
