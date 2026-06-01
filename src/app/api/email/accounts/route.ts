@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { encrypt } from "@/lib/crypto";
+import { syncEmailAccount } from "@/lib/email/sync";
 
 /**
  * GET /api/email/accounts — List user's email accounts
@@ -120,12 +121,20 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // Run initial full sync (lastSyncedAt is null, so syncEmailAccount does a full sync)
+  const syncResult = await syncEmailAccount(account.id);
+
   return NextResponse.json({
     account: {
       id: account.id,
       email: account.email,
       enabled: account.enabled,
       createdAt: account.createdAt.toISOString(),
+    },
+    sync: {
+      newMessages: syncResult.newMessages,
+      updatedMessages: syncResult.updatedMessages,
+      errors: syncResult.errors,
     },
   });
 }
