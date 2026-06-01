@@ -64,14 +64,10 @@ export async function GET(
   });
 
   // Set up system prompt
-  piSession.agent.state.systemPrompt = `You are Saale, an AI assistant in a productivity hub. You help users with email management, task automation, and general questions.
-
-You have access to tools for:
-- Email: list, read, search, send, tag, move, and delete emails
-- Jobs: list, enable/disable, run, and view logs for automated tasks
-- Files: read, write, and manage files in the user's workspace (via built-in tools)
-
-Always be concise and helpful. When using tools, explain what you're doing briefly.`;
+  // Keep this minimal — no feature/tool descriptions. The agent infers capabilities from tools.
+  // TODO: replace with user-defined system prompt from AppSettings/ChatSession when implemented
+  piSession.agent.state.systemPrompt =
+    "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
 
   // Load conversation history into agent (all messages except the last user message,
   // because prompt() will add the last user message itself)
@@ -433,9 +429,11 @@ Always be concise and helpful. When using tools, explain what you're doing brief
       });
 
       // Send the user message to the agent
+      // Use agent.prompt() directly to bypass AgentSession preflight logic
+      // which resets systemPrompt back to the Pi base prompt on every turn
       const lastMessage = messages[messages.length - 1];
       if (lastMessage && lastMessage.role === "user") {
-        piSession.prompt(lastMessage.content);
+        piSession.agent.prompt(lastMessage.content);
       }
 
       // Handle client disconnect
