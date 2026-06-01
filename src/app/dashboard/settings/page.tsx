@@ -379,13 +379,13 @@ export default function SettingsPage() {
                     <Label htmlFor="base-url">Base URL</Label>
                     <Input
                       id="base-url"
-                      placeholder="https://api.openai.com/v1"
+                      placeholder="http://ollama.home.blumlaut.me/v1"
                       value={newBaseUrl}
                       onChange={(e) => setNewBaseUrl(e.target.value)}
                       className="font-mono text-sm"
                     />
                     <p className="text-xs text-muted-foreground">
-                      The base URL of your OpenAI-compatible API (without trailing slash)
+                      Base URL including /v1 path, e.g. https://api.openai.com/v1
                     </p>
                   </div>
                 )}
