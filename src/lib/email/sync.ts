@@ -3,6 +3,12 @@ import { simpleParser } from "mailparser";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 
+/** Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects */
+function sanitize(str: string | null | undefined): string | null {
+  if (str == null) return null;
+  return String(str).replace(/\0/g, "");
+}
+
 /**
  * Special-use folder attribute → fallback names to try if SPECIAL-USE discovery fails.
  */
@@ -233,21 +239,21 @@ export async function syncEmailAccount(accountId: string): Promise<{
             const flags = msg.flags ?? new Set<string>();
             const flagsArray = flags instanceof Set ? Array.from(flags) : flags;
 
-            const bodyHtml = parsed.html ? String(parsed.html) : null;
+            const bodyHtml = sanitize(parsed.html);
 
             if (existing) {
               await prisma.emailMessage.update({
                 where: { id: existing.id },
                 data: {
                   uid,
-                  fromName,
-                  fromEmail,
-                  to: toList,
-                  subject: parsed.subject ?? "(no subject)",
+                  fromName: sanitize(fromName),
+                  fromEmail: sanitize(fromEmail) ?? "",
+                  to: sanitize(toList) ?? "",
+                  subject: sanitize(parsed.subject) ?? "(no subject)",
                   date: parsed.date ?? new Date(),
-                  bodyPreview: parsed.text?.slice(0, 500) ?? "",
+                  bodyPreview: sanitize(parsed.text?.slice(0, 500)) ?? "",
                   bodyHtml,
-                  bodyText: parsed.text ?? null,
+                  bodyText: sanitize(parsed.text),
                   folder,
                   isRead: flagsArray.includes("\\Seen") ?? existing.isRead,
                   isStarred: flagsArray.includes("\\Flagged") ?? existing.isStarred,
@@ -259,14 +265,14 @@ export async function syncEmailAccount(accountId: string): Promise<{
                 data: {
                   accountId,
                   uid,
-                  fromName,
-                  fromEmail,
-                  to: toList,
-                  subject: parsed.subject ?? "(no subject)",
+                  fromName: sanitize(fromName),
+                  fromEmail: sanitize(fromEmail) ?? "",
+                  to: sanitize(toList) ?? "",
+                  subject: sanitize(parsed.subject) ?? "(no subject)",
                   date: parsed.date ?? new Date(),
-                  bodyPreview: parsed.text?.slice(0, 500) ?? "",
+                  bodyPreview: sanitize(parsed.text?.slice(0, 500)) ?? "",
                   bodyHtml,
-                  bodyText: parsed.text ?? null,
+                  bodyText: sanitize(parsed.text),
                   folder,
                   isRead: flagsArray.includes("\\Seen") ?? false,
                   isStarred: flagsArray.includes("\\Flagged") ?? false,
