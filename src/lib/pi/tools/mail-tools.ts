@@ -393,7 +393,6 @@ export function createMailTools(userId: string) {
             folder: true,
             tags: true,
             aiSummary: true,
-            aiTags: true,
             spamScore: true,
             accountId: true,
           },
@@ -438,7 +437,6 @@ export function createMailTools(userId: string) {
                     folder: string;
                     tags: string[];
                     aiSummary: string | null;
-                    aiTags: string[];
                     spamScore: number | null;
                   }) => ({
                     id: e.id,
@@ -453,7 +451,6 @@ export function createMailTools(userId: string) {
                     folder: e.folder,
                     tags: e.tags,
                     aiSummary: e.aiSummary,
-                    aiTags: e.aiTags,
                     spamScore: e.spamScore,
                   }),
                 ),
