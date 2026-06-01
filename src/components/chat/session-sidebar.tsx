@@ -130,7 +130,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
                   )}
                 >
                   <button
-                    className="flex-1 text-left"
+                    className="flex min-w-0 flex-1 flex-col items-start text-left"
                     onClick={() => router.push(`/dashboard/chat/${session.id}`)}
                   >
                     <div className="truncate font-medium">{session.title}</div>
