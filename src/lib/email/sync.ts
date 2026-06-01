@@ -120,8 +120,12 @@ export async function syncEmailAccount(accountId: string): Promise<{
         folders.push(folderName);
       }
     }
+    // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
+    console.log(`[email-sync] Discovered folders: ${folders.join(", ")}`);
 
     const lastSyncedAt = account.lastSyncedAt;
+    // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
+    console.log(`[email-sync] lastSyncedAt: ${lastSyncedAt ?? "null (full sync)"}`);
 
     for (const folder of folders) {
       try {
@@ -138,6 +142,9 @@ export async function syncEmailAccount(accountId: string): Promise<{
         }
 
         const uids = await mailbox.search(searchOpts);
+        const uidCount = Array.isArray(uids) ? uids.length : 0;
+        // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
+        console.log(`[email-sync] Folder ${folder}: ${uidCount} messages found`);
         if (!uids || uids.length === 0) {
           continue;
         }
@@ -255,6 +262,14 @@ export async function syncEmailAccount(accountId: string): Promise<{
     }
   }
 
+  // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
+  console.log(
+    `[email-sync] Done: ${newMessages} new, ${updatedMessages} updated, ${errors.length} errors`,
+  );
+  if (errors.length > 0) {
+    // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
+    console.log(`[email-sync] Errors:`, errors);
+  }
   return { newMessages, updatedMessages, errors };
 }
 
