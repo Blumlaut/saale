@@ -1,8 +1,9 @@
 import type { Job } from "bullmq";
+import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { moveMessage } from "@/lib/email/imap";
-import { createPiSession } from "@/lib/pi/session";
+import { buildModelRegistry } from "@/lib/pi/models";
 import { addJobRun, updateJobRun, resolveModel } from "@/lib/queue";
 
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
@@ -27,24 +28,31 @@ export async function dispatchAiTask(
 ): Promise<string> {
   const modelInfo = await resolveModel(userId, options?.modelId);
 
-  // Create session first to get the model registry for validation
-  const sessionResult = await createPiSession({
-    userId,
-    customTools: [],
-    ...(modelInfo ? { modelProvider: modelInfo.provider, modelName: modelInfo.name } : {}),
+  // Build a minimal model registry (no tools, no extensions — just the model)
+  const { modelRegistry, authStorage } = await buildModelRegistry(userId);
+
+  let model;
+  if (modelInfo) {
+    model = modelRegistry.find(modelInfo.provider, modelInfo.name);
+  }
+
+  const { session } = await createAgentSession({
+    sessionManager: SessionManager.inMemory(),
+    authStorage,
+    modelRegistry,
+    noTools: "all",
+    ...(model ? { model } : {}),
     thinkingLevel: "off",
   });
 
-  const piSession = sessionResult.session;
-
-  piSession.agent.state.systemPrompt =
+  session.agent.state.systemPrompt =
     options?.systemPrompt ??
     `You are an AI assistant processing automated tasks. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
 
   let timerId: ReturnType<typeof setTimeout>;
 
   return new Promise((resolve, reject) => {
-    const unsubscribe = piSession.subscribe((event) => {
+    const unsubscribe = session.subscribe((event) => {
       if (event.type === "agent_end") {
         clearTimeout(timerId);
         unsubscribe();
@@ -66,7 +74,7 @@ export async function dispatchAiTask(
       reject(new Error("AI task timed out (5min)"));
     }, 5 * 60_000);
 
-    piSession.prompt(prompt);
+    session.prompt(prompt);
   });
 }
 
