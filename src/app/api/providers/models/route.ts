@@ -45,7 +45,7 @@ async function fetchOpenAIModels(
     }
 
     return {
-      models: data.data.map((m: any) => m.id).slice(0, 200),
+      models: data.data.map((m: { id: string }) => m.id).slice(0, 200),
     };
   } catch (err) {
     console.error(`[providers] Fetch failed:`, err);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,18 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
-
-interface EmailAccount {
-  id: string;
-  email: string;
-  imapHost: string;
-  imapPort: number;
-  imapSecure: boolean;
-  smtpHost: string;
-  smtpPort: number;
-  smtpSecure: boolean;
-  enabled: boolean;
-}
 
 interface AccountDialogProps {
   open: boolean;
@@ -44,13 +32,7 @@ export function AccountDialog({ open, onOpenChange, onSuccess }: AccountDialogPr
   } | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!open) {
-      resetForm();
-    }
-  }, [open]);
-
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setEmail("");
     setPassword("");
     setImapHost("imap.gmail.com");
@@ -61,7 +43,13 @@ export function AccountDialog({ open, onOpenChange, onSuccess }: AccountDialogPr
     setSmtpSecure(true);
     setTestResult(null);
     setError("");
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+    }
+  }, [open, resetForm]);
 
   const handleTest = async () => {
     setTesting(true);

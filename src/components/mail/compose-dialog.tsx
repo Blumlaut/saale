@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, X } from "lucide-react";
+import { Send } from "lucide-react";
 
 interface EmailAccount {
   id: string;
@@ -35,13 +35,7 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (open) {
-      loadAccounts();
-    }
-  }, [open]);
-
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     try {
       const res = await fetch("/api/email/accounts");
       if (res.ok) {
@@ -54,7 +48,13 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
     } catch {
       // Ignore
     }
-  };
+  }, [accountId]);
+
+  useEffect(() => {
+    if (open) {
+      loadAccounts();
+    }
+  }, [open, loadAccounts]);
 
   const handleSend = async () => {
     if (!to.trim() || !accountId) return;

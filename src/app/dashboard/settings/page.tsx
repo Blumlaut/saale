@@ -68,13 +68,11 @@ export default function SettingsPage() {
     loadProviders();
   }, [loadProviders]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!providersLoading) {
       loadModels();
     }
-  }, [providers, providersLoading, loadModels]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }, [providersLoading, loadModels]);
 
   // Reload both providers and models (called after add/remove)
   const reloadProvidersAndModels = useCallback(async () => {

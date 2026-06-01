@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,17 +45,7 @@ export function JobList() {
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
 
-  useEffect(() => {
-    loadJobs();
-  }, []);
-
-  useEffect(() => {
-    if (selectedJob) {
-      loadRuns(selectedJob.id);
-    }
-  }, [selectedJob]);
-
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       const res = await fetch("/api/jobs");
       if (res.ok) {
@@ -67,9 +57,9 @@ export function JobList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadRuns = async (jobId: string) => {
+  const loadRuns = useCallback(async (jobId: string) => {
     setLoadingRuns(true);
     try {
       const res = await fetch(`/api/jobs/${jobId}/runs?limit=10`);
@@ -82,7 +72,17 @@ export function JobList() {
     } finally {
       setLoadingRuns(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
+
+  useEffect(() => {
+    if (selectedJob) {
+      loadRuns(selectedJob.id);
+    }
+  }, [selectedJob, loadRuns]);
 
   const handleRun = async (jobId: string) => {
     setRunningId(jobId);
