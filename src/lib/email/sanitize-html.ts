@@ -56,7 +56,9 @@ function postProcess(html: string): string {
   }
 
   // Get just the body content (not the full document)
-  return doc.body.innerHTML;
+  const inner = doc.body.innerHTML;
+  // Wrap in a container div for theme-aware CSS scoping (see globals.css .email-content)
+  return inner ? `<div class="email-content">${inner}</div>` : "";
 }
 
 /**

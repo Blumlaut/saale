@@ -10,7 +10,8 @@ describe("sanitizeEmailHtml", () => {
 
   it("passes through safe plain text", () => {
     const result = sanitizeEmailHtml("Hello world");
-    expect(result).toBe("Hello world");
+    expect(result).toContain("Hello world");
+    expect(result).toContain('class="email-content"');
   });
 
   it("passes through safe HTML formatting", () => {
@@ -113,6 +114,8 @@ describe("sanitizeEmailHtml", () => {
     const result = sanitizeEmailHtml(input);
     expect(result).toContain("color");
     expect(result).toContain("font-size");
+    // color value is preserved (CSS override happens at render time via globals.css)
+    expect(result).toContain("red");
   });
 
   it("strips <iframe> tags", () => {
@@ -196,5 +199,31 @@ describe("sanitizeEmailHtml", () => {
     const result = sanitizeEmailHtml(input);
     expect(result).toContain("<blockquote>");
     expect(result).toContain("Quoted text");
+  });
+
+  it("wraps output in .email-content div for theme-aware CSS", () => {
+    const input = "<p>Hello</p>";
+    const result = sanitizeEmailHtml(input);
+    expect(result).toMatch(/^<div class="email-content">/);
+    expect(result).toMatch(/<\/div>$/);
+  });
+
+  it("preserves inline styles (CSS override happens at render time)", () => {
+    // The sanitizer keeps inline styles; globals.css .email-content rules
+    // override them with !important at render time for readability.
+    const input = '<span style="color: #000000; background-color: #ffffff">text</span>';
+    const result = sanitizeEmailHtml(input);
+    expect(result).toContain("color");
+    expect(result).toContain("background-color");
+  });
+
+  it("handles emails with hardcoded dark-on-dark or light-on-light colors", () => {
+    // These emails have colors that clash with the app theme.
+    // The sanitizer preserves them; globals.css overrides at render time.
+    const input = '<div style="color: #000; background: #000"><p>Invisible text</p></div>';
+    const result = sanitizeEmailHtml(input);
+    expect(result).toContain("email-content");
+    // Inline styles are preserved — CSS in globals.css handles readability
+    expect(result).toContain("color");
   });
 });

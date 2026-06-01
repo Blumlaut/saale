@@ -247,3 +247,133 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===== Email content — theme-aware readability ===== */
+
+/*
+ * Emails ship with hardcoded inline colors (e.g. color:#000, background:#fff)
+ * that become unreadable when the app theme differs from the email's design.
+ *
+ * These rules use high-specificity selectors + !important to override inline
+ * styles and ensure text is always readable against the current theme.
+ *
+ * Strategy:
+ * - Light mode: keep text dark, backgrounds light (default for most emails)
+ * - Dark mode: force text light, backgrounds dark — override email inline styles
+ * - color-scheme: light dark — hints to browser for auto-link-color adaptation
+ */
+
+.email-content {
+  color-scheme: light dark;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* --- Light mode (most emails are designed for this, minimal overrides) --- */
+
+.email-content {
+  color: #1a1a1a !important;
+}
+
+.email-content p,
+.email-content span,
+.email-content div,
+.email-content li,
+.email-content td,
+.email-content th,
+.email-content blockquote,
+.email-content caption {
+  color: inherit !important;
+}
+
+.email-content a {
+  color: #1a56db !important;
+}
+
+.email-content table {
+  border-collapse: collapse;
+  max-width: 100%;
+}
+
+.email-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* --- Dark mode — override hardcoded email colors --- */
+
+.dark .email-content {
+  color: #f0f0f0 !important;
+}
+
+.dark .email-content p,
+.dark .email-content span,
+.dark .email-content div,
+.dark .email-content li,
+.dark .email-content td,
+.dark .email-content th,
+.dark .email-content blockquote,
+.dark .email-content caption,
+.dark .email-content h1,
+.dark .email-content h2,
+.dark .email-content h3,
+.dark .email-content h4,
+.dark .email-content h5,
+.dark .email-content h6 {
+  color: #f0f0f0 !important;
+}
+
+.dark .email-content a {
+  color: #60a5fa !important;
+}
+
+.dark .email-content table,
+.dark .email-content tbody,
+.dark .email-content thead {
+  background-color: transparent !important;
+}
+
+.dark .email-content tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.dark .email-content tr:nth-child(odd) {
+  background-color: transparent !important;
+}
+
+.dark .email-content td,
+.dark .email-content th {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .email-content blockquote {
+  border-left-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.dark .email-content hr {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.dark .email-content code {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #f0f0f0 !important;
+}
+
+.dark .email-content pre {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  color: #f0f0f0 !important;
+}
+
+/* Strip problematic email backgrounds in dark mode */
+.dark .email-content[style*="background"] {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Ensure text on email <body> is readable (some emails use <body> wrapper) */
+.dark .email-content body {
+  background-color: transparent !important;
+  color: #f0f0f0 !important;
+}
