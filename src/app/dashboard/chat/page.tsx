@@ -30,10 +30,31 @@ export default function ChatPage() {
               className="mt-6 inline-flex"
               onClick={async (e) => {
                 e.preventDefault();
+                // Fetch user settings for default model
+                let settings: {
+                  defaultModelProvider?: string;
+                  defaultModelName?: string;
+                  defaultThinkingLevel?: string;
+                } | null = null;
+                try {
+                  const res = await fetch("/api/settings");
+                  if (res.ok) {
+                    const data = await res.json();
+                    settings = data.settings ?? null;
+                  }
+                } catch {
+                  // Ignore
+                }
+
                 const res = await fetch("/api/chat/sessions", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ title: "New Chat" }),
+                  body: JSON.stringify({
+                    title: "New Chat",
+                    modelProvider: settings?.defaultModelProvider || undefined,
+                    modelName: settings?.defaultModelName || undefined,
+                    thinkingLevel: settings?.defaultThinkingLevel || "off",
+                  }),
                 });
                 if (res.ok) {
                   const data = await res.json();

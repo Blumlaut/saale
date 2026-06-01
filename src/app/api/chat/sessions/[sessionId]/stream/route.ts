@@ -129,9 +129,7 @@ Always be concise and helpful. When using tools, explain what you're doing brief
 
           case "agent_end": {
             // Get final assistant message
-            const lastAssistant = event.messages.findLast(
-              (m) => m.role === "assistant",
-            );
+            const lastAssistant = event.messages.findLast((m) => m.role === "assistant");
             if (lastAssistant) {
               const textContent = lastAssistant.content.find(
                 (c) => typeof c === "object" && c.type === "text",
@@ -187,10 +185,7 @@ Always be concise and helpful. When using tools, explain what you're doing brief
   });
 }
 
-async function saveAssistantMessage(
-  sessionId: string,
-  content: string,
-): Promise<void> {
+async function saveAssistantMessage(sessionId: string, content: string): Promise<void> {
   await prisma.chatMessage.create({
     data: {
       sessionId,

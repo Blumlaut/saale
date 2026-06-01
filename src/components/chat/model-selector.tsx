@@ -63,16 +63,17 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
     byProvider[m.provider].push(m);
   }
 
-  const selected = models.find((m) => m.id === value);
+  // value is in "provider/modelId" format
+  const selected = models.find((m) => `${m.provider}/${m.id}` === value);
 
   return (
     <div className={cn("flex items-center gap-1", className)}>
       <Select value={value} onValueChange={(v) => v && onChange(v)}>
         <SelectTrigger className="h-7 w-auto gap-1 border-0 bg-transparent p-1.5 shadow-none hover:bg-white/10 dark:hover:bg-white/5">
           {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Brain className="h-3.5 w-3.5 text-muted-foreground" />
+            <Brain className="text-muted-foreground h-3.5 w-3.5" />
           )}
           <SelectValue placeholder={loading ? "Loading..." : selected?.name || "Select model"} />
         </SelectTrigger>
@@ -84,16 +85,14 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
           ) : (
             Object.entries(byProvider).map(([provider, providerModels]) => (
               <div key={provider}>
-                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                <div className="text-muted-foreground px-2 py-1.5 text-xs font-medium">
                   {provider}
                 </div>
                 {providerModels.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
+                  <SelectItem key={model.id} value={`${provider}/${model.id}`}>
                     <div className="flex items-center gap-2">
                       <span>{model.name}</span>
-                      {model.reasoning && (
-                        <span className="text-muted-foreground text-xs">✦</span>
-                      )}
+                      {model.reasoning && <span className="text-muted-foreground text-xs">✦</span>}
                     </div>
                   </SelectItem>
                 ))}

@@ -42,13 +42,27 @@ export async function GET(
   });
 
   return NextResponse.json({
-    messages: messages.map((m: { id: string; role: string; content: string; toolCalls: string | null; createdAt: Date }) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : null,
-      createdAt: m.createdAt.toISOString(),
-    })),
+    session: {
+      id: chatSession.id,
+      modelProvider: chatSession.modelProvider,
+      modelName: chatSession.modelName,
+      thinkingLevel: chatSession.thinkingLevel,
+    },
+    messages: messages.map(
+      (m: {
+        id: string;
+        role: string;
+        content: string;
+        toolCalls: string | null;
+        createdAt: Date;
+      }) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : null,
+        createdAt: m.createdAt.toISOString(),
+      }),
+    ),
   });
 }
 
@@ -81,10 +95,7 @@ export async function POST(
   const { content } = body;
 
   if (!content || typeof content !== "string") {
-    return NextResponse.json(
-      { error: "Content is required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Content is required" }, { status: 400 });
   }
 
   // Save user message
@@ -141,10 +152,7 @@ export async function DELETE(
   const messageId = url.searchParams.get("id");
 
   if (!messageId) {
-    return NextResponse.json(
-      { error: "Message ID is required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Message ID is required" }, { status: 400 });
   }
 
   const chatSession = await prisma.chatSession.findFirst({

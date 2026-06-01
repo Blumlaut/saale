@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { MessageSquarePlus, Trash2, Loader2 } from "lucide-react";
 
@@ -15,11 +14,7 @@ interface ChatSession {
   updatedAt: string;
 }
 
-export function SessionSidebar({
-  activeSessionId,
-}: {
-  activeSessionId?: string;
-}) {
+export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }) {
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,10 +39,31 @@ export function SessionSidebar({
   };
 
   const createSession = async () => {
+    // Fetch user settings for default model
+    let settings: {
+      defaultModelProvider?: string;
+      defaultModelName?: string;
+      defaultThinkingLevel?: string;
+    } | null = null;
+    try {
+      const res = await fetch("/api/settings");
+      if (res.ok) {
+        const data = await res.json();
+        settings = data.settings ?? null;
+      }
+    } catch {
+      // Ignore — session will be created without model info
+    }
+
     const res = await fetch("/api/chat/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "New Chat" }),
+      body: JSON.stringify({
+        title: "New Chat",
+        modelProvider: settings?.defaultModelProvider || undefined,
+        modelName: settings?.defaultModelName || undefined,
+        thinkingLevel: settings?.defaultThinkingLevel || "off",
+      }),
     });
 
     if (res.ok) {
@@ -87,11 +103,7 @@ export function SessionSidebar({
   return (
     <div className="flex h-full flex-col gap-3">
       {/* New chat button */}
-      <Button
-        onClick={createSession}
-        className="w-full gap-2 rounded-xl"
-        variant="default"
-      >
+      <Button onClick={createSession} className="w-full gap-2 rounded-xl" variant="default">
         <MessageSquarePlus className="h-4 w-4" />
         New Chat
       </Button>
@@ -101,13 +113,11 @@ export function SessionSidebar({
         <GlassPanelContent className="flex flex-1 flex-col gap-0 overflow-hidden p-0">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
             </div>
           ) : sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <p className="text-muted-foreground text-sm">
-                No conversations yet
-              </p>
+              <p className="text-muted-foreground text-sm">No conversations yet</p>
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">
@@ -115,23 +125,17 @@ export function SessionSidebar({
                 <div
                   key={session.id}
                   className={cn(
-                    "group flex items-center gap-2 border-border/30 px-3 py-2.5 text-sm transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                    session.id === activeSessionId &&
-                      "bg-white/20 dark:bg-white/5",
+                    "group border-border/30 flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-white/20 dark:hover:bg-white/5",
+                    session.id === activeSessionId && "bg-white/20 dark:bg-white/5",
                   )}
                 >
                   <button
                     className="flex-1 text-left"
-                    onClick={() =>
-                      router.push(`/dashboard/chat/${session.id}`)
-                    }
+                    onClick={() => router.push(`/dashboard/chat/${session.id}`)}
                   >
-                    <div className="font-medium truncate">
-                      {session.title}
-                    </div>
+                    <div className="truncate font-medium">{session.title}</div>
                     <div className="text-muted-foreground text-xs">
-                      {formatDate(session.updatedAt)} · {session.messageCount}{" "}
-                      messages
+                      {formatDate(session.updatedAt)} · {session.messageCount} messages
                     </div>
                   </button>
                   <Button
