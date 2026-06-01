@@ -96,6 +96,7 @@ model ChatSession {
   updatedAt      DateTime      @updatedAt
 
   @@index([userId, createdAt])
+  @@map("ChatSession")
 }
 
 model ChatMessage {
@@ -110,6 +111,7 @@ model ChatMessage {
   session         ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
+  @@map("ChatMessage")
 }
 
 // ─── Email ─────────────────────────────────────────────────────
@@ -128,12 +130,14 @@ model EmailAccount {
   enabled            Boolean        @default(true)
   lastSyncedAt       DateTime?
   cachedFolders      Json?          // Array of folder names discovered from IMAP
+  specialFolders     Json?          // { "\\Trash": "Trash", "\\Sent": "Sent", ... }
   messages           EmailMessage[]
   user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
   @@unique([userId, email])
+  @@map("EmailAccount")
 }
 
 model EmailMessage {
@@ -161,6 +165,7 @@ model EmailMessage {
   @@unique([accountId, uid])
   @@index([accountId, folder, isRead])
   @@index([accountId, date])
+  @@map("EmailMessage")
 }
 
 // ─── Queue Tasks ───────────────────────────────────────────────
@@ -181,6 +186,7 @@ model QueueTask {
   updatedAt      DateTime  @updatedAt
 
   @@index([userId, type])
+  @@map("QueueTask")
 }
 
 model TaskRun {
@@ -196,6 +202,7 @@ model TaskRun {
   createdAt   DateTime  @default(now())
 
   @@index([taskId, status])
+  @@map("TaskRun")
 }
 
 // ─── App Settings ──────────────────────────────────────────────
@@ -210,6 +217,8 @@ model AppSettings {
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerApiKeys      ProviderApiKey[]
   updatedAt            DateTime @updatedAt
+
+  @@map("AppSettings")
 }
 
 // ─── Provider API Keys ─────────────────────────────────────────

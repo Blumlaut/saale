@@ -136,11 +136,15 @@ export async function syncEmailAccount(accountId: string): Promise<{
     // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
     console.log(`[email-sync] Special-use map: ${JSON.stringify(special)}`);
 
-    // Cache all remote folders on the account
+    // Cache all remote folders and special-use mapping on the account
     await prisma.emailAccount.update({
       where: { id: accountId },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma Json type is incompatible with string[]
-      data: { cachedFolders: allFolders as any },
+      data: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma Json type
+        cachedFolders: allFolders as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma Json type
+        specialFolders: special as any,
+      },
     });
 
     const lastSyncedAt = account.lastSyncedAt;
