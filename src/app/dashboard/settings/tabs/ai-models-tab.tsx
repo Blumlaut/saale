@@ -7,10 +7,27 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Bot, Loader2, CheckCircle, AlertCircle, Sparkles, Brain, Zap, Search } from "lucide-react";
+import {
+  Bot,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Sparkles,
+  Brain,
+  Zap,
+  Search,
+  RotateCcw,
+  Globe,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
-import type { UserSettings, AvailableModel, AvailableProvider } from "../types";
+import { getAllPurposes } from "@/lib/pi/purposes";
+import type {
+  UserSettings,
+  AvailableModel,
+  AvailableProvider,
+  PurposeModelSelection,
+} from "../types";
 
 interface AiModelsTabProps {
   settings: UserSettings | null;
@@ -41,6 +58,33 @@ function formatContextWindow(tokens: number): string {
   return String(tokens);
 }
 
+/**
+ * Resolve the effective model for a purpose: purpose override → global default.
+ */
+function resolveEffectiveModel(
+  settings: UserSettings | null,
+  purposeId: string,
+): PurposeModelSelection | null {
+  if (!settings) return null;
+
+  // Purpose-specific override
+  const overrides = settings.purposeModelOverrides ?? {};
+  const override = overrides[purposeId];
+  if (override?.provider && override?.model) {
+    return override;
+  }
+
+  // Global default
+  if (settings.defaultModelProvider && settings.defaultModelName) {
+    return {
+      provider: settings.defaultModelProvider,
+      model: settings.defaultModelName,
+    };
+  }
+
+  return null;
+}
+
 export function AiModelsTab({
   settings,
   onSettingsChange,
@@ -51,6 +95,9 @@ export function AiModelsTab({
   onSave,
 }: AiModelsTabProps) {
   const [search, setSearch] = useState("");
+  const [activePurpose, setActivePurpose] = useState<string>("__default__");
+
+  const purposes = useMemo(() => getAllPurposes(), []);
 
   // Build a flat list of providers with their models
   const providersWithModels = availableModelProviders
@@ -74,7 +121,57 @@ export function AiModelsTab({
       .filter((p) => p.models.length > 0);
   }, [providersWithModels, search]);
 
-  const selectedProvider = providersWithModels.find((p) => p.id === settings?.defaultModelProvider);
+  // Determine which model is selected for the active purpose
+  const effectiveModel = useMemo(
+    () =>
+      activePurpose === "__default__"
+        ? settings && settings.defaultModelProvider && settings.defaultModelName
+          ? { provider: settings.defaultModelProvider, model: settings.defaultModelName }
+          : null
+        : resolveEffectiveModel(settings, activePurpose),
+    [settings, activePurpose],
+  );
+
+  const isPurposeOverride = useMemo(() => {
+    if (activePurpose === "__default__") return false;
+    const overrides = settings?.purposeModelOverrides ?? {};
+    return !!(overrides[activePurpose]?.provider && overrides[activePurpose]?.model);
+  }, [settings, activePurpose]);
+
+  const selectedProvider = providersWithModels.find((p) => p.id === effectiveModel?.provider);
+
+  const handleSelectModel = (providerId: string, modelId: string) => {
+    if (!settings) return;
+
+    if (activePurpose === "__default__") {
+      // Setting the global default
+      onSettingsChange({
+        ...settings,
+        defaultModelProvider: providerId,
+        defaultModelName: modelId,
+      });
+    } else {
+      // Setting a purpose-specific override
+      const overrides = settings.purposeModelOverrides ?? {};
+      onSettingsChange({
+        ...settings,
+        purposeModelOverrides: {
+          ...overrides,
+          [activePurpose]: { provider: providerId, model: modelId },
+        },
+      });
+    }
+  };
+
+  const handleResetPurpose = () => {
+    if (!settings || activePurpose === "__default__") return;
+    const overrides = { ...(settings.purposeModelOverrides ?? {}) };
+    delete overrides[activePurpose];
+    onSettingsChange({
+      ...settings,
+      purposeModelOverrides: Object.keys(overrides).length > 0 ? overrides : null,
+    });
+  };
 
   return (
     <GlassPanel>
@@ -86,7 +183,7 @@ export function AiModelsTab({
             AI &amp; Models
           </h3>
           <p className="text-muted-foreground mt-1 text-sm">
-            Choose your default model and configure reasoning depth.
+            Choose your default model, configure reasoning depth, and assign models per purpose.
           </p>
         </div>
 
@@ -144,8 +241,8 @@ export function AiModelsTab({
                       {/* Models */}
                       {provider.models.map((model) => {
                         const isSelected =
-                          settings?.defaultModelProvider === provider.id &&
-                          settings?.defaultModelName === model.id;
+                          effectiveModel?.provider === provider.id &&
+                          effectiveModel?.model === model.id;
 
                         return (
                           <Button
@@ -157,15 +254,7 @@ export function AiModelsTab({
                                 ? "bg-primary/10 text-foreground dark:bg-primary/10"
                                 : "hover:bg-white/20 dark:hover:bg-white/5",
                             )}
-                            onClick={() => {
-                              if (settings) {
-                                onSettingsChange({
-                                  ...settings,
-                                  defaultModelProvider: provider.id,
-                                  defaultModelName: model.id,
-                                });
-                              }
-                            }}
+                            onClick={() => handleSelectModel(provider.id, model.id)}
                           >
                             {/* Selection indicator */}
                             <div
@@ -212,48 +301,71 @@ export function AiModelsTab({
             </ScrollArea>
           </div>
 
-          {/* Thinking Level */}
+          {/* Right sidebar: Purpose selector + Thinking level */}
           <div className="w-full lg:w-[280px]">
             <div className="sticky top-6 space-y-6">
-              {/* Selected model summary */}
-              {selectedProvider && settings?.defaultModelName && (
-                <div className="border-border/50 bg-background/40 rounded-2xl border p-4">
-                  <p className="text-muted-foreground text-xs">Current model</p>
-                  <p className="mt-1 text-sm font-medium">{settings.defaultModelName}</p>
-                  <p className="text-muted-foreground text-xs">{selectedProvider.name}</p>
-                </div>
-              )}
-
-              {/* Thinking level selector */}
+              {/* Purpose selector */}
               <div className="space-y-3">
                 <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                  Thinking Level
+                  Purpose
                 </Label>
 
                 <div className="border-border/50 bg-background/40 space-y-1 rounded-2xl border p-1.5">
-                  {thinkingLevels.map((level, index) => {
-                    const isActive = settings?.defaultThinkingLevel === level.id;
-                    const Icon = level.icon;
+                  {/* Global default entry */}
+                  <Button
+                    variant="ghost"
+                    className={cn(
+                      "w-full justify-start gap-3 rounded-xl px-3 py-2.5",
+                      activePurpose === "__default__"
+                        ? "bg-primary/10 text-foreground"
+                        : "hover:bg-white/20 dark:hover:bg-white/5",
+                    )}
+                    onClick={() => setActivePurpose("__default__")}
+                  >
+                    <div
+                      className={cn(
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                        activePurpose === "__default__"
+                          ? "bg-primary/15 text-primary"
+                          : "bg-muted/50 text-muted-foreground",
+                      )}
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p
+                        className={cn(
+                          "text-sm leading-none",
+                          activePurpose === "__default__" ? "font-medium" : "font-normal",
+                        )}
+                      >
+                        Default
+                      </p>
+                      <p className="text-muted-foreground mt-0.5 text-xs">Fallback for all</p>
+                    </div>
+                    {activePurpose === "__default__" && (
+                      <CheckCircle className="text-primary h-4 w-4" />
+                    )}
+                  </Button>
+
+                  {purposes.map((purpose) => {
+                    const isActive = activePurpose === purpose.id;
+                    const PurposeIcon = purpose.icon;
+                    const hasOverride = !!(settings?.purposeModelOverrides ?? {})[purpose.id]
+                      ?.provider;
 
                     return (
-                      <div key={level.id}>
-                        {index > 0 && <Separator className="mx-2" />}
+                      <div key={purpose.id}>
+                        <Separator className="mx-2" />
                         <Button
                           variant="ghost"
                           className={cn(
-                            "w-full shrink-0 justify-start gap-3 rounded-xl px-3 py-2.5",
+                            "w-full justify-start gap-3 rounded-xl px-3 py-2.5",
                             isActive
                               ? "bg-primary/10 text-foreground"
                               : "hover:bg-white/20 dark:hover:bg-white/5",
                           )}
-                          onClick={() => {
-                            if (settings) {
-                              onSettingsChange({
-                                ...settings,
-                                defaultThinkingLevel: level.id,
-                              });
-                            }
-                          }}
+                          onClick={() => setActivePurpose(purpose.id)}
                         >
                           <div
                             className={cn(
@@ -263,7 +375,7 @@ export function AiModelsTab({
                                 : "bg-muted/50 text-muted-foreground",
                             )}
                           >
-                            <Icon className="h-3.5 w-3.5" />
+                            <PurposeIcon className="h-3.5 w-3.5" />
                           </div>
                           <div className="flex-1 text-left">
                             <p
@@ -272,10 +384,10 @@ export function AiModelsTab({
                                 isActive ? "font-medium" : "font-normal",
                               )}
                             >
-                              {level.label}
+                              {purpose.label}
                             </p>
                             <p className="text-muted-foreground mt-0.5 text-xs">
-                              {level.description}
+                              {hasOverride ? "Custom model" : "Using default"}
                             </p>
                           </div>
                           {isActive && <CheckCircle className="text-primary h-4 w-4" />}
@@ -285,6 +397,99 @@ export function AiModelsTab({
                   })}
                 </div>
               </div>
+
+              {/* Selected model summary */}
+              {effectiveModel && selectedProvider && (
+                <div className="border-border/50 bg-background/40 rounded-2xl border p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-muted-foreground text-xs">
+                      {activePurpose === "__default__"
+                        ? "Default model"
+                        : (() => {
+                            const p = purposes.find((pr) => pr.id === activePurpose);
+                            return p ? `${p.label} model` : "Model";
+                          })()}
+                    </p>
+                    {isPurposeOverride && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground h-5 gap-1 px-1.5 text-[10px]"
+                        onClick={handleResetPurpose}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Reset
+                      </Button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm font-medium">{effectiveModel.model}</p>
+                  <p className="text-muted-foreground text-xs">{selectedProvider.name}</p>
+                </div>
+              )}
+
+              {/* Thinking level selector (only for default) */}
+              {activePurpose === "__default__" && (
+                <div className="space-y-3">
+                  <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                    Thinking Level
+                  </Label>
+
+                  <div className="border-border/50 bg-background/40 space-y-1 rounded-2xl border p-1.5">
+                    {thinkingLevels.map((level, index) => {
+                      const isActive = settings?.defaultThinkingLevel === level.id;
+                      const Icon = level.icon;
+
+                      return (
+                        <div key={level.id}>
+                          {index > 0 && <Separator className="mx-2" />}
+                          <Button
+                            variant="ghost"
+                            className={cn(
+                              "w-full shrink-0 justify-start gap-3 rounded-xl px-3 py-2.5",
+                              isActive
+                                ? "bg-primary/10 text-foreground"
+                                : "hover:bg-white/20 dark:hover:bg-white/5",
+                            )}
+                            onClick={() => {
+                              if (settings) {
+                                onSettingsChange({
+                                  ...settings,
+                                  defaultThinkingLevel: level.id,
+                                });
+                              }
+                            }}
+                          >
+                            <div
+                              className={cn(
+                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                                isActive
+                                  ? "bg-primary/15 text-primary"
+                                  : "bg-muted/50 text-muted-foreground",
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="flex-1 text-left">
+                              <p
+                                className={cn(
+                                  "text-sm leading-none",
+                                  isActive ? "font-medium" : "font-normal",
+                                )}
+                              >
+                                {level.label}
+                              </p>
+                              <p className="text-muted-foreground mt-0.5 text-xs">
+                                {level.description}
+                              </p>
+                            </div>
+                            {isActive && <CheckCircle className="text-primary h-4 w-4" />}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,3 +1,8 @@
+export interface PurposeModelSelection {
+  provider: string;
+  model: string;
+}
+
 export interface UserSettings {
   defaultModelProvider: string;
   defaultModelName: string;
@@ -5,6 +10,7 @@ export interface UserSettings {
   theme: string;
   agentSystemPrompt: string | null;
   emailWritingStyle: string | null;
+  purposeModelOverrides: Record<string, PurposeModelSelection> | null;
 }
 
 export interface EmailAccount {

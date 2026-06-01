@@ -35,6 +35,8 @@ export async function GET() {
       defaultThinkingLevel: settings.defaultThinkingLevel,
       theme: settings.theme,
       agentSystemPrompt: settings.agentSystemPrompt,
+      emailWritingStyle: settings.emailWritingStyle,
+      purposeModelOverrides: settings.purposeModelOverrides,
     },
   });
 }
@@ -70,6 +72,7 @@ export async function PATCH(request: NextRequest) {
       theme: settings.theme,
       agentSystemPrompt: settings.agentSystemPrompt,
       emailWritingStyle: settings.emailWritingStyle,
+      purposeModelOverrides: settings.purposeModelOverrides,
     },
   });
 }
