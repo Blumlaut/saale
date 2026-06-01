@@ -205,5 +205,23 @@ model AppSettings {
   theme                String   @default("system") // "dark" | "light" | "system"
   emailSyncInterval    Int      @default(300) // seconds
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerApiKeys      ProviderApiKey[]
   updatedAt            DateTime @updatedAt
+}
+
+// ─── Provider API Keys ─────────────────────────────────────────
+
+model ProviderApiKey {
+  id             String   @id @default(cuid())
+  userId         String
+  provider       String   // "anthropic" | "openai" | "google" | "deepseek" | "xai" | "groq" | ...
+  encryptedKey   String   @db.Text
+  label          String   @default("") // optional user label
+  settings       AppSettings @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("provider_api_key")
 }
