@@ -59,7 +59,7 @@ export async function GET(
         id: m.id,
         role: m.role,
         content: m.content,
-        toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : null,
+        toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
         createdAt: m.createdAt.toISOString(),
       }),
     ),
