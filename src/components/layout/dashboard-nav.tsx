@@ -277,17 +277,17 @@ export function DashboardNav() {
                     : "text-muted-foreground hover:text-foreground hover:bg-white/10",
                 )}
               >
-                {emailAccounts.length > 0 ? (
-                  mailExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )
-                ) : (
-                  <Mail className="h-4 w-4" />
-                )}
                 <Mail className="h-4 w-4" />
                 Mail
+                {emailAccounts.length > 0 && (
+                  <span className="ml-auto">
+                    {mailExpanded ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    )}
+                  </span>
+                )}
               </button>
 
               {/* Expanded email accounts */}
