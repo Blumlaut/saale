@@ -1,14 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Mail, Tags, Shield, RefreshCw } from "lucide-react";
+import { ConfigForm } from "@/components/tasks/config-form";
+import { RefreshCw, FileText, Tags, Shield, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface FieldDef {
+  key: string;
+  label: string;
+  description?: string;
+  type: "text" | "number" | "select" | "boolean";
+  default?: unknown;
+  options?: Array<{ value: string; label: string }>;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+interface JobSchema {
+  type: string;
+  label: string;
+  description: string;
+  icon: string;
+  defaultCron: string;
+  fields: FieldDef[];
+}
+
+// Icon map (keeps the import bundle small)
+const iconMap: Record<string, React.ElementType> = {
+  RefreshCw: RefreshCw,
+  FileText: FileText,
+  Tags: Tags,
+  Shield: Shield,
+};
 
 interface JobDialogProps {
   open: boolean;
@@ -16,44 +46,59 @@ interface JobDialogProps {
   onSuccess?: () => void;
 }
 
-const jobTemplates = [
-  {
-    type: "email_sync",
-    label: "Email Sync",
-    icon: RefreshCw,
-    description: "Sync emails from connected accounts",
-    defaultConfig: { cronExpression: "*/30 * * * *" },
-  },
-  {
-    type: "summarization",
-    label: "Email Summarization",
-    icon: Mail,
-    description: "Auto-summarize new emails with AI",
-    defaultConfig: { cronExpression: "0 */6 * * *", limit: 10 },
-  },
-  {
-    type: "classification",
-    label: "Classification + Tags",
-    icon: Tags,
-    description: "Auto-tag incoming emails with AI",
-    defaultConfig: { cronExpression: "0 */6 * * *", limit: 10 },
-  },
-  {
-    type: "spam_filtering",
-    label: "Spam Filtering",
-    icon: Shield,
-    description: "Evaluate spam score for new emails",
-    defaultConfig: { cronExpression: "0 */4 * * *", limit: 20, spamThreshold: 0.8 },
-  },
-];
-
 export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
+  const [schemas, setSchemas] = useState<JobSchema[]>([]);
+  const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [selectedType, setSelectedType] = useState("");
   const [cronExpression, setCronExpression] = useState("");
   const [enabled, setEnabled] = useState(true);
-  const [extraConfig, setExtraConfig] = useState("");
+  const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Fetch schemas from API
+  useEffect(() => {
+    if (!open) return;
+    setLoadingSchemas(true);
+    fetch("/api/jobs/schemas")
+      .then((r) => r.json())
+      .then((data) => setSchemas(data.schemas ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingSchemas(false));
+  }, [open]);
+
+  const selectedSchema = schemas.find((s) => s.type === selectedType);
+
+  const resetForm = useCallback(() => {
+    setSelectedType("");
+    setCronExpression("");
+    setEnabled(true);
+    setConfigValues({});
+    setError("");
+  }, []);
+
+  const handleTypeChange = useCallback(
+    (type: string) => {
+      setSelectedType(type);
+      const schema = schemas.find((s) => s.type === type);
+      if (schema) {
+        setCronExpression(schema.defaultCron);
+        // Set default config values from schema
+        const defaults: Record<string, unknown> = {};
+        for (const field of schema.fields) {
+          if (field.default !== undefined) {
+            defaults[field.key] = field.default;
+          }
+        }
+        setConfigValues(defaults);
+      }
+    },
+    [schemas],
+  );
+
+  const handleConfigChange = useCallback((key: string, value: unknown) => {
+    setConfigValues((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const handleCreate = async () => {
     if (!selectedType) return;
@@ -62,23 +107,23 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
     setError("");
 
     try {
-      let config: Record<string, unknown> = { cronExpression };
+      // Build config: merge schema defaults + user values + cron
+      const schema = schemas.find((s) => s.type === selectedType);
+      const defaults: Record<string, unknown> = schema
+        ? Object.fromEntries(schema.fields.map((f) => [f.key, f.default]))
+        : {};
 
-      // Parse extra config
-      if (extraConfig.trim()) {
-        try {
-          config = { ...config, ...JSON.parse(extraConfig) };
-        } catch {
-          setError("Invalid JSON in extra config");
-          setLoading(false);
-          return;
+      const config: Record<string, unknown> = {
+        cronExpression,
+        ...defaults,
+        ...configValues,
+      };
+
+      // Remove empty string values for optional fields
+      for (const key of Object.keys(config)) {
+        if (config[key] === "") {
+          delete config[key];
         }
-      }
-
-      // Add default config for type
-      const template = jobTemplates.find((t) => t.type === selectedType);
-      if (template) {
-        config = { ...template.defaultConfig, ...config };
       }
 
       const res = await fetch("/api/jobs", {
@@ -106,28 +151,12 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
     }
   };
 
-  const resetForm = () => {
-    setSelectedType("");
-    setCronExpression("");
-    setEnabled(true);
-    setExtraConfig("");
-    setError("");
-  };
-
-  const handleTypeChange = (type: string) => {
-    setSelectedType(type);
-    const template = jobTemplates.find((t) => t.type === type);
-    if (template) {
-      setCronExpression(template.defaultConfig.cronExpression ?? "");
-    }
-  };
-
   return (
     <Dialog
       open={open}
-      onOpenChange={(open) => {
-        if (!open) resetForm();
-        onOpenChange(open);
+      onOpenChange={(isOpen) => {
+        if (!isOpen) resetForm();
+        onOpenChange(isOpen);
       }}
     >
       <DialogContent className="max-w-lg">
@@ -138,23 +167,32 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
         <div className="flex flex-col gap-4">
           {/* Template selection */}
           <div className="grid gap-2 sm:grid-cols-2">
-            {jobTemplates.map((template) => {
-              const Icon = template.icon;
-              return (
-                <button
-                  key={template.type}
-                  onClick={() => handleTypeChange(template.type)}
-                  className={cn(
-                    "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                    selectedType === template.type && "border-primary bg-white/20 dark:bg-white/5",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="text-sm font-medium">{template.label}</span>
-                  <span className="text-muted-foreground text-xs">{template.description}</span>
-                </button>
-              );
-            })}
+            {loadingSchemas ? (
+              <div className="col-span-2 flex items-center justify-center py-6">
+                <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+              </div>
+            ) : (
+              schemas.map((schema) => {
+                const Icon = iconMap[schema.icon] ?? RefreshCw;
+                return (
+                  <button
+                    key={schema.type}
+                    onClick={() => handleTypeChange(schema.type)}
+                    className={cn(
+                      "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors hover:bg-white/20 dark:hover:bg-white/5",
+                      selectedType === schema.type &&
+                        "border-primary bg-white/20 dark:bg-white/5",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="text-sm font-medium">{schema.label}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {schema.description}
+                    </span>
+                  </button>
+                );
+              })
+            )}
           </div>
 
           <Separator />
@@ -166,23 +204,22 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
               value={cronExpression}
               onChange={(e) => setCronExpression(e.target.value)}
               placeholder="*/30 * * * *"
+              disabled={!selectedType}
             />
             <p className="text-muted-foreground text-xs">
-              Examples: <code>* * * * *</code> (every minute), <code>*/30 * * * *</code> (every 30
-              min), <code>0 9 * * *</code> (daily at 9am)
+              Examples: <code>* * * * *</code> (every minute),{" "}
+              <code>*/30 * * * *</code> (every 30 min), <code>0 9 * * *</code> (daily at 9am)
             </p>
           </div>
 
-          {/* Extra config */}
-          <div className="space-y-2">
-            <Label>Extra Config (JSON, optional)</Label>
-            <Textarea
-              value={extraConfig}
-              onChange={(e) => setExtraConfig(e.target.value)}
-              placeholder='{"accountId": "...", "limit": 10}'
-              className="font-mono text-sm"
+          {/* Dynamic config fields */}
+          {selectedSchema && (
+            <ConfigForm
+              fields={selectedSchema.fields}
+              values={configValues}
+              onChange={handleConfigChange}
             />
-          </div>
+          )}
 
           {/* Enabled */}
           <div className="flex items-center gap-2">
@@ -211,5 +248,3 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
     </Dialog>
   );
 }
-
-import { cn } from "@/lib/utils";

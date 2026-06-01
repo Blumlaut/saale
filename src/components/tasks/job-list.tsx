@@ -6,8 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Play, Loader2, Clock, CheckCircle, AlertCircle, Trash2, Settings } from "lucide-react";
+import {
+  Play,
+  Loader2,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Trash2,
+  Settings,
+  Calendar,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
+import { GlassPanelHeader } from "@/components/ui/glass-panel";
+import { ConfigDisplay, type FieldDef } from "@/components/tasks/config-form";
 
 interface Job {
   id: string;
@@ -30,12 +42,26 @@ interface JobRun {
   duration: number | null;
 }
 
-const jobTypeLabels: Record<string, string> = {
-  summarization: "Email Summarization",
-  classification: "Classification + Tags",
-  spam_filtering: "Spam Filtering",
-  email_sync: "Email Sync",
+interface JobSchema {
+  type: string;
+  label: string;
+  description: string;
+  fields: FieldDef[];
+}
+
+const cronExamples: Record<string, string> = {
+  "* * * * *": "Every minute",
+  "*/5 * * * *": "Every 5 minutes",
+  "*/30 * * * *": "Every 30 minutes",
+  "0 * * * *": "Every hour",
+  "0 */6 * * *": "Every 6 hours",
+  "0 9 * * *": "Daily at 9am",
+  "0 9 * * 1": "Monday at 9am",
 };
+
+function getCronLabel(expr: string): string {
+  return cronExamples[expr] ?? expr;
+}
 
 export function JobList() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -44,6 +70,7 @@ export function JobList() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
+  const [schemas, setSchemas] = useState<JobSchema[]>([]);
 
   const loadJobs = useCallback(async () => {
     try {
@@ -56,6 +83,18 @@ export function JobList() {
       // Ignore
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadSchemas = useCallback(async () => {
+    try {
+      const res = await fetch("/api/jobs/schemas");
+      if (res.ok) {
+        const data = await res.json();
+        setSchemas(data.schemas ?? []);
+      }
+    } catch {
+      // Ignore
     }
   }, []);
 
@@ -76,7 +115,8 @@ export function JobList() {
 
   useEffect(() => {
     loadJobs();
-  }, [loadJobs]);
+    loadSchemas();
+  }, [loadJobs, loadSchemas]);
 
   useEffect(() => {
     if (selectedJob) {
@@ -87,7 +127,7 @@ export function JobList() {
   const handleRun = async (jobId: string) => {
     setRunningId(jobId);
     try {
-      const res = await fetch(`/api/jobs/${jobId}/run`, {
+      const res = await fetch(`/api/jobs/${jobId}`, {
         method: "POST",
       });
       if (res.ok) {
@@ -168,6 +208,10 @@ export function JobList() {
     }
   };
 
+  const jobSchema = selectedJob
+    ? schemas.find((s) => s.type === selectedJob.type)
+    : null;
+
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       {/* Job list */}
@@ -195,7 +239,7 @@ export function JobList() {
                     <button className="flex-1 text-left" onClick={() => setSelectedJob(job)}>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">
-                          {jobTypeLabels[job.type] ?? job.type}
+                          {jobSchema?.label ?? job.type}
                         </span>
                         <Switch
                           checked={job.enabled}
@@ -205,14 +249,22 @@ export function JobList() {
                         />
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
-                        {job.lastRunAt && (
-                          <span>
-                            Last run{" "}
-                            {formatDistanceToNow(new Date(job.lastRunAt), { addSuffix: true })}
+                        {job.config?.cronExpression && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {getCronLabel(job.config.cronExpression as string)}
                           </span>
                         )}
-                        <span>·</span>
-                        <span>{job.runCount} runs</span>
+                        {job.lastRunAt && (
+                          <>
+                            <span>·</span>
+                            <span>
+                              {formatDistanceToNow(new Date(job.lastRunAt), {
+                                addSuffix: true,
+                              })}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </button>
                     <div className="flex items-center gap-1">
@@ -252,42 +304,88 @@ export function JobList() {
         <GlassPanel className="h-full">
           {selectedJob ? (
             <>
-              <GlassPanelHeader title={jobTypeLabels[selectedJob.type] ?? selectedJob.type} />
-              <GlassPanelContent>
-                <h3 className="mb-3 text-sm font-medium">Run History</h3>
-                {loadingRuns ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-                  </div>
-                ) : runs.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No runs yet</p>
-                ) : (
+              <GlassPanelHeader title={jobSchema?.label ?? selectedJob.type} />
+              <GlassPanelContent className="flex flex-col gap-6">
+                {/* Config summary */}
+                <div>
+                  <h3 className="mb-3 text-sm font-medium">Configuration</h3>
                   <div className="flex flex-col gap-3">
-                    {runs.map((run) => (
-                      <div
-                        key={run.id}
-                        className="rounded-xl border bg-white/20 p-3 dark:bg-white/5"
-                      >
-                        <div className="flex items-center justify-between">
-                          {getStatusBadge(run.status)}
-                          <span className="text-muted-foreground text-xs">
-                            {run.startedAt
-                              ? formatDistanceToNow(new Date(run.startedAt), { addSuffix: true })
-                              : ""}
+                    {/* Cron */}
+                    {selectedJob.config?.cronExpression && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-sm">Schedule</span>
+                        <span className="text-sm font-medium">
+                          {getCronLabel(selectedJob.config.cronExpression as string)}
+                          <span className="text-muted-foreground ml-1.5 font-normal">
+                            ({selectedJob.config.cronExpression})
                           </span>
-                        </div>
-                        {run.error && (
-                          <div className="text-destructive mt-2 text-xs">{run.error}</div>
-                        )}
-                        {run.output && (
-                          <pre className="bg-muted/50 mt-2 max-h-32 overflow-auto rounded-lg p-2 text-xs">
-                            {JSON.stringify(run.output, null, 2)}
-                          </pre>
-                        )}
+                        </span>
                       </div>
-                    ))}
+                    )}
+                    <Separator />
+                    {/* Schema-driven fields */}
+                    {jobSchema ? (
+                      <ConfigDisplay
+                        fields={jobSchema.fields}
+                        values={selectedJob.config}
+                      />
+                    ) : (
+                      /* Fallback: show raw config */
+                      Object.entries(selectedJob.config)
+                        .filter(([key]) => key !== "cronExpression")
+                        .map(([key, value]) => (
+                          <div key={key} className="flex items-center justify-between">
+                            <span className="text-muted-foreground text-sm">{key}</span>
+                            <span className="text-sm font-medium">
+                              {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                            </span>
+                          </div>
+                        ))
+                    )}
                   </div>
-                )}
+                </div>
+
+                <Separator />
+
+                {/* Run history */}
+                <div>
+                  <h3 className="mb-3 text-sm font-medium">Run History</h3>
+                  {loadingRuns ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+                    </div>
+                  ) : runs.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No runs yet</p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {runs.map((run) => (
+                        <div
+                          key={run.id}
+                          className="rounded-xl border bg-white/20 p-3 dark:bg-white/5"
+                        >
+                          <div className="flex items-center justify-between">
+                            {getStatusBadge(run.status)}
+                            <span className="text-muted-foreground text-xs">
+                              {run.startedAt
+                                ? formatDistanceToNow(new Date(run.startedAt), {
+                                    addSuffix: true,
+                                  })
+                                : ""}
+                            </span>
+                          </div>
+                          {run.error && (
+                            <div className="text-destructive mt-2 text-xs">{run.error}</div>
+                          )}
+                          {run.output && (
+                            <pre className="bg-muted/50 mt-2 max-h-32 overflow-auto rounded-lg p-2 text-xs">
+                              {JSON.stringify(run.output, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </GlassPanelContent>
             </>
           ) : (
@@ -303,6 +401,3 @@ export function JobList() {
     </div>
   );
 }
-
-import { cn } from "@/lib/utils";
-import { GlassPanelHeader } from "@/components/ui/glass-panel";
