@@ -1,0 +1,22 @@
+# SearXNG settings for Saale
+# Minimal config — JSON API enabled, no UI needed
+
+use_default_settings: true
+
+general:
+  instance_name: "Saale SearXNG"
+
+search:
+  safe_search: 0
+  autocomplete: "google"
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "saale-searxng-secret-change-me"  # noqa: SIM910
+  limiter: false
+  image_proxy: false
+
+ui:
+  static_use_hash: true

@@ -19,6 +19,7 @@ services:
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
+      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +78,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: saale-searxng
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_HOST=http://0.0.0.0:8080
+      - SEARXNG_PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   postgres_data:
