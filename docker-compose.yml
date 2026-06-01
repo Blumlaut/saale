@@ -2,9 +2,7 @@ services:
   app:
     build:
       context: .
-      target: development
-      args:
-        - NODE_ENV=development
+      target: ${BUILD_TARGET:-development}
     container_name: saale-app
     ports:
       - "3000:3000"
@@ -12,19 +10,21 @@ services:
       - .:/app
       - /app/node_modules
       - /app/.next
+      - uploads_data:/app/uploads
     environment:
-      - NODE_ENV=development
-      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
-      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=${NODE_ENV:-development}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@postgres:5432/saale}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
-      - BETTER_AUTH_URL=http://localhost:3000
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (32-char hex)}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
+      - UPLOADS_DIR=/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npm run dev"
+    command: ${APP_COMMAND:-sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npm run dev"}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
       interval: 15s
@@ -81,3 +81,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:
