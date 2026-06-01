@@ -109,9 +109,11 @@ export async function GET() {
       try {
         if (discoveredModels.length > 0) {
           console.log(`[providers] Registering ${discoveredModels.length} discovered models`);
+          // Pi SDK requires apiKey when defining models — use a placeholder for local servers
+          const apiKey = decryptedKey || "placeholder";
           modelRegistry.registerProvider("custom", {
             baseUrl,
-            apiKey: decryptedKey,
+            apiKey,
             api: "openai-completions",
             models: discoveredModels.map((m) => ({
               id: m,
