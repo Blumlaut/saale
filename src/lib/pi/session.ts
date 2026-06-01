@@ -17,6 +17,7 @@ import { createChatSearchTool } from "./tools/chat-tools";
  *
  * Loads provider API keys from the database, decrypts them, and configures
  * them on an in-memory AuthStorage so the Pi SDK can resolve them.
+ * Also registers any custom OpenAI-compatible providers.
  */
 export async function createPiSession(options: {
   userId: string;
@@ -28,7 +29,7 @@ export async function createPiSession(options: {
   // Load user's provider API keys from DB
   const storedKeys = await prisma.providerApiKey.findMany({
     where: { userId: options.userId },
-    select: { provider: true, encryptedKey: true },
+    select: { provider: true, encryptedKey: true, baseUrl: true },
   });
 
   // Build in-memory auth storage with user's API keys
@@ -48,6 +49,22 @@ export async function createPiSession(options: {
 
   // Create model registry with user's auth storage
   const modelRegistry = ModelRegistry.inMemory(authStorage);
+
+  // Register custom OpenAI-compatible providers
+  for (const key of storedKeys) {
+    if (key.provider === "custom" && key.baseUrl) {
+      try {
+        const decryptedKey = decrypt(key.encryptedKey);
+        modelRegistry.registerProvider("custom", {
+          baseUrl: key.baseUrl.replace(/\/+$/, ""),
+          apiKey: decryptedKey,
+          api: "openai-completions",
+        });
+      } catch {
+        console.warn(`[pi] Failed to register custom provider`);
+      }
+    }
+  }
 
   // Build user-scoped custom tools
   const fileTools = createFileTool(options.userId);
