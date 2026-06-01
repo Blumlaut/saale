@@ -41,6 +41,9 @@ saale-app
 saale-postgres
 saale-redis
 
+# User uploads / AI workspace
+uploads/
+
 # Misc
 *.tsbuildinfo
 .cache/
