@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { createWorker, scheduleAllJobs } from "@/lib/queue";
 
 /**

@@ -81,6 +81,7 @@ export async function resolveModel(
   // Job-level override takes priority
   if (modelId && modelId.includes(":")) {
     const [provider, ...nameParts] = modelId.split(":");
+    if (!provider) return undefined;
     return { provider, name: nameParts.join(":") };
   }
 
@@ -147,14 +148,11 @@ export async function dispatchAiTask(
         const textBlocks = lastMsg?.content.filter(
           (c) => typeof c === "object" && c.type === "text",
         );
-        const text = textBlocks
-          ?.map((c) => (typeof c === "object" && "text" in c ? (c.text as string) : ""))
-          .join("") ?? "";
+        const text =
+          textBlocks
+            ?.map((c) => (typeof c === "object" && "text" in c ? (c.text as string) : ""))
+            .join("") ?? "";
         resolve(text);
-      } else if (event.type === "error") {
-        clearTimeout(timerId);
-        unsubscribe();
-        reject(new Error(event.error?.message ?? "Agent error"));
       }
     });
 
@@ -328,7 +326,10 @@ export async function processJob(job: Job): Promise<void> {
 
         for (const classification of classifications) {
           const newTags = Array.from(
-            new Set([...(emails.find((e) => e.id === classification.id)?.tags ?? []), ...classification.tags]),
+            new Set([
+              ...(emails.find((e) => e.id === classification.id)?.tags ?? []),
+              ...classification.tags,
+            ]),
           );
           await prisma.emailMessage.update({
             where: { id: classification.id },
@@ -433,7 +434,11 @@ export async function processJob(job: Job): Promise<void> {
     const errorMessage = (err as Error).message;
 
     if (effectiveRunId) {
-      await updateJobRun(effectiveRunId, { status: "error", error: errorMessage, completedAt: new Date() });
+      await updateJobRun(effectiveRunId, {
+        status: "error",
+        error: errorMessage,
+        completedAt: new Date(),
+      });
     }
 
     throw err;
