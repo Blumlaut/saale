@@ -50,7 +50,7 @@ export async function PATCH(
       await queue
         .add(
           "execute",
-          { ...jobConfig, taskId: jobId },
+          { ...jobConfig, taskId: jobId, type: updated.type },
           {
             jobId: `scheduled-${jobId}`,
             repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
@@ -143,7 +143,7 @@ export async function POST(
 
   await queue.add(
     "execute",
-    { ...config, taskId: jobId, runId: jobRun.id },
+    { ...config, taskId: jobId, runId: jobRun.id, type: job.type },
     {
       jobId: `manual-${jobId}-${Date.now()}`,
       removeOnComplete: false,

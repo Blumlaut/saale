@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     await queue
       .add(
         "execute",
-        { ...jobConfig, taskId: job.id },
+        { ...jobConfig, taskId: job.id, type: job.type },
         {
           jobId: `scheduled-${job.id}`,
           repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },

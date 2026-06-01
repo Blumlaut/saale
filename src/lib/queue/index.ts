@@ -312,7 +312,7 @@ export async function scheduleAllJobs(): Promise<void> {
       try {
         await queue.add(
           "execute",
-          { ...config, taskId: task.id },
+          { ...config, taskId: task.id, type: task.type },
           {
             jobId: `scheduled-${task.id}`,
             repeat: { pattern: config.cronExpression, tz: "UTC" },
