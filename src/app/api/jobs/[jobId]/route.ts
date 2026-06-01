@@ -61,7 +61,9 @@ export async function PATCH(
           console.error(`Failed to schedule job ${jobId}: ${err.message}`);
         });
     } else if (!body.enabled) {
-      await queue.remove(`scheduled-${jobId}`).catch(() => {});
+      await queue
+        .removeRepeatable("execute", { pattern: jobConfig.cronExpression, tz: "UTC" })
+        .catch(() => {});
     }
   }
 
@@ -104,7 +106,12 @@ export async function DELETE(
 
   // Remove repeatable job from BullMQ
   const queue = getQueue();
-  await queue.remove(`scheduled-${jobId}`).catch(() => {});
+  const jobConfig = JSON.parse(job.config);
+  if (jobConfig.cronExpression) {
+    await queue
+      .removeRepeatable("execute", { pattern: jobConfig.cronExpression, tz: "UTC" })
+      .catch(() => {});
+  }
 
   await prisma.queueTask.delete({
     where: { id: jobId },
