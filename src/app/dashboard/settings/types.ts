@@ -3,6 +3,7 @@ export interface UserSettings {
   defaultModelName: string;
   defaultThinkingLevel: string;
   theme: string;
+  agentSystemPrompt: string | null;
 }
 
 export interface EmailAccount {

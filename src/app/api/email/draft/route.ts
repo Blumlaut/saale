@@ -64,10 +64,10 @@ export async function POST(request: NextRequest) {
   // Build model registry with user's providers
   const { modelRegistry, authStorage } = await buildModelRegistry(authSession.user.id);
 
-  // Resolve the user's configured default model
+  // Resolve the user's configured default model and custom agent prompt
   const settings = await prisma.appSettings.findUnique({
     where: { userId: authSession.user.id },
-    select: { defaultModelProvider: true, defaultModelName: true },
+    select: { defaultModelProvider: true, defaultModelName: true, agentSystemPrompt: true },
   });
 
   let model;
@@ -96,14 +96,22 @@ export async function POST(request: NextRequest) {
   const { session: piSession } = result;
 
   // Custom system prompt — focused purely on email drafting, no Pi agent noise
+  // Incorporate user's custom writing style/persona if defined
   const modeInstruction =
     mode === "forward"
       ? `You are forwarding this email to someone else. Write a brief introductory note before the forwarded content. Do NOT include the original message body — only the intro note.`
-      : `You are replying to this email. Write a natural, professional response addressing the content of the original message.`;
+      : `You are replying to this email. Write a natural response addressing the content of the original message.`;
+
+  const userStyleInstructions =
+    settings?.agentSystemPrompt && settings.agentSystemPrompt.trim()
+      ? `\n\nWriting style (defined by user):
+${settings.agentSystemPrompt}`
+      : "";
 
   piSession.agent.state.systemPrompt = `You are an email drafting assistant. Your only job is to write clear, concise email responses.
 
 ${modeInstruction}
+${userStyleInstructions}
 
 Rules:
 - Write only the email body text — no explanations, no meta-commentary
