@@ -195,7 +195,7 @@ export async function processJob(job: Job): Promise<void> {
       const emails = await prisma.emailMessage.findMany({
         where: {
           ...(config.accountId ? { accountId: config.accountId } : {}),
-          aiTags: { isEmpty: true },
+          classified: false,
         },
         orderBy: { date: "desc" },
         take: config.limit ?? 10,
