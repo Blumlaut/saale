@@ -130,6 +130,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
     }
     // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
     console.log(`[email-sync] Discovered folders: ${folders.join(", ")}`);
+    // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
     console.log(`[email-sync] All remote folders: ${allFolders.join(", ")}`);
 
     // Cache all remote folders on the account
@@ -182,29 +183,56 @@ export async function syncEmailAccount(accountId: string): Promise<{
               },
             });
 
-            const toList = Array.isArray(parsed.to)
-              ? parsed.to
-                  .map((a) =>
-                    typeof a === "object" && a
-                      ? String((a as { address?: string }).address || a)
-                      : String(a),
-                  )
-                  .join(",")
-              : String(parsed.to || "");
+            // mailparser returns { value: [{ address, name }], html, text }
+            // Extract addresses from the value array, fallback to text
+            const extractAddresses = (field: unknown): string => {
+              if (!field) return "";
+              if (typeof field === "string") return field;
+              if (Array.isArray(field)) {
+                return field
+                  .map((a) => {
+                    if (typeof a === "string") return a;
+                    if (typeof a === "object" && a && "address" in a) return String(a.address);
+                    return String(a);
+                  })
+                  .join(",");
+              }
+              // mailparser envelope: { value: [...], html, text }
+              if (typeof field === "object" && "value" in field && Array.isArray(field.value)) {
+                return field.value
+                  .map((a) => {
+                    if (typeof a === "string") return a;
+                    if (typeof a === "object" && a && "address" in a) return String(a.address);
+                    return String(a);
+                  })
+                  .join(",");
+              }
+              return String(field);
+            };
 
-            const fromName =
-              parsed.from && typeof parsed.from === "object"
-                ? "name" in parsed.from
-                  ? (parsed.from.name as string) || null
-                  : null
-                : null;
+            const toList = extractAddresses(parsed.to);
 
-            const fromEmail =
-              parsed.from && typeof parsed.from === "object"
-                ? "address" in parsed.from
-                  ? (parsed.from.address as string) || ""
-                  : ""
-                : "";
+            // from is also { value: [{ address, name }], html, text }
+            const fromField = parsed.from;
+            let fromName: string | null = null;
+            let fromEmail: string = "";
+            if (
+              fromField &&
+              typeof fromField === "object" &&
+              "value" in fromField &&
+              Array.isArray(fromField.value) &&
+              fromField.value.length > 0
+            ) {
+              const firstAddr = fromField.value[0];
+              if (typeof firstAddr === "object" && firstAddr) {
+                fromName = "name" in firstAddr ? (firstAddr.name as string) || null : null;
+                fromEmail = "address" in firstAddr ? (firstAddr.address as string) || "" : "";
+              }
+            } else if (fromField && typeof fromField === "object") {
+              // Fallback: direct object with name/address
+              fromName = "name" in fromField ? (fromField.name as string) || null : null;
+              fromEmail = "address" in fromField ? (fromField.address as string) || "" : "";
+            }
 
             const flags = msg.flags ?? new Set<string>();
             const flagsArray = flags instanceof Set ? Array.from(flags) : flags;
