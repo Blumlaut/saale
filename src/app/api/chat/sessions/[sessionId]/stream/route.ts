@@ -41,6 +41,12 @@ export async function GET(
     },
   });
 
+  // Fetch user's custom agent system prompt
+  const userSettings = await prisma.appSettings.findUnique({
+    where: { userId: authSession.user.id },
+    select: { agentSystemPrompt: true },
+  });
+
   if (!chatSession) {
     return new Response("Not found", { status: 404 });
   }
@@ -74,11 +80,13 @@ export async function GET(
   // blocks, tool signatures, etc. — critical for cache hits.
   const model = piSession.model;
 
-  // Set up system prompt
-  // Keep this minimal — no feature/tool descriptions. The agent infers capabilities from tools.
-  // TODO: replace with user-defined system prompt from AppSettings/ChatSession when implemented
-  piSession.agent.state.systemPrompt =
+  // Set up system prompt — use user-defined prompt if set, otherwise fall back to default
+  const defaultSystemPrompt =
     "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
+  piSession.agent.state.systemPrompt =
+    userSettings?.agentSystemPrompt && userSettings.agentSystemPrompt.trim()
+      ? userSettings.agentSystemPrompt
+      : defaultSystemPrompt;
 
   // Reconstruct conversation history from DB messages.
   // buildHistoryMessages ensures byte-identical output to the live agent:

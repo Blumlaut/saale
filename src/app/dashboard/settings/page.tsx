@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Mail, Bot, Palette, Loader2, Key } from "lucide-react";
+import { Settings as SettingsIcon, Mail, Bot, Palette, Loader2, Key, PenTool } from "lucide-react";
 import { ProvidersTab } from "./tabs/providers-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
+import { AgentPersonaTab } from "./tabs/agent-persona-tab";
 import { EmailTab } from "./tabs/email-tab";
 import { AppearanceTab } from "./tabs/appearance-tab";
 import type {
@@ -139,6 +140,10 @@ export default function SettingsPage() {
               <Bot className="h-4 w-4" />
               AI & Models
             </TabsTrigger>
+            <TabsTrigger value="persona" className="gap-2">
+              <PenTool className="h-4 w-4" />
+              Agent Persona
+            </TabsTrigger>
             <TabsTrigger value="email" className="gap-2">
               <Mail className="h-4 w-4" />
               Email
@@ -165,6 +170,16 @@ export default function SettingsPage() {
             onSettingsChange={setSettings}
             availableModels={availableModels}
             availableModelProviders={availableModelProviders}
+            saving={saving}
+            saveStatus={saveStatus}
+            onSave={handleSaveSettings}
+          />
+        </TabsContent>
+
+        <TabsContent value="persona" className="space-y-6">
+          <AgentPersonaTab
+            settings={settings}
+            onSettingsChange={setSettings}
             saving={saving}
             saveStatus={saveStatus}
             onSave={handleSaveSettings}
