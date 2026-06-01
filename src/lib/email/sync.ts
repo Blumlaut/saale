@@ -307,24 +307,31 @@ export async function syncEmailAccount(accountId: string): Promise<{
           executedCommand?: string;
           response?: unknown;
         };
-        console.error(
-          `[email-sync] Failed to sync folder ${folder}:`,
-          folderErr.message,
-          folderErr.responseStatus,
-          folderErr.responseText,
-          folderErr.executedCommand,
-          folderErr.cause,
-        );
-        const detail = [
-          folderErr.responseStatus,
-          folderErr.responseText,
-          folderErr.cause ? String(folderErr.cause) : null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
-        errors.push(
-          `Failed to sync folder ${folder}: ${folderErr.message}${detail ? ` (${detail})` : ""}`,
-        );
+        // Folders that appear in LIST but don't actually exist (e.g. sieve
+        // virtual folders on Mailcow) — skip silently
+        if (folderErr.responseText?.includes("doesn't exist")) {
+          // eslint-disable-next-line no-console -- debug logging
+          console.log(`[email-sync] Skipping non-existent folder ${folder}`);
+        } else {
+          console.error(
+            `[email-sync] Failed to sync folder ${folder}:`,
+            folderErr.message,
+            folderErr.responseStatus,
+            folderErr.responseText,
+            folderErr.executedCommand,
+            folderErr.cause,
+          );
+          const detail = [
+            folderErr.responseStatus,
+            folderErr.responseText,
+            folderErr.cause ? String(folderErr.cause) : null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
+          errors.push(
+            `Failed to sync folder ${folder}: ${folderErr.message}${detail ? ` (${detail})` : ""}`,
+          );
+        }
       } finally {
         try {
           await mailbox.mailboxClose();
