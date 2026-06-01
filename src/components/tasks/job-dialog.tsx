@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ConfigForm } from "@/components/tasks/config-form";
-import { RefreshCw, FileText, Tags, Shield, Loader2 } from "lucide-react";
+import { RefreshCw, FileText, Tags, Shield, Loader2, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface FieldDef {
@@ -29,6 +29,7 @@ interface JobSchema {
   description: string;
   icon: string;
   defaultCron: string;
+  usesAi?: boolean;
   fields: FieldDef[];
 }
 
@@ -126,6 +127,10 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
         }
       }
 
+      // Extract modelId for top-level field
+      const modelId = config.modelId || undefined;
+      delete config.modelId;
+
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -133,6 +138,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
           type: selectedType,
           enabled,
           config,
+          modelId,
         }),
       });
 
@@ -183,7 +189,10 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
                       selectedType === schema.type && "border-primary bg-white/20 dark:bg-white/5",
                     )}
                   >
-                    <Icon className="h-4 w-4" />
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="h-4 w-4" />
+                      {schema.usesAi && <Brain className="text-muted-foreground h-3 w-3" />}
+                    </div>
                     <span className="text-sm font-medium">{schema.label}</span>
                     <span className="text-muted-foreground text-xs">{schema.description}</span>
                   </button>

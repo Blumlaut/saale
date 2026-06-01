@@ -48,6 +48,7 @@ export const jobListTool = defineTool({
                   id: string;
                   type: string;
                   enabled: boolean;
+                  modelId: string | null;
                   config: string;
                   lastRunAt: Date | null;
                   runCount: number;
@@ -56,6 +57,7 @@ export const jobListTool = defineTool({
                   id: j.id,
                   type: j.type,
                   enabled: j.enabled,
+                  modelId: j.modelId,
                   config: JSON.parse(j.config),
                   lastRunAt: j.lastRunAt?.toISOString(),
                   runCount: j.runCount,
@@ -102,21 +104,21 @@ export const jobEnableTool = defineTool({
     });
 
     // Update BullMQ schedule
-    const queue = getQueue(params.id);
+    const queue = getQueue();
     if (params.enabled) {
       const config = JSON.parse(job.config);
       if (config.cronExpression) {
         await queue.add(
           "execute",
-          { ...config, taskId: params.id },
+          { ...config, taskId: params.id, type: job.type, modelId: job.modelId },
           {
-            jobId: params.id,
+            jobId: `scheduled-${params.id}`,
             repeat: { pattern: config.cronExpression, tz: "UTC" },
           },
         );
       }
     } else {
-      await queue.obliterate({ force: true }).catch(() => {});
+      await queue.remove(`scheduled-${params.id}`).catch(() => {});
     }
 
     return {
@@ -158,14 +160,14 @@ export const jobRunTool = defineTool({
       throw new Error(`Job ${params.id} not found`);
     }
 
-    const queue = getQueue(params.id);
+    const queue = getQueue();
     const config = JSON.parse(job.config);
 
     const jobRun = await addJobRun(params.id, "pending", JSON.stringify(config));
 
     await queue.add(
       "execute",
-      { ...config, taskId: params.id, runId: jobRun.id },
+      { ...config, taskId: params.id, runId: jobRun.id, type: job.type, modelId: job.modelId },
       {
         jobId: `manual-${params.id}-${Date.now()}`,
         removeOnComplete: false,

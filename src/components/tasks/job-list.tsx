@@ -15,6 +15,7 @@ import {
   Trash2,
   Settings,
   Calendar,
+  Brain,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ interface Job {
   id: string;
   type: string;
   enabled: boolean;
+  modelId: string | null;
   config: Record<string, unknown>;
   lastRunAt: string | null;
   runCount: number;
@@ -46,6 +48,7 @@ interface JobSchema {
   type: string;
   label: string;
   description: string;
+  usesAi?: boolean;
   fields: FieldDef[];
 }
 
@@ -61,6 +64,12 @@ const cronExamples: Record<string, string> = {
 
 function getCronLabel(expr: string): string {
   return cronExamples[expr] ?? expr;
+}
+
+function getModelLabel(modelId: string | null): string | null {
+  if (!modelId) return null;
+  const [provider, ...nameParts] = modelId.split(":");
+  return `${nameParts.join(":")} (${provider})`;
 }
 
 interface JobListProps {
@@ -233,72 +242,81 @@ export function JobList({ onRefresh }: JobListProps) {
                 <p className="text-muted-foreground text-sm">No jobs configured</p>
               </div>
             ) : (
-              jobs.map((job, i) => (
-                <div key={job.id}>
-                  <div
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                      selectedJob?.id === job.id && "bg-white/20 dark:bg-white/5",
-                    )}
-                  >
-                    <button className="flex-1 text-left" onClick={() => setSelectedJob(job)}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {schemas.find((s) => s.type === job.type)?.label ?? job.type}
-                        </span>
-                        <Switch
-                          checked={job.enabled}
-                          onCheckedChange={(checked) => handleToggle(job.id, checked)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="scale-75"
-                        />
-                      </div>
-                      <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
-                        {job.config?.cronExpression && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {getCronLabel(job.config.cronExpression as string)}
+              jobs.map((job, i) => {
+                const schema = schemas.find((s) => s.type === job.type);
+                return (
+                  <div key={job.id}>
+                    <div
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/20 dark:hover:bg-white/5",
+                        selectedJob?.id === job.id && "bg-white/20 dark:bg-white/5",
+                      )}
+                    >
+                      <button className="flex-1 text-left" onClick={() => setSelectedJob(job)}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">
+                            {schema?.label ?? job.type}
                           </span>
-                        )}
-                        {job.lastRunAt && (
-                          <>
-                            <span>·</span>
-                            <span>
-                              {formatDistanceToNow(new Date(job.lastRunAt), {
-                                addSuffix: true,
-                              })}
+                          {schema?.usesAi && job.modelId && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Brain className="mr-1 h-3 w-3" />
+                              {getModelLabel(job.modelId)}
+                            </Badge>
+                          )}
+                          <Switch
+                            checked={job.enabled}
+                            onCheckedChange={(checked) => handleToggle(job.id, checked)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="scale-75"
+                          />
+                        </div>
+                        <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+                          {job.config?.cronExpression && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {getCronLabel(job.config.cronExpression as string)}
                             </span>
-                          </>
-                        )}
+                          )}
+                          {job.lastRunAt && (
+                            <>
+                              <span>·</span>
+                              <span>
+                                {formatDistanceToNow(new Date(job.lastRunAt), {
+                                  addSuffix: true,
+                                })}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleRun(job.id)}
+                          disabled={runningId === job.id}
+                        >
+                          {runningId === job.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Play className="h-3 w-3" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleDelete(job.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
                       </div>
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleRun(job.id)}
-                        disabled={runningId === job.id}
-                      >
-                        {runningId === job.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Play className="h-3 w-3" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleDelete(job.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
                     </div>
+                    {i < jobs.length - 1 && <Separator className="px-4" />}
                   </div>
-                  {i < jobs.length - 1 && <Separator className="px-4" />}
-                </div>
-              ))
+                );
+              })
             )}
           </GlassPanelContent>
         </GlassPanel>
@@ -325,6 +343,27 @@ export function JobList({ onRefresh }: JobListProps) {
                             ({selectedJob.config.cronExpression})
                           </span>
                         </span>
+                      </div>
+                    )}
+                    {/* Model override */}
+                    {jobSchema?.usesAi && selectedJob.modelId && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-sm flex items-center gap-1.5">
+                          <Brain className="h-3.5 w-3.5" />
+                          AI Model
+                        </span>
+                        <Badge variant="secondary" className="text-xs">
+                          {getModelLabel(selectedJob.modelId)}
+                        </Badge>
+                      </div>
+                    )}
+                    {jobSchema?.usesAi && !selectedJob.modelId && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-sm flex items-center gap-1.5">
+                          <Brain className="h-3.5 w-3.5" />
+                          AI Model
+                        </span>
+                        <span className="text-muted-foreground text-xs">Default</span>
                       </div>
                     )}
                     <Separator />

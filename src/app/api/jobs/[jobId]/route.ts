@@ -34,6 +34,7 @@ export async function PATCH(
 
   if (body.type !== undefined) updateData.type = body.type;
   if (body.enabled !== undefined) updateData.enabled = body.enabled;
+  if (body.modelId !== undefined) updateData.modelId = body.modelId;
   if (body.config !== undefined) updateData.config = JSON.stringify(body.config);
 
   const updated = await prisma.queueTask.update({
@@ -50,7 +51,7 @@ export async function PATCH(
       await queue
         .add(
           "execute",
-          { ...jobConfig, taskId: jobId, type: updated.type },
+          { ...jobConfig, taskId: jobId, type: updated.type, modelId: updated.modelId },
           {
             jobId: `scheduled-${jobId}`,
             repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
@@ -69,6 +70,7 @@ export async function PATCH(
       id: updated.id,
       type: updated.type,
       enabled: updated.enabled,
+      modelId: updated.modelId,
       config: JSON.parse(updated.config),
       updatedAt: updated.updatedAt.toISOString(),
     },
@@ -112,7 +114,7 @@ export async function DELETE(
 }
 
 /**
- * POST /api/jobs/:jobId/run — Trigger manual run
+ * POST /api/jobs/:jobId — Trigger manual run
  */
 export async function POST(
   _request: NextRequest,
@@ -143,7 +145,7 @@ export async function POST(
 
   await queue.add(
     "execute",
-    { ...config, taskId: jobId, runId: jobRun.id, type: job.type },
+    { ...config, taskId: jobId, runId: jobRun.id, type: job.type, modelId: job.modelId },
     {
       jobId: `manual-${jobId}-${Date.now()}`,
       removeOnComplete: false,

@@ -38,6 +38,8 @@ export interface JobTypeSchema {
   icon: string;
   /** Default cron expression */
   defaultCron: string;
+  /** Whether this job uses AI (needs model selection) */
+  usesAi?: boolean;
   /** Configuration fields (excluding cronExpression which is always present) */
   fields: FieldDef[];
 }
@@ -53,6 +55,7 @@ export const jobTypeSchemas: JobTypeSchema[] = [
     description: "Sync emails from connected IMAP accounts",
     icon: "RefreshCw",
     defaultCron: "*/30 * * * *",
+    usesAi: false,
     fields: [
       {
         key: "accountId",
@@ -70,6 +73,7 @@ export const jobTypeSchemas: JobTypeSchema[] = [
     description: "Generate AI summaries for new emails",
     icon: "FileText",
     defaultCron: "0 */6 * * *",
+    usesAi: true,
     fields: [
       {
         key: "accountId",
@@ -88,6 +92,14 @@ export const jobTypeSchemas: JobTypeSchema[] = [
         min: 1,
         max: 100,
         step: 1,
+      },
+      {
+        key: "modelId",
+        label: "AI Model",
+        description: "Override the default model for this task",
+        type: "select",
+        default: "",
+        options: [], // populated at runtime from /api/providers/models
       },
     ],
   },
@@ -97,6 +109,7 @@ export const jobTypeSchemas: JobTypeSchema[] = [
     description: "Auto-tag incoming emails with AI categories",
     icon: "Tags",
     defaultCron: "0 */6 * * *",
+    usesAi: true,
     fields: [
       {
         key: "accountId",
@@ -116,6 +129,14 @@ export const jobTypeSchemas: JobTypeSchema[] = [
         max: 100,
         step: 1,
       },
+      {
+        key: "modelId",
+        label: "AI Model",
+        description: "Override the default model for this task",
+        type: "select",
+        default: "",
+        options: [], // populated at runtime from /api/providers/models
+      },
     ],
   },
   {
@@ -124,6 +145,7 @@ export const jobTypeSchemas: JobTypeSchema[] = [
     description: "Evaluate spam score and move flagged emails",
     icon: "Shield",
     defaultCron: "0 */4 * * *",
+    usesAi: true,
     fields: [
       {
         key: "accountId",
@@ -148,10 +170,18 @@ export const jobTypeSchemas: JobTypeSchema[] = [
         label: "Spam threshold",
         description: "Score above which emails are moved to Spam (0–1)",
         type: "number",
-        default: 0.8,
+        default: 0.85,
         min: 0,
         max: 1,
         step: 0.05,
+      },
+      {
+        key: "modelId",
+        label: "AI Model",
+        description: "Override the default model for this task",
+        type: "select",
+        default: "",
+        options: [], // populated at runtime from /api/providers/models
       },
     ],
   },
