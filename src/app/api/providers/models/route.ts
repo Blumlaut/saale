@@ -8,30 +8,50 @@ import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
  */
-async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<Array<{ id: string; name: string }>> {
+async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<{ models: string[]; error?: string }> {
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
+    console.log(`[providers] Fetching models from ${url}`);
     const res = await fetch(url, {
       headers: {
         "Content-Type": "application/json",
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(8000),
     });
 
-    if (!res.ok) return [];
+    console.log(`[providers] Response status: ${res.status}`);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.log(`[providers] Error response: ${body.slice(0, 200)}`);
+      return {
+        models: [],
+        error: `HTTP ${res.status} from ${url}${body ? `: ${body.slice(0, 100)}` : ""}`,
+      };
+    }
 
     const data = await res.json();
-    if (!data?.data?.length) return [];
+    console.log(`[providers] Got ${data.data?.length ?? 0} models from ${url}`);
 
-    return data.data
-      .map((m: any) => ({
-        id: m.id,
-        name: m.id, // Use ID as name since we don't have display names
-      }))
-      .slice(0, 200); // Cap at 200 models
-  } catch {
-    return [];
+    if (!data?.data?.length) {
+      return {
+        models: [],
+        error: "No models returned by server",
+      };
+    }
+
+    return {
+      models: data.data
+        .map((m: any) => m.id)
+        .slice(0, 200),
+    };
+  } catch (err) {
+    console.error(`[providers] Fetch failed:`, err);
+    return {
+      models: [],
+      error: `${(err as Error).message} (checking ${url})`,
+    };
   }
 }
 
@@ -61,9 +81,10 @@ export async function GET() {
       const decryptedKey = decrypt(key.encryptedKey);
       if (decryptedKey) {
         authStorage.setRuntimeApiKey(key.provider, decryptedKey);
+        console.log(`[providers] Set API key for provider: ${key.provider}`);
       }
-    } catch {
-      // Skip invalid keys
+    } catch (err) {
+      console.warn(`[providers] Failed to decrypt API key for ${key.provider}:`, err);
     }
   }
 
@@ -73,46 +94,54 @@ export async function GET() {
   // Register custom OpenAI-compatible providers and discover their models
   for (const key of storedKeys) {
     if (key.provider === "custom" && key.baseUrl) {
+      const decryptedKey = decrypt(key.encryptedKey);
+      const baseUrl = key.baseUrl.replace(/\/+$/, "");
+
+      console.log(`[providers] Registering custom provider: baseUrl=${baseUrl}, hasKey=${!!decryptedKey}`);
+
+      // Fetch models from the server
+      const { models: discoveredModels, error: modelError } = await fetchOpenAIModels(baseUrl, decryptedKey);
+
+      if (modelError) {
+        console.warn(`[providers] Model discovery failed: ${modelError}`);
+      }
+
       try {
-        const decryptedKey = decrypt(key.encryptedKey);
-        const baseUrl = key.baseUrl.replace(/\/+$/, "");
-
-        // Fetch models from the server
-        const discoveredModels = await fetchOpenAIModels(baseUrl, decryptedKey);
-
         if (discoveredModels.length > 0) {
-          // Register with discovered models
+          console.log(`[providers] Registering ${discoveredModels.length} discovered models`);
           modelRegistry.registerProvider("custom", {
             baseUrl,
             apiKey: decryptedKey,
-            api: "openai-completions" ,
+            api: "openai-completions",
             models: discoveredModels.map((m) => ({
-              id: m.id,
-              name: m.name,
-              api: "openai-completions" ,
+              id: m,
+              name: m,
+              api: "openai-completions",
               reasoning: false,
-              input: ["text"] as const,
+              input: ["text"],
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               contextWindow: 131072,
               maxTokens: 8192,
             })),
           });
         } else {
-          // No models discovered — still register so auth works
+          console.log(`[providers] No models discovered, registering provider without models`);
           modelRegistry.registerProvider("custom", {
             baseUrl,
             apiKey: decryptedKey,
-            api: "openai-completions" ,
+            api: "openai-completions",
           });
         }
-      } catch {
-        console.warn(`[pi] Failed to register custom provider`);
+        console.log(`[providers] Custom provider registered successfully`);
+      } catch (err) {
+        console.error(`[providers] Failed to register custom provider:`, err);
       }
     }
   }
 
   // Get available models
   const available = modelRegistry.getAvailable();
+  console.log(`[providers] Total available models: ${available.length}`);
 
   // Group by provider
   const byProvider: Record<string, Array<{

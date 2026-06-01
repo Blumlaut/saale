@@ -22,7 +22,7 @@ async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<Arra
         "Content-Type": "application/json",
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!res.ok) return [];
@@ -88,13 +88,13 @@ export async function createPiSession(options: {
           modelRegistry.registerProvider("custom", {
             baseUrl,
             apiKey: decryptedKey,
-            api: "openai-completions" ,
+            api: "openai-completions",
             models: discoveredModels.map((m) => ({
               id: m.id,
               name: m.name,
-              api: "openai-completions" ,
+              api: "openai-completions",
               reasoning: false,
-              input: ["text"] as const,
+              input: ["text"],
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               contextWindow: 131072,
               maxTokens: 8192,
@@ -104,11 +104,11 @@ export async function createPiSession(options: {
           modelRegistry.registerProvider("custom", {
             baseUrl,
             apiKey: decryptedKey,
-            api: "openai-completions" ,
+            api: "openai-completions",
           });
         }
-      } catch {
-        console.warn(`[pi] Failed to register custom provider`);
+      } catch (err) {
+        console.error(`[pi] Failed to register custom provider:`, err);
       }
     }
   }
