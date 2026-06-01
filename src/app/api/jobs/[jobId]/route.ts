@@ -41,6 +41,27 @@ export async function PATCH(
     data: updateData,
   });
 
+  // Sync BullMQ schedule when enabled status changes
+  if (body.enabled !== undefined) {
+    const queue = getQueue(jobId);
+    const jobConfig = JSON.parse(updated.config);
+
+    if (body.enabled && jobConfig.cronExpression) {
+      await queue.add(
+        "execute",
+        { ...jobConfig, taskId: jobId },
+        {
+          jobId,
+          repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
+        },
+      ).catch((err) => {
+        console.error(`Failed to schedule job ${jobId}: ${err.message}`);
+      });
+    } else if (!body.enabled) {
+      await queue.obliterate({ force: true }).catch(() => {});
+    }
+  }
+
   return NextResponse.json({
     job: {
       id: updated.id,
@@ -79,7 +100,7 @@ export async function DELETE(
 
   // Remove from BullMQ
   const queue = getQueue(jobId);
-  await queue.remove(jobId).catch(() => {});
+  await queue.obliterate({ force: true }).catch(() => {});
 
   await prisma.queueTask.delete({
     where: { id: jobId },

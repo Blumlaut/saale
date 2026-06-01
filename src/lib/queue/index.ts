@@ -78,8 +78,23 @@ export async function processJob(job: Job): Promise<void> {
     let output: string;
 
     if (type === "email_sync") {
-      const result = await syncEmailAccount(config.accountId);
-      output = JSON.stringify(result);
+      // Sync specific account or all enabled accounts if no accountId given
+      if (config.accountId) {
+        const result = await syncEmailAccount(config.accountId);
+        output = JSON.stringify(result);
+      } else {
+        const accounts = await prisma.emailAccount.findMany({
+          where: { enabled: true },
+          select: { id: true },
+        });
+        const results = await Promise.all(
+          accounts.map((a) => syncEmailAccount(a.id)),
+        );
+        output = JSON.stringify({
+          accounts: results.length,
+          results,
+        });
+      }
     } else if (type === "summarization") {
       const emails = await prisma.emailMessage.findMany({
         where: {

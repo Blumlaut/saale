@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "worker": "tsx --watch src/lib/queue/worker.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",

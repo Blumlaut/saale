@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
+import { getQueue } from "@/lib/queue";
 
 /**
  * GET /api/jobs — List user's jobs
@@ -87,6 +88,22 @@ export async function POST(request: NextRequest) {
       config: JSON.stringify(config ?? {}),
     },
   });
+
+  // Register with BullMQ if enabled
+  const jobConfig = config ?? {};
+  if (job.enabled && jobConfig.cronExpression) {
+    const queue = getQueue(job.id);
+    await queue.add(
+      "execute",
+      { ...jobConfig, taskId: job.id },
+      {
+        jobId: job.id,
+        repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
+      },
+    ).catch((err) => {
+      console.error(`Failed to schedule job ${job.id}: ${err.message}`);
+    });
+  }
 
   return NextResponse.json({
     job: {
