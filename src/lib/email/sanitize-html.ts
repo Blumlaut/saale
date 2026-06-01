@@ -55,6 +55,13 @@ function postProcess(html: string): string {
     }
   }
 
+  // Strip bgcolor attributes — they survive CSS overrides and cause
+  // unreadable text in dark mode (e.g. white bg with light text)
+  const allElements = doc.querySelectorAll("[bgcolor]");
+  for (const el of Array.from(allElements) as Element[]) {
+    el.removeAttribute("bgcolor");
+  }
+
   // Get just the body content (not the full document)
   const inner = doc.body.innerHTML;
   // Wrap in a container div for theme-aware CSS scoping (see globals.css .email-content)

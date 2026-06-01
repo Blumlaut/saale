@@ -226,4 +226,13 @@ describe("sanitizeEmailHtml", () => {
     // Inline styles are preserved — CSS in globals.css handles readability
     expect(result).toContain("color");
   });
+
+  it("strips bgcolor HTML attributes", () => {
+    // bgcolor is an HTML attribute that CSS !important cannot override.
+    // It must be stripped at sanitization time.
+    const input =
+      '<table bgcolor="#FFFFFF"><tr><td bgcolor="#000000"><p>text</p></td></tr></table>';
+    const result = sanitizeEmailHtml(input);
+    expect(result).not.toContain("bgcolor");
+  });
 });

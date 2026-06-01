@@ -304,6 +304,18 @@
 
 /* --- Dark mode — override hardcoded email colors --- */
 
+/*
+ * Nuke ALL backgrounds inside emails in dark mode.
+ * Emails use inline styles, bgcolor attributes, nested tables, etc.
+ * The universal selector catches everything.
+ */
+.dark .email-content,
+.dark .email-content * {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Text color — force light text on everything */
 .dark .email-content {
   color: #f0f0f0 !important;
 }
@@ -321,26 +333,23 @@
 .dark .email-content h3,
 .dark .email-content h4,
 .dark .email-content h5,
-.dark .email-content h6 {
+.dark .email-content h6,
+.dark .email-content body {
   color: #f0f0f0 !important;
 }
 
+/* Links — use a visible blue */
 .dark .email-content a {
   color: #60a5fa !important;
 }
 
-.dark .email-content table,
-.dark .email-content tbody,
-.dark .email-content thead {
-  background-color: transparent !important;
+/* Tables — subtle alternating rows */
+.dark .email-content table {
+  border-collapse: collapse;
 }
 
 .dark .email-content tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.04) !important;
-}
-
-.dark .email-content tr:nth-child(odd) {
-  background-color: transparent !important;
+  background-color: rgba(255, 255, 255, 0.03) !important;
 }
 
 .dark .email-content td,
@@ -348,6 +357,7 @@
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
+/* Blockquotes and horizontal rules */
 .dark .email-content blockquote {
   border-left-color: rgba(255, 255, 255, 0.3) !important;
 }
@@ -356,24 +366,23 @@
   border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
+/* Code blocks — dark background for contrast */
 .dark .email-content code {
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  color: #f0f0f0 !important;
-}
-
-.dark .email-content pre {
   background-color: rgba(0, 0, 0, 0.3) !important;
   color: #f0f0f0 !important;
 }
 
-/* Strip problematic email backgrounds in dark mode */
-.dark .email-content[style*="background"] {
-  background-color: transparent !important;
-  background-image: none !important;
+.dark .email-content pre {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  color: #f0f0f0 !important;
 }
 
-/* Ensure text on email <body> is readable (some emails use <body> wrapper) */
-.dark .email-content body {
-  background-color: transparent !important;
-  color: #f0f0f0 !important;
+/*
+ * Images must keep their original colors (they're not text).
+ * The universal * selector above would strip their backgrounds too,
+ * but images don't have CSS backgrounds — they're fine.
+ * Just ensure they don't overflow.
+ */
+.dark .email-content img {
+  /* no overrides — images render as-is */
 }
