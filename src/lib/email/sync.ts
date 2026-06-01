@@ -2,6 +2,7 @@ import { ImapFlow, ListResponse } from "imapflow";
 import { simpleParser } from "mailparser";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /** Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects */
 function sanitize(str: unknown): string | null {
@@ -239,7 +240,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
             const flags = msg.flags ?? new Set<string>();
             const flagsArray = flags instanceof Set ? Array.from(flags) : flags;
 
-            const bodyHtml = sanitize(parsed.html);
+            const bodyHtml = sanitizeEmailHtml(sanitize(parsed.html));
 
             if (existing) {
               await prisma.emailMessage.update({

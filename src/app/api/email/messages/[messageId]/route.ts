@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { syncMessageFlags } from "@/lib/email/imap";
+import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /**
  * GET /api/email/messages/:messageId — Get a single email message (with body)
@@ -59,7 +60,7 @@ export async function GET(
       subject: message.subject,
       date: message.date.toISOString(),
       bodyPreview: message.bodyPreview,
-      bodyHtml: message.bodyHtml,
+      bodyHtml: sanitizeEmailHtml(message.bodyHtml),
       bodyText: message.bodyText,
       isRead: message.isRead,
       isStarred: message.isStarred,
