@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { JobList } from "@/components/tasks/job-list";
 import { JobDialog } from "@/components/tasks/job-dialog";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,11 @@ import { Plus } from "lucide-react";
 
 export default function TasksPage() {
   const [showJobDialog, setShowJobDialog] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleJobCreated = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   return (
     <div className="flex flex-col gap-4">
@@ -24,10 +29,14 @@ export default function TasksPage() {
       </div>
 
       {/* Job list */}
-      <JobList />
+      <JobList key={refreshKey} />
 
       {/* Dialog */}
-      <JobDialog open={showJobDialog} onOpenChange={setShowJobDialog} onSuccess={() => {}} />
+      <JobDialog
+        open={showJobDialog}
+        onOpenChange={setShowJobDialog}
+        onSuccess={handleJobCreated}
+      />
     </div>
   );
 }

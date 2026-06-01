@@ -74,9 +74,7 @@ export function AiModelsTab({
       .filter((p) => p.models.length > 0);
   }, [providersWithModels, search]);
 
-  const selectedProvider = providersWithModels.find(
-    (p) => p.id === settings?.defaultModelProvider,
-  );
+  const selectedProvider = providersWithModels.find((p) => p.id === settings?.defaultModelProvider);
 
   return (
     <GlassPanel>
@@ -98,7 +96,7 @@ export function AiModelsTab({
           {/* Model Browser */}
           <div className="flex-1">
             <div className="px-6 py-3">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 Model
               </Label>
             </div>
@@ -131,9 +129,7 @@ export function AiModelsTab({
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <Search className="text-muted-foreground/50 mb-3 h-8 w-8" />
                     <p className="text-sm font-medium">No models match your search</p>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Try a different keyword
-                    </p>
+                    <p className="text-muted-foreground mt-1 text-xs">Try a different keyword</p>
                   </div>
                 ) : (
                   filteredProviders.map((provider) => (
@@ -175,9 +171,7 @@ export function AiModelsTab({
                             <div
                               className={cn(
                                 "h-2 w-2 shrink-0 rounded-full transition-colors",
-                                isSelected
-                                  ? "bg-primary"
-                                  : "bg-muted-foreground/30",
+                                isSelected ? "bg-primary" : "bg-muted-foreground/30",
                               )}
                             />
 
@@ -193,10 +187,7 @@ export function AiModelsTab({
                                   {model.name}
                                 </span>
                                 {model.reasoning && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="shrink-0 rounded-full"
-                                  >
+                                  <Badge variant="secondary" className="shrink-0 rounded-full">
                                     <Sparkles className="mr-0.5 h-3 w-3" />
                                     Reasoning
                                   </Badge>
@@ -210,9 +201,7 @@ export function AiModelsTab({
                             </div>
 
                             {/* Active check */}
-                            {isSelected && (
-                              <CheckCircle className="text-primary h-4 w-4" />
-                            )}
+                            {isSelected && <CheckCircle className="text-primary h-4 w-4" />}
                           </Button>
                         );
                       })}
@@ -230,18 +219,14 @@ export function AiModelsTab({
               {selectedProvider && settings?.defaultModelName && (
                 <div className="border-border/50 bg-background/40 rounded-2xl border p-4">
                   <p className="text-muted-foreground text-xs">Current model</p>
-                  <p className="mt-1 text-sm font-medium">
-                    {settings.defaultModelName}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {selectedProvider.name}
-                  </p>
+                  <p className="mt-1 text-sm font-medium">{settings.defaultModelName}</p>
+                  <p className="text-muted-foreground text-xs">{selectedProvider.name}</p>
                 </div>
               )}
 
               {/* Thinking level selector */}
               <div className="space-y-3">
-                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   Thinking Level
                 </Label>
 
@@ -293,9 +278,7 @@ export function AiModelsTab({
                               {level.description}
                             </p>
                           </div>
-                          {isActive && (
-                            <CheckCircle className="text-primary h-4 w-4" />
-                          )}
+                          {isActive && <CheckCircle className="text-primary h-4 w-4" />}
                         </Button>
                       </div>
                     );
@@ -323,15 +306,11 @@ export function AiModelsTab({
             </span>
           )}
           {saveStatus === "idle" && (
-            <span className="text-muted-foreground text-sm">
-              Changes are applied when you save
-            </span>
+            <span className="text-muted-foreground text-sm">Changes are applied when you save</span>
           )}
         </div>
         <Button onClick={onSave} disabled={saving}>
-          {saving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : null}
+          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {saving ? "Saving" : "Save"}
         </Button>
       </GlassPanelFooter>

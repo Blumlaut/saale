@@ -47,16 +47,18 @@ export async function PATCH(
     const jobConfig = JSON.parse(updated.config);
 
     if (body.enabled && jobConfig.cronExpression) {
-      await queue.add(
-        "execute",
-        { ...jobConfig, taskId: jobId },
-        {
-          jobId,
-          repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
-        },
-      ).catch((err) => {
-        console.error(`Failed to schedule job ${jobId}: ${err.message}`);
-      });
+      await queue
+        .add(
+          "execute",
+          { ...jobConfig, taskId: jobId },
+          {
+            jobId,
+            repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
+          },
+        )
+        .catch((err) => {
+          console.error(`Failed to schedule job ${jobId}: ${err.message}`);
+        });
     } else if (!body.enabled) {
       await queue.obliterate({ force: true }).catch(() => {});
     }

@@ -63,7 +63,11 @@ function getCronLabel(expr: string): string {
   return cronExamples[expr] ?? expr;
 }
 
-export function JobList() {
+interface JobListProps {
+  onRefresh?: () => void;
+}
+
+export function JobList({ onRefresh }: JobListProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -132,6 +136,7 @@ export function JobList() {
       });
       if (res.ok) {
         loadJobs();
+        onRefresh?.();
         if (selectedJob?.id === jobId) {
           loadRuns(jobId);
         }
@@ -152,6 +157,7 @@ export function JobList() {
       });
       if (res.ok) {
         setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, enabled } : j)));
+        onRefresh?.();
       }
     } catch {
       // Ignore
@@ -165,6 +171,7 @@ export function JobList() {
       });
       if (res.ok) {
         setJobs((prev) => prev.filter((j) => j.id !== jobId));
+        onRefresh?.();
         if (selectedJob?.id === jobId) {
           setSelectedJob(null);
           setRuns([]);
@@ -208,9 +215,7 @@ export function JobList() {
     }
   };
 
-  const jobSchema = selectedJob
-    ? schemas.find((s) => s.type === selectedJob.type)
-    : null;
+  const jobSchema = selectedJob ? schemas.find((s) => s.type === selectedJob.type) : null;
 
   return (
     <div className="grid gap-4 lg:grid-cols-5">
@@ -239,7 +244,7 @@ export function JobList() {
                     <button className="flex-1 text-left" onClick={() => setSelectedJob(job)}>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">
-                          {jobSchema?.label ?? job.type}
+                          {schemas.find((s) => s.type === job.type)?.label ?? job.type}
                         </span>
                         <Switch
                           checked={job.enabled}
@@ -325,10 +330,7 @@ export function JobList() {
                     <Separator />
                     {/* Schema-driven fields */}
                     {jobSchema ? (
-                      <ConfigDisplay
-                        fields={jobSchema.fields}
-                        values={selectedJob.config}
-                      />
+                      <ConfigDisplay fields={jobSchema.fields} values={selectedJob.config} />
                     ) : (
                       /* Fallback: show raw config */
                       Object.entries(selectedJob.config)

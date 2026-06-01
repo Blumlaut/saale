@@ -180,15 +180,12 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
                     onClick={() => handleTypeChange(schema.type)}
                     className={cn(
                       "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                      selectedType === schema.type &&
-                        "border-primary bg-white/20 dark:bg-white/5",
+                      selectedType === schema.type && "border-primary bg-white/20 dark:bg-white/5",
                     )}
                   >
                     <Icon className="h-4 w-4" />
                     <span className="text-sm font-medium">{schema.label}</span>
-                    <span className="text-muted-foreground text-xs">
-                      {schema.description}
-                    </span>
+                    <span className="text-muted-foreground text-xs">{schema.description}</span>
                   </button>
                 );
               })
@@ -207,8 +204,8 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
               disabled={!selectedType}
             />
             <p className="text-muted-foreground text-xs">
-              Examples: <code>* * * * *</code> (every minute),{" "}
-              <code>*/30 * * * *</code> (every 30 min), <code>0 9 * * *</code> (daily at 9am)
+              Examples: <code>* * * * *</code> (every minute), <code>*/30 * * * *</code> (every 30
+              min), <code>0 9 * * *</code> (daily at 9am)
             </p>
           </div>
 
