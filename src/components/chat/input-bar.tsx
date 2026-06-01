@@ -93,15 +93,14 @@ export function InputBar({
           {/* Tools toggle button */}
           {hasToolToggle && (
             <DropdownMenu>
+              {/* Use div instead of Button to avoid nested <button> inside DropdownMenuTrigger */}
               <DropdownMenuTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 rounded-lg"
+                <div
+                  className="group/button hover:text-foreground aria-expanded:text-foreground inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/20 aria-expanded:bg-white/20 dark:hover:bg-white/5"
                   aria-label="Toggle tools"
                 >
                   <Wrench className="h-4 w-4" />
-                </Button>
+                </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
                 <DropdownMenuGroup>
