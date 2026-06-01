@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     sessionManager: SessionManager.inMemory(),
     authStorage,
     modelRegistry,
-    noTools: "builtin",
+    noTools: "all",
     model,
     customTools: [],
     thinkingLevel: "off",
@@ -177,8 +177,9 @@ Rules:
         }
       });
 
-      // Send the prompt
-      piSession.prompt(userPrompt);
+      // Call agent.prompt directly to bypass AgentSession's preflight logic
+      // which resets systemPrompt back to the Pi base prompt on every turn
+      piSession.agent.prompt(userPrompt);
 
       // Handle client disconnect
       request.signal.addEventListener("abort", () => {
