@@ -59,10 +59,10 @@ Semantic colors as tints on glass backgrounds:
 
 ```tsx
 <div className="flex items-center gap-3 px-4 py-3">
-  <div className="flex-1 min-w-0">
-    <p className="text-sm font-medium truncate">Redesign homepage</p>
+  <div className="min-w-0 flex-1">
+    <p className="truncate text-sm font-medium">Redesign homepage</p>
   </div>
-  <Badge className="bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400 shrink-0">
+  <Badge className="shrink-0 bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">
     Pending
   </Badge>
 </div>
@@ -71,10 +71,16 @@ Semantic colors as tints on glass backgrounds:
 ### As a Filter
 
 ```tsx
-<div className="flex gap-2 flex-wrap">
-  <Badge variant="secondary" className="cursor-pointer hover:bg-secondary/80">All</Badge>
-  <Badge className="bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400 cursor-pointer">In Progress</Badge>
-  <Badge className="bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-400 cursor-pointer">Completed</Badge>
+<div className="flex flex-wrap gap-2">
+  <Badge variant="secondary" className="hover:bg-secondary/80 cursor-pointer">
+    All
+  </Badge>
+  <Badge className="cursor-pointer bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400">
+    In Progress
+  </Badge>
+  <Badge className="cursor-pointer bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-400">
+    Completed
+  </Badge>
 </div>
 ```
 
@@ -100,11 +106,11 @@ Semantic colors as tints on glass backgrounds:
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---|---|
-| Solid color background | Use 10% opacity tint |
-| Square badges | Use `rounded-full` |
-| Large badge text | Use `text-xs` |
-| Rainbow status colors | Use muted semantic palette |
+| Mistake                    | Fix                                    |
+| -------------------------- | -------------------------------------- |
+| Solid color background     | Use 10% opacity tint                   |
+| Square badges              | Use `rounded-full`                     |
+| Large badge text           | Use `text-xs`                          |
+| Rainbow status colors      | Use muted semantic palette             |
 | More than 3 badges per row | Prioritize, move extras to detail view |
-| Badge for non-status label | Use `variant="secondary"` |
+| Badge for non-status label | Use `variant="secondary"`              |

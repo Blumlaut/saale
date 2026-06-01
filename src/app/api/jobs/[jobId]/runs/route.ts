@@ -54,19 +54,28 @@ export async function GET(
   });
 
   return NextResponse.json({
-    runs: runs.map((r: { id: string; status: string; input: string | null; output: string | null; error: string | null; startedAt: Date | null; completedAt: Date | null; createdAt: Date }) => ({
-      id: r.id,
-      status: r.status,
-      input: r.input ? JSON.parse(r.input) : null,
-      output: r.output ? JSON.parse(r.output) : null,
-      error: r.error,
-      startedAt: r.startedAt?.toISOString(),
-      completedAt: r.completedAt?.toISOString(),
-      duration:
-        r.startedAt && r.completedAt
-          ? r.completedAt.getTime() - r.startedAt.getTime()
-          : null,
-      createdAt: r.createdAt.toISOString(),
-    })),
+    runs: runs.map(
+      (r: {
+        id: string;
+        status: string;
+        input: string | null;
+        output: string | null;
+        error: string | null;
+        startedAt: Date | null;
+        completedAt: Date | null;
+        createdAt: Date;
+      }) => ({
+        id: r.id,
+        status: r.status,
+        input: r.input ? JSON.parse(r.input) : null,
+        output: r.output ? JSON.parse(r.output) : null,
+        error: r.error,
+        startedAt: r.startedAt?.toISOString(),
+        completedAt: r.completedAt?.toISOString(),
+        duration:
+          r.startedAt && r.completedAt ? r.completedAt.getTime() - r.startedAt.getTime() : null,
+        createdAt: r.createdAt.toISOString(),
+      }),
+    ),
   });
 }

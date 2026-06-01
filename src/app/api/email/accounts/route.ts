@@ -41,21 +41,37 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    accounts: accounts.map((a: { id: string; email: string; imapHost: string; imapPort: number; imapSecure: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; enabled: boolean; lastSyncedAt: Date | null; createdAt: Date; updatedAt: Date; _count: { messages: number } }) => ({
-      id: a.id,
-      email: a.email,
-      imapHost: a.imapHost,
-      imapPort: a.imapPort,
-      imapSecure: a.imapSecure,
-      smtpHost: a.smtpHost,
-      smtpPort: a.smtpPort,
-      smtpSecure: a.smtpSecure,
-      enabled: a.enabled,
-      lastSyncedAt: a.lastSyncedAt?.toISOString(),
-      createdAt: a.createdAt.toISOString(),
-      updatedAt: a.updatedAt.toISOString(),
-      messageCount: a._count.messages,
-    })),
+    accounts: accounts.map(
+      (a: {
+        id: string;
+        email: string;
+        imapHost: string;
+        imapPort: number;
+        imapSecure: boolean;
+        smtpHost: string;
+        smtpPort: number;
+        smtpSecure: boolean;
+        enabled: boolean;
+        lastSyncedAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
+        _count: { messages: number };
+      }) => ({
+        id: a.id,
+        email: a.email,
+        imapHost: a.imapHost,
+        imapPort: a.imapPort,
+        imapSecure: a.imapSecure,
+        smtpHost: a.smtpHost,
+        smtpPort: a.smtpPort,
+        smtpSecure: a.smtpSecure,
+        enabled: a.enabled,
+        lastSyncedAt: a.lastSyncedAt?.toISOString(),
+        createdAt: a.createdAt.toISOString(),
+        updatedAt: a.updatedAt.toISOString(),
+        messageCount: a._count.messages,
+      }),
+    ),
   });
 }
 
@@ -72,23 +88,11 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const {
-    email,
-    imapHost,
-    imapPort,
-    imapSecure,
-    smtpHost,
-    smtpPort,
-    smtpSecure,
-    password,
-  } = body;
+  const { email, imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure, password } = body;
 
   // Validate required fields
   if (!email || !imapHost || !smtpHost || !password) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
   const encryptedPassword = encrypt(password);

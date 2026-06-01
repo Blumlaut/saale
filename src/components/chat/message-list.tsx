@@ -71,10 +71,9 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
           <MessageItem
             key={message.id}
             message={message}
-            isStreaming={message.id === "streaming-assistant" && isStreaming}
+            isStreaming={message.id === "streaming-assistant" && !!isStreaming}
           />
         ))}
-
         {isLoading && !isStreaming && (
           <div className="text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />

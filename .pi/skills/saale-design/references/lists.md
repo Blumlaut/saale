@@ -6,7 +6,14 @@ Use shadcn/ui components for list elements:
 
 ```tsx
 import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 ```
 
 ## Simple List
@@ -22,25 +29,25 @@ export function EmailList({ emails }) {
     <GlassPanel>
       <GlassPanelHeader title="Inbox" />
       <GlassPanelContent className="p-0">
-      {emails.map((email, i) => (
-        <Fragment key={email.id}>
-          <a
-            href={`/dashboard/mail/${email.id}`}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-white/20 dark:hover:bg-white/5 transition-colors duration-150"
-          >
-            <Avatar>
-              <AvatarFallback>{email.sender[0]}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{email.subject}</p>
-              <p className="text-xs text-muted-foreground truncate">{email.preview}</p>
-            </div>
-            <span className="text-xs text-muted-foreground shrink-0">{email.time}</span>
-          </a>
-          {i < emails.length - 1 && <Separator className="px-4" />}
-        </Fragment>
-      ))}
-    </GlassPanelContent>
+        {emails.map((email, i) => (
+          <Fragment key={email.id}>
+            <a
+              href={`/dashboard/mail/${email.id}`}
+              className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-white/20 dark:hover:bg-white/5"
+            >
+              <Avatar>
+                <AvatarFallback>{email.sender[0]}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{email.subject}</p>
+                <p className="text-muted-foreground truncate text-xs">{email.preview}</p>
+              </div>
+              <span className="text-muted-foreground shrink-0 text-xs">{email.time}</span>
+            </a>
+            {i < emails.length - 1 && <Separator className="px-4" />}
+          </Fragment>
+        ))}
+      </GlassPanelContent>
     </GlassPanel>
   );
 }
@@ -60,7 +67,7 @@ export function EmailList({ emails }) {
 For lists where more items visible is important:
 
 ```tsx
-className="flex items-center gap-2 px-4 py-2 hover:bg-white/20 dark:hover:bg-white/5"
+className = "flex items-center gap-2 px-4 py-2 hover:bg-white/20 dark:hover:bg-white/5";
 ```
 
 - Min height: 40px
@@ -87,7 +94,14 @@ className={cn(
 For structured data that needs columns:
 
 ```tsx
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 <GlassPanel>
   <GlassPanelHeader title="Projects" />
@@ -105,19 +119,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
           <TableRow key={project.id}>
             <TableCell className="font-medium">{project.name}</TableCell>
             <TableCell>
-              <Badge variant={project.status}>
-                {project.status}
-              </Badge>
+              <Badge variant={project.status}>{project.status}</Badge>
             </TableCell>
-            <TableCell className="text-right text-muted-foreground">
-              {project.dueDate}
-            </TableCell>
+            <TableCell className="text-muted-foreground text-right">{project.dueDate}</TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
   </GlassPanelContent>
-</GlassPanel>
+</GlassPanel>;
 ```
 
 ### Table Rules
@@ -137,9 +147,9 @@ When a list has no items:
   <GlassPanelHeader title="Tasks" />
   <GlassPanelContent>
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <ListTodo className="h-8 w-8 text-muted-foreground/50 mb-3" />
+      <ListTodo className="text-muted-foreground/50 mb-3 h-8 w-8" />
       <p className="text-sm font-medium">No tasks yet</p>
-      <p className="text-xs text-muted-foreground mt-1">Create a task to get started</p>
+      <p className="text-muted-foreground mt-1 text-xs">Create a task to get started</p>
       <Button variant="secondary" size="sm" className="mt-4">
         New Task
       </Button>
@@ -156,12 +166,16 @@ For lists with many items:
 import { Button } from "@/components/ui/button";
 
 <GlassPanelFooter>
-  <span className="text-xs text-muted-foreground">Showing 1-20 of 156</span>
+  <span className="text-muted-foreground text-xs">Showing 1-20 of 156</span>
   <div className="flex gap-1">
-    <Button variant="ghost" size="sm" disabled>Previous</Button>
-    <Button variant="ghost" size="sm">Next</Button>
+    <Button variant="ghost" size="sm" disabled>
+      Previous
+    </Button>
+    <Button variant="ghost" size="sm">
+      Next
+    </Button>
   </div>
-</GlassPanelFooter>
+</GlassPanelFooter>;
 ```
 
 - Show count and next/previous (no page numbers)
@@ -179,11 +193,11 @@ import { Button } from "@/components/ui/button";
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---|---|
-| No hover state on rows | Add `hover:bg-white/20` |
-| Rows < 48px tall | Increase padding |
-| No dividers between items | Add `<Separator>` |
-| 5+ column tables | Reduce columns, add detail view |
-| Page number pagination | Use next/previous only |
-| No empty state | Show friendly empty state with action |
+| Mistake                   | Fix                                   |
+| ------------------------- | ------------------------------------- |
+| No hover state on rows    | Add `hover:bg-white/20`               |
+| Rows < 48px tall          | Increase padding                      |
+| No dividers between items | Add `<Separator>`                     |
+| 5+ column tables          | Reduce columns, add detail view       |
+| Page number pagination    | Use next/previous only                |
+| No empty state            | Show friendly empty state with action |

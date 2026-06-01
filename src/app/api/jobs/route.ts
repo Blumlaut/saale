@@ -34,17 +34,29 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    jobs: jobs.map((j: { id: string; type: string; enabled: boolean; config: string; lastRunAt: Date | null; runCount: number; createdAt: Date; updatedAt: Date; _count: { runs: number } }) => ({
-      id: j.id,
-      type: j.type,
-      enabled: j.enabled,
-      config: JSON.parse(j.config),
-      lastRunAt: j.lastRunAt?.toISOString(),
-      runCount: j.runCount,
-      createdAt: j.createdAt.toISOString(),
-      updatedAt: j.updatedAt.toISOString(),
-      runHistoryCount: j._count.runs,
-    })),
+    jobs: jobs.map(
+      (j: {
+        id: string;
+        type: string;
+        enabled: boolean;
+        config: string;
+        lastRunAt: Date | null;
+        runCount: number;
+        createdAt: Date;
+        updatedAt: Date;
+        _count: { runs: number };
+      }) => ({
+        id: j.id,
+        type: j.type,
+        enabled: j.enabled,
+        config: JSON.parse(j.config),
+        lastRunAt: j.lastRunAt?.toISOString(),
+        runCount: j.runCount,
+        createdAt: j.createdAt.toISOString(),
+        updatedAt: j.updatedAt.toISOString(),
+        runHistoryCount: j._count.runs,
+      }),
+    ),
   });
 }
 
@@ -64,10 +76,7 @@ export async function POST(request: NextRequest) {
   const { type, enabled, config } = body;
 
   if (!type) {
-    return NextResponse.json(
-      { error: "Job type is required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Job type is required" }, { status: 400 });
   }
 
   const job = await prisma.queueTask.create({

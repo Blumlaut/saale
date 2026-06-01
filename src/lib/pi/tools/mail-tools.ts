@@ -14,14 +14,12 @@ export const mailListTool = defineTool({
   parameters: Type.Object({
     accountId: Type.Optional(
       Type.String({
-        description:
-          "Filter by email account ID. Omit to search across all accounts.",
+        description: "Filter by email account ID. Omit to search across all accounts.",
       }),
     ),
     folder: Type.Optional(
       Type.String({
-        description:
-          'Filter by folder (e.g. "INBOX", "Sent", "Trash", "Drafts").',
+        description: 'Filter by folder (e.g. "INBOX", "Sent", "Trash", "Drafts").',
       }),
     ),
     unread: Type.Optional(
@@ -114,21 +112,34 @@ export const mailListTool = defineTool({
               count: emails.length,
               total,
               hasMore: emails.length < total - (params.offset ?? 0),
-              emails: emails.map((e: { id: string; uid: string; fromName: string | null; fromEmail: string; to: string; subject: string; date: Date; bodyPreview: string; isRead: boolean; isStarred: boolean; folder: string; tags: string[] }) => ({
-                id: e.id,
-                uid: e.uid,
-                from: e.fromName
-                  ? `${e.fromName} <${e.fromEmail}>`
-                  : e.fromEmail,
-                to: e.to,
-                subject: e.subject,
-                date: e.date.toISOString(),
-                preview: e.bodyPreview.slice(0, 200),
-                read: e.isRead,
-                starred: e.isStarred,
-                folder: e.folder,
-                tags: e.tags,
-              })),
+              emails: emails.map(
+                (e: {
+                  id: string;
+                  uid: string;
+                  fromName: string | null;
+                  fromEmail: string;
+                  to: string;
+                  subject: string;
+                  date: Date;
+                  bodyPreview: string;
+                  isRead: boolean;
+                  isStarred: boolean;
+                  folder: string;
+                  tags: string[];
+                }) => ({
+                  id: e.id,
+                  uid: e.uid,
+                  from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+                  to: e.to,
+                  subject: e.subject,
+                  date: e.date.toISOString(),
+                  preview: e.bodyPreview.slice(0, 200),
+                  read: e.isRead,
+                  starred: e.isStarred,
+                  folder: e.folder,
+                  tags: e.tags,
+                }),
+              ),
             },
             null,
             2,
@@ -196,24 +207,41 @@ export const mailReadTool = defineTool({
         {
           type: "text",
           text: JSON.stringify(
-            emails.map((e: { id: string; fromName: string | null; fromEmail: string; to: string; subject: string; date: Date; bodyText: string | null; bodyHtml: string | null; bodyPreview: string; isRead: boolean; isStarred: boolean; folder: string; tags: string[]; aiSummary: string | null; aiTags: string[]; spamScore: number | null }) => ({
-              id: e.id,
-              from: e.fromName
-                ? `${e.fromName} <${e.fromEmail}>`
-                : e.fromEmail,
-              to: e.to,
-              subject: e.subject,
-              date: e.date.toISOString(),
-              bodyText: e.bodyText ?? e.bodyPreview,
-              bodyHtml: e.bodyHtml,
-              read: e.isRead,
-              starred: e.isStarred,
-              folder: e.folder,
-              tags: e.tags,
-              aiSummary: e.aiSummary,
-              aiTags: e.aiTags,
-              spamScore: e.spamScore,
-            })),
+            emails.map(
+              (e: {
+                id: string;
+                fromName: string | null;
+                fromEmail: string;
+                to: string;
+                subject: string;
+                date: Date;
+                bodyText: string | null;
+                bodyHtml: string | null;
+                bodyPreview: string;
+                isRead: boolean;
+                isStarred: boolean;
+                folder: string;
+                tags: string[];
+                aiSummary: string | null;
+                aiTags: string[];
+                spamScore: number | null;
+              }) => ({
+                id: e.id,
+                from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+                to: e.to,
+                subject: e.subject,
+                date: e.date.toISOString(),
+                bodyText: e.bodyText ?? e.bodyPreview,
+                bodyHtml: e.bodyHtml,
+                read: e.isRead,
+                starred: e.isStarred,
+                folder: e.folder,
+                tags: e.tags,
+                aiSummary: e.aiSummary,
+                aiTags: e.aiTags,
+                spamScore: e.spamScore,
+              }),
+            ),
             null,
             2,
           ),
@@ -287,17 +315,26 @@ export const mailSearchTool = defineTool({
             {
               query: params.query,
               count: emails.length,
-              emails: emails.map((e: { id: string; fromName: string | null; fromEmail: string; subject: string; date: Date; bodyPreview: string; isRead: boolean; folder: string }) => ({
-                id: e.id,
-                from: e.fromName
-                  ? `${e.fromName} <${e.fromEmail}>`
-                  : e.fromEmail,
-                subject: e.subject,
-                date: e.date.toISOString(),
-                preview: e.bodyPreview.slice(0, 200),
-                read: e.isRead,
-                folder: e.folder,
-              })),
+              emails: emails.map(
+                (e: {
+                  id: string;
+                  fromName: string | null;
+                  fromEmail: string;
+                  subject: string;
+                  date: Date;
+                  bodyPreview: string;
+                  isRead: boolean;
+                  folder: string;
+                }) => ({
+                  id: e.id,
+                  from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+                  subject: e.subject,
+                  date: e.date.toISOString(),
+                  preview: e.bodyPreview.slice(0, 200),
+                  read: e.isRead,
+                  folder: e.folder,
+                }),
+              ),
             },
             null,
             2,
@@ -359,8 +396,8 @@ export const mailSendTool = defineTool({
       to: params.to,
       subject: params.subject,
       body: params.body,
-      bodyHtml: params.bodyHtml,
-      replyTo: params.replyTo,
+      ...(params.bodyHtml ? { bodyHtml: params.bodyHtml } : {}),
+      ...(params.replyTo ? { replyTo: params.replyTo } : {}),
     });
 
     return {
@@ -389,8 +426,7 @@ export const mailSendTool = defineTool({
 export const mailTagTool = defineTool({
   name: "mail_tag",
   label: "Tag Email(s)",
-  description:
-    "Add or remove tags from one or more emails. Accepts an array of email IDs.",
+  description: "Add or remove tags from one or more emails. Accepts an array of email IDs.",
   parameters: Type.Object({
     ids: Type.Array(
       Type.String({
@@ -463,8 +499,7 @@ export const mailTagTool = defineTool({
 export const mailMoveTool = defineTool({
   name: "mail_move",
   label: "Move Email(s)",
-  description:
-    "Move one or more emails between folders. Accepts an array of email IDs.",
+  description: "Move one or more emails between folders. Accepts an array of email IDs.",
   parameters: Type.Object({
     ids: Type.Array(
       Type.String({
@@ -506,8 +541,7 @@ export const mailMoveTool = defineTool({
 export const mailDeleteTool = defineTool({
   name: "mail_delete",
   label: "Delete Email(s)",
-  description:
-    "Permanently delete one or more emails. Accepts an array of email IDs.",
+  description: "Permanently delete one or more emails. Accepts an array of email IDs.",
   parameters: Type.Object({
     ids: Type.Array(
       Type.String({

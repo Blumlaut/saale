@@ -17,22 +17,10 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const {
-    email,
-    imapHost,
-    imapPort,
-    imapSecure,
-    smtpHost,
-    smtpPort,
-    smtpSecure,
-    password,
-  } = body;
+  const { email, imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure, password } = body;
 
   if (!email || !password) {
-    return NextResponse.json(
-      { error: "Email and password are required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
   }
 
   const results: Record<string, { success: boolean; error?: string }> = {};

@@ -45,17 +45,14 @@ export function InputBar({ onSend, isLoading, onStop, onFileUpload }: InputBarPr
   const autoResize = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(
-        textareaRef.current.scrollHeight,
-        200,
-      ) + "px";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
     }
   };
 
   return (
     <div className="border-border/50 border-t bg-white/40 px-4 py-3 dark:bg-black/20">
       <div className="mx-auto max-w-3xl">
-        <div className="relative flex items-end gap-2 rounded-2xl border border-input bg-background/80 p-2 shadow-sm">
+        <div className="border-input bg-background/80 relative flex items-end gap-2 rounded-2xl border p-2 shadow-sm">
           {/* File upload button */}
           {onFileUpload && (
             <Button
@@ -67,12 +64,7 @@ export function InputBar({ onSend, isLoading, onStop, onFileUpload }: InputBarPr
               <Paperclip className="h-4 w-4" />
             </Button>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleFileChange}
-          />
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
           {/* Textarea */}
           <Textarea
@@ -85,7 +77,7 @@ export function InputBar({ onSend, isLoading, onStop, onFileUpload }: InputBarPr
             onKeyDown={handleKeyDown}
             placeholder="Message Saale..."
             className={cn(
-              "min-h-[40px] max-h-[200px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
+              "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
               "placeholder:text-muted-foreground",
             )}
             rows={1}

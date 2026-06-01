@@ -50,8 +50,8 @@ export async function GET(
   const { session: piSession } = await createPiSession({
     userId: authSession.user.id,
     customTools: [...mailTools, ...jobTools],
-    modelProvider: chatSession.modelProvider || undefined,
-    modelName: chatSession.modelName || undefined,
+    ...(chatSession.modelProvider && { modelProvider: chatSession.modelProvider }),
+    ...(chatSession.modelName && { modelName: chatSession.modelName }),
     thinkingLevel: chatSession.thinkingLevel || "off",
   });
 
@@ -166,9 +166,12 @@ Always be concise and helpful. When using tools, explain what you're doing brief
           }
 
           case "tool_execution_end": {
+            // Normalize result to string for consistent frontend typing
+            const resultStr =
+              typeof event.result === "string" ? event.result : JSON.stringify(event.result);
             const existing = toolCallResults.get(event.toolCallId);
             if (existing) {
-              existing.result = event.result;
+              existing.result = resultStr;
               existing.isError = event.isError;
             }
             controller.enqueue(
@@ -176,7 +179,7 @@ Always be concise and helpful. When using tools, explain what you're doing brief
                 `event: tool_end\ndata: ${JSON.stringify({
                   toolCallId: event.toolCallId,
                   toolName: event.toolName,
-                  result: event.result,
+                  result: resultStr,
                   isError: event.isError,
                 })}\n\n`,
               ),
@@ -225,7 +228,11 @@ Always be concise and helpful. When using tools, explain what you're doing brief
                 .filter((t): t is NonNullable<typeof t> => t !== null);
 
               // Save assistant message to DB with tool calls
-              saveAssistantMessage(sessionId, finalText, toolCalls).catch(console.error);
+              saveAssistantMessage(
+                sessionId,
+                finalText,
+                toolCalls.length > 0 ? toolCalls : undefined,
+              ).catch(console.error);
 
               controller.enqueue(
                 encoder.encode(
@@ -277,8 +284,8 @@ async function saveAssistantMessage(
     id: string;
     name: string;
     args: Record<string, unknown>;
-    result?: string;
-    isError?: boolean;
+    result: string | undefined;
+    isError: boolean | undefined;
   }>,
 ): Promise<void> {
   await prisma.chatMessage.create({

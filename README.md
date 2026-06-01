@@ -15,15 +15,15 @@ Saale connects your email, AI chat, and background jobs into a single workspace.
 
 ## Tech Stack
 
-| Layer | Choice |
-|-------|--------|
-| Frontend | Next.js 15 (App Router) + shadcn/ui + Tailwind 4 |
-| AI Engine | Pi SDK (`@earendil-works/pi-coding-agent`) |
-| Database | PostgreSQL 17 + Prisma |
-| Queue | BullMQ + Redis 8 |
-| Auth | better-auth v1 |
-| Email | imapflow + nodemailer + mailparser |
-| Tests | Vitest + Playwright |
+| Layer     | Choice                                           |
+| --------- | ------------------------------------------------ |
+| Frontend  | Next.js 15 (App Router) + shadcn/ui + Tailwind 4 |
+| AI Engine | Pi SDK (`@earendil-works/pi-coding-agent`)       |
+| Database  | PostgreSQL 17 + Prisma                           |
+| Queue     | BullMQ + Redis 8                                 |
+| Auth      | better-auth v1                                   |
+| Email     | imapflow + nodemailer + mailparser               |
+| Tests     | Vitest + Playwright                              |
 
 ## Quick Start
 
@@ -97,14 +97,14 @@ npm run test:e2e     # Playwright E2E tests
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `REDIS_URL` | Redis connection string | Yes |
-| `BETTER_AUTH_SECRET` | Secret for session encryption | Yes |
-| `BETTER_AUTH_URL` | Base URL for the app | Yes |
-| `ENCRYPTION_KEY` | 64-char hex string for email password encryption | Yes |
-| `UPLOADS_DIR` | Path for user file storage | No (default: `./uploads`) |
+| Variable             | Description                                      | Required                  |
+| -------------------- | ------------------------------------------------ | ------------------------- |
+| `DATABASE_URL`       | PostgreSQL connection string                     | Yes                       |
+| `REDIS_URL`          | Redis connection string                          | Yes                       |
+| `BETTER_AUTH_SECRET` | Secret for session encryption                    | Yes                       |
+| `BETTER_AUTH_URL`    | Base URL for the app                             | Yes                       |
+| `ENCRYPTION_KEY`     | 64-char hex string for email password encryption | Yes                       |
+| `UPLOADS_DIR`        | Path for user file storage                       | No (default: `./uploads`) |
 
 ## Production
 

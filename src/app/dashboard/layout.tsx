@@ -5,11 +5,7 @@ import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { KeyboardShortcutsProvider } from "@/components/providers/keyboard-shortcuts-provider";
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });

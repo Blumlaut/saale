@@ -39,9 +39,7 @@ export async function GET(request: NextRequest) {
     const chatSessions = await prisma.chatSession.findMany({
       where: {
         userId: session.user.id,
-        OR: [
-          { title: { contains: query, mode: "insensitive" } },
-        ],
+        OR: [{ title: { contains: query, mode: "insensitive" } }],
       },
       orderBy: { updatedAt: "desc" },
       take: limit,
@@ -50,17 +48,14 @@ export async function GET(request: NextRequest) {
           orderBy: { createdAt: "desc" },
           take: 1,
           where: {
-            OR: [
-              { content: { contains: query, mode: "insensitive" } },
-            ],
+            OR: [{ content: { contains: query, mode: "insensitive" } }],
           },
         },
       },
     });
 
     for (const cs of chatSessions) {
-      const snippet =
-        cs.messages[0]?.content?.slice(0, 150) ?? cs.title;
+      const snippet = cs.messages[0]?.content?.slice(0, 150) ?? cs.title;
       results.push({
         type: "chat",
         id: cs.id,

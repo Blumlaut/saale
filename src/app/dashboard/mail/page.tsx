@@ -16,19 +16,11 @@ export default function MailPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">
-            Mail
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Manage your inbox
-          </p>
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Mail</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Manage your inbox</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAddAccount(true)}
-          >
+          <Button variant="outline" size="sm" onClick={() => setShowAddAccount(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Account
           </Button>
@@ -43,10 +35,7 @@ export default function MailPage() {
       <Inbox />
 
       {/* Dialogs */}
-      <ComposeDialog
-        open={showCompose}
-        onOpenChange={setShowCompose}
-      />
+      <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
       <AccountDialog
         open={showAddAccount}
         onOpenChange={setShowAddAccount}

@@ -59,8 +59,9 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
   // Group by provider for display
   const byProvider: Record<string, ModelInfo[]> = {};
   for (const m of models) {
-    if (!byProvider[m.provider]) byProvider[m.provider] = [];
-    byProvider[m.provider].push(m);
+    const provider = m.provider;
+    if (!byProvider[provider]) byProvider[provider] = [];
+    byProvider[provider]!.push(m);
   }
 
   // value is in "provider/modelId" format

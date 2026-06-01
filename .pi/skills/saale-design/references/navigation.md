@@ -28,11 +28,8 @@ export function DashboardNav() {
       <GlassPanel className="shadow-md">
         <GlassPanelContent className="p-3">
           {/* Logo / Brand */}
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 px-3 py-2 mb-2"
-          >
-            <ChevronRight className="h-5 w-5 text-primary" />
+          <Link href="/dashboard" className="mb-2 flex items-center gap-2 px-3 py-2">
+            <ChevronRight className="text-primary h-5 w-5" />
             <span className="text-lg font-bold tracking-tight">Saale</span>
           </Link>
 
@@ -51,8 +48,8 @@ export function DashboardNav() {
                   className={cn(
                     "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
                     isActive
-                      ? "bg-white/20 dark:bg-white/5 font-medium"
-                      : "text-muted-foreground hover:bg-white/10 hover:text-foreground"
+                      ? "bg-white/20 font-medium dark:bg-white/5"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/10",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -66,7 +63,7 @@ export function DashboardNav() {
 
       {/* User section (outside panel) */}
       <div className="mt-4 px-3">
-        <p className="text-xs text-muted-foreground">v0.1.0</p>
+        <p className="text-muted-foreground text-xs">v0.1.0</p>
       </div>
     </nav>
   );
@@ -88,7 +85,14 @@ export function DashboardNav() {
 For nested views within a section:
 
 ```tsx
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 <Breadcrumb>
   <BreadcrumbList>
@@ -100,7 +104,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
       <BreadcrumbPage>Inbox</BreadcrumbPage>
     </BreadcrumbItem>
   </BreadcrumbList>
-</Breadcrumb>
+</Breadcrumb>;
 ```
 
 - Place above the page heading, inside the content area
@@ -124,7 +128,7 @@ import { Menu } from "lucide-react";
   <SheetContent side="left" className="w-64 p-0">
     {/* Same nav content as desktop sidebar */}
   </SheetContent>
-</Sheet>
+</Sheet>;
 ```
 
 ## Top Bar (Optional)
@@ -132,15 +136,17 @@ import { Menu } from "lucide-react";
 Some views need a top bar for search or actions:
 
 ```tsx
-<div className="flex items-center justify-between mb-6">
+<div className="mb-6 flex items-center justify-between">
   <div>
-    <h1 className="text-2xl font-semibold leading-tight tracking-tight">Inbox</h1>
-    <p className="text-sm text-muted-foreground mt-1">3 unread messages</p>
+    <h1 className="text-2xl leading-tight font-semibold tracking-tight">Inbox</h1>
+    <p className="text-muted-foreground mt-1 text-sm">3 unread messages</p>
   </div>
   <div className="flex items-center gap-2">
     <Input placeholder="Search..." className="w-64" />
     <ThemeToggle />
-    <Button><Plus className="mr-2 h-4 w-4" /> Compose</Button>
+    <Button>
+      <Plus className="mr-2 h-4 w-4" /> Compose
+    </Button>
   </div>
 </div>
 ```
@@ -156,11 +162,11 @@ Some views need a top bar for search or actions:
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---|---|
-| Edge-to-edge sidebar | Floating panel with margin |
-| Icon-only nav items | Always include text labels |
-| No active state | Add background tint + font-medium |
-| Bottom nav on mobile | Use a sheet (slide-from-left) |
-| Nav stretches full height | `h-fit` with sticky positioning |
-| No mobile hamburger | Add Sheet trigger on small screens |
+| Mistake                   | Fix                                |
+| ------------------------- | ---------------------------------- |
+| Edge-to-edge sidebar      | Floating panel with margin         |
+| Icon-only nav items       | Always include text labels         |
+| No active state           | Add background tint + font-medium  |
+| Bottom nav on mobile      | Use a sheet (slide-from-left)      |
+| Nav stretches full height | `h-fit` with sticky positioning    |
+| No mobile hamburger       | Add Sheet trigger on small screens |

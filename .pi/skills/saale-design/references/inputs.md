@@ -32,7 +32,7 @@ Never use raw `<input>`, `<textarea>`, or `<select>` elements.
 <div className="space-y-2">
   <Label htmlFor="email">Email</Label>
   <Input id="email" type="email" className="border-destructive" aria-invalid="true" />
-  <p className="text-xs text-destructive">Please enter a valid email address</p>
+  <p className="text-destructive text-xs">Please enter a valid email address</p>
 </div>
 ```
 
@@ -43,7 +43,7 @@ The base Input component should have a glass appearance:
 ```tsx
 // The shadcn Input should already support this via CSS variables
 // If customization is needed:
-className="bg-white/30 dark:bg-white/5 border-border/50 focus:border-accent focus:ring-accent/20"
+className = "bg-white/30 dark:bg-white/5 border-border/50 focus:border-accent focus:ring-accent/20";
 ```
 
 ## Textarea
@@ -78,7 +78,9 @@ className="bg-white/30 dark:bg-white/5 border-border/50 focus:border-accent focu
 ```tsx
 <div className="flex items-center gap-2">
   <Checkbox id="notify" />
-  <Label htmlFor="notify" className="font-normal">Send me notifications</Label>
+  <Label htmlFor="notify" className="font-normal">
+    Send me notifications
+  </Label>
 </div>
 ```
 
@@ -88,7 +90,7 @@ className="bg-white/30 dark:bg-white/5 border-border/50 focus:border-accent focu
 <div className="flex items-center justify-between">
   <div className="space-y-0.5">
     <Label>Dark mode</Label>
-    <p className="text-xs text-muted-foreground">Toggle dark mode on or off</p>
+    <p className="text-muted-foreground text-xs">Toggle dark mode on or off</p>
   </div>
   <Switch />
 </div>
@@ -109,7 +111,9 @@ className="bg-white/30 dark:bg-white/5 border-border/50 focus:border-accent focu
     <Input id="email" type="email" placeholder="you@example.com" />
   </div>
   <div className="flex justify-end gap-2">
-    <Button type="button" variant="ghost">Cancel</Button>
+    <Button type="button" variant="ghost">
+      Cancel
+    </Button>
     <Button type="submit">Save</Button>
   </div>
 </form>
@@ -123,9 +127,7 @@ Form actions go in the GlassPanel footer, not inline with fields:
 <GlassPanel>
   <GlassPanelHeader title="Edit Profile" />
   <GlassPanelContent>
-    <form className="space-y-6">
-      {/* fields */}
-    </form>
+    <form className="space-y-6">{/* fields */}</form>
   </GlassPanelContent>
   <GlassPanelFooter>
     <Button variant="ghost">Cancel</Button>
@@ -136,17 +138,18 @@ Form actions go in the GlassPanel footer, not inline with fields:
 
 ## Input Heights
 
-| Element | Height | Classes |
-|---|---|---|
-| Standard input | 40px | `h-10` |
-| Compact input | 36px | `h-9` |
-| Textarea | Auto (min 80px) | `min-h-[80px]` |
-| Select trigger | 40px | `h-10` |
+| Element        | Height          | Classes        |
+| -------------- | --------------- | -------------- |
+| Standard input | 40px            | `h-10`         |
+| Compact input  | 36px            | `h-9`          |
+| Textarea       | Auto (min 80px) | `min-h-[80px]` |
+| Select trigger | 40px            | `h-10`         |
 
 ## Focus States
 
 ```tsx
-className="focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:border-accent transition-all duration-150"
+className =
+  "focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:border-accent transition-all duration-150";
 ```
 
 - Ring color: Accent at low opacity
@@ -177,11 +180,11 @@ className="focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:borde
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---|---|
-| Raw `<input>` element | Use `<Input>` from shadcn |
-| Floating labels | Labels above inputs |
-| Red input background | Red border only |
-| No error message | Inline error below field |
-| ALL CAPS placeholders | Sentence case |
-| Actions inline with fields | Move to panel footer |
+| Mistake                    | Fix                       |
+| -------------------------- | ------------------------- |
+| Raw `<input>` element      | Use `<Input>` from shadcn |
+| Floating labels            | Labels above inputs       |
+| Red input background       | Red border only           |
+| No error message           | Inline error below field  |
+| ALL CAPS placeholders      | Sentence case             |
+| Actions inline with fields | Move to panel footer      |

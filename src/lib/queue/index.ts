@@ -36,10 +36,9 @@ export async function addJobRun(
     data: {
       taskId,
       status,
-      input,
-      startedAt: status === "running" ? new Date() : undefined,
-      completedAt:
-        status === "completed" || status === "error" ? new Date() : undefined,
+      ...(input ? { input } : {}),
+      startedAt: status === "running" ? new Date() : null,
+      completedAt: status === "completed" || status === "error" ? new Date() : null,
     },
   });
   return { id: run.id };
@@ -159,9 +158,7 @@ export async function processJob(job: Job): Promise<void> {
         await prisma.emailMessage.update({
           where: { id: classification.id },
           data: {
-            tags: Array.from(
-              new Set([...classification.tags, ...classification.aiTags]),
-            ),
+            tags: Array.from(new Set([...classification.tags, ...classification.aiTags])),
             aiTags: classification.aiTags,
           },
         });
@@ -217,10 +214,7 @@ export async function processJob(job: Job): Promise<void> {
           where: { id: result.id },
           data: {
             spamScore: result.spamScore,
-            folder:
-              result.spamScore > (config.spamThreshold ?? 0.8)
-                ? "Spam"
-                : undefined,
+            ...(result.spamScore > (config.spamThreshold ?? 0.8) ? { folder: "Spam" } : {}),
           },
         });
       }
@@ -263,20 +257,16 @@ export async function processJob(job: Job): Promise<void> {
  * Create a BullMQ worker that processes all task queues.
  */
 export function createWorker(concurrency = 5): Worker {
-  return new Worker(
-    "saale-tasks-*",
-    processJob,
-    {
-      connection: getConnection() as any,
-      concurrency,
-      limiter: {
-        max: 10,
-        duration: 60000,
-      },
-      removeOnComplete: { count: 100 },
-      removeOnFail: { count: 50 },
+  return new Worker("saale-tasks-*", processJob, {
+    connection: getConnection() as any,
+    concurrency,
+    limiter: {
+      max: 10,
+      duration: 60000,
     },
-  );
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 50 },
+  });
 }
 
 // ─── Schedule jobs from DB ──────────────────────────────────────────────────
@@ -310,9 +300,7 @@ export async function scheduleAllJobs(): Promise<void> {
           },
         );
       } catch (err) {
-        console.error(
-          `Failed to schedule job ${task.id}: ${(err as Error).message}`,
-        );
+        console.error(`Failed to schedule job ${task.id}: ${(err as Error).message}`);
       }
     }
   }

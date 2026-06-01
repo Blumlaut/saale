@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Send, X } from "lucide-react";
 
 interface EmailAccount {
@@ -62,18 +63,18 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
     setError("");
 
     try {
-      const res = await fetch(
-        `/api/email/accounts/${accountId}/send`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: to.split(",").map((s) => s.trim()).filter(Boolean),
-            subject,
-            body,
-          }),
-        },
-      );
+      const res = await fetch(`/api/email/accounts/${accountId}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: to
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          subject,
+          body,
+        }),
+      });
 
       if (!res.ok) {
         const data = await res.json();
@@ -163,7 +164,7 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
 
           {/* Error */}
           {error && (
-            <div className="text-destructive rounded-lg bg-destructive/10 px-3 py-2 text-sm">
+            <div className="text-destructive bg-destructive/10 rounded-lg px-3 py-2 text-sm">
               {error}
             </div>
           )}
@@ -173,10 +174,7 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
             <Button variant="secondary" onClick={handleClose}>
               Discard
             </Button>
-            <Button
-              onClick={handleSend}
-              disabled={sending || !to.trim() || !accountId}
-            >
+            <Button onClick={handleSend} disabled={sending || !to.trim() || !accountId}>
               {sending ? (
                 <>Sending...</>
               ) : (

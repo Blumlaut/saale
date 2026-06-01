@@ -7,6 +7,7 @@
 Saale is a productivity hub — email, chat, tasks in one place. The interface should feel **calm, spacious, and instantly readable**. A user should understand their situation at a glance without hunting for information.
 
 We are **not** building:
+
 - A gaming dashboard (no neon, no aggressive gradients, no "cyber" aesthetics)
 - A developer tool (no monospace UI text, no terminal-inspired styling, no raw data dumps)
 - A dense enterprise app (no cramped tables, no information overload)
@@ -33,13 +34,15 @@ All content panels, cards, and floating windows use a glass effect:
 
 ```tsx
 // Glass panel — use this class pattern or the GlassPanel component
-className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-lg"
+className =
+  "bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-lg";
 ```
 
 For deeper glass (modals, overlays):
 
 ```tsx
-className="bg-white/80 dark:bg-black/40 backdrop-blur-2xl border border-white/30 dark:border-white/10 shadow-xl"
+className =
+  "bg-white/80 dark:bg-black/40 backdrop-blur-2xl border border-white/30 dark:border-white/10 shadow-xl";
 ```
 
 ### Page Background
@@ -72,25 +75,25 @@ Content areas feel like floating panes, not flat divs:
 
 ### Light Mode
 
-| Token | Value | Purpose |
-|---|---|---|
-| Background | `oklch(0.985 0.005 250)` | Page background (warm white, barely cool) |
-| Glass surface | `bg-white/60` | Panel backgrounds with blur |
-| Glass border | `border-white/20` | Panel edges |
-| Text primary | `oklch(0.145 0 0)` | Headings, body text |
-| Text secondary | `oklch(0.556 0 0)` | Labels, timestamps, metadata |
-| Text tertiary | `oklch(0.708 0 0)` | Placeholders, disabled states |
+| Token          | Value                    | Purpose                                   |
+| -------------- | ------------------------ | ----------------------------------------- |
+| Background     | `oklch(0.985 0.005 250)` | Page background (warm white, barely cool) |
+| Glass surface  | `bg-white/60`            | Panel backgrounds with blur               |
+| Glass border   | `border-white/20`        | Panel edges                               |
+| Text primary   | `oklch(0.145 0 0)`       | Headings, body text                       |
+| Text secondary | `oklch(0.556 0 0)`       | Labels, timestamps, metadata              |
+| Text tertiary  | `oklch(0.708 0 0)`       | Placeholders, disabled states             |
 
 ### Dark Mode
 
-| Token | Value | Purpose |
-|---|---|---|
-| Background | `oklch(0.145 0.015 250)` | Page background (deep charcoal, cool hint) |
-| Glass surface | `bg-white/5` | Panel backgrounds with blur |
-| Glass border | `border-white/10` | Panel edges |
-| Text primary | `oklch(0.985 0 0)` | Headings, body text |
-| Text secondary | `oklch(0.708 0 0)` | Labels, timestamps, metadata |
-| Text tertiary | `oklch(0.556 0 0)` | Placeholders, disabled states |
+| Token          | Value                    | Purpose                                    |
+| -------------- | ------------------------ | ------------------------------------------ |
+| Background     | `oklch(0.145 0.015 250)` | Page background (deep charcoal, cool hint) |
+| Glass surface  | `bg-white/5`             | Panel backgrounds with blur                |
+| Glass border   | `border-white/10`        | Panel edges                                |
+| Text primary   | `oklch(0.985 0 0)`       | Headings, body text                        |
+| Text secondary | `oklch(0.708 0 0)`       | Labels, timestamps, metadata               |
+| Text tertiary  | `oklch(0.556 0 0)`       | Placeholders, disabled states              |
 
 ### Implementation
 
@@ -108,13 +111,13 @@ All colors use CSS custom properties in `globals.css` mapped through Tailwind's 
 
 ### Scale
 
-| Element | Size | Weight | Line Height |
-|---|---|---|---|
-| Page heading | `text-2xl` (24px) | `font-semibold` | `tight` |
-| Section heading | `text-lg` (18px) | `font-semibold` | `snug` |
-| Card title | `text-base` (16px) | `font-medium` | `snug` |
-| Body text | `text-sm` (14px) | `font-normal` | `relaxed` |
-| Metadata / labels | `text-xs` (12px) | `font-normal` | `normal` |
+| Element           | Size               | Weight          | Line Height |
+| ----------------- | ------------------ | --------------- | ----------- |
+| Page heading      | `text-2xl` (24px)  | `font-semibold` | `tight`     |
+| Section heading   | `text-lg` (18px)   | `font-semibold` | `snug`      |
+| Card title        | `text-base` (16px) | `font-medium`   | `snug`      |
+| Body text         | `text-sm` (14px)   | `font-normal`   | `relaxed`   |
+| Metadata / labels | `text-xs` (12px)   | `font-normal`   | `normal`    |
 
 ### Rules
 
@@ -159,11 +162,11 @@ Every content container is a glass panel:
 ```tsx
 <GlassPanel>
   <GlassPanel.Header title="Email">
-    <Button variant="ghost" size="sm">Compose</Button>
+    <Button variant="ghost" size="sm">
+      Compose
+    </Button>
   </GlassPanel.Header>
-  <GlassPanel.Content>
-    {/* content */}
-  </GlassPanel.Content>
+  <GlassPanel.Content>{/* content */}</GlassPanel.Content>
 </GlassPanel>
 ```
 
@@ -244,20 +247,20 @@ Every content container is a glass panel:
 
 These are explicit anti-patterns. If you catch yourself doing any of these, stop and reconsider:
 
-| Anti-pattern | Why | Alternative |
-|---|---|---|
-| Neon / glowing effects | Gamer aesthetic | Subtle shadows and blur |
-| Gradient text | Attention-seeking | Solid color, good typography |
-| Monospace UI text | Developer-tool vibe | Inter for everything |
-| Heavy borders (2px+) | Boxed-in feeling | 1px borders with glass |
-| Flat colored cards | No depth | Glass panels with backdrop-blur |
-| Dense data tables | Enterprise crammed feel | Spacious lists, progressive detail |
-| Excessive iconography | Visual noise | Icons only where they add clarity |
-| Rainbow status colors | Distracting | Muted semantic colors |
-| Animated backgrounds | Distracting | Static gradient or mesh |
-| Terminal / code aesthetics | Wrong audience | Clean, friendly prose UI |
-| Edge-to-edge panels | No breathing room | Margins, floating panels |
-| Nested modals | Disorienting | Inline expansion or single modal |
+| Anti-pattern               | Why                     | Alternative                        |
+| -------------------------- | ----------------------- | ---------------------------------- |
+| Neon / glowing effects     | Gamer aesthetic         | Subtle shadows and blur            |
+| Gradient text              | Attention-seeking       | Solid color, good typography       |
+| Monospace UI text          | Developer-tool vibe     | Inter for everything               |
+| Heavy borders (2px+)       | Boxed-in feeling        | 1px borders with glass             |
+| Flat colored cards         | No depth                | Glass panels with backdrop-blur    |
+| Dense data tables          | Enterprise crammed feel | Spacious lists, progressive detail |
+| Excessive iconography      | Visual noise            | Icons only where they add clarity  |
+| Rainbow status colors      | Distracting             | Muted semantic colors              |
+| Animated backgrounds       | Distracting             | Static gradient or mesh            |
+| Terminal / code aesthetics | Wrong audience          | Clean, friendly prose UI           |
+| Edge-to-edge panels        | No breathing room       | Margins, floating panels           |
+| Nested modals              | Disorienting            | Inline expansion or single modal   |
 
 ---
 

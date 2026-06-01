@@ -24,7 +24,10 @@ const PROVIDERS = {
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
  */
-async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<{ models: string[]; error?: string }> {
+async function fetchOpenAIModels(
+  baseUrl: string,
+  apiKey?: string,
+): Promise<{ models: string[]; error?: string }> {
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     const res = await fetch(url, {
@@ -51,9 +54,7 @@ async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<{ mo
     }
 
     return {
-      models: data.data
-        .map((m: any) => m.id)
-        .slice(0, 200),
+      models: data.data.map((m: any) => m.id).slice(0, 200),
     };
   } catch (err) {
     return {
@@ -117,10 +118,7 @@ export async function POST(request: NextRequest) {
   const { provider, apiKey, label, baseUrl } = body;
 
   if (!provider) {
-    return NextResponse.json(
-      { error: "provider is required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "provider is required" }, { status: 400 });
   }
 
   // apiKey is optional for local servers
@@ -201,10 +199,7 @@ export async function DELETE(request: NextRequest) {
   const provider = searchParams.get("provider");
 
   if (!provider) {
-    return NextResponse.json(
-      { error: "provider query parameter is required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "provider query parameter is required" }, { status: 400 });
   }
 
   await prisma.providerApiKey.deleteMany({

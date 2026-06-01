@@ -53,8 +53,9 @@ export function decrypt(encrypted: string): string {
   const [ivHex, authTagHex, ...ciphertextParts] = parts;
   const ciphertextHex = ciphertextParts.join(":"); // Handle colons in ciphertext
 
-  const iv = Buffer.from(ivHex, "hex");
-  const authTag = Buffer.from(authTagHex, "hex");
+  // Guard above (parts.length < 3) ensures ivHex and authTagHex are defined
+  const iv = Buffer.from(ivHex!, "hex");
+  const authTag = Buffer.from(authTagHex!, "hex");
 
   const decipher = createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAuthTag(authTag);

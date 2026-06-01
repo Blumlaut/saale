@@ -38,7 +38,12 @@ function createFileTool(userId: string) {
           };
         } catch (err) {
           return {
-            content: [{ type: "text", text: `Error reading file "${params.path}": ${(err as Error).message}` }],
+            content: [
+              {
+                type: "text",
+                text: `Error reading file "${params.path}": ${(err as Error).message}`,
+              },
+            ],
             details: { path: params.path, size: 0 },
           };
         }
@@ -48,7 +53,8 @@ function createFileTool(userId: string) {
     fileWrite: defineTool({
       name: "file_write",
       label: "Write File",
-      description: "Write content to a file in the user's workspace. Creates parent directories if needed.",
+      description:
+        "Write content to a file in the user's workspace. Creates parent directories if needed.",
       parameters: Type.Object({
         path: Type.String({
           description: "File path relative to the user's workspace.",
@@ -63,12 +69,22 @@ function createFileTool(userId: string) {
           await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, params.content, "utf8");
           return {
-            content: [{ type: "text", text: `Successfully wrote ${params.content.length} bytes to ${params.path}` }],
+            content: [
+              {
+                type: "text",
+                text: `Successfully wrote ${params.content.length} bytes to ${params.path}`,
+              },
+            ],
             details: { path: params.path, bytes: params.content.length },
           };
         } catch (err) {
           return {
-            content: [{ type: "text", text: `Error writing file "${params.path}": ${(err as Error).message}` }],
+            content: [
+              {
+                type: "text",
+                text: `Error writing file "${params.path}": ${(err as Error).message}`,
+              },
+            ],
             details: { path: params.path, bytes: 0 },
           };
         }
@@ -111,11 +127,12 @@ function createFileTool(userId: string) {
                 }
               } else {
                 const stats = await fs.stat(fullPath);
-                const size = stats.size < 1024
-                  ? `${stats.size}B`
-                  : stats.size < 1024 * 1024
-                    ? `${(stats.size / 1024).toFixed(1)}KB`
-                    : `${(stats.size / (1024 * 1024)).toFixed(1)}MB`;
+                const size =
+                  stats.size < 1024
+                    ? `${stats.size}B`
+                    : stats.size < 1024 * 1024
+                      ? `${(stats.size / 1024).toFixed(1)}KB`
+                      : `${(stats.size / (1024 * 1024)).toFixed(1)}MB`;
                 results.push(`📄 ${relPath} (${size})`);
               }
             }
@@ -125,15 +142,25 @@ function createFileTool(userId: string) {
 
           const files = await listDir(dirPath);
           return {
-            content: [{
-              type: "text",
-              text: files.length > 0 ? files.join("\n") : `Directory "${params.path ?? "."}" is empty`,
-            }],
+            content: [
+              {
+                type: "text",
+                text:
+                  files.length > 0
+                    ? files.join("\n")
+                    : `Directory "${params.path ?? "."}" is empty`,
+              },
+            ],
             details: { count: files.length },
           };
         } catch (err) {
           return {
-            content: [{ type: "text", text: `Error listing directory "${params.path ?? "."}": ${(err as Error).message}` }],
+            content: [
+              {
+                type: "text",
+                text: `Error listing directory "${params.path ?? "."}": ${(err as Error).message}`,
+              },
+            ],
             details: { count: 0 },
           };
         }
@@ -159,7 +186,12 @@ function createFileTool(userId: string) {
           };
         } catch (err) {
           return {
-            content: [{ type: "text", text: `Error deleting file "${params.path}": ${(err as Error).message}` }],
+            content: [
+              {
+                type: "text",
+                text: `Error deleting file "${params.path}": ${(err as Error).message}`,
+              },
+            ],
             details: { path: params.path },
           };
         }

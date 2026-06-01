@@ -5,9 +5,33 @@
 Always use shadcn/ui components:
 
 ```tsx
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 ```
 
 ## Dialog (Modal)
@@ -18,7 +42,13 @@ For actions that require focus: confirmations, forms, detailed views.
 
 ```tsx
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 <Dialog>
   <DialogTrigger asChild>
@@ -27,19 +57,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
   <DialogContent className="sm:max-w-md">
     <DialogHeader>
       <DialogTitle>Settings</DialogTitle>
-      <DialogDescription>
-        Manage your account preferences.
-      </DialogDescription>
+      <DialogDescription>Manage your account preferences.</DialogDescription>
     </DialogHeader>
     {/* Form or content */}
   </DialogContent>
-</Dialog>
+</Dialog>;
 ```
 
 ### Confirmation Dialog
 
 ```tsx
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 <AlertDialog>
   <AlertDialogTrigger asChild>
@@ -57,7 +95,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
       <AlertDialogAction>Delete</AlertDialogAction>
     </AlertDialogFooter>
   </AlertDialogContent>
-</AlertDialog>
+</AlertDialog>;
 ```
 
 ## Sheet (Side Panel)
@@ -77,7 +115,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
     </SheetHeader>
     {/* Detail content */}
   </SheetContent>
-</Sheet>
+</Sheet>;
 ```
 
 ### Sheet Rules
@@ -89,13 +127,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 
 ## When To Use What
 
-| Pattern | Use | Why |
-|---|---|---|
-| **Dialog** | Confirmations, small forms, alerts | Centers focus, blocks background |
-| **Sheet** | Detail views, side panels, expanded content | Slides in, preserves context |
-| **Drawer** | Mobile bottom sheet | Native mobile pattern |
-| **Inline expansion** | Reveal more details in a list item | No modal needed |
-| **Dropdown menu** | Quick actions on an item | Lightweight, contextual |
+| Pattern              | Use                                         | Why                              |
+| -------------------- | ------------------------------------------- | -------------------------------- |
+| **Dialog**           | Confirmations, small forms, alerts          | Centers focus, blocks background |
+| **Sheet**            | Detail views, side panels, expanded content | Slides in, preserves context     |
+| **Drawer**           | Mobile bottom sheet                         | Native mobile pattern            |
+| **Inline expansion** | Reveal more details in a list item          | No modal needed                  |
+| **Dropdown menu**    | Quick actions on an item                    | Lightweight, contextual          |
 
 ## Glass Styling
 
@@ -124,11 +162,11 @@ Dialogs and sheets should use deep glass styling:
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---|---|
-| Nested modals | Use inline expansion or a single modal |
-| Modal for simple detail | Use a Sheet instead |
-| No close mechanism | Radix handles this, but verify |
-| Full-screen modal | Use max-width and max-height |
-| No glass styling on modal | Add backdrop-blur and transparency |
-| Confirmation without AlertDialog | Use AlertDialog, not Dialog |
+| Mistake                          | Fix                                    |
+| -------------------------------- | -------------------------------------- |
+| Nested modals                    | Use inline expansion or a single modal |
+| Modal for simple detail          | Use a Sheet instead                    |
+| No close mechanism               | Radix handles this, but verify         |
+| Full-screen modal                | Use max-width and max-height           |
+| No glass styling on modal        | Add backdrop-blur and transparency     |
+| Confirmation without AlertDialog | Use AlertDialog, not Dialog            |

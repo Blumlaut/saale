@@ -6,15 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import {
-  Play,
-  Loader2,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  Trash2,
-  Settings,
-} from "lucide-react";
+import { Play, Loader2, Clock, CheckCircle, AlertCircle, Trash2, Settings } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface Job {
@@ -119,9 +111,7 @@ export function JobList() {
         body: JSON.stringify({ enabled }),
       });
       if (res.ok) {
-        setJobs((prev) =>
-          prev.map((j) => (j.id === jobId ? { ...j, enabled } : j)),
-        );
+        setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, enabled } : j)));
       }
     } catch {
       // Ignore
@@ -187,13 +177,11 @@ export function JobList() {
           <GlassPanelContent className="p-0">
             {loading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
               </div>
             ) : jobs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
-                <p className="text-muted-foreground text-sm">
-                  No jobs configured
-                </p>
+                <p className="text-muted-foreground text-sm">No jobs configured</p>
               </div>
             ) : (
               jobs.map((job, i) => (
@@ -204,19 +192,14 @@ export function JobList() {
                       selectedJob?.id === job.id && "bg-white/20 dark:bg-white/5",
                     )}
                   >
-                    <button
-                      className="flex-1 text-left"
-                      onClick={() => setSelectedJob(job)}
-                    >
+                    <button className="flex-1 text-left" onClick={() => setSelectedJob(job)}>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">
                           {jobTypeLabels[job.type] ?? job.type}
                         </span>
                         <Switch
                           checked={job.enabled}
-                          onCheckedChange={(checked) =>
-                            handleToggle(job.id, checked)
-                          }
+                          onCheckedChange={(checked) => handleToggle(job.id, checked)}
                           onClick={(e) => e.stopPropagation()}
                           className="scale-75"
                         />
@@ -225,10 +208,7 @@ export function JobList() {
                         {job.lastRunAt && (
                           <span>
                             Last run{" "}
-                            {formatDistanceToNow(
-                              new Date(job.lastRunAt),
-                              { addSuffix: true },
-                            )}
+                            {formatDistanceToNow(new Date(job.lastRunAt), { addSuffix: true })}
                           </span>
                         )}
                         <span>·</span>
@@ -272,19 +252,15 @@ export function JobList() {
         <GlassPanel className="h-full">
           {selectedJob ? (
             <>
-              <GlassPanelHeader
-                title={jobTypeLabels[selectedJob.type] ?? selectedJob.type}
-              />
+              <GlassPanelHeader title={jobTypeLabels[selectedJob.type] ?? selectedJob.type} />
               <GlassPanelContent>
                 <h3 className="mb-3 text-sm font-medium">Run History</h3>
                 {loadingRuns ? (
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
                   </div>
                 ) : runs.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">
-                    No runs yet
-                  </p>
+                  <p className="text-muted-foreground text-sm">No runs yet</p>
                 ) : (
                   <div className="flex flex-col gap-3">
                     {runs.map((run) => (
@@ -296,20 +272,15 @@ export function JobList() {
                           {getStatusBadge(run.status)}
                           <span className="text-muted-foreground text-xs">
                             {run.startedAt
-                              ? formatDistanceToNow(
-                                  new Date(run.startedAt),
-                                  { addSuffix: true },
-                                )
+                              ? formatDistanceToNow(new Date(run.startedAt), { addSuffix: true })
                               : ""}
                           </span>
                         </div>
                         {run.error && (
-                          <div className="mt-2 text-destructive text-xs">
-                            {run.error}
-                          </div>
+                          <div className="text-destructive mt-2 text-xs">{run.error}</div>
                         )}
                         {run.output && (
-                          <pre className="mt-2 max-h-32 overflow-auto rounded-lg bg-muted/50 p-2 text-xs">
+                          <pre className="bg-muted/50 mt-2 max-h-32 overflow-auto rounded-lg p-2 text-xs">
                             {JSON.stringify(run.output, null, 2)}
                           </pre>
                         )}
@@ -323,9 +294,7 @@ export function JobList() {
             <GlassPanelContent className="flex items-center justify-center py-16">
               <div className="text-center">
                 <Settings className="text-muted-foreground/30 mx-auto mb-3 h-12 w-12" />
-                <p className="text-muted-foreground text-sm">
-                  Select a job to view details
-                </p>
+                <p className="text-muted-foreground text-sm">Select a job to view details</p>
               </div>
             </GlassPanelContent>
           )}
