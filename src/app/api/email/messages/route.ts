@@ -77,6 +77,8 @@ export async function GET(request: NextRequest) {
         subject: true,
         date: true,
         bodyPreview: true,
+        bodyHtml: true,
+        bodyText: true,
         isRead: true,
         isStarred: true,
         folder: true,
@@ -98,6 +100,8 @@ export async function GET(request: NextRequest) {
         subject: string;
         date: Date;
         bodyPreview: string;
+        bodyHtml: string | null;
+        bodyText: string | null;
         isRead: boolean;
         isStarred: boolean;
         folder: string;
@@ -112,6 +116,8 @@ export async function GET(request: NextRequest) {
         subject: m.subject,
         date: m.date.toISOString(),
         bodyPreview: m.bodyPreview,
+        bodyHtml: m.bodyHtml,
+        bodyText: m.bodyText,
         isRead: m.isRead,
         isStarred: m.isStarred,
         folder: m.folder,

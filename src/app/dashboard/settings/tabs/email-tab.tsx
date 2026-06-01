@@ -30,6 +30,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AccountDialog } from "@/components/mail/account-dialog";
 import type { UserSettings, EmailAccount } from "../types";
 
@@ -45,6 +55,12 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    accountId: string;
+    action: "sync" | "full-refresh" | "delete";
+  } | null>(null);
+  const [alertError, setAlertError] = useState<string | null>(null);
 
   const loadAccounts = async () => {
     try {
@@ -67,17 +83,17 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
     }
   }, [saveStatus]);
 
-  const handleAction = async (accountId: string, action: "sync" | "full-refresh" | "delete") => {
-    if (action === "delete" && !confirm("Delete this email account and all its synced messages?")) {
+  const handleActionRequest = (accountId: string, action: "sync" | "full-refresh" | "delete") => {
+    if (action === "sync") {
+      executeAction(accountId, action);
       return;
     }
-    if (
-      action === "full-refresh" &&
-      !confirm("This will delete all synced emails and re-download everything. Continue?")
-    ) {
-      return;
-    }
+    setPendingAction({ accountId, action });
+    setAlertError(null);
+    setAlertOpen(true);
+  };
 
+  const executeAction = async (accountId: string, action: "sync" | "full-refresh" | "delete") => {
     setActionLoading(action + ":" + accountId);
     try {
       const method = action === "delete" ? "DELETE" : "POST";
@@ -89,13 +105,25 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
       const res = await fetch(url, { method });
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Action failed");
+        setAlertError(data.error || "Action failed");
+        setPendingAction({ accountId, action });
+        setAlertOpen(true);
+        return;
       }
       await loadAccounts();
     } catch (err) {
-      alert((err as Error).message);
+      setAlertError((err as Error).message);
+      setPendingAction({ accountId, action });
+      setAlertOpen(true);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleAlertConfirm = () => {
+    setAlertOpen(false);
+    if (pendingAction) {
+      executeAction(pendingAction.accountId, pendingAction.action);
     }
   };
 
@@ -212,14 +240,21 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
                       </div>
 
                       <DropdownMenu>
-                        <DropdownMenuTrigger>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled={isBusy}>
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={isBusy}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          }
+                        />
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            onClick={() => handleAction(account.id, "sync")}
+                            onClick={() => handleActionRequest(account.id, "sync")}
                             disabled={isBusy}
                           >
                             {actionLoading === "sync:" + account.id ? (
@@ -230,7 +265,7 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
                             Sync Now
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => handleAction(account.id, "full-refresh")}
+                            onClick={() => handleActionRequest(account.id, "full-refresh")}
                             disabled={isBusy}
                           >
                             {actionLoading === "full-refresh:" + account.id ? (
@@ -241,7 +276,7 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
                             Full Refresh
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => handleAction(account.id, "delete")}
+                            onClick={() => handleActionRequest(account.id, "delete")}
                             disabled={isBusy}
                             className="text-destructive focus:text-destructive"
                           >
@@ -308,6 +343,43 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
         onOpenChange={setAccountDialogOpen}
         onSuccess={loadAccounts}
       />
+
+      {/* Confirmation / Error Alert Dialog */}
+      <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {alertError
+                ? "Error"
+                : pendingAction?.action === "delete"
+                  ? "Delete Account"
+                  : "Full Refresh"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {alertError
+                ? alertError
+                : pendingAction?.action === "delete"
+                  ? "Delete this email account and all its synced messages? This cannot be undone."
+                  : "This will delete all synced emails and re-download everything. Continue?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            {alertError ? (
+              <AlertDialogAction onClick={() => setAlertOpen(false)}>OK</AlertDialogAction>
+            ) : (
+              <>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleAlertConfirm}
+                  variant={pendingAction?.action === "delete" ? "destructive" : "default"}
+                >
+                  {pendingAction?.action === "delete" ? "Delete" : "Continue"}
+                </AlertDialogAction>
+              </>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

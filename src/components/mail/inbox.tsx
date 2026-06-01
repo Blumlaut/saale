@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2, User, Tag } from "lucide-react";
+import { formatDistanceToNow, format } from "date-fns";
 
 interface EmailMessage {
   id: string;
@@ -38,6 +38,17 @@ interface EmailAccount {
   messageCount: number;
 }
 
+/** Parse the `to` field — stored as a JSON string in the DB */
+function parseToField(raw: string | string[]): string[] {
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [raw];
+  } catch {
+    return [raw];
+  }
+}
+
 export function Inbox() {
   const searchParams = useSearchParams();
   const urlAccountId = searchParams.get("accountId");
@@ -51,6 +62,7 @@ export function Inbox() {
   const [selectedMsg, setSelectedMsg] = useState<EmailMessage | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [_total, setTotal] = useState(0);
+  const [togglingStar, setTogglingStar] = useState<string | null>(null);
 
   // Active account from URL param
   const activeAccountId = urlAccountId ?? null;
@@ -115,34 +127,69 @@ export function Inbox() {
     setSelectedMsg(msg);
     if (!msg.isRead) {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
+      // Also update selected message
+      setSelectedMsg((prev) => (prev ? { ...prev, isRead: true } : prev));
     }
   };
 
   const handleSearch = useCallback(() => {
     loadMessages();
-  }, [search, activeAccountId, folder, loadMessages]);
+  }, [loadMessages]);
+
+  const handleToggleStar = async (msg: EmailMessage, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newStarred = !msg.isStarred;
+    const msgId = msg.id;
+    setTogglingStar(msgId);
+
+    // Optimistic update
+    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, isStarred: newStarred } : m)));
+    if (selectedMsg?.id === msgId) {
+      setSelectedMsg((prev) => (prev ? { ...prev, isStarred: newStarred } : prev));
+    }
+
+    try {
+      const res = await fetch(`/api/email/messages/${msgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isStarred: newStarred }),
+      });
+      if (!res.ok) {
+        // Revert on error
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msgId ? { ...m, isStarred: !newStarred } : m)),
+        );
+        if (selectedMsg?.id === msgId) {
+          setSelectedMsg((prev) => (prev ? { ...prev, isStarred: !newStarred } : prev));
+        }
+      }
+    } catch {
+      // Revert on error
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, isStarred: !newStarred } : m)),
+      );
+    } finally {
+      setTogglingStar(null);
+    }
+  };
 
   const selectedMessage = selectedMsg;
 
   // Active account info
   const activeAccount = activeAccountId ? accounts.find((a) => a.id === activeAccountId) : null;
 
-  // Derive folders: remote folders first, fall back to synced folders
-  const availableFolders = (() => {
+  // Derive folders
+  const availableFolders = useMemo(() => {
     if (activeAccount) {
-      // Use remote folders from the specific account
       const remote = activeAccount.remoteFolders.filter((f) => f.length > 0);
       if (remote.length > 0) {
-        // Sort: INBOX-related first, then alphabetical
         const inboxLike = remote.filter((f) => f.toUpperCase() === "INBOX");
         const rest = remote.filter((f) => f.toUpperCase() !== "INBOX").sort();
         return [...inboxLike, ...rest];
       }
-      // Fall back to synced folders
       return activeAccount.folders.sort();
     }
 
-    // All accounts: merge synced folders
     const folderSet = new Set<string>();
     for (const acc of accounts.filter((a) => a.enabled)) {
       for (const f of acc.folders) {
@@ -157,10 +204,108 @@ export function Inbox() {
       if (inboxFolder) folders.unshift(inboxFolder);
     }
     return folders;
-  })();
+  }, [activeAccount, accounts]);
+
+  // Collect unique senders for sidebar
+  const uniqueSenders = useMemo(() => {
+    const senderMap = new Map<string, { name: string | null; email: string; count: number }>();
+    for (const msg of messages) {
+      const key = msg.fromEmail.toLowerCase();
+      const existing = senderMap.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        senderMap.set(key, {
+          name: msg.fromName,
+          email: msg.fromEmail,
+          count: 1,
+        });
+      }
+    }
+    return Array.from(senderMap.values()).sort((a, b) => b.count - a.count);
+  }, [messages]);
+
+  // Collect unique tags for sidebar
+  const uniqueTags = useMemo(() => {
+    const tagMap = new Map<string, number>();
+    for (const msg of messages) {
+      for (const tag of msg.tags) {
+        tagMap.set(tag, (tagMap.get(tag) ?? 0) + 1);
+      }
+    }
+    return Array.from(tagMap.entries()).sort((a, b) => b[1] - a[1]);
+  }, [messages]);
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
+      {/* Sidebar — senders & tags */}
+      <GlassPanel className="hidden w-56 flex-col overflow-hidden lg:flex">
+        <div className="border-border/50 border-b px-4 py-3">
+          <h3 className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+            Filters
+          </h3>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {/* Senders */}
+          {uniqueSenders.length > 0 && (
+            <div className="px-3 py-2">
+              <div className="flex items-center gap-1.5 px-1 pb-1">
+                <User className="text-muted-foreground h-3.5 w-3.5" />
+                <span className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                  Senders
+                </span>
+              </div>
+              <div className="mt-1 space-y-0.5">
+                {uniqueSenders.slice(0, 20).map((sender) => (
+                  <button
+                    key={sender.email}
+                    className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-white/20 dark:hover:bg-white/5"
+                  >
+                    <span className="truncate font-medium">{sender.name || sender.email}</span>
+                    <span className="text-muted-foreground ml-2 shrink-0 tabular-nums">
+                      {sender.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Separator className="mx-3" />
+
+          {/* Tags */}
+          {uniqueTags.length > 0 && (
+            <div className="px-3 py-2">
+              <div className="flex items-center gap-1.5 px-1 pb-1">
+                <Tag className="text-muted-foreground h-3.5 w-3.5" />
+                <span className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                  Tags
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {uniqueTags.map(([tag, count]) => (
+                  <Badge
+                    key={tag}
+                    variant="secondary"
+                    className="rounded-full px-2 py-0.5 text-[10px]"
+                  >
+                    {tag}
+                    <span className="text-muted-foreground ml-1">{count}</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {uniqueSenders.length === 0 && uniqueTags.length === 0 && (
+            <div className="px-3 py-4 text-center">
+              <p className="text-muted-foreground text-xs">No senders or tags yet</p>
+            </div>
+          )}
+        </div>
+      </GlassPanel>
+
       {/* Mail list */}
       <GlassPanel className="flex w-96 flex-col overflow-hidden">
         {/* Header */}
@@ -264,7 +409,6 @@ export function Inbox() {
             </div>
           ) : (
             messages.map((msg, i) => {
-              // Find the account this message belongs to
               const msgAccount = accounts.find((a) => a.id === msg.accountId);
 
               return (
@@ -277,14 +421,17 @@ export function Inbox() {
                     )}
                     onClick={() => handleSelect(msg)}
                   >
-                    <Star
-                      className={cn(
-                        "mt-0.5 h-3.5 w-3.5 shrink-0",
-                        msg.isStarred
-                          ? "fill-yellow-400 text-yellow-400"
-                          : "text-muted-foreground/30",
-                      )}
-                    />
+                    <div onClick={(e) => handleToggleStar(msg, e)} className="cursor-pointer">
+                      <Star
+                        className={cn(
+                          "mt-0.5 h-3.5 w-3.5 shrink-0 transition-colors",
+                          msg.isStarred
+                            ? "fill-yellow-400 text-yellow-400"
+                            : "text-muted-foreground/30 hover:text-foreground/60",
+                          togglingStar === msg.id && "opacity-50",
+                        )}
+                      />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -341,12 +488,11 @@ export function Inbox() {
                 <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
                   <span>{selectedMessage.fromName || selectedMessage.fromEmail}</span>
                   <span>→</span>
-                  <span>
-                    {Array.isArray(selectedMessage.to)
-                      ? selectedMessage.to.join(", ")
-                      : selectedMessage.to}
-                  </span>
+                  <span>{parseToField(selectedMessage.to).join(", ")}</span>
                 </div>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
+                </p>
               </div>
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -360,6 +506,17 @@ export function Inbox() {
                 </Button>
               </div>
             </div>
+
+            {/* Message tags */}
+            {selectedMessage.tags.length > 0 && (
+              <div className="border-border/30 flex gap-1.5 border-b px-6 py-2">
+                {selectedMessage.tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="rounded-full px-2 py-0.5 text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
 
             {/* Message body */}
             <GlassPanelContent className="flex-1 overflow-y-auto">
