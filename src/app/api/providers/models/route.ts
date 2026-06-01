@@ -6,10 +6,37 @@ import { decrypt } from "@/lib/crypto";
 import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
 
 /**
+ * Fetch models from an OpenAI-compatible /v1/models endpoint.
+ */
+async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<Array<{ id: string; name: string }>> {
+  const url = `${baseUrl.replace(/\/+$/, "")}/v1/models`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!data?.data?.length) return [];
+
+    return data.data
+      .map((m: any) => ({
+        id: m.id,
+        name: m.id, // Use ID as name since we don't have display names
+      }))
+      .slice(0, 200); // Cap at 200 models
+  } catch {
+    return [];
+  }
+}
+
+/**
  * GET /api/providers/models — Returns available models based on user's configured providers.
- *
- * Loads the user's API keys, creates an in-memory ModelRegistry, registers any
- * custom OpenAI-compatible providers, and returns all models that have auth configured.
  */
 export async function GET() {
   const session = await auth.api.getSession({
@@ -43,18 +70,43 @@ export async function GET() {
   // Create model registry
   const modelRegistry = ModelRegistry.inMemory(authStorage);
 
-  // Register custom OpenAI-compatible providers
+  // Register custom OpenAI-compatible providers and discover their models
   for (const key of storedKeys) {
     if (key.provider === "custom" && key.baseUrl) {
       try {
         const decryptedKey = decrypt(key.encryptedKey);
-        modelRegistry.registerProvider("custom", {
-          baseUrl: key.baseUrl.replace(/\/+$/, ""), // trim trailing slashes
-          apiKey: decryptedKey,
-          api: "openai-completions",
-        });
+        const baseUrl = key.baseUrl.replace(/\/+$/, "");
+
+        // Fetch models from the server
+        const discoveredModels = await fetchOpenAIModels(baseUrl, decryptedKey);
+
+        if (discoveredModels.length > 0) {
+          // Register with discovered models
+          modelRegistry.registerProvider("custom", {
+            baseUrl,
+            apiKey: decryptedKey,
+            api: "openai-completions" ,
+            models: discoveredModels.map((m) => ({
+              id: m.id,
+              name: m.name,
+              api: "openai-completions" ,
+              reasoning: false,
+              input: ["text"] as const,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 131072,
+              maxTokens: 8192,
+            })),
+          });
+        } else {
+          // No models discovered — still register so auth works
+          modelRegistry.registerProvider("custom", {
+            baseUrl,
+            apiKey: decryptedKey,
+            api: "openai-completions" ,
+          });
+        }
       } catch {
-        // Skip invalid keys
+        console.warn(`[pi] Failed to register custom provider`);
       }
     }
   }

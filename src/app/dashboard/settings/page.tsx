@@ -200,7 +200,7 @@ export default function SettingsPage() {
   }, [settings]);
 
   const handleAddProvider = useCallback(async () => {
-    if (!newProvider || !newApiKey) return;
+    if (!newProvider) return;
     if (newProvider === "custom" && !newBaseUrl) return;
     setAddingProvider(true);
     try {
@@ -339,12 +339,12 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="api-key">API Key</Label>
+                    <Label htmlFor="api-key">API Key <span className="text-muted-foreground font-normal">(optional)</span></Label>
                     <div className="relative">
                       <Input
                         id="api-key"
                         type={showApiKey ? "text" : "password"}
-                        placeholder="sk-..."
+                        placeholder="sk-... or leave empty for local servers"
                         value={newApiKey}
                         onChange={(e) => setNewApiKey(e.target.value)}
                         className="pr-10 font-mono text-sm"
@@ -394,7 +394,7 @@ export default function SettingsPage() {
                   <Button
                     size="sm"
                     onClick={handleAddProvider}
-                    disabled={addingProvider || !newProvider || !newApiKey || (newProvider === "custom" && !newBaseUrl)}
+                    disabled={addingProvider || !newProvider || (newProvider === "custom" && !newBaseUrl)}
                   >
                     {addingProvider ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

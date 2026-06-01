@@ -12,12 +12,37 @@ import { createFileTool } from "./tools/file-tools";
 import { createChatSearchTool } from "./tools/chat-tools";
 
 /**
+ * Fetch models from an OpenAI-compatible /v1/models endpoint.
+ */
+async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<Array<{ id: string; name: string }>> {
+  const url = `${baseUrl.replace(/\/+$/, "")}/v1/models`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!data?.data?.length) return [];
+
+    return data.data
+      .map((m: any) => ({
+        id: m.id,
+        name: m.id,
+      }))
+      .slice(0, 200);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Create an isolated Pi agent session for a user.
- * Each user gets their own in-memory session with custom tools scoped to their data.
- *
- * Loads provider API keys from the database, decrypts them, and configures
- * them on an in-memory AuthStorage so the Pi SDK can resolve them.
- * Also registers any custom OpenAI-compatible providers.
  */
 export async function createPiSession(options: {
   userId: string;
@@ -42,7 +67,6 @@ export async function createPiSession(options: {
         authStorage.setRuntimeApiKey(key.provider, decryptedKey);
       }
     } catch {
-      // Skip invalid keys — they'll just be unavailable
       console.warn(`[pi] Failed to decrypt API key for provider ${key.provider}`);
     }
   }
@@ -50,16 +74,39 @@ export async function createPiSession(options: {
   // Create model registry with user's auth storage
   const modelRegistry = ModelRegistry.inMemory(authStorage);
 
-  // Register custom OpenAI-compatible providers
+  // Register custom OpenAI-compatible providers and discover their models
   for (const key of storedKeys) {
     if (key.provider === "custom" && key.baseUrl) {
       try {
         const decryptedKey = decrypt(key.encryptedKey);
-        modelRegistry.registerProvider("custom", {
-          baseUrl: key.baseUrl.replace(/\/+$/, ""),
-          apiKey: decryptedKey,
-          api: "openai-completions",
-        });
+        const baseUrl = key.baseUrl.replace(/\/+$/, "");
+
+        // Fetch models from the server
+        const discoveredModels = await fetchOpenAIModels(baseUrl, decryptedKey);
+
+        if (discoveredModels.length > 0) {
+          modelRegistry.registerProvider("custom", {
+            baseUrl,
+            apiKey: decryptedKey,
+            api: "openai-completions" ,
+            models: discoveredModels.map((m) => ({
+              id: m.id,
+              name: m.name,
+              api: "openai-completions" ,
+              reasoning: false,
+              input: ["text"] as const,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 131072,
+              maxTokens: 8192,
+            })),
+          });
+        } else {
+          modelRegistry.registerProvider("custom", {
+            baseUrl,
+            apiKey: decryptedKey,
+            api: "openai-completions" ,
+          });
+        }
       } catch {
         console.warn(`[pi] Failed to register custom provider`);
       }
