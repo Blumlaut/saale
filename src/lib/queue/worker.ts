@@ -9,7 +9,11 @@ import { createWorker, scheduleAllJobs } from "@/lib/queue";
 async function main() {
   console.log("[worker] Starting BullMQ worker...");
 
-  const worker = createWorker();
+  // Lazy-load processJob to avoid importing Pi dependencies at startup
+  // (tsx/Node 25 have issues resolving @earendil-works/pi-coding-agent statically)
+  const { processJob } = await import("@/lib/queue/job-handler");
+
+  const worker = createWorker(processJob);
 
   worker.on("error", (err) => {
     console.error("[worker] Worker error:", err.message);
