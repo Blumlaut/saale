@@ -7,14 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2 } from "lucide-react";
+import {
+  Mail,
+  Search,
+  Star,
+  RefreshCw,
+  Loader2,
+  Archive,
+  Trash2,
+  Trash,
+  AlertTriangle,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface EmailMessage {
   id: string;
   fromName: string | null;
   fromEmail: string;
-  to: string[];
+  to: string | string[];
   subject: string;
   date: string;
   bodyPreview: string;
@@ -40,6 +50,7 @@ export function Inbox() {
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMsg, setSelectedMsg] = useState<EmailMessage | null>(null);
@@ -102,6 +113,41 @@ export function Inbox() {
     }
   };
 
+  const handleFullRefresh = async (accountId: string) => {
+    if (!confirm("This will delete all synced emails and re-download everything. Continue?")) {
+      return;
+    }
+    setRefreshing(accountId);
+    try {
+      const res = await fetch(`/api/email/accounts/${accountId}/full-refresh`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        loadMessages();
+        loadAccounts();
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setRefreshing(null);
+    }
+  };
+
+  const handleDelete = async (accountId: string) => {
+    if (!confirm("Delete this email account and all its synced messages?")) return;
+    try {
+      const res = await fetch(`/api/email/accounts/${accountId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        loadAccounts();
+        loadMessages();
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   const handleSelect = (msg: EmailMessage) => {
     setSelectedId(msg.id);
     setSelectedMsg(msg);
@@ -151,21 +197,49 @@ export function Inbox() {
           <h2 className="text-sm font-semibold">Mail</h2>
           <div className="flex items-center gap-1">
             {accounts.map((acc) => (
-              <Button
-                key={acc.id}
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => handleSync(acc.id)}
-                disabled={syncing === acc.id || !acc.enabled}
-                title={`Sync ${acc.email}`}
-              >
-                {syncing === acc.id ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3 w-3" />
-                )}
-              </Button>
+              <div key={acc.id} className="flex items-center gap-0.5">
+                <span className="text-muted-foreground mr-1 text-[10px]">
+                  {acc.email.split("@")[0]}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => handleSync(acc.id)}
+                  disabled={syncing === acc.id || refreshing === acc.id || !acc.enabled}
+                  title={`Sync ${acc.email}`}
+                >
+                  {syncing === acc.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-amber-500/70 hover:text-amber-500"
+                  onClick={() => handleFullRefresh(acc.id)}
+                  disabled={syncing === acc.id || refreshing === acc.id || !acc.enabled}
+                  title={`Full refresh ${acc.email}`}
+                >
+                  {refreshing === acc.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="h-3 w-3" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive/60 hover:text-destructive h-6 w-6"
+                  onClick={() => handleDelete(acc.id)}
+                  disabled={syncing === acc.id || refreshing === acc.id}
+                  title={`Delete ${acc.email}`}
+                >
+                  <Trash className="h-3 w-3" />
+                </Button>
+              </div>
             ))}
           </div>
         </div>
@@ -286,7 +360,11 @@ export function Inbox() {
                 <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
                   <span>{selectedMessage.fromName || selectedMessage.fromEmail}</span>
                   <span>→</span>
-                  <span>{selectedMessage.to.join(", ")}</span>
+                  <span>
+                    {Array.isArray(selectedMessage.to)
+                      ? selectedMessage.to.join(", ")
+                      : selectedMessage.to}
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-1">
