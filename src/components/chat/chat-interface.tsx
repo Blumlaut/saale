@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
-import { InputBar } from "./input-bar";
+import { InputBar, type ToolConfig } from "./input-bar";
 import { ModelSelector } from "./model-selector";
 import { ThinkingSelector } from "./thinking-selector";
 import { Loader2, ChevronLeft } from "lucide-react";
@@ -41,6 +41,13 @@ interface StreamingState {
   }>;
 }
 
+const DEFAULT_TOOL_CONFIG: ToolConfig = {
+  files: true,
+  email: true,
+  jobs: true,
+  chatSearch: true,
+};
+
 export function ChatInterface({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -53,6 +60,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   const streamingRef = useRef<StreamingState>(streaming);
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
+  const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -69,6 +77,9 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
               : "";
           if (modelStr) setModelId(modelStr);
           if (data.session.thinkingLevel) setThinkingLevel(data.session.thinkingLevel);
+          if (data.session.toolConfig) {
+            setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...data.session.toolConfig });
+          }
         }
       }
     } catch {
@@ -87,6 +98,25 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     loadMessages();
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
+
+  // Toggle a tool category and persist
+  const handleToggleTool = useCallback(
+    async (category: keyof ToolConfig) => {
+      const updated = { ...toolConfig, [category]: !toolConfig[category] };
+      setToolConfig(updated);
+
+      try {
+        await fetch(`/api/chat/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toolConfig: updated }),
+        });
+      } catch {
+        // Silently fail — local state is already updated
+      }
+    },
+    [toolConfig, sessionId],
+  );
 
   // Send message
   const handleSend = useCallback(
@@ -372,7 +402,13 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       <MessageList messages={displayMessages} isLoading={isLoading} />
 
       {/* Input */}
-      <InputBar onSend={handleSend} isLoading={isLoading} onStop={handleStop} />
+      <InputBar
+        onSend={handleSend}
+        isLoading={isLoading}
+        onStop={handleStop}
+        toolConfig={toolConfig}
+        onToggleTool={handleToggleTool}
+      />
     </GlassPanel>
   );
 }

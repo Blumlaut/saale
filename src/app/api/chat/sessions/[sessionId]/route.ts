@@ -73,7 +73,7 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const { title, modelProvider, modelName, thinkingLevel } = body;
+  const { title, modelProvider, modelName, thinkingLevel, toolConfig } = body;
 
   const updated = await prisma.chatSession.update({
     where: { id: sessionId },
@@ -82,6 +82,7 @@ export async function PATCH(
       ...(modelProvider && { modelProvider }),
       ...(modelName && { modelName }),
       ...(thinkingLevel && { thinkingLevel }),
+      ...(toolConfig && { toolConfig }),
     },
   });
 
@@ -92,6 +93,7 @@ export async function PATCH(
       modelProvider: updated.modelProvider,
       modelName: updated.modelName,
       thinkingLevel: updated.thinkingLevel,
+      toolConfig: updated.toolConfig,
     },
   });
 }

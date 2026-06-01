@@ -3,20 +3,52 @@
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Paperclip, Send, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Paperclip, Send, Loader2, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+export interface ToolConfig {
+  files: boolean;
+  email: boolean;
+  jobs: boolean;
+  chatSearch: boolean;
+}
 
 interface InputBarProps {
   onSend: (message: string) => void;
   isLoading: boolean;
   onStop: () => void;
   onFileUpload?: (file: File) => void;
+  toolConfig?: ToolConfig;
+  onToggleTool?: (category: keyof ToolConfig) => void;
 }
 
-export function InputBar({ onSend, isLoading, onStop, onFileUpload }: InputBarProps) {
+const TOOL_LABELS: Record<keyof ToolConfig, string> = {
+  files: "Files",
+  email: "Email",
+  jobs: "Jobs",
+  chatSearch: "Chat history",
+};
+
+export function InputBar({
+  onSend,
+  isLoading,
+  onStop,
+  onFileUpload,
+  toolConfig,
+  onToggleTool,
+}: InputBarProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const hasToolToggle = onToggleTool !== undefined && toolConfig !== undefined;
 
   const handleSubmit = useCallback(() => {
     if (!input.trim() || isLoading) return;
@@ -53,6 +85,34 @@ export function InputBar({ onSend, isLoading, onStop, onFileUpload }: InputBarPr
     <div className="border-border/50 border-t bg-white/40 px-4 py-3 dark:bg-black/20">
       <div className="mx-auto max-w-3xl">
         <div className="border-input bg-background/80 relative flex items-end gap-2 rounded-2xl border p-2 shadow-sm">
+          {/* Tools toggle button */}
+          {hasToolToggle && (
+            <DropdownMenu>
+              <DropdownMenuTrigger>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-lg"
+                  aria-label="Toggle tools"
+                >
+                  <Wrench className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuLabel>Available Tools</DropdownMenuLabel>
+                {(Object.keys(TOOL_LABELS) as Array<keyof ToolConfig>).map((key) => (
+                  <DropdownMenuCheckboxItem
+                    key={key}
+                    checked={!!toolConfig[key]}
+                    onCheckedChange={() => onToggleTool(key)}
+                  >
+                    {TOOL_LABELS[key]}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           {/* File upload button */}
           {onFileUpload && (
             <Button
