@@ -30,6 +30,7 @@ export async function GET() {
       smtpSecure: true,
       enabled: true,
       lastSyncedAt: true,
+      cachedFolders: true,
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -57,6 +58,7 @@ export async function GET() {
         smtpSecure: boolean;
         enabled: boolean;
         lastSyncedAt: Date | null;
+        cachedFolders: any;
         createdAt: Date;
         updatedAt: Date;
         _count: { messages: number };
@@ -76,6 +78,7 @@ export async function GET() {
         updatedAt: a.updatedAt.toISOString(),
         messageCount: a._count.messages,
         folders: a.messages.map((m) => m.folder),
+        remoteFolders: (a.cachedFolders as string[]) ?? [],
       }),
     ),
   });

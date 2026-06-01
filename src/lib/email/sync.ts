@@ -15,21 +15,29 @@ const SPECIAL_USE_FALLBACKS: Record<string, string[]> = {
 };
 
 /**
- * Discover mailbox folders using IMAP SPECIAL-USE flags.
- * Falls back to common folder name patterns if SPECIAL-USE is unavailable.
+ * Discover mailbox folders using IMAP LIST.
+ * Returns all folders plus special-use matched folders.
  */
 async function discoverFolders(
   mailbox: ImapFlow,
-): Promise<{ inbox: string; special: Record<string, string | null> }> {
+): Promise<{ allFolders: string[]; special: Record<string, string | null> }> {
   const special: Record<string, string | null> = {
     "\\Sent": null,
     "\\Drafts": null,
     "\\Trash": null,
     "\\Archive": null,
   };
+  const allFolders: string[] = [];
 
   try {
     const mailboxes: ListResponse[] = await mailbox.list();
+
+    // Collect all folder names (skip INBOX since it's always there)
+    for (const mb of mailboxes) {
+      if (mb.name.toUpperCase() !== "INBOX") {
+        allFolders.push(mb.name);
+      }
+    }
 
     for (const mb of mailboxes) {
       const attrs = mb.flags ?? new Set<string>();
@@ -74,7 +82,7 @@ async function discoverFolders(
     }
   }
 
-  return { inbox: "INBOX", special };
+  return { allFolders, special };
 }
 
 /**
@@ -113,8 +121,8 @@ export async function syncEmailAccount(accountId: string): Promise<{
     await mailbox.connect();
 
     // Discover actual folder names from the server
-    const { inbox, special } = await discoverFolders(mailbox);
-    const folders: string[] = [inbox];
+    const { allFolders, special } = await discoverFolders(mailbox);
+    const folders: string[] = ["INBOX"];
     for (const folderName of Object.values(special)) {
       if (folderName) {
         folders.push(folderName);
@@ -122,6 +130,14 @@ export async function syncEmailAccount(accountId: string): Promise<{
     }
     // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
     console.log(`[email-sync] Discovered folders: ${folders.join(", ")}`);
+    console.log(`[email-sync] All remote folders: ${allFolders.join(", ")}`);
+
+    // Cache all remote folders on the account
+    await prisma.emailAccount.update({
+      where: { id: accountId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma Json type is incompatible with string[]
+      data: { cachedFolders: allFolders as any },
+    });
 
     const lastSyncedAt = account.lastSyncedAt;
     // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
