@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
+import { syncMessageFlags } from "@/lib/email/imap";
 
 /**
  * GET /api/email/messages/:messageId — Get a single email message (with body)
@@ -115,11 +116,25 @@ export async function PATCH(
     data: updateData,
     select: {
       id: true,
+      uid: true,
+      folder: true,
       isStarred: true,
       isRead: true,
       tags: true,
+      accountId: true,
     },
   });
+
+  // Push flag changes to the IMAP server (best-effort, non-blocking)
+  if (body.isStarred !== undefined || body.isRead !== undefined) {
+    // Fire-and-forget: don't await so the response isn't delayed by IMAP latency
+    syncMessageFlags(updated.accountId, updated.folder, updated.uid, {
+      ...(body.isRead !== undefined ? { isRead: body.isRead } : {}),
+      ...(body.isStarred !== undefined ? { isStarred: body.isStarred } : {}),
+    }).catch(() => {
+      // Already logged inside syncMessageFlags
+    });
+  }
 
   return NextResponse.json({
     message: {

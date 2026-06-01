@@ -148,7 +148,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
 
     for (const folder of folders) {
       try {
-        await mailbox.mailboxOpen(folder, { readOnly: true });
+        await mailbox.mailboxOpen(folder);
 
         // Build search criteria
         const searchOpts: Record<string, unknown> = {};
