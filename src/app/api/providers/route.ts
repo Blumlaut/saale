@@ -22,6 +22,48 @@ const PROVIDERS = {
 };
 
 /**
+ * Fetch models from an OpenAI-compatible /v1/models endpoint.
+ */
+async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<{ models: string[]; error?: string }> {
+  const url = `${baseUrl.replace(/\/+$/, "")}/v1/models`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) {
+      return {
+        models: [],
+        error: `HTTP ${res.status} from ${url}`,
+      };
+    }
+
+    const data = await res.json();
+    if (!data?.data?.length) {
+      return {
+        models: [],
+        error: "No models returned by server",
+      };
+    }
+
+    return {
+      models: data.data
+        .map((m: any) => m.id)
+        .slice(0, 200),
+    };
+  } catch (err) {
+    return {
+      models: [],
+      error: `${(err as Error).message} (checking ${url})`,
+    };
+  }
+}
+
+/**
  * GET /api/providers — List user's configured providers
  */
 export async function GET() {
@@ -81,7 +123,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // apiKey is optional for local servers (llama.cpp, Ollama, etc.)
+  // apiKey is optional for local servers
   if (apiKey && (typeof apiKey !== "string" || apiKey.length < 3)) {
     return NextResponse.json(
       { error: "API key must be at least 3 characters if provided" },
@@ -97,8 +139,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Encrypt the API key
-  const encryptedKey = encrypt(apiKey);
+  // Encrypt the API key (use empty string if not provided)
+  const encryptedKey = encrypt(apiKey || "");
 
   const key = await prisma.providerApiKey.upsert({
     where: {
@@ -121,12 +163,25 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // For custom providers, try to discover models
+  let discoveredModels: string[] = [];
+  let modelError: string | undefined;
+
+  if (provider === "custom" && baseUrl) {
+    const result = await fetchOpenAIModels(baseUrl, apiKey || undefined);
+    discoveredModels = result.models;
+    modelError = result.error;
+  }
+
   return NextResponse.json({
     provider: key.provider,
     label: key.label,
     baseUrl: key.baseUrl,
     configured: true,
     displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
+    discoveredModels,
+    modelCount: discoveredModels.length,
+    modelError,
   });
 }
 

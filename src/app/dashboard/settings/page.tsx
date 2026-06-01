@@ -105,6 +105,7 @@ export default function SettingsPage() {
   const [newBaseUrl, setNewBaseUrl] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [providerStatus, setProviderStatus] = useState<"idle" | "success" | "error">("idle");
+  const [modelDiscoveryInfo, setModelDiscoveryInfo] = useState<{ count: number; error?: string } | null>(null);
 
   // Available models (from Pi SDK)
   const [availableModels, setAvailableModels] = useState<Record<string, AvailableModel[]>>({});
@@ -215,14 +216,22 @@ export default function SettingsPage() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
         setProviderStatus("success");
         setNewApiKey("");
         setNewLabel("");
         setNewBaseUrl("");
         setNewProvider("");
+
+        // Show model discovery info
+        if (data.modelCount !== undefined) {
+          setModelDiscoveryInfo({ count: data.modelCount, error: data.modelError });
+          setTimeout(() => setModelDiscoveryInfo(null), 8000);
+        }
+
         // Reload providers and models
-        const data = await fetch("/api/providers").then((r) => r.json());
-        setProviders(data.providers ?? []);
+        const providersData = await fetch("/api/providers").then((r) => r.json());
+        setProviders(providersData.providers ?? []);
         // Reload available models
         const modelsData = await fetch("/api/providers/models").then((r) => r.json());
         setAvailableModels(modelsData.models ?? {});
@@ -413,6 +422,18 @@ export default function SettingsPage() {
                     <span className="flex items-center gap-1 text-sm text-red-500">
                       <AlertCircle className="h-4 w-4" />
                       Failed
+                    </span>
+                  )}
+                  {modelDiscoveryInfo && modelDiscoveryInfo.count > 0 && (
+                    <span className="flex items-center gap-1 text-sm text-blue-500">
+                      <Sparkles className="h-4 w-4" />
+                      {modelDiscoveryInfo.count} models discovered
+                    </span>
+                  )}
+                  {modelDiscoveryInfo && modelDiscoveryInfo.error && (
+                    <span className="flex items-center gap-1 text-sm text-amber-500">
+                      <AlertCircle className="h-4 w-4" />
+                      {modelDiscoveryInfo.error}
                     </span>
                   )}
                 </div>
