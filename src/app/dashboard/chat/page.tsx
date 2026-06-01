@@ -1,3 +1,5 @@
+"use client";
+
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
