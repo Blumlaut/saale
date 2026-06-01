@@ -58,7 +58,7 @@ export async function GET() {
         smtpSecure: boolean;
         enabled: boolean;
         lastSyncedAt: Date | null;
-        cachedFolders: any;
+        cachedFolders: unknown;
         createdAt: Date;
         updatedAt: Date;
         _count: { messages: number };

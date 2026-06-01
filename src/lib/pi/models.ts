@@ -5,10 +5,7 @@ import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
 /**
  * Fetch model IDs from an OpenAI-compatible /models endpoint.
  */
-export async function fetchOpenAIModels(
-  baseUrl: string,
-  apiKey?: string,
-): Promise<string[]> {
+export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<string[]> {
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     const res = await fetch(url, {
@@ -24,9 +21,7 @@ export async function fetchOpenAIModels(
     const data = await res.json();
     if (!data?.data?.length) return [];
 
-    return data.data
-      .map((m: { id: string }) => String(m.id))
-      .slice(0, 200);
+    return data.data.map((m: { id: string }) => String(m.id)).slice(0, 200);
   } catch {
     return [];
   }
@@ -104,13 +99,14 @@ export async function buildModelRegistry(userId: string) {
 
   // Use discovered models if we have them, otherwise fall back to registry defaults
   const available = modelRegistry.getAvailable();
-  const allModels = discoveredModels.length > 0
-    ? discoveredModels
-    : available.map((m) => ({
-        provider: m.provider,
-        id: m.id,
-        name: m.name,
-      }));
+  const allModels =
+    discoveredModels.length > 0
+      ? discoveredModels
+      : available.map((m) => ({
+          provider: m.provider,
+          id: m.id,
+          name: m.name,
+        }));
 
   return { modelRegistry, authStorage, models: allModels };
 }

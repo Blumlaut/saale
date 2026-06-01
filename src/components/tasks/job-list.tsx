@@ -22,12 +22,21 @@ import { cn } from "@/lib/utils";
 import { GlassPanelHeader } from "@/components/ui/glass-panel";
 import { ConfigDisplay, type FieldDef } from "@/components/tasks/config-form";
 
+interface JobConfig {
+  cronExpression?: string;
+  accountId?: string;
+  limit?: number;
+  spamThreshold?: number;
+  modelId?: string;
+  [key: string]: unknown;
+}
+
 interface Job {
   id: string;
   type: string;
   enabled: boolean;
   modelId: string | null;
-  config: Record<string, unknown>;
+  config: JobConfig;
   lastRunAt: string | null;
   runCount: number;
   runHistoryCount: number;
@@ -254,9 +263,7 @@ export function JobList({ onRefresh }: JobListProps) {
                     >
                       <button className="flex-1 text-left" onClick={() => setSelectedJob(job)}>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">
-                            {schema?.label ?? job.type}
-                          </span>
+                          <span className="text-sm font-medium">{schema?.label ?? job.type}</span>
                           {schema?.usesAi && job.modelId && (
                             <Badge variant="secondary" className="text-xs">
                               <Brain className="mr-1 h-3 w-3" />
@@ -348,7 +355,7 @@ export function JobList({ onRefresh }: JobListProps) {
                     {/* Model override */}
                     {jobSchema?.usesAi && selectedJob.modelId && (
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-sm flex items-center gap-1.5">
+                        <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
                           <Brain className="h-3.5 w-3.5" />
                           AI Model
                         </span>
@@ -359,7 +366,7 @@ export function JobList({ onRefresh }: JobListProps) {
                     )}
                     {jobSchema?.usesAi && !selectedJob.modelId && (
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-sm flex items-center gap-1.5">
+                        <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
                           <Brain className="h-3.5 w-3.5" />
                           AI Model
                         </span>
@@ -378,7 +385,9 @@ export function JobList({ onRefresh }: JobListProps) {
                           <div key={key} className="flex items-center justify-between">
                             <span className="text-muted-foreground text-sm">{key}</span>
                             <span className="text-sm font-medium">
-                              {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                              {typeof value === "object"
+                                ? JSON.stringify(value)
+                                : String(value as string | number | boolean)}
                             </span>
                           </div>
                         ))

@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface FieldDef {
+export interface FieldDef {
   key: string;
   label: string;
   description?: string;
