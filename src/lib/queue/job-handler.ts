@@ -74,7 +74,9 @@ export async function dispatchAiTask(
       reject(new Error("AI task timed out (5min)"));
     }, 5 * 60_000);
 
-    session.prompt(prompt);
+    // Call agent.prompt directly to bypass AgentSession's preflight logic
+    // which resets systemPrompt back to the Pi base prompt on every turn
+    session.agent.prompt(prompt);
   });
 }
 
