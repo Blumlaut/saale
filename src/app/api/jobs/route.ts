@@ -92,13 +92,13 @@ export async function POST(request: NextRequest) {
   // Register with BullMQ if enabled
   const jobConfig = config ?? {};
   if (job.enabled && jobConfig.cronExpression) {
-    const queue = getQueue(job.id);
+    const queue = getQueue();
     await queue
       .add(
         "execute",
         { ...jobConfig, taskId: job.id },
         {
-          jobId: job.id,
+          jobId: `scheduled-${job.id}`,
           repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
         },
       )
