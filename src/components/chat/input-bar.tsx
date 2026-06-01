@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
@@ -88,7 +89,7 @@ export function InputBar({
   return (
     <div className="border-border/50 border-t bg-white/40 px-4 py-3 dark:bg-black/20">
       <div className="mx-auto max-w-3xl">
-        <div className="border-input bg-background/80 relative flex items-end gap-2 rounded-2xl border p-2 shadow-sm">
+        <div className="border-input bg-background/80 relative flex items-center gap-2 rounded-2xl border p-2 shadow-sm">
           {/* Tools toggle button */}
           {hasToolToggle && (
             <DropdownMenu>
@@ -103,16 +104,18 @@ export function InputBar({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuLabel>Available Tools</DropdownMenuLabel>
-                {(Object.keys(TOOL_LABELS) as Array<keyof ToolConfig>).map((key) => (
-                  <DropdownMenuCheckboxItem
-                    key={key}
-                    checked={!!toolConfig[key]}
-                    onCheckedChange={() => onToggleTool(key)}
-                  >
-                    {TOOL_LABELS[key]}
-                  </DropdownMenuCheckboxItem>
-                ))}
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Available Tools</DropdownMenuLabel>
+                  {(Object.keys(TOOL_LABELS) as Array<keyof ToolConfig>).map((key) => (
+                    <DropdownMenuCheckboxItem
+                      key={key}
+                      checked={!!toolConfig[key]}
+                      onCheckedChange={() => onToggleTool(key)}
+                    >
+                      {TOOL_LABELS[key]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
