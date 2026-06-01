@@ -4,21 +4,21 @@ import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { encrypt, decrypt } from "@/lib/crypto";
 
-// Known providers with their API key prefixes for validation
+// Known providers with their labels
 const PROVIDERS = {
-  anthropic: { label: "Anthropic", prefix: "sk-ant-" },
-  openai: { label: "OpenAI", prefix: "sk-" },
-  google: { label: "Google", prefix: "AIza" },
-  deepseek: { label: "DeepSeek", prefix: "sk-" },
-  xai: { label: "xAI (Grok)", prefix: "xai-" },
-  groq: { label: "Groq", prefix: "gsk_" },
-  cerebras: { label: "Cerebras", prefix: "pk-" },
-  openrouter: { label: "OpenRouter", prefix: "sk-or-" },
-  mistral: { label: "Mistral", prefix: "x-" },
-  together: { label: "Together AI", prefix: "sk-" },
-  fireworks: { label: "Fireworks", prefix: "fw_" },
-  huggingface: { label: "Hugging Face", prefix: "hf_" },
-  custom: { label: "Custom (OpenAI compat)", prefix: "" },
+  anthropic: { label: "Anthropic" },
+  openai: { label: "OpenAI" },
+  google: { label: "Google" },
+  deepseek: { label: "DeepSeek" },
+  xai: { label: "xAI (Grok)" },
+  groq: { label: "Groq" },
+  cerebras: { label: "Cerebras" },
+  openrouter: { label: "OpenRouter" },
+  mistral: { label: "Mistral" },
+  together: { label: "Together AI" },
+  fireworks: { label: "Fireworks" },
+  huggingface: { label: "Hugging Face" },
+  custom: { label: "OpenAI-compatible" },
 };
 
 /**
@@ -39,6 +39,7 @@ export async function GET() {
       id: true,
       provider: true,
       label: true,
+      baseUrl: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { provider, apiKey, label } = body;
+  const { provider, apiKey, label, baseUrl } = body;
 
   if (!provider || !apiKey) {
     return NextResponse.json(
@@ -83,6 +84,14 @@ export async function POST(request: NextRequest) {
   if (typeof apiKey !== "string" || apiKey.length < 10) {
     return NextResponse.json(
       { error: "API key must be at least 10 characters" },
+      { status: 400 },
+    );
+  }
+
+  // For custom providers, baseUrl is required
+  if (provider === "custom" && (!baseUrl || typeof baseUrl !== "string" || baseUrl.length < 5)) {
+    return NextResponse.json(
+      { error: "Base URL is required for OpenAI-compatible providers" },
       { status: 400 },
     );
   }
@@ -102,16 +111,19 @@ export async function POST(request: NextRequest) {
       provider,
       encryptedKey,
       label: label || "",
+      baseUrl: provider === "custom" ? baseUrl : null,
     },
     update: {
       encryptedKey,
       label: label || "",
+      baseUrl: provider === "custom" ? baseUrl : null,
     },
   });
 
   return NextResponse.json({
     provider: key.provider,
     label: key.label,
+    baseUrl: key.baseUrl,
     configured: true,
     displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
   });

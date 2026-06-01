@@ -66,6 +66,21 @@ interface ConfiguredProvider {
   updatedAt: string;
 }
 
+interface AvailableModel {
+  id: string;
+  name: string;
+  reasoning: boolean;
+  contextWindow: number;
+  maxTokens: number;
+  cost: { input: number; output: number };
+}
+
+interface AvailableProvider {
+  id: string;
+  name: string;
+  modelCount: number;
+}
+
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -87,8 +102,13 @@ export default function SettingsPage() {
   const [newProvider, setNewProvider] = useState("");
   const [newApiKey, setNewApiKey] = useState("");
   const [newLabel, setNewLabel] = useState("");
+  const [newBaseUrl, setNewBaseUrl] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [providerStatus, setProviderStatus] = useState<"idle" | "success" | "error">("idle");
+
+  // Available models (from Pi SDK)
+  const [availableModels, setAvailableModels] = useState<Record<string, AvailableModel[]>>({});
+  const [availableModelProviders, setAvailableModelProviders] = useState<AvailableProvider[]>([]);
 
   // Load settings
   useEffect(() => {
@@ -114,15 +134,35 @@ export default function SettingsPage() {
 
   // Load providers
   useEffect(() => {
-    fetch("/api/providers")
-      .then((r) => r.json())
-      .then((data) => {
-        setProviders(data.providers ?? []);
-        setAvailableProviders(data.availableProviders ?? []);
-        setProvidersLoading(false);
-      })
-      .catch(() => setProvidersLoading(false));
+    loadProviders();
   }, []);
+
+  // Load available models whenever providers change
+  useEffect(() => {
+    if (!providersLoading) {
+      loadModels();
+    }
+  }, [providers, providersLoading]);
+
+  const loadProviders = async () => {
+    try {
+      const data = await fetch("/api/providers").then((r) => r.json());
+      setProviders(data.providers ?? []);
+      setAvailableProviders(data.availableProviders ?? []);
+    } finally {
+      setProvidersLoading(false);
+    }
+  };
+
+  const loadModels = async () => {
+    try {
+      const data = await fetch("/api/providers/models").then((r) => r.json());
+      setAvailableModels(data.models ?? {});
+      setAvailableModelProviders(data.providers ?? []);
+    } catch {
+      // No models available yet
+    }
+  };
 
   // Auto-clear save status
   useEffect(() => {
@@ -161,6 +201,7 @@ export default function SettingsPage() {
 
   const handleAddProvider = useCallback(async () => {
     if (!newProvider || !newApiKey) return;
+    if (newProvider === "custom" && !newBaseUrl) return;
     setAddingProvider(true);
     try {
       const res = await fetch("/api/providers", {
@@ -170,15 +211,22 @@ export default function SettingsPage() {
           provider: newProvider,
           apiKey: newApiKey,
           label: newLabel,
+          baseUrl: newProvider === "custom" ? newBaseUrl : undefined,
         }),
       });
       if (res.ok) {
         setProviderStatus("success");
         setNewApiKey("");
         setNewLabel("");
-        // Reload providers
+        setNewBaseUrl("");
+        setNewProvider("");
+        // Reload providers and models
         const data = await fetch("/api/providers").then((r) => r.json());
         setProviders(data.providers ?? []);
+        // Reload available models
+        const modelsData = await fetch("/api/providers/models").then((r) => r.json());
+        setAvailableModels(modelsData.models ?? {});
+        setAvailableModelProviders(modelsData.providers ?? []);
       } else {
         setProviderStatus("error");
       }
@@ -274,7 +322,7 @@ export default function SettingsPage() {
               {/* Add new provider */}
               <div className="space-y-4 rounded-2xl border border-border/50 bg-background/40 p-5">
                 <h4 className="text-sm font-medium">Add Provider</h4>
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="provider-select">Provider</Label>
                     <Select value={newProvider} onValueChange={(v) => setNewProvider(v ?? "")}>
@@ -314,21 +362,39 @@ export default function SettingsPage() {
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* Base URL for custom providers */}
+                {newProvider === "custom" && (
                   <div className="space-y-2">
-                    <Label htmlFor="provider-label">Label (optional)</Label>
+                    <Label htmlFor="base-url">Base URL</Label>
                     <Input
-                      id="provider-label"
-                      placeholder="e.g. Work account"
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
+                      id="base-url"
+                      placeholder="https://api.openai.com/v1"
+                      value={newBaseUrl}
+                      onChange={(e) => setNewBaseUrl(e.target.value)}
+                      className="font-mono text-sm"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      The base URL of your OpenAI-compatible API (without trailing slash)
+                    </p>
                   </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="provider-label">Label (optional)</Label>
+                  <Input
+                    id="provider-label"
+                    placeholder="e.g. Work account"
+                    value={newLabel}
+                    onChange={(e) => setNewLabel(e.target.value)}
+                  />
                 </div>
                 <div className="flex items-center gap-3">
                   <Button
                     size="sm"
                     onClick={handleAddProvider}
-                    disabled={addingProvider || !newProvider || !newApiKey}
+                    disabled={addingProvider || !newProvider || !newApiKey || (newProvider === "custom" && !newBaseUrl)}
                   >
                     {addingProvider ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -435,17 +501,19 @@ export default function SettingsPage() {
                     }}
                   >
                     <SelectTrigger id="model-provider">
-                      <SelectValue />
+                      <SelectValue placeholder="Select provider" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="anthropic">Anthropic</SelectItem>
-                      <SelectItem value="openai">OpenAI</SelectItem>
-                      <SelectItem value="google">Google</SelectItem>
-                      <SelectItem value="deepseek">DeepSeek</SelectItem>
-                      <SelectItem value="xai">xAI (Grok)</SelectItem>
-                      <SelectItem value="groq">Groq</SelectItem>
-                      <SelectItem value="mistral">Mistral</SelectItem>
-                      <SelectItem value="openrouter">OpenRouter</SelectItem>
+                      {availableModelProviders.length === 0 && (
+                        <SelectItem value="none" disabled>
+                          Add an API key first
+                        </SelectItem>
+                      )}
+                      {availableModelProviders.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} ({p.modelCount} models)
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -459,38 +527,24 @@ export default function SettingsPage() {
                     }}
                   >
                     <SelectTrigger id="model-name">
-                      <SelectValue />
+                      <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Anthropic models */}
-                      {settings?.defaultModelProvider === "anthropic" && (
-                        <>
-                          <SelectItem value="claude-opus-4-5-20250514">Claude Opus 4.5</SelectItem>
-                          <SelectItem value="claude-sonnet-4-5-20250514">Claude Sonnet 4.5</SelectItem>
-                          <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
-                        </>
-                      )}
-                      {/* OpenAI models */}
-                      {settings?.defaultModelProvider === "openai" && (
-                        <>
-                          <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                          <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                          <SelectItem value="o3">O3</SelectItem>
-                          <SelectItem value="o3-mini">O3 Mini</SelectItem>
-                        </>
-                      )}
-                      {/* Google models */}
-                      {settings?.defaultModelProvider === "google" && (
-                        <>
-                          <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                          <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
-                          <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                        </>
-                      )}
-                      {/* Fallback when provider not matched */}
-                      {(!settings?.defaultModelProvider ||
-                        !["anthropic", "openai", "google"].includes(settings.defaultModelProvider)) && (
-                        <SelectItem value="default">Default model</SelectItem>
+                      {settings?.defaultModelProvider && availableModels[settings.defaultModelProvider] ? (
+                        availableModels[settings.defaultModelProvider]
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name}
+                              {m.reasoning ? " ✦" : ""}
+                            </SelectItem>
+                          ))
+                      ) : (
+                        <SelectItem value="none" disabled>
+                          {settings?.defaultModelProvider
+                            ? "No models available"
+                            : "Select a provider first"}
+                        </SelectItem>
                       )}
                     </SelectContent>
                   </Select>

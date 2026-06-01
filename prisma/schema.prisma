@@ -214,9 +214,10 @@ model AppSettings {
 model ProviderApiKey {
   id             String   @id @default(cuid())
   userId         String
-  provider       String   // "anthropic" | "openai" | "google" | "deepseek" | "xai" | "groq" | ...
+  provider       String   // "anthropic" | "openai" | "google" | "custom" | ...
   encryptedKey   String   @db.Text
   label          String   @default("") // optional user label
+  baseUrl        String?  // for custom OpenAI-compatible providers
   settings       AppSettings @relation(fields: [userId], references: [userId], onDelete: Cascade)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
