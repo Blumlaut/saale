@@ -6,10 +6,10 @@ import { decrypt } from "@/lib/crypto";
 import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
 
 /**
- * Fetch models from an OpenAI-compatible /v1/models endpoint.
+ * Fetch models from an OpenAI-compatible /models endpoint.
  */
 async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<Array<{ id: string; name: string }>> {
-  const url = `${baseUrl.replace(/\/+$/, "")}/v1/models`;
+  const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     const res = await fetch(url, {
       headers: {

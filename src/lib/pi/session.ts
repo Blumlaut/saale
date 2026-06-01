@@ -12,10 +12,10 @@ import { createFileTool } from "./tools/file-tools";
 import { createChatSearchTool } from "./tools/chat-tools";
 
 /**
- * Fetch models from an OpenAI-compatible /v1/models endpoint.
+ * Fetch models from an OpenAI-compatible /models endpoint.
  */
 async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<Array<{ id: string; name: string }>> {
-  const url = `${baseUrl.replace(/\/+$/, "")}/v1/models`;
+  const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     const res = await fetch(url, {
       headers: {
