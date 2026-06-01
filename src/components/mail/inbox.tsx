@@ -24,6 +24,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { formatDistanceToNow, format } from "date-fns";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface EmailMessage {
   id: string;
@@ -89,6 +90,7 @@ export function Inbox() {
   const [_total, setTotal] = useState(0);
   const [togglingStar, setTogglingStar] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Active account from URL param
   const activeAccountId = urlAccountId ?? null;
@@ -162,7 +164,9 @@ export function Inbox() {
   const handleSelect = (msg: EmailMessage) => {
     setSelectedId(msg.id);
     setSelectedMsg(msg);
-    setMobileDetailOpen(true);
+    if (isMobile) {
+      setMobileDetailOpen(true);
+    }
     if (!msg.isRead) {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
       // Also update selected message
