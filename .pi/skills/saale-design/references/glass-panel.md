@@ -16,8 +16,8 @@ function GlassPanel({ className, children, ...props }: React.ComponentProps<"div
   return (
     <div
       className={cn(
-        "glass-panel relative flex flex-col overflow-hidden rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-white/5 backdrop-blur-xl shadow-lg",
-        className
+        "glass-panel relative flex flex-col overflow-hidden rounded-2xl border border-white/20 bg-white/60 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-white/5",
+        className,
       )}
       {...props}
     >
@@ -36,14 +36,12 @@ function GlassPanelHeader({
   return (
     <div
       className={cn(
-        "flex items-center justify-between border-b border-border/50 px-6 py-4",
-        className
+        "border-border/50 flex items-center justify-between border-b px-6 py-4",
+        className,
       )}
       {...props}
     >
-      <h2 className="text-lg font-semibold leading-snug">
-        {title || children}
-      </h2>
+      <h2 className="text-lg leading-snug font-semibold">{title || children}</h2>
       {action && <div>{action}</div>}
     </div>
   );
@@ -61,8 +59,8 @@ function GlassPanelFooter({ className, children, ...props }: React.ComponentProp
   return (
     <div
       className={cn(
-        "flex items-center justify-between border-t border-border/50 bg-white/30 dark:bg-white/5 px-6 py-3",
-        className
+        "border-border/50 flex items-center justify-between border-t bg-white/30 px-6 py-3 dark:bg-white/5",
+        className,
       )}
       {...props}
     >
@@ -101,12 +99,14 @@ import { Button } from "@/components/ui/button";
 <GlassPanel>
   <GlassPanelHeader
     title="Tasks"
-    action={<Button variant="secondary" size="sm">New Task</Button>}
+    action={
+      <Button variant="secondary" size="sm">
+        New Task
+      </Button>
+    }
   />
-  <GlassPanelContent>
-    {/* task list */}
-  </GlassPanelContent>
-</GlassPanel>
+  <GlassPanelContent>{/* task list */}</GlassPanelContent>
+</GlassPanel>;
 ```
 
 ### Panel with Footer
@@ -128,9 +128,7 @@ import { Button } from "@/components/ui/button";
 
 ```tsx
 <GlassPanel>
-  <GlassPanelContent>
-    {/* content without a header bar */}
-  </GlassPanelContent>
+  <GlassPanelContent>{/* content without a header bar */}</GlassPanelContent>
 </GlassPanel>
 ```
 
@@ -141,7 +139,8 @@ import { Button } from "@/components/ui/button";
 For inline elements that need slight separation:
 
 ```tsx
-className="glass-panel-subtle border border-white/10 dark:border-white/5 bg-white/30 dark:bg-white/5 backdrop-blur-lg rounded-xl shadow-none"
+className =
+  "glass-panel-subtle border border-white/10 dark:border-white/5 bg-white/30 dark:bg-white/5 backdrop-blur-lg rounded-xl shadow-none";
 ```
 
 ### Deep Panel
@@ -149,7 +148,8 @@ className="glass-panel-subtle border border-white/10 dark:border-white/5 bg-whit
 For modals or overlays that need to stand out:
 
 ```tsx
-className="glass-panel-deep border border-white/30 dark:border-white/10 bg-white/80 dark:bg-black/40 backdrop-blur-2xl rounded-3xl shadow-xl"
+className =
+  "glass-panel-deep border border-white/30 dark:border-white/10 bg-white/80 dark:bg-black/40 backdrop-blur-2xl rounded-3xl shadow-xl";
 ```
 
 ## Rules

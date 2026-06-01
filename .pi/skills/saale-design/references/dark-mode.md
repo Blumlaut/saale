@@ -27,7 +27,7 @@ import { ThemeProvider as NextThemesProvider } from "next-themes";
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <NextThemesProvider
-      attribute="class"      // adds .dark to <html>
+      attribute="class" // adds .dark to <html>
       defaultTheme="system"
       enableSystem
       disableTransitionOnChange={false}
@@ -111,10 +111,10 @@ Use Tailwind utilities, never hardcoded values:
 
 ```tsx
 // Correct
-className="bg-background text-foreground border-border"
+className = "bg-background text-foreground border-border";
 
 // Wrong
-className="bg-white text-black border-gray-200"
+className = "bg-white text-black border-gray-200";
 ```
 
 ## Glass in Dark Mode
@@ -124,19 +124,20 @@ Dark mode glass uses `bg-white/5` (not `bg-black/50`):
 ```tsx
 // Light mode: frosted white glass
 // Dark mode: barely-tinted glass (like looking through dark window)
-className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10"
+className =
+  "bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10";
 ```
 
 The dark mode glass should feel like looking through tinted glass, not a dark box.
 
 ## Contrast Verification
 
-| Element | Light Mode Contrast | Dark Mode Contrast |
-|---|---|---|
-| Primary text on background | > 12:1 | > 12:1 |
-| Secondary text on background | > 4.5:1 | > 4.5:1 |
-| Border on background | > 3:1 | > 3:1 |
-| Glass text on glass | > 10:1 | > 10:1 |
+| Element                      | Light Mode Contrast | Dark Mode Contrast |
+| ---------------------------- | ------------------- | ------------------ |
+| Primary text on background   | > 12:1              | > 12:1             |
+| Secondary text on background | > 4.5:1             | > 4.5:1            |
+| Border on background         | > 3:1               | > 3:1              |
+| Glass text on glass          | > 10:1              | > 10:1             |
 
 Test every component in both modes. If it reads well in light mode but not dark (or vice versa), adjust the token — don't add a component-specific override.
 
@@ -149,7 +150,10 @@ When the user toggles themes, apply a smooth transition:
 *,
 *::before,
 *::after {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 
 /* Exclude animations from transition */

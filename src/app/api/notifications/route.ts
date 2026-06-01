@@ -82,14 +82,14 @@ export async function PATCH(request: NextRequest) {
   const key = `${NOTIFICATION_KEY}${session.user.id}`;
 
   const rawNotifications = await redis.lrange(key, 0, -1);
-  let notifications: Array<{ id: string; read: boolean }> = rawNotifications.map((n) => JSON.parse(n as string));
+  let notifications: Array<{ id: string; read: boolean }> = rawNotifications.map((n) =>
+    JSON.parse(n as string),
+  );
 
   if (all) {
     notifications = notifications.map((n) => ({ ...n, read: true }));
   } else if (ids) {
-    notifications = notifications.map((n) =>
-      ids.includes(n.id) ? { ...n, read: true } : n,
-    );
+    notifications = notifications.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n));
   }
 
   await redis.del(key);

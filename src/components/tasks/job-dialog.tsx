@@ -1,12 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,12 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import {
-  Mail,
-  Tags,
-  Shield,
-  RefreshCw,
-} from "lucide-react";
+import { Mail, Tags, Shield, RefreshCw } from "lucide-react";
 
 interface JobDialogProps {
   open: boolean;
@@ -140,10 +130,13 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(open) => {
-      if (!open) resetForm();
-      onOpenChange(open);
-    }}>
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) resetForm();
+        onOpenChange(open);
+      }}
+    >
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Create Job</DialogTitle>
@@ -160,17 +153,12 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
                   onClick={() => handleTypeChange(template.type)}
                   className={cn(
                     "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                    selectedType === template.type &&
-                      "border-primary bg-white/20 dark:bg-white/5",
+                    selectedType === template.type && "border-primary bg-white/20 dark:bg-white/5",
                   )}
                 >
                   <Icon className="h-4 w-4" />
-                  <span className="text-sm font-medium">
-                    {template.label}
-                  </span>
-                  <span className="text-muted-foreground text-xs">
-                    {template.description}
-                  </span>
+                  <span className="text-sm font-medium">{template.label}</span>
+                  <span className="text-muted-foreground text-xs">{template.description}</span>
                 </button>
               );
             })}
@@ -187,9 +175,8 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
               placeholder="*/30 * * * *"
             />
             <p className="text-muted-foreground text-xs">
-              Examples: <code>* * * * *</code> (every minute),{" "}
-              <code>*/30 * * * *</code> (every 30 min),{" "}
-              <code>0 9 * * *</code> (daily at 9am)
+              Examples: <code>* * * * *</code> (every minute), <code>*/30 * * * *</code> (every 30
+              min), <code>0 9 * * *</code> (daily at 9am)
             </p>
           </div>
 
@@ -206,17 +193,13 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
 
           {/* Enabled */}
           <div className="flex items-center gap-2">
-            <Switch
-              checked={enabled}
-              onCheckedChange={setEnabled}
-              id="job-enabled"
-            />
+            <Switch checked={enabled} onCheckedChange={setEnabled} id="job-enabled" />
             <Label htmlFor="job-enabled">Enabled</Label>
           </div>
 
           {/* Error */}
           {error && (
-            <div className="text-destructive rounded-lg bg-destructive/10 px-3 py-2 text-sm">
+            <div className="text-destructive bg-destructive/10 rounded-lg px-3 py-2 text-sm">
               {error}
             </div>
           )}

@@ -1,12 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,11 +27,7 @@ interface AccountDialogProps {
   onSuccess?: () => void;
 }
 
-export function AccountDialog({
-  open,
-  onOpenChange,
-  onSuccess,
-}: AccountDialogProps) {
+export function AccountDialog({ open, onOpenChange, onSuccess }: AccountDialogProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [imapHost, setImapHost] = useState("imap.gmail.com");
@@ -176,10 +167,7 @@ export function AccountDialog({
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label>Host</Label>
-                <Input
-                  value={imapHost}
-                  onChange={(e) => setImapHost(e.target.value)}
-                />
+                <Input value={imapHost} onChange={(e) => setImapHost(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Port</Label>
@@ -191,11 +179,7 @@ export function AccountDialog({
               </div>
               <div className="flex items-end gap-2 pb-1">
                 <div className="flex items-center gap-2">
-                  <Switch
-                    checked={imapSecure}
-                    onCheckedChange={setImapSecure}
-                    id="imap-secure"
-                  />
+                  <Switch checked={imapSecure} onCheckedChange={setImapSecure} id="imap-secure" />
                   <Label htmlFor="imap-secure" className="text-sm">
                     SSL/TLS
                   </Label>
@@ -212,10 +196,7 @@ export function AccountDialog({
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label>Host</Label>
-                <Input
-                  value={smtpHost}
-                  onChange={(e) => setSmtpHost(e.target.value)}
-                />
+                <Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Port</Label>
@@ -227,11 +208,7 @@ export function AccountDialog({
               </div>
               <div className="flex items-end gap-2 pb-1">
                 <div className="flex items-center gap-2">
-                  <Switch
-                    checked={smtpSecure}
-                    onCheckedChange={setSmtpSecure}
-                    id="smtp-secure"
-                  />
+                  <Switch checked={smtpSecure} onCheckedChange={setSmtpSecure} id="smtp-secure" />
                   <Label htmlFor="smtp-secure" className="text-sm">
                     SSL/TLS
                   </Label>
@@ -248,16 +225,12 @@ export function AccountDialog({
                   {testResult.imap.success ? (
                     <>
                       <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="text-green-600 dark:text-green-400">
-                        IMAP connected
-                      </span>
+                      <span className="text-green-600 dark:text-green-400">IMAP connected</span>
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="h-4 w-4 text-destructive" />
-                      <span className="text-destructive">
-                        IMAP: {testResult.imap.error}
-                      </span>
+                      <AlertCircle className="text-destructive h-4 w-4" />
+                      <span className="text-destructive">IMAP: {testResult.imap.error}</span>
                     </>
                   )}
                 </div>
@@ -267,16 +240,12 @@ export function AccountDialog({
                   {testResult.smtp.success ? (
                     <>
                       <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="text-green-600 dark:text-green-400">
-                        SMTP connected
-                      </span>
+                      <span className="text-green-600 dark:text-green-400">SMTP connected</span>
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="h-4 w-4 text-destructive" />
-                      <span className="text-destructive">
-                        SMTP: {testResult.smtp.error}
-                      </span>
+                      <AlertCircle className="text-destructive h-4 w-4" />
+                      <span className="text-destructive">SMTP: {testResult.smtp.error}</span>
                     </>
                   )}
                 </div>
@@ -286,7 +255,7 @@ export function AccountDialog({
 
           {/* Error */}
           {error && (
-            <div className="text-destructive flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm">
+            <div className="text-destructive bg-destructive/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
               <AlertCircle className="h-4 w-4" />
               {error}
             </div>
@@ -304,10 +273,7 @@ export function AccountDialog({
                 "Test Connection"
               )}
             </Button>
-            <Button
-              onClick={handleSave}
-              disabled={saving || !email || !password}
-            >
+            <Button onClick={handleSave} disabled={saving || !email || !password}>
               {saving ? "Saving..." : "Save Account"}
             </Button>
           </div>

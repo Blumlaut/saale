@@ -14,18 +14,10 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">
-            Tasks
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Automated AI tasks
-          </p>
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Tasks</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Automated AI tasks</p>
         </div>
-        <Button
-          variant="default"
-          size="sm"
-          onClick={() => setShowJobDialog(true)}
-        >
+        <Button variant="default" size="sm" onClick={() => setShowJobDialog(true)}>
           <Plus className="mr-2 h-4 w-4" />
           New Task
         </Button>
@@ -35,11 +27,7 @@ export default function TasksPage() {
       <JobList />
 
       {/* Dialog */}
-      <JobDialog
-        open={showJobDialog}
-        onOpenChange={setShowJobDialog}
-        onSuccess={() => {}}
-      />
+      <JobDialog open={showJobDialog} onOpenChange={setShowJobDialog} onSuccess={() => {}} />
     </div>
   );
 }

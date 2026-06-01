@@ -40,7 +40,9 @@ Glass-style button, the default for most actions:
 No border, hover-only background. Used in dense areas:
 
 ```tsx
-<Button variant="ghost" size="sm">Edit</Button>
+<Button variant="ghost" size="sm">
+  Edit
+</Button>
 ```
 
 - Background: Transparent, hover shows subtle tint
@@ -79,12 +81,12 @@ Text-only, for inline actions:
 
 ## Sizes
 
-| Size | Height | Padding | Usage |
-|---|---|---|---|
-| `default` | 40px (`h-10`) | Standard | Form actions, primary buttons |
-| `sm` | 36px (`h-9`) | Compact | Card header actions, toolbars |
-| `lg` | 44px (`h-11`) | Generous | Hero actions, empty states |
-| `icon` | Square | Icon-only | Theme toggle, close buttons |
+| Size      | Height        | Padding   | Usage                         |
+| --------- | ------------- | --------- | ----------------------------- |
+| `default` | 40px (`h-10`) | Standard  | Form actions, primary buttons |
+| `sm`      | 36px (`h-9`)  | Compact   | Card header actions, toolbars |
+| `lg`      | 44px (`h-11`) | Generous  | Hero actions, empty states    |
+| `icon`    | Square        | Icon-only | Theme toggle, close buttons   |
 
 ## Corner Radius
 
@@ -105,7 +107,7 @@ import { Trash2 } from "lucide-react";
 
 <Button variant="ghost" size="icon" aria-label="Delete">
   <Trash2 className="h-4 w-4" />
-</Button>
+</Button>;
 ```
 
 - Always include `aria-label` for accessibility
@@ -120,7 +122,7 @@ import { Plus } from "lucide-react";
 <Button>
   <Plus className="mr-2 h-4 w-4" />
   New Task
-</Button>
+</Button>;
 ```
 
 - Icon on the left, text on the right
@@ -135,7 +137,7 @@ import { Spinner } from "@/components/ui/spinner";
 <Button disabled>
   <Spinner className="mr-2 h-4 w-4" />
   Saving...
-</Button>
+</Button>;
 ```
 
 - Always `disabled` while loading
@@ -151,11 +153,11 @@ import { Spinner } from "@/components/ui/spinner";
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---|---|
-| Multiple primary buttons | Make extras `variant="secondary"` |
-| Square buttons | Use `rounded-full` |
-| ALL CAPS labels | Use sentence case |
-| `<button>` raw element | Use `<Button>` from shadcn |
-| Red background on delete | Use `variant="destructive"` (text only) |
-| No aria-label on icon buttons | Add descriptive `aria-label` |
+| Mistake                       | Fix                                     |
+| ----------------------------- | --------------------------------------- |
+| Multiple primary buttons      | Make extras `variant="secondary"`       |
+| Square buttons                | Use `rounded-full`                      |
+| ALL CAPS labels               | Use sentence case                       |
+| `<button>` raw element        | Use `<Button>` from shadcn              |
+| Red background on delete      | Use `variant="destructive"` (text only) |
+| No aria-label on icon buttons | Add descriptive `aria-label`            |

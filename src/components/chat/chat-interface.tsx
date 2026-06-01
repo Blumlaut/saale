@@ -184,18 +184,18 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
                   id: tc.id,
                   name: tc.name,
                   args: tc.args,
-                  result: tc.result,
                   isError: tc.isError,
                   status: tc.isError ? "error" : "completed",
+                  ...(tc.result ? { result: tc.result } : {}),
                 }))
               : streamingRef.current.toolCalls.length > 0
                 ? streamingRef.current.toolCalls.map((tc) => ({
                     id: tc.toolCallId,
                     name: tc.toolName,
                     args: tc.args,
-                    result: tc.result,
                     isError: tc.error !== undefined,
                     status: tc.status === "running" ? "completed" : tc.status,
+                    ...(tc.result ? { result: tc.result } : {}),
                   }))
                 : undefined;
 
@@ -205,9 +205,9 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
               id: `assistant-${Date.now()}`,
               role: "assistant" as const,
               content: parsed.text,
-              thinking: parsed.thinking || undefined,
-              toolCalls: finalToolCalls,
               createdAt: new Date().toISOString(),
+              ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
+              ...(finalToolCalls ? { toolCalls: finalToolCalls } : {}),
             },
           ]);
         });
@@ -224,9 +224,9 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
                     id: tc.toolCallId,
                     name: tc.toolName,
                     args: tc.args,
-                    result: tc.result,
                     isError: tc.error !== undefined,
                     status: tc.status === "running" ? "completed" : tc.status,
+                    ...(tc.result ? { result: tc.result } : {}),
                   }))
                 : undefined;
             setMessages((prev) => [
@@ -235,9 +235,9 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
                 id: `assistant-${Date.now()}`,
                 role: "assistant" as const,
                 content: final.text,
-                thinking: final.thinking || undefined,
-                toolCalls: errorToolCalls,
                 createdAt: new Date().toISOString(),
+                ...(final.thinking ? { thinking: final.thinking } : {}),
+                ...(errorToolCalls ? { toolCalls: errorToolCalls } : {}),
               },
             ]);
           }
@@ -268,9 +268,9 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
               id: tc.toolCallId,
               name: tc.toolName,
               args: tc.args,
-              result: tc.result,
               isError: tc.error !== undefined,
               status: tc.status === "running" ? "completed" : tc.status,
+              ...(tc.result ? { result: tc.result } : {}),
             }))
           : undefined;
       setMessages((prev) => [
@@ -279,9 +279,9 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           id: `assistant-${Date.now()}`,
           role: "assistant" as const,
           content: partial.text,
-          thinking: partial.thinking || undefined,
-          toolCalls: stopToolCalls,
           createdAt: new Date().toISOString(),
+          ...(partial.thinking ? { thinking: partial.thinking } : {}),
+          ...(stopToolCalls ? { toolCalls: stopToolCalls } : {}),
         },
       ]);
     }
@@ -329,18 +329,19 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       id: "streaming-assistant",
       role: "assistant",
       content: streaming.text,
-      thinking: streaming.thinking || undefined,
-      toolCalls:
-        streaming.toolCalls.length > 0
-          ? streaming.toolCalls.map((tc) => ({
+      ...(streaming.thinking ? { thinking: streaming.thinking } : {}),
+      ...(streaming.toolCalls.length > 0
+        ? {
+            toolCalls: streaming.toolCalls.map((tc) => ({
               id: tc.toolCallId,
               name: tc.toolName,
               args: tc.args,
-              result: tc.result,
               isError: tc.error !== undefined,
               status: tc.status === "running" ? "running" : "completed",
-            }))
-          : undefined,
+              ...(tc.result ? { result: tc.result } : {}),
+            })),
+          }
+        : {}),
       createdAt: new Date().toISOString(),
     });
   }

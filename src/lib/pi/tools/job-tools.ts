@@ -17,7 +17,8 @@ export const jobListTool = defineTool({
     ),
     type: Type.Optional(
       Type.String({
-        description: "Filter by job type (e.g. 'summarization', 'classification', 'spam_filtering').",
+        description:
+          "Filter by job type (e.g. 'summarization', 'classification', 'spam_filtering').",
       }),
     ),
   }),
@@ -42,15 +43,25 @@ export const jobListTool = defineTool({
           text: JSON.stringify(
             {
               count: jobs.length,
-              jobs: jobs.map((j: { id: string; type: string; enabled: boolean; config: string; lastRunAt: Date | null; runCount: number; createdAt: Date }) => ({
-                id: j.id,
-                type: j.type,
-                enabled: j.enabled,
-                config: JSON.parse(j.config),
-                lastRunAt: j.lastRunAt?.toISOString(),
-                runCount: j.runCount,
-                createdAt: j.createdAt.toISOString(),
-              })),
+              jobs: jobs.map(
+                (j: {
+                  id: string;
+                  type: string;
+                  enabled: boolean;
+                  config: string;
+                  lastRunAt: Date | null;
+                  runCount: number;
+                  createdAt: Date;
+                }) => ({
+                  id: j.id,
+                  type: j.type,
+                  enabled: j.enabled,
+                  config: JSON.parse(j.config),
+                  lastRunAt: j.lastRunAt?.toISOString(),
+                  runCount: j.runCount,
+                  createdAt: j.createdAt.toISOString(),
+                }),
+              ),
             },
             null,
             2,
@@ -234,19 +245,29 @@ export const jobLogsTool = defineTool({
             {
               taskId: params.id,
               count: runs.length,
-              runs: runs.map((r: { id: string; status: string; input: string | null; output: string | null; error: string | null; startedAt: Date | null; completedAt: Date | null }) => ({
-                id: r.id,
-                status: r.status,
-                input: r.input ? JSON.parse(r.input) : null,
-                output: r.output ? JSON.parse(r.output) : null,
-                error: r.error,
-                startedAt: r.startedAt?.toISOString(),
-                completedAt: r.completedAt?.toISOString(),
-                duration:
-                  r.startedAt && r.completedAt
-                    ? r.completedAt.getTime() - r.startedAt.getTime()
-                    : null,
-              })),
+              runs: runs.map(
+                (r: {
+                  id: string;
+                  status: string;
+                  input: string | null;
+                  output: string | null;
+                  error: string | null;
+                  startedAt: Date | null;
+                  completedAt: Date | null;
+                }) => ({
+                  id: r.id,
+                  status: r.status,
+                  input: r.input ? JSON.parse(r.input) : null,
+                  output: r.output ? JSON.parse(r.output) : null,
+                  error: r.error,
+                  startedAt: r.startedAt?.toISOString(),
+                  completedAt: r.completedAt?.toISOString(),
+                  duration:
+                    r.startedAt && r.completedAt
+                      ? r.completedAt.getTime() - r.startedAt.getTime()
+                      : null,
+                }),
+              ),
             },
             null,
             2,

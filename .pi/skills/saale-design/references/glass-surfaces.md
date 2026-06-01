@@ -11,10 +11,12 @@ Every content panel in Saale is a "glass surface" — a translucent, blurred lay
 The default panel used for most content areas:
 
 ```tsx
-className="bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-lg rounded-2xl"
+className =
+  "bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-lg rounded-2xl";
 ```
 
 Breakdown:
+
 - `bg-white/60` — Semi-transparent white fill (light mode)
 - `dark:bg-white/5` — Barely-there white tint (dark mode, like tinted glass)
 - `backdrop-blur-xl` — 12px blur of whatever is behind
@@ -28,7 +30,8 @@ Breakdown:
 For elements that need to stand out more:
 
 ```tsx
-className="bg-white/80 dark:bg-black/40 backdrop-blur-2xl border border-white/30 dark:border-white/10 shadow-xl rounded-3xl"
+className =
+  "bg-white/80 dark:bg-black/40 backdrop-blur-2xl border border-white/30 dark:border-white/10 shadow-xl rounded-3xl";
 ```
 
 ### Subtle Glass (Inline Elements, Toolbars)
@@ -36,7 +39,8 @@ className="bg-white/80 dark:bg-black/40 backdrop-blur-2xl border border-white/30
 For elements inside panels that need a slight separation:
 
 ```tsx
-className="bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/10 dark:border-white/5 rounded-xl"
+className =
+  "bg-white/30 dark:bg-white/5 backdrop-blur-lg border border-white/10 dark:border-white/5 rounded-xl";
 ```
 
 ## Page Background
@@ -48,16 +52,16 @@ The page background is NOT a flat color. It uses a soft gradient so glass surfac
 body {
   background: linear-gradient(
     180deg,
-    oklch(0.985 0.005 250) 0%,   /* warm white, barely cool */
-    oklch(0.96 0.008 260) 100%   /* slightly cooler at bottom */
+    oklch(0.985 0.005 250) 0%,
+    /* warm white, barely cool */ oklch(0.96 0.008 260) 100% /* slightly cooler at bottom */
   );
 }
 
 .dark body {
   background: linear-gradient(
     180deg,
-    oklch(0.145 0.015 250) 0%,   /* deep charcoal, cool hint */
-    oklch(0.12 0.01 260) 100%    /* near-black at bottom */
+    oklch(0.145 0.015 250) 0%,
+    /* deep charcoal, cool hint */ oklch(0.12 0.01 260) 100% /* near-black at bottom */
   );
 }
 ```
@@ -69,7 +73,8 @@ The gradient should be barely noticeable. Its only purpose is giving glass panel
 For primary panels, add a subtle gradient overlay to simulate light catching the glass edge:
 
 ```tsx
-className="before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/20 before:to-transparent before:pointer-events-none before:rounded-2xl"
+className =
+  "before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/20 before:to-transparent before:pointer-events-none before:rounded-2xl";
 ```
 
 This adds a faint white tint at the top of the panel, fading to transparent. It should be very subtle — if it's obvious, it's too strong.
@@ -94,11 +99,11 @@ Never blur more than 2 layers deep. The third layer should be solid for performa
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---|---|
-| `bg-white/100` (opaque) | Use `bg-white/60` for glass transparency |
-| No backdrop-blur | Always pair transparency with blur |
-| `border-gray-300` (hard border) | Use `border-white/20` for glass edge |
-| Dark mode `bg-black/50` | Use `bg-white/5` — tinted glass, not dark box |
-| Blur on every element | Reserve blur for panels, not list items or buttons |
-| Edge-to-edge panels | Add margin so the background shows through |
+| Mistake                         | Fix                                                |
+| ------------------------------- | -------------------------------------------------- |
+| `bg-white/100` (opaque)         | Use `bg-white/60` for glass transparency           |
+| No backdrop-blur                | Always pair transparency with blur                 |
+| `border-gray-300` (hard border) | Use `border-white/20` for glass edge               |
+| Dark mode `bg-black/50`         | Use `bg-white/5` — tinted glass, not dark box      |
+| Blur on every element           | Reserve blur for panels, not list items or buttons |
+| Edge-to-edge panels             | Add margin so the background shows through         |

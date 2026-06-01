@@ -14,7 +14,10 @@ import { createChatSearchTool } from "./tools/chat-tools";
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
  */
-async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<Array<{ id: string; name: string }>> {
+async function fetchOpenAIModels(
+  baseUrl: string,
+  apiKey?: string,
+): Promise<Array<{ id: string; name: string }>> {
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     const res = await fetch(url, {
@@ -138,9 +141,10 @@ export async function createPiSession(options: {
     sessionManager: SessionManager.inMemory(),
     authStorage,
     modelRegistry,
-    model: model ?? undefined,
+    ...(model ? { model } : {}),
     customTools: allCustomTools,
-    thinkingLevel: (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh") ?? "off",
+    thinkingLevel:
+      (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh") ?? "off",
   });
 
   return result;

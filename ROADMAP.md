@@ -11,19 +11,19 @@
 
 ## Tech Stack
 
-| Layer | Choice | Why |
-|-------|--------|-----|
-| Frontend | Next.js 15 (App Router) + shadcn/ui + Tailwind 4 | SSR, API routes, shadcn for fast accessible UI |
-| AI Engine | Pi SDK (`@earendil-works/pi-coding-agent`) | Streaming events, custom tools via `defineTool()`, session management. **No MCP** — tools are registered internally on the session. |
-| Streaming | Server-Sent Events (SSE) | Simple, native browser support, one-way agent→UI |
-| Database | PostgreSQL 17 + Prisma | Proper relational DB, migrations, type-safe queries |
-| Queue | BullMQ + Redis 8 | Job queue with retries, rate limiting, concurrency, cron scheduling |
-| Auth | better-auth v1 (Credentials provider + Prisma adapter) | Email/password auth, session management, database adapter |
-| Email | IMAP: `imapflow`, SMTP: `nodemailer`, Parsing: `mailparser` | Direct email access, no third-party API lock-in |
-| Files | Local filesystem (`/uploads/{userId}/`) | Simple per-user storage, upgradeable to object storage later |
-| Tests | Vitest (unit/integration) + Playwright (E2E) | Fast unit tests, real browser E2E |
-| Linting | ESLint + Prettier | Consistent code style, Tailwind class sorting |
-| CI/CD | Docker Compose (dev + prod) | Hot reload in dev, standalone build for prod |
+| Layer     | Choice                                                      | Why                                                                                                                                 |
+| --------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend  | Next.js 15 (App Router) + shadcn/ui + Tailwind 4            | SSR, API routes, shadcn for fast accessible UI                                                                                      |
+| AI Engine | Pi SDK (`@earendil-works/pi-coding-agent`)                  | Streaming events, custom tools via `defineTool()`, session management. **No MCP** — tools are registered internally on the session. |
+| Streaming | Server-Sent Events (SSE)                                    | Simple, native browser support, one-way agent→UI                                                                                    |
+| Database  | PostgreSQL 17 + Prisma                                      | Proper relational DB, migrations, type-safe queries                                                                                 |
+| Queue     | BullMQ + Redis 8                                            | Job queue with retries, rate limiting, concurrency, cron scheduling                                                                 |
+| Auth      | better-auth v1 (Credentials provider + Prisma adapter)      | Email/password auth, session management, database adapter                                                                           |
+| Email     | IMAP: `imapflow`, SMTP: `nodemailer`, Parsing: `mailparser` | Direct email access, no third-party API lock-in                                                                                     |
+| Files     | Local filesystem (`/uploads/{userId}/`)                     | Simple per-user storage, upgradeable to object storage later                                                                        |
+| Tests     | Vitest (unit/integration) + Playwright (E2E)                | Fast unit tests, real browser E2E                                                                                                   |
+| Linting   | ESLint + Prettier                                           | Consistent code style, Tailwind class sorting                                                                                       |
+| CI/CD     | Docker Compose (dev + prod)                                 | Hot reload in dev, standalone build for prod                                                                                        |
 
 ## Architecture
 
@@ -69,9 +69,9 @@ Pi's philosophy is "No MCP" — tools are registered directly on the agent sessi
 export async function createSession(userId, customTools) {
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
-    customTools,  // mail_list, mail_read, task_toggle, etc.
+    customTools, // mail_list, mail_read, task_toggle, etc.
     authStorage,
-    modelRegistry,  // pulled from Pi's registry
+    modelRegistry, // pulled from Pi's registry
   });
   return session;
 }
@@ -126,7 +126,7 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 1 — Chat
 
 > Get the AI plumbing working. Everything else feeds into this.
-> 
+>
 > **Decisions:** Model selector pulls from Pi's `modelRegistry` at runtime. File uploads via native Next.js RouteHandler (local fs, no UploadThing). BullMQ installed early for Phase 2 email sync.
 
 - [ ] Chat UI (message list, input bar, streaming render)
@@ -145,7 +145,7 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 2 — Email
 
 > Background sync is core — not an afterthought. BullMQ recurring jobs + manual trigger.
-> 
+>
 > **Decisions:** `imapflow` for IMAP (auto-handles extensions, mailbox locking, async iterators), `nodemailer` for SMTP. Incremental sync via IMAP UIDVALIDITY + HIGHESTMODSEQ. BullMQ infra built before this phase (per user preference). Phase 2 completes fully before Phase 3 starts.
 
 - [ ] Email account connection UI (IMAP/SMTP config form)
@@ -164,7 +164,7 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 3 — Job Queue
 
 > BullMQ-powered job engine. Templates + custom jobs. Cron scheduling. Per-job AI model selection from Pi's registry.
-> 
+>
 > **Decisions:** `QueueTask` schema extended with `name`, `cronExpression`, `modelId`, `retryPolicy` fields upfront. Sequential after Phase 2 — email-specific templates wired in here.
 
 - [ ] BullMQ infrastructure (connection, queue registry, worker process)
@@ -187,7 +187,7 @@ defineTool({ name: "chat_search", ... })     // Search chat history
 ### Phase 4 — Cross-Feature
 
 > Chat references email, jobs, files. Unified search. Notifications.
-> 
+>
 > **Decisions:** Settings page replaced with floating draggable panel. Full browser push (Service Worker) + in-app notification center.
 
 - [ ] Chat can reference emails ("summarize my last 5 emails") — AI chains `mail_list` → `mail_read` → generates response

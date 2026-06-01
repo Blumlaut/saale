@@ -23,18 +23,18 @@ A productivity hub — email, chat, tasks in one place. The interface should fee
 
 When choosing between two approaches:
 
-| Criterion | Prefer |
-|---|---|
-| Visual weight | Lighter, more transparent |
-| Corner radius | More rounded (2xl/3xl over lg/md) |
-| Spacing | More whitespace over compact layout |
-| Color | Neutral over colored |
-| Border | Subtle glass border over solid line |
-| Background | Translucent glass over solid color |
-| Animation | Subtle fade over slide/bounce |
-| Typography | Sentence case over ALL CAPS |
-| Font | Inter over monospace or decorative |
-| Component | shadcn/ui over custom implementation |
+| Criterion     | Prefer                               |
+| ------------- | ------------------------------------ |
+| Visual weight | Lighter, more transparent            |
+| Corner radius | More rounded (2xl/3xl over lg/md)    |
+| Spacing       | More whitespace over compact layout  |
+| Color         | Neutral over colored                 |
+| Border        | Subtle glass border over solid line  |
+| Background    | Translucent glass over solid color   |
+| Animation     | Subtle fade over slide/bounce        |
+| Typography    | Sentence case over ALL CAPS          |
+| Font          | Inter over monospace or decorative   |
+| Component     | shadcn/ui over custom implementation |
 
 ## The 3-Second Rule
 

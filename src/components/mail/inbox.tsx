@@ -117,9 +117,7 @@ export function Inbox() {
     setSelectedMsg(msg);
     if (!msg.isRead) {
       // Mark as read (optimistic)
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)),
-      );
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
     }
   };
 
@@ -160,7 +158,7 @@ export function Inbox() {
         {/* Search */}
         <div className="border-border/30 border-b px-3 py-2">
           <div className="relative">
-            <Search className="text-muted-foreground absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
+            <Search className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -197,7 +195,7 @@ export function Inbox() {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -229,21 +227,15 @@ export function Inbox() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="truncate text-sm">
-                        {msg.fromName || msg.fromEmail}
-                      </span>
+                      <span className="truncate text-sm">{msg.fromName || msg.fromEmail}</span>
                       <span className="text-muted-foreground ml-2 shrink-0 text-xs">
                         {formatDistanceToNow(new Date(msg.date), {
                           addSuffix: false,
                         })}
                       </span>
                     </div>
-                    <div className="truncate text-sm">
-                      {msg.subject || "(no subject)"}
-                    </div>
-                    <div className="text-muted-foreground truncate text-xs">
-                      {msg.bodyPreview}
-                    </div>
+                    <div className="truncate text-sm">{msg.subject || "(no subject)"}</div>
+                    <div className="text-muted-foreground truncate text-xs">{msg.bodyPreview}</div>
                     {msg.tags.length > 0 && (
                       <div className="mt-1 flex gap-1">
                         {msg.tags.map((tag) => (
@@ -276,10 +268,8 @@ export function Inbox() {
                 <h2 className="text-lg font-semibold">
                   {selectedMessage.subject || "(no subject)"}
                 </h2>
-                <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>
-                    {selectedMessage.fromName || selectedMessage.fromEmail}
-                  </span>
+                <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
+                  <span>{selectedMessage.fromName || selectedMessage.fromEmail}</span>
                   <span>→</span>
                   <span>{selectedMessage.to.join(", ")}</span>
                 </div>
@@ -307,7 +297,7 @@ export function Inbox() {
                   }}
                 />
               ) : (
-                <pre className="whitespace-pre-wrap text-sm">
+                <pre className="text-sm whitespace-pre-wrap">
                   {selectedMessage.bodyText || selectedMessage.bodyPreview}
                 </pre>
               )}
@@ -317,9 +307,7 @@ export function Inbox() {
           <GlassPanelContent className="flex flex-1 items-center justify-center">
             <div className="text-center">
               <Mail className="text-muted-foreground/30 mx-auto mb-3 h-12 w-12" />
-              <p className="text-muted-foreground text-sm">
-                Select an email to read
-              </p>
+              <p className="text-muted-foreground text-sm">Select an email to read</p>
             </div>
           </GlassPanelContent>
         )}

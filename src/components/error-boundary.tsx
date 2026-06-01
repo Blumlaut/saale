@@ -39,8 +39,8 @@ export class ErrorBoundary extends Component<Props, State> {
         <GlassPanel>
           <GlassPanelContent>
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-                <AlertTriangle className="h-6 w-6 text-destructive" />
+              <div className="bg-destructive/10 mb-4 flex h-12 w-12 items-center justify-center rounded-full">
+                <AlertTriangle className="text-destructive h-6 w-6" />
               </div>
               <h2 className="text-base font-medium">Something went wrong</h2>
               <p className="text-muted-foreground mt-1 max-w-sm text-sm">

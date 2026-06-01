@@ -88,23 +88,28 @@ export function AiModelsTab({
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent>
-                {settings?.defaultModelProvider &&
-                availableModels[settings.defaultModelProvider] ? (
-                  availableModels[settings.defaultModelProvider]
+                {(() => {
+                  const providerModels = settings?.defaultModelProvider
+                    ? availableModels[settings.defaultModelProvider]
+                    : undefined;
+                  if (!providerModels) {
+                    return (
+                      <SelectItem value="none" disabled>
+                        {settings?.defaultModelProvider
+                          ? "No models available"
+                          : "Select a provider first"}
+                      </SelectItem>
+                    );
+                  }
+                  return providerModels
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.name}
                         {m.reasoning ? " ✦" : ""}
                       </SelectItem>
-                    ))
-                ) : (
-                  <SelectItem value="none" disabled>
-                    {settings?.defaultModelProvider
-                      ? "No models available"
-                      : "Select a provider first"}
-                  </SelectItem>
-                )}
+                    ));
+                })()}
               </SelectContent>
             </Select>
           </div>

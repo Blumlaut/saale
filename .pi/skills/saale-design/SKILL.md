@@ -39,35 +39,38 @@ When the user asks for a UI element or page:
 ## Reference Index (Load On-Demand)
 
 ### Foundation (Load First)
-| Need | File |
-|------|------|
+
+| Need                                  | File                              |
+| ------------------------------------- | --------------------------------- |
 | Principles, anti-patterns, philosophy | `references/design-philosophy.md` |
-| Glass surface implementation | `references/glass-surfaces.md` |
-| Color tokens, palette rules | `references/color-system.md` |
-| Typography scale, font rules | `references/typography.md` |
-| Layout, spacing, floating panels | `references/layout.md` |
-| Animation, transitions, loading | `references/motion.md` |
-| Dark mode implementation | `references/dark-mode.md` |
+| Glass surface implementation          | `references/glass-surfaces.md`    |
+| Color tokens, palette rules           | `references/color-system.md`      |
+| Typography scale, font rules          | `references/typography.md`        |
+| Layout, spacing, floating panels      | `references/layout.md`            |
+| Animation, transitions, loading       | `references/motion.md`            |
+| Dark mode implementation              | `references/dark-mode.md`         |
 
 ### Components (Load When Building UI)
-| Component | File |
-|-----------|------|
-| GlassPanel (main container) | `references/glass-panel.md` |
-| Buttons (all variants) | `references/buttons.md` |
-| Inputs, forms, selects | `references/inputs.md` |
-| Lists, rows, tables | `references/lists.md` |
-| Navigation, sidebar | `references/navigation.md` |
-| Modals, dialogs, sheets | `references/modals.md` |
-| Badges, tags, status | `references/badges.md` |
-| Cards with media | `references/cards.md` |
-| Empty states | `references/empty-states.md` |
+
+| Component                   | File                         |
+| --------------------------- | ---------------------------- |
+| GlassPanel (main container) | `references/glass-panel.md`  |
+| Buttons (all variants)      | `references/buttons.md`      |
+| Inputs, forms, selects      | `references/inputs.md`       |
+| Lists, rows, tables         | `references/lists.md`        |
+| Navigation, sidebar         | `references/navigation.md`   |
+| Modals, dialogs, sheets     | `references/modals.md`       |
+| Badges, tags, status        | `references/badges.md`       |
+| Cards with media            | `references/cards.md`        |
+| Empty states                | `references/empty-states.md` |
 
 ### Integration
-| Need | File |
-|------|------|
-| shadcn/ui component guide | `references/shadcn-components.md` |
-| Pre-commit review checklist | `references/review-checklist.md` |
-| globals.css token reference | `references/css-tokens.md` |
+
+| Need                        | File                              |
+| --------------------------- | --------------------------------- |
+| shadcn/ui component guide   | `references/shadcn-components.md` |
+| Pre-commit review checklist | `references/review-checklist.md`  |
+| globals.css token reference | `references/css-tokens.md`        |
 
 ## shadcn/ui First
 
@@ -97,11 +100,11 @@ export function MyView() {
   return (
     <GlassPanel>
       <GlassPanel.Header title="My Section">
-        <Button variant="secondary" size="sm">Action</Button>
+        <Button variant="secondary" size="sm">
+          Action
+        </Button>
       </GlassPanel.Header>
-      <GlassPanel.Content>
-        {/* content */}
-      </GlassPanel.Content>
+      <GlassPanel.Content>{/* content */}</GlassPanel.Content>
     </GlassPanel>
   );
 }
@@ -120,7 +123,7 @@ export function MyList() {
       <GlassPanel.Content className="p-0">
         {items.map((item, i) => (
           <Fragment key={item.id}>
-            <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/20 dark:hover:bg-white/5 transition-colors cursor-pointer">
+            <div className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-white/20 dark:hover:bg-white/5">
               {/* row content */}
             </div>
             {i < items.length - 1 && <Separator className="px-4" />}
@@ -134,18 +137,18 @@ export function MyList() {
 
 ## Anti-Patterns (Never Do These)
 
-| Anti-pattern | Why | Alternative |
-|---|---|---|
-| Raw HTML elements | Inconsistent styling, no accessibility | shadcn/ui components |
-| Neon / glowing effects | Gamer aesthetic | Subtle shadows and blur |
-| Monospace UI text | Developer-tool vibe | Inter for everything |
-| Hard borders (2px+) | Boxed-in feeling | 1px glass borders |
-| Flat colored cards | No depth | Glass panels with backdrop-blur |
-| Edge-to-edge panels | No breathing room | Margins, floating panels |
-| Rainbow status colors | Distracting | Muted semantic colors |
-| ALL CAPS labels | Aggressive | Sentence case |
-| Square buttons | Harsh | `rounded-full` or `rounded-xl` |
-| Animated backgrounds | Distracting | Static gradient |
+| Anti-pattern           | Why                                    | Alternative                     |
+| ---------------------- | -------------------------------------- | ------------------------------- |
+| Raw HTML elements      | Inconsistent styling, no accessibility | shadcn/ui components            |
+| Neon / glowing effects | Gamer aesthetic                        | Subtle shadows and blur         |
+| Monospace UI text      | Developer-tool vibe                    | Inter for everything            |
+| Hard borders (2px+)    | Boxed-in feeling                       | 1px glass borders               |
+| Flat colored cards     | No depth                               | Glass panels with backdrop-blur |
+| Edge-to-edge panels    | No breathing room                      | Margins, floating panels        |
+| Rainbow status colors  | Distracting                            | Muted semantic colors           |
+| ALL CAPS labels        | Aggressive                             | Sentence case                   |
+| Square buttons         | Harsh                                  | `rounded-full` or `rounded-xl`  |
+| Animated backgrounds   | Distracting                            | Static gradient                 |
 
 ## Review Checklist
 

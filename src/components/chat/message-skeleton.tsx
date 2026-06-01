@@ -7,12 +7,7 @@ export function MessageSkeleton() {
         <div key={i} className="flex gap-3">
           <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
           <div className="space-y-2">
-            <Skeleton
-              className={cn(
-                "h-16 rounded-2xl",
-                i % 2 === 0 ? "w-64" : "w-80",
-              )}
-            />
+            <Skeleton className={cn("h-16 rounded-2xl", i % 2 === 0 ? "w-64" : "w-80")} />
             <Skeleton className="h-3 w-16" />
           </div>
         </div>

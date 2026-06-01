@@ -43,7 +43,11 @@ export async function syncEmailAccount(accountId: string): Promise<{
 
     for (const folder of folders) {
       try {
-        await (mailbox as unknown as { openMailbox: (name: string, opts: { readOnly: boolean }) => Promise<void> }).openMailbox(folder, { readOnly: true });
+        await (
+          mailbox as unknown as {
+            openMailbox: (name: string, opts: { readOnly: boolean }) => Promise<void>;
+          }
+        ).openMailbox(folder, { readOnly: true });
 
         // Build search criteria
         const searchOpts: Record<string, unknown> = {};
@@ -78,19 +82,28 @@ export async function syncEmailAccount(accountId: string): Promise<{
               },
             });
 
-            const toList =
-              Array.isArray(parsed.to)
-                ? parsed.to.map((a) => (typeof a === "object" && a ? String((a as { address?: string }).address || a) : String(a))).join(",")
-                : String(parsed.to || "");
+            const toList = Array.isArray(parsed.to)
+              ? parsed.to
+                  .map((a) =>
+                    typeof a === "object" && a
+                      ? String((a as { address?: string }).address || a)
+                      : String(a),
+                  )
+                  .join(",")
+              : String(parsed.to || "");
 
             const fromName =
               parsed.from && typeof parsed.from === "object"
-                ? ("name" in parsed.from ? (parsed.from.name as string) || null : null)
+                ? "name" in parsed.from
+                  ? (parsed.from.name as string) || null
+                  : null
                 : null;
 
             const fromEmail =
               parsed.from && typeof parsed.from === "object"
-                ? ("address" in parsed.from ? (parsed.from.address as string) || "" : "")
+                ? "address" in parsed.from
+                  ? (parsed.from.address as string) || ""
+                  : ""
                 : "";
 
             const flags = msg.flags ?? new Set<string>();
@@ -138,9 +151,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
               newMessages++;
             }
           } catch (err) {
-            errors.push(
-              `Failed to parse message UID ${msg.uid}: ${(err as Error).message}`,
-            );
+            errors.push(`Failed to parse message UID ${msg.uid}: ${(err as Error).message}`);
           }
         }
       } catch (err) {

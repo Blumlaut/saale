@@ -22,10 +22,7 @@ export async function POST(request: NextRequest) {
   const file = formData.get("file") as File | null;
 
   if (!file) {
-    return NextResponse.json(
-      { error: "No file provided" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
 
   // Sanitize filename

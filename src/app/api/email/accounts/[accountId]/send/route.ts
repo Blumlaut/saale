@@ -34,10 +34,7 @@ export async function POST(
   const { to, subject, body: emailBody, bodyHtml, replyTo, cc, bcc } = body;
 
   if (!to || !subject) {
-    return NextResponse.json(
-      { error: "To and subject are required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "To and subject are required" }, { status: 400 });
   }
 
   const password = decrypt(account.encryptedPassword);
@@ -60,9 +57,6 @@ export async function POST(
       messageId: result.messageId,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: (err as Error).message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 }

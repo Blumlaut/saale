@@ -8,7 +8,10 @@ import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
  */
-async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<{ models: string[]; error?: string }> {
+async function fetchOpenAIModels(
+  baseUrl: string,
+  apiKey?: string,
+): Promise<{ models: string[]; error?: string }> {
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     console.log(`[providers] Fetching models from ${url}`);
@@ -42,9 +45,7 @@ async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<{ mo
     }
 
     return {
-      models: data.data
-        .map((m: any) => m.id)
-        .slice(0, 200),
+      models: data.data.map((m: any) => m.id).slice(0, 200),
     };
   } catch (err) {
     console.error(`[providers] Fetch failed:`, err);
@@ -97,10 +98,15 @@ export async function GET() {
       const decryptedKey = decrypt(key.encryptedKey);
       const baseUrl = key.baseUrl.replace(/\/+$/, "");
 
-      console.log(`[providers] Registering custom provider: baseUrl=${baseUrl}, hasKey=${!!decryptedKey}`);
+      console.log(
+        `[providers] Registering custom provider: baseUrl=${baseUrl}, hasKey=${!!decryptedKey}`,
+      );
 
       // Fetch models from the server
-      const { models: discoveredModels, error: modelError } = await fetchOpenAIModels(baseUrl, decryptedKey);
+      const { models: discoveredModels, error: modelError } = await fetchOpenAIModels(
+        baseUrl,
+        decryptedKey,
+      );
 
       if (modelError) {
         console.warn(`[providers] Model discovery failed: ${modelError}`);
@@ -146,20 +152,26 @@ export async function GET() {
   console.log(`[providers] Total available models: ${available.length}`);
 
   // Group by provider
-  const byProvider: Record<string, Array<{
-    id: string;
-    name: string;
-    reasoning: boolean;
-    contextWindow: number;
-    maxTokens: number;
-    cost: { input: number; output: number };
-  }>> = {};
+  const byProvider: Record<
+    string,
+    Array<{
+      id: string;
+      name: string;
+      reasoning: boolean;
+      contextWindow: number;
+      maxTokens: number;
+      cost: { input: number; output: number };
+    }>
+  > = {};
 
   for (const model of available) {
-    if (!byProvider[model.provider]) {
-      byProvider[model.provider] = [];
+    const provider = model.provider;
+    if (!byProvider[provider]) {
+      byProvider[provider] = [];
     }
-    byProvider[model.provider].push({
+    // Guard above ensures this is defined
+    const providerModels = byProvider[provider]!;
+    providerModels.push({
       id: model.id,
       name: model.name,
       reasoning: model.reasoning,
@@ -176,7 +188,8 @@ export async function GET() {
   const providers = Object.keys(byProvider).map((p) => ({
     id: p,
     name: modelRegistry.getProviderDisplayName(p),
-    modelCount: byProvider[p].length,
+    // Object.keys only returns keys that exist
+    modelCount: (byProvider[p] ?? []).length,
   }));
 
   return NextResponse.json({

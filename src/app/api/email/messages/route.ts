@@ -88,21 +88,37 @@ export async function GET(request: NextRequest) {
   ]);
 
   return NextResponse.json({
-    messages: messages.map((m: { id: string; uid: string; fromName: string | null; fromEmail: string; to: string; subject: string; date: Date; bodyPreview: string; isRead: boolean; isStarred: boolean; folder: string; tags: string[]; accountId: string }) => ({
-      id: m.id,
-      uid: m.uid,
-      fromName: m.fromName,
-      fromEmail: m.fromEmail,
-      to: m.to,
-      subject: m.subject,
-      date: m.date.toISOString(),
-      bodyPreview: m.bodyPreview,
-      isRead: m.isRead,
-      isStarred: m.isStarred,
-      folder: m.folder,
-      tags: m.tags,
-      accountId: m.accountId,
-    })),
+    messages: messages.map(
+      (m: {
+        id: string;
+        uid: string;
+        fromName: string | null;
+        fromEmail: string;
+        to: string;
+        subject: string;
+        date: Date;
+        bodyPreview: string;
+        isRead: boolean;
+        isStarred: boolean;
+        folder: string;
+        tags: string[];
+        accountId: string;
+      }) => ({
+        id: m.id,
+        uid: m.uid,
+        fromName: m.fromName,
+        fromEmail: m.fromEmail,
+        to: m.to,
+        subject: m.subject,
+        date: m.date.toISOString(),
+        bodyPreview: m.bodyPreview,
+        isRead: m.isRead,
+        isStarred: m.isStarred,
+        folder: m.folder,
+        tags: m.tags,
+        accountId: m.accountId,
+      }),
+    ),
     total,
     hasMore: messages.length > 0 && offset + messages.length < total,
   });
