@@ -251,10 +251,9 @@ export function AiModelsTab({
                     const Icon = level.icon;
 
                     return (
-                      <>
+                      <div key={level.id}>
                         {index > 0 && <Separator className="mx-2" />}
                         <Button
-                          key={level.id}
                           variant="ghost"
                           className={cn(
                             "w-full shrink-0 justify-start gap-3 rounded-xl px-3 py-2.5",
@@ -298,7 +297,7 @@ export function AiModelsTab({
                             <CheckCircle className="text-primary h-4 w-4" />
                           )}
                         </Button>
-                      </>
+                      </div>
                     );
                   })}
                 </div>
