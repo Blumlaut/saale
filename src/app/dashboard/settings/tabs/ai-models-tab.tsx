@@ -1,16 +1,13 @@
 "use client";
 
-import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
+import { GlassPanel, GlassPanelContent, GlassPanelFooter } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Bot, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Bot, Loader2, CheckCircle, AlertCircle, Sparkles, Brain, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { UserSettings, AvailableModel, AvailableProvider } from "../types";
 
 interface AiModelsTabProps {
@@ -23,6 +20,25 @@ interface AiModelsTabProps {
   onSave: () => Promise<void>;
 }
 
+const thinkingLevels = [
+  { id: "off", label: "Off", description: "Fastest responses", icon: Zap },
+  { id: "minimal", label: "Minimal", description: "Light reasoning", icon: Brain },
+  { id: "low", label: "Low", description: "Basic reasoning", icon: Brain },
+  { id: "medium", label: "Medium", description: "Balanced depth", icon: Brain },
+  { id: "high", label: "High", description: "Deep reasoning", icon: Brain },
+  { id: "xhigh", label: "X-High", description: "Maximum depth", icon: Brain },
+];
+
+function formatContextWindow(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
+  }
+  if (tokens >= 1_000) {
+    return `${(tokens / 1_000).toFixed(tokens % 1_000 === 0 ? 0 : 1)}K`;
+  }
+  return String(tokens);
+}
+
 export function AiModelsTab({
   settings,
   onSettingsChange,
@@ -32,122 +48,229 @@ export function AiModelsTab({
   saveStatus,
   onSave,
 }: AiModelsTabProps) {
+  // Build a flat list of providers with their models
+  const providersWithModels = availableModelProviders
+    .map((p) => ({
+      ...p,
+      models: (availableModels[p.id] ?? []).sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .filter((p) => p.models.length > 0);
+
+  const selectedProvider = providersWithModels.find(
+    (p) => p.id === settings?.defaultModelProvider,
+  );
+
   return (
     <GlassPanel>
-      <GlassPanelContent className="space-y-6">
-        <div>
+      <GlassPanelContent className="p-0">
+        {/* Header */}
+        <div className="px-6 pt-5 pb-4">
           <h3 className="flex items-center gap-2 text-lg font-medium">
             <Bot className="h-5 w-5" />
-            Default Model
+            AI &amp; Models
           </h3>
           <p className="text-muted-foreground mt-1 text-sm">
-            Choose the default model for new chat sessions.
+            Choose your default model and configure reasoning depth.
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="model-provider">Provider</Label>
-            <Select
-              value={settings?.defaultModelProvider ?? ""}
-              onValueChange={(v) => {
-                if (v && settings) {
-                  onSettingsChange({ ...settings, defaultModelProvider: v });
-                }
-              }}
-            >
-              <SelectTrigger id="model-provider">
-                <SelectValue placeholder="Select provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableModelProviders.length === 0 && (
-                  <SelectItem value="none" disabled>
-                    Add an API key first
-                  </SelectItem>
+        <Separator />
+
+        <div className="flex flex-col gap-6 lg:flex-row">
+          {/* Model Browser */}
+          <div className="flex-1">
+            <div className="px-6 py-3">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Model
+              </Label>
+            </div>
+
+            <ScrollArea className="h-[340px] lg:h-[440px]">
+              <div className="px-3 pb-3">
+                {providersWithModels.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <Sparkles className="text-muted-foreground/50 mb-3 h-8 w-8" />
+                    <p className="text-sm font-medium">No models available</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Add an API key in the Model Providers tab to get started.
+                    </p>
+                  </div>
+                ) : (
+                  providersWithModels.map((provider) => (
+                    <div key={provider.id} className="mb-1">
+                      {/* Provider label */}
+                      <div className="px-3 py-2">
+                        <span className="text-muted-foreground text-xs font-medium">
+                          {provider.name}
+                        </span>
+                      </div>
+
+                      {/* Models */}
+                      {provider.models.map((model) => {
+                        const isSelected =
+                          settings?.defaultModelProvider === provider.id &&
+                          settings?.defaultModelName === model.id;
+
+                        return (
+                          <Button
+                            key={model.id}
+                            variant="ghost"
+                            className={cn(
+                              "w-full shrink-0 justify-start gap-3 rounded-xl px-3 py-2.5",
+                              isSelected
+                                ? "bg-primary/10 text-foreground dark:bg-primary/10"
+                                : "hover:bg-white/20 dark:hover:bg-white/5",
+                            )}
+                            onClick={() => {
+                              if (settings) {
+                                onSettingsChange({
+                                  ...settings,
+                                  defaultModelProvider: provider.id,
+                                  defaultModelName: model.id,
+                                });
+                              }
+                            }}
+                          >
+                            {/* Selection indicator */}
+                            <div
+                              className={cn(
+                                "h-2 w-2 shrink-0 rounded-full transition-colors",
+                                isSelected
+                                  ? "bg-primary"
+                                  : "bg-muted-foreground/30",
+                              )}
+                            />
+
+                            {/* Model info */}
+                            <div className="min-w-0 flex-1 text-left">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    "truncate text-sm",
+                                    isSelected ? "font-medium" : "font-normal",
+                                  )}
+                                >
+                                  {model.name}
+                                </span>
+                                {model.reasoning && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="shrink-0 rounded-full"
+                                  >
+                                    <Sparkles className="mr-0.5 h-3 w-3" />
+                                    Reasoning
+                                  </Badge>
+                                )}
+                              </div>
+                              {model.contextWindow && (
+                                <span className="text-muted-foreground text-xs">
+                                  {formatContextWindow(model.contextWindow)} context
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Active check */}
+                            {isSelected && (
+                              <CheckCircle className="text-primary h-4 w-4" />
+                            )}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  ))
                 )}
-                {availableModelProviders.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name} ({p.modelCount} models)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              </div>
+            </ScrollArea>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="model-name">Model</Label>
-            <Select
-              value={settings?.defaultModelName ?? ""}
-              onValueChange={(v) => {
-                if (v && settings) {
-                  onSettingsChange({ ...settings, defaultModelName: v });
-                }
-              }}
-            >
-              <SelectTrigger id="model-name">
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {(() => {
-                  const providerModels = settings?.defaultModelProvider
-                    ? availableModels[settings.defaultModelProvider]
-                    : undefined;
-                  if (!providerModels) {
+          {/* Thinking Level */}
+          <div className="w-full lg:w-[280px]">
+            <div className="sticky top-6 space-y-6">
+              {/* Selected model summary */}
+              {selectedProvider && settings?.defaultModelName && (
+                <div className="border-border/50 bg-background/40 rounded-2xl border p-4">
+                  <p className="text-muted-foreground text-xs">Current model</p>
+                  <p className="mt-1 text-sm font-medium">
+                    {settings.defaultModelName}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {selectedProvider.name}
+                  </p>
+                </div>
+              )}
+
+              {/* Thinking level selector */}
+              <div className="space-y-3">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Thinking Level
+                </Label>
+
+                <div className="border-border/50 bg-background/40 space-y-1 rounded-2xl border p-1.5">
+                  {thinkingLevels.map((level, index) => {
+                    const isActive = settings?.defaultThinkingLevel === level.id;
+                    const Icon = level.icon;
+
                     return (
-                      <SelectItem value="none" disabled>
-                        {settings?.defaultModelProvider
-                          ? "No models available"
-                          : "Select a provider first"}
-                      </SelectItem>
+                      <>
+                        {index > 0 && <Separator className="mx-2" />}
+                        <Button
+                          key={level.id}
+                          variant="ghost"
+                          className={cn(
+                            "w-full shrink-0 justify-start gap-3 rounded-xl px-3 py-2.5",
+                            isActive
+                              ? "bg-primary/10 text-foreground"
+                              : "hover:bg-white/20 dark:hover:bg-white/5",
+                          )}
+                          onClick={() => {
+                            if (settings) {
+                              onSettingsChange({
+                                ...settings,
+                                defaultThinkingLevel: level.id,
+                              });
+                            }
+                          }}
+                        >
+                          <div
+                            className={cn(
+                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                              isActive
+                                ? "bg-primary/15 text-primary"
+                                : "bg-muted/50 text-muted-foreground",
+                            )}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p
+                              className={cn(
+                                "text-sm leading-none",
+                                isActive ? "font-medium" : "font-normal",
+                              )}
+                            >
+                              {level.label}
+                            </p>
+                            <p className="text-muted-foreground mt-0.5 text-xs">
+                              {level.description}
+                            </p>
+                          </div>
+                          {isActive && (
+                            <CheckCircle className="text-primary h-4 w-4" />
+                          )}
+                        </Button>
+                      </>
                     );
-                  }
-                  return providerModels
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.name}
-                        {m.reasoning ? " ✦" : ""}
-                      </SelectItem>
-                    ));
-                })()}
-              </SelectContent>
-            </Select>
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      </GlassPanelContent>
 
-        <div className="space-y-2">
-          <Label htmlFor="thinking-level">Thinking Level</Label>
-          <Select
-            value={settings?.defaultThinkingLevel ?? "off"}
-            onValueChange={(v) => {
-              if (v && settings) {
-                onSettingsChange({ ...settings, defaultThinkingLevel: v });
-              }
-            }}
-          >
-            <SelectTrigger id="thinking-level">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="off">Off</SelectItem>
-              <SelectItem value="minimal">Minimal</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="xhigh">X-High</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button onClick={onSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle className="mr-2 h-4 w-4" />
-            )}
-            Save
-          </Button>
+      {/* Footer with save */}
+      <GlassPanelFooter>
+        <div>
           {saveStatus === "success" && (
             <span className="flex items-center gap-1 text-sm text-emerald-500">
               <CheckCircle className="h-4 w-4" />
@@ -157,11 +280,22 @@ export function AiModelsTab({
           {saveStatus === "error" && (
             <span className="flex items-center gap-1 text-sm text-red-500">
               <AlertCircle className="h-4 w-4" />
-              Failed
+              Failed to save
+            </span>
+          )}
+          {saveStatus === "idle" && (
+            <span className="text-muted-foreground text-sm">
+              Changes are applied when you save
             </span>
           )}
         </div>
-      </GlassPanelContent>
+        <Button onClick={onSave} disabled={saving}>
+          {saving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : null}
+          {saving ? "Saving" : "Save"}
+        </Button>
+      </GlassPanelFooter>
     </GlassPanel>
   );
 }
