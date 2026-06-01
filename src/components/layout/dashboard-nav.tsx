@@ -239,26 +239,29 @@ export function DashboardNav() {
 
           {/* Nav Items */}
           <div className="space-y-0.5">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-              const Icon = item.icon;
+            {/* Chat */}
+            {navItems
+              .filter((item) => item.href === "/dashboard/chat")
+              .map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const Icon = item.icon;
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                    isActive
-                      ? "bg-white/20 font-medium dark:bg-white/5"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/10",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                      isActive
+                        ? "bg-white/20 font-medium dark:bg-white/5"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
 
             {/* Mail with expandable accounts */}
             <div>
@@ -343,6 +346,30 @@ export function DashboardNav() {
                 </div>
               )}
             </div>
+
+            {/* Remaining nav items (Tasks, Settings) */}
+            {navItems
+              .filter((item) => item.href !== "/dashboard/chat")
+              .map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const Icon = item.icon;
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                      isActive
+                        ? "bg-white/20 font-medium dark:bg-white/5"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
           </div>
         </GlassPanelContent>
       </GlassPanel>
