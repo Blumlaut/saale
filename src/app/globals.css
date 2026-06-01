@@ -154,6 +154,29 @@
 
   html {
     @apply font-sans;
+    /* Scale base font with viewport — feels right on 1080p, bigger on 2K/4K */
+    font-size: clamp(14px, 1.15vw + 0.25rem, 17px);
+  }
+}
+
+/* ===== Responsive scale ===== */
+
+/* Bump up spacing, radii, and nav width on larger screens so everything feels proportionally bigger */
+
+@media (min-width: 1400px) {
+  .dashboard-layout > div {
+    padding: 1.25rem;
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1920px) {
+  .dashboard-layout > div {
+    padding: 1.5rem;
+    gap: 2rem;
+  }
+  .sidebar-nav {
+    width: 16rem !important; /* w-64 */
   }
 }
 

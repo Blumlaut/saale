@@ -144,7 +144,7 @@ export function DashboardNav() {
   const isMailActive = pathname === "/dashboard/mail" || pathname.startsWith("/dashboard/mail/");
 
   return (
-    <nav className="sticky top-6 h-fit w-56 shrink-0">
+    <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
       <GlassPanel className="shadow-md">
         <GlassPanelContent className="p-3">
           {/* Brand */}
