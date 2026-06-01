@@ -513,19 +513,21 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   return (
     <GlassPanel className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-border/50 flex items-center gap-2 border-b px-4 py-3">
+      <div className="border-border/50 flex items-center gap-2 border-b px-3 py-2.5 md:px-4 md:py-3">
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-7 w-7 md:h-8 md:w-8"
           onClick={() => router.push("/dashboard/chat")}
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-3.5 w-3.5 md:h-4 md:w-4" />
         </Button>
-        <span className="text-sm font-medium">Chat</span>
-        {isLoading && <Loader2 className="text-muted-foreground ml-auto h-4 w-4 animate-spin" />}
+        <span className="text-xs font-medium md:text-sm">Chat</span>
+        {isLoading && (
+          <Loader2 className="text-muted-foreground ml-auto h-3.5 w-3.5 animate-spin md:h-4 md:w-4" />
+        )}
 
-        {/* Model & thinking selectors */}
+        {/* Model & thinking selectors — hidden on small mobile */}
         <div className="ml-auto flex items-center gap-1">
           <ModelSelector value={modelId} onChange={setModelId} />
           <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />

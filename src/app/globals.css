@@ -161,6 +161,23 @@
 
 /* ===== Responsive scale ===== */
 
+/* Mobile adjustments */
+@media (max-width: 767px) {
+  .dashboard-layout > div {
+    padding: 0;
+  }
+
+  /* Make glass panels slightly less heavy on mobile for performance */
+  .glass-panel {
+    backdrop-filter: blur(12px);
+  }
+
+  /* Bottom nav safe area */
+  .h-safe-area-inset-bottom {
+    height: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 /* Bump up spacing, radii, and nav width on larger screens so everything feels proportionally bigger */
 
 @media (min-width: 1400px) {

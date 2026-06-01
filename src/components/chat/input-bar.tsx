@@ -87,8 +87,8 @@ export function InputBar({
   };
 
   return (
-    <div className="border-border/50 border-t bg-white/40 px-4 py-3 dark:bg-black/20">
-      <div className="px-2 sm:px-4">
+    <div className="border-border/50 border-t bg-white/40 px-3 py-2 md:px-4 md:py-3 dark:bg-black/20">
+      <div className="px-1 sm:px-2 md:px-4">
         <div className="border-input bg-background/80 relative flex items-center gap-2 rounded-2xl border p-2 shadow-sm">
           {/* Tools toggle button */}
           {hasToolToggle && (

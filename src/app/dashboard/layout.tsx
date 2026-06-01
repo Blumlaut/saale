@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { KeyboardShortcutsProvider } from "@/components/providers/keyboard-shortcuts-provider";
 
@@ -17,7 +18,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <KeyboardShortcutsProvider>
       <div className="dashboard-layout min-h-screen">
-        <div className="flex gap-6 p-4 md:p-5 lg:p-6">
+        {/* Desktop layout: sidebar + main */}
+        <div className="hidden gap-6 p-4 md:flex md:p-5 lg:p-6">
           <DashboardNav />
           <main className="min-w-0 flex-1">
             {/* Top bar with notifications */}
@@ -26,6 +28,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </div>
             <div className="flex flex-col gap-6">{children}</div>
           </main>
+        </div>
+
+        {/* Mobile layout: full-width content + bottom nav */}
+        <div className="pb-14 md:hidden">
+          <main className="p-4">
+            <div className="flex flex-col gap-4">{children}</div>
+          </main>
+          <MobileNav />
         </div>
       </div>
     </KeyboardShortcutsProvider>
