@@ -118,35 +118,37 @@ export default function SettingsPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <GlassPanel className="rounded-xl p-2">
-          <SettingsIcon className="text-muted-foreground h-5 w-5" />
+          <SettingsIcon className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
         </GlassPanel>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground text-sm">
+          <h1 className="text-lg font-semibold tracking-tight md:text-2xl">Settings</h1>
+          <p className="text-muted-foreground text-xs md:text-sm">
             Configure your AI providers, email accounts, and preferences
           </p>
         </div>
       </div>
 
       <Tabs defaultValue="providers" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="providers" className="gap-2">
-            <Key className="h-4 w-4" />
-            Model Providers
-          </TabsTrigger>
-          <TabsTrigger value="ai" className="gap-2">
-            <Bot className="h-4 w-4" />
-            AI & Models
-          </TabsTrigger>
-          <TabsTrigger value="email" className="gap-2">
-            <Mail className="h-4 w-4" />
-            Email
-          </TabsTrigger>
-          <TabsTrigger value="appearance" className="gap-2">
-            <Palette className="h-4 w-4" />
-            Appearance
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="providers" className="gap-2">
+              <Key className="h-4 w-4" />
+              Model Providers
+            </TabsTrigger>
+            <TabsTrigger value="ai" className="gap-2">
+              <Bot className="h-4 w-4" />
+              AI & Models
+            </TabsTrigger>
+            <TabsTrigger value="email" className="gap-2">
+              <Mail className="h-4 w-4" />
+              Email
+            </TabsTrigger>
+            <TabsTrigger value="appearance" className="gap-2">
+              <Palette className="h-4 w-4" />
+              Appearance
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="providers" className="space-y-6">
           <ProvidersTab

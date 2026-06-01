@@ -9,8 +9,20 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getTagColor, collectTags } from "@/lib/email/tags";
-import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2, Plus, X } from "lucide-react";
+import {
+  Mail,
+  Search,
+  Star,
+  RefreshCw,
+  Loader2,
+  Archive,
+  Trash2,
+  Plus,
+  X,
+  ChevronLeft,
+} from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface EmailMessage {
@@ -76,6 +88,7 @@ export function Inbox() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [_total, setTotal] = useState(0);
   const [togglingStar, setTogglingStar] = useState<string | null>(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   // Active account from URL param
   const activeAccountId = urlAccountId ?? null;
@@ -149,6 +162,7 @@ export function Inbox() {
   const handleSelect = (msg: EmailMessage) => {
     setSelectedId(msg.id);
     setSelectedMsg(msg);
+    setMobileDetailOpen(true);
     if (!msg.isRead) {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
       // Also update selected message
@@ -286,9 +300,9 @@ export function Inbox() {
   }, [activeAccount, accounts]);
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
+    <div className="flex h-[calc(100vh-8rem)] gap-4 md:h-[calc(100vh-7rem)]">
       {/* Mail list */}
-      <GlassPanel className="flex w-96 flex-col overflow-hidden">
+      <GlassPanel className="flex h-full w-full flex-col overflow-hidden md:w-96">
         {/* Header */}
         <div className="border-border/50 flex items-center justify-between border-b px-4 py-3">
           <div>
@@ -499,8 +513,8 @@ export function Inbox() {
         </div>
       </GlassPanel>
 
-      {/* Message detail */}
-      <GlassPanel className="flex flex-1 flex-col overflow-hidden">
+      {/* Message detail — desktop only */}
+      <GlassPanel className="hidden flex-1 flex-col overflow-hidden md:flex">
         {selectedMessage ? (
           <>
             {/* Detail header */}
@@ -630,6 +644,77 @@ export function Inbox() {
           </GlassPanelContent>
         )}
       </GlassPanel>
+
+      {/* Message detail — mobile drawer */}
+      <Drawer open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
+        <DrawerContent className="max-h-[95vh]">
+          <DrawerHeader>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setMobileDetailOpen(false)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <DrawerTitle className="truncate text-sm font-medium">
+                {selectedMessage?.subject || "Email"}
+              </DrawerTitle>
+            </div>
+          </DrawerHeader>
+
+          {selectedMessage && (
+            <div className="flex flex-col gap-0 px-4">
+              {/* Sender info */}
+              <div className="border-border/30 border-b pb-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">{getSender(selectedMessage)}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="text-muted-foreground truncate text-xs">
+                    {parseToField(selectedMessage.to).join(", ")}
+                  </span>
+                </div>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
+                </p>
+              </div>
+
+              {/* Tags */}
+              {selectedMessage.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 py-2">
+                  {selectedMessage.tags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      className={cn(
+                        "cursor-pointer rounded-full px-2 py-0.5 text-xs",
+                        getTagColor(tag),
+                      )}
+                      onClick={() => handleRemoveTag(selectedMessage.id, tag)}
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Message body */}
+              <div className="max-h-[60vh] overflow-y-auto pb-4">
+                {selectedMessage.bodyHtml ? (
+                  <div
+                    className="prose prose-sm dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
+                  />
+                ) : (
+                  <pre className="text-sm whitespace-pre-wrap">
+                    {selectedMessage.bodyText || selectedMessage.bodyPreview}
+                  </pre>
+                )}
+              </div>
+            </div>
+          )}
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

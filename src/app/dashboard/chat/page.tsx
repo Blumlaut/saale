@@ -3,15 +3,32 @@
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { MessageSquarePlus } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { MessageSquarePlus, PanelLeft } from "lucide-react";
 import Link from "next/link";
 
 export default function ChatPage() {
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
-      {/* Sidebar */}
-      <div className="w-64 shrink-0">
+    <div className="flex h-[calc(100vh-8rem)] gap-4 md:h-[calc(100vh-7rem)]">
+      {/* Sidebar — desktop only */}
+      <div className="hidden w-64 shrink-0 md:block">
         <SessionSidebar />
+      </div>
+
+      {/* Mobile: session list in a sheet */}
+      <div className="md:hidden">
+        <Sheet>
+          <SheetTrigger>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-72 p-0 sm:w-80">
+            <div className="h-full">
+              <SessionSidebar />
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
 
       {/* Main area */}

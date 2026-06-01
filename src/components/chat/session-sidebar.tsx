@@ -101,7 +101,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   };
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-3 p-3">
       {/* New chat button */}
       <Button onClick={createSession} className="w-full gap-2 rounded-xl" variant="default">
         <MessageSquarePlus className="h-4 w-4" />

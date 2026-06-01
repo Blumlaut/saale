@@ -19,12 +19,17 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Tasks</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Automated AI tasks</p>
+          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Tasks</h1>
+          <p className="text-muted-foreground mt-1 text-xs md:text-sm">Automated AI tasks</p>
         </div>
-        <Button variant="default" size="sm" onClick={() => setShowJobDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Task
+        <Button
+          variant="default"
+          size="icon"
+          className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+          onClick={() => setShowJobDialog(true)}
+        >
+          <Plus className="h-4 w-4" />
+          <span className="hidden md:inline">New Task</span>
         </Button>
       </div>
 
