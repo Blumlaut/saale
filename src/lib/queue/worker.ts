@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+import "dotenv/config";
 import { createWorker, scheduleAllJobs } from "@/lib/queue";
 
 /**
