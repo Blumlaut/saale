@@ -7,17 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import {
-  Mail,
-  Search,
-  Star,
-  RefreshCw,
-  Loader2,
-  Archive,
-  Trash2,
-  Trash,
-  AlertTriangle,
-} from "lucide-react";
+import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface EmailMessage {
@@ -43,18 +33,21 @@ interface EmailAccount {
   enabled: boolean;
   lastSyncedAt: string | null;
   folders: string[];
+  messageCount: number;
 }
 
 export function Inbox() {
   const [messages, setMessages] = useState<EmailMessage[]>([]);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMsg, setSelectedMsg] = useState<EmailMessage | null>(null);
-  const [folder, setFolder] = useState("INBOX");
+
+  // View state: null = all mail, account id = that account only
+  const [activeAccount, setActiveAccount] = useState<string | null>(null);
+  const [folder, setFolder] = useState<string | null>(null);
   const [_total, setTotal] = useState(0);
 
   const loadAccounts = useCallback(async () => {
@@ -72,10 +65,9 @@ export function Inbox() {
   const loadMessages = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        folder,
-        limit: "50",
-      });
+      const params = new URLSearchParams({ limit: "50" });
+      if (activeAccount) params.set("accountId", activeAccount);
+      if (folder) params.set("folder", folder);
       if (search) params.set("search", search);
 
       const res = await fetch(`/api/email/messages?${params}`);
@@ -89,62 +81,27 @@ export function Inbox() {
     } finally {
       setLoading(false);
     }
-  }, [folder, search]);
+  }, [activeAccount, folder, search]);
 
   useEffect(() => {
     loadAccounts();
     loadMessages();
-  }, [folder, loadAccounts, loadMessages]);
+  }, [activeAccount, folder, loadAccounts, loadMessages]);
 
-  const handleSync = async (accountId: string) => {
-    setSyncing(accountId);
+  const handleSyncAll = async () => {
+    setSyncing(true);
     try {
-      const res = await fetch(`/api/email/accounts/${accountId}/sync`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        loadMessages();
-        loadAccounts();
-      }
+      const enabledAccounts = accounts.filter((a) => a.enabled);
+      await Promise.all(
+        enabledAccounts.map((acc) =>
+          fetch(`/api/email/accounts/${acc.id}/sync`, { method: "POST" }),
+        ),
+      );
+      await Promise.all([loadMessages(), loadAccounts()]);
     } catch {
       // Ignore
     } finally {
-      setSyncing(null);
-    }
-  };
-
-  const handleFullRefresh = async (accountId: string) => {
-    if (!confirm("This will delete all synced emails and re-download everything. Continue?")) {
-      return;
-    }
-    setRefreshing(accountId);
-    try {
-      const res = await fetch(`/api/email/accounts/${accountId}/full-refresh`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        loadMessages();
-        loadAccounts();
-      }
-    } catch {
-      // Ignore
-    } finally {
-      setRefreshing(null);
-    }
-  };
-
-  const handleDelete = async (accountId: string) => {
-    if (!confirm("Delete this email account and all its synced messages?")) return;
-    try {
-      const res = await fetch(`/api/email/accounts/${accountId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        loadAccounts();
-        loadMessages();
-      }
-    } catch {
-      // Ignore
+      setSyncing(false);
     }
   };
 
@@ -152,98 +109,133 @@ export function Inbox() {
     setSelectedId(msg.id);
     setSelectedMsg(msg);
     if (!msg.isRead) {
-      // Mark as read (optimistic)
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
     }
   };
 
   const handleSearch = useCallback(() => {
     loadMessages();
-  }, [search, folder, loadMessages]);
+  }, [search, activeAccount, folder, loadMessages]);
 
   const selectedMessage = selectedMsg;
 
-  // Collect all unique folders from enabled accounts, with INBOX first
+  // Derive folders from active account (or all accounts if no account selected)
   const availableFolders = (() => {
     const folderSet = new Set<string>();
-    for (const acc of accounts) {
-      if (acc.enabled) {
-        for (const f of acc.folders) {
-          folderSet.add(f);
-        }
+    const relevantAccounts = activeAccount
+      ? accounts.filter((a) => a.id === activeAccount)
+      : accounts.filter((a) => a.enabled);
+    for (const acc of relevantAccounts) {
+      for (const f of acc.folders) {
+        folderSet.add(f);
       }
     }
-    // Always include INBOX as the default
-    if (folderSet.size === 0) {
-      return ["INBOX"];
-    }
+    if (folderSet.size === 0) return [];
     const folders = Array.from(folderSet);
     const inboxIdx = folders.findIndex((f) => f === "INBOX");
     if (inboxIdx > 0) {
       const inboxFolder = folders.splice(inboxIdx, 1)[0];
-      if (inboxFolder) {
-        folders.unshift(inboxFolder);
-      }
+      if (inboxFolder) folders.unshift(inboxFolder);
     }
     return folders;
   })();
 
+  // Unread count per account
+  const unreadCounts = (() => {
+    const counts: Record<string, number> = {};
+    for (const acc of accounts) {
+      counts[acc.id] = messages.filter((m) => m.accountId === acc.id && !m.isRead).length;
+    }
+    return counts;
+  })();
+
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
-      {/* Mail list */}
-      <GlassPanel className="flex w-96 flex-col overflow-hidden">
+      {/* Account sidebar */}
+      <GlassPanel className="flex w-52 flex-col overflow-hidden">
         {/* Header */}
         <div className="border-border/50 flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Mail</h2>
-          <div className="flex items-center gap-1">
-            {accounts.map((acc) => (
-              <div key={acc.id} className="flex items-center gap-0.5">
-                <span className="text-muted-foreground mr-1 text-[10px]">
-                  {acc.email.split("@")[0]}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => handleSync(acc.id)}
-                  disabled={syncing === acc.id || refreshing === acc.id || !acc.enabled}
-                  title={`Sync ${acc.email}`}
-                >
-                  {syncing === acc.id ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3 w-3" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-amber-500/70 hover:text-amber-500"
-                  onClick={() => handleFullRefresh(acc.id)}
-                  disabled={syncing === acc.id || refreshing === acc.id || !acc.enabled}
-                  title={`Full refresh ${acc.email}`}
-                >
-                  {refreshing === acc.id ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <AlertTriangle className="h-3 w-3" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-destructive/60 hover:text-destructive h-6 w-6"
-                  onClick={() => handleDelete(acc.id)}
-                  disabled={syncing === acc.id || refreshing === acc.id}
-                  title={`Delete ${acc.email}`}
-                >
-                  <Trash className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={handleSyncAll}
+            disabled={syncing}
+            title="Sync all accounts"
+          >
+            {syncing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+          </Button>
         </div>
 
+        {/* Accounts */}
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          {/* "All Mail" entry */}
+          <button
+            onClick={() => {
+              setActiveAccount(null);
+              setFolder(null);
+              setSelectedId(null);
+              setSelectedMsg(null);
+            }}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+              activeAccount === null
+                ? "bg-white/20 font-medium dark:bg-white/5"
+                : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+            )}
+          >
+            <Mail className="h-4 w-4 shrink-0" />
+            <span className="flex-1 truncate">All Mail</span>
+          </button>
+
+          {accounts.length > 1 && <Separator className="my-1 px-1" />}
+
+          {/* Per-account entries */}
+          {accounts.map((acc) => (
+            <button
+              key={acc.id}
+              onClick={() => {
+                setActiveAccount(acc.id);
+                setFolder(null);
+                setSelectedId(null);
+                setSelectedMsg(null);
+              }}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                activeAccount === acc.id
+                  ? "bg-white/20 font-medium dark:bg-white/5"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+              )}
+            >
+              <div className="bg-muted/50 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold">
+                {(acc.email[0] ?? "?").toUpperCase()}
+              </div>
+              <span className="flex-1 truncate">{acc.email.split("@")[0]}</span>
+              {(unreadCounts[acc.id] ?? 0) > 0 && (
+                <Badge variant="secondary" className="shrink-0 rounded-full px-1.5 text-[10px]">
+                  {unreadCounts[acc.id]}
+                </Badge>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* No accounts hint */}
+        {accounts.length === 0 && (
+          <div className="px-4 py-6 text-center">
+            <p className="text-muted-foreground text-xs">No accounts connected</p>
+            <p className="text-muted-foreground/60 mt-1 text-[10px]">Add one in Settings</p>
+          </div>
+        )}
+      </GlassPanel>
+
+      {/* Mail list */}
+      <GlassPanel className="flex w-96 flex-col overflow-hidden">
         {/* Search */}
         <div className="border-border/30 border-b px-3 py-2">
           <div className="relative">
@@ -259,26 +251,44 @@ export function Inbox() {
         </div>
 
         {/* Folder tabs */}
-        <div className="border-border/30 flex border-b px-2">
-          {availableFolders.map((f) => (
+        {availableFolders.length > 0 && (
+          <div className="border-border/30 flex overflow-x-auto border-b px-2 py-1">
+            {/* "All folders" button */}
             <button
-              key={f}
               onClick={() => {
-                setFolder(f);
+                setFolder(null);
                 setSelectedId(null);
                 setSelectedMsg(null);
               }}
               className={cn(
-                "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                folder === f
+                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                !folder
                   ? "bg-white/20 dark:bg-white/5"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {f === "INBOX" ? "Inbox" : f}
+              All
             </button>
-          ))}
-        </div>
+            {availableFolders.map((f) => (
+              <button
+                key={f}
+                onClick={() => {
+                  setFolder(f);
+                  setSelectedId(null);
+                  setSelectedMsg(null);
+                }}
+                className={cn(
+                  "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                  folder === f
+                    ? "bg-white/20 dark:bg-white/5"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {f === "INBOX" ? "Inbox" : f}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Message list */}
         <div className="flex-1 overflow-y-auto">
@@ -292,7 +302,7 @@ export function Inbox() {
               <p className="text-muted-foreground text-sm">
                 {accounts.length === 0
                   ? "Connect an email account to get started"
-                  : "No emails in this folder"}
+                  : "No emails here"}
               </p>
             </div>
           ) : (
@@ -385,9 +395,7 @@ export function Inbox() {
               {selectedMessage.bodyHtml ? (
                 <div
                   className="prose prose-sm dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{
-                    __html: selectedMessage.bodyHtml,
-                  }}
+                  dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
                 />
               ) : (
                 <pre className="text-sm whitespace-pre-wrap">
