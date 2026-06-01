@@ -43,6 +43,13 @@ This project is in its early stages. Heavy reworks and structural changes are ex
 - Use `@/` import alias. No relative imports reaching up more than 2 levels.
 - Error boundaries around user-facing components.
 
+## No Hardcoded Values
+
+- **Never hardcode logic, configs, or environment-specific values in the code.**
+- Configuration (API keys, timeouts, feature flags, URLs, thresholds) belongs in env vars, config files, or a dedicated config module — not scattered as literals.
+- Don't embed conditional logic behind magic strings or numbers. Extract into named constants, enums, or config objects.
+- When a value could vary by environment or user preference, parameterize it.
+
 ## Architecture
 
 - `src/app/` — Next.js routes and layouts
