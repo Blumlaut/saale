@@ -43,7 +43,7 @@ export async function PATCH(
 
   // Sync BullMQ schedule when enabled status changes
   if (body.enabled !== undefined) {
-    const queue = getQueue(jobId);
+    const queue = getQueue();
     const jobConfig = JSON.parse(updated.config);
 
     if (body.enabled && jobConfig.cronExpression) {
@@ -52,7 +52,7 @@ export async function PATCH(
           "execute",
           { ...jobConfig, taskId: jobId },
           {
-            jobId,
+            jobId: `scheduled-${jobId}`,
             repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
           },
         )
@@ -60,7 +60,7 @@ export async function PATCH(
           console.error(`Failed to schedule job ${jobId}: ${err.message}`);
         });
     } else if (!body.enabled) {
-      await queue.obliterate({ force: true }).catch(() => {});
+      await queue.remove(`scheduled-${jobId}`).catch(() => {});
     }
   }
 
@@ -100,9 +100,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Remove from BullMQ
-  const queue = getQueue(jobId);
-  await queue.obliterate({ force: true }).catch(() => {});
+  // Remove repeatable job from BullMQ
+  const queue = getQueue();
+  await queue.remove(`scheduled-${jobId}`).catch(() => {});
 
   await prisma.queueTask.delete({
     where: { id: jobId },
@@ -137,7 +137,7 @@ export async function POST(
   }
 
   const config = JSON.parse(job.config);
-  const queue = getQueue(jobId);
+  const queue = getQueue();
 
   const jobRun = await addJobRun(jobId, "pending", JSON.stringify(config));
 

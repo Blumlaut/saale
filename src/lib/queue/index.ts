@@ -13,16 +13,22 @@ export function getConnection(): string {
   return REDIS_URL;
 }
 
-// ─── Queue Registry ──────────────────────────────────────────────────────────
+// ─── Shared Queue ────────────────────────────────────────────────────────────
+
+const QUEUE_NAME = "saale-tasks";
+let _queue: Queue | null = null;
 
 /**
- * Get a BullMQ queue by task ID.
- * Each task gets its own queue for isolation and independent scheduling.
+ * Get the shared BullMQ queue (singleton to avoid connection leaks).
+ * All tasks share one queue; jobs are differentiated by taskId in job data.
  */
-export function getQueue(taskId: string): Queue {
-  return new Queue(`saale-task-${taskId}`, {
-    connection: { url: getConnection() },
-  });
+export function getQueue(): Queue {
+  if (!_queue) {
+    _queue = new Queue(QUEUE_NAME, {
+      connection: { url: getConnection() },
+    });
+  }
+  return _queue;
 }
 
 // ─── Job Run Tracking ────────────────────────────────────────────────────────
@@ -267,10 +273,10 @@ export async function processJob(job: Job): Promise<void> {
 // ─── Worker creation ─────────────────────────────────────────────────────────
 
 /**
- * Create a BullMQ worker that processes all task queues.
+ * Create a BullMQ worker for the shared task queue.
  */
 export function createWorker(concurrency = 5): Worker {
-  return new Worker("saale-task-*", processJob, {
+  return new Worker(QUEUE_NAME, processJob, {
     connection: { url: getConnection() },
     concurrency,
     limiter: {
@@ -298,9 +304,9 @@ export async function scheduleAllJobs(): Promise<void> {
     },
   });
 
+  const queue = getQueue();
   for (const task of tasks) {
     const config = JSON.parse(task.config);
-    const queue = getQueue(task.id);
 
     if (config.cronExpression) {
       try {
@@ -308,7 +314,7 @@ export async function scheduleAllJobs(): Promise<void> {
           "execute",
           { ...config, taskId: task.id },
           {
-            jobId: task.id,
+            jobId: `scheduled-${task.id}`,
             repeat: { pattern: config.cronExpression, tz: "UTC" },
           },
         );
