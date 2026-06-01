@@ -64,8 +64,9 @@ You have access to tools for:
 
 Always be concise and helpful. When using tools, explain what you're doing briefly.`;
 
-  // Load conversation history into agent
-  const agentMessages = messages.map((m: { role: string; content: string }) => ({
+  // Load conversation history into agent (all messages except the last user message,
+  // because prompt() will add the last user message itself)
+  const historyMessages = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
     role: m.role as "user" | "assistant",
     content: [{ type: "text", text: m.content }],
   }));
@@ -76,6 +77,12 @@ Always be concise and helpful. When using tools, explain what you're doing brief
 
   const stream = new ReadableStream({
     start(controller) {
+      // Inject conversation history into the agent state
+      if (historyMessages.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AgentMessage type is overly strict (requires full AssistantMessage fields like api/provider/model/usage), but the agent's convertToLlm handles simple {role, content} objects at runtime
+        piSession.agent.state.messages = historyMessages as any;
+      }
+
       // Subscribe to agent events
       const unsubscribe = piSession.subscribe((event) => {
         if (aborted) return;

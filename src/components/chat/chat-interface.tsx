@@ -40,15 +40,11 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCallDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const streamingTextRef = useRef("");
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-
-  // Load messages
-  useEffect(() => {
-    loadMessages();
-  }, [sessionId]);
 
   const loadMessages = async () => {
     try {
@@ -70,6 +66,18 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       // Ignore
     }
   };
+
+  // Keep streamingTextRef in sync
+  useEffect(() => {
+    streamingTextRef.current = streamingText;
+  }, [streamingText]);
+
+  // Load messages
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(() => {
+    loadMessages();
+  }, [sessionId]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   // Send message
   const handleSend = useCallback(
@@ -101,6 +109,17 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         if (!res.ok) throw new Error("Failed to send message");
 
         const data = await res.json();
+
+        // Replace optimistic user message with the server-saved one
+        if (data.message) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id.startsWith("temp-")
+                ? { ...m, id: data.message.id, createdAt: data.message.createdAt }
+                : m,
+            ),
+          );
+        }
 
         // Connect to SSE stream
         const eventSource = new EventSource(data.streamUrl);
@@ -157,14 +176,24 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
         eventSource.addEventListener("done", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
-          setStreamingText(parsed.text);
           setIsLoading(false);
           setStreamingToolCalls([]);
           eventSource.close();
           eventSourceRef.current = null;
 
-          // Reload messages to get persisted data
-          loadMessages();
+          // Push the final assistant message directly instead of reloading,
+          // avoiding a flash where the message disappears between streaming end
+          // and the async fetch completing. Keep the optimistic user message
+          // as-is — it displays correctly and will be replaced on next load.
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `assistant-${Date.now()}`,
+              role: "assistant" as const,
+              content: parsed.text,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
         });
 
         eventSource.onerror = () => {
@@ -172,7 +201,20 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           eventSourceRef.current = null;
           setIsLoading(false);
           setStreamingToolCalls([]);
-          loadMessages();
+          // On error, keep any accumulated streaming text using the ref
+          // (streamingText state is stale in this closure due to useCallback deps)
+          const finalText = streamingTextRef.current;
+          if (finalText) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `assistant-${Date.now()}`,
+                role: "assistant" as const,
+                content: finalText,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+          }
         };
       } catch (err) {
         setIsLoading(false);
@@ -194,6 +236,19 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     }
     setIsLoading(false);
     setStreamingToolCalls([]);
+    // Preserve any partial text accumulated before stopping
+    const partialText = streamingTextRef.current;
+    if (partialText) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant" as const,
+          content: partialText,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
   }, []);
 
   // Cleanup on unmount

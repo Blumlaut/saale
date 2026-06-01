@@ -99,7 +99,7 @@ export async function POST(
   }
 
   // Save user message
-  await prisma.chatMessage.create({
+  const userMessage = await prisma.chatMessage.create({
     data: {
       sessionId,
       role: "user",
@@ -119,16 +119,16 @@ export async function POST(
     },
   });
 
-  // Redirect to SSE stream endpoint
-  const lastMessage = await prisma.chatMessage.findFirst({
-    where: { sessionId },
-    orderBy: { createdAt: "desc" },
-    select: { id: true },
-  });
-
+  // Return stream URL and the saved message for client-side replacement
   return NextResponse.json({
     ok: true,
-    streamUrl: `/api/chat/sessions/${sessionId}/stream?lastMessageId=${lastMessage?.id ?? ""}`,
+    streamUrl: `/api/chat/sessions/${sessionId}/stream`,
+    message: {
+      id: userMessage.id,
+      role: "user" as const,
+      content: userMessage.content,
+      createdAt: userMessage.createdAt.toISOString(),
+    },
   });
 }
 
