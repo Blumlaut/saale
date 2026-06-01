@@ -30,15 +30,16 @@ export async function GET() {
   ];
 
   // Deep clone schemas and populate runtime options
-  const schemas = jobTypeSchemas.map((schema) => ({
-    ...schema,
-    fields: schema.fields.map((field) => {
+  const schemas = jobTypeSchemas.map((schema) => {
+    const fields = schema.fields.map((field) => {
       if (field.key === "accountId" && field.type === "select") {
         return { ...field, options: accountOptions };
       }
       return field;
-    })),
-  }));
+    });
+
+    return { ...schema, fields };
+  });
 
   return NextResponse.json({ schemas });
 }

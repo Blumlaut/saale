@@ -15,10 +15,7 @@ async function main() {
   });
 
   worker.on("failed", (job, err) => {
-    console.error(
-      `[worker] Job ${job?.id} failed:`,
-      err.message,
-    );
+    console.error(`[worker] Job ${job?.id} failed:`, err.message);
   });
 
   worker.on("completed", (job) => {

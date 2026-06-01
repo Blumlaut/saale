@@ -87,9 +87,7 @@ export async function processJob(job: Job): Promise<void> {
           where: { enabled: true },
           select: { id: true },
         });
-        const results = await Promise.all(
-          accounts.map((a) => syncEmailAccount(a.id)),
-        );
+        const results = await Promise.all(accounts.map((a) => syncEmailAccount(a.id)));
         output = JSON.stringify({
           accounts: results.length,
           results,

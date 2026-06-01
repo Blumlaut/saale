@@ -85,10 +85,7 @@ export function ConfigForm({ fields, values, onChange }: ConfigFormProps) {
             )}
 
             {field.type === "select" && (
-              <Select
-                value={(value as string) ?? ""}
-                onValueChange={(v) => onChange(field.key, v)}
-              >
+              <Select value={(value as string) ?? ""} onValueChange={(v) => onChange(field.key, v)}>
                 <SelectTrigger id={`config-${field.key}`}>
                   <SelectValue placeholder="Select..." />
                 </SelectTrigger>

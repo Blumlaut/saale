@@ -93,16 +93,18 @@ export async function POST(request: NextRequest) {
   const jobConfig = config ?? {};
   if (job.enabled && jobConfig.cronExpression) {
     const queue = getQueue(job.id);
-    await queue.add(
-      "execute",
-      { ...jobConfig, taskId: job.id },
-      {
-        jobId: job.id,
-        repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
-      },
-    ).catch((err) => {
-      console.error(`Failed to schedule job ${job.id}: ${err.message}`);
-    });
+    await queue
+      .add(
+        "execute",
+        { ...jobConfig, taskId: job.id },
+        {
+          jobId: job.id,
+          repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
+        },
+      )
+      .catch((err) => {
+        console.error(`Failed to schedule job ${job.id}: ${err.message}`);
+      });
   }
 
   return NextResponse.json({
