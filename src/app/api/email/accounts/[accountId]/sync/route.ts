@@ -6,9 +6,10 @@ import { syncEmailAccount } from "@/lib/email/sync";
 
 /**
  * POST /api/email/accounts/:accountId/sync — Trigger manual sync
+ * Query params: full=true to force a full sync (ignore lastSyncedAt)
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ accountId: string }> },
 ) {
   const session = await auth.api.getSession({
@@ -27,6 +28,16 @@ export async function POST(
 
   if (!account) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Support ?full=true to force a full sync
+  const url = new URL(request.url);
+  const forceFull = url.searchParams.get("full") === "true";
+  if (forceFull && account.lastSyncedAt) {
+    await prisma.emailAccount.update({
+      where: { id: accountId },
+      data: { lastSyncedAt: null },
+    });
   }
 
   try {
