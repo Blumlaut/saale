@@ -47,6 +47,7 @@ export async function GET(
     select: {
       role: true,
       content: true,
+      thinking: true,
       toolCalls: true,
       parentMessageId: true,
     },
@@ -74,27 +75,96 @@ Always be concise and helpful. When using tools, explain what you're doing brief
 
   // Load conversation history into agent (all messages except the last user message,
   // because prompt() will add the last user message itself)
-  // Assistant messages need proper usage fields to avoid totalTokens crash in compaction checks
-  const historyMessages = messages
-    .slice(0, -1)
-    .map((m: { role: string; content: string; toolCalls: string | null }) => {
-      const base = {
-        role: m.role as "user" | "assistant",
+  // Assistant messages with toolCalls are expanded into: assistant (with toolCall blocks)
+  // + toolResult messages, so the LLM retains context of what tools were called and their results.
+  const historyMessages: unknown[] = [];
+
+  for (let i = 0; i < messages.length - 1; i++) {
+    const m = messages[i]!;
+    const baseTimestamp = Date.now();
+
+    if (m.role === "user") {
+      historyMessages.push({
+        role: "user",
         content: [{ type: "text", text: m.content }],
-      };
-      if (m.role === "assistant") {
-        return {
-          ...base,
+        timestamp: baseTimestamp,
+      });
+    } else if (m.role === "assistant") {
+      // Parse stored tool calls (JSON string or null)
+      let toolCallsData: Array<{
+        id: string;
+        name: string;
+        args: Record<string, unknown>;
+        result: string | undefined;
+        isError: boolean | undefined;
+      }> | null = null;
+      if (m.toolCalls) {
+        try {
+          toolCallsData = JSON.parse(m.toolCalls);
+        } catch {
+          // Malformed JSON — skip tool calls for this message
+          toolCallsData = null;
+        }
+      }
+
+      if (toolCallsData && toolCallsData.length > 0) {
+        // Build assistant message with toolCall content blocks
+        const assistantContent: unknown[] = [];
+        if (m.thinking) {
+          assistantContent.push({ type: "thinking", thinking: m.thinking });
+        }
+        if (m.content) {
+          assistantContent.push({ type: "text", text: m.content });
+        }
+        for (const tc of toolCallsData) {
+          assistantContent.push({
+            type: "toolCall",
+            id: tc.id,
+            name: tc.name,
+            arguments: tc.args,
+          });
+        }
+
+        historyMessages.push({
+          role: "assistant",
+          content: assistantContent,
+          api: "openai-completions",
+          provider: chatSession.modelProvider || "custom",
+          model: chatSession.modelName || "unknown",
+          stopReason: "tool_use",
+          timestamp: baseTimestamp,
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+        });
+
+        // Add toolResult messages so the LLM sees what each tool returned
+        for (const tc of toolCallsData) {
+          historyMessages.push({
+            role: "toolResult",
+            toolUseId: tc.id,
+            content: [{ type: "text", text: tc.result ?? "(no result)" }],
+            timestamp: baseTimestamp,
+          });
+        }
+      } else {
+        // No tool calls — plain assistant text message
+        const assistantContent: unknown[] = [];
+        if (m.thinking) {
+          assistantContent.push({ type: "thinking", thinking: m.thinking });
+        }
+        assistantContent.push({ type: "text", text: m.content });
+        historyMessages.push({
+          role: "assistant",
+          content: assistantContent,
           api: "openai-completions",
           provider: chatSession.modelProvider || "custom",
           model: chatSession.modelName || "unknown",
           stopReason: "end_turn",
-          timestamp: Date.now(),
+          timestamp: baseTimestamp,
           usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
-        };
+        });
       }
-      return { ...base, timestamp: Date.now() };
-    });
+    }
+  }
 
   // Create SSE stream
   const encoder = new TextEncoder();
