@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["192.168.178.109"],
   output: "standalone",
   serverExternalPackages: [
     "@better-auth/kysely-adapter",
