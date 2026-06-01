@@ -25,12 +25,13 @@ const thinkingLevels = [
 ];
 
 export function ThinkingSelector({ value, onChange, className }: ThinkingSelectorProps) {
+  const selectedLevel = thinkingLevels.find((l) => l.id === value);
   return (
     <div className={cn("flex items-center gap-1", className)}>
       <Select value={value} onValueChange={(v) => v && onChange(v)}>
         <SelectTrigger className="h-7 w-auto gap-1 border-0 bg-transparent p-1.5 shadow-none hover:bg-white/10 dark:hover:bg-white/5">
           <Lightbulb className="text-muted-foreground h-3.5 w-3.5" />
-          <SelectValue />
+          {selectedLevel?.label ?? <SelectValue />}
         </SelectTrigger>
         <SelectContent>
           {thinkingLevels.map((level) => (

@@ -117,7 +117,9 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
             <Label>From</Label>
             <Select value={accountId} onValueChange={(v) => v && setAccountId(v)}>
               <SelectTrigger>
-                <SelectValue placeholder="Select account" />
+                {accounts.find((a) => a.id === accountId)?.email ?? (
+                  <SelectValue placeholder="Select account" />
+                )}
               </SelectTrigger>
               <SelectContent>
                 {accounts
