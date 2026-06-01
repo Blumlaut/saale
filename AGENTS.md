@@ -1,5 +1,12 @@
 # Saale — Agent Rules
 
+## Investigate Before Using
+
+- **Never assume an API, method, or type exists.** Always inspect the actual source, docs, or type declarations before writing code that depends on a library's API.
+- When using a third-party package, check its `dist/`, `index.d.ts`, or source files to verify exports, signatures, and behavior.
+- When debugging errors, trace them to the actual code — don't guess at fixes based on the error message alone.
+- Prefer reading the docs or running a quick `node -e "import(...)"` probe over assuming how something works.
+
 ## Commits
 
 - Every change **must** be committed before moving on.
