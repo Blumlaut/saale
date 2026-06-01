@@ -69,6 +69,7 @@ export async function PATCH(request: NextRequest) {
       defaultThinkingLevel: settings.defaultThinkingLevel,
       theme: settings.theme,
       agentSystemPrompt: settings.agentSystemPrompt,
+      emailWritingStyle: settings.emailWritingStyle,
     },
   });
 }

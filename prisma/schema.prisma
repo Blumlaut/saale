@@ -214,7 +214,8 @@ model AppSettings {
   defaultModelName     String   @default("")
   defaultThinkingLevel String   @default("off")
   theme                String   @default("system") // "dark" | "light" | "system"
-  agentSystemPrompt    String?  @db.Text // User-defined AI personality/writing style for chat & email replies
+  agentSystemPrompt    String?  @db.Text // User-defined AI personality for chat conversations
+  emailWritingStyle    String?  @db.Text // User-defined writing style for email reply drafts
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerApiKeys      ProviderApiKey[]
   updatedAt            DateTime @updatedAt

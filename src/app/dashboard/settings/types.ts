@@ -4,6 +4,7 @@ export interface UserSettings {
   defaultThinkingLevel: string;
   theme: string;
   agentSystemPrompt: string | null;
+  emailWritingStyle: string | null;
 }
 
 export interface EmailAccount {
