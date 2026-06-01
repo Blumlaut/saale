@@ -129,11 +129,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
 
     for (const folder of folders) {
       try {
-        await (
-          mailbox as unknown as {
-            openMailbox: (name: string, opts: { readOnly: boolean }) => Promise<void>;
-          }
-        ).openMailbox(folder, { readOnly: true });
+        await mailbox.mailboxOpen(folder, { readOnly: true });
 
         // Build search criteria
         const searchOpts: Record<string, unknown> = {};
@@ -244,6 +240,12 @@ export async function syncEmailAccount(accountId: string): Promise<{
         }
       } catch (err) {
         errors.push(`Failed to sync folder ${folder}: ${(err as Error).message}`);
+      } finally {
+        try {
+          await mailbox.mailboxClose();
+        } catch {
+          // Ignore close errors
+        }
       }
     }
 
