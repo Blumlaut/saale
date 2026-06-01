@@ -64,10 +64,10 @@ export async function POST(request: NextRequest) {
   // Build model registry with user's providers
   const { modelRegistry, authStorage } = await buildModelRegistry(authSession.user.id);
 
-  // Resolve the user's configured default model and custom agent prompt
+  // Resolve the user's configured default model and email writing style
   const settings = await prisma.appSettings.findUnique({
     where: { userId: authSession.user.id },
-    select: { defaultModelProvider: true, defaultModelName: true, agentSystemPrompt: true },
+    select: { defaultModelProvider: true, defaultModelName: true, emailWritingStyle: true },
   });
 
   let model;
@@ -103,9 +103,9 @@ export async function POST(request: NextRequest) {
       : `You are replying to this email. Write a natural response addressing the content of the original message.`;
 
   const userStyleInstructions =
-    settings?.agentSystemPrompt && settings.agentSystemPrompt.trim()
+    settings?.emailWritingStyle && settings.emailWritingStyle.trim()
       ? `\n\nWriting style (defined by user):
-${settings.agentSystemPrompt}`
+${settings.emailWritingStyle}`
       : "";
 
   piSession.agent.state.systemPrompt = `You are an email drafting assistant. Your only job is to write clear, concise email responses.
