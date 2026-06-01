@@ -3,7 +3,6 @@ export interface UserSettings {
   defaultModelName: string;
   defaultThinkingLevel: string;
   theme: string;
-  emailSyncInterval: number;
 }
 
 export interface EmailAccount {

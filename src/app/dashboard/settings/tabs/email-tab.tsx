@@ -3,27 +3,8 @@
 import { useState, useEffect } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Mail,
-  Loader2,
-  Plus,
-  CheckCircle,
-  AlertCircle,
-  RefreshCw,
-  Trash2,
-  AlertTriangle,
-  MoreVertical,
-} from "lucide-react";
+import { Mail, Loader2, Plus, RefreshCw, Trash2, AlertTriangle, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,20 +22,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AccountDialog } from "@/components/mail/account-dialog";
-import type { UserSettings, EmailAccount } from "../types";
+import type { EmailAccount } from "../types";
 
-interface EmailTabProps {
-  settings: UserSettings | null;
-  onSettingsChange: (settings: UserSettings) => void;
-  onSave: () => Promise<void>;
-}
-
-export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) {
+export function EmailTab() {
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
   const [alertOpen, setAlertOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     accountId: string;
@@ -75,13 +49,6 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
   useEffect(() => {
     loadAccounts().then(() => setEmailLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (saveStatus !== "idle") {
-      const timer = setTimeout(() => setSaveStatus("idle"), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveStatus]);
 
   const handleActionRequest = (accountId: string, action: "sync" | "full-refresh" | "delete") => {
     if (action === "sync") {
@@ -291,50 +258,6 @@ export function EmailTab({ settings, onSettingsChange, onSave }: EmailTabProps) 
               })}
             </div>
           )}
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label>Sync Interval</Label>
-            <Select
-              value={String(settings?.emailSyncInterval ?? 300)}
-              onValueChange={(v) => {
-                if (v && settings) {
-                  onSettingsChange({ ...settings, emailSyncInterval: parseInt(v) });
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="60">Every minute</SelectItem>
-                <SelectItem value="300">Every 5 minutes</SelectItem>
-                <SelectItem value="900">Every 15 minutes</SelectItem>
-                <SelectItem value="1800">Every 30 minutes</SelectItem>
-                <SelectItem value="3600">Every hour</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button onClick={onSave}>
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Save
-            </Button>
-            {saveStatus === "success" && (
-              <span className="flex items-center gap-1 text-sm text-emerald-500">
-                <CheckCircle className="h-4 w-4" />
-                Saved
-              </span>
-            )}
-            {saveStatus === "error" && (
-              <span className="flex items-center gap-1 text-sm text-red-500">
-                <AlertCircle className="h-4 w-4" />
-                Failed
-              </span>
-            )}
-          </div>
         </GlassPanelContent>
       </GlassPanel>
 

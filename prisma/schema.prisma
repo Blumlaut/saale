@@ -204,7 +204,6 @@ model AppSettings {
   defaultModelName     String   @default("")
   defaultThinkingLevel String   @default("off")
   theme                String   @default("system") // "dark" | "light" | "system"
-  emailSyncInterval    Int      @default(300) // seconds
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerApiKeys      ProviderApiKey[]
   updatedAt            DateTime @updatedAt
