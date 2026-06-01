@@ -63,6 +63,12 @@ export async function GET(
     thinkingLevel: chatSession.thinkingLevel || "off",
   });
 
+  // Capture resolved model for consistent history reconstruction.
+  // Using the actual model's api/provider/id ensures transformMessages treats
+  // replayed messages as same-model (isSameModel=true), preserving thinking
+  // blocks, tool signatures, etc. — critical for cache hits.
+  const model = piSession.model;
+
   // Set up system prompt
   // Keep this minimal — no feature/tool descriptions. The agent infers capabilities from tools.
   // TODO: replace with user-defined system prompt from AppSettings/ChatSession when implemented
@@ -70,14 +76,21 @@ export async function GET(
     "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
 
   // Load conversation history into agent (all messages except the last user message,
-  // because prompt() will add the last user message itself)
+  // because prompt() will add the last user message itself).
   // Assistant messages with toolCalls are expanded into: assistant (with toolCall blocks)
   // + toolResult messages, so the LLM retains context of what tools were called and their results.
+  //
+  // CRITICAL for cache hits: the reconstructed messages must be byte-identical to what
+  // the live agent produced. This means:
+  // - api/provider/model must match the resolved model (transformMessages checks isSameModel)
+  // - toolResult must use toolCallId (not toolUseId) so provider adapters map it correctly
+  // - thinking blocks must be preserved (not downgraded to text on cross-model mismatch)
+  // - content block order must be consistent: thinking → text → toolCall
   const historyMessages: unknown[] = [];
+  const baseTimestamp = Date.now();
 
   for (let i = 0; i < messages.length - 1; i++) {
     const m = messages[i]!;
-    const baseTimestamp = Date.now();
 
     if (m.role === "user") {
       historyMessages.push({
@@ -103,15 +116,15 @@ export async function GET(
         }
       }
 
+      // Build content blocks in canonical order: thinking → text → toolCall
+      const assistantContent: unknown[] = [];
+      if (m.thinking) {
+        assistantContent.push({ type: "thinking", thinking: m.thinking });
+      }
+      if (m.content) {
+        assistantContent.push({ type: "text", text: m.content });
+      }
       if (toolCallsData && toolCallsData.length > 0) {
-        // Build assistant message with toolCall content blocks
-        const assistantContent: unknown[] = [];
-        if (m.thinking) {
-          assistantContent.push({ type: "thinking", thinking: m.thinking });
-        }
-        if (m.content) {
-          assistantContent.push({ type: "text", text: m.content });
-        }
         for (const tc of toolCallsData) {
           assistantContent.push({
             type: "toolCall",
@@ -120,44 +133,33 @@ export async function GET(
             arguments: tc.args,
           });
         }
+      }
 
-        historyMessages.push({
-          role: "assistant",
-          content: assistantContent,
-          api: "openai-completions",
-          provider: chatSession.modelProvider || "custom",
-          model: chatSession.modelName || "unknown",
-          stopReason: "tool_use",
-          timestamp: baseTimestamp,
-          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
-        });
+      // Use resolved model metadata so transformMessages treats this as same-model
+      // (isSameModel check: provider + api + model id must all match)
+      historyMessages.push({
+        role: "assistant",
+        content: assistantContent,
+        api: model?.api,
+        provider: model?.provider,
+        model: model?.id,
+        stopReason: toolCallsData && toolCallsData.length > 0 ? "tool_use" : "end_turn",
+        timestamp: baseTimestamp,
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+      });
 
-        // Add toolResult messages so the LLM sees what each tool returned
+      // Add toolResult messages — must use toolCallId (not toolUseId)
+      // so provider adapters (Anthropic tool_use_id, OpenAI tool_call_id, etc.)
+      // map it correctly. If toolUseId is used, the adapter reads undefined.
+      if (toolCallsData && toolCallsData.length > 0) {
         for (const tc of toolCallsData) {
           historyMessages.push({
             role: "toolResult",
-            toolUseId: tc.id,
+            toolCallId: tc.id,
             content: [{ type: "text", text: tc.result ?? "(no result)" }],
             timestamp: baseTimestamp,
           });
         }
-      } else {
-        // No tool calls — plain assistant text message
-        const assistantContent: unknown[] = [];
-        if (m.thinking) {
-          assistantContent.push({ type: "thinking", thinking: m.thinking });
-        }
-        assistantContent.push({ type: "text", text: m.content });
-        historyMessages.push({
-          role: "assistant",
-          content: assistantContent,
-          api: "openai-completions",
-          provider: chatSession.modelProvider || "custom",
-          model: chatSession.modelName || "unknown",
-          stopReason: "end_turn",
-          timestamp: baseTimestamp,
-          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
-        });
       }
     }
   }
