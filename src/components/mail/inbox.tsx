@@ -119,6 +119,16 @@ export function Inbox() {
     loadMessages();
   }, [activeAccountId, folder, tagFilter, loadAccounts, loadMessages]);
 
+  // Listen for refresh events (e.g. after adding a new account)
+  useEffect(() => {
+    const handler = () => {
+      loadAccounts();
+      loadMessages();
+    };
+    window.addEventListener("mail:refresh", handler);
+    return () => window.removeEventListener("mail:refresh", handler);
+  }, [loadAccounts, loadMessages]);
+
   const handleSyncAll = async () => {
     setSyncing(true);
     try {

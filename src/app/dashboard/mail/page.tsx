@@ -40,7 +40,7 @@ export default function MailPage() {
         open={showAddAccount}
         onOpenChange={setShowAddAccount}
         onSuccess={() => {
-          // Refresh accounts
+          window.dispatchEvent(new CustomEvent("mail:refresh"));
         }}
       />
     </div>
