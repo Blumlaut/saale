@@ -1,0 +1,126 @@
+"use client";
+
+import { useState, useRef, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Paperclip, Send, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface InputBarProps {
+  onSend: (message: string) => void;
+  isLoading: boolean;
+  onStop: () => void;
+  onFileUpload?: (file: File) => void;
+}
+
+export function InputBar({ onSend, isLoading, onStop, onFileUpload }: InputBarProps) {
+  const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSubmit = useCallback(() => {
+    if (!input.trim() || isLoading) return;
+    onSend(input.trim());
+    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  }, [input, isLoading, onSend]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onFileUpload) {
+      onFileUpload(file);
+    }
+    if (e.target) e.target.value = "";
+  };
+
+  const autoResize = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(
+        textareaRef.current.scrollHeight,
+        200,
+      ) + "px";
+    }
+  };
+
+  return (
+    <div className="border-border/50 border-t bg-white/40 px-4 py-3 dark:bg-black/20">
+      <div className="mx-auto max-w-3xl">
+        <div className="relative flex items-end gap-2 rounded-2xl border border-input bg-background/80 p-2 shadow-sm">
+          {/* File upload button */}
+          {onFileUpload && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-lg"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          {/* Textarea */}
+          <Textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              autoResize();
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Message Saale..."
+            className={cn(
+              "min-h-[40px] max-h-[200px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
+              "placeholder:text-muted-foreground",
+            )}
+            rows={1}
+            disabled={isLoading}
+          />
+
+          {/* Send / Stop button */}
+          {isLoading ? (
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full"
+              onClick={onStop}
+            >
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </Button>
+          ) : (
+            <Button
+              variant="default"
+              size="icon"
+              className={cn(
+                "h-9 w-9 shrink-0 rounded-full transition-opacity",
+                !input.trim() && "opacity-50",
+              )}
+              onClick={handleSubmit}
+              disabled={!input.trim()}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <p className="text-muted-foreground mt-2 text-center text-xs">
+          Saale can make mistakes. Verify important information.
+        </p>
+      </div>
+    </div>
+  );
+}

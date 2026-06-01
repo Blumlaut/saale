@@ -1,23 +1,20 @@
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
+import { Button } from "@/components/ui/button";
 import { MessageSquarePlus } from "lucide-react";
 import Link from "next/link";
 
 export default function ChatPage() {
   return (
-    <>
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight">Chat</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Talk with Saale AI</p>
-        </div>
+    <div className="flex h-[calc(100vh-8rem)] gap-4">
+      {/* Sidebar */}
+      <div className="w-64 shrink-0">
+        <SessionSidebar />
       </div>
 
-      {/* Empty state */}
-      <GlassPanel className="animate-in fade-in slide-in-from-bottom-2 duration-200">
-        <GlassPanelContent>
+      {/* Main area */}
+      <GlassPanel className="flex flex-1 flex-col">
+        <GlassPanelContent className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/30 dark:bg-white/5">
               <MessageSquarePlus className="text-muted-foreground/60 h-8 w-8" />
@@ -26,13 +23,30 @@ export default function ChatPage() {
             <p className="text-muted-foreground mt-1 max-w-sm text-sm">
               Ask questions, brainstorm ideas, or get help with your work.
             </p>
-            <Link href="/dashboard/chat/new" className={cn(buttonVariants(), "mt-6")}>
-              <MessageSquarePlus className="h-4 w-4" />
-              New Chat
+            <Link
+              href="/api/chat/sessions"
+              className="mt-6 inline-flex"
+              onClick={async (e) => {
+                e.preventDefault();
+                const res = await fetch("/api/chat/sessions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ title: "New Chat" }),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  window.location.href = `/dashboard/chat/${data.session.id}`;
+                }
+              }}
+            >
+              <Button>
+                <MessageSquarePlus className="mr-2 h-4 w-4" />
+                New Chat
+              </Button>
             </Link>
           </div>
         </GlassPanelContent>
       </GlassPanel>
-    </>
+    </div>
   );
 }
