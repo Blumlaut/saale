@@ -6,12 +6,54 @@ import { decrypt } from "@/lib/crypto";
 import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
 
 /**
+ * A single model entry discovered from an OpenAI-compatible /models endpoint.
+ */
+interface DiscoveredModel {
+  id: string;
+  contextWindow?: number;
+  maxTokens?: number;
+}
+
+/**
+ * Try to extract context window from a raw model object returned by /models.
+ * Different providers use different field names.
+ */
+function extractContextWindow(model: Record<string, unknown>): number | undefined {
+  // Standard OpenAI-compatible fields
+  if (typeof model.max_model_length === "number") return model.max_model_length;
+  if (typeof model.max_tokens === "number") return model.max_tokens;
+  if (typeof model.max_input_tokens === "number") return model.max_input_tokens;
+  if (typeof model.max_completion_tokens === "number") return model.max_completion_tokens;
+
+  // Ollama / LMStudio style
+  if (typeof model.context_length === "number") return model.context_length;
+
+  // Some providers nest it under capabilities
+  if (model.capabilities && typeof model.capabilities === "object") {
+    const caps = model.capabilities as Record<string, unknown>;
+    if (typeof caps.max_tokens === "number") return caps.max_tokens;
+    if (typeof caps.context_length === "number") return caps.context_length;
+  }
+
+  return undefined;
+}
+
+/**
+ * Try to extract max output tokens from a raw model object.
+ */
+function extractMaxTokens(model: Record<string, unknown>): number | undefined {
+  if (typeof model.max_completion_tokens === "number") return model.max_completion_tokens;
+  if (typeof model.max_output_tokens === "number") return model.max_output_tokens;
+  return undefined;
+}
+
+/**
  * Fetch models from an OpenAI-compatible /models endpoint.
  */
 async function fetchOpenAIModels(
   baseUrl: string,
   apiKey?: string,
-): Promise<{ models: string[]; error?: string }> {
+): Promise<{ models: DiscoveredModel[]; error?: string }> {
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     console.log(`[providers] Fetching models from ${url}`);
@@ -44,9 +86,15 @@ async function fetchOpenAIModels(
       };
     }
 
-    return {
-      models: data.data.map((m: { id: string }) => m.id).slice(0, 200),
-    };
+    const models: DiscoveredModel[] = data.data
+      .map((m: Record<string, unknown>) => ({
+        id: String(m.id),
+        contextWindow: extractContextWindow(m),
+        maxTokens: extractMaxTokens(m),
+      }))
+      .slice(0, 200);
+
+    return { models };
   } catch (err) {
     console.error(`[providers] Fetch failed:`, err);
     return {
@@ -122,14 +170,14 @@ export async function GET() {
             apiKey,
             api: "openai-completions",
             models: discoveredModels.map((m) => ({
-              id: m,
-              name: m,
+              id: m.id,
+              name: m.id,
               api: "openai-completions",
               reasoning: false,
               input: ["text"],
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 131072,
-              maxTokens: 8192,
+              ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+              ...(m.maxTokens ? { maxTokens: m.maxTokens } : {}),
             })),
           });
         } else {
@@ -158,8 +206,8 @@ export async function GET() {
       id: string;
       name: string;
       reasoning: boolean;
-      contextWindow: number;
-      maxTokens: number;
+      contextWindow?: number;
+      maxTokens?: number;
       cost: { input: number; output: number };
     }>
   > = {};

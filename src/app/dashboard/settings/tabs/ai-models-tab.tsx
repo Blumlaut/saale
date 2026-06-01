@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
-import { Bot, Loader2, CheckCircle, AlertCircle, Sparkles, Brain, Zap } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Bot, Loader2, CheckCircle, AlertCircle, Sparkles, Brain, Zap, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState, useMemo } from "react";
 import type { UserSettings, AvailableModel, AvailableProvider } from "../types";
 
 interface AiModelsTabProps {
@@ -48,6 +50,8 @@ export function AiModelsTab({
   saveStatus,
   onSave,
 }: AiModelsTabProps) {
+  const [search, setSearch] = useState("");
+
   // Build a flat list of providers with their models
   const providersWithModels = availableModelProviders
     .map((p) => ({
@@ -55,6 +59,20 @@ export function AiModelsTab({
       models: (availableModels[p.id] ?? []).sort((a, b) => a.name.localeCompare(b.name)),
     }))
     .filter((p) => p.models.length > 0);
+
+  // Filter by search query
+  const filteredProviders = useMemo(() => {
+    if (!search.trim()) return providersWithModels;
+    const q = search.toLowerCase();
+    return providersWithModels
+      .map((p) => ({
+        ...p,
+        models: p.models.filter(
+          (m) => m.name.toLowerCase().includes(q) || p.name.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((p) => p.models.length > 0);
+  }, [providersWithModels, search]);
 
   const selectedProvider = providersWithModels.find(
     (p) => p.id === settings?.defaultModelProvider,
@@ -85,7 +103,21 @@ export function AiModelsTab({
               </Label>
             </div>
 
-            <ScrollArea className="h-[340px] lg:h-[440px]">
+            {/* Search */}
+            <div className="px-4 pb-2">
+              <div className="relative">
+                <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                <Input
+                  type="text"
+                  placeholder="Search models..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-9 pl-9"
+                />
+              </div>
+            </div>
+
+            <ScrollArea className="h-[300px] lg:h-[400px]">
               <div className="px-3 pb-3">
                 {providersWithModels.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -95,8 +127,16 @@ export function AiModelsTab({
                       Add an API key in the Model Providers tab to get started.
                     </p>
                   </div>
+                ) : filteredProviders.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <Search className="text-muted-foreground/50 mb-3 h-8 w-8" />
+                    <p className="text-sm font-medium">No models match your search</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Try a different keyword
+                    </p>
+                  </div>
                 ) : (
-                  providersWithModels.map((provider) => (
+                  filteredProviders.map((provider) => (
                     <div key={provider.id} className="mb-1">
                       {/* Provider label */}
                       <div className="px-3 py-2">
@@ -162,7 +202,7 @@ export function AiModelsTab({
                                   </Badge>
                                 )}
                               </div>
-                              {model.contextWindow && (
+                              {model.contextWindow && model.contextWindow > 0 && (
                                 <span className="text-muted-foreground text-xs">
                                   {formatContextWindow(model.contextWindow)} context
                                 </span>
