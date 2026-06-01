@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -8,14 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2, User, Tag } from "lucide-react";
+import { Mail, Search, Star, RefreshCw, Loader2, Archive, Trash2 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface EmailMessage {
   id: string;
   fromName: string | null;
   fromEmail: string;
-  to: string | string[];
+  to: unknown;
   subject: string;
   date: string;
   bodyPreview: string;
@@ -39,14 +39,25 @@ interface EmailAccount {
 }
 
 /** Parse the `to` field — stored as a JSON string in the DB */
-function parseToField(raw: string | string[]): string[] {
-  if (Array.isArray(raw)) return raw;
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [raw];
-  } catch {
-    return [raw];
+function parseToField(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === "string" && raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+      if (typeof parsed === "string") return [parsed];
+    } catch {
+      return [raw];
+    }
   }
+  return ["unknown"];
+}
+
+/** Get a displayable sender string */
+function getSender(msg: EmailMessage): string {
+  if (msg.fromName) return msg.fromName;
+  if (msg.fromEmail) return msg.fromEmail;
+  return "Unknown Sender";
 }
 
 export function Inbox() {
@@ -206,106 +217,8 @@ export function Inbox() {
     return folders;
   }, [activeAccount, accounts]);
 
-  // Collect unique senders for sidebar
-  const uniqueSenders = useMemo(() => {
-    const senderMap = new Map<string, { name: string | null; email: string; count: number }>();
-    for (const msg of messages) {
-      const key = msg.fromEmail.toLowerCase();
-      const existing = senderMap.get(key);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        senderMap.set(key, {
-          name: msg.fromName,
-          email: msg.fromEmail,
-          count: 1,
-        });
-      }
-    }
-    return Array.from(senderMap.values()).sort((a, b) => b.count - a.count);
-  }, [messages]);
-
-  // Collect unique tags for sidebar
-  const uniqueTags = useMemo(() => {
-    const tagMap = new Map<string, number>();
-    for (const msg of messages) {
-      for (const tag of msg.tags) {
-        tagMap.set(tag, (tagMap.get(tag) ?? 0) + 1);
-      }
-    }
-    return Array.from(tagMap.entries()).sort((a, b) => b[1] - a[1]);
-  }, [messages]);
-
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
-      {/* Sidebar — senders & tags */}
-      <GlassPanel className="hidden w-56 flex-col overflow-hidden lg:flex">
-        <div className="border-border/50 border-b px-4 py-3">
-          <h3 className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-            Filters
-          </h3>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {/* Senders */}
-          {uniqueSenders.length > 0 && (
-            <div className="px-3 py-2">
-              <div className="flex items-center gap-1.5 px-1 pb-1">
-                <User className="text-muted-foreground h-3.5 w-3.5" />
-                <span className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-                  Senders
-                </span>
-              </div>
-              <div className="mt-1 space-y-0.5">
-                {uniqueSenders.slice(0, 20).map((sender) => (
-                  <button
-                    key={sender.email}
-                    className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-white/20 dark:hover:bg-white/5"
-                  >
-                    <span className="truncate font-medium">{sender.name || sender.email}</span>
-                    <span className="text-muted-foreground ml-2 shrink-0 tabular-nums">
-                      {sender.count}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <Separator className="mx-3" />
-
-          {/* Tags */}
-          {uniqueTags.length > 0 && (
-            <div className="px-3 py-2">
-              <div className="flex items-center gap-1.5 px-1 pb-1">
-                <Tag className="text-muted-foreground h-3.5 w-3.5" />
-                <span className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-                  Tags
-                </span>
-              </div>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {uniqueTags.map(([tag, count]) => (
-                  <Badge
-                    key={tag}
-                    variant="secondary"
-                    className="rounded-full px-2 py-0.5 text-[10px]"
-                  >
-                    {tag}
-                    <span className="text-muted-foreground ml-1">{count}</span>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {uniqueSenders.length === 0 && uniqueTags.length === 0 && (
-            <div className="px-3 py-4 text-center">
-              <p className="text-muted-foreground text-xs">No senders or tags yet</p>
-            </div>
-          )}
-        </div>
-      </GlassPanel>
-
       {/* Mail list */}
       <GlassPanel className="flex w-96 flex-col overflow-hidden">
         {/* Header */}
@@ -435,7 +348,7 @@ export function Inbox() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="truncate text-sm">{msg.fromName || msg.fromEmail}</span>
+                          <span className="truncate text-sm">{getSender(msg)}</span>
                           {!activeAccountId && msgAccount && (
                             <span className="text-muted-foreground shrink-0 text-[10px]">
                               {msgAccount.email}
@@ -486,7 +399,7 @@ export function Inbox() {
                   {selectedMessage.subject || "(no subject)"}
                 </h2>
                 <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
-                  <span>{selectedMessage.fromName || selectedMessage.fromEmail}</span>
+                  <span>{getSender(selectedMessage)}</span>
                   <span>→</span>
                   <span>{parseToField(selectedMessage.to).join(", ")}</span>
                 </div>
