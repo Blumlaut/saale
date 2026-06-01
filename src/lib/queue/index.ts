@@ -75,9 +75,16 @@ export async function updateJobRun(
 export async function processJob(job: Job): Promise<void> {
   const { taskId, runId, type, ...config } = job.data;
 
+  // Create a run record for scheduled jobs (no runId), or update existing for manual runs
+  const run = runId
+    ? null
+    : await addJobRun(taskId, "pending", JSON.stringify(config));
+
+  const effectiveRunId = runId ?? run?.id;
+
   // Mark run as running
-  if (runId) {
-    await updateJobRun(runId, { status: "running", startedAt: new Date() });
+  if (effectiveRunId) {
+    await updateJobRun(effectiveRunId, { status: "running", startedAt: new Date() });
   }
 
   try {
@@ -247,8 +254,8 @@ export async function processJob(job: Job): Promise<void> {
     }
 
     // Mark as completed
-    if (runId) {
-      await updateJobRun(runId, { status: "completed", output, completedAt: new Date() });
+    if (effectiveRunId) {
+      await updateJobRun(effectiveRunId, { status: "completed", output, completedAt: new Date() });
     }
 
     // Update task metadata
@@ -262,8 +269,8 @@ export async function processJob(job: Job): Promise<void> {
   } catch (err) {
     const errorMessage = (err as Error).message;
 
-    if (runId) {
-      await updateJobRun(runId, { status: "error", error: errorMessage, completedAt: new Date() });
+    if (effectiveRunId) {
+      await updateJobRun(effectiveRunId, { status: "error", error: errorMessage, completedAt: new Date() });
     }
 
     throw err;
