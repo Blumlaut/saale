@@ -32,6 +32,7 @@ interface EmailAccount {
   email: string;
   enabled: boolean;
   lastSyncedAt: string | null;
+  folders: string[];
 }
 
 export function Inbox() {
@@ -116,6 +117,31 @@ export function Inbox() {
 
   const selectedMessage = selectedMsg;
 
+  // Collect all unique folders from enabled accounts, with INBOX first
+  const availableFolders = (() => {
+    const folderSet = new Set<string>();
+    for (const acc of accounts) {
+      if (acc.enabled) {
+        for (const f of acc.folders) {
+          folderSet.add(f);
+        }
+      }
+    }
+    // Always include INBOX as the default
+    if (folderSet.size === 0) {
+      return ["INBOX"];
+    }
+    const folders = Array.from(folderSet);
+    const inboxIdx = folders.findIndex((f) => f === "INBOX");
+    if (inboxIdx > 0) {
+      const inboxFolder = folders.splice(inboxIdx, 1)[0];
+      if (inboxFolder) {
+        folders.unshift(inboxFolder);
+      }
+    }
+    return folders;
+  })();
+
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
       {/* Mail list */}
@@ -160,7 +186,7 @@ export function Inbox() {
 
         {/* Folder tabs */}
         <div className="border-border/30 flex border-b px-2">
-          {["INBOX", "Sent", "Archive", "Trash"].map((f) => (
+          {availableFolders.map((f) => (
             <button
               key={f}
               onClick={() => {
@@ -175,7 +201,7 @@ export function Inbox() {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {f}
+              {f === "INBOX" ? "Inbox" : f}
             </button>
           ))}
         </div>

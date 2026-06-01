@@ -35,6 +35,12 @@ export async function GET() {
       _count: {
         select: { messages: true },
       },
+      messages: {
+        select: {
+          folder: true,
+        },
+        distinct: ["folder"],
+      },
     },
   });
 
@@ -54,6 +60,7 @@ export async function GET() {
         createdAt: Date;
         updatedAt: Date;
         _count: { messages: number };
+        messages: { folder: string }[];
       }) => ({
         id: a.id,
         email: a.email,
@@ -68,6 +75,7 @@ export async function GET() {
         createdAt: a.createdAt.toISOString(),
         updatedAt: a.updatedAt.toISOString(),
         messageCount: a._count.messages,
+        folders: a.messages.map((m) => m.folder),
       }),
     ),
   });
