@@ -12,6 +12,7 @@ export interface EmailAccount {
   enabled: boolean;
   lastSyncedAt: string | null;
   messageCount: number;
+  folders: string[];
 }
 
 export interface ConfiguredProvider {
