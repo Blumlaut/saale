@@ -60,11 +60,11 @@ export async function dispatchAiTask(
       }
     });
 
-    // Timeout after 60s
+    // Timeout after 5min
     timerId = setTimeout(() => {
       unsubscribe();
-      reject(new Error("AI task timed out (60s)"));
-    }, 60_000);
+      reject(new Error("AI task timed out (5min)"));
+    }, 5 * 60_000);
 
     piSession.prompt(prompt);
   });
