@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
-import { Loader2, ChevronLeft } from "lucide-react";
+import { ModelSelector } from "./model-selector";
+import { ThinkingSelector } from "./thinking-selector";
+import { Loader2, ChevronLeft, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 
@@ -18,6 +20,7 @@ interface Message {
     args: Record<string, unknown>;
     result?: string;
     error?: string;
+    status?: "running" | "completed" | "error";
   }>;
   createdAt: string;
 }
@@ -37,6 +40,8 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCallDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [modelId, setModelId] = useState("claude-sonnet-4-5-20250514");
+  const [thinkingLevel, setThinkingLevel] = useState("off");
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -224,13 +229,16 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         {isLoading && (
           <Loader2 className="ml-auto h-4 w-4 animate-spin text-muted-foreground" />
         )}
+
+        {/* Model & thinking selectors */}
+        <div className="ml-auto flex items-center gap-1">
+          <ModelSelector value={modelId} onChange={setModelId} />
+          <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+        </div>
       </div>
 
       {/* Messages */}
-      <MessageList
-        messages={displayMessages}
-        streamingToolCalls={streamingToolCalls}
-      />
+      <MessageList messages={displayMessages} />
 
       {/* Input */}
       <InputBar
