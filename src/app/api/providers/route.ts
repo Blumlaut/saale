@@ -74,16 +74,17 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { provider, apiKey, label, baseUrl } = body;
 
-  if (!provider || !apiKey) {
+  if (!provider) {
     return NextResponse.json(
-      { error: "provider and apiKey are required" },
+      { error: "provider is required" },
       { status: 400 },
     );
   }
 
-  if (typeof apiKey !== "string" || apiKey.length < 10) {
+  // apiKey is optional for local servers (llama.cpp, Ollama, etc.)
+  if (apiKey && (typeof apiKey !== "string" || apiKey.length < 3)) {
     return NextResponse.json(
-      { error: "API key must be at least 10 characters" },
+      { error: "API key must be at least 3 characters if provided" },
       { status: 400 },
     );
   }
