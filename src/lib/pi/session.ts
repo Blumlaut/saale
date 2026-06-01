@@ -14,6 +14,7 @@ import { buildModelRegistry } from "./models";
 import { createChatSearchTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
+import { createWebTools } from "./tools/web-tools";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
@@ -27,6 +28,7 @@ export interface ToolConfig {
   email?: boolean;
   jobs?: boolean;
   chatSearch?: boolean;
+  web?: boolean;
 }
 
 const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
@@ -36,6 +38,7 @@ const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
   email: true,
   jobs: true,
   chatSearch: true,
+  web: true,
 };
 
 /**
@@ -196,6 +199,11 @@ export async function createPiSession(options: {
       jobTools.jobRunTool,
       jobTools.jobLogsTool,
     );
+  }
+
+  if (enabled.web) {
+    const webTools = createWebTools();
+    allCustomTools.push(webTools.webSearchTool, webTools.webFetchTool);
   }
 
   // Resolve the model if specified
