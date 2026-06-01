@@ -106,7 +106,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+      <div className="space-y-6 px-6 py-6 sm:px-8">
         {groupedMessages.map((group, groupIndex) =>
           group.type === "user" ? (
             <UserMessageItem key={group.message.id} message={group.message} />
