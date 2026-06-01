@@ -1,174 +1,218 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { Bot, User } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Button } from "@/components/ui/button";
-import { Copy, Check } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { MarkdownRenderer } from "./markdown-renderer";
+import {
+  Loader2,
+  Bot,
+  User,
+  Wrench,
+  CheckCircle,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+
+interface ToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+  status?: "running" | "completed" | "error";
+}
 
 interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-    result?: string;
-    error?: string;
-  }>;
+  toolCalls?: ToolCall[];
   createdAt: string;
 }
 
-interface ToolCallDisplay {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  status: "running" | "done" | "error";
-  result?: string;
-  error?: string;
+interface MessageListProps {
+  messages: Message[];
+  isLoading?: boolean;
 }
 
-export function MessageList({
-  messages,
-  streamingToolCalls,
-}: {
-  messages: Message[];
-  streamingToolCalls: ToolCallDisplay[];
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+export function MessageList({ messages, isLoading }: MessageListProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-  }, [messages, streamingToolCalls]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  const handleCopy = async (text: string, id: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  if (messages.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="text-center">
+          <Bot className="mx-auto h-12 w-12 text-muted-foreground/50" />
+          <h3 className="mt-4 text-lg font-medium">Start a conversation</h3>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Ask anything — I can search emails, manage files, and run jobs
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+        {messages.map((message) => (
+          <MessageItem key={message.id} message={message} />
+        ))}
+
+        {isLoading && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">Thinking...</span>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+function MessageItem({ message }: { message: Message }) {
+  const isUser = message.role === "user";
+  const [expandedToolCalls, setExpandedToolCalls] = useState<Set<string>>(new Set());
+
+  const toggleToolCall = (id: string) => {
+    setExpandedToolCalls((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   return (
-    <ScrollArea ref={scrollRef} className="flex-1 px-4 md:px-6">
-      <div className="flex flex-col gap-4 py-4">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              "flex gap-3 max-w-3xl",
-              msg.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto",
-            )}
-          >
-            {/* Avatar */}
-            <div
-              className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted",
-              )}
-            >
-              {msg.role === "user" ? (
-                <User className="h-4 w-4" />
-              ) : (
-                <Bot className="h-4 w-4" />
-              )}
-            </div>
+    <div
+      className={cn(
+        "flex gap-3",
+        isUser ? "flex-row-reverse" : "flex-row",
+      )}
+    >
+      {/* Avatar */}
+      <div
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+          isUser ? "bg-primary/10" : "bg-muted",
+        )}
+      >
+        {isUser ? (
+          <User className="h-4 w-4 text-primary" />
+        ) : (
+          <Bot className="h-4 w-4 text-muted-foreground" />
+        )}
+      </div>
 
-            {/* Content */}
-            <div
-              className={cn(
-                "flex flex-col gap-2 rounded-2xl px-4 py-3",
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "glass-panel-subtle",
-              )}
-            >
-              {msg.role === "assistant" ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
-              )}
+      {/* Content */}
+      <div className={cn("min-w-0 max-w-[85%] space-y-2")}>
+        {/* Message bubble */}
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-3",
+            isUser
+              ? "bg-primary text-primary-foreground"
+              : "bg-white/30 dark:bg-white/5",
+          )}
+        >
+          {isUser ? (
+            <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+          ) : (
+            <MarkdownRenderer content={message.content} />
+          )}
+        </div>
 
-              {/* Tool calls */}
-              {msg.toolCalls && msg.toolCalls.length > 0 && (
-                <div className="mt-2 flex flex-col gap-1">
-                  {msg.toolCalls.map((tc) => (
-                    <div
-                      key={tc.id}
-                      className="rounded-lg bg-muted/50 px-3 py-2 text-xs"
-                    >
-                      <div className="font-medium">{tc.name}</div>
-                      {tc.error && (
-                        <div className="text-destructive mt-1">{tc.error}</div>
+        {/* Tool calls */}
+        {message.toolCalls && message.toolCalls.length > 0 && (
+          <div className="space-y-1">
+            {message.toolCalls.map((toolCall) => (
+              <div
+                key={toolCall.id}
+                className="rounded-xl border bg-white/20 dark:bg-white/5"
+              >
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left"
+                  onClick={() => toggleToolCall(toolCall.id)}
+                >
+                  {expandedToolCalls.has(toolCall.id) ? (
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                  )}
+                  <Wrench className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-medium">{toolCall.name}</span>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "ml-auto rounded-full px-1.5 py-0 text-[10px]",
+                      toolCall.status === "running" && "bg-yellow-500/10 text-yellow-600",
+                      toolCall.status === "completed" && "bg-green-500/10 text-green-600",
+                      toolCall.status === "error" && "bg-red-500/10 text-red-600",
+                    )}
+                  >
+                    {toolCall.status === "running" && (
+                      <Loader2 className="mr-1 h-2.5 w-2.5 animate-spin" />
+                    )}
+                    {toolCall.status === "completed" && (
+                      <CheckCircle className="mr-1 h-2.5 w-2.5" />
+                    )}
+                    {toolCall.status === "error" && (
+                      <AlertCircle className="mr-1 h-2.5 w-2.5" />
+                    )}
+                    {toolCall.status}
+                  </Badge>
+                </button>
+
+                {expandedToolCalls.has(toolCall.id) && (
+                  <div className="border-t px-3 py-2">
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground text-xs">
+                        <span className="font-medium">Arguments:</span>
+                      </div>
+                      <pre className="overflow-x-auto rounded-lg bg-muted/50 p-2 text-xs">
+                        {JSON.stringify(toolCall.args, null, 2)}
+                      </pre>
+                      {toolCall.result && (
+                        <>
+                          <div className="text-muted-foreground text-xs">
+                            <span className="font-medium">Result:</span>
+                          </div>
+                          <pre className="overflow-x-auto rounded-lg bg-muted/50 p-2 text-xs">
+                            {toolCall.result.slice(0, 1000)}
+                            {toolCall.result.length > 1000 && "..."}
+                          </pre>
+                        </>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Copy button for assistant messages */}
-              {msg.role === "assistant" && msg.content && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 self-end opacity-50 hover:opacity-100"
-                  onClick={() => handleCopy(msg.content, msg.id)}
-                >
-                  {copiedId === msg.id ? (
-                    <Check className="h-3 w-3" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {/* Streaming tool calls */}
-        {streamingToolCalls.map((tc) => (
-          <div
-            key={tc.toolCallId}
-            className="flex gap-3 max-w-3xl mr-auto"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
-              <Bot className="h-4 w-4" />
-            </div>
-            <div className="glass-panel-subtle rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium">{tc.toolName}</span>
-                {tc.status === "running" && (
-                  <span className="text-muted-foreground animate-pulse">
-                    running...
-                  </span>
-                )}
-                {tc.status === "done" && (
-                  <span className="text-green-600 dark:text-green-400">
-                    completed
-                  </span>
-                )}
-                {tc.status === "error" && (
-                  <span className="text-destructive">error</span>
+                  </div>
                 )}
               </div>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
+
+        {/* Timestamp */}
+        <div className={cn("text-muted-foreground text-xs", isUser && "text-right")}>
+          {new Date(message.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </div>
       </div>
-    </ScrollArea>
+    </div>
   );
 }
+
+import { useState } from "react";
