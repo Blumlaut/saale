@@ -33,8 +33,8 @@ export interface AvailableModel {
   id: string;
   name: string;
   reasoning: boolean;
-  contextWindow: number;
-  maxTokens: number;
+  contextWindow?: number;
+  maxTokens?: number;
   cost: { input: number; output: number };
 }
 
