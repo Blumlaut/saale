@@ -99,13 +99,15 @@ model ChatSession {
 }
 
 model ChatMessage {
-  id          String      @id @default(cuid())
-  sessionId   String
-  role        String // "user" | "assistant" | "system"
-  content     String      @db.Text
-  toolCalls   String?     @db.Text // JSON array of tool calls
-  createdAt   DateTime    @default(now())
-  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id              String      @id @default(cuid())
+  sessionId       String
+  role            String // "user" | "assistant" | "system"
+  content         String      @db.Text
+  thinking        String?     @db.Text // thinking/reasoning content for assistant turns
+  toolCalls       String?     @db.Text // JSON array of tool calls
+  parentMessageId String?     // links turns to the root assistant message
+  createdAt       DateTime    @default(now())
+  session         ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
 }

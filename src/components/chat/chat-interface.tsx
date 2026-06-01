@@ -14,21 +14,12 @@ interface ToolCallData {
   id: string;
   name: string;
   args: Record<string, unknown>;
-  result?: string;
-  isError?: boolean;
-  status?: "running" | "completed" | "error";
+  result: string | undefined;
+  isError: boolean | undefined;
+  status: "running" | "completed" | "error" | undefined;
 }
 
-interface Message {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  thinking?: string;
-  toolCalls?: ToolCallData[];
-  createdAt: string;
-}
-
-interface StreamingState {
+interface TurnData {
   text: string;
   thinking: string;
   toolCalls: Array<{
@@ -41,6 +32,23 @@ interface StreamingState {
   }>;
 }
 
+interface Message {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  thinking: string | undefined;
+  toolCalls: ToolCallData[] | undefined;
+  parentMessageId: string | undefined;
+  createdAt: string;
+}
+
+interface StreamingState {
+  /** Completed turns (finalized from turn_end events) */
+  turns: TurnData[];
+  /** Current in-progress turn data */
+  current: TurnData;
+}
+
 const DEFAULT_TOOL_CONFIG: ToolConfig = {
   bash: true,
   edit: true,
@@ -50,14 +58,19 @@ const DEFAULT_TOOL_CONFIG: ToolConfig = {
   chatSearch: true,
 };
 
+const emptyTurn = (): TurnData => ({
+  text: "",
+  thinking: "",
+  toolCalls: [],
+});
+
 export function ChatInterface({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState>({
-    text: "",
-    thinking: "",
-    toolCalls: [],
+    turns: [],
+    current: emptyTurn(),
   });
   const streamingRef = useRef<StreamingState>(streaming);
   const [modelId, setModelId] = useState("");
@@ -120,6 +133,28 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     [toolConfig, sessionId],
   );
 
+  /** Convert streaming tool calls to message format */
+  const convertToolCalls = (
+    toolCalls: Array<{
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+      status: "running" | "completed" | "error";
+      result?: string;
+      error?: string;
+    }>,
+  ): ToolCallData[] => {
+    if (toolCalls.length === 0) return [];
+    return toolCalls.map((tc) => ({
+      id: tc.toolCallId,
+      name: tc.toolName,
+      args: tc.args,
+      isError: tc.error !== undefined,
+      status: tc.status === "running" ? "completed" : tc.status,
+      result: tc.result ?? undefined,
+    }));
+  };
+
   // Send message
   const handleSend = useCallback(
     async (content: string) => {
@@ -127,11 +162,14 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         id: `temp-${Date.now()}`,
         role: "user",
         content,
+        thinking: undefined,
+        toolCalls: undefined,
+        parentMessageId: undefined,
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
-      setStreaming({ text: "", thinking: "", toolCalls: [] });
+      setStreaming({ turns: [], current: emptyTurn() });
 
       const abortController = new AbortController();
       abortRef.current = abortController;
@@ -162,27 +200,36 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
         eventSource.addEventListener("token", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({ ...prev, text: parsed.text }));
+          setStreaming((prev) => ({
+            ...prev,
+            current: { ...prev.current, text: parsed.text },
+          }));
         });
 
         eventSource.addEventListener("thinking", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({ ...prev, thinking: parsed.thinking }));
+          setStreaming((prev) => ({
+            ...prev,
+            current: { ...prev.current, thinking: parsed.thinking },
+          }));
         });
 
         eventSource.addEventListener("tool_start", (event: MessageEvent) => {
           const parsed = JSON.parse(event.data);
           setStreaming((prev) => ({
             ...prev,
-            toolCalls: [
-              ...prev.toolCalls,
-              {
-                toolCallId: parsed.toolCallId,
-                toolName: parsed.toolName,
-                args: parsed.args,
-                status: "running" as const,
-              },
-            ],
+            current: {
+              ...prev.current,
+              toolCalls: [
+                ...prev.current.toolCalls,
+                {
+                  toolCallId: parsed.toolCallId,
+                  toolName: parsed.toolName,
+                  args: parsed.args,
+                  status: "running" as const,
+                },
+              ],
+            },
           }));
         });
 
@@ -190,58 +237,108 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           const parsed = JSON.parse(event.data);
           setStreaming((prev) => ({
             ...prev,
-            toolCalls: prev.toolCalls.map((tc) =>
-              tc.toolCallId === parsed.toolCallId
-                ? {
-                    ...tc,
-                    status: parsed.isError ? ("error" as const) : ("completed" as const),
-                    result: parsed.result,
-                    error: parsed.isError ? parsed.result : undefined,
-                  }
-                : tc,
-            ),
+            current: {
+              ...prev.current,
+              toolCalls: prev.current.toolCalls.map((tc) =>
+                tc.toolCallId === parsed.toolCallId
+                  ? {
+                      ...tc,
+                      status: parsed.isError ? ("error" as const) : ("completed" as const),
+                      result: parsed.result,
+                      error: parsed.isError ? parsed.result : undefined,
+                    }
+                  : tc,
+              ),
+            },
+          }));
+        });
+
+        eventSource.addEventListener("turn_end", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          // Finalize the current turn and add it to completed turns
+          setStreaming((prev) => ({
+            ...prev,
+            turns: [
+              ...prev.turns,
+              {
+                text: parsed.text || prev.current.text,
+                thinking: parsed.thinking || prev.current.thinking,
+                toolCalls:
+                  parsed.toolCalls?.length > 0
+                    ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                        toolCallId: tc.id,
+                        toolName: tc.name,
+                        args: tc.args,
+                        status: tc.isError ? "error" : "completed",
+                        result: tc.result,
+                      }))
+                    : prev.current.toolCalls,
+              },
+            ],
+            current: emptyTurn(),
           }));
         });
 
         eventSource.addEventListener("done", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
           setIsLoading(false);
           eventSource.close();
           eventSourceRef.current = null;
 
-          // Convert streaming tool calls to message format
-          const finalToolCalls: ToolCallData[] | undefined =
-            parsed.toolCalls?.length > 0
-              ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                  id: tc.id,
-                  name: tc.name,
-                  args: tc.args,
-                  isError: tc.isError,
-                  status: tc.isError ? "error" : "completed",
-                  ...(tc.result ? { result: tc.result } : {}),
-                }))
-              : streamingRef.current.toolCalls.length > 0
-                ? streamingRef.current.toolCalls.map((tc) => ({
-                    id: tc.toolCallId,
-                    name: tc.toolName,
+          // Finalize any remaining current turn
+          const finalState = streamingRef.current;
+          const allTurns = [
+            ...finalState.turns,
+            // Include the current turn if it has any content and wasn't already finalized
+            ...(finalState.current.text ||
+            finalState.current.thinking ||
+            finalState.current.toolCalls.length > 0
+              ? [{ ...finalState.current }]
+              : []),
+          ];
+
+          // If we got turn_end events, use those. Otherwise create a single message from streaming state.
+          const parsed = JSON.parse(event.data);
+
+          if (allTurns.length > 0) {
+            // Multi-turn response: add each turn as a separate message
+            const baseId = `assistant-turn-${Date.now()}`;
+            const turnMessages: Message[] = allTurns.map((turn, index) => ({
+              id: `${baseId}-${index}`,
+              role: "assistant" as const,
+              content: turn.text,
+              thinking: turn.thinking || undefined,
+              toolCalls: turn.toolCalls.length > 0 ? convertToolCalls(turn.toolCalls) : undefined,
+              parentMessageId: index > 0 ? `${baseId}-0` : undefined,
+              createdAt: new Date().toISOString(),
+            }));
+            setMessages((prev) => [...prev, ...turnMessages]);
+          } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
+            // Legacy single-turn fallback (from done event data)
+            const finalToolCalls: ToolCallData[] | undefined =
+              parsed.toolCalls?.length > 0
+                ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                    id: tc.id,
+                    name: tc.name,
                     args: tc.args,
-                    isError: tc.error !== undefined,
-                    status: tc.status === "running" ? "completed" : tc.status,
-                    ...(tc.result ? { result: tc.result } : {}),
+                    isError: tc.isError,
+                    status: tc.isError ? "error" : "completed",
+                    result: tc.result || undefined,
                   }))
                 : undefined;
 
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `assistant-${Date.now()}`,
-              role: "assistant" as const,
-              content: parsed.text,
-              createdAt: new Date().toISOString(),
-              ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
-              ...(finalToolCalls ? { toolCalls: finalToolCalls } : {}),
-            },
-          ]);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `assistant-${Date.now()}`,
+                role: "assistant" as const,
+                content: parsed.text,
+                thinking: parsed.thinking || undefined,
+                toolCalls: finalToolCalls,
+                parentMessageId: undefined,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+          }
         });
 
         eventSource.onerror = () => {
@@ -249,29 +346,27 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           eventSourceRef.current = null;
           setIsLoading(false);
           const final = streamingRef.current;
-          if (final.text || final.thinking || final.toolCalls.length > 0) {
-            const errorToolCalls: ToolCallData[] | undefined =
-              final.toolCalls.length > 0
-                ? final.toolCalls.map((tc) => ({
-                    id: tc.toolCallId,
-                    name: tc.toolName,
-                    args: tc.args,
-                    isError: tc.error !== undefined,
-                    status: tc.status === "running" ? "completed" : tc.status,
-                    ...(tc.result ? { result: tc.result } : {}),
-                  }))
-                : undefined;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `assistant-${Date.now()}`,
-                role: "assistant" as const,
-                content: final.text,
-                createdAt: new Date().toISOString(),
-                ...(final.thinking ? { thinking: final.thinking } : {}),
-                ...(errorToolCalls ? { toolCalls: errorToolCalls } : {}),
-              },
-            ]);
+
+          // Collect all turns including current
+          const allTurns = [
+            ...final.turns,
+            ...(final.current.text || final.current.thinking || final.current.toolCalls.length > 0
+              ? [{ ...final.current }]
+              : []),
+          ];
+
+          if (allTurns.length > 0) {
+            const baseId = `assistant-turn-${Date.now()}`;
+            const turnMessages: Message[] = allTurns.map((turn, index) => ({
+              id: `${baseId}-${index}`,
+              role: "assistant" as const,
+              content: turn.text,
+              thinking: turn.thinking || undefined,
+              toolCalls: turn.toolCalls.length > 0 ? convertToolCalls(turn.toolCalls) : undefined,
+              parentMessageId: index > 0 ? `${baseId}-0` : undefined,
+              createdAt: new Date().toISOString(),
+            }));
+            setMessages((prev) => [...prev, ...turnMessages]);
           }
         };
       } catch (err) {
@@ -293,29 +388,27 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     }
     setIsLoading(false);
     const partial = streamingRef.current;
-    if (partial.text || partial.thinking || partial.toolCalls.length > 0) {
-      const stopToolCalls: ToolCallData[] | undefined =
-        partial.toolCalls.length > 0
-          ? partial.toolCalls.map((tc) => ({
-              id: tc.toolCallId,
-              name: tc.toolName,
-              args: tc.args,
-              isError: tc.error !== undefined,
-              status: tc.status === "running" ? "completed" : tc.status,
-              ...(tc.result ? { result: tc.result } : {}),
-            }))
-          : undefined;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `assistant-${Date.now()}`,
-          role: "assistant" as const,
-          content: partial.text,
-          createdAt: new Date().toISOString(),
-          ...(partial.thinking ? { thinking: partial.thinking } : {}),
-          ...(stopToolCalls ? { toolCalls: stopToolCalls } : {}),
-        },
-      ]);
+
+    // Collect all turns including current
+    const allTurns = [
+      ...partial.turns,
+      ...(partial.current.text || partial.current.thinking || partial.current.toolCalls.length > 0
+        ? [{ ...partial.current }]
+        : []),
+    ];
+
+    if (allTurns.length > 0) {
+      const baseId = `assistant-turn-${Date.now()}`;
+      const turnMessages: Message[] = allTurns.map((turn, index) => ({
+        id: `${baseId}-${index}`,
+        role: "assistant" as const,
+        content: turn.text,
+        thinking: turn.thinking || undefined,
+        toolCalls: turn.toolCalls.length > 0 ? convertToolCalls(turn.toolCalls) : undefined,
+        parentMessageId: index > 0 ? `${baseId}-0` : undefined,
+        createdAt: new Date().toISOString(),
+      }));
+      setMessages((prev) => [...prev, ...turnMessages]);
     }
   }, []);
 
@@ -354,28 +447,67 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(saveTimer);
   }, [modelId, thinkingLevel, sessionId]);
 
-  // Build display messages (including streaming)
+  // Build display messages (including streaming turns)
   const displayMessages = [...messages];
-  if (isLoading && (streaming.text || streaming.thinking || streaming.toolCalls.length > 0)) {
-    displayMessages.push({
-      id: "streaming-assistant",
-      role: "assistant",
-      content: streaming.text,
-      ...(streaming.thinking ? { thinking: streaming.thinking } : {}),
-      ...(streaming.toolCalls.length > 0
-        ? {
-            toolCalls: streaming.toolCalls.map((tc) => ({
-              id: tc.toolCallId,
-              name: tc.toolName,
-              args: tc.args,
-              isError: tc.error !== undefined,
-              status: tc.status === "running" ? "running" : "completed",
-              ...(tc.result ? { result: tc.result } : {}),
-            })),
-          }
-        : {}),
-      createdAt: new Date().toISOString(),
-    });
+  if (isLoading) {
+    const hasContent =
+      streaming.turns.length > 0 ||
+      streaming.current.text ||
+      streaming.current.thinking ||
+      streaming.current.toolCalls.length > 0;
+
+    if (hasContent) {
+      // Add completed turns as separate messages
+      for (let i = 0; i < streaming.turns.length; i++) {
+        const turn = streaming.turns[i]!;
+        displayMessages.push({
+          id: `streaming-turn-${i}`,
+          role: "assistant",
+          content: turn.text,
+          thinking: turn.thinking || undefined,
+          toolCalls:
+            turn.toolCalls.length > 0
+              ? turn.toolCalls.map((tc) => ({
+                  id: tc.toolCallId,
+                  name: tc.toolName,
+                  args: tc.args,
+                  isError: tc.error !== undefined,
+                  status: tc.status,
+                  result: tc.result || undefined,
+                }))
+              : undefined,
+          createdAt: new Date().toISOString(),
+          parentMessageId: i > 0 ? `streaming-turn-0` : undefined,
+        });
+      }
+
+      // Add current in-progress turn
+      if (
+        streaming.current.text ||
+        streaming.current.thinking ||
+        streaming.current.toolCalls.length > 0
+      ) {
+        displayMessages.push({
+          id: "streaming-current",
+          role: "assistant",
+          content: streaming.current.text,
+          thinking: streaming.current.thinking || undefined,
+          toolCalls:
+            streaming.current.toolCalls.length > 0
+              ? streaming.current.toolCalls.map((tc) => ({
+                  id: tc.toolCallId,
+                  name: tc.toolName,
+                  args: tc.args,
+                  isError: tc.error !== undefined,
+                  status: tc.status,
+                  result: tc.result || undefined,
+                }))
+              : undefined,
+          createdAt: new Date().toISOString(),
+          parentMessageId: streaming.turns.length > 0 ? `streaming-turn-0` : undefined,
+        });
+      }
+    }
   }
 
   return (

@@ -8,8 +8,8 @@ import { createPiSession, type ToolConfig } from "@/lib/pi/session";
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
  *
  * Streams Pi agent responses as Server-Sent Events.
- * Emits: token (cumulative text), thinking (cumulative thinking),
- *         tool_start, tool_end, tool_result, done
+ * Emits: token (cumulative text for current turn), thinking (cumulative thinking for current turn),
+ *         tool_start, tool_end, turn_end (completed turn data), done
  */
 export async function GET(
   request: NextRequest,
@@ -48,6 +48,7 @@ export async function GET(
       role: true,
       content: true,
       toolCalls: true,
+      parentMessageId: true,
     },
   });
 
@@ -105,6 +106,16 @@ Always be concise and helpful. When using tools, explain what you're doing brief
     { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
   > = new Map();
 
+  // Track turn state
+  let turnIndex = 0;
+  let currentTurnText = "";
+  let currentTurnThinking = "";
+  // Track tool calls that belong to the current turn (by toolCallId)
+  const currentTurnToolCallIds = new Set<string>();
+
+  // Root assistant message ID (first turn's DB message id, used as parentMessageId for subsequent turns)
+  let rootMessageId: string | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
       // Inject conversation history into the agent state
@@ -120,36 +131,56 @@ Always be concise and helpful. When using tools, explain what you're doing brief
         switch (event.type) {
           case "message_update": {
             if (event.message.role !== "assistant") return;
+            // Narrow to assistant message with content array
+            const msg = event.message as { content: unknown[] };
 
             // Extract thinking content
-            const thinkingBlock = event.message.content.find(
-              (c) => typeof c === "object" && c.type === "thinking",
+            const thinkingBlock = msg.content.find(
+              (c) =>
+                typeof c === "object" &&
+                c !== null &&
+                (c as Record<string, unknown>).type === "thinking",
             );
             if (thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock) {
+              currentTurnThinking = (thinkingBlock as Record<string, unknown>).thinking as string;
               controller.enqueue(
                 encoder.encode(
                   `event: thinking\ndata: ${JSON.stringify({
-                    thinking: thinkingBlock.thinking as string,
+                    thinking: currentTurnThinking,
                   })}\n\n`,
                 ),
               );
             }
 
             // Extract cumulative text from all text blocks
-            const textBlocks = event.message.content.filter(
-              (c) => typeof c === "object" && c.type === "text",
+            const textBlocks = msg.content.filter(
+              (c) =>
+                typeof c === "object" &&
+                c !== null &&
+                (c as Record<string, unknown>).type === "text",
             );
-            const cumulativeText = textBlocks
-              .map((c) => (typeof c === "object" && "text" in c ? (c.text as string) : ""))
+            currentTurnText = textBlocks
+              .map((c) => ((c as Record<string, unknown>).text as string) || "")
               .join("");
-            if (cumulativeText) {
+            if (currentTurnText) {
               controller.enqueue(
                 encoder.encode(
                   `event: token\ndata: ${JSON.stringify({
-                    text: cumulativeText,
+                    text: currentTurnText,
                   })}\n\n`,
                 ),
               );
+            }
+
+            // Track tool call IDs appearing in this message
+            for (const content of msg.content) {
+              if (
+                typeof content === "object" &&
+                content !== null &&
+                (content as Record<string, unknown>).type === "toolCall"
+              ) {
+                currentTurnToolCallIds.add((content as Record<string, unknown>).id as string);
+              }
             }
             break;
           }
@@ -193,63 +224,137 @@ Always be concise and helpful. When using tools, explain what you're doing brief
             break;
           }
 
+          case "turn_end": {
+            // Collect tool calls for this turn from the message content
+            // event.message is AgentMessage which may not have .content (e.g., BashExecutionMessage)
+            // Narrow to messages that have content
+            const assistantMsg =
+              event.message.role === "assistant" ? (event.message as { content: unknown[] }) : null;
+            const toolCallBlocks = assistantMsg
+              ? (assistantMsg.content.filter(
+                  (c) =>
+                    typeof c === "object" &&
+                    c !== null &&
+                    (c as Record<string, unknown>).type === "toolCall",
+                ) as Record<string, unknown>[])
+              : [];
+            const turnToolCalls = toolCallBlocks.map((tc) => {
+              const result = toolCallResults.get(tc.id as string);
+              return {
+                id: tc.id as string,
+                name: tc.name as string,
+                args: tc.arguments as unknown as Record<string, unknown>,
+                result: result?.result,
+                isError: result?.isError,
+              };
+            });
+
+            // Save this turn's message to DB
+            const savedMessage = saveAssistantMessage(
+              sessionId,
+              currentTurnText,
+              currentTurnThinking || undefined,
+              turnToolCalls.length > 0 ? turnToolCalls : undefined,
+              rootMessageId, // parentMessageId (null for first turn)
+            );
+
+            savedMessage.then((msg) => {
+              if (!rootMessageId) {
+                rootMessageId = msg.id;
+              }
+            });
+
+            // Emit turn_end event to frontend
+            controller.enqueue(
+              encoder.encode(
+                `event: turn_end\ndata: ${JSON.stringify({
+                  turnIndex,
+                  text: currentTurnText,
+                  thinking: currentTurnThinking || null,
+                  toolCalls: turnToolCalls,
+                })}\n\n`,
+              ),
+            );
+
+            turnIndex++;
+            currentTurnText = "";
+            currentTurnThinking = "";
+            currentTurnToolCallIds.clear();
+            break;
+          }
+
           case "agent_end": {
-            // Get final assistant message
-            const lastAssistant = event.messages.findLast((m) => m.role === "assistant");
+            // Get final assistant message(s)
+            // Cast to access content property (AgentMessage is a union that includes non-content types)
+            const assistantMessages = event.messages
+              .filter((m) => m.role === "assistant")
+              .map((m) => m as { role: "assistant"; content: unknown[] });
+            const lastAssistant = assistantMessages[assistantMessages.length - 1];
+
             if (lastAssistant) {
               // Extract final text
               const textBlocks = lastAssistant.content.filter(
-                (c) => typeof c === "object" && c.type === "text",
+                (c) =>
+                  typeof c === "object" &&
+                  c !== null &&
+                  (c as Record<string, unknown>).type === "text",
               );
               const finalText = textBlocks
-                .map((c) => (typeof c === "object" && "text" in c ? (c.text as string) : ""))
+                .map((c) => ((c as Record<string, unknown>).text as string) || "")
                 .join("");
 
               // Extract thinking
               const thinkingBlock = lastAssistant.content.find(
-                (c) => typeof c === "object" && c.type === "thinking",
+                (c) =>
+                  typeof c === "object" &&
+                  c !== null &&
+                  (c as Record<string, unknown>).type === "thinking",
               );
               const finalThinking =
                 thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock
-                  ? (thinkingBlock.thinking as string)
+                  ? ((thinkingBlock as Record<string, unknown>).thinking as string)
                   : "";
 
               // Extract tool calls from the message content
               const toolCallBlocks = lastAssistant.content.filter(
-                (c) => typeof c === "object" && c.type === "toolCall",
-              );
-              const toolCalls = toolCallBlocks
-                .map((c) => {
-                  if (typeof c !== "object") return null;
-                  const tc = c as unknown as Record<string, unknown>;
-                  const result = toolCallResults.get(tc.id as string);
-                  return {
-                    id: tc.id as string,
-                    name: tc.name as string,
-                    args: tc.arguments as unknown as Record<string, unknown>,
-                    result: result?.result,
-                    isError: result?.isError,
-                  };
+                (c) =>
+                  typeof c === "object" &&
+                  c !== null &&
+                  (c as Record<string, unknown>).type === "toolCall",
+              ) as Record<string, unknown>[];
+              const toolCalls = toolCallBlocks.map((tc) => {
+                const result = toolCallResults.get(tc.id as string);
+                return {
+                  id: tc.id as string,
+                  name: tc.name as string,
+                  args: tc.arguments as unknown as Record<string, unknown>,
+                  result: result?.result,
+                  isError: result?.isError,
+                };
+              });
+
+              // If there were no turn_end events (single-turn response with no tools),
+              // save the message here
+              if (turnIndex === 0) {
+                saveAssistantMessage(
+                  sessionId,
+                  finalText,
+                  finalThinking || undefined,
+                  toolCalls.length > 0 ? toolCalls : undefined,
+                  null,
+                ).catch(console.error);
+              }
+
+              // Update message count (count turns, not just root messages)
+              prisma.chatSession
+                .update({
+                  where: { id: sessionId },
+                  data: { messageCount: { increment: turnIndex || 1 } },
                 })
-                .filter((t): t is NonNullable<typeof t> => t !== null);
-
-              // Save assistant message to DB with tool calls
-              saveAssistantMessage(
-                sessionId,
-                finalText,
-                toolCalls.length > 0 ? toolCalls : undefined,
-              ).catch(console.error);
-
-              controller.enqueue(
-                encoder.encode(
-                  `event: done\ndata: ${JSON.stringify({
-                    text: finalText,
-                    thinking: finalThinking,
-                    toolCalls,
-                  })}\n\n`,
-                ),
-              );
+                .catch(console.error);
             }
+
+            controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({})}\n\n`));
 
             controller.close();
             break;
@@ -286,6 +391,7 @@ Always be concise and helpful. When using tools, explain what you're doing brief
 async function saveAssistantMessage(
   sessionId: string,
   content: string,
+  thinking?: string,
   toolCalls?: Array<{
     id: string;
     name: string;
@@ -293,18 +399,16 @@ async function saveAssistantMessage(
     result: string | undefined;
     isError: boolean | undefined;
   }>,
-): Promise<void> {
-  await prisma.chatMessage.create({
+  parentMessageId?: string | null,
+): Promise<{ id: string }> {
+  return prisma.chatMessage.create({
     data: {
       sessionId,
       role: "assistant",
       content,
+      thinking: thinking || null,
       toolCalls: toolCalls && toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
+      parentMessageId: parentMessageId || null,
     },
-  });
-
-  await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: { messageCount: { increment: 1 } },
   });
 }

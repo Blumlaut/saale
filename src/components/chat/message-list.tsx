@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -14,23 +14,25 @@ import {
   ChevronDown,
   ChevronRight,
   Lightbulb,
+  CornerDownRight,
 } from "lucide-react";
 
 interface ToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
-  result?: string;
-  isError?: boolean;
-  status?: "running" | "completed" | "error";
+  result: string | undefined;
+  isError: boolean | undefined;
+  status: "running" | "completed" | "error" | undefined;
 }
 
 interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  thinking?: string;
-  toolCalls?: ToolCall[];
+  thinking: string | undefined;
+  toolCalls: ToolCall[] | undefined;
+  parentMessageId: string | undefined;
   createdAt: string;
 }
 
@@ -42,6 +44,43 @@ interface MessageListProps {
 export function MessageList({ messages, isLoading }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Group assistant turns that share a parentMessageId
+  const groupedMessages = useMemo(() => {
+    const groups: Array<{
+      type: "user" | "assistant-group";
+      messages: Message[];
+      rootId: string;
+    }> = [];
+    let i = 0;
+
+    while (i < messages.length) {
+      const msg = messages[i]!;
+      if (msg.role === "user" || msg.role === "system") {
+        groups.push({ type: "user", messages: [msg], rootId: msg.id });
+        i++;
+      } else if (msg.role === "assistant") {
+        // Collect this message and all its child turns
+        const rootId = msg.parentMessageId || msg.id;
+        const turnMessages: Message[] = [msg];
+        i++;
+        while (i < messages.length) {
+          const next = messages[i]!;
+          if (next.role === "assistant" && next.parentMessageId === rootId) {
+            turnMessages.push(next);
+            i++;
+          } else {
+            break;
+          }
+        }
+        groups.push({ type: "assistant-group", messages: turnMessages, rootId });
+      } else {
+        i++;
+      }
+    }
+
+    return groups;
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -61,19 +100,33 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
     );
   }
 
-  // Check if the last message is the streaming one
-  const isStreaming = isLoading && messages[messages.length - 1]?.id === "streaming-assistant";
+  // Check if the last message is streaming
+  const lastMsg = messages[messages.length - 1];
+  const isStreaming =
+    isLoading &&
+    lastMsg?.role === "assistant" &&
+    (lastMsg.id === "streaming-current" || lastMsg.id.startsWith("streaming-turn-"));
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-        {messages.map((message) => (
-          <MessageItem
-            key={message.id}
-            message={message}
-            isStreaming={message.id === "streaming-assistant" && !!isStreaming}
-          />
-        ))}
+        {groupedMessages.map((group) => {
+          const firstMsg = group.messages[0]!;
+          return group.type === "user" ? (
+            <MessageItem
+              key={firstMsg.id}
+              message={firstMsg}
+              isStreaming={false}
+              showAvatar={true}
+            />
+          ) : (
+            <AssistantTurnGroup
+              key={group.rootId}
+              turns={group.messages}
+              isStreaming={isStreaming ?? false}
+            />
+          );
+        })}
         {isLoading && !isStreaming && (
           <div className="text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -87,7 +140,37 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
   );
 }
 
-function MessageItem({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
+function AssistantTurnGroup({ turns, isStreaming }: { turns: Message[]; isStreaming: boolean }) {
+  return (
+    <div className="space-y-3">
+      {turns.map((turn, index) => (
+        <div key={turn.id} className={cn(index > 0 && "border-border/50 ml-4 border-l-2 pl-4")}>
+          {index > 0 && (
+            <div className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs">
+              <CornerDownRight className="h-3 w-3" />
+              <span>Turn {index + 1}</span>
+            </div>
+          )}
+          <MessageItem
+            message={turn}
+            isStreaming={isStreaming && index === turns.length - 1}
+            showAvatar={index === 0}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MessageItem({
+  message,
+  isStreaming,
+  showAvatar,
+}: {
+  message: Message;
+  isStreaming: boolean;
+  showAvatar: boolean;
+}) {
   const isUser = message.role === "user";
   const [expandedToolCalls, setExpandedToolCalls] = useState<Set<string>>(new Set());
   const [expandedThinking, setExpandedThinking] = useState(false);
@@ -107,18 +190,21 @@ function MessageItem({ message, isStreaming }: { message: Message; isStreaming?:
   return (
     <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
       {/* Avatar */}
-      <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          isUser ? "bg-primary/10" : "bg-muted",
-        )}
-      >
-        {isUser ? (
-          <User className="text-primary h-4 w-4" />
-        ) : (
-          <Bot className="text-muted-foreground h-4 w-4" />
-        )}
-      </div>
+      {showAvatar && (
+        <div
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+            isUser ? "bg-primary/10" : "bg-muted",
+          )}
+        >
+          {isUser ? (
+            <User className="text-primary h-4 w-4" />
+          ) : (
+            <Bot className="text-muted-foreground h-4 w-4" />
+          )}
+        </div>
+      )}
+      {!showAvatar && <div className="w-8 shrink-0" />}
 
       {/* Content */}
       <div className={cn("max-w-[85%] min-w-0 space-y-2")}>
