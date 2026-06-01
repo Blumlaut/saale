@@ -8,8 +8,8 @@ services:
       - "3000:3000"
     volumes:
       - .:/app
-      - /app/node_modules
-      - /app/.next
+      - saale_node_modules:/app/node_modules
+      - saale_next:/app/.next
       - uploads_data:/app/uploads
     environment:
       - NODE_ENV=${NODE_ENV:-development}
@@ -82,3 +82,5 @@ volumes:
   postgres_data:
   redis_data:
   uploads_data:
+  saale_node_modules:
+  saale_next:
