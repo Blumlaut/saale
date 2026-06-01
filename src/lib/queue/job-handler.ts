@@ -1,6 +1,7 @@
 import type { Job } from "bullmq";
 import { prisma } from "@/lib/db";
 import { syncEmailAccount } from "@/lib/email/sync";
+import { moveMessage } from "@/lib/email/imap";
 import { createPiSession } from "@/lib/pi/session";
 import { addJobRun, updateJobRun, resolveModel } from "@/lib/queue";
 
@@ -298,13 +299,25 @@ export async function processJob(job: Job): Promise<void> {
 
         for (const result of spamResults) {
           const shouldMove = result.spamScore > (config.spamThreshold ?? 0.85);
-          await prisma.emailMessage.update({
+          const updated = await prisma.emailMessage.update({
             where: { id: result.id },
             data: {
               spamScore: Math.min(Math.max(result.spamScore, 0), 1),
               ...(shouldMove ? { folder: "Spam" } : {}),
             },
+            select: {
+              accountId: true,
+              uid: true,
+              folder: true,
+            },
           });
+
+          // Sync move to IMAP server (best-effort, fire-and-forget)
+          if (shouldMove && updated.folder !== "Spam") {
+            moveMessage(updated.accountId, updated.folder, updated.uid, "Spam").catch(() => {
+              // Already logged inside moveMessage
+            });
+          }
         }
 
         output = JSON.stringify({

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email/smtp";
 import { syncEmailAccount } from "@/lib/email/sync";
+import { moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 
 /**
  * Create mail tools with userId injection for user isolation.
@@ -378,6 +379,7 @@ export function createMailTools(userId: string) {
           },
           select: {
             id: true,
+            uid: true,
             fromName: true,
             fromEmail: true,
             to: true,
@@ -393,15 +395,26 @@ export function createMailTools(userId: string) {
             aiSummary: true,
             aiTags: true,
             spamScore: true,
+            accountId: true,
           },
         });
 
-        // Mark as read
-        if (emails.length > 0) {
+        // Mark as read in DB
+        const unreadEmails = emails.filter((e) => !e.isRead);
+        if (unreadEmails.length > 0) {
           await prisma.emailMessage.updateMany({
             where: { id: { in: params.ids }, accountId: { in: accountIds } },
             data: { isRead: true },
           });
+
+          // Push \Seen flag to IMAP server (best-effort, fire-and-forget)
+          for (const msg of unreadEmails) {
+            syncMessageFlags(msg.accountId, msg.folder, msg.uid, {
+              isRead: true,
+            }).catch(() => {
+              // Already logged inside syncMessageFlags
+            });
+          }
         }
 
         return {
@@ -719,7 +732,8 @@ export function createMailTools(userId: string) {
     mailMoveTool: defineTool({
       name: "mail_move",
       label: "Move Email(s)",
-      description: "Move one or more emails between folders. Accepts an array of email IDs.",
+      description:
+        "Move one or more emails between folders. Syncs to the IMAP server. Accepts an array of email IDs.",
       parameters: Type.Object({
         ids: Type.Array(
           Type.String({
@@ -739,10 +753,23 @@ export function createMailTools(userId: string) {
         });
         const accountIds = userAccounts.map((a) => a.id);
 
+        // Fetch messages before updating so we have uid + folder for IMAP sync
+        const messages = await prisma.emailMessage.findMany({
+          where: { id: { in: params.ids }, accountId: { in: accountIds } },
+          select: { id: true, uid: true, folder: true, accountId: true },
+        });
+
         const result = await prisma.emailMessage.updateMany({
           where: { id: { in: params.ids }, accountId: { in: accountIds } },
           data: { folder: params.folder },
         });
+
+        // Push moves to IMAP server (best-effort, fire-and-forget)
+        for (const msg of messages) {
+          moveMessage(msg.accountId, msg.folder, msg.uid, params.folder).catch(() => {
+            // Already logged inside moveMessage
+          });
+        }
 
         return {
           content: [
@@ -768,7 +795,8 @@ export function createMailTools(userId: string) {
     mailDeleteTool: defineTool({
       name: "mail_delete",
       label: "Delete Email(s)",
-      description: "Permanently delete one or more emails. Accepts an array of email IDs.",
+      description:
+        "Delete one or more emails. Syncs to the IMAP server (sets \Deleted flag). Accepts an array of email IDs.",
       parameters: Type.Object({
         ids: Type.Array(
           Type.String({
@@ -784,6 +812,19 @@ export function createMailTools(userId: string) {
           select: { id: true },
         });
         const accountIds = userAccounts.map((a) => a.id);
+
+        // Fetch messages before deleting so we have uid + folder for IMAP sync
+        const messages = await prisma.emailMessage.findMany({
+          where: { id: { in: params.ids }, accountId: { in: accountIds } },
+          select: { id: true, uid: true, folder: true, accountId: true },
+        });
+
+        // Push deletes to IMAP server first (best-effort)
+        for (const msg of messages) {
+          deleteMessage(msg.accountId, msg.folder, msg.uid).catch(() => {
+            // Already logged inside deleteMessage
+          });
+        }
 
         const result = await prisma.emailMessage.deleteMany({
           where: { id: { in: params.ids }, accountId: { in: accountIds } },
