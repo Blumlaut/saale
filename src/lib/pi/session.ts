@@ -140,6 +140,10 @@ export async function createPiSession(options: {
   modelName?: string;
   thinkingLevel?: string;
 }): Promise<CreateAgentSessionResult> {
+  // Ensure the user's workspace directory exists
+  const userDir = getUserDir(options.userId);
+  await fs.mkdir(userDir, { recursive: true });
+
   // Build model registry with user's providers and discovered models
   const { modelRegistry, authStorage } = await buildModelRegistry(options.userId);
 
