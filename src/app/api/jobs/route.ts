@@ -23,6 +23,7 @@ export async function GET() {
       id: true,
       type: true,
       enabled: true,
+      modelId: true,
       config: true,
       lastRunAt: true,
       runCount: true,
@@ -40,6 +41,7 @@ export async function GET() {
         id: string;
         type: string;
         enabled: boolean;
+        modelId: string | null;
         config: string;
         lastRunAt: Date | null;
         runCount: number;
@@ -50,6 +52,7 @@ export async function GET() {
         id: j.id,
         type: j.type,
         enabled: j.enabled,
+        modelId: j.modelId,
         config: JSON.parse(j.config),
         lastRunAt: j.lastRunAt?.toISOString(),
         runCount: j.runCount,
@@ -74,32 +77,38 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { type, enabled, config } = body;
+  const { type, enabled, config, modelId } = body;
 
   if (!type) {
     return NextResponse.json({ error: "Job type is required" }, { status: 400 });
   }
+
+  // Extract modelId from config if not provided at top level
+  const jobConfig = config ?? {};
+  const resolvedModelId = modelId ?? jobConfig.modelId ?? null;
+  // Remove modelId from config (it's stored separately on the QueueTask model)
+  const { modelId: _configModelId, ...cleanConfig } = jobConfig;
 
   const job = await prisma.queueTask.create({
     data: {
       userId: session.user.id,
       type,
       enabled: enabled !== false,
-      config: JSON.stringify(config ?? {}),
+      modelId: resolvedModelId,
+      config: JSON.stringify(cleanConfig),
     },
   });
 
   // Register with BullMQ if enabled
-  const jobConfig = config ?? {};
-  if (job.enabled && jobConfig.cronExpression) {
+  if (job.enabled && cleanConfig.cronExpression) {
     const queue = getQueue();
     await queue
       .add(
         "execute",
-        { ...jobConfig, taskId: job.id, type: job.type },
+        { ...cleanConfig, taskId: job.id, type: job.type, modelId: job.modelId },
         {
           jobId: `scheduled-${job.id}`,
-          repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
+          repeat: { pattern: cleanConfig.cronExpression, tz: "UTC" },
         },
       )
       .catch((err) => {
@@ -112,6 +121,7 @@ export async function POST(request: NextRequest) {
       id: job.id,
       type: job.type,
       enabled: job.enabled,
+      modelId: job.modelId,
       config: JSON.parse(job.config),
       createdAt: job.createdAt.toISOString(),
     },
