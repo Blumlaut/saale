@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 
 /**
  * GET /api/email/messages — List emails across user's accounts
- * Query params: accountId, folder, unread, starred, since, until, limit, offset, search
+ * Query params: accountId, folder, unread, starred, since, until, limit, offset, search, tag
  */
 export async function GET(request: NextRequest) {
   const session = await auth.api.getSession({
@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(url.searchParams.get("limit") ?? "20", 10);
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
   const search = url.searchParams.get("search");
+  const tag = url.searchParams.get("tag");
 
   const where: Record<string, unknown> = {
     account: { userId: session.user.id },
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest) {
   }
   if (folder) {
     where.folder = folder;
+  }
+  if (tag) {
+    where.tags = { has: tag };
   }
   if (unread === "true") {
     where.isRead = false;
