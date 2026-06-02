@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
+import { discoverCalendars } from "@/lib/calendar/caldav";
+import { syncCalendarAccount } from "@/lib/calendar/sync";
 
 /**
  * GET /api/calendar/accounts — List user's CalDAV accounts with their calendars
@@ -86,8 +88,47 @@ export async function POST(request: NextRequest) {
       username,
       encryptedPassword,
       authMethod: authMethod ?? "basic",
+      enabled: true,
     },
   });
+
+  // Trigger discovery + initial sync in background
+  (async () => {
+    try {
+      const remoteCalendars = await discoverCalendars(account.id);
+
+      // Save discovered calendars
+      for (const remoteCal of remoteCalendars) {
+        await prisma.calendar.upsert({
+          where: {
+            accountId_remoteId: {
+              accountId: account.id,
+              remoteId: (remoteCal.url as string) || "",
+            },
+          },
+          update: {
+            name: (remoteCal.displayName as string) || remoteCal.url || "Unnamed",
+            color: remoteCal.calendarColor ?? null,
+            description: remoteCal.description ?? null,
+            ctag: remoteCal.ctag ?? null,
+          },
+          create: {
+            accountId: account.id,
+            remoteId: (remoteCal.url as string) || "",
+            name: (remoteCal.displayName as string) || remoteCal.url || "Unnamed",
+            color: remoteCal.calendarColor ?? null,
+            description: remoteCal.description ?? null,
+            ctag: remoteCal.ctag ?? null,
+          },
+        });
+      }
+
+      // Initial sync
+      await syncCalendarAccount(account.id);
+    } catch {
+      // Discovery or sync failed — account still exists, user can retry manually
+    }
+  })();
 
   return NextResponse.json({
     account: {
