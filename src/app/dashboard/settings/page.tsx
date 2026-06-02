@@ -4,11 +4,21 @@ import { useEffect, useState, useCallback } from "react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchJson, patchJson } from "@/lib/http";
-import { Settings as SettingsIcon, Mail, Bot, Palette, Loader2, Key, PenTool } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  Mail,
+  Bot,
+  Palette,
+  Loader2,
+  Key,
+  PenTool,
+  Calendar,
+} from "lucide-react";
 import { ProvidersTab } from "./tabs/providers-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
 import { AgentPersonaTab } from "./tabs/agent-persona-tab";
 import { EmailTab } from "./tabs/email-tab";
+import { CalendarTab } from "./tabs/calendar-tab";
 import { AppearanceTab } from "./tabs/appearance-tab";
 import type {
   UserSettings,
@@ -150,6 +160,10 @@ export default function SettingsPage() {
               <Mail className="h-4 w-4" />
               Email
             </TabsTrigger>
+            <TabsTrigger value="calendar" className="gap-2">
+              <Calendar className="h-4 w-4" />
+              Calendar
+            </TabsTrigger>
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="h-4 w-4" />
               Appearance
@@ -190,6 +204,10 @@ export default function SettingsPage() {
 
         <TabsContent value="email" className="space-y-6">
           <EmailTab />
+        </TabsContent>
+
+        <TabsContent value="calendar" className="space-y-6">
+          <CalendarTab />
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-6">
