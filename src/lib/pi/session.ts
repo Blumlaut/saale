@@ -23,7 +23,6 @@ const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
  */
 export interface ToolConfig {
   bash?: boolean;
-  edit?: boolean;
   files?: boolean;
   email?: boolean;
   jobs?: boolean;
@@ -33,7 +32,6 @@ export interface ToolConfig {
 
 const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
   bash: true,
-  edit: true,
   files: true,
   email: true,
   jobs: true,
@@ -160,11 +158,7 @@ export async function createPiSession(options: {
   const scoped = createScopedTools(options.userId);
 
   if (enabled.files) {
-    allCustomTools.push(scoped.read, scoped.write);
-  }
-
-  if (enabled.edit) {
-    allCustomTools.push(scoped.edit);
+    allCustomTools.push(scoped.read, scoped.write, scoped.edit);
   }
 
   if (enabled.bash) {
