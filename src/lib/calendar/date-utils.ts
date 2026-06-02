@@ -15,7 +15,20 @@ export function eventOverlapsDay(event: CalendarEvent, day: Date): boolean {
   const dayEnd = dayStart + 86400000; // +1 day
   const evtStart = new Date(event.dtStart).getTime();
   const evtEnd = event.dtEnd ? new Date(event.dtEnd).getTime() : evtStart;
-  return evtStart < dayEnd && evtEnd > dayStart;
+  const overlaps = evtStart < dayEnd && evtEnd > dayStart;
+  if (!overlaps && process.env.NODE_ENV === "development") {
+    console.warn(
+      "eventOverlapsDay miss",
+      event.summary,
+      "evtStart:",
+      new Date(evtStart).toISOString(),
+      "day:",
+      new Date(dayStart).toISOString(),
+      "dayEnd:",
+      new Date(dayEnd).toISOString(),
+    );
+  }
+  return overlaps;
 }
 
 /**
