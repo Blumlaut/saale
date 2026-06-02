@@ -27,15 +27,23 @@ export function parseICS(icsContent: string): ParsedEvent[] {
   const events: ParsedEvent[] = [];
 
   for (const [, val] of Object.entries(data)) {
-    const vcal = val as Record<string, unknown>;
-    if (vcal?.type !== "VCALENDAR") continue;
+    const obj = val as Record<string, unknown>;
+    if (!obj || typeof obj !== "object") continue;
 
-    // A VCALENDAR may contain multiple VEVENTs
-    for (const [, vevent] of Object.entries(vcal)) {
-      const event = vevent as Record<string, unknown>;
-      if (event?.type !== "VEVENT") continue;
+    // Some ICS files have VEVENTs directly at the top level
+    if (obj.type === "VEVENT") {
+      events.push(extractEvent(obj));
+      continue;
+    }
 
-      events.push(extractEvent(event));
+    // Standard: VCALENDAR wrapping VEVENTs
+    if (obj.type === "VCALENDAR") {
+      for (const [, vevent] of Object.entries(obj)) {
+        const event = vevent as Record<string, unknown>;
+        if (event?.type === "VEVENT") {
+          events.push(extractEvent(event));
+        }
+      }
     }
   }
 

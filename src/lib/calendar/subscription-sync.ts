@@ -75,6 +75,19 @@ export async function syncSubscription(subscriptionId: string): Promise<{
 
     icsContent = await response.text();
     newEtag = response.headers.get("etag")?.replace(/"/g, "") ?? null;
+
+    // Validate: ICS content should start with BEGIN:VCALENDAR
+    const trimmedContent = icsContent.trim();
+    if (!trimmedContent.startsWith("BEGIN:VCALENDAR")) {
+      const preview = trimmedContent.slice(0, 200).replace(/\n/g, " ");
+      return {
+        eventsCreated: 0,
+        eventsUpdated: 0,
+        eventsDeleted: 0,
+        parsedEvents: 0,
+        error: `Not a valid ICS file (got: ${preview})`,
+      };
+    }
   } catch (err) {
     return {
       eventsCreated: 0,
