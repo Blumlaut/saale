@@ -16,6 +16,7 @@ import { EventDialog } from "@/components/calendar/event-dialog";
 interface CalendarAccount {
   id: string;
   name: string;
+  accountType: string;
   enabled: boolean;
   calendars: Array<{
     id: string;
@@ -174,7 +175,7 @@ export default function CalendarPage() {
 
       <div className="flex gap-4">
         {/* Sidebar */}
-        <CalendarSidebar accounts={accounts} />
+        <CalendarSidebar accounts={accounts} onAccountsChange={loadAccounts} />
 
         {/* Main content */}
         <div className="min-w-0 flex-1">

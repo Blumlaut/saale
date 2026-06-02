@@ -12,8 +12,6 @@ import {
   RefreshCw,
   Trash2,
   MoreVertical,
-  Eye,
-  EyeOff,
   ChevronRight,
   ChevronDown,
   HardDrive,
@@ -141,10 +139,7 @@ export function CalendarTab() {
             : `/api/calendar/accounts/${id}/sync`;
         method = action === "delete" ? "DELETE" : "POST";
       } else {
-        url =
-          action === "delete-sub"
-            ? `/api/calendar/subscriptions/${id}`
-            : `/api/calendar/subscriptions/${id}/sync`;
+        url = `/api/calendar/subscriptions/${id}`;
         method = action === "delete-sub" ? "DELETE" : "POST";
       }
 
@@ -193,15 +188,6 @@ export function CalendarTab() {
     }
   };
 
-  const handleToggleCalendarEnabled = async (calendarId: string, enabled: boolean) => {
-    try {
-      await patchJson(`/api/calendar/calendars/${calendarId}`, { enabled });
-      await loadData();
-    } catch {
-      // Ignore
-    }
-  };
-
   const handleToggleSubscriptionEnabled = async (subscriptionId: string, enabled: boolean) => {
     try {
       await patchJson(`/api/calendar/subscriptions/${subscriptionId}`, { enabled });
@@ -219,7 +205,7 @@ export function CalendarTab() {
         .map((acc) => postJson(`/api/calendar/accounts/${acc.id}/sync`, {}));
       const subPromises = subscriptions
         .filter((s) => s.enabled)
-        .map((sub) => postJson(`/api/calendar/subscriptions/${sub.id}/sync`, {}));
+        .map((sub) => postJson(`/api/calendar/subscriptions/${sub.id}`, {}));
       await Promise.all([...promises, ...subPromises]);
       await loadData();
     } catch {
@@ -327,33 +313,17 @@ export function CalendarTab() {
                       {expandedAccounts.has(localAccount.id) && (
                         <div className="border-border/50 border-t px-4 py-2">
                           {localAccount.calendars.map((cal) => (
-                            <div key={cal.id} className="flex items-center justify-between py-1.5">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: cal.color || "var(--muted-foreground)",
-                                  }}
-                                />
-                                <span className="text-xs">{cal.name}</span>
-                                <span className="text-muted-foreground/60 text-[10px]">
-                                  {cal.eventCount} events
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground text-[10px]">
-                                  {cal.enabled ? (
-                                    <Eye className="h-3 w-3" />
-                                  ) : (
-                                    <EyeOff className="h-3 w-3" />
-                                  )}
-                                </span>
-                                <Switch
-                                  checked={cal.enabled}
-                                  onCheckedChange={(v) => handleToggleCalendarEnabled(cal.id, v)}
-                                  className="scale-75"
-                                />
-                              </div>
+                            <div key={cal.id} className="flex items-center gap-2 py-1.5">
+                              <span
+                                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor: cal.color || "var(--muted-foreground)",
+                                }}
+                              />
+                              <span className="text-xs">{cal.name}</span>
+                              <span className="text-muted-foreground/60 text-[10px]">
+                                {cal.eventCount} events
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -461,36 +431,17 @@ export function CalendarTab() {
                         {isExpanded && (
                           <div className="border-border/50 border-t px-4 py-2">
                             {account.calendars.map((cal) => (
-                              <div
-                                key={cal.id}
-                                className="flex items-center justify-between py-1.5"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                    style={{
-                                      backgroundColor: cal.color || "var(--muted-foreground)",
-                                    }}
-                                  />
-                                  <span className="text-xs">{cal.name}</span>
-                                  <span className="text-muted-foreground/60 text-[10px]">
-                                    {cal.eventCount} events
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-muted-foreground text-[10px]">
-                                    {cal.enabled ? (
-                                      <Eye className="h-3 w-3" />
-                                    ) : (
-                                      <EyeOff className="h-3 w-3" />
-                                    )}
-                                  </span>
-                                  <Switch
-                                    checked={cal.enabled}
-                                    onCheckedChange={(v) => handleToggleCalendarEnabled(cal.id, v)}
-                                    className="scale-75"
-                                  />
-                                </div>
+                              <div key={cal.id} className="flex items-center gap-2 py-1.5">
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{
+                                    backgroundColor: cal.color || "var(--muted-foreground)",
+                                  }}
+                                />
+                                <span className="text-xs">{cal.name}</span>
+                                <span className="text-muted-foreground/60 text-[10px]">
+                                  {cal.eventCount} events
+                                </span>
                               </div>
                             ))}
                           </div>
