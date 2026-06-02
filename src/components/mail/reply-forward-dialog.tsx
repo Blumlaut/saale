@@ -16,12 +16,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Send, Sparkles, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
-
-interface EmailAccount {
-  id: string;
-  email: string;
-  enabled: boolean;
-}
+import { fetchJson, postJson } from "@/lib/http";
+import { parseAddresses, splitEmailAddresses } from "@/lib/email/utils";
+import type { EmailAccount } from "@/types/shared";
 
 interface ReplyForwardDialogProps {
   open: boolean;
@@ -38,21 +35,6 @@ interface ReplyForwardDialogProps {
     accountId: string;
   } | null;
   onSuccess: () => void;
-}
-
-/** Parse the `to` field — stored as a JSON string in the DB */
-function parseAddresses(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.filter(Boolean);
-  if (typeof raw === "string" && raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.filter(Boolean);
-      if (typeof parsed === "string") return [parsed];
-    } catch {
-      return [raw];
-    }
-  }
-  return [];
 }
 
 export function ReplyForwardDialog({
@@ -77,16 +59,14 @@ export function ReplyForwardDialog({
 
   const loadAccounts = useCallback(async () => {
     try {
-      const res = await fetch("/api/email/accounts");
-      if (res.ok) {
-        const data = await res.json();
-        setAccounts(data.accounts);
-        if (data.accounts.length > 0 && !accountId) {
-          const preferAccount =
-            originalMessage?.accountId &&
-            data.accounts.find((a: EmailAccount) => a.id === originalMessage.accountId);
-          setAccountId(preferAccount?.id ?? data.accounts[0].id);
-        }
+      const data = await fetchJson<{ accounts: EmailAccount[] }>("/api/email/accounts");
+      const accounts = data.accounts ?? [];
+      setAccounts(accounts);
+      if (accounts.length > 0 && !accountId) {
+        const preferAccount = originalMessage?.accountId
+          ? accounts.find((a) => a.id === originalMessage.accountId)
+          : undefined;
+        setAccountId(preferAccount?.id ?? accounts[0]!.id);
       }
     } catch {
       // Ignore
@@ -147,31 +127,13 @@ export function ReplyForwardDialog({
     setError("");
 
     try {
-      const res = await fetch(`/api/email/accounts/${accountId}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: to
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
-          cc: cc
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
-          bcc: bcc
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
-          subject,
-          body,
-        }),
+      await postJson(`/api/email/accounts/${accountId}/send`, {
+        to: splitEmailAddresses(to),
+        cc: splitEmailAddresses(cc),
+        bcc: splitEmailAddresses(bcc),
+        subject,
+        body,
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to send");
-      }
 
       toast.success("Email sent");
       resetAndClose();
@@ -202,8 +164,7 @@ export function ReplyForwardDialog({
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to generate draft");
+        throw new Error(`Failed to generate draft (status ${res.status})`);
       }
 
       // Read SSE stream

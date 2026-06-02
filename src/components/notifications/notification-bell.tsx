@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Bell, CheckCircle, AlertCircle, Mail, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { fetchJson, patchJson } from "@/lib/http";
+import { useClickOutside } from "@/hooks/use-click-outside";
 
 interface Notification {
   id: string;
@@ -24,11 +26,8 @@ export function NotificationBell() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications");
-      if (res.ok) {
-        const data = await res.json();
-        setNotifications(data.notifications || []);
-      }
+      const data = await fetchJson<{ notifications: Notification[] }>("/api/notifications");
+      setNotifications(data.notifications || []);
     } catch {
       // Ignore
     } finally {
@@ -40,23 +39,11 @@ export function NotificationBell() {
     loadNotifications();
   }, [loadNotifications]);
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  useClickOutside(ref, () => setOpen(false));
 
   const markAsRead = async (id: string) => {
     try {
-      await fetch("/api/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: [id] }),
-      });
+      await patchJson("/api/notifications", { ids: [id] });
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     } catch {
       // Ignore
@@ -65,11 +52,7 @@ export function NotificationBell() {
 
   const markAllAsRead = async () => {
     try {
-      await fetch("/api/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true }),
-      });
+      await patchJson("/api/notifications", { all: true });
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch {
       // Ignore

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { AlertCircle, CheckCircle, Loader2, Sparkles, Settings2 } from "lucide-react";
+import { postJson } from "@/lib/http";
 
 interface AccountDialogProps {
   open: boolean;
@@ -87,29 +88,23 @@ export function AccountDialog({ open, onOpenChange, onSuccess }: AccountDialogPr
       setDiscovered(null);
 
       try {
-        const res = await fetch("/api/email/autodiscover", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmed }),
-        });
+        const data = await postJson<{
+          imap: ServerConfig | null;
+          smtp: ServerConfig | null;
+          source: "srv" | "probe" | null;
+        }>("/api/email/autodiscover", { email: trimmed });
+        setDiscovered(data);
 
-        if (res.ok) {
-          const data = await res.json();
-          setDiscovered(data);
-
-          // Auto-fill if something was found
-          if (data.imap) {
-            setImapHost(data.imap.host);
-            setImapPort(data.imap.port);
-            setImapSecure(data.imap.secure);
-          }
-          if (data.smtp) {
-            setSmtpHost(data.smtp.host);
-            setSmtpPort(data.smtp.port);
-            setSmtpSecure(data.smtp.secure);
-          }
-        } else {
-          setDiscovered({ imap: null, smtp: null, source: null });
+        // Auto-fill if something was found
+        if (data.imap) {
+          setImapHost(data.imap.host);
+          setImapPort(data.imap.port);
+          setImapSecure(data.imap.secure);
+        }
+        if (data.smtp) {
+          setSmtpHost(data.smtp.host);
+          setSmtpPort(data.smtp.port);
+          setSmtpSecure(data.smtp.secure);
         }
       } catch {
         setDiscovered({ imap: null, smtp: null, source: null });
@@ -131,25 +126,17 @@ export function AccountDialog({ open, onOpenChange, onSuccess }: AccountDialogPr
     setError("");
 
     try {
-      const res = await fetch("/api/email/test-connection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          imapHost,
-          imapPort,
-          imapSecure,
-          smtpHost,
-          smtpPort,
-          smtpSecure,
-        }),
+      const data = await postJson<{ results: typeof testResult }>("/api/email/test-connection", {
+        email,
+        password,
+        imapHost,
+        imapPort,
+        imapSecure,
+        smtpHost,
+        smtpPort,
+        smtpSecure,
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setTestResult(data.results);
-      }
+      setTestResult(data.results);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -162,25 +149,16 @@ export function AccountDialog({ open, onOpenChange, onSuccess }: AccountDialogPr
     setError("");
 
     try {
-      const res = await fetch("/api/email/accounts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          imapHost,
-          imapPort,
-          imapSecure,
-          smtpHost,
-          smtpPort,
-          smtpSecure,
-        }),
+      await postJson("/api/email/accounts", {
+        email,
+        password,
+        imapHost,
+        imapPort,
+        imapSecure,
+        smtpHost,
+        smtpPort,
+        smtpSecure,
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to save account");
-      }
 
       resetForm();
       onOpenChange(false);

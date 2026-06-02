@@ -5,6 +5,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { postJson, deleteJson } from "@/lib/http";
 import {
   Select,
   SelectContent,
@@ -70,30 +71,23 @@ export function ProvidersTab({
     if (newProvider === "custom" && !newBaseUrl) return;
     setAddingProvider(true);
     try {
-      const res = await fetch("/api/providers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: newProvider,
-          apiKey: newApiKey,
-          label: newLabel,
-          baseUrl: newProvider === "custom" ? newBaseUrl : undefined,
-        }),
+      const data = await postJson<{ modelCount?: number; modelError?: string }>("/api/providers", {
+        provider: newProvider,
+        apiKey: newApiKey,
+        label: newLabel,
+        baseUrl: newProvider === "custom" ? newBaseUrl : undefined,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setStatus("success");
-        setNewApiKey("");
-        setNewLabel("");
-        setNewBaseUrl("");
-        setNewProvider("");
-        if (data.modelCount !== undefined) {
-          setDiscoveryInfo({ count: data.modelCount, error: data.modelError });
-        }
-        await onReload();
-      } else {
-        setStatus("error");
+      setStatus("success");
+      setNewApiKey("");
+      setNewLabel("");
+      setNewBaseUrl("");
+      setNewProvider("");
+      if (data.modelCount !== undefined) {
+        const info: { count: number; error?: string } = { count: data.modelCount };
+        if (data.modelError) info.error = data.modelError;
+        setDiscoveryInfo(info);
       }
+      await onReload();
     } catch {
       setStatus("error");
     }
@@ -102,12 +96,8 @@ export function ProvidersTab({
 
   const handleRemove = async (provider: string) => {
     try {
-      const res = await fetch(`/api/providers?provider=${encodeURIComponent(provider)}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        await onReload();
-      }
+      await deleteJson(`/api/providers?provider=${encodeURIComponent(provider)}`);
+      await onReload();
     } catch {
       // silently fail
     }

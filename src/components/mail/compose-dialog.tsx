@@ -14,12 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Send } from "lucide-react";
-
-interface EmailAccount {
-  id: string;
-  email: string;
-  enabled: boolean;
-}
+import { fetchJson, postJson } from "@/lib/http";
+import { splitEmailAddresses } from "@/lib/email/utils";
+import type { EmailAccount } from "@/types/shared";
 
 interface ComposeDialogProps {
   open: boolean;
@@ -37,13 +34,11 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
 
   const loadAccounts = useCallback(async () => {
     try {
-      const res = await fetch("/api/email/accounts");
-      if (res.ok) {
-        const data = await res.json();
-        setAccounts(data.accounts);
-        if (data.accounts.length > 0 && !accountId) {
-          setAccountId(data.accounts[0].id);
-        }
+      const data = await fetchJson<{ accounts: EmailAccount[] }>("/api/email/accounts");
+      const accounts = data.accounts ?? [];
+      setAccounts(accounts);
+      if (accounts.length > 0 && !accountId) {
+        setAccountId(accounts[0]!.id);
       }
     } catch {
       // Ignore
@@ -63,23 +58,11 @@ export function ComposeDialog({ open, onOpenChange }: ComposeDialogProps) {
     setError("");
 
     try {
-      const res = await fetch(`/api/email/accounts/${accountId}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: to
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
-          subject,
-          body,
-        }),
+      await postJson(`/api/email/accounts/${accountId}/send`, {
+        to: splitEmailAddresses(to),
+        subject,
+        body,
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to send");
-      }
 
       // Reset and close
       setTo("");

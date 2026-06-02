@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/http";
+import { useClickOutside } from "@/hooks/use-click-outside";
+import type { EmailAccount } from "@/types/shared";
 import { Separator } from "@/components/ui/separator";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -30,13 +33,6 @@ const navItems = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-interface EmailAccount {
-  id: string;
-  email: string;
-  enabled: boolean;
-  messageCount: number;
-}
-
 interface SearchResult {
   type: "chat" | "email";
   id: string;
@@ -60,8 +56,7 @@ export function DashboardNav() {
 
   // Load email accounts
   useEffect(() => {
-    fetch("/api/email/accounts")
-      .then((r) => r.json())
+    fetchJson<{ accounts: EmailAccount[] }>("/api/email/accounts")
       .then((data) => {
         setEmailAccounts(data.accounts ?? []);
         setEmailLoading(false);
@@ -96,15 +91,7 @@ export function DashboardNav() {
   }, []);
 
   // Close search on outside click
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setSearchOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  useClickOutside(searchRef, () => setSearchOpen(false));
 
   // Search handler
   useEffect(() => {
@@ -116,11 +103,10 @@ export function DashboardNav() {
     const timer = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`);
-        if (res.ok) {
-          const data = await res.json();
-          setSearchResults(data.results);
-        }
+        const data = await fetchJson<{ results: SearchResult[] }>(
+          `/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`,
+        );
+        setSearchResults(data.results);
       } catch {
         // Ignore
       } finally {

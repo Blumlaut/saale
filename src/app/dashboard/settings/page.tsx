@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchJson, patchJson } from "@/lib/http";
 import { Settings as SettingsIcon, Mail, Bot, Palette, Loader2, Key, PenTool } from "lucide-react";
 import { ProvidersTab } from "./tabs/providers-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
@@ -34,8 +35,7 @@ export default function SettingsPage() {
 
   // Load user settings
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
+    fetchJson<{ settings: UserSettings }>("/api/settings")
       .then((data) => {
         setSettings(data.settings);
         setLoading(false);
@@ -46,7 +46,10 @@ export default function SettingsPage() {
   // Load providers
   const loadProviders = useCallback(async () => {
     try {
-      const data = await fetch("/api/providers").then((r) => r.json());
+      const data = await fetchJson<{
+        providers: ConfiguredProvider[];
+        availableProviders: ProviderInfo[];
+      }>("/api/providers");
       setProviders(data.providers ?? []);
       setAvailableProviders(data.availableProviders ?? []);
     } finally {
@@ -57,7 +60,10 @@ export default function SettingsPage() {
   // Load available models
   const loadModels = useCallback(async () => {
     try {
-      const data = await fetch("/api/providers/models").then((r) => r.json());
+      const data = await fetchJson<{
+        models: Record<string, AvailableModel[]>;
+        providers: AvailableProvider[];
+      }>("/api/providers/models");
       setAvailableModels(data.models ?? {});
       setAvailableModelProviders(data.providers ?? []);
     } catch {
@@ -94,12 +100,8 @@ export default function SettingsPage() {
     if (!settings) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
-      });
-      setSaveStatus(res.ok ? "success" : "error");
+      await patchJson("/api/settings", settings);
+      setSaveStatus("success");
     } catch {
       setSaveStatus("error");
     }

@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Brain, Loader2, Search, Sparkles, ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/http";
 
 export interface ModelInfo {
   id: string;
@@ -61,9 +62,8 @@ export function ModelPicker({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch("/api/providers/models")
-      .then((r) => r.json())
-      .then((data: ModelsApiResponse) => {
+    fetchJson<ModelsApiResponse>("/api/providers/models")
+      .then((data) => {
         const all: ModelInfo[] = [];
         if (data.models) {
           for (const [provider, modelsList] of Object.entries(data.models)) {

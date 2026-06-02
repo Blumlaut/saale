@@ -4,6 +4,7 @@ import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { createChatSession } from "@/lib/chat-session";
 import { MessageSquarePlus, PanelLeft } from "lucide-react";
 
 export default function ChatPage() {
@@ -44,36 +45,8 @@ export default function ChatPage() {
             <Button
               className="mt-6"
               onClick={async () => {
-                // Fetch user settings for default model
-                let settings: {
-                  defaultModelProvider?: string;
-                  defaultModelName?: string;
-                  defaultThinkingLevel?: string;
-                } | null = null;
-                try {
-                  const res = await fetch("/api/settings");
-                  if (res.ok) {
-                    const data = await res.json();
-                    settings = data.settings ?? null;
-                  }
-                } catch {
-                  // Ignore
-                }
-
-                const res = await fetch("/api/chat/sessions", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    title: "New Chat",
-                    modelProvider: settings?.defaultModelProvider || undefined,
-                    modelName: settings?.defaultModelName || undefined,
-                    thinkingLevel: settings?.defaultThinkingLevel || "off",
-                  }),
-                });
-                if (res.ok) {
-                  const data = await res.json();
-                  window.location.href = `/dashboard/chat/${data.session.id}`;
-                }
+                const session = await createChatSession();
+                window.location.href = `/dashboard/chat/${session.id}`;
               }}
             >
               <MessageSquarePlus className="mr-2 h-4 w-4" />
