@@ -3,11 +3,11 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
-import { buildModelRegistry } from "@/lib/pi/models";
 
 /**
  * GET /api/jobs/schemas — Return job type schemas with runtime data.
- * Populates select field options (e.g. email accounts, models) from the database.
+ * Populates select field options (e.g. email accounts) from the database.
+ * Model fields use the shared ModelPicker component (no options needed here).
  */
 export async function GET() {
   const session = await auth.api.getSession({
@@ -30,33 +30,11 @@ export async function GET() {
     ...accounts.map((a) => ({ value: a.id, label: a.email })),
   ];
 
-  // Fetch available models for AI job types
-  const { models, modelRegistry } = await buildModelRegistry(session.user.id);
-
-  // Filter out disabled models
-  const settings = await prisma.appSettings.findUnique({
-    where: { userId: session.user.id },
-    select: { disabledModels: true },
-  });
-  const disabledSet = new Set((settings?.disabledModels as string[] | null) ?? []);
-  const enabledModels = models.filter((m) => !disabledSet.has(`${m.provider}:${m.id}`));
-
-  const modelOptions = [
-    { value: "", label: "Auto (use default)" },
-    ...enabledModels.map((m) => ({
-      value: `${m.provider}:${m.id}`,
-      label: `${m.name} (${modelRegistry.getProviderDisplayName(m.provider)})`,
-    })),
-  ];
-
   // Deep clone schemas and populate runtime options
   const schemas = jobTypeSchemas.map((schema) => {
     const fields = schema.fields.map((field) => {
       if (field.key === "accountId" && field.type === "select") {
         return { ...field, options: accountOptions };
-      }
-      if (field.key === "modelId" && field.type === "select") {
-        return { ...field, options: modelOptions };
       }
       return field;
     });

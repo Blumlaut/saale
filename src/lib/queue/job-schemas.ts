@@ -4,7 +4,7 @@
  * The frontend renders a dynamic form from these schemas.
  */
 
-export type FieldType = "text" | "number" | "select" | "boolean";
+export type FieldType = "text" | "number" | "select" | "boolean" | "model";
 
 export interface FieldDef {
   /** Key used in the config JSON */
@@ -107,9 +107,8 @@ export const jobTypeSchemas: JobTypeSchema[] = [
         key: "modelId",
         label: "AI Model",
         description: "Override the default model for this task",
-        type: "select",
+        type: "model",
         default: "",
-        options: [], // populated at runtime from /api/providers/models
       },
     ],
   },
@@ -153,9 +152,8 @@ export const jobTypeSchemas: JobTypeSchema[] = [
         key: "modelId",
         label: "AI Model",
         description: "Override the default model for this task",
-        type: "select",
+        type: "model",
         default: "",
-        options: [], // populated at runtime from /api/providers/models
       },
     ],
   },
@@ -209,9 +207,8 @@ export const jobTypeSchemas: JobTypeSchema[] = [
         key: "modelId",
         label: "AI Model",
         description: "Override the default model for this task",
-        type: "select",
+        type: "model",
         default: "",
-        options: [], // populated at runtime from /api/providers/models
       },
     ],
   },
