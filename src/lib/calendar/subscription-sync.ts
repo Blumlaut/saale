@@ -10,6 +10,7 @@ export async function syncSubscription(subscriptionId: string): Promise<{
   eventsCreated: number;
   eventsUpdated: number;
   eventsDeleted: number;
+  parsedEvents: number;
   error: string | null;
 }> {
   const subscription = await prisma.calendarSubscription.findUnique({
@@ -22,6 +23,7 @@ export async function syncSubscription(subscriptionId: string): Promise<{
       eventsCreated: 0,
       eventsUpdated: 0,
       eventsDeleted: 0,
+      parsedEvents: 0,
       error: "Subscription not found or disabled",
     };
   }
@@ -52,7 +54,13 @@ export async function syncSubscription(subscriptionId: string): Promise<{
 
     if (response.status === 304) {
       // No changes
-      return { eventsCreated: 0, eventsUpdated: 0, eventsDeleted: 0, error: null };
+      return {
+        eventsCreated: 0,
+        eventsUpdated: 0,
+        eventsDeleted: 0,
+        parsedEvents: 0,
+        error: null,
+      };
     }
 
     if (!response.ok) {
@@ -60,6 +68,7 @@ export async function syncSubscription(subscriptionId: string): Promise<{
         eventsCreated: 0,
         eventsUpdated: 0,
         eventsDeleted: 0,
+        parsedEvents: 0,
         error: `HTTP ${response.status}: ${response.statusText}`,
       };
     }
@@ -71,6 +80,7 @@ export async function syncSubscription(subscriptionId: string): Promise<{
       eventsCreated: 0,
       eventsUpdated: 0,
       eventsDeleted: 0,
+      parsedEvents: 0,
       error: err instanceof Error ? err.message : "Failed to fetch ICS",
     };
   }
@@ -173,6 +183,7 @@ export async function syncSubscription(subscriptionId: string): Promise<{
     eventsCreated: created,
     eventsUpdated: updated,
     eventsDeleted: toDelete.length,
+    parsedEvents: parsedEvents.length,
     error: null,
   };
 }

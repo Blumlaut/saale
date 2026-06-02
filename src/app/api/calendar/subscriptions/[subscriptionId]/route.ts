@@ -77,6 +77,7 @@ export async function POST(
       eventsUpdated: result.eventsUpdated,
       eventsDeleted: result.eventsDeleted,
       error: result.error,
+      parsedEvents: result.parsedEvents ?? null,
     },
   });
 }
