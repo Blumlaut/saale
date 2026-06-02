@@ -6,6 +6,8 @@ import { moveMessage } from "@/lib/email/imap";
 import { buildModelRegistry } from "@/lib/pi/models";
 import { addJobRun, updateJobRun } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { syncCalendarAccount } from "@/lib/calendar/sync";
+import { extractEventsFromEmails } from "@/lib/calendar/email-extraction";
 
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
 
@@ -299,6 +301,38 @@ export async function processJob(job: Job): Promise<void> {
           classifications,
         });
       }
+    } else if (type === "calendar_sync") {
+      // Resolve this user's calendar account IDs for isolation
+      const userAccounts = await prisma.calendarAccount.findMany({
+        where: { userId: task.userId, enabled: true },
+        select: { id: true },
+      });
+      const accountIds = userAccounts.map((a) => a.id);
+
+      if (config.accountId) {
+        // Verify account belongs to this user
+        if (!accountIds.includes(config.accountId)) {
+          throw new Error(`Calendar account ${config.accountId} not found`);
+        }
+        const result = await syncCalendarAccount(config.accountId);
+        output = JSON.stringify(result);
+      } else {
+        const results = await Promise.all(accountIds.map((id) => syncCalendarAccount(id)));
+        output = JSON.stringify({
+          accounts: results.length,
+          results,
+        });
+      }
+    } else if (type === "email_to_calendar") {
+      const result = await extractEventsFromEmails({
+        userId: task.userId,
+        accountId: config.accountId || undefined,
+        targetCalendarId: config.targetCalendarId || undefined,
+        limit: config.limit ?? 20,
+        maxEmailAge: config.maxEmailAge ?? 48,
+        modelId,
+      });
+      output = JSON.stringify(result);
     } else if (type === "spam_filtering") {
       // Resolve this user's account IDs for isolation
       const userAccounts = await prisma.emailAccount.findMany({

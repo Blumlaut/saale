@@ -212,6 +212,77 @@ export const jobTypeSchemas: JobTypeSchema[] = [
       },
     ],
   },
+  {
+    type: "calendar_sync",
+    label: "Calendar Sync",
+    description: "Sync events from connected CalDAV accounts",
+    icon: "Calendar",
+    defaultCron: "*/15 * * * *",
+    usesAi: false,
+    fields: [
+      {
+        key: "accountId",
+        label: "Account",
+        description: "Leave empty to sync all enabled accounts",
+        type: "select",
+        default: "",
+        options: [], // populated at runtime from DB
+      },
+    ],
+  },
+  {
+    type: "email_to_calendar",
+    label: "Email → Calendar",
+    description: "Scan emails for appointment-like content and create calendar events",
+    icon: "CalendarPlus",
+    defaultCron: "0 */4 * * *",
+    usesAi: true,
+    fields: [
+      {
+        key: "accountId",
+        label: "Email Account",
+        description: "Leave empty to scan all enabled email accounts",
+        type: "select",
+        default: "",
+        options: [], // populated at runtime from email accounts
+      },
+      {
+        key: "targetCalendarId",
+        label: "Target Calendar",
+        description: "Calendar to create events in (leave empty for default calendar)",
+        type: "select",
+        default: "",
+        options: [], // populated at runtime from calendar accounts
+      },
+      {
+        key: "limit",
+        label: "Batch size",
+        description: "Number of emails to scan per run",
+        type: "number",
+        default: 20,
+        min: 1,
+        max: 100,
+        step: 1,
+      },
+      {
+        key: "maxEmailAge",
+        label: "Max email age",
+        description: "Only scan emails received within this many hours (0 = no limit)",
+        type: "number",
+        default: 48,
+        min: 0,
+        max: 720,
+        step: 1,
+      },
+      {
+        key: "modelId",
+        label: "AI Model",
+        description: "Model used for event extraction",
+        type: "model",
+        default: "",
+      },
+    ],
+  },
 ];
 
 /** Look up a schema by type */
