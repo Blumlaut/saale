@@ -34,16 +34,19 @@ export async function connectCalDAV(accountId: string): Promise<{
     where: { id: accountId },
   });
   if (!account) throw new Error(`Calendar account ${accountId} not found`);
+  if (account.accountType === "local") {
+    throw new Error("Cannot connect CalDAV client to a local account");
+  }
 
-  const password = account.authMethod === "basic" ? decrypt(account.encryptedPassword) : null;
+  const password = account.authMethod === "basic" ? decrypt(account.encryptedPassword ?? "") : null;
 
   const credentials =
     account.authMethod === "basic"
-      ? { username: account.username, password: password! }
+      ? { username: account.username ?? "", password: password ?? "" }
       : { accessToken: account.accessToken ?? "" };
 
   const client = new DAVClient({
-    serverUrl: account.serverUrl,
+    serverUrl: account.serverUrl ?? "",
     credentials,
     authMethod: account.authMethod === "basic" ? "Basic" : "Bearer",
     defaultAccountType: "caldav",
