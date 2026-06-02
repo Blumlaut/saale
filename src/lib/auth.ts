@@ -4,6 +4,27 @@ import { prisma } from "@/lib/db";
 import { headers } from "next/headers";
 
 /**
+ * Sanitize error messages for API responses.
+ * Prevents leaking internal details (DB errors, stack traces, etc.) to clients.
+ */
+export function sanitizeError(err: unknown): string {
+  if (err instanceof Error) {
+    const msg = err.message;
+    // Strip potential sensitive details (connection strings, file paths, SQL)
+    return (
+      msg
+        .replace(/connection string.*$/i, "connection error")
+        .replace(/\/home\/[^"]+/g, "/internal")
+        .replace(/\/root\/[^"]+/g, "/internal")
+        .replace(/at [^(]+\([^)]+\)/g, "")
+        .trim()
+        .slice(0, 200) || "An internal error occurred"
+    );
+  }
+  return "An internal error occurred";
+}
+
+/**
  * Get the current session from API route context.
  * Returns null if not authenticated (caller should handle 401).
  */

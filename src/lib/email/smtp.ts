@@ -1,5 +1,10 @@
 import nodemailer from "nodemailer";
 
+/** Strip CR/LF characters to prevent email header injection. */
+function sanitizeHeader(value: string): string {
+  return value.replace(/[\r\n]/g, "");
+}
+
 /**
  * Send an email via SMTP.
  */
@@ -31,11 +36,11 @@ export async function sendEmail(params: {
 
   const info = await transporter.sendMail({
     from: params.account.email,
-    to: params.to.join(", "),
-    cc: params.cc?.join(", "),
-    bcc: params.bcc?.join(", "),
-    replyTo: params.replyTo,
-    subject: params.subject,
+    to: params.to.map(sanitizeHeader).join(", "),
+    cc: params.cc?.map(sanitizeHeader).join(", "),
+    bcc: params.bcc?.map(sanitizeHeader).join(", "),
+    replyTo: params.replyTo ? sanitizeHeader(params.replyTo) : undefined,
+    subject: sanitizeHeader(params.subject),
     text: params.body,
     html: params.bodyHtml ?? undefined,
   });

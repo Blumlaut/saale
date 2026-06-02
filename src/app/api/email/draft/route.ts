@@ -135,6 +135,16 @@ Rules:
   let aborted = false;
   let currentText = "";
 
+  /** Send an SSE event with proper newline escaping to prevent event injection. */
+  function sendEvent(
+    controller: ReadableStreamDefaultController,
+    event: string,
+    data: unknown,
+  ): void {
+    const json = JSON.stringify(data).replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${json}\n\n`));
+  }
+
   const stream = new ReadableStream({
     start(controller) {
       const unsubscribe = piSession.subscribe((event) => {
@@ -150,9 +160,7 @@ Rules:
             .map((c) => ((c as Record<string, unknown>).text as string) || "")
             .join("");
           if (currentText) {
-            controller.enqueue(
-              encoder.encode(`event: token\ndata: ${JSON.stringify({ text: currentText })}\n\n`),
-            );
+            sendEvent(controller, "token", { text: currentText });
           }
         }
 
@@ -176,9 +184,7 @@ Rules:
               .join("");
           }
 
-          controller.enqueue(
-            encoder.encode(`event: done\ndata: ${JSON.stringify({ text: finalText })}\n\n`),
-          );
+          sendEvent(controller, "done", { text: finalText });
           controller.close();
         }
       });

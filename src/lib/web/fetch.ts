@@ -167,6 +167,45 @@ function truncateContent(content: string, maxChars: number): string {
   return content.slice(0, maxChars) + "\n\n... [truncated]";
 }
 
+/**
+ * Check if an IP address is private/internal (SSRF protection).
+ * Blocks: 10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x, ::1, 169.254.x.x, etc.
+ */
+function isPrivateHost(hostname: string): boolean {
+  // Block localhost variants
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname.startsWith("127.")
+  ) {
+    return true;
+  }
+
+  // Block private IP ranges
+  const parts = hostname.split(".").map(Number);
+  if (parts.length === 4 && parts.every((p) => !isNaN(p))) {
+    const [a, b] = parts;
+    // 10.0.0.0/8
+    if (a === 10) return true;
+    // 172.16.0.0/12
+    if (a === 172 && b !== undefined && b >= 16 && b <= 31) return true;
+    // 192.168.0.0/16
+    if (a === 192 && b === 168) return true;
+    // 169.254.0.0/16 (link-local)
+    if (a === 169 && b === 254) return true;
+    // 0.0.0.0
+    if (a === 0) return true;
+  }
+
+  // Block metadata endpoints
+  if (hostname.includes("metadata") || hostname.includes("internal")) {
+    return true;
+  }
+
+  return false;
+}
+
 // ─── Core fetch logic ──────────────────────────────────────────
 
 /**
@@ -202,6 +241,19 @@ export async function fetchUrl(options: FetchOptions): Promise<FetchOutput> {
     return {
       error: `Only http/https URLs supported, got ${parsed.protocol}`,
       code: "unsupported_protocol",
+      phase: "validation",
+      retryable: false,
+      url: options.url,
+      finalUrl: undefined,
+      statusCode: undefined,
+    };
+  }
+
+  // SSRF protection: block private/internal hosts
+  if (isPrivateHost(parsed.hostname)) {
+    return {
+      error: `Access to internal addresses is not allowed: ${parsed.hostname}`,
+      code: "blocked_host",
       phase: "validation",
       retryable: false,
       url: options.url,

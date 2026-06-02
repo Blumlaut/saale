@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAccountOwner } from "@/lib/auth";
+import { requireAccountOwner, sanitizeError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { syncEmailAccount } from "@/lib/email/sync";
 
@@ -34,7 +34,7 @@ export async function POST(
     return NextResponse.json(
       {
         synced: false,
-        error: (err as Error).message,
+        error: sanitizeError(err),
       },
       { status: 500 },
     );
