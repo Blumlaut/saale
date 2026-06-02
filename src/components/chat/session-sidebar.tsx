@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { fetchJson, deleteJson } from "@/lib/http";
+import { createChatSession } from "@/lib/chat-session";
 import { MessageSquarePlus, Trash2, Loader2 } from "lucide-react";
 
 interface ChatSession {
@@ -22,11 +24,8 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch("/api/chat/sessions");
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data.sessions);
-      }
+      const data = await fetchJson<{ sessions: ChatSession[] }>("/api/chat/sessions");
+      setSessions(data.sessions);
     } catch {
       // Ignore
     } finally {
@@ -39,51 +38,25 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   }, [fetchSessions]);
 
   const createSession = async () => {
-    // Fetch user settings for default model
-    let settings: {
-      defaultModelProvider?: string;
-      defaultModelName?: string;
-      defaultThinkingLevel?: string;
-    } | null = null;
     try {
-      const res = await fetch("/api/settings");
-      if (res.ok) {
-        const data = await res.json();
-        settings = data.settings ?? null;
-      }
-    } catch {
-      // Ignore — session will be created without model info
-    }
-
-    const res = await fetch("/api/chat/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: "New Chat",
-        modelProvider: settings?.defaultModelProvider || undefined,
-        modelName: settings?.defaultModelName || undefined,
-        thinkingLevel: settings?.defaultThinkingLevel || "off",
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      router.push(`/dashboard/chat/${data.session.id}`);
+      const session = await createChatSession();
+      router.push(`/dashboard/chat/${session.id}`);
       await fetchSessions();
+    } catch {
+      // Ignore
     }
   };
 
   const deleteSession = async (id: string) => {
     setDeletingId(id);
-    const res = await fetch(`/api/chat/sessions/${id}`, {
-      method: "DELETE",
-    });
-
-    if (res.ok) {
+    try {
+      await deleteJson(`/api/chat/sessions/${id}`);
       setSessions((prev) => prev.filter((s) => s.id !== id));
       if (activeSessionId === id) {
         router.push("/dashboard/chat");
       }
+    } catch {
+      // Ignore
     }
     setDeletingId(null);
   };

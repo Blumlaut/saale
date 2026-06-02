@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getTagColor, collectTags } from "@/lib/email/tags";
+import { fetchJson, patchJson } from "@/lib/http";
+import { parseAddresses } from "@/lib/email/utils";
+import type { EmailAccount } from "@/types/shared";
 import {
   Mail,
   Search,
@@ -57,29 +60,8 @@ interface EmailMessage {
   accountId: string;
 }
 
-interface EmailAccount {
-  id: string;
-  email: string;
-  enabled: boolean;
-  lastSyncedAt: string | null;
-  folders: string[];
+interface InboxEmailAccount extends EmailAccount {
   remoteFolders: string[];
-  messageCount: number;
-}
-
-/** Parse the `to` field — stored as a JSON string in the DB */
-function parseToField(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.filter(Boolean);
-  if (typeof raw === "string" && raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.filter(Boolean);
-      if (typeof parsed === "string") return [parsed];
-    } catch {
-      return [raw];
-    }
-  }
-  return ["unknown"];
 }
 
 function getSender(msg: EmailMessage): string {
@@ -100,15 +82,9 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
 
   const handleTrash = async () => {
     try {
-      const res = await fetch(`/api/email/messages/${message.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "trash" }),
-      });
-      if (res.ok) {
-        toast.success("Email moved to trash");
-        onRefresh();
-      }
+      await patchJson(`/api/email/messages/${message.id}`, { action: "trash" });
+      toast.success("Email moved to trash");
+      onRefresh();
     } catch {
       toast.error("Failed to trash email");
     }
@@ -116,15 +92,9 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
 
   const handleArchive = async () => {
     try {
-      const res = await fetch(`/api/email/messages/${message.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "archive" }),
-      });
-      if (res.ok) {
-        toast.success("Email archived");
-        onRefresh();
-      }
+      await patchJson(`/api/email/messages/${message.id}`, { action: "archive" });
+      toast.success("Email archived");
+      onRefresh();
     } catch {
       toast.error("Failed to archive email");
     }
@@ -186,11 +156,7 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
             onClick={async () => {
               const newStarred = !message.isStarred;
               try {
-                await fetch(`/api/email/messages/${message.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ isStarred: newStarred }),
-                });
+                await patchJson(`/api/email/messages/${message.id}`, { isStarred: newStarred });
                 onRefresh();
               } catch {
                 toast.error("Failed to update star");
@@ -233,7 +199,7 @@ export function Inbox() {
   const urlAccountId = searchParams.get("accountId");
 
   const [messages, setMessages] = useState<EmailMessage[]>([]);
-  const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+  const [accounts, setAccounts] = useState<InboxEmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
@@ -251,11 +217,8 @@ export function Inbox() {
 
   const loadAccounts = useCallback(async () => {
     try {
-      const res = await fetch("/api/email/accounts");
-      if (res.ok) {
-        const data = await res.json();
-        setAccounts(data.accounts);
-      }
+      const data = await fetchJson<{ accounts: InboxEmailAccount[] }>("/api/email/accounts");
+      setAccounts(data.accounts);
     } catch {
       // Ignore
     }
@@ -270,12 +233,11 @@ export function Inbox() {
       if (search) params.set("search", search);
       if (tagFilter) params.set("tag", tagFilter);
 
-      const res = await fetch(`/api/email/messages?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data.messages);
-        setTotal(data.total);
-      }
+      const data = await fetchJson<{ messages: EmailMessage[]; total: number }>(
+        `/api/email/messages?${params}`,
+      );
+      setMessages(data.messages);
+      setTotal(data.total);
     } catch {
       // Ignore
     } finally {
@@ -348,25 +310,15 @@ export function Inbox() {
     }
 
     try {
-      const res = await fetch(`/api/email/messages/${msgId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isStarred: newStarred }),
-      });
-      if (!res.ok) {
-        // Revert on error
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msgId ? { ...m, isStarred: !newStarred } : m)),
-        );
-        if (selectedMsg?.id === msgId) {
-          setSelectedMsg((prev) => (prev ? { ...prev, isStarred: !newStarred } : prev));
-        }
-      }
+      await patchJson(`/api/email/messages/${msgId}`, { isStarred: newStarred });
     } catch {
       // Revert on error
       setMessages((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, isStarred: !newStarred } : m)),
       );
+      if (selectedMsg?.id === msgId) {
+        setSelectedMsg((prev) => (prev ? { ...prev, isStarred: !newStarred } : prev));
+      }
     } finally {
       setTogglingStar(null);
     }
@@ -389,16 +341,10 @@ export function Inbox() {
 
     const newTags = [...msg.tags, trimmed];
     try {
-      const res = await fetch(`/api/email/messages/${msgId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tags: newTags }),
-      });
-      if (res.ok) {
-        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
-        if (selectedMsg?.id === msgId) {
-          setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
-        }
+      await patchJson(`/api/email/messages/${msgId}`, { tags: newTags });
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
+      if (selectedMsg?.id === msgId) {
+        setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
       }
     } catch {
       // Ignore
@@ -413,16 +359,10 @@ export function Inbox() {
 
     const newTags = msg.tags.filter((t) => t !== tag);
     try {
-      const res = await fetch(`/api/email/messages/${msgId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tags: newTags }),
-      });
-      if (res.ok) {
-        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
-        if (selectedMsg?.id === msgId) {
-          setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
-        }
+      await patchJson(`/api/email/messages/${msgId}`, { tags: newTags });
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
+      if (selectedMsg?.id === msgId) {
+        setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
       }
     } catch {
       // Ignore
@@ -441,12 +381,12 @@ export function Inbox() {
         const rest = remote.filter((f) => f.toUpperCase() !== "INBOX").sort();
         return [...inboxLike, ...rest];
       }
-      return activeAccount.folders.sort();
+      return (activeAccount.folders ?? []).sort();
     }
 
     const folderSet = new Set<string>();
     for (const acc of accounts.filter((a) => a.enabled)) {
-      for (const f of acc.folders) {
+      for (const f of acc.folders ?? []) {
         folderSet.add(f);
       }
     }
@@ -688,7 +628,9 @@ export function Inbox() {
                   <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
                     <span className="truncate">{getSender(selectedMessage)}</span>
                     <span>→</span>
-                    <span className="truncate">{parseToField(selectedMessage.to).join(", ")}</span>
+                    <span className="truncate">
+                      {parseAddresses(selectedMessage.to).join(", ")}
+                    </span>
                   </div>
                   <p className="text-muted-foreground mt-0.5 text-xs">
                     {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
@@ -838,7 +780,7 @@ export function Inbox() {
                     <span className="font-medium">{getSender(selectedMessage)}</span>
                     <span className="text-muted-foreground">→</span>
                     <span className="text-muted-foreground truncate text-xs">
-                      {parseToField(selectedMessage.to).join(", ")}
+                      {parseAddresses(selectedMessage.to).join(", ")}
                     </span>
                   </div>
                   <p className="text-muted-foreground mt-1 text-xs">

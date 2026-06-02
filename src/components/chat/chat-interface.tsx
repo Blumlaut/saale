@@ -6,6 +6,7 @@ import { MessageList } from "./message-list";
 import { InputBar, type ToolConfig } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
+import { fetchJson, patchJson } from "@/lib/http";
 import { Loader2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
@@ -80,20 +81,25 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
   const loadMessages = async () => {
     try {
-      const res = await fetch(`/api/chat/sessions/${sessionId}/messages`);
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data.messages);
-        if (data.session) {
-          const modelStr =
-            data.session.modelProvider && data.session.modelName
-              ? `${data.session.modelProvider}/${data.session.modelName}`
-              : "";
-          if (modelStr) setModelId(modelStr);
-          if (data.session.thinkingLevel) setThinkingLevel(data.session.thinkingLevel);
-          if (data.session.toolConfig) {
-            setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...data.session.toolConfig });
-          }
+      const data = await fetchJson<{
+        messages: Message[];
+        session: {
+          modelProvider?: string;
+          modelName?: string;
+          thinkingLevel?: string;
+          toolConfig?: ToolConfig;
+        };
+      }>(`/api/chat/sessions/${sessionId}/messages`);
+      setMessages(data.messages);
+      if (data.session) {
+        const modelStr =
+          data.session.modelProvider && data.session.modelName
+            ? `${data.session.modelProvider}/${data.session.modelName}`
+            : "";
+        if (modelStr) setModelId(modelStr);
+        if (data.session.thinkingLevel) setThinkingLevel(data.session.thinkingLevel);
+        if (data.session.toolConfig) {
+          setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...data.session.toolConfig });
         }
       }
     } catch {
@@ -120,11 +126,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       setToolConfig(updated);
 
       try {
-        await fetch(`/api/chat/sessions/${sessionId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ toolConfig: updated }),
-        });
+        await patchJson(`/api/chat/sessions/${sessionId}`, { toolConfig: updated });
       } catch {
         // Silently fail — local state is already updated
       }
@@ -430,14 +432,10 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       const [provider, ...modelParts] = modelId.split("/");
       const modelName = modelParts.join("/");
       try {
-        await fetch(`/api/chat/sessions/${sessionId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            modelProvider: provider || undefined,
-            modelName: modelName || undefined,
-            thinkingLevel,
-          }),
+        await patchJson(`/api/chat/sessions/${sessionId}`, {
+          modelProvider: provider || undefined,
+          modelName: modelName || undefined,
+          thinkingLevel,
         });
       } catch {
         // Silently fail

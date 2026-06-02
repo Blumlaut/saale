@@ -1,3 +1,6 @@
+// Re-export shared types
+export type { EmailAccount } from "@/types/shared";
+
 export interface PurposeModelSelection {
   provider: string;
   model: string;
@@ -12,15 +15,6 @@ export interface UserSettings {
   emailWritingStyle: string | null;
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
   disabledModels: string[] | null; // Array of "provider:modelId" strings
-}
-
-export interface EmailAccount {
-  id: string;
-  email: string;
-  enabled: boolean;
-  lastSyncedAt: string | null;
-  messageCount: number;
-  folders: string[];
 }
 
 export interface ConfiguredProvider {

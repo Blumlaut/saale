@@ -8,30 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ConfigForm } from "@/components/tasks/config-form";
+import { fetchJson, postJson } from "@/lib/http";
 import { RefreshCw, FileText, Tags, Shield, Loader2, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface FieldDef {
-  key: string;
-  label: string;
-  description?: string;
-  type: "text" | "number" | "select" | "boolean";
-  default?: unknown;
-  options?: Array<{ value: string; label: string }>;
-  min?: number;
-  max?: number;
-  step?: number;
-}
-
-interface JobSchema {
-  type: string;
-  label: string;
-  description: string;
-  icon: string;
-  defaultCron: string;
-  usesAi?: boolean;
-  fields: FieldDef[];
-}
+import type { JobSchema } from "@/types/shared";
 
 // Icon map (keeps the import bundle small)
 const iconMap: Record<string, React.ElementType> = {
@@ -61,8 +41,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
   useEffect(() => {
     if (!open) return;
     setLoadingSchemas(true);
-    fetch("/api/jobs/schemas")
-      .then((r) => r.json())
+    fetchJson<{ schemas: JobSchema[] }>("/api/jobs/schemas")
       .then((data) => setSchemas(data.schemas ?? []))
       .catch(() => {})
       .finally(() => setLoadingSchemas(false));
@@ -83,7 +62,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
       setSelectedType(type);
       const schema = schemas.find((s) => s.type === type);
       if (schema) {
-        setCronExpression(schema.defaultCron);
+        setCronExpression(schema.defaultCron ?? "");
         // Set default config values from schema
         const defaults: Record<string, unknown> = {};
         for (const field of schema.fields) {
@@ -131,21 +110,12 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
       const modelId = config.modelId || undefined;
       delete config.modelId;
 
-      const res = await fetch("/api/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: selectedType,
-          enabled,
-          config,
-          modelId,
-        }),
+      await postJson("/api/jobs", {
+        type: selectedType,
+        enabled,
+        config,
+        modelId,
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to create job");
-      }
 
       resetForm();
       onOpenChange(false);
@@ -179,7 +149,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
               </div>
             ) : (
               schemas.map((schema) => {
-                const Icon = iconMap[schema.icon] ?? RefreshCw;
+                const Icon = schema.icon ? (iconMap[schema.icon] ?? RefreshCw) : RefreshCw;
                 return (
                   <button
                     key={schema.type}

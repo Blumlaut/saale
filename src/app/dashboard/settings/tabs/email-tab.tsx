@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
 import { Mail, Loader2, Plus, RefreshCw, Trash2, AlertTriangle, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
@@ -38,8 +39,7 @@ export function EmailTab() {
 
   const loadAccounts = async () => {
     try {
-      const res = await fetch("/api/email/accounts");
-      const data = await res.json();
+      const data = await fetchJson<{ accounts: EmailAccount[] }>("/api/email/accounts");
       setEmailAccounts(data.accounts ?? []);
     } catch {
       // Ignore
@@ -63,19 +63,15 @@ export function EmailTab() {
   const executeAction = async (accountId: string, action: "sync" | "full-refresh" | "delete") => {
     setActionLoading(action + ":" + accountId);
     try {
-      const method = action === "delete" ? "DELETE" : "POST";
       const url =
         action === "delete"
           ? `/api/email/accounts/${accountId}`
           : `/api/email/accounts/${accountId}/${action === "full-refresh" ? "full-refresh" : "sync"}`;
 
-      const res = await fetch(url, { method });
-      if (!res.ok) {
-        const data = await res.json();
-        setAlertError(data.error || "Action failed");
-        setPendingAction({ accountId, action });
-        setAlertOpen(true);
-        return;
+      if (action === "delete") {
+        await deleteJson(url);
+      } else {
+        await postJson(url, {});
       }
       await loadAccounts();
     } catch (err) {
@@ -96,11 +92,7 @@ export function EmailTab() {
 
   const handleToggleEnabled = async (accountId: string, enabled: boolean) => {
     try {
-      await fetch(`/api/email/accounts/${accountId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
+      await patchJson(`/api/email/accounts/${accountId}`, { enabled });
       await loadAccounts();
     } catch {
       // Ignore
@@ -111,7 +103,7 @@ export function EmailTab() {
     setActionLoading("sync-all");
     try {
       await Promise.all(
-        emailAccounts.map((acc) => fetch(`/api/email/accounts/${acc.id}/sync`, { method: "POST" })),
+        emailAccounts.map((acc) => postJson(`/api/email/accounts/${acc.id}/sync`, {})),
       );
       await loadAccounts();
     } catch {

@@ -19,8 +19,10 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import { GlassPanelHeader } from "@/components/ui/glass-panel";
-import { ConfigDisplay, type FieldDef } from "@/components/tasks/config-form";
+import { ConfigDisplay } from "@/components/tasks/config-form";
+import type { JobSchema } from "@/types/shared";
 
 interface JobConfig {
   cronExpression?: string;
@@ -51,14 +53,6 @@ interface JobRun {
   startedAt: string | null;
   completedAt: string | null;
   duration: number | null;
-}
-
-interface JobSchema {
-  type: string;
-  label: string;
-  description: string;
-  usesAi?: boolean;
-  fields: FieldDef[];
 }
 
 const cronExamples: Record<string, string> = {
@@ -96,11 +90,8 @@ export function JobList({ onRefresh }: JobListProps) {
 
   const loadJobs = useCallback(async () => {
     try {
-      const res = await fetch("/api/jobs");
-      if (res.ok) {
-        const data = await res.json();
-        setJobs(data.jobs);
-      }
+      const data = await fetchJson<{ jobs: Job[] }>("/api/jobs");
+      setJobs(data.jobs);
     } catch {
       // Ignore
     } finally {
@@ -110,11 +101,8 @@ export function JobList({ onRefresh }: JobListProps) {
 
   const loadSchemas = useCallback(async () => {
     try {
-      const res = await fetch("/api/jobs/schemas");
-      if (res.ok) {
-        const data = await res.json();
-        setSchemas(data.schemas ?? []);
-      }
+      const data = await fetchJson<{ schemas: JobSchema[] }>("/api/jobs/schemas");
+      setSchemas(data.schemas ?? []);
     } catch {
       // Ignore
     }
@@ -123,11 +111,8 @@ export function JobList({ onRefresh }: JobListProps) {
   const loadRuns = useCallback(async (jobId: string) => {
     setLoadingRuns(true);
     try {
-      const res = await fetch(`/api/jobs/${jobId}/runs?limit=10`);
-      if (res.ok) {
-        const data = await res.json();
-        setRuns(data.runs);
-      }
+      const data = await fetchJson<{ runs: JobRun[] }>(`/api/jobs/${jobId}/runs?limit=10`);
+      setRuns(data.runs);
     } catch {
       // Ignore
     } finally {
@@ -149,15 +134,11 @@ export function JobList({ onRefresh }: JobListProps) {
   const handleRun = async (jobId: string) => {
     setRunningId(jobId);
     try {
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        loadJobs();
-        onRefresh?.();
-        if (selectedJob?.id === jobId) {
-          loadRuns(jobId);
-        }
+      await fetchJson(`/api/jobs/${jobId}`, { method: "POST" });
+      loadJobs();
+      onRefresh?.();
+      if (selectedJob?.id === jobId) {
+        loadRuns(jobId);
       }
     } catch {
       // Ignore
@@ -168,15 +149,9 @@ export function JobList({ onRefresh }: JobListProps) {
 
   const handleToggle = async (jobId: string, enabled: boolean) => {
     try {
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      if (res.ok) {
-        setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, enabled } : j)));
-        onRefresh?.();
-      }
+      await patchJson(`/api/jobs/${jobId}`, { enabled });
+      setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, enabled } : j)));
+      onRefresh?.();
     } catch {
       // Ignore
     }
@@ -184,16 +159,12 @@ export function JobList({ onRefresh }: JobListProps) {
 
   const handleDelete = async (jobId: string) => {
     try {
-      const res = await fetch(`/api/jobs/${jobId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        setJobs((prev) => prev.filter((j) => j.id !== jobId));
-        onRefresh?.();
-        if (selectedJob?.id === jobId) {
-          setSelectedJob(null);
-          setRuns([]);
-        }
+      await deleteJson(`/api/jobs/${jobId}`);
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+      onRefresh?.();
+      if (selectedJob?.id === jobId) {
+        setSelectedJob(null);
+        setRuns([]);
       }
     } catch {
       // Ignore
