@@ -21,8 +21,9 @@ model User {
   accounts      Account[]
   sessions      Session[]
   chatSessions  ChatSession[]
-  emailAccounts EmailAccount[]
-  queueTasks    QueueTask[]
+  emailAccounts    EmailAccount[]
+  calendarAccounts CalendarAccount[]
+  queueTasks       QueueTask[]
   settings      AppSettings?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -157,8 +158,9 @@ model EmailMessage {
   folder      String      @default("INBOX")
   tags        String[]    @default([])
   aiSummary   String?     @db.Text
-  classified  Boolean     @default(false) // has the classification job processed this email?
-  spamScore   Float?
+  classified      Boolean     @default(false) // has the classification job processed this email?
+  calendarScanned Boolean     @default(false) // has the email-to-calendar job processed this email?
+  spamScore     Float?
   account     EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt   DateTime    @default(now())
 
@@ -241,4 +243,98 @@ model ProviderApiKey {
   @@unique([userId, provider])
   @@index([userId])
   @@map("provider_api_key")
+}
+
+// ─── Calendar ──────────────────────────────────────────────────
+
+model CalendarAccount {
+  id                   String     @id @default(cuid())
+  userId               String
+  name                 String     // User-friendly label (e.g. "Google Work", "iCloud Personal")
+  serverUrl            String     // e.g. "https://caldav.icloud.com"
+  username             String
+  encryptedPassword    String     @db.Text // App password or token secret
+  authMethod           String     @default("basic") // "basic" | "oauth" | "bearer"
+  // OAuth fields (nullable, used when authMethod = "oauth")
+  tokenUrl             String?
+  clientId             String?
+  refreshToken         String?    @db.Text
+  accessToken          String?    @db.Text
+  accessTokenExpiresAt DateTime?
+  enabled              Boolean    @default(true)
+  lastSyncedAt         DateTime?
+  calendars            Calendar[]
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  @@unique([userId, username, serverUrl])
+  @@index([userId])
+  @@map("CalendarAccount")
+}
+
+model Calendar {
+  id               String         @id @default(cuid())
+  accountId        String
+  remoteId         String?        // Remote calendar identifier (URL or ID from CalDAV server)
+  name             String         // Display name from server
+  color            String?        // Calendar color (hex, from server or user override)
+  description      String?        @db.Text
+  readOnly         Boolean        @default(false)
+  enabled          Boolean        @default(true)
+  lastSyncedAt     DateTime?
+  ctag             String?        // Calendar CTAG for sync detection
+  syncToken        String?        // Sync-token for incremental sync (RFC 6638)
+  events           CalendarEvent[]
+  account          CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([accountId, remoteId])
+  @@index([accountId])
+  @@map("Calendar")
+}
+
+model CalendarEvent {
+  id               String     @id @default(cuid())
+  calendarId       String
+  uid              String     // iCalendar UID (unique across calendars)
+  summary          String     @default("(no title)")
+  description      String?    @db.Text
+  location         String?
+  url              String?
+  status           String?    // "CONFIRMED" | "TENTATIVE" | "CANCELLED"
+  transparency     String?    // "OPAQUE" | "TRANSPARENT" (free/busy)
+  sequence         Int        @default(0) // iCalendar SEQUENCE for conflict detection
+
+  // Dates
+  dtStart          DateTime   // Start datetime (or all-day date)
+  dtEnd            DateTime?  // End datetime (null for all-day, computed from duration)
+  allDay           Boolean    @default(false)
+  timeZone         String?    // Timezone identifier (e.g. "Europe/Berlin")
+
+  // Recurrence
+  recurrenceRule   String?    @db.Text // RRULE string
+  recurrenceDateIds String[]  @default([]) // RDATE UIDs for expanded instances
+  exceptionDateIds String[]   @default([]) // EXDATE UIDs
+
+  // Alerts
+  alerts           String?    @db.Text // JSON array of { triggerMinutes, action }
+
+  // Origin tracking
+  source           String     @default("manual") // "manual" | "caldav" | "email_extraction" | "ics_import"
+  sourceEmailId    String?    // Link back to EmailMessage if created by email extraction
+
+  // Sync metadata
+  etag             String?    // Entity tag for change detection
+  lastModified     DateTime?
+
+  calendar         Calendar   @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([calendarId, uid])
+  @@index([calendarId, dtStart])
+  @@index([dtStart])
+  @@map("CalendarEvent")
 }
