@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import {
   createAgentSession,
   SessionManager,
@@ -22,13 +21,8 @@ import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
  * }
  */
 export async function POST(request: NextRequest) {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!authSession?.user) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { messageId, mode = "reply" } = body as {
@@ -43,7 +37,7 @@ export async function POST(request: NextRequest) {
   const message = await prisma.emailMessage.findFirst({
     where: {
       id: messageId,
-      account: { userId: authSession.user.id },
+      account: { userId: authResult.user.id },
     },
     select: {
       id: true,
@@ -63,10 +57,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Build model registry with user's providers
-  const { modelRegistry, authStorage } = await buildModelRegistry(authSession.user.id);
+  const { modelRegistry, authStorage } = await buildModelRegistry(authResult.user.id);
 
   // Resolve model for email_draft purpose (purpose override → global default)
-  const modelInfo = await resolveModelForPurpose(authSession.user.id, "email_draft");
+  const modelInfo = await resolveModelForPurpose(authResult.user.id, "email_draft");
 
   let model;
   if (modelInfo) {
@@ -95,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   // Fetch user's email writing style
   const emailSettings = await prisma.appSettings.findUnique({
-    where: { userId: authSession.user.id },
+    where: { userId: authResult.user.id },
     select: { emailWritingStyle: true },
   });
 

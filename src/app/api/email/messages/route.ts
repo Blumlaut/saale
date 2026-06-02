@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /** Fallback trash folder names for accounts that haven't synced yet */
@@ -44,13 +43,8 @@ async function collectTrashFolders(userId: string, accountId?: string): Promise<
  * Query params: accountId, folder, unread, starred, since, until, limit, offset, search, tag
  */
 export async function GET(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const url = new URL(request.url);
   const accountId = url.searchParams.get("accountId");
@@ -65,7 +59,7 @@ export async function GET(request: NextRequest) {
   const tag = url.searchParams.get("tag");
 
   const where: Record<string, unknown> = {
-    account: { userId: session.user.id },
+    account: { userId: authResult.user.id },
   };
 
   if (accountId) {
@@ -75,7 +69,7 @@ export async function GET(request: NextRequest) {
     where.folder = folder;
   } else {
     // "All" view: exclude trash/deleted folders (per-account, from IMAP SPECIAL-USE)
-    const trashFolders = await collectTrashFolders(session.user.id, accountId ?? undefined);
+    const trashFolders = await collectTrashFolders(authResult.user.id, accountId ?? undefined);
     if (trashFolders.length > 0) {
       where.NOT = trashFolders.map((name) => ({
         folder: { equals: name, mode: "insensitive" as const },

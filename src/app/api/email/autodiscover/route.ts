@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { headers } from "next/headers";
+import { requireSession } from "@/lib/auth";
 import { autodiscover } from "@/lib/email/autodiscover";
 
 /**
@@ -10,13 +9,8 @@ import { autodiscover } from "@/lib/email/autodiscover";
  * Response: { imap?: { host, port, secure }, smtp?: { host, port, secure }, source: "srv" | "probe" | null }
  */
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { email } = body;

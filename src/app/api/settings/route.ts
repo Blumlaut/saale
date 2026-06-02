@@ -1,29 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 
 /**
  * GET /api/settings — Get user settings
  */
 export async function GET() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   let settings = await prisma.appSettings.findUnique({
-    where: { userId: session.user.id },
+    where: { userId: authResult.user.id },
   });
 
   // Create default settings if not exists
   if (!settings) {
     settings = await prisma.appSettings.create({
       data: {
-        userId: session.user.id,
+        userId: authResult.user.id,
       },
     });
   }
@@ -46,20 +40,15 @@ export async function GET() {
  * PATCH /api/settings — Update user settings
  */
 export async function PATCH(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
 
   const settings = await prisma.appSettings.upsert({
-    where: { userId: session.user.id },
+    where: { userId: authResult.user.id },
     create: {
-      userId: session.user.id,
+      userId: authResult.user.id,
       ...body,
     },
     update: body,

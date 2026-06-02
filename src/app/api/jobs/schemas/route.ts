@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 
 /**
@@ -10,17 +9,12 @@ import { jobTypeSchemas } from "@/lib/queue/job-schemas";
  * Model fields use the shared ModelPicker component (no options needed here).
  */
 export async function GET() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   // Fetch email accounts for select fields
   const accounts = await prisma.emailAccount.findMany({
-    where: { userId: session.user.id, enabled: true },
+    where: { userId: authResult.user.id, enabled: true },
     select: { id: true, email: true },
     orderBy: { email: "asc" },
   });

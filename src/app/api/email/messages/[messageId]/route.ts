@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { syncMessageFlags, deleteMessage, moveMessage } from "@/lib/email/imap";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
@@ -12,20 +11,15 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ messageId: string }> },
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { messageId } = await params;
 
   const message = await prisma.emailMessage.findFirst({
     where: {
       id: messageId,
-      account: { userId: session.user.id },
+      account: { userId: authResult.user.id },
     },
     select: {
       id: true,
@@ -78,20 +72,15 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ messageId: string }> },
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { messageId } = await params;
 
   const message = await prisma.emailMessage.findFirst({
     where: {
       id: messageId,
-      account: { userId: session.user.id },
+      account: { userId: authResult.user.id },
     },
   });
 

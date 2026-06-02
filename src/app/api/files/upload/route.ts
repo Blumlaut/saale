@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { headers } from "next/headers";
+import { requireSession } from "@/lib/auth";
 import fs from "fs/promises";
 import path from "path";
 
@@ -10,13 +9,8 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
  * POST /api/files/upload — Upload a file to user's workspace
  */
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
@@ -27,7 +21,7 @@ export async function POST(request: NextRequest) {
 
   // Sanitize filename
   const safeName = path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, "_");
-  const userDir = path.join(UPLOAD_DIR, session.user.id);
+  const userDir = path.join(UPLOAD_DIR, authResult.user.id);
   const filePath = path.join(userDir, safeName);
 
   // Ensure directory exists
@@ -43,7 +37,7 @@ export async function POST(request: NextRequest) {
     ok: true,
     file: {
       name: safeName,
-      path: `/${session.user.id}/${safeName}`,
+      path: `/${authResult.user.id}/${safeName}`,
       size: stats.size,
       mimeType: file.type,
     },

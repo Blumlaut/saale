@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 
 /**
  * GET /api/search — Unified search across chat and email
  * Query params: q (required), type (optional: "all" | "chat" | "email"), limit
  */
 export async function GET(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const url = new URL(request.url);
   const query = url.searchParams.get("q");
@@ -38,7 +32,7 @@ export async function GET(request: NextRequest) {
   if (type === "all" || type === "chat") {
     const chatSessions = await prisma.chatSession.findMany({
       where: {
-        userId: session.user.id,
+        userId: authResult.user.id,
         OR: [{ title: { contains: query, mode: "insensitive" } }],
       },
       orderBy: { updatedAt: "desc" },
@@ -73,7 +67,7 @@ export async function GET(request: NextRequest) {
   if (type === "all" || type === "email") {
     const emails = await prisma.emailMessage.findMany({
       where: {
-        account: { userId: session.user.id },
+        account: { userId: authResult.user.id },
         OR: [
           { subject: { contains: query, mode: "insensitive" } },
           { fromEmail: { contains: query, mode: "insensitive" } },

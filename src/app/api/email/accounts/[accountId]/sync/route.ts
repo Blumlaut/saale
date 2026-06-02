@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireAccountOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { syncEmailAccount } from "@/lib/email/sync";
 
 /**
@@ -12,23 +11,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ accountId: string }> },
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { accountId } = await params;
 
-  const account = await prisma.emailAccount.findFirst({
-    where: { id: accountId, userId: session.user.id },
-  });
-
-  if (!account) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireAccountOwner(accountId);
+  if (!authResult.ok) return authResult.response;
+  const { account } = authResult;
 
   // Support ?full=true to force a full sync
   const url = new URL(request.url);

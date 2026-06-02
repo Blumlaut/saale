@@ -1,23 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { getQueue } from "@/lib/queue";
 
 /**
  * GET /api/jobs — List user's jobs
  */
 export async function GET() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const jobs = await prisma.queueTask.findMany({
-    where: { userId: session.user.id },
+    where: { userId: authResult.user.id },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -68,13 +62,8 @@ export async function GET() {
  * POST /api/jobs — Create a new job
  */
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { type, enabled, config, modelId } = body;
@@ -91,7 +80,7 @@ export async function POST(request: NextRequest) {
 
   const job = await prisma.queueTask.create({
     data: {
-      userId: session.user.id,
+      userId: authResult.user.id,
       type,
       enabled: enabled !== false,
       modelId: resolvedModelId,

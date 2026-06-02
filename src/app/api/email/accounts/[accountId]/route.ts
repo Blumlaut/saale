@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireAccountOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { encrypt } from "@/lib/crypto";
 
 /**
@@ -11,23 +10,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ accountId: string }> },
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { accountId } = await params;
 
-  const account = await prisma.emailAccount.findFirst({
-    where: { id: accountId, userId: session.user.id },
-  });
-
-  if (!account) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireAccountOwner(accountId);
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};
@@ -66,23 +52,10 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ accountId: string }> },
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { accountId } = await params;
 
-  const account = await prisma.emailAccount.findFirst({
-    where: { id: accountId, userId: session.user.id },
-  });
-
-  if (!account) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireAccountOwner(accountId);
+  if (!authResult.ok) return authResult.response;
 
   await prisma.emailAccount.delete({
     where: { id: accountId },

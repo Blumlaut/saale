@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { encrypt } from "@/lib/crypto";
 
 // Known providers with their labels
@@ -68,16 +67,11 @@ async function fetchOpenAIModels(
  * GET /api/providers — List user's configured providers
  */
 export async function GET() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const keys = await prisma.providerApiKey.findMany({
-    where: { userId: session.user.id },
+    where: { userId: authResult.user.id },
     select: {
       id: true,
       provider: true,
@@ -106,13 +100,8 @@ export async function GET() {
  * POST /api/providers — Add or update a provider API key
  */
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { provider, apiKey, label, baseUrl } = body;
@@ -143,12 +132,12 @@ export async function POST(request: NextRequest) {
   const key = await prisma.providerApiKey.upsert({
     where: {
       userId_provider: {
-        userId: session.user.id,
+        userId: authResult.user.id,
         provider,
       },
     },
     create: {
-      userId: session.user.id,
+      userId: authResult.user.id,
       provider,
       encryptedKey,
       label: label || "",
@@ -187,13 +176,8 @@ export async function POST(request: NextRequest) {
  * DELETE /api/providers — Remove a provider API key
  */
 export async function DELETE(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { searchParams } = new URL(request.url);
   const provider = searchParams.get("provider");
@@ -204,7 +188,7 @@ export async function DELETE(request: NextRequest) {
 
   await prisma.providerApiKey.deleteMany({
     where: {
-      userId: session.user.id,
+      userId: authResult.user.id,
       provider,
     },
   });

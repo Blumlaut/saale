@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { createPiSession, type ToolConfig } from "@/lib/pi/session";
 import {
   normalizeToolResult,
@@ -20,18 +19,13 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!authSession?.user) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
 
   const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authSession.user.id },
+    where: { id: sessionId, userId: authResult.user.id },
     select: {
       id: true,
       modelProvider: true,
@@ -43,7 +37,7 @@ export async function GET(
 
   // Fetch user's custom agent system prompt
   const userSettings = await prisma.appSettings.findUnique({
-    where: { userId: authSession.user.id },
+    where: { userId: authResult.user.id },
     select: { agentSystemPrompt: true },
   });
 
@@ -66,7 +60,7 @@ export async function GET(
 
   // Create Pi session with custom tools (filtered by toolConfig)
   const { session: piSession } = await createPiSession({
-    userId: authSession.user.id,
+    userId: authResult.user.id,
     customTools: [],
     ...(chatSession.toolConfig && { toolConfig: chatSession.toolConfig as ToolConfig }),
     ...(chatSession.modelProvider && { modelProvider: chatSession.modelProvider }),
