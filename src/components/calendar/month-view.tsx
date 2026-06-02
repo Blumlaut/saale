@@ -2,6 +2,7 @@
 
 import type { CalendarEvent } from "@/types/shared";
 import { cn } from "@/lib/utils";
+import { getEventsForDay } from "@/lib/calendar/date-utils";
 import { Badge } from "@/components/ui/badge";
 
 interface MonthViewProps {
@@ -45,20 +46,6 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
     d.getMonth() === today.getMonth() &&
     d.getFullYear() === today.getFullYear();
 
-  const getEventsForDay = (d: Date) => {
-    const dayTime = d.getTime();
-    return events.filter((e) => {
-      const start = new Date(e.dtStart).getTime();
-      if (e.allDay) {
-        // For all-day events, dtEnd is exclusive (the day after the last day)
-        // Check if the day falls within [dtStart, dtEnd)
-        const end = e.dtEnd ? new Date(e.dtEnd).getTime() : start;
-        return dayTime >= start && dayTime < end;
-      }
-      return start === dayTime;
-    });
-  };
-
   return (
     <div className="space-y-2">
       {/* Day headers */}
@@ -73,7 +60,7 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
       {/* Days grid */}
       <div className="border-border/50 grid grid-cols-7 overflow-hidden rounded-xl border">
         {days.map(({ date: day, isCurrentMonth }, index) => {
-          const dayEvents = getEventsForDay(day);
+          const dayEvents = getEventsForDay(events, day);
           const isTodayDate = isToday(day);
 
           return (

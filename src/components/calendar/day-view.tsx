@@ -2,6 +2,7 @@
 
 import type { CalendarEvent } from "@/types/shared";
 import { cn } from "@/lib/utils";
+import { getAllDayEventsForDay, getTimedEventsForDay } from "@/lib/calendar/date-utils";
 
 interface DayViewProps {
   date: Date;
@@ -13,17 +14,8 @@ interface DayViewProps {
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayViewProps) {
-  const dayTime = date.getTime();
-  const dayEvents = events.filter((e) => {
-    if (e.allDay) return false;
-    return new Date(e.dtStart).toDateString() === date.toDateString();
-  });
-  const allDayEvents = events.filter((e) => {
-    if (!e.allDay) return false;
-    const start = new Date(e.dtStart).getTime();
-    const end = e.dtEnd ? new Date(e.dtEnd).getTime() : start;
-    return dayTime >= start && dayTime < end;
-  });
+  const dayEvents = getTimedEventsForDay(events, date);
+  const allDayEvents = getAllDayEventsForDay(events, date);
 
   const today = new Date();
   const isToday =

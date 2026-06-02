@@ -69,18 +69,27 @@ function extractEvent(vevent: Record<string, unknown>): ParsedEvent {
   const dtStart = vevent.start as Date | { year: number; month: number; day: number } | undefined;
   const dtEnd = vevent.end as Date | { year: number; month: number; day: number } | undefined;
 
-  // Determine if all-day: ical returns { method: "utc" } for dates without times
-  const allDay = dtStart && typeof dtStart === "object" && !("getTime" in dtStart);
+  // Determine if all-day from multiple signals:
+  // 1. ical returns { year, month, day } objects (no getTime)
+  // 2. The raw dtstart has VALUE=DATE param
+  const isDateObject = dtStart && typeof dtStart === "object" && !("getTime" in dtStart);
+  const rawDtStart = vevent.dtstart as
+    | { params?: Record<string, unknown>; val?: unknown }
+    | undefined;
+  const hasValueDate =
+    typeof rawDtStart?.params === "object" &&
+    (rawDtStart.params.VALUE === "DATE" || rawDtStart.params.value === "DATE");
+  const allDay = !!isDateObject || !!hasValueDate;
 
   const startDate =
-    allDay && dtStart && "year" in dtStart
+    isDateObject && dtStart && "year" in dtStart
       ? new Date(dtStart.year, dtStart.month - 1, dtStart.day)
       : dtStart instanceof Date
         ? new Date(dtStart)
         : new Date();
 
   const endDate = dtEnd
-    ? allDay && "year" in dtEnd
+    ? isDateObject && "year" in dtEnd
       ? new Date(dtEnd.year, dtEnd.month - 1, dtEnd.day)
       : dtEnd instanceof Date
         ? new Date(dtEnd)
