@@ -43,6 +43,37 @@ This project is in its early stages. Heavy reworks and structural changes are ex
 - Use `@/` import alias. No relative imports reaching up more than 2 levels.
 - Error boundaries around user-facing components.
 
+## No Nested Interactive Elements
+
+- **Never nest `<button>` inside `<button>`, `<a>` inside `<button>`, or `<button>` inside `<a>`.** This causes hydration errors in Next.js and is invalid HTML.
+- base-ui primitives (`PopoverTrigger`, `DropdownMenuTrigger`, `SheetTrigger`, `DialogTrigger`) render as `<button>` by default. **Never wrap a `<Button>` component inside them** — use a styled `<span>` or `<div>` instead.
+- `<Link>` renders as `<a>`. Never wrap a `<Button>` inside `<Link>` — use the Button's `onClick` directly instead.
+- When in doubt, inspect the rendered DOM (DevTools) to verify no nested interactive elements exist.
+
+### Examples
+
+```tsx
+// ❌ BAD — PopoverTrigger renders as <button>, Button also renders as <button>
+<PopoverTrigger>
+  <Button>Open</Button>
+</PopoverTrigger>
+
+// ✅ GOOD — use a styled <span> inside triggers
+<PopoverTrigger>
+  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded hover:bg-white/10">
+    Open
+  </span>
+</PopoverTrigger>
+
+// ❌ BAD — <Link> renders as <a>, <Button> as <button>
+<Link href="/path">
+  <Button>Go</Button>
+</Link>
+
+// ✅ GOOD — use Button onClick directly
+<Button onClick={() => router.push("/path")}>Go</Button>
+```
+
 ## No Hardcoded Values
 
 - **Never hardcode logic, configs, or environment-specific values in the code.**

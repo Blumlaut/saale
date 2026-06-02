@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -164,12 +163,14 @@ export function ModelPicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
+      {/*
+        PopoverTrigger renders as <button>. Never nest a <Button> (also <button>)
+        inside it — use a styled <span> instead to avoid hydration errors.
+      */}
       <PopoverTrigger>
-        <Button
-          variant="ghost"
-          size="sm"
+        <span
           className={cn(
-            "h-7 gap-1.5 px-2 shadow-none hover:bg-white/10 dark:hover:bg-white/5",
+            "inline-flex h-7 items-center gap-1.5 px-2 text-sm font-medium transition-colors hover:bg-white/10 dark:hover:bg-white/5",
             compact ? "min-w-0" : "",
             className,
           )}
@@ -183,7 +184,7 @@ export function ModelPicker({
             {loading ? "Loading..." : selected ? selected.name : placeholder}
           </span>
           <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
-        </Button>
+        </span>
       </PopoverTrigger>
 
       <PopoverContent className="w-[340px] gap-0 p-0" align="start">
