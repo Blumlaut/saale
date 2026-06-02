@@ -87,11 +87,21 @@ export function CalendarTab() {
 
   const loadData = async () => {
     try {
-      const [accountsRes, subsRes] = await Promise.all([
-        fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts"),
-        fetchJson<{ subscriptions: Subscription[] }>("/api/calendar/subscriptions"),
-      ]);
-      setAccounts(accountsRes.accounts ?? []);
+      let accountsRes = await fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts");
+      const accountsList = accountsRes.accounts ?? [];
+
+      // Ensure local account exists
+      if (!accountsList.some((a) => a.accountType === "local")) {
+        await fetchJson("/api/calendar/ensure-local-account").catch(() => {});
+        accountsRes = await fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts");
+        accountsList.length = 0;
+        accountsList.push(...(accountsRes.accounts ?? []));
+      }
+
+      const subsRes = await fetchJson<{ subscriptions: Subscription[] }>(
+        "/api/calendar/subscriptions",
+      );
+      setAccounts(accountsList);
       setSubscriptions(subsRes.subscriptions ?? []);
     } catch {
       // Ignore
@@ -101,15 +111,6 @@ export function CalendarTab() {
   useEffect(() => {
     loadData().then(() => setLoading(false));
   }, []);
-
-  // Ensure local account exists
-  useEffect(() => {
-    if (!loading && !accounts.some((a) => a.accountType === "local")) {
-      fetchJson("/api/calendar/ensure-local-account")
-        .then(() => loadData())
-        .catch(() => {});
-    }
-  }, [loading, accounts]);
 
   const toggleExpanded = (accountId: string) => {
     setExpandedAccounts((prev) => {
