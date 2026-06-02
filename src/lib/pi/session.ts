@@ -14,6 +14,7 @@ import { buildModelRegistry } from "./models";
 import { createChatSearchTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
+import { createCalendarTools } from "./tools/calendar-tools";
 import { createWebTools } from "./tools/web-tools";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
@@ -26,6 +27,7 @@ export interface ToolConfig {
   files?: boolean;
   email?: boolean;
   jobs?: boolean;
+  calendar?: boolean;
   chatSearch?: boolean;
   web?: boolean;
 }
@@ -35,6 +37,7 @@ const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
   files: true,
   email: true,
   jobs: true,
+  calendar: true,
   chatSearch: true,
   web: true,
 };
@@ -195,6 +198,18 @@ export async function createPiSession(options: {
       jobTools.jobEnableTool,
       jobTools.jobRunTool,
       jobTools.jobLogsTool,
+    );
+  }
+
+  if (enabled.calendar) {
+    const calendarTools = createCalendarTools(options.userId);
+    allCustomTools.push(
+      calendarTools.calendarListTool,
+      calendarTools.calendarUpcomingTool,
+      calendarTools.calendarSearchTool,
+      calendarTools.calendarCreateTool,
+      calendarTools.calendarUpdateTool,
+      calendarTools.calendarDeleteTool,
     );
   }
 
