@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 
 export interface ToolConfig {
   bash: boolean;
-  edit: boolean;
   files: boolean;
   email: boolean;
   jobs: boolean;
@@ -34,7 +33,6 @@ interface InputBarProps {
 
 const TOOL_LABELS: Record<keyof ToolConfig, string> = {
   bash: "Bash",
-  edit: "Edit",
   files: "Files",
   email: "Email",
   jobs: "Jobs",
