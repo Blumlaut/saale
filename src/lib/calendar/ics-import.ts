@@ -19,6 +19,18 @@ export interface ParsedEvent {
 }
 
 /**
+ * Extract a string value from an ical field that may be a plain string,
+ * an object with { val, params } (e.g. URL;VALUE=URI), or something else.
+ */
+function extractString(val: unknown): string | null {
+  if (typeof val === "string") return val || null;
+  if (val && typeof val === "object" && "val" in val) {
+    return (val as { val: string }).val || null;
+  }
+  return null;
+}
+
+/**
  * Parse a raw iCalendar (.ics) string and extract events.
  * Returns an array of parsed events.
  */
@@ -80,7 +92,7 @@ function extractEvent(vevent: Record<string, unknown>): ParsedEvent {
     summary: (vevent.summary as string) || "(no title)",
     description: (vevent.description as string) || null,
     location: (vevent.location as string) || null,
-    url: (vevent.url as string) || null,
+    url: extractString(vevent.url) || null,
     status: (vevent.status as string) || null,
     transparency: (vevent.transparency as string) || null,
     sequence: (vevent.sequence as number) ?? 0,
