@@ -19,7 +19,9 @@ export interface ToolConfig {
   files: boolean;
   email: boolean;
   jobs: boolean;
+  calendar: boolean;
   chatSearch: boolean;
+  web: boolean;
 }
 
 interface InputBarProps {
@@ -36,7 +38,9 @@ const TOOL_LABELS: Record<keyof ToolConfig, string> = {
   files: "Files",
   email: "Email",
   jobs: "Jobs",
+  calendar: "Calendar",
   chatSearch: "Chat history",
+  web: "Web",
 };
 
 export function InputBar({
