@@ -55,7 +55,9 @@ const DEFAULT_TOOL_CONFIG: ToolConfig = {
   files: true,
   email: true,
   jobs: true,
+  calendar: true,
   chatSearch: true,
+  web: true,
 };
 
 const emptyTurn = (): TurnData => ({

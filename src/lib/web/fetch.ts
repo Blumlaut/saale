@@ -8,8 +8,23 @@
  * extension API dependencies.
  */
 
-import { fetch as wreqFetch } from "wreq-js";
 import { Defuddle } from "defuddle/node";
+
+// Lazy-load wreq-js to avoid native module errors during Next.js SSR
+let wreqFetch: typeof import("wreq-js").fetch | null = null;
+let wreqLoadError: string | null = null;
+
+async function loadWreq() {
+  if (wreqFetch || wreqLoadError) {
+    return;
+  }
+  try {
+    const mod = await import("wreq-js");
+    wreqFetch = mod.fetch;
+  } catch (err) {
+    wreqLoadError = err instanceof Error ? err.message : String(err);
+  }
+}
 
 // ─── Defaults ──────────────────────────────────────────────────
 
@@ -328,9 +343,31 @@ async function fetchWithRedirects(
   }
 
   // wreq-js response (not standard web Response)
-  let wreqResponse: Awaited<ReturnType<typeof wreqFetch>>;
+  await loadWreq();
+
+  // Fallback to global fetch if wreq-js is unavailable
+  const useFallback = !wreqFetch;
+  let response: Response;
+
   try {
-    wreqResponse = await wreqFetch(url, wreqOptions as Parameters<typeof wreqFetch>[1]);
+    if (useFallback) {
+      const fetchHeaders = {
+        Accept: resolveAcceptHeader(format),
+        "Accept-Language": DEFAULT_ACCEPT_LANGUAGE,
+        ...(headers ?? {}),
+      };
+      response = await globalThis.fetch(url, {
+        headers: fetchHeaders,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } else {
+      const wreqResponse = await wreqFetch!(
+        url,
+        wreqOptions as Parameters<NonNullable<typeof wreqFetch>>[1],
+      );
+      // Convert wreq-js response to standard Response-like interface
+      response = wreqResponse as unknown as Response;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -344,13 +381,13 @@ async function fetchWithRedirects(
     };
   }
 
-  const finalUrl = wreqResponse.url ?? url;
-  const contentType = wreqResponse.headers.get("content-type") ?? "";
-  const statusCode = wreqResponse.status;
+  const finalUrl = response.url ?? url;
+  const contentType = response.headers.get("content-type") ?? "";
+  const statusCode = response.status;
 
-  if (!wreqResponse.ok) {
+  if (!response.ok) {
     return {
-      error: `Server returned HTTP ${statusCode} ${wreqResponse.statusText} for ${url}.`,
+      error: `Server returned HTTP ${statusCode} ${response.statusText} for ${url}.`,
       code: "http_error",
       phase: "loading",
       retryable: statusCode >= 500 || statusCode === 429,
@@ -360,7 +397,7 @@ async function fetchWithRedirects(
     };
   }
 
-  const rawBody = await wreqResponse.text();
+  const rawBody = await response.text();
 
   // Handle client-side redirects
   const clientRedirect = extractClientSideRedirect(rawBody, finalUrl);
