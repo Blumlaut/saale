@@ -135,7 +135,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
         onOpenChange(isOpen);
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Create Job</DialogTitle>
         </DialogHeader>
