@@ -165,14 +165,12 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
 
       <DropdownMenu>
         <DropdownMenuTrigger>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 rounded-full text-xs"
+          <span
+            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors hover:bg-white/10 dark:hover:bg-white/5"
             title="More actions"
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
-          </Button>
+          </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           <DropdownMenuItem onClick={handleArchive}>
@@ -720,9 +718,12 @@ export function Inbox() {
               ))}
               <Popover open={addingTag} onOpenChange={setAddingTag}>
                 <PopoverTrigger>
-                  <Button variant="ghost" size="icon" className="h-5 w-5" title="Add tag">
+                  <span
+                    className="inline-flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+                    title="Add tag"
+                  >
                     <Plus className="h-3 w-3" />
-                  </Button>
+                  </span>
                 </PopoverTrigger>
                 <PopoverContent className="w-56" align="start">
                   <div className="flex flex-col gap-2">

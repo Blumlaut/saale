@@ -5,7 +5,6 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { MessageSquarePlus, PanelLeft } from "lucide-react";
-import Link from "next/link";
 
 export default function ChatPage() {
   return (
@@ -19,9 +18,9 @@ export default function ChatPage() {
       <div className="md:hidden">
         <Sheet>
           <SheetTrigger>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5">
               <PanelLeft className="h-4 w-4" />
-            </Button>
+            </span>
           </SheetTrigger>
           <SheetContent side="left" className="w-72 p-0 sm:w-80">
             <div className="h-full">
@@ -42,11 +41,9 @@ export default function ChatPage() {
             <p className="text-muted-foreground mt-1 max-w-sm text-sm">
               Ask questions, brainstorm ideas, or get help with your work.
             </p>
-            <Link
-              href="/api/chat/sessions"
-              className="mt-6 inline-flex"
-              onClick={async (e) => {
-                e.preventDefault();
+            <Button
+              className="mt-6"
+              onClick={async () => {
                 // Fetch user settings for default model
                 let settings: {
                   defaultModelProvider?: string;
@@ -79,11 +76,9 @@ export default function ChatPage() {
                 }
               }}
             >
-              <Button>
-                <MessageSquarePlus className="mr-2 h-4 w-4" />
-                New Chat
-              </Button>
-            </Link>
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              New Chat
+            </Button>
           </div>
         </GlassPanelContent>
       </GlassPanel>

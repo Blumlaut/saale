@@ -1,7 +1,6 @@
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
 import { PanelLeft } from "lucide-react";
 
 export default async function ChatSessionPage({
@@ -22,9 +21,9 @@ export default async function ChatSessionPage({
       <div className="md:hidden">
         <Sheet>
           <SheetTrigger>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5">
               <PanelLeft className="h-4 w-4" />
-            </Button>
+            </span>
           </SheetTrigger>
           <SheetContent side="left" className="w-72 p-0 sm:w-80">
             <div className="h-full">
