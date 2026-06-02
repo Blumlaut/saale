@@ -51,13 +51,39 @@ export async function POST(
     const { client } = await connectCalDAV(testAccountId);
     const calendars = await client.fetchCalendars();
 
-    // If this was a temp account and connection succeeded, rename it
+    // If this was a temp account and connection succeeded, rename and enable it
     if (!accountId || accountId === "new") {
       await prisma.calendarAccount.update({
         where: { id: testAccountId },
         data: {
           name: body.name ?? `CalDAV (${body.username})`,
           enabled: true,
+        },
+      });
+    }
+
+    // Save discovered calendars to the DB
+    for (const remoteCal of calendars) {
+      await prisma.calendar.upsert({
+        where: {
+          accountId_remoteId: {
+            accountId: testAccountId,
+            remoteId: (remoteCal.url as string) || "",
+          },
+        },
+        update: {
+          name: (remoteCal.displayName as string) || remoteCal.url || "Unnamed",
+          color: remoteCal.calendarColor ?? null,
+          description: remoteCal.description ?? null,
+          ctag: remoteCal.ctag ?? null,
+        },
+        create: {
+          accountId: testAccountId,
+          remoteId: (remoteCal.url as string) || "",
+          name: (remoteCal.displayName as string) || remoteCal.url || "Unnamed",
+          color: remoteCal.calendarColor ?? null,
+          description: remoteCal.description ?? null,
+          ctag: remoteCal.ctag ?? null,
         },
       });
     }
