@@ -1,0 +1,304 @@
+"use client";
+
+import { useEffect, useState, useMemo, useRef } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Brain, Loader2, Search, Sparkles, ChevronDown, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  providerName: string;
+  reasoning: boolean | undefined;
+  contextWindow: number | undefined;
+}
+
+interface ModelsApiResponse {
+  models: Record<
+    string,
+    Array<{ id: string; name: string; reasoning?: boolean; contextWindow?: number }>
+  >;
+  providers?: Array<{ id: string; name: string }>;
+}
+
+interface ModelPickerProps {
+  /** Selected value in "provider/modelId" format */
+  value: string;
+  /** Callback with new value in "provider/modelId" format */
+  onChange: (value: string) => void;
+  /** Optional class for the trigger button */
+  className?: string;
+  /** Placeholder when no model is selected */
+  placeholder?: string;
+  /** Whether to show the trigger as compact (icon + name only) */
+  compact?: boolean;
+}
+
+/**
+ * Shared model picker component.
+ * - Fetches enabled models from /api/providers/models
+ * - Groups by provider
+ * - Built-in search
+ * - Keyboard navigation
+ * - Used everywhere a model needs to be selected
+ */
+export function ModelPicker({
+  value,
+  onChange,
+  className,
+  placeholder = "Select model",
+  compact = false,
+}: ModelPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/providers/models")
+      .then((r) => r.json())
+      .then((data: ModelsApiResponse) => {
+        const all: ModelInfo[] = [];
+        if (data.models) {
+          for (const [provider, modelsList] of Object.entries(data.models)) {
+            const providerName =
+              (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
+            for (const m of modelsList) {
+              all.push({
+                id: m.id,
+                name: m.name,
+                provider,
+                providerName,
+                reasoning: m.reasoning,
+                contextWindow: m.contextWindow,
+              });
+            }
+          }
+        }
+        setModels(all);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Reset search and highlight when opening
+  useEffect(() => {
+    if (open) {
+      setSearch("");
+      setHighlightIndex(-1);
+      // Focus search input after a tick for the popover to render
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  // Group by provider
+  const grouped = useMemo(() => {
+    const groups: Record<string, ModelInfo[]> = {};
+    for (const m of models) {
+      if (!groups[m.provider]) groups[m.provider] = [];
+      groups[m.provider]!.push(m);
+    }
+    return groups;
+  }, [models]);
+
+  // Filter by search
+  const filteredGroups = useMemo(() => {
+    if (!search.trim()) return grouped;
+    const q = search.toLowerCase();
+    const result: Record<string, ModelInfo[]> = {};
+    for (const [provider, providerModels] of Object.entries(grouped)) {
+      const filtered = providerModels.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          provider.toLowerCase().includes(q) ||
+          m.providerName.toLowerCase().includes(q),
+      );
+      if (filtered.length > 0) {
+        result[provider] = filtered;
+      }
+    }
+    return result;
+  }, [grouped, search]);
+
+  // Flat list for keyboard navigation
+  const flatList = useMemo(() => {
+    const items: Array<{ model: ModelInfo; providerKey: string }> = [];
+    for (const [providerKey, providerModels] of Object.entries(filteredGroups)) {
+      for (const m of providerModels) {
+        items.push({ model: m, providerKey });
+      }
+    }
+    return items;
+  }, [filteredGroups]);
+
+  const selected = models.find((m) => `${m.provider}/${m.id}` === value);
+
+  const handleSelect = (modelValue: string) => {
+    onChange(modelValue);
+    setOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIndex((prev) => Math.min(prev + 1, flatList.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Enter" && highlightIndex >= 0 && flatList[highlightIndex]) {
+      e.preventDefault();
+      const item = flatList[highlightIndex]!;
+      handleSelect(`${item.model.provider}/${item.model.id}`);
+    }
+  };
+
+  const totalFiltered = flatList.length;
+  const hasResults = totalFiltered > 0;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "h-7 gap-1.5 px-2 shadow-none hover:bg-white/10 dark:hover:bg-white/5",
+            compact ? "min-w-0" : "",
+            className,
+          )}
+        >
+          {loading ? (
+            <Loader2 className="text-muted-foreground animate-shrink h-3.5 w-3.5" />
+          ) : (
+            <Brain className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          )}
+          <span className="truncate text-sm">
+            {loading ? "Loading..." : selected ? selected.name : placeholder}
+          </span>
+          <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-[340px] gap-0 p-0" align="start">
+        {/* Search */}
+        <div className="p-2 pb-1">
+          <div className="relative">
+            <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+            <Input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search models..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setHighlightIndex(-1);
+              }}
+              onKeyDown={handleKeyDown}
+              className="h-8 pl-8 text-sm"
+            />
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Model list */}
+        <ScrollArea className="max-h-[320px]">
+          <div className="p-1" onKeyDown={handleKeyDown}>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+              </div>
+            ) : !hasResults && search ? (
+              <div className="py-8 text-center">
+                <p className="text-muted-foreground text-sm">No models found</p>
+              </div>
+            ) : !hasResults ? (
+              <div className="py-8 text-center">
+                <p className="text-muted-foreground text-sm">No models available</p>
+                <p className="text-muted-foreground mt-1 text-xs">Add an API key in Settings</p>
+              </div>
+            ) : (
+              Object.entries(filteredGroups).map(([providerKey, providerModels]) => (
+                <div key={providerKey}>
+                  {/* Provider label */}
+                  <div className="px-2.5 py-1.5">
+                    <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                      {providerModels[0]?.providerName ?? providerKey}
+                    </span>
+                  </div>
+
+                  {providerModels.map((model) => {
+                    const modelValue = `${model.provider}/${model.id}`;
+                    const isSelected = modelValue === value;
+                    const flatIndex = flatList.findIndex(
+                      (item) =>
+                        item.model.id === model.id && item.model.provider === model.provider,
+                    );
+                    const isHighlighted = flatIndex === highlightIndex;
+
+                    return (
+                      <button
+                        key={model.id}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
+                          isHighlighted
+                            ? "bg-white/15 dark:bg-white/10"
+                            : "hover:bg-white/10 dark:hover:bg-white/5",
+                          isSelected && "bg-primary/10",
+                        )}
+                        onClick={() => handleSelect(modelValue)}
+                        onMouseEnter={() => setHighlightIndex(flatIndex)}
+                      >
+                        {/* Check indicator */}
+                        <div className="flex h-4 w-4 shrink-0 items-center justify-center">
+                          {isSelected && <Check className="text-primary h-3.5 w-3.5" />}
+                        </div>
+
+                        {/* Model info */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={cn("truncate text-sm", isSelected ? "font-medium" : "")}
+                            >
+                              {model.name}
+                            </span>
+                            {model.reasoning && (
+                              <Sparkles className="text-muted-foreground h-3 w-3 shrink-0" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {/* Separator between providers */}
+                  {Object.keys(filteredGroups).indexOf(providerKey) <
+                    Object.keys(filteredGroups).length - 1 && <Separator className="mx-1 my-1" />}
+                </div>
+              ))
+            )}
+          </div>
+        </ScrollArea>
+
+        {/* Footer */}
+        {hasResults && (
+          <>
+            <Separator />
+            <div className="px-3 py-1.5">
+              <span className="text-muted-foreground text-[11px]">
+                {totalFiltered} model{totalFiltered !== 1 ? "s" : ""} available
+              </span>
+            </div>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}

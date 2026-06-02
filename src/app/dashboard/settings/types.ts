@@ -11,6 +11,7 @@ export interface UserSettings {
   agentSystemPrompt: string | null;
   emailWritingStyle: string | null;
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
+  disabledModels: string[] | null; // Array of "provider:modelId" strings
 }
 
 export interface EmailAccount {

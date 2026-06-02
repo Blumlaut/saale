@@ -33,9 +33,17 @@ export async function GET() {
   // Fetch available models for AI job types
   const { models, modelRegistry } = await buildModelRegistry(session.user.id);
 
+  // Filter out disabled models
+  const settings = await prisma.appSettings.findUnique({
+    where: { userId: session.user.id },
+    select: { disabledModels: true },
+  });
+  const disabledSet = new Set((settings?.disabledModels as string[] | null) ?? []);
+  const enabledModels = models.filter((m) => !disabledSet.has(`${m.provider}:${m.id}`));
+
   const modelOptions = [
     { value: "", label: "Auto (use default)" },
-    ...models.map((m) => ({
+    ...enabledModels.map((m) => ({
       value: `${m.provider}:${m.id}`,
       label: `${m.name} (${modelRegistry.getProviderDisplayName(m.provider)})`,
     })),

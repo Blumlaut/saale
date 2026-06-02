@@ -37,6 +37,7 @@ export async function GET() {
       agentSystemPrompt: settings.agentSystemPrompt,
       emailWritingStyle: settings.emailWritingStyle,
       purposeModelOverrides: settings.purposeModelOverrides,
+      disabledModels: settings.disabledModels,
     },
   });
 }
@@ -73,6 +74,7 @@ export async function PATCH(request: NextRequest) {
       agentSystemPrompt: settings.agentSystemPrompt,
       emailWritingStyle: settings.emailWritingStyle,
       purposeModelOverrides: settings.purposeModelOverrides,
+      disabledModels: settings.disabledModels,
     },
   });
 }
