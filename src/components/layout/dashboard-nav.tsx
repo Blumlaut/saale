@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Mail,
   ListTodo,
+  Calendar,
   Settings,
   ChevronRight,
   ChevronDown,
@@ -29,6 +30,7 @@ import { useTheme } from "next-themes";
 
 const navItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
+  { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];

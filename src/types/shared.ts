@@ -34,3 +34,20 @@ export interface JobSchema {
   usesAi?: boolean;
   fields: FieldDef[];
 }
+
+// --- Calendar ---
+
+export interface CalendarEvent {
+  id: string;
+  uid: string;
+  calendarId: string;
+  calendarName: string;
+  calendarColor: string | null;
+  summary: string;
+  description: string | null;
+  location: string | null;
+  dtStart: string;
+  dtEnd: string | null;
+  allDay: boolean;
+  source: string;
+}
