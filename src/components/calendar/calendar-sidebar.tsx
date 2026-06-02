@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { CalendarDays, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -279,16 +278,15 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5 pl-2">
-                        <Switch
-                          checked={cal.enabled}
-                          onCheckedChange={(v) => handleToggleCalendar(cal.id, v)}
-                          className="data-[state=checked]:bg-foreground/60 data-[state=unchecked]:bg-foreground/20 [&_[data-slot=switch-thumb]]:data-[state=unchecked]:border-foreground/40 h-3.5 w-6 [&_[data-slot=switch-thumb]]:h-2.5 [&_[data-slot=switch-thumb]]:w-2.5"
-                        />
-                        <span
-                          className="h-2 w-2 shrink-0 rounded-full"
+                        <button
+                          onClick={() => handleToggleCalendar(cal.id, !cal.enabled)}
+                          className={`h-2 w-2 shrink-0 rounded-full transition-opacity ${
+                            cal.enabled ? "" : "opacity-30"
+                          }`}
                           style={{
                             backgroundColor: cal.color || "var(--muted-foreground)",
                           }}
+                          title={cal.enabled ? "Hide calendar" : "Show calendar"}
                         />
                         <span className="text-muted-foreground truncate text-[11px]">
                           {cal.name}

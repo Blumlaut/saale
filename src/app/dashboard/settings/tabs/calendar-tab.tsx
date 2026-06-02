@@ -82,6 +82,12 @@ export function CalendarTab() {
   } | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+  const [syncResult, setSyncResult] = useState<{
+    id: string;
+    created: number;
+    updated: number;
+    deleted: number;
+  } | null>(null);
 
   const loadData = async () => {
     try {
@@ -145,6 +151,49 @@ export function CalendarTab() {
 
       if (method === "DELETE") {
         await deleteJson(url);
+      } else if (action === "sync-sub") {
+        const res = await postJson<{
+          sync: {
+            eventsCreated: number;
+            eventsUpdated: number;
+            eventsDeleted: number;
+            error: string | null;
+          };
+        }>(url, {});
+        if (res.sync?.error) {
+          setAlertError(res.sync.error);
+          setPendingAction({ id, action, type });
+          setAlertOpen(true);
+        } else {
+          setSyncResult({
+            id,
+            created: res.sync.eventsCreated,
+            updated: res.sync.eventsUpdated,
+            deleted: res.sync.eventsDeleted,
+          });
+        }
+      } else if (action === "sync") {
+        const res = await postJson<{
+          sync: {
+            calendarsSynced: number;
+            eventsCreated: number;
+            eventsUpdated: number;
+            eventsDeleted: number;
+            errors: string[];
+          };
+        }>(url, {});
+        if (res.sync?.errors?.length) {
+          setAlertError(res.sync.errors.join("; "));
+          setPendingAction({ id, action, type });
+          setAlertOpen(true);
+        } else {
+          setSyncResult({
+            id,
+            created: res.sync.eventsCreated,
+            updated: res.sync.eventsUpdated,
+            deleted: res.sync.eventsDeleted,
+          });
+        }
       } else {
         await postJson(url, {});
       }
@@ -448,6 +497,19 @@ export function CalendarTab() {
                         )}
                       </div>
                     )}
+
+                    {/* Sync result */}
+                    {syncResult?.id === account.id && (
+                      <div className="text-muted-foreground border-border/50 border-t px-4 py-2 text-xs">
+                        {syncResult.created > 0 && `${syncResult.created} new · `}
+                        {syncResult.updated > 0 && `${syncResult.updated} updated · `}
+                        {syncResult.deleted > 0 && `${syncResult.deleted} removed · `}
+                        {syncResult.created === 0 &&
+                          syncResult.updated === 0 &&
+                          syncResult.deleted === 0 &&
+                          "No changes"}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -495,75 +557,92 @@ export function CalendarTab() {
                 const isBusy = actionLoading === "sync-sub:" + sub.id;
 
                 return (
-                  <div
-                    key={sub.id}
-                    className="border-border/50 bg-background/40 flex items-center justify-between rounded-2xl border p-4"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium">{sub.name}</p>
-                        {!sub.enabled && (
-                          <span className="text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5 text-[10px]">
-                            Disabled
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-muted-foreground text-xs">
-                        {sub.calendarName}
-                        {sub.lastSyncedAt
-                          ? ` · Last synced ${new Date(sub.lastSyncedAt).toLocaleString()}`
-                          : " · Never synced"}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-xs">Enable</span>
-                        <Switch
-                          checked={sub.enabled}
-                          onCheckedChange={(v) => handleToggleSubscriptionEnabled(sub.id, v)}
-                        />
+                  <>
+                    <div
+                      key={sub.id}
+                      className="border-border/50 bg-background/40 flex items-center justify-between rounded-2xl border p-4"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{sub.name}</p>
+                          {!sub.enabled && (
+                            <span className="text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5 text-[10px]">
+                              Disabled
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-muted-foreground text-xs">
+                          {sub.calendarName}
+                          {sub.lastSyncedAt
+                            ? ` · Last synced ${new Date(sub.lastSyncedAt).toLocaleString()}`
+                            : " · Never synced"}
+                        </p>
                       </div>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-xs">Enable</span>
+                          <Switch
+                            checked={sub.enabled}
+                            onCheckedChange={(v) => handleToggleSubscriptionEnabled(sub.id, v)}
+                          />
+                        </div>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                disabled={isBusy}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleActionRequest(sub.id, "sync-sub", "subscription")
+                              }
                               disabled={isBusy}
                             >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleActionRequest(sub.id, "sync-sub", "subscription")}
-                            disabled={isBusy}
-                          >
-                            {isBusy ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            Sync Now
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              handleActionRequest(sub.id, "delete-sub", "subscription")
-                            }
-                            disabled={isBusy}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                              {isBusy ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                              )}
+                              Sync Now
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleActionRequest(sub.id, "delete-sub", "subscription")
+                              }
+                              disabled={isBusy}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Remove
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                  </div>
+
+                    {/* Sync result */}
+                    {syncResult?.id === sub.id && (
+                      <div className="text-muted-foreground -mt-1 px-4 text-xs">
+                        {syncResult.created > 0 && `${syncResult.created} new · `}
+                        {syncResult.updated > 0 && `${syncResult.updated} updated · `}
+                        {syncResult.deleted > 0 && `${syncResult.deleted} removed · `}
+                        {syncResult.created === 0 &&
+                          syncResult.updated === 0 &&
+                          syncResult.deleted === 0 &&
+                          "No changes"}
+                      </div>
+                    )}
+                  </>
                 );
               })}
             </div>
