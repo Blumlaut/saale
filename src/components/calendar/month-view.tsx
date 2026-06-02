@@ -46,8 +46,17 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
     d.getFullYear() === today.getFullYear();
 
   const getEventsForDay = (d: Date) => {
-    const dayStr = d.toDateString();
-    return events.filter((e) => new Date(e.dtStart).toDateString() === dayStr);
+    const dayTime = d.getTime();
+    return events.filter((e) => {
+      const start = new Date(e.dtStart).getTime();
+      if (e.allDay) {
+        // For all-day events, dtEnd is exclusive (the day after the last day)
+        // Check if the day falls within [dtStart, dtEnd)
+        const end = e.dtEnd ? new Date(e.dtEnd).getTime() : start;
+        return dayTime >= start && dayTime < end;
+      }
+      return start === dayTime;
+    });
   };
 
   return (

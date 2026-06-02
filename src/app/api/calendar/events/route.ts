@@ -24,11 +24,20 @@ export async function GET(request: NextRequest) {
     },
   };
 
-  const dtStartFilter: Record<string, unknown> = {};
-  if (from) dtStartFilter.gte = new Date(from);
-  if (to) dtStartFilter.lte = new Date(to);
-  if (Object.keys(dtStartFilter).length > 0) {
-    where.dtStart = dtStartFilter;
+  // Date range: include events that START within range OR SPAN across range
+  // Combine: (dtStart >= from AND dtStart <= to) OR (dtStart < from AND dtEnd >= from)
+  if (from && to) {
+    where.OR = [
+      { dtStart: { gte: new Date(from), lte: new Date(to) } },
+      { dtStart: { lt: new Date(from) }, dtEnd: { gte: new Date(from) } },
+    ];
+  } else if (from) {
+    where.OR = [
+      { dtStart: { gte: new Date(from) } },
+      { dtStart: { lt: new Date(from) }, dtEnd: { gte: new Date(from) } },
+    ];
+  } else if (to) {
+    where.dtStart = { lte: new Date(to) };
   }
 
   if (calendarIds) {

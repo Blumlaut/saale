@@ -13,10 +13,17 @@ interface DayViewProps {
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayViewProps) {
-  const dayStr = date.toDateString();
-  const dayEvents = events.filter(
-    (e) => new Date(e.dtStart).toDateString() === dayStr && !e.allDay,
-  );
+  const dayTime = date.getTime();
+  const dayEvents = events.filter((e) => {
+    if (e.allDay) return false;
+    return new Date(e.dtStart).toDateString() === date.toDateString();
+  });
+  const allDayEvents = events.filter((e) => {
+    if (!e.allDay) return false;
+    const start = new Date(e.dtStart).getTime();
+    const end = e.dtEnd ? new Date(e.dtEnd).getTime() : start;
+    return dayTime >= start && dayTime < end;
+  });
 
   const today = new Date();
   const isToday =
@@ -37,6 +44,38 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
         </span>
         {isToday && <span className="text-muted-foreground ml-2 text-xs">(Today)</span>}
       </div>
+
+      {/* All-day events */}
+      {allDayEvents.length > 0 && (
+        <div className="space-y-1">
+          {allDayEvents.map((evt) => (
+            <button
+              key={evt.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEventClick(evt);
+              }}
+              className={cn(
+                "w-full rounded-lg p-2 text-left transition-colors hover:brightness-110",
+                "bg-primary/10",
+              )}
+              style={
+                evt.calendarColor
+                  ? {
+                      backgroundColor: evt.calendarColor + "20",
+                      color: evt.calendarColor,
+                    }
+                  : undefined
+              }
+            >
+              <div className="text-xs font-medium">{evt.summary}</div>
+              {evt.location && (
+                <div className="text-muted-foreground text-[10px]">{evt.location}</div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Time grid */}
       <div className="max-h-[600px] overflow-y-auto">
