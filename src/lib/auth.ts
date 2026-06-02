@@ -74,3 +74,30 @@ export async function requireAccountOwner(
 
   return { ok: true, account };
 }
+
+/**
+ * Require a calendar account owned by the current user.
+ * Returns the account if found, or a 401/404 NextResponse.
+ */
+export async function requireCalendarAccountOwner(
+  accountId: string,
+): Promise<
+  | { ok: true; account: NonNullable<Awaited<ReturnType<typeof prisma.calendarAccount.findFirst>>> }
+  | { ok: false; response: NextResponse }
+> {
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult;
+
+  const account = await prisma.calendarAccount.findFirst({
+    where: { id: accountId, userId: authResult.user.id },
+  });
+
+  if (!account) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Not found" }, { status: 404 }),
+    };
+  }
+
+  return { ok: true, account };
+}

@@ -1,0 +1,141 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+
+/**
+ * GET /api/calendar/events/:eventId — Get a single event
+ */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ eventId: string }> },
+) {
+  const { eventId } = await params;
+
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
+
+  const event = await prisma.calendarEvent.findFirst({
+    where: {
+      id: eventId,
+      calendar: { account: { userId: authResult.user.id } },
+    },
+    include: {
+      calendar: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
+        },
+      },
+    },
+  });
+
+  if (!event) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    event: {
+      id: event.id,
+      uid: event.uid,
+      calendarId: event.calendarId,
+      calendarName: event.calendar.name,
+      calendarColor: event.calendar.color,
+      summary: event.summary,
+      description: event.description,
+      location: event.location,
+      url: event.url,
+      status: event.status,
+      transparency: event.transparency,
+      dtStart: event.dtStart.toISOString(),
+      dtEnd: event.dtEnd?.toISOString() ?? null,
+      allDay: event.allDay,
+      timeZone: event.timeZone,
+      recurrenceRule: event.recurrenceRule,
+      source: event.source,
+      createdAt: event.createdAt.toISOString(),
+      updatedAt: event.updatedAt.toISOString(),
+    },
+  });
+}
+
+/**
+ * PATCH /api/calendar/events/:eventId — Update an event
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ eventId: string }> },
+) {
+  const { eventId } = await params;
+
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
+
+  const event = await prisma.calendarEvent.findFirst({
+    where: {
+      id: eventId,
+      calendar: { account: { userId: authResult.user.id } },
+    },
+  });
+  if (!event) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const body = await request.json();
+  const updateData: Record<string, unknown> = {};
+
+  if (body.summary !== undefined) updateData.summary = body.summary;
+  if (body.description !== undefined) updateData.description = body.description;
+  if (body.location !== undefined) updateData.location = body.location;
+  if (body.dtStart !== undefined) updateData.dtStart = new Date(body.dtStart);
+  if (body.dtEnd !== undefined) updateData.dtEnd = body.dtEnd ? new Date(body.dtEnd) : null;
+  if (body.allDay !== undefined) updateData.allDay = body.allDay;
+  if (body.timeZone !== undefined) updateData.timeZone = body.timeZone;
+  if (body.recurrenceRule !== undefined) updateData.recurrenceRule = body.recurrenceRule;
+  if (body.status !== undefined) updateData.status = body.status;
+  if (body.transparency !== undefined) updateData.transparency = body.transparency;
+
+  const updated = await prisma.calendarEvent.update({
+    where: { id: eventId },
+    data: updateData,
+  });
+
+  return NextResponse.json({
+    event: {
+      id: updated.id,
+      summary: updated.summary,
+      dtStart: updated.dtStart.toISOString(),
+      dtEnd: updated.dtEnd?.toISOString() ?? null,
+      updatedAt: updated.updatedAt.toISOString(),
+    },
+  });
+}
+
+/**
+ * DELETE /api/calendar/events/:eventId — Delete an event
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ eventId: string }> },
+) {
+  const { eventId } = await params;
+
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
+
+  const event = await prisma.calendarEvent.findFirst({
+    where: {
+      id: eventId,
+      calendar: { account: { userId: authResult.user.id } },
+    },
+  });
+  if (!event) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  await prisma.calendarEvent.delete({
+    where: { id: eventId },
+  });
+
+  return NextResponse.json({ ok: true });
+}
