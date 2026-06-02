@@ -10,12 +10,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ModelPicker } from "@/components/shared/model-picker";
 
 export interface FieldDef {
   key: string;
   label: string;
   description?: string;
-  type: "text" | "number" | "select" | "boolean";
+  type: "text" | "number" | "select" | "boolean" | "model";
   default?: unknown;
   options?: Array<{ value: string; label: string }>;
   min?: number;
@@ -84,6 +85,37 @@ export function ConfigForm({ fields, values, onChange }: ConfigFormProps) {
               />
             )}
 
+            {field.type === "model" && (
+              <div className="space-y-1.5">
+                {/*
+                  ModelPicker uses "provider/modelId" format internally.
+                  Job config uses "provider:modelId" format.
+                  Convert between the two.
+                */}
+                {(() => {
+                  const rawValue = (value as string) ?? "";
+                  // Convert "provider:modelId" -> "provider/modelId"
+                  const pickerValue = rawValue.includes(":")
+                    ? rawValue.replace(":", "/")
+                    : rawValue;
+
+                  return (
+                    <ModelPicker
+                      value={pickerValue}
+                      onChange={(pickerVal) => {
+                        // Convert "provider/modelId" -> "provider:modelId"
+                        const configVal = pickerVal.includes("/")
+                          ? pickerVal.split("/").join(":")
+                          : pickerVal;
+                        onChange(field.key, configVal);
+                      }}
+                      placeholder="Auto (use default)"
+                    />
+                  );
+                })()}
+              </div>
+            )}
+
             {field.type === "select" && (
               <Select value={(value as string) ?? ""} onValueChange={(v) => onChange(field.key, v)}>
                 <SelectTrigger id={`config-${field.key}`}>
@@ -128,6 +160,15 @@ export function ConfigDisplay({
         let display: string;
         if (field.type === "boolean") {
           display = value ? "Yes" : "No";
+        } else if (field.type === "model") {
+          // Format "provider:modelId" as "modelId (provider)"
+          const rawValue = String(value);
+          if (rawValue.includes(":")) {
+            const [provider, ...nameParts] = rawValue.split(":");
+            display = `${nameParts.join(":")} (${provider})`;
+          } else {
+            display = rawValue || "Default";
+          }
         } else if (field.type === "select" && field.options) {
           const opt = field.options.find((o) => o.value === String(value));
           display = opt?.label ?? String(value);
