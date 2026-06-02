@@ -132,11 +132,15 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "summarization") {
+      const whereClause: Record<string, unknown> = {
+        ...(config.accountId ? { accountId: config.accountId } : {}),
+        aiSummary: null,
+      };
+      if (config.maxEmailAge && config.maxEmailAge > 0) {
+        whereClause.date = { gte: new Date(Date.now() - config.maxEmailAge * 60 * 60 * 1000) };
+      }
       const emails = await prisma.emailMessage.findMany({
-        where: {
-          ...(config.accountId ? { accountId: config.accountId } : {}),
-          aiSummary: null,
-        },
+        where: whereClause,
         orderBy: { date: "desc" },
         take: config.limit ?? 10,
         select: {
@@ -193,11 +197,15 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "classification") {
+      const whereClause: Record<string, unknown> = {
+        ...(config.accountId ? { accountId: config.accountId } : {}),
+        classified: false,
+      };
+      if (config.maxEmailAge && config.maxEmailAge > 0) {
+        whereClause.date = { gte: new Date(Date.now() - config.maxEmailAge * 60 * 60 * 1000) };
+      }
       const emails = await prisma.emailMessage.findMany({
-        where: {
-          ...(config.accountId ? { accountId: config.accountId } : {}),
-          classified: false,
-        },
+        where: whereClause,
         orderBy: { date: "desc" },
         take: config.limit ?? 10,
         select: {
@@ -262,12 +270,16 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "spam_filtering") {
+      const whereClause: Record<string, unknown> = {
+        ...(config.accountId ? { accountId: config.accountId } : {}),
+        folder: "INBOX",
+        spamScore: null,
+      };
+      if (config.maxEmailAge && config.maxEmailAge > 0) {
+        whereClause.date = { gte: new Date(Date.now() - config.maxEmailAge * 60 * 60 * 1000) };
+      }
       const emails = await prisma.emailMessage.findMany({
-        where: {
-          ...(config.accountId ? { accountId: config.accountId } : {}),
-          folder: "INBOX",
-          spamScore: null,
-        },
+        where: whereClause,
         orderBy: { date: "desc" },
         take: config.limit ?? 20,
         select: {
