@@ -18,6 +18,7 @@ export async function GET() {
     select: {
       id: true,
       name: true,
+      accountType: true,
       serverUrl: true,
       username: true,
       authMethod: true,
@@ -44,6 +45,7 @@ export async function GET() {
     accounts: accounts.map((a) => ({
       id: a.id,
       name: a.name,
+      accountType: a.accountType,
       serverUrl: a.serverUrl,
       username: a.username,
       authMethod: a.authMethod,
