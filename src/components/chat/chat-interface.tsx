@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
 import { InputBar, type ToolConfig } from "./input-bar";
-import { ModelSelector } from "./model-selector";
+import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { Loader2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -529,7 +529,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
         {/* Model & thinking selectors — hidden on small mobile */}
         <div className="ml-auto flex items-center gap-1">
-          <ModelSelector value={modelId} onChange={setModelId} />
+          <ModelPicker value={modelId} onChange={setModelId} />
           <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
         </div>
       </div>

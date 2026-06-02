@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Bot,
   Loader2,
@@ -18,9 +19,10 @@ import {
   Search,
   RotateCcw,
   Globe,
+  EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { getAllPurposes } from "@/lib/pi/purposes";
 import type {
   UserSettings,
@@ -37,6 +39,11 @@ interface AiModelsTabProps {
   saving: boolean;
   saveStatus: "idle" | "success" | "error";
   onSave: () => Promise<void>;
+}
+
+interface FullModelInfo extends AvailableModel {
+  provider: string;
+  providerName: string;
 }
 
 const thinkingLevels = [
@@ -96,8 +103,41 @@ export function AiModelsTab({
 }: AiModelsTabProps) {
   const [search, setSearch] = useState("");
   const [activePurpose, setActivePurpose] = useState<string>("__default__");
+  const [allModels, setAllModels] = useState<FullModelInfo[]>([]);
+  const [disabledSet, setDisabledSet] = useState<Set<string>>(new Set());
 
   const purposes = useMemo(() => getAllPurposes(), []);
+
+  // Fetch ALL models (including disabled) for the settings page
+  useEffect(() => {
+    fetch("/api/providers/models?includeDisabled=true")
+      .then((r) => r.json())
+      .then(
+        (data: {
+          models: Record<string, AvailableModel[]>;
+          providers?: Array<{ id: string; name: string }>;
+          disabledModels?: string[];
+        }) => {
+          const all: FullModelInfo[] = [];
+          if (data.models) {
+            for (const [provider, modelsList] of Object.entries(data.models)) {
+              const providerName =
+                (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
+              for (const m of modelsList) {
+                all.push({
+                  ...m,
+                  provider,
+                  providerName,
+                });
+              }
+            }
+          }
+          setAllModels(all);
+          setDisabledSet(new Set(data.disabledModels ?? []));
+        },
+      )
+      .catch(() => {});
+  }, []);
 
   // Build a flat list of providers with their models
   const providersWithModels = availableModelProviders
@@ -107,19 +147,56 @@ export function AiModelsTab({
     }))
     .filter((p) => p.models.length > 0);
 
-  // Filter by search query
-  const filteredProviders = useMemo(() => {
-    if (!search.trim()) return providersWithModels;
+  // Group all models (including disabled) by provider
+  const allByProvider = useMemo(() => {
+    const groups: Record<string, FullModelInfo[]> = {};
+    for (const m of allModels) {
+      if (!groups[m.provider]) groups[m.provider] = [];
+      groups[m.provider]!.push(m);
+    }
+    // Sort models within each provider
+    for (const key of Object.keys(groups)) {
+      groups[key]!.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return groups;
+  }, [allModels]);
+
+  // Filter by search query (includes disabled models)
+  const filteredAllProviders = useMemo(() => {
+    if (!search.trim()) return allByProvider;
     const q = search.toLowerCase();
-    return providersWithModels
-      .map((p) => ({
-        ...p,
-        models: p.models.filter(
-          (m) => m.name.toLowerCase().includes(q) || p.name.toLowerCase().includes(q),
-        ),
-      }))
-      .filter((p) => p.models.length > 0);
-  }, [providersWithModels, search]);
+    const result: Record<string, FullModelInfo[]> = {};
+    for (const [provider, providerModels] of Object.entries(allByProvider)) {
+      const providerName = providerModels[0]?.providerName ?? provider;
+      const filtered = providerModels.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          provider.toLowerCase().includes(q) ||
+          providerName.toLowerCase().includes(q),
+      );
+      if (filtered.length > 0) {
+        result[provider] = filtered;
+      }
+    }
+    return result;
+  }, [allByProvider, search]);
+
+  const isDisabled = (provider: string, modelId: string) =>
+    disabledSet.has(`${provider}:${modelId}`);
+
+  const handleToggleModel = (provider: string, modelId: string) => {
+    if (!settings) return;
+    const key = `${provider}:${modelId}`;
+    const current = settings.disabledModels ?? [];
+    const updated = isDisabled(provider, modelId)
+      ? current.filter((k) => k !== key)
+      : [...current, key];
+    onSettingsChange({
+      ...settings,
+      disabledModels: updated.length > 0 ? updated : null,
+    });
+    setDisabledSet(new Set(updated));
+  };
 
   // Determine which model is selected for the active purpose
   const effectiveModel = useMemo(
@@ -214,7 +291,7 @@ export function AiModelsTab({
 
             <ScrollArea className="h-[300px] lg:h-[400px]">
               <div className="px-3 pb-3">
-                {providersWithModels.length === 0 ? (
+                {allModels.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <Sparkles className="text-muted-foreground/50 mb-3 h-8 w-8" />
                     <p className="text-sm font-medium">No models available</p>
@@ -222,45 +299,49 @@ export function AiModelsTab({
                       Add an API key in the Model Providers tab to get started.
                     </p>
                   </div>
-                ) : filteredProviders.length === 0 ? (
+                ) : Object.keys(filteredAllProviders).length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <Search className="text-muted-foreground/50 mb-3 h-8 w-8" />
                     <p className="text-sm font-medium">No models match your search</p>
                     <p className="text-muted-foreground mt-1 text-xs">Try a different keyword</p>
                   </div>
                 ) : (
-                  filteredProviders.map((provider) => (
-                    <div key={provider.id} className="mb-1">
+                  Object.entries(filteredAllProviders).map(([providerKey, providerModels]) => (
+                    <div key={providerKey} className="mb-1">
                       {/* Provider label */}
                       <div className="px-3 py-2">
                         <span className="text-muted-foreground text-xs font-medium">
-                          {provider.name}
+                          {providerModels[0]?.providerName ?? providerKey}
                         </span>
                       </div>
 
                       {/* Models */}
-                      {provider.models.map((model) => {
+                      {providerModels.map((model) => {
                         const isSelected =
-                          effectiveModel?.provider === provider.id &&
+                          effectiveModel?.provider === providerKey &&
                           effectiveModel?.model === model.id;
+                        const disabled = isDisabled(providerKey, model.id);
 
                         return (
-                          <Button
+                          <div
                             key={model.id}
-                            variant="ghost"
                             className={cn(
-                              "w-full shrink-0 justify-start gap-3 rounded-xl px-3 py-2.5",
-                              isSelected
-                                ? "bg-primary/10 text-foreground dark:bg-primary/10"
-                                : "hover:bg-white/20 dark:hover:bg-white/5",
+                              "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors",
+                              !disabled && "cursor-pointer hover:bg-white/20 dark:hover:bg-white/5",
+                              disabled && "opacity-50",
+                              isSelected && !disabled && "bg-primary/10",
                             )}
-                            onClick={() => handleSelectModel(provider.id, model.id)}
+                            onClick={() => {
+                              if (!disabled) {
+                                handleSelectModel(providerKey, model.id);
+                              }
+                            }}
                           >
                             {/* Selection indicator */}
                             <div
                               className={cn(
                                 "h-2 w-2 shrink-0 rounded-full transition-colors",
-                                isSelected ? "bg-primary" : "bg-muted-foreground/30",
+                                isSelected && !disabled ? "bg-primary" : "bg-muted-foreground/30",
                               )}
                             />
 
@@ -271,6 +352,7 @@ export function AiModelsTab({
                                   className={cn(
                                     "truncate text-sm",
                                     isSelected ? "font-medium" : "font-normal",
+                                    disabled && "line-through",
                                   )}
                                 >
                                   {model.name}
@@ -281,6 +363,9 @@ export function AiModelsTab({
                                     Reasoning
                                   </Badge>
                                 )}
+                                {disabled && (
+                                  <EyeOff className="text-muted-foreground h-3 w-3 shrink-0" />
+                                )}
                               </div>
                               {model.contextWindow && model.contextWindow > 0 && (
                                 <span className="text-muted-foreground text-xs">
@@ -290,8 +375,20 @@ export function AiModelsTab({
                             </div>
 
                             {/* Active check */}
-                            {isSelected && <CheckCircle className="text-primary h-4 w-4" />}
-                          </Button>
+                            {isSelected && !disabled && (
+                              <CheckCircle className="text-primary h-4 w-4 shrink-0" />
+                            )}
+
+                            {/* Enable/disable toggle */}
+                            <Switch
+                              checked={!disabled}
+                              onCheckedChange={() => {
+                                handleToggleModel(providerKey, model.id);
+                              }}
+                              className="scale-75 data-[state=unchecked]:opacity-50"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
                         );
                       })}
                     </div>
