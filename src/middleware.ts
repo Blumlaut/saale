@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
 
 /**
  * Simple in-memory rate limiter.
@@ -11,7 +10,6 @@ const RATE_LIMIT_MAX = 60; // requests per window
 
 function getRateLimitKey(request: NextRequest): string {
   // Use IP address as the rate limit key
-  // `ip` is available on NextRequest in Next.js 15+ but not typed in older versions
   const reqWithIp = request as NextRequest & { ip?: string };
   const ip =
     reqWithIp.ip ??
@@ -38,12 +36,6 @@ function isRateLimited(key: string): boolean {
   return false;
 }
 
-/** Paths that require authentication. */
-const PROTECTED_PATHS = ["/dashboard"];
-
-/** Paths that are public (auth pages, API auth handler). */
-const PUBLIC_PATHS = ["/auth", "/api/auth"];
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -56,30 +48,6 @@ export async function middleware(request: NextRequest) {
           "Content-Type": "application/json",
           "Retry-After": "60",
         },
-      });
-    }
-  }
-
-  // Auth check for protected paths
-  const isProtected = PROTECTED_PATHS.some((p) => pathname.startsWith(p));
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-
-  if (isProtected && !isPublic) {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      // Redirect to login for non-API requests
-      if (!pathname.startsWith("/api/")) {
-        const loginUrl = new URL("/auth/login", request.url);
-        loginUrl.searchParams.set("callbackUrl", pathname);
-        return NextResponse.redirect(loginUrl);
-      }
-      // Return 401 for API requests
-      return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
       });
     }
   }
