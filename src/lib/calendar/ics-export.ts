@@ -3,15 +3,15 @@ import ical from "ical-generator";
 export interface ICSExportEvent {
   uid: string;
   summary: string;
-  description?: string;
-  location?: string;
+  description: string | null;
+  location: string | null;
   dtStart: Date;
-  dtEnd?: Date;
-  allDay?: boolean;
-  timeZone?: string;
-  recurrenceRule?: string;
-  status?: string;
-  transparency?: string;
+  dtEnd: Date | null;
+  allDay: boolean;
+  timeZone: string | null;
+  recurrenceRule: string | null;
+  status: string | null;
+  transparency: string | null;
 }
 
 /**
@@ -38,17 +38,17 @@ export function generateICSBulk(events: ICSExportEvent[]): string {
       start: evt.dtStart,
       end: evt.dtEnd ?? new Date(evt.dtStart.getTime() + 60 * 60 * 1000),
       summary: evt.summary,
-      description: evt.description ?? null,
-      location: evt.location ?? null,
-      timezone: evt.timeZone ?? null,
-      allDay: evt.allDay ?? false,
+      description: evt.description,
+      location: evt.location,
+      timezone: evt.timeZone,
+      allDay: evt.allDay,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator enums are opaque
       status: evt.status as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator enums are opaque
       transparency: evt.transparency as any,
     });
 
-    if (evt.recurrenceRule) {
+    if (evt.recurrenceRule && evt.recurrenceRule) {
       icalEvent.repeating(evt.recurrenceRule);
     }
   }
@@ -69,17 +69,17 @@ function createCalendar(event: ICSExportEvent): ReturnType<typeof ical> {
     start: event.dtStart,
     end: event.dtEnd ?? new Date(event.dtStart.getTime() + 60 * 60 * 1000),
     summary: event.summary,
-    description: event.description ?? null,
-    location: event.location ?? null,
-    timezone: event.timeZone ?? null,
-    allDay: event.allDay ?? false,
+    description: event.description,
+    location: event.location,
+    timezone: event.timeZone,
+    allDay: event.allDay,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator enums are opaque
     status: event.status as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator enums are opaque
     transparency: event.transparency as any,
   });
 
-  if (event.recurrenceRule) {
+  if (event.recurrenceRule && event.recurrenceRule) {
     icalEvent.repeating(event.recurrenceRule);
   }
 

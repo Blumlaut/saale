@@ -2,7 +2,7 @@ import { DAVClient } from "tsdav";
 import type { DAVCalendar, DAVCalendarObject } from "tsdav";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { generateICS } from "./ics-export";
+import { generateICS, type ICSExportEvent } from "./ics-export";
 
 interface PushResult {
   success: boolean;
@@ -72,19 +72,7 @@ export async function discoverCalendars(accountId: string): Promise<DAVCalendar[
  */
 export async function pushEventToCalDAV(
   calendarId: string,
-  event: {
-    uid: string;
-    summary: string;
-    description?: string;
-    location?: string;
-    dtStart: Date;
-    dtEnd?: Date;
-    allDay?: boolean;
-    timeZone?: string;
-    recurrenceRule?: string;
-    status?: string;
-    transparency?: string;
-  },
+  event: ICSExportEvent,
 ): Promise<PushResult> {
   try {
     const calendar = await prisma.calendar.findUnique({
@@ -146,21 +134,7 @@ export async function pushEventToCalDAV(
  */
 export async function pushUpdateToCalDAV(
   calendarId: string,
-  event: {
-    uid: string;
-    summary: string;
-    description?: string;
-    location?: string;
-    url?: string; // Remote object URL
-    dtStart: Date;
-    dtEnd?: Date;
-    allDay?: boolean;
-    timeZone?: string;
-    recurrenceRule?: string;
-    status?: string;
-    transparency?: string;
-    sequence?: number;
-  },
+  event: ICSExportEvent & { url?: string; sequence?: number },
 ): Promise<UpdateResult> {
   try {
     const calendar = await prisma.calendar.findUnique({
