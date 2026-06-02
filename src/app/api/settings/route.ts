@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
+/** Fields that may be updated via PATCH /api/settings. */
+const ALLOWED_FIELDS = new Set([
+  "defaultModelProvider",
+  "defaultModelName",
+  "defaultThinkingLevel",
+  "theme",
+  "agentSystemPrompt",
+  "emailWritingStyle",
+  "purposeModelOverrides",
+  "disabledModels",
+]);
+
 /**
  * GET /api/settings — Get user settings
  */
@@ -45,13 +57,21 @@ export async function PATCH(request: NextRequest) {
 
   const body = await request.json();
 
+  // Whitelist: only allow known fields (prevents arbitrary field injection)
+  const updateData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (ALLOWED_FIELDS.has(key)) {
+      updateData[key] = value;
+    }
+  }
+
   const settings = await prisma.appSettings.upsert({
     where: { userId: authResult.user.id },
     create: {
       userId: authResult.user.id,
-      ...body,
+      ...updateData,
     },
-    update: body,
+    update: updateData,
   });
 
   return NextResponse.json({

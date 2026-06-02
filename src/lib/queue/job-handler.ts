@@ -116,23 +116,41 @@ export async function processJob(job: Job): Promise<void> {
     let output: string;
 
     if (type === "email_sync") {
-      // Sync specific account or all enabled accounts if no accountId given
+      // Resolve this user's account IDs for isolation
+      const userAccounts = await prisma.emailAccount.findMany({
+        where: { userId: task.userId, enabled: true },
+        select: { id: true },
+      });
+      const accountIds = userAccounts.map((a) => a.id);
+
       if (config.accountId) {
+        // Verify account belongs to this user
+        if (!accountIds.includes(config.accountId)) {
+          throw new Error(`Account ${config.accountId} not found`);
+        }
         const result = await syncEmailAccount(config.accountId);
         output = JSON.stringify(result);
       } else {
-        const accounts = await prisma.emailAccount.findMany({
-          where: { enabled: true },
-          select: { id: true },
-        });
-        const results = await Promise.all(accounts.map((a) => syncEmailAccount(a.id)));
+        const results = await Promise.all(accountIds.map((id) => syncEmailAccount(id)));
         output = JSON.stringify({
           accounts: results.length,
           results,
         });
       }
     } else if (type === "summarization") {
+      // Resolve this user's account IDs for isolation
+      const userAccounts = await prisma.emailAccount.findMany({
+        where: { userId: task.userId, enabled: true },
+        select: { id: true },
+      });
+      const accountIds = userAccounts.map((a) => a.id);
+
+      if (config.accountId && !accountIds.includes(config.accountId)) {
+        throw new Error(`Account ${config.accountId} not found`);
+      }
+
       const whereClause: Record<string, unknown> = {
+        accountId: { in: accountIds },
         ...(config.accountId ? { accountId: config.accountId } : {}),
         aiSummary: null,
       };
@@ -197,7 +215,19 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "classification") {
+      // Resolve this user's account IDs for isolation
+      const userAccounts = await prisma.emailAccount.findMany({
+        where: { userId: task.userId, enabled: true },
+        select: { id: true },
+      });
+      const accountIds = userAccounts.map((a) => a.id);
+
+      if (config.accountId && !accountIds.includes(config.accountId)) {
+        throw new Error(`Account ${config.accountId} not found`);
+      }
+
       const whereClause: Record<string, unknown> = {
+        accountId: { in: accountIds },
         ...(config.accountId ? { accountId: config.accountId } : {}),
         classified: false,
       };
@@ -270,7 +300,19 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "spam_filtering") {
+      // Resolve this user's account IDs for isolation
+      const userAccounts = await prisma.emailAccount.findMany({
+        where: { userId: task.userId, enabled: true },
+        select: { id: true },
+      });
+      const accountIds = userAccounts.map((a) => a.id);
+
+      if (config.accountId && !accountIds.includes(config.accountId)) {
+        throw new Error(`Account ${config.accountId} not found`);
+      }
+
       const whereClause: Record<string, unknown> = {
+        accountId: { in: accountIds },
         ...(config.accountId ? { accountId: config.accountId } : {}),
         folder: "INBOX",
         spamScore: null,

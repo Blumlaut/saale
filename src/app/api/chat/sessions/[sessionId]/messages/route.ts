@@ -101,12 +101,15 @@ export async function POST(
     return NextResponse.json({ error: "Content is required" }, { status: 400 });
   }
 
+  // Strip null bytes and limit length
+  const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
+
   // Save user message
   const userMessage = await prisma.chatMessage.create({
     data: {
       sessionId,
       role: "user",
-      content,
+      content: sanitizedContent,
     },
   });
 

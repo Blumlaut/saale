@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAccountOwner } from "@/lib/auth";
+import { requireAccountOwner, sanitizeError } from "@/lib/auth";
 import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email/smtp";
 
@@ -23,6 +23,11 @@ export async function POST(
     return NextResponse.json({ error: "To and subject are required" }, { status: 400 });
   }
 
+  // Validate subject length
+  if (typeof subject === "string" && subject.length > 998) {
+    return NextResponse.json({ error: "Subject must be 998 characters or less" }, { status: 400 });
+  }
+
   const password = decrypt(account.encryptedPassword);
 
   try {
@@ -43,6 +48,6 @@ export async function POST(
       messageId: result.messageId,
     });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(err) }, { status: 500 });
   }
 }

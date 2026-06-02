@@ -104,6 +104,24 @@ export async function GET(
   const encoder = new TextEncoder();
   let aborted = false;
 
+  /**
+   * Send an SSE event with proper escaping.
+   * SSE spec: a line containing only "\n" terminates the event block.
+   * JSON.stringify can produce \n inside strings (from tool results, etc.),
+   * which would prematurely terminate the event and inject a new one.
+   * We escape literal newlines in the JSON payload to prevent this.
+   */
+  function sendEvent(
+    controller: ReadableStreamDefaultController,
+    event: string,
+    data: unknown,
+  ): void {
+    const json = JSON.stringify(data);
+    // Replace literal newlines with \n to prevent SSE event termination
+    const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
+  }
+
   // Track tool call results for the final message
   const toolCallResults: Map<
     string,
@@ -147,13 +165,7 @@ export async function GET(
             );
             if (thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock) {
               currentTurnThinking = (thinkingBlock as Record<string, unknown>).thinking as string;
-              controller.enqueue(
-                encoder.encode(
-                  `event: thinking\ndata: ${JSON.stringify({
-                    thinking: currentTurnThinking,
-                  })}\n\n`,
-                ),
-              );
+              sendEvent(controller, "thinking", { thinking: currentTurnThinking });
             }
 
             // Extract cumulative text from all text blocks
@@ -167,13 +179,7 @@ export async function GET(
               .map((c) => ((c as Record<string, unknown>).text as string) || "")
               .join("");
             if (currentTurnText) {
-              controller.enqueue(
-                encoder.encode(
-                  `event: token\ndata: ${JSON.stringify({
-                    text: currentTurnText,
-                  })}\n\n`,
-                ),
-              );
+              sendEvent(controller, "token", { text: currentTurnText });
             }
 
             // Track tool call IDs appearing in this message
@@ -194,15 +200,11 @@ export async function GET(
               name: event.toolName,
               args: event.args,
             });
-            controller.enqueue(
-              encoder.encode(
-                `event: tool_start\ndata: ${JSON.stringify({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName,
-                  args: event.args,
-                })}\n\n`,
-              ),
-            );
+            sendEvent(controller, "tool_start", {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              args: event.args,
+            });
             break;
           }
 
@@ -216,16 +218,12 @@ export async function GET(
               existing.result = resultStr;
               existing.isError = event.isError;
             }
-            controller.enqueue(
-              encoder.encode(
-                `event: tool_end\ndata: ${JSON.stringify({
-                  toolCallId: event.toolCallId,
-                  toolName: event.toolName,
-                  result: resultStr,
-                  isError: event.isError,
-                })}\n\n`,
-              ),
-            );
+            sendEvent(controller, "tool_end", {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              result: resultStr,
+              isError: event.isError,
+            });
             break;
           }
 
@@ -270,16 +268,12 @@ export async function GET(
             });
 
             // Emit turn_end event to frontend
-            controller.enqueue(
-              encoder.encode(
-                `event: turn_end\ndata: ${JSON.stringify({
-                  turnIndex,
-                  text: currentTurnText,
-                  thinking: currentTurnThinking || null,
-                  toolCalls: turnToolCalls,
-                })}\n\n`,
-              ),
-            );
+            sendEvent(controller, "turn_end", {
+              turnIndex,
+              text: currentTurnText,
+              thinking: currentTurnThinking || null,
+              toolCalls: turnToolCalls,
+            });
 
             turnIndex++;
             currentTurnText = "";
@@ -359,7 +353,7 @@ export async function GET(
                 .catch(console.error);
             }
 
-            controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({})}\n\n`));
+            sendEvent(controller, "done", {});
 
             controller.close();
             break;

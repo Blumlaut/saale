@@ -60,10 +60,13 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { title, modelProvider, modelName, thinkingLevel } = body;
 
+  // Sanitize title: strip null bytes, limit length
+  const sanitizedTitle = (title || "New Chat").replace(/\0/g, "").slice(0, 200);
+
   const chatSession = await prisma.chatSession.create({
     data: {
       userId: authResult.user.id,
-      title: title || "New Chat",
+      title: sanitizedTitle,
       modelProvider,
       modelName,
       thinkingLevel: thinkingLevel || "off",

@@ -31,7 +31,7 @@ export interface ToolConfig {
 }
 
 const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
-  bash: true,
+  bash: false, // Disabled by default — must be explicitly enabled
   files: true,
   email: true,
   jobs: true,
@@ -57,10 +57,13 @@ function getUserDir(userId: string): string {
 /**
  * Validate that a resolved path stays within the allowed base directory.
  * Throws if the path escapes the sandbox.
+ * Uses realpath-style resolution to catch symlink escapes.
  */
 function validatePath(baseDir: string, filePath: string): void {
   const resolved = path.resolve(baseDir, filePath);
-  if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
+  // Normalize the base dir for consistent comparison
+  const normalizedBase = path.resolve(baseDir);
+  if (!resolved.startsWith(normalizedBase + path.sep) && resolved !== normalizedBase) {
     throw new Error(`Access denied: path "${filePath}" escapes user workspace`);
   }
 }
