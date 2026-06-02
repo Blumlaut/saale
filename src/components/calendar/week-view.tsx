@@ -2,6 +2,11 @@
 
 import type { CalendarEvent } from "@/types/shared";
 import { cn } from "@/lib/utils";
+import {
+  getWeekDays,
+  getAllDayEventsForDay,
+  getTimedEventsForDay,
+} from "@/lib/calendar/date-utils";
 
 interface WeekViewProps {
   date: Date;
@@ -14,41 +19,12 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekViewProps) {
-  const startOfWeek = new Date(date);
-  const day = startOfWeek.getDay();
-  const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-  startOfWeek.setDate(diff);
-
-  const weekDays = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(startOfWeek);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
-
+  const weekDays = getWeekDays(date);
   const today = new Date();
   const isToday = (d: Date) =>
     d.getDate() === today.getDate() &&
     d.getMonth() === today.getMonth() &&
     d.getFullYear() === today.getFullYear();
-
-  const getEventsForDay = (d: Date) => {
-    const dayTime = d.getTime();
-    return events.filter((e) => {
-      if (e.allDay) return false; // all-day events handled separately
-      const start = new Date(e.dtStart).getTime();
-      return start === dayTime;
-    });
-  };
-
-  const getAllDayEventsForDay = (d: Date) => {
-    const dayTime = d.getTime();
-    return events.filter((e) => {
-      if (!e.allDay) return false;
-      const start = new Date(e.dtStart).getTime();
-      const end = e.dtEnd ? new Date(e.dtEnd).getTime() : start;
-      return dayTime >= start && dayTime < end;
-    });
-  };
 
   return (
     <div className="space-y-2">
@@ -73,7 +49,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
       <div className="grid grid-cols-8">
         <div className="border-border/20 border-b" />
         {weekDays.map((d, dayIndex) => {
-          const allDayEvents = getAllDayEventsForDay(d);
+          const allDayEvents = getAllDayEventsForDay(events, d);
           return (
             <div key={dayIndex} className="border-border/20 border-b p-0.5">
               {allDayEvents.slice(0, 2).map((evt) => (
@@ -118,8 +94,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
                     : `${hour - 12} PM`}
             </div>
             {weekDays.map((d, dayIndex) => {
-              const dayEvents = getEventsForDay(d);
-              const hourEvents = dayEvents.filter((e) => {
+              const hourEvents = getTimedEventsForDay(events, d).filter((e) => {
                 const startHour = new Date(e.dtStart).getHours();
                 return startHour === hour;
               });

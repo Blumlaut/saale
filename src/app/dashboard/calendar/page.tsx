@@ -5,6 +5,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchJson } from "@/lib/http";
+import { startOfWeek } from "@/lib/calendar/date-utils";
 import type { CalendarEvent } from "@/types/shared";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { CalendarSidebar } from "@/components/calendar/calendar-sidebar";
@@ -56,10 +57,8 @@ export default function CalendarPage() {
         start.setDate(1);
         end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
       } else if (view === "week") {
-        const day = start.getDay();
-        const diff = start.getDate() - day + (day === 0 ? -6 : 1);
-        start.setDate(diff);
-        end = new Date(start);
+        const weekStart = startOfWeek(start);
+        end = new Date(weekStart);
         end.setDate(end.getDate() + 6);
       } else {
         end = new Date(start);
@@ -128,13 +127,10 @@ export default function CalendarPage() {
     if (view === "month") {
       return currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
     } else if (view === "week") {
-      const start = new Date(currentDate);
-      const day = start.getDay();
-      const diff = start.getDate() - day + (day === 0 ? -6 : 1);
-      start.setDate(diff);
-      const end = new Date(start);
+      const weekStart = startOfWeek(currentDate);
+      const end = new Date(weekStart);
       end.setDate(end.getDate() + 6);
-      return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+      return `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
     } else {
       return currentDate.toLocaleDateString("en-US", {
         weekday: "long",
