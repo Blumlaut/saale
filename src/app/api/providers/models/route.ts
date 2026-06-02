@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { buildModelRegistry } from "@/lib/pi/models";
 
 /**
@@ -9,20 +8,15 @@ import { buildModelRegistry } from "@/lib/pi/models";
  * ?includeDisabled=true — include disabled models (for settings page)
  */
 export async function GET(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const searchParams = request.nextUrl.searchParams;
-  const { models, modelRegistry } = await buildModelRegistry(session.user.id);
+  const { models, modelRegistry } = await buildModelRegistry(authResult.user.id);
 
   // Load disabled models for this user
   const settings = await prisma.appSettings.findUnique({
-    where: { userId: session.user.id },
+    where: { userId: authResult.user.id },
     select: { disabledModels: true },
   });
   const disabledSet = new Set((settings?.disabledModels as string[] | null) ?? []);

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 
 /**
  * GET /api/chat/sessions/:sessionId — Get session details
@@ -10,18 +9,13 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
 
   const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: session.user.id },
+    where: { id: sessionId, userId: authResult.user.id },
     select: {
       id: true,
       title: true,
@@ -54,18 +48,13 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!authSession?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
 
   const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authSession.user.id },
+    where: { id: sessionId, userId: authResult.user.id },
   });
 
   if (!chatSession) {
@@ -105,18 +94,13 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!authSession?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
 
   const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authSession.user.id },
+    where: { id: sessionId, userId: authResult.user.id },
   });
 
   if (!chatSession) {

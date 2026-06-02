@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 
 /**
  * GET /api/chat/sessions — List user's chat sessions
  */
 export async function GET() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const sessions = await prisma.chatSession.findMany({
-    where: { userId: session.user.id },
+    where: { userId: authResult.user.id },
     orderBy: { updatedAt: "desc" },
     take: 50,
     select: {
@@ -60,20 +54,15 @@ export async function GET() {
  * POST /api/chat/sessions — Create a new chat session
  */
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { title, modelProvider, modelName, thinkingLevel } = body;
 
   const chatSession = await prisma.chatSession.create({
     data: {
-      userId: session.user.id,
+      userId: authResult.user.id,
       title: title || "New Chat",
       modelProvider,
       modelName,

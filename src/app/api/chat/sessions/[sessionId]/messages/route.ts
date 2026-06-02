@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 
 /**
  * GET /api/chat/sessions/:sessionId/messages — Get messages for a session
@@ -10,19 +9,14 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
 
   // Verify session belongs to user
   const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: session.user.id },
+    where: { id: sessionId, userId: authResult.user.id },
     select: {
       id: true,
       modelProvider: true,
@@ -87,18 +81,13 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!authSession?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
 
   const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authSession.user.id },
+    where: { id: sessionId, userId: authResult.user.id },
   });
 
   if (!chatSession) {
@@ -153,13 +142,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!authSession?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
   const url = new URL(request.url);
@@ -170,7 +154,7 @@ export async function DELETE(
   }
 
   const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authSession.user.id },
+    where: { id: sessionId, userId: authResult.user.id },
   });
 
   if (!chatSession) {

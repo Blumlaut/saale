@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { headers } from "next/headers";
 
 const NOTIFICATION_KEY = "notifications:";
 
@@ -9,16 +8,11 @@ const NOTIFICATION_KEY = "notifications:";
  * GET /api/notifications — Get user's notifications
  */
 export async function GET() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const redis = getRedis();
-  const key = `${NOTIFICATION_KEY}${session.user.id}`;
+  const key = `${NOTIFICATION_KEY}${authResult.user.id}`;
 
   // Get last 50 notifications
   const notifications = await redis.lrange(key, 0, 49);
@@ -32,13 +26,8 @@ export async function GET() {
  * POST /api/notifications — Send a notification (internal use)
  */
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { type, title, message, data } = body;
@@ -54,7 +43,7 @@ export async function POST(request: NextRequest) {
   };
 
   const redis = getRedis();
-  const key = `${NOTIFICATION_KEY}${session.user.id}`;
+  const key = `${NOTIFICATION_KEY}${authResult.user.id}`;
 
   // Add to list (keep last 100)
   await redis.lpush(key, JSON.stringify(notification));
@@ -67,19 +56,14 @@ export async function POST(request: NextRequest) {
  * PATCH /api/notifications — Mark notifications as read
  */
 export async function PATCH(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { ids, all } = body;
 
   const redis = getRedis();
-  const key = `${NOTIFICATION_KEY}${session.user.id}`;
+  const key = `${NOTIFICATION_KEY}${authResult.user.id}`;
 
   const rawNotifications = await redis.lrange(key, 0, -1);
   let notifications: Array<{ id: string; read: boolean }> = rawNotifications.map((n) =>

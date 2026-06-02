@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { headers } from "next/headers";
 import { encrypt } from "@/lib/crypto";
 import { syncEmailAccount } from "@/lib/email/sync";
 
@@ -9,16 +8,11 @@ import { syncEmailAccount } from "@/lib/email/sync";
  * GET /api/email/accounts — List user's email accounts
  */
 export async function GET() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const accounts = await prisma.emailAccount.findMany({
-    where: { userId: session.user.id },
+    where: { userId: authResult.user.id },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -89,13 +83,8 @@ export async function GET() {
  * POST /api/email/accounts — Create a new email account
  */
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { email, imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure, password } = body;
@@ -109,7 +98,7 @@ export async function POST(request: NextRequest) {
 
   const account = await prisma.emailAccount.create({
     data: {
-      userId: session.user.id,
+      userId: authResult.user.id,
       email,
       imapHost,
       imapPort: imapPort ?? 993,
