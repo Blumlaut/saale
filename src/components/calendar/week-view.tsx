@@ -32,8 +32,22 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
     d.getFullYear() === today.getFullYear();
 
   const getEventsForDay = (d: Date) => {
-    const dayStr = d.toDateString();
-    return events.filter((e) => new Date(e.dtStart).toDateString() === dayStr && !e.allDay);
+    const dayTime = d.getTime();
+    return events.filter((e) => {
+      if (e.allDay) return false; // all-day events handled separately
+      const start = new Date(e.dtStart).getTime();
+      return start === dayTime;
+    });
+  };
+
+  const getAllDayEventsForDay = (d: Date) => {
+    const dayTime = d.getTime();
+    return events.filter((e) => {
+      if (!e.allDay) return false;
+      const start = new Date(e.dtStart).getTime();
+      const end = e.dtEnd ? new Date(e.dtEnd).getTime() : start;
+      return dayTime >= start && dayTime < end;
+    });
   };
 
   return (
@@ -53,6 +67,41 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
             <span className="text-xs">{d.getDate()}</span>
           </div>
         ))}
+      </div>
+
+      {/* All-day events */}
+      <div className="grid grid-cols-8">
+        <div className="border-border/20 border-b" />
+        {weekDays.map((d, dayIndex) => {
+          const allDayEvents = getAllDayEventsForDay(d);
+          return (
+            <div key={dayIndex} className="border-border/20 border-b p-0.5">
+              {allDayEvents.slice(0, 2).map((evt) => (
+                <button
+                  key={evt.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(evt);
+                  }}
+                  className={cn(
+                    "w-full truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
+                    "bg-primary/10 text-primary",
+                  )}
+                  style={
+                    evt.calendarColor
+                      ? {
+                          backgroundColor: evt.calendarColor + "20",
+                          color: evt.calendarColor,
+                        }
+                      : undefined
+                  }
+                >
+                  {evt.summary}
+                </button>
+              ))}
+            </div>
+          );
+        })}
       </div>
 
       {/* Time grid */}
