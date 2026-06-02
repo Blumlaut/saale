@@ -16,6 +16,9 @@ import {
   EyeOff,
   ChevronRight,
   ChevronDown,
+  HardDrive,
+  Globe,
+  Link as LinkIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -34,17 +37,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CalendarAccountDialog } from "@/components/calendar/calendar-account-dialog";
+import { SubscriptionDialog } from "@/components/calendar/subscription-dialog";
 
 interface CalendarAccount {
   id: string;
   name: string;
-  serverUrl: string;
-  username: string;
-  authMethod: string;
+  accountType: string;
+  serverUrl: string | null;
+  username: string | null;
   enabled: boolean;
   lastSyncedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
   calendars: Array<{
     id: string;
     remoteId: string;
@@ -56,31 +58,58 @@ interface CalendarAccount {
   }>;
 }
 
+interface Subscription {
+  id: string;
+  name: string;
+  url: string;
+  calendarId: string;
+  calendarName: string;
+  calendarColor: string | null;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+}
+
 export function CalendarTab() {
   const [accounts, setAccounts] = useState<CalendarAccount[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
+  const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
-    accountId: string;
-    action: "sync" | "delete";
+    id: string;
+    action: "sync" | "delete" | "sync-sub" | "delete-sub";
+    type: "account" | "subscription";
   } | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
 
-  const loadAccounts = async () => {
+  const loadData = async () => {
     try {
-      const data = await fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts");
-      setAccounts(data.accounts ?? []);
+      const [accountsRes, subsRes] = await Promise.all([
+        fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts"),
+        fetchJson<{ subscriptions: Subscription[] }>("/api/calendar/subscriptions"),
+      ]);
+      setAccounts(accountsRes.accounts ?? []);
+      setSubscriptions(subsRes.subscriptions ?? []);
     } catch {
       // Ignore
     }
   };
 
   useEffect(() => {
-    loadAccounts().then(() => setLoading(false));
+    loadData().then(() => setLoading(false));
   }, []);
+
+  // Ensure local account exists
+  useEffect(() => {
+    if (!loading && !accounts.some((a) => a.accountType === "local")) {
+      fetchJson("/api/calendar/ensure-local-account")
+        .then(() => loadData())
+        .catch(() => {});
+    }
+  }, [loading, accounts]);
 
   const toggleExpanded = (accountId: string) => {
     setExpandedAccounts((prev) => {
@@ -94,50 +123,70 @@ export function CalendarTab() {
     });
   };
 
-  const handleActionRequest = (accountId: string, action: "sync" | "delete") => {
-    if (action === "sync") {
-      executeAction(accountId, action);
-      return;
-    }
-    setPendingAction({ accountId, action });
-    setAlertError(null);
-    setAlertOpen(true);
-  };
-
-  const executeAction = async (accountId: string, action: "sync" | "delete") => {
-    setActionLoading(action + ":" + accountId);
+  const executeAction = async (
+    id: string,
+    action: "sync" | "delete" | "sync-sub" | "delete-sub",
+    type: "account" | "subscription",
+  ) => {
+    setActionLoading(action + ":" + id);
     try {
-      const url =
-        action === "delete"
-          ? `/api/calendar/accounts/${accountId}`
-          : `/api/calendar/accounts/${accountId}/sync`;
+      let url: string;
+      let method: "POST" | "DELETE";
 
-      if (action === "delete") {
+      if (type === "account") {
+        url =
+          action === "delete"
+            ? `/api/calendar/accounts/${id}`
+            : `/api/calendar/accounts/${id}/sync`;
+        method = action === "delete" ? "DELETE" : "POST";
+      } else {
+        url =
+          action === "delete-sub"
+            ? `/api/calendar/subscriptions/${id}`
+            : `/api/calendar/subscriptions/${id}/sync`;
+        method = action === "delete-sub" ? "DELETE" : "POST";
+      }
+
+      if (method === "DELETE") {
         await deleteJson(url);
       } else {
         await postJson(url, {});
       }
-      await loadAccounts();
+      await loadData();
     } catch (err) {
       setAlertError((err as Error).message);
-      setPendingAction({ accountId, action });
+      setPendingAction({ id, action, type });
       setAlertOpen(true);
     } finally {
       setActionLoading(null);
     }
   };
 
+  const handleActionRequest = (
+    id: string,
+    action: "sync" | "delete" | "sync-sub" | "delete-sub",
+    type: "account" | "subscription",
+  ) => {
+    if (action === "sync" || action === "sync-sub") {
+      executeAction(id, action, type);
+      return;
+    }
+    setPendingAction({ id, action, type });
+    setAlertError(null);
+    setAlertOpen(true);
+  };
+
   const handleAlertConfirm = () => {
     setAlertOpen(false);
     if (pendingAction) {
-      executeAction(pendingAction.accountId, pendingAction.action);
+      executeAction(pendingAction.id, pendingAction.action, pendingAction.type);
     }
   };
 
   const handleToggleAccountEnabled = async (accountId: string, enabled: boolean) => {
     try {
       await patchJson(`/api/calendar/accounts/${accountId}`, { enabled });
-      await loadAccounts();
+      await loadData();
     } catch {
       // Ignore
     }
@@ -146,7 +195,16 @@ export function CalendarTab() {
   const handleToggleCalendarEnabled = async (calendarId: string, enabled: boolean) => {
     try {
       await patchJson(`/api/calendar/calendars/${calendarId}`, { enabled });
-      await loadAccounts();
+      await loadData();
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleToggleSubscriptionEnabled = async (subscriptionId: string, enabled: boolean) => {
+    try {
+      await patchJson(`/api/calendar/subscriptions/${subscriptionId}`, { enabled });
+      await loadData();
     } catch {
       // Ignore
     }
@@ -155,10 +213,14 @@ export function CalendarTab() {
   const handleSyncAll = async () => {
     setActionLoading("sync-all");
     try {
-      await Promise.all(
-        accounts.map((acc) => postJson(`/api/calendar/accounts/${acc.id}/sync`, {})),
-      );
-      await loadAccounts();
+      const promises = accounts
+        .filter((a) => a.accountType === "caldav")
+        .map((acc) => postJson(`/api/calendar/accounts/${acc.id}/sync`, {}));
+      const subPromises = subscriptions
+        .filter((s) => s.enabled)
+        .map((sub) => postJson(`/api/calendar/subscriptions/${sub.id}/sync`, {}));
+      await Promise.all([...promises, ...subPromises]);
+      await loadData();
     } catch {
       // Ignore
     } finally {
@@ -171,18 +233,22 @@ export function CalendarTab() {
     0,
   );
 
+  const localAccount = accounts.find((a) => a.accountType === "local");
+  const caldavAccounts = accounts.filter((a) => a.accountType === "caldav");
+
   return (
     <>
+      {/* Accounts */}
       <GlassPanel>
         <GlassPanelContent className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="flex items-center gap-2 text-lg font-medium">
                 <Calendar className="h-5 w-5" />
-                Calendar Accounts
+                Calendars
               </h3>
               <p className="text-muted-foreground mt-1 text-sm">
-                Manage your CalDAV accounts and calendars
+                Manage your calendar accounts
                 {accounts.length > 0 && ` · ${totalEvents} total events`}
               </p>
             </div>
@@ -204,7 +270,7 @@ export function CalendarTab() {
               )}
               <Button size="sm" onClick={() => setAccountDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Account
+                Add CalDAV
               </Button>
             </div>
           </div>
@@ -215,15 +281,89 @@ export function CalendarTab() {
             <div className="border-border/50 rounded-2xl border border-dashed p-8 text-center">
               <Calendar className="text-muted-foreground/50 mx-auto h-8 w-8" />
               <p className="text-muted-foreground mt-3 text-sm">
-                No calendar accounts connected. Add one to sync your CalDAV calendars.
-              </p>
-              <p className="text-muted-foreground/60 mt-1 text-xs">
-                Supports iCloud, Nextcloud, Fastmail, and any CalDAV server
+                Setting up your local calendar...
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {accounts.map((account) => {
+              {/* Local account */}
+              {localAccount && (
+                <div className="border-border/50 bg-background/40 overflow-hidden rounded-2xl border">
+                  <div className="flex items-center justify-between p-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <HardDrive className="text-muted-foreground h-4 w-4" />
+                        <p className="text-sm font-medium">{localAccount.name}</p>
+                        <span className="text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5 text-[10px]">
+                          local
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {localAccount.calendars.length} calendar
+                        {localAccount.calendars.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  {localAccount.calendars.length > 0 && (
+                    <div className="border-border/50 border-t">
+                      <button
+                        className="flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-white/10"
+                        onClick={() => toggleExpanded(localAccount.id)}
+                      >
+                        {expandedAccounts.has(localAccount.id) ? (
+                          <ChevronDown className="text-muted-foreground h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="text-muted-foreground h-3 w-3" />
+                        )}
+                        <span className="text-muted-foreground">
+                          {expandedAccounts.has(localAccount.id) ? "Hide" : "Show"}{" "}
+                          {localAccount.calendars.length} calendar
+                          {localAccount.calendars.length !== 1 ? "s" : ""}
+                        </span>
+                      </button>
+
+                      {expandedAccounts.has(localAccount.id) && (
+                        <div className="border-border/50 border-t px-4 py-2">
+                          {localAccount.calendars.map((cal) => (
+                            <div key={cal.id} className="flex items-center justify-between py-1.5">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{
+                                    backgroundColor: cal.color || "var(--muted-foreground)",
+                                  }}
+                                />
+                                <span className="text-xs">{cal.name}</span>
+                                <span className="text-muted-foreground/60 text-[10px]">
+                                  {cal.eventCount} events
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground text-[10px]">
+                                  {cal.enabled ? (
+                                    <Eye className="h-3 w-3" />
+                                  ) : (
+                                    <EyeOff className="h-3 w-3" />
+                                  )}
+                                </span>
+                                <Switch
+                                  checked={cal.enabled}
+                                  onCheckedChange={(v) => handleToggleCalendarEnabled(cal.id, v)}
+                                  className="scale-75"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* CalDAV accounts */}
+              {caldavAccounts.map((account) => {
                 const isBusy =
                   actionLoading === "sync:" + account.id || actionLoading === "sync-all";
                 const isExpanded = expandedAccounts.has(account.id);
@@ -233,10 +373,10 @@ export function CalendarTab() {
                     key={account.id}
                     className="border-border/50 bg-background/40 overflow-hidden rounded-2xl border"
                   >
-                    {/* Account row */}
                     <div className="flex items-center justify-between p-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
+                          <Globe className="text-muted-foreground h-4 w-4" />
                           <p className="text-sm font-medium">{account.name}</p>
                           {!account.enabled && (
                             <span className="text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5 text-[10px]">
@@ -277,7 +417,7 @@ export function CalendarTab() {
                           />
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => handleActionRequest(account.id, "sync")}
+                              onClick={() => handleActionRequest(account.id, "sync", "account")}
                               disabled={isBusy}
                             >
                               {actionLoading === "sync:" + account.id ? (
@@ -288,7 +428,7 @@ export function CalendarTab() {
                               Sync Now
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleActionRequest(account.id, "delete")}
+                              onClick={() => handleActionRequest(account.id, "delete", "account")}
                               disabled={isBusy}
                               className="text-destructive focus:text-destructive"
                             >
@@ -300,7 +440,6 @@ export function CalendarTab() {
                       </div>
                     </div>
 
-                    {/* Calendars (expandable) */}
                     {account.calendars.length > 0 && (
                       <div className="border-border/50 border-t">
                         <button
@@ -365,21 +504,151 @@ export function CalendarTab() {
         </GlassPanelContent>
       </GlassPanel>
 
+      {/* Subscriptions */}
+      <GlassPanel>
+        <GlassPanelContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="flex items-center gap-2 text-lg font-medium">
+                <LinkIcon className="h-5 w-5" />
+                ICS Subscriptions
+              </h3>
+              <p className="text-muted-foreground mt-1 text-sm">
+                Sync remote ICS feeds into your local calendar
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setSubscriptionDialogOpen(true)}
+              disabled={!localAccount}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Subscription
+            </Button>
+          </div>
+
+          {subscriptions.length === 0 ? (
+            <div className="border-border/50 rounded-2xl border border-dashed p-8 text-center">
+              <LinkIcon className="text-muted-foreground/50 mx-auto h-8 w-8" />
+              <p className="text-muted-foreground mt-3 text-sm">
+                No subscriptions yet. Add a remote ICS URL to sync events.
+              </p>
+              <p className="text-muted-foreground/60 mt-1 text-xs">
+                Public calendars, holiday feeds, team schedules, etc.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {subscriptions.map((sub) => {
+                const isBusy = actionLoading === "sync-sub:" + sub.id;
+
+                return (
+                  <div
+                    key={sub.id}
+                    className="border-border/50 bg-background/40 flex items-center justify-between rounded-2xl border p-4"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{sub.name}</p>
+                        {!sub.enabled && (
+                          <span className="text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5 text-[10px]">
+                            Disabled
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {sub.calendarName}
+                        {sub.lastSyncedAt
+                          ? ` · Last synced ${new Date(sub.lastSyncedAt).toLocaleString()}`
+                          : " · Never synced"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs">Enable</span>
+                        <Switch
+                          checked={sub.enabled}
+                          onCheckedChange={(v) => handleToggleSubscriptionEnabled(sub.id, v)}
+                        />
+                      </div>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              disabled={isBusy}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleActionRequest(sub.id, "sync-sub", "subscription")}
+                            disabled={isBusy}
+                          >
+                            {isBusy ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            Sync Now
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleActionRequest(sub.id, "delete-sub", "subscription")
+                            }
+                            disabled={isBusy}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Remove
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </GlassPanelContent>
+      </GlassPanel>
+
       <CalendarAccountDialog
         open={accountDialogOpen}
         onOpenChange={setAccountDialogOpen}
-        onSuccess={loadAccounts}
+        onSuccess={loadData}
+      />
+
+      <SubscriptionDialog
+        open={subscriptionDialogOpen}
+        onOpenChange={setSubscriptionDialogOpen}
+        accounts={accounts}
+        onSuccess={loadData}
       />
 
       {/* Confirmation / Error Alert Dialog */}
       <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{alertError ? "Error" : "Delete Account"}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {alertError
+                ? "Error"
+                : pendingAction?.type === "account"
+                  ? "Delete Account"
+                  : "Remove Subscription"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {alertError
                 ? alertError
-                : "Delete this calendar account and all its synced events? This cannot be undone."}
+                : pendingAction?.type === "account"
+                  ? "Delete this calendar account and all its synced events? This cannot be undone."
+                  : "Remove this subscription and its synced events? This cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -389,7 +658,7 @@ export function CalendarTab() {
               <>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleAlertConfirm} variant="destructive">
-                  Delete
+                  {pendingAction?.type === "account" ? "Delete" : "Remove"}
                 </AlertDialogAction>
               </>
             )}

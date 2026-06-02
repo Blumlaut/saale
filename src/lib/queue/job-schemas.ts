@@ -283,6 +283,15 @@ export const jobTypeSchemas: JobTypeSchema[] = [
       },
     ],
   },
+  {
+    type: "subscription_sync",
+    label: "ICS Subscription Sync",
+    description: "Sync events from remote ICS URL subscriptions into local calendars",
+    icon: "Download",
+    defaultCron: "*/30 * * * *",
+    usesAi: false,
+    fields: [],
+  },
 ];
 
 /** Look up a schema by type */

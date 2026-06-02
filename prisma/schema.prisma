@@ -250,10 +250,12 @@ model ProviderApiKey {
 model CalendarAccount {
   id                   String     @id @default(cuid())
   userId               String
-  name                 String     // User-friendly label (e.g. "Google Work", "iCloud Personal")
-  serverUrl            String     // e.g. "https://caldav.icloud.com"
-  username             String
-  encryptedPassword    String     @db.Text // App password or token secret
+  name                 String     // User-friendly label (e.g. "Google Work", "iCloud Personal", "Local")
+  accountType          String     @default("caldav") // "caldav" | "local"
+  // CalDAV fields (nullable for local accounts)
+  serverUrl            String?    // e.g. "https://caldav.icloud.com"
+  username             String?    @default("")
+  encryptedPassword    String?    @db.Text // App password or token secret
   authMethod           String     @default("basic") // "basic" | "oauth" | "bearer"
   // OAuth fields (nullable, used when authMethod = "oauth")
   tokenUrl             String?
@@ -268,7 +270,7 @@ model CalendarAccount {
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
-  @@unique([userId, username, serverUrl])
+  @@index([userId, accountType])
   @@index([userId])
   @@map("CalendarAccount")
 }
@@ -286,6 +288,7 @@ model Calendar {
   ctag             String?        // Calendar CTAG for sync detection
   syncToken        String?        // Sync-token for incremental sync (RFC 6638)
   events           CalendarEvent[]
+  subscriptions    CalendarSubscription[]
   account          CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -337,4 +340,25 @@ model CalendarEvent {
   @@index([calendarId, dtStart])
   @@index([dtStart])
   @@map("CalendarEvent")
+}
+
+// Remote ICS URL subscriptions (read-only feeds synced into local calendars)
+model CalendarSubscription {
+  id           String   @id @default(cuid())
+  userId       String
+  calendarId   String
+  name         String   // Display name for the subscription
+  url          String   // Remote ICS URL
+  username     String?  // Optional auth
+  password     String?  @db.Text // Optional auth
+  etag         String?  // Last ETag for conditional fetch
+  enabled      Boolean  @default(true)
+  lastSyncedAt DateTime?
+  calendar     Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([calendarId, url])
+  @@index([userId])
+  @@map("CalendarSubscription")
 }

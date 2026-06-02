@@ -333,6 +333,10 @@ export async function processJob(job: Job): Promise<void> {
         modelId,
       });
       output = JSON.stringify(result);
+    } else if (type === "subscription_sync") {
+      const { syncAllSubscriptions } = await import("@/lib/calendar/subscription-sync");
+      const result = await syncAllSubscriptions(task.userId);
+      output = JSON.stringify(result);
     } else if (type === "spam_filtering") {
       // Resolve this user's account IDs for isolation
       const userAccounts = await prisma.emailAccount.findMany({
