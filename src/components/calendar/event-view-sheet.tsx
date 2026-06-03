@@ -2,19 +2,12 @@
 
 import type { CalendarEvent } from "@/types/shared";
 import { useState, useEffect, useCallback } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import {
   AlertCircle,
   Calendar as CalendarIcon,
@@ -24,7 +17,6 @@ import {
   MapPin,
   Pencil,
   Trash2,
-  X,
 } from "lucide-react";
 import { patchJson, deleteJson } from "@/lib/http";
 
@@ -48,13 +40,7 @@ interface EventViewSheetProps {
   onSuccess?: () => void;
 }
 
-export function EventViewSheet({
-  open,
-  onOpenChange,
-  accounts: _accounts,
-  event,
-  onSuccess,
-}: EventViewSheetProps) {
+export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventViewSheetProps) {
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
@@ -179,213 +165,251 @@ export function EventViewSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="border-l border-white/20 bg-white/80 backdrop-blur-2xl sm:w-[440px] dark:border-white/10 dark:bg-black/40">
+      <SheetContent
+        showCloseButton
+        className="liquid-glass flex w-[440px] flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl backdrop-blur-2xl sm:max-w-none dark:w-[460px]"
+      >
         {mode === "view" ? (
-          <>
-            {/* Close button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-4 right-4"
-              onClick={() => onOpenChange(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-
-            <SheetHeader className="pr-10">
-              <SheetTitle className="text-lg leading-tight">{event.summary}</SheetTitle>
-              <SheetDescription className="line-clamp-2 pt-1">
-                {event.calendarName}
-              </SheetDescription>
+          <div className="flex h-full flex-col">
+            {/* Header */}
+            <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
+              <SheetTitle className="text-xl leading-tight font-semibold tracking-tight">
+                {event.summary}
+              </SheetTitle>
+              <p className="text-muted-foreground mt-1 text-xs">{event.calendarName}</p>
             </SheetHeader>
 
-            <div className="mt-4 flex flex-col gap-5 overflow-y-auto">
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
               {/* Read-only notice */}
               {isReadOnly && (
-                <div className="rounded-2xl border border-dashed p-3">
-                  <div className="flex items-start gap-2.5">
-                    <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-                    <p className="text-muted-foreground text-xs leading-relaxed">
-                      This event comes from an ICS subscription and cannot be edited directly.
-                    </p>
-                  </div>
+                <div className="liquid-glass-inner mb-5 flex items-start gap-3 rounded-2xl px-4 py-3.5">
+                  <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    This event comes from an ICS subscription and cannot be edited directly.
+                  </p>
                 </div>
               )}
 
-              {/* Date & time */}
-              <div className="space-y-2.5">
-                <div className="flex items-center gap-2">
-                  <CalendarIcon className="text-muted-foreground h-4 w-4" />
-                  <span className="text-sm">
-                    {event.allDay ? formatAllDayDate(event.dtStart) : formatDateTime(event.dtStart)}
-                  </span>
-                </div>
-                {event.dtEnd && (
-                  <div className="flex items-center gap-2">
-                    <Clock className="text-muted-foreground h-4 w-4" />
-                    <span className="text-muted-foreground text-sm">
-                      {event.allDay ? formatAllDayDate(event.dtEnd) : formatDateTime(event.dtEnd)} ·{" "}
-                      {formatDuration()}
-                    </span>
+              {/* Date & time block */}
+              <div className="liquid-glass-inner rounded-2xl px-4 py-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="liquid-glass-pill flex h-8 w-8 items-center justify-center rounded-full">
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Start</p>
+                      <p className="text-sm font-medium">
+                        {event.allDay
+                          ? formatAllDayDate(event.dtStart)
+                          : formatDateTime(event.dtStart)}
+                      </p>
+                    </div>
                   </div>
-                )}
+                  {event.dtEnd && (
+                    <div className="flex items-center gap-3">
+                      <div className="liquid-glass-pill flex h-8 w-8 items-center justify-center rounded-full">
+                        <Clock className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">End</p>
+                        <p className="text-sm">
+                          {event.allDay
+                            ? formatAllDayDate(event.dtEnd)
+                            : formatDateTime(event.dtEnd)}
+                        </p>
+                        <p className="text-muted-foreground text-xs">{formatDuration()}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-
-              <Separator />
 
               {/* Location */}
               {event.location && (
-                <div className="flex items-start gap-2.5">
-                  <MapPin className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-                  <span className="text-sm">{event.location}</span>
+                <div className="liquid-glass-inner mt-4 rounded-2xl px-4 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className="liquid-glass-pill flex h-8 w-8 items-center justify-center rounded-full">
+                      <MapPin className="h-3.5 w-3.5" />
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Location</p>
+                      <p className="text-sm">{event.location}</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* Description */}
               {event.description && (
-                <div className="space-y-1.5">
+                <div className="liquid-glass-inner mt-4 rounded-2xl px-4 py-3.5">
                   <p className="text-muted-foreground text-xs">Description</p>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{event.description}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed whitespace-pre-wrap">
+                    {event.description}
+                  </p>
                 </div>
               )}
+            </div>
 
-              {/* Spacer */}
-              <div className="flex-1" />
-
-              {/* Actions */}
+            {/* Footer actions */}
+            <div className="border-border/30 border-t px-6 py-4">
               <div className="flex items-center gap-2">
                 {!isReadOnly && (
                   <>
                     <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
+                      className="liquid-glass-destructive h-9 flex-1 rounded-full text-xs font-medium"
                       onClick={handleDelete}
                       disabled={deleting}
+                      variant="ghost"
                     >
                       {deleting ? (
-                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <Trash2 className="mr-2 h-3.5 w-3.5" />
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                       )}
                       Delete
                     </Button>
-                    <Button size="sm" onClick={() => setMode("edit")}>
-                      <Pencil className="mr-2 h-3.5 w-3.5" />
+                    <Button
+                      className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium"
+                      onClick={() => setMode("edit")}
+                    >
+                      <Pencil className="mr-1.5 h-3.5 w-3.5" />
                       Edit
                     </Button>
                   </>
                 )}
                 {isReadOnly && (
-                  <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                  <Button
+                    className="liquid-glass-pill h-9 w-full rounded-full text-xs font-medium"
+                    onClick={() => onOpenChange(false)}
+                    variant="ghost"
+                  >
                     Close
                   </Button>
                 )}
               </div>
             </div>
-          </>
+          </div>
         ) : (
-          <>
-            {/* Edit mode */}
-            <SheetHeader className="gap-1">
+          <div className="flex h-full flex-col">
+            {/* Edit header */}
+            <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
               <div className="flex items-center justify-between">
-                <SheetTitle>Edit Event</SheetTitle>
+                <SheetTitle className="text-xl leading-tight font-semibold tracking-tight">
+                  Edit Event
+                </SheetTitle>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
+                  className="liquid-glass-pill h-8 w-8 rounded-full p-0"
                   onClick={() => setMode("view")}
+                  size="icon"
+                  variant="ghost"
                 >
-                  <X className="h-4 w-4" />
+                  <span className="text-sm">Done</span>
                 </Button>
               </div>
             </SheetHeader>
 
-            <div className="mt-4 flex flex-col gap-4 overflow-y-auto">
-              {/* Summary */}
-              <div className="space-y-2">
-                <Label>Title</Label>
-                <Input
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  placeholder="Meeting title"
-                />
-              </div>
-
-              {/* Date/Time */}
-              <div className="grid gap-4 sm:grid-cols-2">
+            {/* Edit form */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <div className="space-y-4">
+                {/* Title */}
                 <div className="space-y-2">
-                  <Label>Start</Label>
+                  <Label className="text-xs">Title</Label>
                   <Input
-                    type={allDay ? "date" : "datetime-local"}
-                    value={dtStart}
-                    onChange={(e) => setDtStart(e.target.value)}
+                    className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    placeholder="Meeting title"
                   />
                 </div>
+
+                {/* Date/Time */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Start</Label>
+                    <Input
+                      className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+                      type={allDay ? "date" : "datetime-local"}
+                      value={dtStart}
+                      onChange={(e) => setDtStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">End</Label>
+                    <Input
+                      className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+                      type={allDay ? "date" : "datetime-local"}
+                      value={dtEnd}
+                      onChange={(e) => setDtEnd(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* All day toggle */}
+                <div className="liquid-glass-inner flex items-center justify-between rounded-2xl px-4 py-3">
+                  <Label htmlFor="all-day" className="text-sm">
+                    All day
+                  </Label>
+                  <Switch checked={allDay} id="all-day" onCheckedChange={setAllDay} />
+                </div>
+
+                {/* Location */}
                 <div className="space-y-2">
-                  <Label>End</Label>
+                  <Label className="text-xs">
+                    <MapPin className="mr-1 inline h-3 w-3" />
+                    Location
+                  </Label>
                   <Input
-                    type={allDay ? "date" : "datetime-local"}
-                    value={dtEnd}
-                    onChange={(e) => setDtEnd(e.target.value)}
+                    className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Room, address, or video link"
                   />
                 </div>
-              </div>
 
-              {/* All day toggle */}
-              <div className="flex items-center gap-2">
-                <Switch checked={allDay} onCheckedChange={setAllDay} id="all-day" />
-                <Label htmlFor="all-day" className="text-sm">
-                  All day
-                </Label>
-              </div>
-
-              {/* Location */}
-              <div className="space-y-2">
-                <Label>
-                  <MapPin className="mr-1 inline h-3 w-3" />
-                  Location
-                </Label>
-                <Input
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Room, address, or video link"
-                />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Notes, agenda, etc."
-                  rows={3}
-                />
-              </div>
-
-              {/* Error */}
-              {error && (
-                <div className="text-destructive bg-destructive/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
-                  <AlertCircle className="h-4 w-4" />
-                  {error}
+                {/* Description */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Description</Label>
+                  <Textarea
+                    className="liquid-glass-inner min-h-[80px] rounded-2xl border-0 bg-transparent px-4 pt-3 shadow-none"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Notes, agenda, etc."
+                    rows={3}
+                  />
                 </div>
-              )}
 
-              {/* Spacer */}
-              <div className="flex-1" />
+                {/* Error */}
+                {error && (
+                  <div className="liquid-glass-destructive flex items-center gap-2 rounded-2xl px-4 py-3">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span className="text-xs">{error}</span>
+                  </div>
+                )}
+              </div>
+            </div>
 
-              {/* Actions */}
+            {/* Edit footer */}
+            <div className="border-border/30 border-t px-6 py-4">
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => setMode("view")}>
+                <Button
+                  className="liquid-glass-pill h-9 flex-1 rounded-full text-xs font-medium"
+                  onClick={() => setMode("view")}
+                  variant="ghost"
+                >
                   Cancel
                 </Button>
-                <Button onClick={handleSave} disabled={saving || !summary || !dtStart}>
+                <Button
+                  className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium"
+                  disabled={saving || !summary || !dtStart}
+                  onClick={handleSave}
+                >
                   {saving ? "Saving..." : "Save Changes"}
                 </Button>
               </div>
             </div>
-          </>
+          </div>
         )}
       </SheetContent>
     </Sheet>
