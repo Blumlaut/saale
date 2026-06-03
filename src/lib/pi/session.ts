@@ -204,7 +204,7 @@ export async function createPiSession(options: {
 
   if (enabled.memory) {
     const memoryTools = createMemoryTools(options.userId);
-    allCustomTools.push(memoryTools.memorySearchTool);
+    allCustomTools.push(memoryTools.memoryIndexTool, memoryTools.memorySearchTool);
   }
 
   // Resolve the model if specified
