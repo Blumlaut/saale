@@ -195,18 +195,13 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
           <div className="min-w-[160px] flex-1 space-y-1.5">
             <Label className="text-xs">Provider</Label>
             <Popover open={providerOpen} onOpenChange={setProviderOpen}>
-              <PopoverTrigger>
-                <button
-                  type="button"
-                  className="border-border/50 focus-visible:ring-ring/50 inline-flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-2.5 text-sm outline-hidden transition-colors hover:bg-white/10 focus-visible:ring-3 dark:hover:bg-white/5"
-                >
-                  <span className="truncate text-sm">
-                    {availableProviders.find((p) => p.id === newProvider)?.name ?? (
-                      <span className="text-muted-foreground">Select…</span>
-                    )}
-                  </span>
-                  <ChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                </button>
+              <PopoverTrigger className="border-border/50 focus-visible:ring-ring/50 inline-flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-2.5 text-sm outline-hidden transition-colors hover:bg-white/10 focus-visible:ring-3 dark:hover:bg-white/5">
+                <span className="truncate text-sm">
+                  {availableProviders.find((p) => p.id === newProvider)?.name ?? (
+                    <span className="text-muted-foreground">Select…</span>
+                  )}
+                </span>
+                <ChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
               </PopoverTrigger>
               <PopoverContent className="w-[200px] p-1" align="start">
                 {availableProviders.map((p) => (
