@@ -69,7 +69,7 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const result = await syncSubscription(subscriptionId);
+  const result = await syncSubscription(subscriptionId, authResult.user.id);
 
   return NextResponse.json({
     sync: {

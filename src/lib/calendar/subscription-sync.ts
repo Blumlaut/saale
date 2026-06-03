@@ -5,16 +5,20 @@ import { parseICS } from "./ics-import";
 /**
  * Fetch a remote ICS URL and merge events into the target calendar.
  * Uses ETag for conditional fetch (304 = no changes).
+ * Requires userId for ownership validation (defense in depth).
  */
-export async function syncSubscription(subscriptionId: string): Promise<{
+export async function syncSubscription(
+  subscriptionId: string,
+  userId: string,
+): Promise<{
   eventsCreated: number;
   eventsUpdated: number;
   eventsDeleted: number;
   parsedEvents: number;
   error: string | null;
 }> {
-  const subscription = await prisma.calendarSubscription.findUnique({
-    where: { id: subscriptionId },
+  const subscription = await prisma.calendarSubscription.findFirst({
+    where: { id: subscriptionId, userId },
     include: { calendar: { include: { account: true } } },
   });
 
@@ -223,7 +227,7 @@ export async function syncAllSubscriptions(userId: string): Promise<{
   const errors: string[] = [];
 
   for (const sub of subscriptions) {
-    const result = await syncSubscription(sub.id);
+    const result = await syncSubscription(sub.id, userId);
     totalCreated += result.eventsCreated;
     totalUpdated += result.eventsUpdated;
     totalDeleted += result.eventsDeleted;

@@ -107,15 +107,15 @@ export async function extractEventsFromEmails(params: {
         continue;
       }
 
-      // Dedup check
-      const isDuplicate = await checkDuplicate(extracted, params.targetCalendarId);
+      // Dedup check (scoped to user's calendars)
+      const isDuplicate = await checkDuplicate(extracted, params.userId, params.targetCalendarId);
       if (isDuplicate) {
         eventsSkipped++;
         continue;
       }
 
-      // Create calendar event
-      await createCalendarEvent(extracted, params.targetCalendarId, email.id);
+      // Create calendar event (scoped to user's calendars)
+      await createCalendarEvent(extracted, params.userId, params.targetCalendarId, email.id);
       eventsCreated++;
     } catch (err) {
       const emailErr = err as Error;
@@ -210,8 +210,13 @@ function validateExtractedEvent(event: ExtractedEvent): boolean {
 
 /**
  * Check if an event with similar title and date already exists.
+ * Scoped to the user's own calendars — never queries another user's events.
  */
-async function checkDuplicate(event: ExtractedEvent, targetCalendarId?: string): Promise<boolean> {
+async function checkDuplicate(
+  event: ExtractedEvent,
+  userId: string,
+  targetCalendarId?: string,
+): Promise<boolean> {
   const startDate = new Date(event.startDate);
   if (event.startTime) {
     const parts = event.startTime.split(":");
@@ -227,6 +232,7 @@ async function checkDuplicate(event: ExtractedEvent, targetCalendarId?: string):
   const where: Record<string, unknown> = {
     dtStart: { gte: startBuffer, lte: endBuffer },
     source: "email_extraction",
+    calendar: { account: { userId } },
   };
 
   if (targetCalendarId) {
@@ -254,9 +260,11 @@ async function checkDuplicate(event: ExtractedEvent, targetCalendarId?: string):
 
 /**
  * Create a calendar event from extracted data.
+ * Scoped to the user's own calendars — never creates events in another user's calendar.
  */
 async function createCalendarEvent(
   event: ExtractedEvent,
+  userId: string,
   targetCalendarId?: string,
   sourceEmailId?: string,
 ): Promise<void> {
@@ -264,9 +272,9 @@ async function createCalendarEvent(
   let calendarId = targetCalendarId;
 
   if (!calendarId) {
-    // Find the first enabled calendar for the user
+    // Find the first enabled calendar for THIS user only
     const defaultCalendar = await prisma.calendar.findFirst({
-      where: { enabled: true },
+      where: { enabled: true, account: { userId } },
       orderBy: { createdAt: "asc" },
     });
     if (!defaultCalendar) {
