@@ -18,6 +18,11 @@ model User {
   email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?
+  // Admin plugin fields
+  role          String    @default("user")
+  banned        Boolean   @default(false)
+  banReason     String?   @db.Text
+  banExpires    DateTime?
   accounts      Account[]
   sessions      Session[]
   chatSessions  ChatSession[]
@@ -53,14 +58,15 @@ model Account {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    String
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  token          String   @unique
+  userId         String
+  expiresAt      DateTime
+  ipAddress      String?
+  userAgent      String?
+  impersonatedBy String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -248,6 +254,21 @@ model TaskRun {
 
   @@index([taskId, status])
   @@map("TaskRun")
+}
+
+// ─── Admin Settings (singleton) ────────────────────────────────
+
+/// Global admin configuration — one row only.
+model AdminSettings {
+  id                     String   @id @default("global")
+  signupsEnabled         Boolean  @default(true)
+  globalModelProvider    String   @default("")
+  globalModelName        String   @default("")
+  /// Per-provider enabled models: { "anthropic": { "enabled": true, "models": ["claude-sonnet-4-20250514", ...] } }
+  globalProviderModels   Json?
+  updatedAt              DateTime @updatedAt
+
+  @@map("admin_settings")
 }
 
 // ─── App Settings ──────────────────────────────────────────────

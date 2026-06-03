@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Shield } from "lucide-react";
 import { fetchJson, patchJson } from "@/lib/http";
 import {
   Settings as SettingsIcon,
@@ -35,6 +38,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Providers state (shared between providers and AI tabs)
   const [providers, setProviders] = useState<ConfiguredProvider[]>([]);
@@ -53,6 +57,15 @@ export default function SettingsPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  }, []);
+
+  // Check if user is admin
+  useEffect(() => {
+    fetchJson<{ user?: { role?: string } }>("/api/auth/get-session")
+      .then((data) => {
+        setIsAdmin(data.user?.role === "admin");
+      })
+      .catch(() => {});
   }, []);
 
   // Load providers
@@ -230,6 +243,20 @@ export default function SettingsPage() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Admin link — shown only to admin users */}
+      {isAdmin && (
+        <Link
+          href="/admin/models"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-sm"
+        >
+          <Shield className="h-4 w-4" />
+          Admin Panel
+          <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
+            admin
+          </Badge>
+        </Link>
+      )}
     </div>
   );
 }
