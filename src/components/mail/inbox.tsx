@@ -371,7 +371,7 @@ export function Inbox() {
     }
   };
 
-  const handleSelect = (msg: EmailMessage) => {
+  const handleSelect = async (msg: EmailMessage) => {
     setSelectedId(msg.id);
     setSelectedMsg(msg);
     if (isMobile) {
@@ -380,6 +380,12 @@ export function Inbox() {
     if (!msg.isRead) {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
       setSelectedMsg((prev) => (prev ? { ...prev, isRead: true } : prev));
+      // Persist to server
+      patchJson(`/api/email/messages/${msg.id}`, { isRead: true }).catch(() => {
+        // Revert local state on failure
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: false } : m)));
+        setSelectedMsg((prev) => (prev ? { ...prev, isRead: false } : prev));
+      });
     }
   };
 
