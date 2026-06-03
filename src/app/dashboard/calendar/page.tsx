@@ -57,13 +57,18 @@ export default function CalendarPage() {
         const year = start.getUTCFullYear();
         const month = start.getUTCMonth();
         start.setTime(Date.UTC(year, month, 1));
-        end = new Date(Date.UTC(year, month + 1, 0));
+        end = new Date(Date.UTC(year, month + 1, 1)); // first day of next month
       } else if (view === "week") {
         const weekStart = startOfWeekUTC(start);
         end = new Date(weekStart);
-        end.setUTCDate(end.getUTCDate() + 6);
+        end.setUTCDate(end.getUTCDate() + 7); // Sunday end of day
       } else {
-        end = new Date(start);
+        // Day view: midnight to end of day
+        const year = start.getUTCFullYear();
+        const month = start.getUTCMonth();
+        const day = start.getUTCDate();
+        start.setTime(Date.UTC(year, month, day));
+        end = new Date(Date.UTC(year, month, day + 1));
       }
 
       const enabledCalendarIds = accounts
