@@ -87,7 +87,10 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
                 {dayEvents.slice(0, 3).map((evt) => (
                   <span
                     key={evt.id}
-                    onClick={() => onEventClick(evt)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEventClick(evt);
+                    }}
                     className={cn(
                       "cursor-pointer truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
                       evt.allDay
