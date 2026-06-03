@@ -52,6 +52,7 @@ export function FileCard({
     const controller = new AbortController();
     fetch(`/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`, {
       signal: controller.signal,
+      credentials: "include",
     })
       .then((res) => {
         if (!res.ok) throw new Error("Failed");
@@ -75,7 +76,9 @@ export function FileCard({
   const handleDownload = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`);
+      const res = await fetch(`/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to download");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
