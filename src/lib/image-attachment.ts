@@ -112,3 +112,16 @@ export async function readImageAsBase64(
 export function resolveImagePath(userId: string, storagePath: string): string {
   return path.join(UPLOADS_DIR, userId, storagePath);
 }
+
+/**
+ * Delete an image file from disk.
+ * Silently ignores missing files.
+ */
+export async function deleteImage(userId: string, storagePath: string): Promise<void> {
+  const fullPath = resolveImagePath(userId, storagePath);
+  try {
+    await fs.unlink(fullPath);
+  } catch {
+    // File already gone — nothing to do
+  }
+}
