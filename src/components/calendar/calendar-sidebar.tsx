@@ -129,23 +129,25 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
     "#f97316",
   ];
 
+  const totalAccounts = accounts.length;
+
   return (
-    <div className="w-52 shrink-0 space-y-4">
-      {/* Summary */}
-      <GlassPanel>
-        <GlassPanelContent className="space-y-3">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="text-muted-foreground h-4 w-4" />
-            <span className="text-sm font-medium">
-              {accounts.length} account{accounts.length !== 1 ? "s" : ""}
-            </span>
+    <div className="flex flex-col gap-4 md:w-52 md:shrink-0 md:flex-row">
+      {/* Summary — compact on desktop, takes available space on mobile */}
+      <GlassPanel className="flex-shrink-0">
+        <GlassPanelContent className="flex items-center gap-3 py-3">
+          <CalendarDays className="text-muted-foreground h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">
+              {totalAccounts} account{totalAccounts !== 1 ? "s" : ""}
+            </p>
+            <p className="text-muted-foreground truncate text-xs">{totalEvents} total events</p>
           </div>
-          <p className="text-muted-foreground text-xs">{totalEvents} total events</p>
         </GlassPanelContent>
       </GlassPanel>
 
       {/* Calendars */}
-      <GlassPanel>
+      <GlassPanel className="flex-1">
         <GlassPanelContent className="p-0">
           {accounts.length === 0 ? (
             <div className="px-4 py-6 text-center">

@@ -177,8 +177,8 @@ export default function CalendarPage() {
         </Button>
       </div>
 
-      <div className="flex gap-4">
-        {/* Sidebar */}
+      {/* Sidebar — stacks above calendar on mobile */}
+      <div className="flex flex-col gap-4 md:flex-row">
         <CalendarSidebar accounts={accounts} onAccountsChange={loadAccounts} />
 
         {/* Main content */}
