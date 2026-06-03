@@ -263,6 +263,7 @@ model AppSettings {
   emailWritingStyle      String?  @db.Text // User-defined writing style for email reply drafts
   purposeModelOverrides  Json?                  // Per-purpose model overrides: { "email_draft": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } }
   disabledModels       Json?                  // Array of "provider:modelId" strings for models the user has disabled
+  defaultToolConfig    Json?                  // Default tool config for new chat sessions: { "files": true, "email": true, ... }
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerApiKeys      ProviderApiKey[]
   updatedAt            DateTime @updatedAt

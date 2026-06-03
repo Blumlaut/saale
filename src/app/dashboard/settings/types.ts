@@ -1,5 +1,7 @@
 // Re-export shared types
 export type { EmailAccount } from "@/types/shared";
+import type { ToolConfig } from "@/lib/pi/tool-config";
+export type { ToolConfig };
 
 export interface PurposeModelSelection {
   provider: string;
@@ -15,6 +17,7 @@ export interface UserSettings {
   emailWritingStyle: string | null;
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
   disabledModels: string[] | null; // Array of "provider:modelId" strings
+  defaultToolConfig: ToolConfig | null;
 }
 
 export interface ConfiguredProvider {

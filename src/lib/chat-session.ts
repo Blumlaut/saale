@@ -1,9 +1,11 @@
 import { fetchJson, postJson } from "@/lib/http";
+import type { ToolConfig } from "@/lib/pi/tool-config";
 
 interface UserSettings {
   defaultModelProvider?: string;
   defaultModelName?: string;
   defaultThinkingLevel?: string;
+  defaultToolConfig?: ToolConfig;
 }
 
 /**
@@ -25,6 +27,7 @@ export async function createChatSession(): Promise<{ id: string }> {
     modelProvider: settings?.defaultModelProvider || undefined,
     modelName: settings?.defaultModelName || undefined,
     thinkingLevel: settings?.defaultThinkingLevel || "off",
+    toolConfig: settings?.defaultToolConfig || undefined,
   });
 
   return data.session;
