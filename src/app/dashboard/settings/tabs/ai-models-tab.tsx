@@ -182,8 +182,8 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
   const totalProviders = providers.length + globalProviders.length;
 
   return (
-    <div className="border-border/50 bg-background/40 overflow-hidden rounded-2xl border">
-      <div className="flex items-center gap-2 px-4 pt-3">
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
         <Key className="text-muted-foreground h-4 w-4" />
         <span className="text-sm font-medium">API Keys</span>
         {totalProviders > 0 && (
@@ -193,9 +193,7 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
         )}
       </div>
 
-      <Separator />
-
-      <div className="space-y-4 px-4 py-3">
+      <div className="space-y-4">
         {/* Add form */}
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[160px] flex-1 space-y-1.5">
