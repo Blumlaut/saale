@@ -67,7 +67,7 @@ export function createMemoryTools(userId: string) {
             SELECT id, collection, title, content, tags, importance, "accessCount", "createdAt", "updatedAt",
                    ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')), plainto_tsquery('english', ${searchQuery})) AS rank
             FROM "Memory"
-            WHERE userId = ${userId}
+            WHERE "userId" = ${userId}
               AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')) @@ plainto_tsquery('english', ${searchQuery})
               ${collectionFilter ? Prisma.sql`AND collection = ${collectionFilter}` : Prisma.empty}
               ${
