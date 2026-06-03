@@ -17,6 +17,7 @@ import { Send, ChevronDown, ChevronUp } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { fetchJson, postJson } from "@/lib/http";
 import { splitEmailAddresses } from "@/lib/email/utils";
+import { toast } from "sonner";
 import type { EmailAccount } from "@/types/shared";
 
 interface ComposeSheetProps {
@@ -70,6 +71,7 @@ export function ComposeSheet({ open, onOpenChange }: ComposeSheetProps) {
         body,
       });
 
+      toast.success("Email sent");
       resetAndClose();
     } catch (err) {
       setError((err as Error).message);
