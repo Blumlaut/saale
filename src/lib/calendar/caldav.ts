@@ -70,6 +70,54 @@ export async function discoverCalendars(accountId: string): Promise<DAVCalendar[
 }
 
 /**
+ * Resolve a calendar by ID and connect to its CalDAV server.
+ */
+async function resolveCalDAVClient(
+  calendarId: string,
+): Promise<
+  | { ok: true; calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findUnique>>>; client: DAVClient }
+  | { ok: false; error: string }
+> {
+  const calendar = await prisma.calendar.findUnique({
+    where: { id: calendarId },
+    include: { account: true },
+  });
+  if (!calendar || !calendar.remoteId) {
+    return { ok: false, error: "Calendar is not a CalDAV calendar" };
+  }
+
+  const { client } = await connectCalDAV(calendar.accountId);
+  return { ok: true, calendar, client };
+}
+
+/**
+ * Resolve a calendar by ID and connect to its CalDAV server.
+ * Returns the calendar, client, and matched remote calendar.
+ */
+async function resolveCalDAVCalendar(
+  calendarId: string,
+): Promise<
+  | { ok: true; calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findUnique>>>; client: DAVClient; remote: DAVCalendar }
+  | { ok: false; error: string }
+> {
+  const base = await resolveCalDAVClient(calendarId);
+  if (!base.ok) return base;
+
+  const remoteCalendars = await base.client.fetchCalendars();
+  const remote = remoteCalendars.find(
+    (c) =>
+      c.url === base.calendar.remoteId ||
+      c.url.endsWith(base.calendar.remoteId!) ||
+      base.calendar.remoteId?.endsWith(c.url),
+  );
+  if (!remote) {
+    return { ok: false, error: `Remote calendar ${base.calendar.remoteId} not found` };
+  }
+
+  return { ok: true, calendar: base.calendar, client: base.client, remote };
+}
+
+/**
  * Push a new event to a CalDAV calendar.
  * Generates a VCALENDAR string and calls createCalendarObject.
  */
@@ -78,39 +126,14 @@ export async function pushEventToCalDAV(
   event: ICSExportEvent,
 ): Promise<PushResult> {
   try {
-    const calendar = await prisma.calendar.findUnique({
-      where: { id: calendarId },
-      include: { account: true },
-    });
-    if (!calendar || !calendar.remoteId) {
-      return {
-        success: false,
-        remoteUrl: null,
-        etag: null,
-        error: "Calendar is not a CalDAV calendar",
-      };
-    }
-
-    const { client } = await connectCalDAV(calendar.accountId);
-    const remoteCalendars = await client.fetchCalendars();
-    const remoteCalendar = remoteCalendars.find(
-      (c) =>
-        c.url === calendar.remoteId ||
-        c.url.endsWith(calendar.remoteId!) ||
-        calendar.remoteId?.endsWith(c.url),
-    );
-    if (!remoteCalendar) {
-      return {
-        success: false,
-        remoteUrl: null,
-        etag: null,
-        error: `Remote calendar ${calendar.remoteId} not found`,
-      };
+    const result = await resolveCalDAVCalendar(calendarId);
+    if (!result.ok) {
+      return { success: false, remoteUrl: null, etag: null, error: result.error };
     }
 
     const ics = generateICS(event);
-    const response = await client.createCalendarObject({
-      calendar: remoteCalendar,
+    const response = await result.client.createCalendarObject({
+      calendar: result.remote,
       iCalString: ics,
       filename: `${event.uid}.ics`,
     });
@@ -140,21 +163,16 @@ export async function pushUpdateToCalDAV(
   event: ICSExportEvent & { url?: string; sequence?: number },
 ): Promise<UpdateResult> {
   try {
-    const calendar = await prisma.calendar.findUnique({
-      where: { id: calendarId },
-      include: { account: true },
-    });
-    if (!calendar || !calendar.remoteId) {
-      return { success: false, etag: null, error: "Calendar is not a CalDAV calendar" };
+    const resolved = await resolveCalDAVClient(calendarId);
+    if (!resolved.ok) {
+      return { success: false, etag: null, error: resolved.error };
     }
     if (!event.url) {
       return { success: false, etag: null, error: "No remote URL for event" };
     }
 
-    const { client } = await connectCalDAV(calendar.accountId);
-
     const ics = generateICS(event);
-    const response = await client.updateCalendarObject({
+    const response = await resolved.client.updateCalendarObject({
       calendarObject: {
         url: event.url,
         data: ics,
@@ -184,17 +202,12 @@ export async function pushDeleteToCalDAV(
   eventUrl: string,
 ): Promise<DeleteResult> {
   try {
-    const calendar = await prisma.calendar.findUnique({
-      where: { id: calendarId },
-      include: { account: true },
-    });
-    if (!calendar || !calendar.remoteId) {
-      return { success: false, error: "Calendar is not a CalDAV calendar" };
+    const resolved = await resolveCalDAVClient(calendarId);
+    if (!resolved.ok) {
+      return { success: false, error: resolved.error };
     }
 
-    const { client } = await connectCalDAV(calendar.accountId);
-
-    await client.deleteCalendarObject({
+    await resolved.client.deleteCalendarObject({
       calendarObject: {
         url: eventUrl,
       } as DAVCalendarObject,

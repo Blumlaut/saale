@@ -8,6 +8,47 @@ import { pushEventToCalDAV } from "@/lib/calendar/caldav";
  * All queries are scoped to the authenticated user's calendars.
  */
 export function createCalendarTools(userId: string) {
+  /** Find a single event, scoped to user */
+  async function findEventByUser(
+    eventId: string,
+    options?: { includeCalendar?: boolean },
+  ) {
+    return prisma.calendarEvent.findFirst({
+      where: {
+        id: eventId,
+        calendar: { account: { userId } },
+      },
+      ...(options?.includeCalendar ? { include: { calendar: true } } : {}),
+    });
+  }
+
+  /** Fetch events with user isolation and serialize for tool response */
+  async function queryEvents(whereClause: Record<string, unknown>) {
+    const events = await prisma.calendarEvent.findMany({
+      where: whereClause,
+      orderBy: { dtStart: "asc" },
+      take: 20,
+      include: {
+        calendar: {
+          select: { id: true, name: true, color: true },
+        },
+      },
+    });
+
+    return events.map((e) => ({
+      id: e.id,
+      uid: e.uid,
+      summary: e.summary,
+      description: e.description,
+      location: e.location,
+      dtStart: e.dtStart.toISOString(),
+      dtEnd: e.dtEnd?.toISOString() ?? null,
+      allDay: e.allDay,
+      calendarName: e.calendar.name,
+      calendarColor: e.calendar.color,
+    }));
+  }
+
   return {
     // ─── calendar_list ──────────────────────────────────────────────────────
 
@@ -94,18 +135,9 @@ export function createCalendarTools(userId: string) {
           end.setHours(end.getHours() + 24);
         }
 
-        const events = await prisma.calendarEvent.findMany({
-          where: {
-            calendar: { account: { userId }, enabled: true },
-            dtStart: { gte: now, lte: end },
-          },
-          orderBy: { dtStart: "asc" },
-          take: params.limit ?? 20,
-          include: {
-            calendar: {
-              select: { id: true, name: true, color: true },
-            },
-          },
+        const events = await queryEvents({
+          calendar: { account: { userId }, enabled: true },
+          dtStart: { gte: now, lte: end },
         });
 
         return {
@@ -117,18 +149,7 @@ export function createCalendarTools(userId: string) {
                   from: now.toISOString(),
                   to: end.toISOString(),
                   count: events.length,
-                  events: events.map((e) => ({
-                    id: e.id,
-                    uid: e.uid,
-                    summary: e.summary,
-                    description: e.description,
-                    location: e.location,
-                    dtStart: e.dtStart.toISOString(),
-                    dtEnd: e.dtEnd?.toISOString() ?? null,
-                    allDay: e.allDay,
-                    calendarName: e.calendar.name,
-                    calendarColor: e.calendar.color,
-                  })),
+                  events,
                 },
                 null,
                 2,
@@ -159,22 +180,13 @@ export function createCalendarTools(userId: string) {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        const events = await prisma.calendarEvent.findMany({
-          where: {
-            calendar: { account: { userId }, enabled: true },
-            OR: [
-              { summary: { contains: params.query, mode: "insensitive" } },
-              { description: { contains: params.query, mode: "insensitive" } },
-              { location: { contains: params.query, mode: "insensitive" } },
-            ],
-          },
-          orderBy: { dtStart: "asc" },
-          take: params.limit ?? 20,
-          include: {
-            calendar: {
-              select: { id: true, name: true, color: true },
-            },
-          },
+        const events = await queryEvents({
+          calendar: { account: { userId }, enabled: true },
+          OR: [
+            { summary: { contains: params.query, mode: "insensitive" } },
+            { description: { contains: params.query, mode: "insensitive" } },
+            { location: { contains: params.query, mode: "insensitive" } },
+          ],
         });
 
         return {
@@ -185,17 +197,7 @@ export function createCalendarTools(userId: string) {
                 {
                   query: params.query,
                   count: events.length,
-                  events: events.map((e) => ({
-                    id: e.id,
-                    summary: e.summary,
-                    description: e.description,
-                    location: e.location,
-                    dtStart: e.dtStart.toISOString(),
-                    dtEnd: e.dtEnd?.toISOString() ?? null,
-                    allDay: e.allDay,
-                    calendarName: e.calendar.name,
-                    calendarColor: e.calendar.color,
-                  })),
+                  events,
                 },
                 null,
                 2,
@@ -274,18 +276,24 @@ export function createCalendarTools(userId: string) {
           ? new Date(params.dtEnd)
           : new Date(dtStart.getTime() + 60 * 60 * 1000);
 
+        const eventData = {
+          uid,
+          summary: params.summary,
+          description: params.description ?? null,
+          location: params.location ?? null,
+          dtStart,
+          dtEnd,
+          allDay: params.allDay ?? false,
+          timeZone: params.timeZone ?? null,
+          recurrenceRule: params.recurrenceRule ?? null,
+          status: null,
+          transparency: null,
+        };
+
         const event = await prisma.calendarEvent.create({
           data: {
             calendarId: params.calendarId,
-            uid,
-            summary: params.summary,
-            description: params.description ?? null,
-            location: params.location ?? null,
-            dtStart,
-            dtEnd,
-            allDay: params.allDay ?? false,
-            timeZone: params.timeZone ?? null,
-            recurrenceRule: params.recurrenceRule ?? null,
+            ...eventData,
             source: "manual",
           },
         });
@@ -293,19 +301,7 @@ export function createCalendarTools(userId: string) {
         // Push to CalDAV if applicable
         let caldavResult: { success: boolean; error: string | null } | null = null;
         if (calendar.remoteId) {
-          caldavResult = await pushEventToCalDAV(params.calendarId, {
-            uid,
-            summary: params.summary,
-            description: params.description ?? null,
-            location: params.location ?? null,
-            dtStart,
-            dtEnd,
-            allDay: params.allDay ?? false,
-            timeZone: params.timeZone ?? null,
-            recurrenceRule: params.recurrenceRule ?? null,
-            status: null,
-            transparency: null,
-          });
+          caldavResult = await pushEventToCalDAV(params.calendarId, eventData);
         }
 
         return {
@@ -380,12 +376,7 @@ export function createCalendarTools(userId: string) {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        const event = await prisma.calendarEvent.findFirst({
-          where: {
-            id: params.id,
-            calendar: { account: { userId } },
-          },
-        });
+        const event = await findEventByUser(params.id);
         if (!event) {
           throw new Error(`Event ${params.id} not found`);
         }
@@ -440,13 +431,7 @@ export function createCalendarTools(userId: string) {
         }),
       }),
       execute: async (_toolCallId, params) => {
-        const event = await prisma.calendarEvent.findFirst({
-          where: {
-            id: params.id,
-            calendar: { account: { userId } },
-          },
-          include: { calendar: true },
-        });
+        const event = await findEventByUser(params.id, { includeCalendar: true });
         if (!event) {
           throw new Error(`Event ${params.id} not found`);
         }

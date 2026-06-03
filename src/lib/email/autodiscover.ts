@@ -21,19 +21,19 @@ export interface AutodiscoverResult {
 const TCP_TIMEOUT = 8_000;
 
 /**
- * Try a plain TCP connection and read a banner.
+ * Connect to a socket, read the first data chunk as a banner, and clean it.
  * Returns the banner text or null on failure.
  */
-async function readPlainBanner(host: string, port: number): Promise<string | null> {
+async function readBanner(
+  connect: (onData: (chunk: Buffer) => void) => net.Socket,
+): Promise<string | null> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       socket.destroy();
       resolve(null);
     }, TCP_TIMEOUT);
 
-    const socket = net.createConnection({ host, port, timeout: TCP_TIMEOUT }, () => {});
-
-    socket.on("data", (chunk: Buffer) => {
+    const socket = connect((chunk: Buffer) => {
       clearTimeout(timer);
       socket.destroy();
       resolve(chunk.toString("ascii").replace(/[\x00-\x08\x0e-\x1f\x7f-\xff]/g, ""));
@@ -47,39 +47,35 @@ async function readPlainBanner(host: string, port: number): Promise<string | nul
 }
 
 /**
+ * Try a plain TCP connection and read a banner.
+ * Returns the banner text or null on failure.
+ */
+async function readPlainBanner(host: string, port: number): Promise<string | null> {
+  return readBanner((onData) => {
+    const socket = net.createConnection({ host, port, timeout: TCP_TIMEOUT }, () => {});
+    socket.on("data", onData);
+    return socket;
+  });
+}
+
+/**
  * Try a TLS connection and read the server banner through the encrypted channel.
  * Returns the banner text or null on failure.
  */
 async function readTlsBanner(host: string, port: number): Promise<string | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      socket.destroy();
-      resolve(null);
-    }, TCP_TIMEOUT);
-
+  return readBanner((onData) => {
     const socket = tls.connect(
       {
         host,
         port,
         servername: host,
-        rejectUnauthorized: false, // We just need to check if something speaks the protocol
+        rejectUnauthorized: false,
         timeout: TCP_TIMEOUT,
       },
-      () => {
-        // TLS handshake complete — socket emits 'data' with the banner
-      },
+      () => {},
     );
-
-    socket.on("data", (chunk: Buffer) => {
-      clearTimeout(timer);
-      socket.destroy();
-      resolve(chunk.toString("ascii").replace(/[\x00-\x08\x0e-\x1f\x7f-\xff]/g, ""));
-    });
-
-    socket.on("error", () => {
-      clearTimeout(timer);
-      resolve(null);
-    });
+    socket.on("data", onData);
+    return socket;
   });
 }
 

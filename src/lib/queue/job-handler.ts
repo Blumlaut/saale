@@ -9,6 +9,7 @@ import { addJobRun, updateJobRun } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { syncCalendarAccount } from "@/lib/calendar/sync";
 import { extractEventsFromEmails } from "@/lib/calendar/email-extraction";
+import { resolveUserEmailAccountIds, resolveUserCalendarAccountIds } from "@/lib/queue/user-isolation";
 
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
 
@@ -119,18 +120,9 @@ export async function processJob(job: Job): Promise<void> {
     let output: string;
 
     if (type === "email_sync") {
-      // Resolve this user's account IDs for isolation
-      const userAccounts = await prisma.emailAccount.findMany({
-        where: { userId: task.userId, enabled: true },
-        select: { id: true },
-      });
-      const accountIds = userAccounts.map((a) => a.id);
+      const accountIds = await resolveUserEmailAccountIds(task.userId, config.accountId);
 
       if (config.accountId) {
-        // Verify account belongs to this user
-        if (!accountIds.includes(config.accountId)) {
-          throw new Error(`Account ${config.accountId} not found`);
-        }
         const result = await syncEmailAccount(config.accountId);
         output = JSON.stringify(result);
       } else {
@@ -141,16 +133,7 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "summarization") {
-      // Resolve this user's account IDs for isolation
-      const userAccounts = await prisma.emailAccount.findMany({
-        where: { userId: task.userId, enabled: true },
-        select: { id: true },
-      });
-      const accountIds = userAccounts.map((a) => a.id);
-
-      if (config.accountId && !accountIds.includes(config.accountId)) {
-        throw new Error(`Account ${config.accountId} not found`);
-      }
+      const accountIds = await resolveUserEmailAccountIds(task.userId, config.accountId);
 
       const whereClause: Record<string, unknown> = {
         accountId: { in: accountIds },
@@ -221,16 +204,7 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "classification") {
-      // Resolve this user's account IDs for isolation
-      const userAccounts = await prisma.emailAccount.findMany({
-        where: { userId: task.userId, enabled: true },
-        select: { id: true },
-      });
-      const accountIds = userAccounts.map((a) => a.id);
-
-      if (config.accountId && !accountIds.includes(config.accountId)) {
-        throw new Error(`Account ${config.accountId} not found`);
-      }
+      const accountIds = await resolveUserEmailAccountIds(task.userId, config.accountId);
 
       const whereClause: Record<string, unknown> = {
         accountId: { in: accountIds },
@@ -309,18 +283,9 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "calendar_sync") {
-      // Resolve this user's calendar account IDs for isolation
-      const userAccounts = await prisma.calendarAccount.findMany({
-        where: { userId: task.userId, enabled: true },
-        select: { id: true },
-      });
-      const accountIds = userAccounts.map((a) => a.id);
+      const accountIds = await resolveUserCalendarAccountIds(task.userId, config.accountId);
 
       if (config.accountId) {
-        // Verify account belongs to this user
-        if (!accountIds.includes(config.accountId)) {
-          throw new Error(`Calendar account ${config.accountId} not found`);
-        }
         const result = await syncCalendarAccount(config.accountId);
         output = JSON.stringify(result);
       } else {
@@ -357,16 +322,7 @@ export async function processJob(job: Job): Promise<void> {
       const result = await syncAllSubscriptions(task.userId);
       output = JSON.stringify(result);
     } else if (type === "spam_filtering") {
-      // Resolve this user's account IDs for isolation
-      const userAccounts = await prisma.emailAccount.findMany({
-        where: { userId: task.userId, enabled: true },
-        select: { id: true },
-      });
-      const accountIds = userAccounts.map((a) => a.id);
-
-      if (config.accountId && !accountIds.includes(config.accountId)) {
-        throw new Error(`Account ${config.accountId} not found`);
-      }
+      const accountIds = await resolveUserEmailAccountIds(task.userId, config.accountId);
 
       const whereClause: Record<string, unknown> = {
         accountId: { in: accountIds },
