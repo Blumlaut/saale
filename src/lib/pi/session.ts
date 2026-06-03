@@ -176,10 +176,12 @@ export async function createPiSession(options: {
   if (enabled.jobs) {
     const jobTools = createJobTools(options.userId);
     allCustomTools.push(
-      jobTools.jobListTool,
-      jobTools.jobEnableTool,
-      jobTools.jobRunTool,
-      jobTools.jobLogsTool,
+      jobTools.taskListTool,
+      jobTools.taskEnableTool,
+      jobTools.taskRunTool,
+      jobTools.taskLogsTool,
+      jobTools.taskTypesTool,
+      jobTools.taskCreateTool,
     );
   }
 
