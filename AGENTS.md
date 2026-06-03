@@ -108,6 +108,40 @@ This project is in its early stages. Heavy reworks and structural changes are ex
   <div>Input bar</div>  {/* gets pushed off-screen */}
 </div>```
 
+## User Isolation
+
+- **Every database query must be scoped to the authenticated user.** No exceptions.
+- All API routes, AI tools, and background jobs operate on behalf of a specific user. Data leakage between users is a critical bug.
+- **Prisma queries:** always include `userId` in `where` clauses. Never trust IDs alone — an attacker can guess or enumerate IDs from another user.
+- **Raw SQL:** use `Prisma.sql` template tags (parameterized), never `$queryRawUnsafe` with string interpolation.
+- **AI tools:** the `userId` is injected via closure in tool factories (`createXxxTools(userId)`). Every query inside must use this `userId`.
+- **Background jobs:** use `task.userId` from the resolved task record. Never assume the job runner context implies a user.
+- **Bulk updates/deletes:** include `userId` in the `where` clause even when operating on IDs fetched earlier in the same function (defense in depth).
+
+### Examples
+
+```ts
+// ❌ BAD — ID-only filter, no user scope
+await prisma.memory.updateMany({
+  where: { id: { in: memoryIds } },
+  data: { accessCount: { increment: 1 } },
+});
+
+// ✅ GOOD — userId guard on every query
+await prisma.memory.updateMany({
+  where: { id: { in: memoryIds }, userId },
+  data: { accessCount: { increment: 1 } },
+});
+
+// ❌ BAD — raw SQL with string interpolation
+prisma.$queryRawUnsafe(`SELECT * FROM Memory WHERE userId = ${userId}`);
+
+// ✅ GOOD — parameterized via Prisma.sql
+prisma.$queryRaw`
+  SELECT * FROM Memory WHERE userId = ${userId}
+`;
+```
+
 ## No Hardcoded Values
 
 - **Never hardcode logic, configs, or environment-specific values in the code.**
