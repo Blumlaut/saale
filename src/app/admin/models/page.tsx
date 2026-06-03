@@ -104,13 +104,13 @@ export default function AdminModelsPage() {
     }
   }, []);
 
-  // ─── Load models ───
+  // ─── Load models (global providers only) ───
   const loadModels = useCallback(async () => {
     try {
       const data = await fetchJson<{
         models: Record<string, AvailableModel[]>;
         providers: AvailableProvider[];
-      }>("/api/providers/models");
+      }>("/api/admin/providers/models");
       setAvailableModels(data.models ?? {});
       setModelProviders(data.providers ?? []);
     } catch {

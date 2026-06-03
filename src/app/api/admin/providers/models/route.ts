@@ -1,0 +1,126 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { decrypt } from "@/lib/crypto";
+import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
+import { requireAdmin } from "../../settings/auth";
+import { fetchOpenAIModels } from "@/lib/pi/models";
+
+/**
+ * GET /api/admin/providers/models — List models available from global providers only.
+ * Used by the admin models page to show/enable/disable models globally.
+ */
+export async function GET() {
+  const authResult = await requireAdmin();
+  if (!authResult.ok) return authResult.response;
+
+  // Fetch only global providers
+  const globalKeys = await prisma.providerApiKey.findMany({
+    where: { userId: null },
+    select: { provider: true, encryptedKey: true, baseUrl: true },
+  });
+
+  const authStorage = AuthStorage.inMemory();
+  for (const key of globalKeys) {
+    try {
+      const decryptedKey = decrypt(key.encryptedKey);
+      if (decryptedKey) {
+        authStorage.setRuntimeApiKey(key.provider, decryptedKey);
+      }
+    } catch {
+      // skip
+    }
+  }
+
+  const modelRegistry = ModelRegistry.inMemory(authStorage);
+  const discoveredModels: Array<{ provider: string; id: string; name: string }> = [];
+
+  for (const key of globalKeys) {
+    if (key.provider === "custom" && key.baseUrl) {
+      const decryptedKey = decrypt(key.encryptedKey);
+      const baseUrl = key.baseUrl.replace(/\/+$/, "");
+
+      const modelIds = await fetchOpenAIModels(baseUrl, decryptedKey);
+
+      try {
+        if (modelIds.length > 0) {
+          const apiKey = decryptedKey || "placeholder";
+          modelRegistry.registerProvider("custom", {
+            baseUrl,
+            apiKey,
+            api: "openai-completions",
+            models: modelIds.map((m) => ({
+              id: m,
+              name: m,
+              api: "openai-completions" as const,
+              reasoning: false,
+              input: ["text", "image"] as const,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 131072,
+              maxTokens: 8192,
+            })),
+          });
+
+          for (const m of modelIds) {
+            discoveredModels.push({ provider: "custom", id: m, name: m });
+          }
+        } else {
+          modelRegistry.registerProvider("custom", {
+            baseUrl,
+            apiKey: decryptedKey,
+            api: "openai-completions",
+          });
+        }
+      } catch {
+        // skip
+      }
+    }
+  }
+
+  const available = modelRegistry.getAvailable();
+  const allModels =
+    discoveredModels.length > 0
+      ? discoveredModels
+      : available.map((m) => ({
+          provider: m.provider,
+          id: m.id,
+          name: m.name,
+        }));
+
+  // Group by provider
+  const models: Record<string, Array<{ id: string; name: string; reasoning: boolean }>> = {};
+  const providerSet = new Set<string>();
+
+  for (const m of allModels) {
+    providerSet.add(m.provider);
+    if (!models[m.provider]) {
+      models[m.provider] = [];
+    }
+    const list = models[m.provider]!;
+    list.push({
+      id: m.id,
+      name: m.name,
+      reasoning: m.id.includes("r1") || m.id.includes("reason"),
+    });
+  }
+
+  const providers = Array.from(providerSet).map((id) => ({
+    id,
+    name:
+      id === "openai"
+        ? "OpenAI"
+        : id === "anthropic"
+          ? "Anthropic"
+          : id === "google"
+            ? "Google"
+            : id === "groq"
+              ? "Groq"
+              : id === "openrouter"
+                ? "OpenRouter"
+                : id === "custom"
+                  ? "Custom"
+                  : id,
+    modelCount: (models[id] ?? []).length,
+  }));
+
+  return NextResponse.json({ models, providers });
+}
