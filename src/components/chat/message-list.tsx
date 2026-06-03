@@ -25,6 +25,16 @@ interface ToolCall {
   status: "running" | "completed" | "error" | undefined;
 }
 
+interface AttachmentData {
+  id: string;
+  storageId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  width?: number;
+  height?: number;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant" | "system";
@@ -33,6 +43,7 @@ interface Message {
   toolCalls: ToolCall[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;
+  attachments: AttachmentData[] | undefined;
 }
 
 interface MessageListProps {
@@ -134,15 +145,51 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 }
 
 function UserMessageItem({ message }: { message: Message }) {
+  // Determine image URLs: temp messages use object URLs, real messages use API route
+  const imageAttachments = message.attachments?.map((att) => {
+    if (att.storageId.startsWith("temp-")) {
+      // Temp attachment — we can't reconstruct the object URL, show a placeholder
+      return { ...att, url: undefined };
+    }
+    return { ...att, url: `/api/chat/attachments/${att.storageId}` };
+  });
+
   return (
     <div className="flex flex-row-reverse gap-3">
       <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
         <User className="h-4 w-4" />
       </div>
       <div className="max-w-[85%] min-w-0 space-y-2">
-        <div className="liquid-glass-inner rounded-2xl px-4 py-3">
-          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-        </div>
+        {/* Image attachments */}
+        {imageAttachments && imageAttachments.length > 0 && (
+          <div className="flex flex-row-reverse flex-wrap gap-2">
+            {imageAttachments.map((att) =>
+              att.url ? (
+                // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
+                <img
+                  key={att.id}
+                  src={att.url}
+                  alt={att.fileName}
+                  className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
+                />
+              ) : (
+                <div
+                  key={att.id}
+                  className="bg-muted/50 text-muted-foreground flex h-24 w-32 items-center justify-center rounded-xl text-xs"
+                >
+                  {att.fileName}
+                </div>
+              ),
+            )}
+          </div>
+        )}
+
+        {/* Text content (only when there's text) */}
+        {message.content && (
+          <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+            <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+          </div>
+        )}
         <div className="text-muted-foreground text-right text-xs">
           {new Date(message.createdAt).toLocaleTimeString([], {
             hour: "2-digit",

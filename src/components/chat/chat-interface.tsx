@@ -32,6 +32,16 @@ interface TurnData {
   }>;
 }
 
+interface AttachmentData {
+  id: string;
+  storageId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  width?: number;
+  height?: number;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant" | "system";
@@ -40,6 +50,7 @@ interface Message {
   toolCalls: ToolCallData[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;
+  attachments: AttachmentData[] | undefined;
 }
 
 interface StreamingState {
@@ -148,7 +159,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
   // Send message
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, files?: File[]) => {
       const userMsg: Message = {
         id: `temp-${Date.now()}`,
         role: "user",
@@ -157,6 +168,15 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         toolCalls: undefined,
         parentMessageId: undefined,
         createdAt: new Date().toISOString(),
+        // Temp attachments from local files (preview URLs)
+        attachments:
+          files?.map((f) => ({
+            id: `temp-${f.name}-${f.size}`,
+            storageId: `temp-${f.name}`,
+            fileName: f.name,
+            mimeType: f.type,
+            size: f.size,
+          })) ?? undefined,
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
@@ -166,11 +186,27 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
       abortRef.current = abortController;
 
       try {
-        const res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content }),
-        });
+        let res: Response;
+
+        if (files && files.length > 0) {
+          // Multipart form data for messages with images
+          const formData = new FormData();
+          formData.append("content", content);
+          for (const file of files) {
+            formData.append("files", file);
+          }
+          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+            method: "POST",
+            body: formData,
+          });
+        } else {
+          // Plain JSON for text-only messages
+          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content }),
+          });
+        }
 
         if (!res.ok) throw new Error("Failed to send message");
 
@@ -180,7 +216,14 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id.startsWith("temp-")
-                ? { ...m, id: data.message.id, createdAt: data.message.createdAt }
+                ? {
+                    ...m,
+                    id: data.message.id,
+                    createdAt: data.message.createdAt,
+                    attachments: data.message.attachments?.length
+                      ? data.message.attachments
+                      : undefined,
+                  }
                 : m,
             ),
           );
@@ -301,6 +344,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
               toolCalls: turn.toolCalls.length > 0 ? convertToolCalls(turn.toolCalls) : undefined,
               parentMessageId: index > 0 ? `${baseId}-0` : undefined,
               createdAt: new Date().toISOString(),
+              attachments: undefined,
             }));
             setMessages((prev) => [...prev, ...turnMessages]);
           } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
@@ -327,6 +371,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
                 toolCalls: finalToolCalls,
                 parentMessageId: undefined,
                 createdAt: new Date().toISOString(),
+                attachments: undefined,
               },
             ]);
           }
@@ -356,6 +401,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
               toolCalls: turn.toolCalls.length > 0 ? convertToolCalls(turn.toolCalls) : undefined,
               parentMessageId: index > 0 ? `${baseId}-0` : undefined,
               createdAt: new Date().toISOString(),
+              attachments: undefined,
             }));
             setMessages((prev) => [...prev, ...turnMessages]);
           }
@@ -398,6 +444,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         toolCalls: turn.toolCalls.length > 0 ? convertToolCalls(turn.toolCalls) : undefined,
         parentMessageId: index > 0 ? `${baseId}-0` : undefined,
         createdAt: new Date().toISOString(),
+        attachments: undefined,
       }));
       setMessages((prev) => [...prev, ...turnMessages]);
     }
@@ -465,6 +512,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
               : undefined,
           createdAt: new Date().toISOString(),
           parentMessageId: i > 0 ? `streaming-turn-0` : undefined,
+          attachments: undefined,
         });
       }
 
@@ -492,6 +540,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
               : undefined,
           createdAt: new Date().toISOString(),
           parentMessageId: streaming.turns.length > 0 ? `streaming-turn-0` : undefined,
+          attachments: undefined,
         });
       }
     }

@@ -9,7 +9,17 @@ import {
   type StoredMessage,
   type StoredToolCall,
   type ResolvedModel,
+  type BuildHistoryOptions,
 } from "@/lib/pi/message-replay";
+
+/** Convert a ResolvedModel to BuildHistoryOptions */
+function toOptions(model: ResolvedModel | undefined): BuildHistoryOptions {
+  return {
+    api: model?.api,
+    provider: model?.provider,
+    id: model?.id,
+  };
+}
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -396,7 +406,7 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history = buildHistoryMessages(stored, mockModel);
+    const history = buildHistoryMessages(stored, toOptions(mockModel));
 
     // Should include all messages (no last-message exclusion since we passed all)
     // buildHistoryMessages excludes the last message (current prompt)
@@ -426,7 +436,7 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history = buildHistoryMessages(stored, mockModel);
+    const history = buildHistoryMessages(stored, toOptions(mockModel));
 
     // Should have 2 messages (first user + first assistant), excluding last user
     expect(history).toHaveLength(2);
@@ -463,7 +473,7 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history = buildHistoryMessages(stored, mockModel);
+    const history = buildHistoryMessages(stored, toOptions(mockModel));
 
     expect(history).toHaveLength(3);
     const [userMsg, assistantMsg, toolResultMsg] = history as [
@@ -519,7 +529,7 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history = buildHistoryMessages(stored, mockModel);
+    const history = buildHistoryMessages(stored, toOptions(mockModel));
 
     // user → assistant → toolResult → toolResult (excluding last user)
     expect(history).toHaveLength(4);
@@ -555,7 +565,7 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history = buildHistoryMessages(stored, undefined);
+    const history = buildHistoryMessages(stored, toOptions(undefined));
     const [userMsg] = history as [Record<string, unknown>];
 
     expect(userMsg.role).toBe("user");
@@ -585,7 +595,7 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history = buildHistoryMessages(stored, mockOpenAiModel);
+    const history = buildHistoryMessages(stored, toOptions(mockOpenAiModel));
 
     // Last message excluded, so history has user + assistant
     const assistantMsg = history[1] as Record<string, unknown>;
@@ -616,7 +626,7 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history = buildHistoryMessages(stored, mockModel);
+    const history = buildHistoryMessages(stored, toOptions(mockModel));
 
     // Should still work — malformed toolCalls treated as no tool calls
     expect(history).toHaveLength(2);
@@ -641,8 +651,8 @@ describe("buildHistoryMessages", () => {
       },
     ];
 
-    const history1 = buildHistoryMessages(stored, mockModel);
-    const history2 = buildHistoryMessages(stored, mockModel);
+    const history1 = buildHistoryMessages(stored, toOptions(mockModel));
+    const history2 = buildHistoryMessages(stored, toOptions(mockModel));
 
     // Structure should be identical (timestamps will differ but that's expected)
     expect(history1.map((m) => m.role)).toEqual(history2.map((m) => m.role));

@@ -6,7 +6,9 @@ import {
   normalizeToolResult,
   buildHistoryMessages,
   type StoredMessage,
+  type ImageContent,
 } from "@/lib/pi/message-replay";
+import { readImageAsBase64 } from "@/lib/image-attachment";
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -45,16 +47,17 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  // Get all messages for context
+  // Get all messages for context (with attachments for image support)
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
-    select: {
-      role: true,
-      content: true,
-      thinking: true,
-      toolCalls: true,
-      parentMessageId: true,
+    include: {
+      attachments: {
+        select: {
+          storagePath: true,
+          mimeType: true,
+        },
+      },
     },
   });
 
@@ -88,17 +91,62 @@ export async function GET(
   // - resolved model metadata for same-model detection in transformMessages
   // - canonical content block order: thinking → text → toolCall
   // - toolResult text extracted (not double-encoded)
+  // - image attachments re-read from disk (deterministic WebP → base64)
   const storedMessages: StoredMessage[] = messages.map((m) => ({
     role: m.role,
     content: m.content,
     thinking: m.thinking,
     toolCalls: m.toolCalls,
+    attachments: m.attachments.map((a) => ({
+      storagePath: a.storagePath,
+      mimeType: a.mimeType,
+    })),
   }));
+
+  // Pre-load images for all user messages in history (not the last one — that's the current prompt).
+  // This ensures byte-identical base64 data across turns → LLM cache hits.
+  // Map from history index (0-based, excludes last message) to ImageContent[].
+  const imageCache = new Map<number, ImageContent[]>();
+  const historyMessagesSlice = storedMessages.slice(0, -1);
+  for (let i = 0; i < historyMessagesSlice.length; i++) {
+    const m = historyMessagesSlice[i]!;
+    if (m.role === "user" && m.attachments && m.attachments.length > 0) {
+      const images: ImageContent[] = [];
+      for (const att of m.attachments) {
+        try {
+          const { data, mimeType } = await readImageAsBase64(authResult.user.id, att.storagePath);
+          images.push({ type: "image" as const, data, mimeType });
+        } catch (err) {
+          console.error(`Failed to load image for history message ${i}:`, err);
+        }
+      }
+      if (images.length > 0) {
+        imageCache.set(i, images);
+      }
+    }
+  }
+
   const historyMessages = buildHistoryMessages(storedMessages, {
     api: model?.api,
     provider: model?.provider,
     id: model?.id,
+    imageCache,
   });
+
+  // Pre-load images for the current (last) user message.
+  // Must be done outside the stream's start() callback (which is not async).
+  const lastMessageImages: ImageContent[] = [];
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage && lastMessage.role === "user" && lastMessage.attachments.length > 0) {
+    for (const att of lastMessage.attachments) {
+      try {
+        const { data, mimeType } = await readImageAsBase64(authResult.user.id, att.storagePath);
+        lastMessageImages.push({ type: "image" as const, data, mimeType });
+      } catch (err) {
+        console.error("Failed to load image for current message:", err);
+      }
+    }
+  }
 
   // Create SSE stream
   const encoder = new TextEncoder();
@@ -364,9 +412,12 @@ export async function GET(
       // Send the user message to the agent
       // Use agent.prompt() directly to bypass AgentSession preflight logic
       // which resets systemPrompt back to the Pi base prompt on every turn
-      const lastMessage = messages[messages.length - 1];
       if (lastMessage && lastMessage.role === "user") {
-        piSession.agent.prompt(lastMessage.content);
+        if (lastMessageImages.length > 0) {
+          piSession.agent.prompt(lastMessage.content, lastMessageImages);
+        } else {
+          piSession.agent.prompt(lastMessage.content);
+        }
       }
 
       // Handle client disconnect
