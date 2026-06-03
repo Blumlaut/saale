@@ -4,6 +4,7 @@ import type { CalendarEvent } from "@/types/shared";
 import { cn } from "@/lib/utils";
 import { getEventsForDay, isSameDayUTC } from "@/lib/calendar/date-utils";
 import { Badge } from "@/components/ui/badge";
+import { CalendarEventLabel } from "@/components/calendar/calendar-event-label";
 
 interface MonthViewProps {
   date: Date;
@@ -85,29 +86,7 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
               </span>
               <div className="mt-0.5 flex flex-col gap-0.5">
                 {dayEvents.slice(0, 3).map((evt) => (
-                  <span
-                    key={evt.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEventClick(evt);
-                    }}
-                    className={cn(
-                      "cursor-pointer truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
-                      evt.allDay
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted/40 text-muted-foreground",
-                    )}
-                    style={
-                      evt.calendarColor
-                        ? {
-                            backgroundColor: evt.calendarColor + "20",
-                            color: evt.calendarColor,
-                          }
-                        : undefined
-                    }
-                  >
-                    {evt.summary}
-                  </span>
+                  <CalendarEventLabel key={evt.id} event={evt} onClick={onEventClick} compact />
                 ))}
                 {dayEvents.length > 3 && (
                   <Badge

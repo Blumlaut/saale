@@ -7,6 +7,7 @@ import {
   getTimedEventsForDay,
   isSameDayUTC,
 } from "@/lib/calendar/date-utils";
+import { CalendarEventLabel } from "@/components/calendar/calendar-event-label";
 
 interface DayViewProps {
   date: Date;
@@ -42,27 +43,7 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
       {allDayEvents.length > 0 && (
         <div className="space-y-1">
           {allDayEvents.map((evt) => (
-            <span
-              key={evt.id}
-              onClick={() => onEventClick(evt)}
-              className={cn(
-                "block w-full cursor-pointer rounded-lg p-2 text-left transition-colors hover:brightness-110",
-                "bg-primary/10",
-              )}
-              style={
-                evt.calendarColor
-                  ? {
-                      backgroundColor: evt.calendarColor + "20",
-                      color: evt.calendarColor,
-                    }
-                  : undefined
-              }
-            >
-              <div className="text-xs font-medium">{evt.summary}</div>
-              {evt.location && (
-                <div className="text-muted-foreground text-[10px]">{evt.location}</div>
-              )}
-            </span>
+            <CalendarEventLabel key={evt.id} event={evt} onClick={onEventClick} />
           ))}
         </div>
       )}
@@ -95,27 +76,7 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
                 className="border-border/20 flex-1 cursor-pointer border-t p-1 transition-colors hover:bg-white/10"
               >
                 {hourEvents.map((evt) => (
-                  <span
-                    key={evt.id}
-                    onClick={() => onEventClick(evt)}
-                    className={cn(
-                      "block w-full cursor-pointer rounded-lg p-2 text-left transition-colors hover:brightness-110",
-                      "bg-primary/10",
-                    )}
-                    style={
-                      evt.calendarColor
-                        ? {
-                            backgroundColor: evt.calendarColor + "20",
-                            color: evt.calendarColor,
-                          }
-                        : undefined
-                    }
-                  >
-                    <div className="text-xs font-medium">{evt.summary}</div>
-                    {evt.location && (
-                      <div className="text-muted-foreground text-[10px]">{evt.location}</div>
-                    )}
-                  </span>
+                  <CalendarEventLabel key={evt.id} event={evt} onClick={onEventClick} />
                 ))}
               </div>
             </div>

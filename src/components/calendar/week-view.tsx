@@ -8,6 +8,7 @@ import {
   getTimedEventsForDay,
   isSameDayUTC,
 } from "@/lib/calendar/date-utils";
+import { CalendarEventLabel } from "@/components/calendar/calendar-event-label";
 
 interface WeekViewProps {
   date: Date;
@@ -51,24 +52,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
           return (
             <div key={dayIndex} className="border-border/20 border-b p-0.5">
               {allDayEvents.slice(0, 2).map((evt) => (
-                <span
-                  key={evt.id}
-                  onClick={() => onEventClick(evt)}
-                  className={cn(
-                    "block w-full cursor-pointer truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
-                    "bg-primary/10 text-primary",
-                  )}
-                  style={
-                    evt.calendarColor
-                      ? {
-                          backgroundColor: evt.calendarColor + "20",
-                          color: evt.calendarColor,
-                        }
-                      : undefined
-                  }
-                >
-                  {evt.summary}
-                </span>
+                <CalendarEventLabel key={evt.id} event={evt} onClick={onEventClick} />
               ))}
             </div>
           );
@@ -105,24 +89,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
                   }}
                 >
                   {hourEvents.map((evt) => (
-                    <span
-                      key={evt.id}
-                      onClick={() => onEventClick(evt)}
-                      className={cn(
-                        "block w-full cursor-pointer truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
-                        "bg-primary/10 text-primary",
-                      )}
-                      style={
-                        evt.calendarColor
-                          ? {
-                              backgroundColor: evt.calendarColor + "20",
-                              color: evt.calendarColor,
-                            }
-                          : undefined
-                      }
-                    >
-                      {evt.summary}
-                    </span>
+                    <CalendarEventLabel key={evt.id} event={evt} onClick={onEventClick} />
                   ))}
                 </div>
               );
