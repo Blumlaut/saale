@@ -167,6 +167,20 @@
     padding: 0;
   }
 
+  /* Mobile shell — flex column, fixed to viewport. */
+  .mobile-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .mobile-shell > main {
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
   /* Make glass panels slightly less heavy on mobile for performance */
   .glass-panel {
     backdrop-filter: blur(12px);
@@ -176,6 +190,19 @@
   .h-safe-area-inset-bottom {
     height: env(safe-area-inset-bottom, 0px);
   }
+}
+
+/* ===== App shell (desktop + mobile) ===== */
+
+/* Page wrapper — flex-1 fills <main>, overflow hidden so child pages
+   manage their own internal scrolling. Pages that need full-height
+   (chat) use flex-1. Pages with tall content (settings) use overflow-y-auto. */
+.page-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Bump up spacing, radii, and nav width on larger screens so everything feels proportionally bigger */

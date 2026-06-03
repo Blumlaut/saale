@@ -503,45 +503,48 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <GlassPanel className="liquid-glass flex flex-1 flex-col overflow-hidden border-0 bg-transparent">
-      {/* Header */}
-      <div className="border-border/30 flex items-center gap-2 border-b px-4 py-3 md:px-5 md:py-3">
-        <span className="text-sm font-semibold">Chat</span>
-        {isLoading && <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />}
+    <>
+      {/* Scrollable message area — fills all available space */}
+      <GlassPanel className="liquid-glass flex flex-1 flex-col overflow-hidden border-0 bg-transparent">
+        {/* Header */}
+        <div className="border-border/30 flex items-center gap-2 border-b px-4 py-3 md:px-5 md:py-3">
+          <span className="text-sm font-semibold">Chat</span>
+          {isLoading && <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />}
 
-        {/* Model & thinking selectors — inline on desktop, dropdown on mobile */}
-        <div className="ml-auto flex items-center gap-1">
-          {/* Desktop: show selectors directly */}
-          <div className="hidden items-center gap-1 md:flex">
-            <ModelPicker value={modelId} onChange={setModelId} />
-            <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
-          </div>
-          {/* Mobile: compact dropdown */}
-          <div className="md:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger>
-                <span className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5">
-                  <Settings2 className="h-3.5 w-3.5" />
-                  <ChevronDown className="h-3 w-3" />
-                </span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <div className="px-2 pt-1.5 pb-1">
-                  <ModelPicker value={modelId} onChange={setModelId} compact />
-                </div>
-                <div className="border-border/50 border-t px-2 pt-1.5 pb-1">
-                  <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {/* Model & thinking selectors — inline on desktop, dropdown on mobile */}
+          <div className="ml-auto flex items-center gap-1">
+            {/* Desktop: show selectors directly */}
+            <div className="hidden items-center gap-1 md:flex">
+              <ModelPicker value={modelId} onChange={setModelId} />
+              <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+            </div>
+            {/* Mobile: compact dropdown */}
+            <div className="md:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <span className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+                    <Settings2 className="h-3.5 w-3.5" />
+                    <ChevronDown className="h-3 w-3" />
+                  </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-2 pt-1.5 pb-1">
+                    <ModelPicker value={modelId} onChange={setModelId} compact />
+                  </div>
+                  <div className="border-border/50 border-t px-2 pt-1.5 pb-1">
+                    <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Messages */}
-      <MessageList messages={displayMessages} isLoading={isLoading} />
+        {/* Messages — flex-1 fills panel, scrolls internally */}
+        <MessageList messages={displayMessages} isLoading={isLoading} />
+      </GlassPanel>
 
-      {/* Input */}
+      {/* Input bar — outside the panel, always visible */}
       <InputBar
         onSend={handleSend}
         isLoading={isLoading}
@@ -549,6 +552,6 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         toolConfig={toolConfig}
         onToggleTool={handleToggleTool}
       />
-    </GlassPanel>
+    </>
   );
 }

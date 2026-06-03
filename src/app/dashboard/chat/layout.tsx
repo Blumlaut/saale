@@ -15,7 +15,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
   const segments = pathname.split("/");
   const sessionId = segments.length >= 4 && segments[3] ? segments[3] : null;
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Header */}
       <div className="flex shrink-0 items-start justify-between gap-4 pb-2 md:pb-4">
         <div className="flex items-center gap-2">
@@ -63,8 +63,8 @@ export default function ChatLayout({ children: _children }: { children: React.Re
           <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
         </div>
 
-        {/* Main area — layout controls which view is shown */}
-        <div className="min-w-0 flex-1">
+        {/* Main area — flex column so ChatInterface can flex-1 to fill height */}
+        <div className="flex min-w-0 flex-1 flex-col">
           {sessionId ? <ChatInterface sessionId={sessionId} /> : <ChatEmptyState />}
         </div>
       </div>
