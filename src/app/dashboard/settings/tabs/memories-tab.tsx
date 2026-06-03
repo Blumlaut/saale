@@ -24,8 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -276,8 +274,8 @@ export function MemoriesTab() {
     try {
       await deleteJson(`/api/memories/${deleteTarget.id}`);
       await loadData();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to delete memory:", err);
     }
     setDeleting(false);
     setDeleteOpen(false);
@@ -294,8 +292,8 @@ export function MemoriesTab() {
         setFilterCollection("all");
       }
       await loadData();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to delete collection:", err);
     }
     setDeleting(false);
     setDeleteOpen(false);
@@ -369,9 +367,12 @@ export function MemoriesTab() {
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
-                            <span className="opacity-0 transition-opacity group-hover/col:opacity-100">
+                            <button
+                              type="button"
+                              className="opacity-0 transition-opacity group-hover/col:opacity-100"
+                            >
                               <MoreVertical className="h-3.5 w-3.5" />
-                            </span>
+                            </button>
                           }
                         />
                         <DropdownMenuContent align="end">
@@ -770,17 +771,25 @@ export function MemoriesTab() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteOpen(false);
+                setDeleteTarget(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
               onClick={
                 deleteTarget?.type === "memory" ? handleDeleteMemory : handleDeleteCollection
               }
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deleting}
             >
               {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
