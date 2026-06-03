@@ -614,12 +614,14 @@ export function Inbox() {
               className="liquid-glass-inner h-8 rounded-full border-0 bg-transparent pl-9 shadow-none"
             />
             {search && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setSearch("")}
-                className="text-muted-foreground absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 rounded-full p-0 opacity-60 hover:opacity-100"
+                className="absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 rounded-full p-0 opacity-60 hover:opacity-100"
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -809,7 +811,9 @@ export function Inbox() {
                   {loadingMore ? (
                     <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
                   ) : (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => {
                         if (!isAppending.current) {
                           isAppending.current = true;
@@ -818,10 +822,10 @@ export function Inbox() {
                           });
                         }
                       }}
-                      className="text-muted-foreground rounded-full px-3 py-1 text-xs transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+                      className="rounded-full px-3 py-1 text-xs"
                     >
                       Load more
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}

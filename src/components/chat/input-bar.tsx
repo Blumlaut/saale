@@ -170,14 +170,16 @@ export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }
                   alt={img.file.name}
                   className="ring-border/50 h-16 w-16 rounded-lg object-cover ring-1"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="destructive"
+                  size="icon"
                   onClick={() => removeImage(index)}
-                  className="bg-foreground text-background absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full opacity-70 transition-opacity group-hover:opacity-100"
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 opacity-70 transition-opacity group-hover:opacity-100"
                   aria-label={`Remove ${img.file.name}`}
                 >
                   <X className="h-3 w-3" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
