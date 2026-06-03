@@ -51,14 +51,11 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
           return (
             <div key={dayIndex} className="border-border/20 border-b p-0.5">
               {allDayEvents.slice(0, 2).map((evt) => (
-                <button
+                <span
                   key={evt.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEventClick(evt);
-                  }}
+                  onClick={() => onEventClick(evt)}
                   className={cn(
-                    "w-full truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
+                    "block w-full cursor-pointer truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
                     "bg-primary/10 text-primary",
                   )}
                   style={
@@ -71,7 +68,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
                   }
                 >
                   {evt.summary}
-                </button>
+                </span>
               ))}
             </div>
           );
@@ -98,24 +95,21 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
               });
 
               return (
-                <button
+                <div
                   key={dayIndex}
+                  className="border-border/20 cursor-pointer border-t p-0.5 transition-colors hover:bg-white/10"
                   onClick={() => {
                     const slotDate = new Date(d);
                     slotDate.setUTCHours(hour, 0, 0, 0);
                     onTimeSlotClick(slotDate);
                   }}
-                  className="border-border/20 border-t p-0.5 transition-colors hover:bg-white/10"
                 >
                   {hourEvents.map((evt) => (
-                    <button
+                    <span
                       key={evt.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEventClick(evt);
-                      }}
+                      onClick={() => onEventClick(evt)}
                       className={cn(
-                        "w-full truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
+                        "block w-full cursor-pointer truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
                         "bg-primary/10 text-primary",
                       )}
                       style={
@@ -128,9 +122,9 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
                       }
                     >
                       {evt.summary}
-                    </button>
+                    </span>
                   ))}
-                </button>
+                </div>
               );
             })}
           </div>

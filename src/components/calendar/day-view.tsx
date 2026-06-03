@@ -42,14 +42,11 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
       {allDayEvents.length > 0 && (
         <div className="space-y-1">
           {allDayEvents.map((evt) => (
-            <button
+            <span
               key={evt.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEventClick(evt);
-              }}
+              onClick={() => onEventClick(evt)}
               className={cn(
-                "w-full rounded-lg p-2 text-left transition-colors hover:brightness-110",
+                "block w-full cursor-pointer rounded-lg p-2 text-left transition-colors hover:brightness-110",
                 "bg-primary/10",
               )}
               style={
@@ -65,7 +62,7 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
               {evt.location && (
                 <div className="text-muted-foreground text-[10px]">{evt.location}</div>
               )}
-            </button>
+            </span>
           ))}
         </div>
       )}
@@ -89,23 +86,20 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
                       ? "12 PM"
                       : `${hour - 12} PM`}
               </div>
-              <button
+              <div
                 onClick={() => {
                   const slotDate = new Date(date);
                   slotDate.setUTCHours(hour, 0, 0, 0);
                   onTimeSlotClick(slotDate);
                 }}
-                className="border-border/20 flex-1 border-t p-1 transition-colors hover:bg-white/10"
+                className="border-border/20 flex-1 cursor-pointer border-t p-1 transition-colors hover:bg-white/10"
               >
                 {hourEvents.map((evt) => (
-                  <button
+                  <span
                     key={evt.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEventClick(evt);
-                    }}
+                    onClick={() => onEventClick(evt)}
                     className={cn(
-                      "w-full rounded-lg p-2 text-left transition-colors hover:brightness-110",
+                      "block w-full cursor-pointer rounded-lg p-2 text-left transition-colors hover:brightness-110",
                       "bg-primary/10",
                     )}
                     style={
@@ -121,9 +115,9 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
                     {evt.location && (
                       <div className="text-muted-foreground text-[10px]">{evt.location}</div>
                     )}
-                  </button>
+                  </span>
                 ))}
-              </button>
+              </div>
             </div>
           );
         })}
