@@ -187,7 +187,7 @@ export function ModelPicker({
         </span>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[340px] gap-0 p-0" align="start">
+      <PopoverContent className="w-[300px] gap-0 p-0 sm:w-[340px]" align="start">
         {/* Search */}
         <div className="p-2 pb-1">
           <div className="relative">

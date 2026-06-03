@@ -15,17 +15,36 @@ export default function ChatLayout({ children: _children }: { children: React.Re
   const segments = pathname.split("/");
   const sessionId = segments.length >= 4 && segments[3] ? segments[3] : null;
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-dvh flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Chat</h1>
-          <p className="text-muted-foreground mt-1 text-xs md:text-sm">
-            Ask questions, brainstorm ideas, or get help with your work
-          </p>
+      <div className="flex shrink-0 items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {/* Mobile: session list in a sheet — lives in header, not content */}
+          <div className="md:hidden">
+            <Sheet>
+              <SheetTrigger>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+                  <PanelLeft className="h-4 w-4" />
+                </span>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-4/5 max-w-[280px] p-0">
+                <div className="h-full">
+                  <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg leading-tight font-semibold tracking-tight md:text-2xl">
+              Chat
+            </h1>
+            <p className="text-muted-foreground mt-1 text-xs md:text-sm">
+              Ask questions, brainstorm ideas, or get help with your work
+            </p>
+          </div>
         </div>
         <Button
-          className="liquid-glass-accent h-8 w-8 rounded-full md:h-9 md:w-auto md:px-3"
+          className="liquid-glass-accent h-8 w-8 shrink-0 rounded-full md:h-9 md:w-auto md:px-3"
           size="icon"
           onClick={async () => {
             const session = await createChatSession();
@@ -37,31 +56,15 @@ export default function ChatLayout({ children: _children }: { children: React.Re
         </Button>
       </div>
 
-      {/* Content: sidebar + main */}
-      <div className="flex h-[calc(100vh-9rem)] gap-4 md:h-[calc(100vh-8rem)]">
+      {/* Content: sidebar + main — flex-1 fills remaining viewport, overflow contained */}
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4">
         {/* Sidebar — desktop only */}
         <div className="hidden w-64 shrink-0 md:block">
           <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
         </div>
 
-        {/* Mobile: session list in a sheet */}
-        <div className="md:hidden">
-          <Sheet>
-            <SheetTrigger>
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5">
-                <PanelLeft className="h-4 w-4" />
-              </span>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0 sm:w-80">
-              <div className="h-full">
-                <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
-              </div>
-            </SheetContent>
-          </Sheet>
-        </div>
-
         {/* Main area — layout controls which view is shown */}
-        <div className="flex flex-1">
+        <div className="min-w-0 flex-1">
           {sessionId ? <ChatInterface sessionId={sessionId} /> : <ChatEmptyState />}
         </div>
       </div>
