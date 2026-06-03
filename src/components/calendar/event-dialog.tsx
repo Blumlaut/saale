@@ -101,7 +101,7 @@ export function EventDialog({ open, onOpenChange, accounts, date, onSuccess }: E
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="liquid-glass flex w-[440px] flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl sm:max-w-none">
+      <SheetContent className="liquid-glass flex w-full flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl sm:w-[440px] sm:max-w-none">
         <div className="flex h-full flex-col">
           {/* Header */}
           <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
