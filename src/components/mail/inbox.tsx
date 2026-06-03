@@ -27,6 +27,9 @@ import {
   ReplyAll,
   Forward,
   MoreHorizontal,
+  Eye,
+  EyeOff,
+  CheckCheck,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,10 +39,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { formatDistanceToNow, format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ReplyForwardDialog } from "@/components/mail/reply-forward-dialog";
+import { ReplyForwardSheet } from "@/components/mail/reply-forward-sheet";
 import { toast } from "sonner";
 
 interface EmailMessage {
@@ -70,7 +73,7 @@ function getSender(msg: EmailMessage): string {
   return "Unknown Sender";
 }
 
-/** Shared toolbar for desktop detail and mobile drawer */
+/** Shared toolbar for desktop detail and mobile sheet */
 function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefresh: () => void }) {
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyMode, setReplyMode] = useState<"reply" | "reply_all" | "forward">("reply");
@@ -97,6 +100,16 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
       onRefresh();
     } catch {
       toast.error("Failed to archive email");
+    }
+  };
+
+  const handleToggleRead = async () => {
+    try {
+      await patchJson(`/api/email/messages/${message.id}`, { isRead: !message.isRead });
+      toast.success(message.isRead ? "Marked as unread" : "Marked as read");
+      onRefresh();
+    } catch {
+      toast.error("Failed to update read status");
     }
   };
 
@@ -152,6 +165,19 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
             Move to Trash
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleToggleRead}>
+            {message.isRead ? (
+              <>
+                <EyeOff className="mr-2 h-4 w-4" />
+                Mark Unread
+              </>
+            ) : (
+              <>
+                <Eye className="mr-2 h-4 w-4" />
+                Mark Read
+              </>
+            )}
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={async () => {
               const newStarred = !message.isStarred;
@@ -174,7 +200,7 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
   return (
     <>
       <div className="flex items-center gap-1">{toolbarButtons}</div>
-      <ReplyForwardDialog
+      <ReplyForwardSheet
         open={replyOpen}
         onOpenChange={setReplyOpen}
         mode={replyMode}
@@ -212,7 +238,6 @@ export function Inbox() {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const isMobile = useIsMobile();
 
-  // Active account from URL param
   const activeAccountId = urlAccountId ?? null;
 
   const loadAccounts = useCallback(async () => {
@@ -254,7 +279,6 @@ export function Inbox() {
     loadMessages();
   }, [activeAccountId, folder, tagFilter, loadAccounts, loadMessages]);
 
-  // Listen for refresh events (e.g. after adding a new account)
   useEffect(() => {
     const handler = () => {
       loadAccounts();
@@ -303,7 +327,6 @@ export function Inbox() {
     const msgId = msg.id;
     setTogglingStar(msgId);
 
-    // Optimistic update
     setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, isStarred: newStarred } : m)));
     if (selectedMsg?.id === msgId) {
       setSelectedMsg((prev) => (prev ? { ...prev, isStarred: newStarred } : prev));
@@ -312,7 +335,6 @@ export function Inbox() {
     try {
       await patchJson(`/api/email/messages/${msgId}`, { isStarred: newStarred });
     } catch {
-      // Revert on error
       setMessages((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, isStarred: !newStarred } : m)),
       );
@@ -324,9 +346,23 @@ export function Inbox() {
     }
   };
 
+  const handleMarkAllRead = async () => {
+    const unreadIds = messages.filter((m) => !m.isRead).map((m) => m.id);
+    if (unreadIds.length === 0) return;
+
+    try {
+      await Promise.all(
+        unreadIds.map((id) => patchJson(`/api/email/messages/${id}`, { isRead: true })),
+      );
+      setMessages((prev) => prev.map((m) => ({ ...m, isRead: true })));
+      toast.success(`Marked ${unreadIds.length} as read`);
+    } catch {
+      toast.error("Failed to mark all as read");
+    }
+  };
+
   const selectedMessage = selectedMsg;
 
-  // Collect all unique tags with counts from loaded messages
   const allTags = useMemo(() => collectTags(messages), [messages]);
 
   // Tag management
@@ -369,10 +405,8 @@ export function Inbox() {
     }
   };
 
-  // Active account info
   const activeAccount = activeAccountId ? accounts.find((a) => a.id === activeAccountId) : null;
 
-  // Derive folders
   const availableFolders = useMemo(() => {
     if (activeAccount) {
       const remote = activeAccount.remoteFolders.filter((f) => f.length > 0);
@@ -400,12 +434,14 @@ export function Inbox() {
     return folders;
   }, [activeAccount, accounts]);
 
+  const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
+
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4 md:h-[calc(100vh-7rem)]">
       {/* Mail list */}
-      <GlassPanel className="flex h-full w-full flex-col overflow-hidden md:w-96">
+      <GlassPanel className="liquid-glass flex h-full w-full flex-col overflow-hidden border-0 bg-transparent md:w-96">
         {/* Header */}
-        <div className="border-border/50 flex items-center justify-between border-b px-4 py-3">
+        <div className="border-border/30 flex items-center justify-between border-b px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold">
               {activeAccount ? activeAccount.email : "All Mail"}
@@ -419,32 +455,46 @@ export function Inbox() {
               </p>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleSyncAll}
-            disabled={syncing}
-            title="Sync all accounts"
-          >
-            {syncing ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-1">
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 rounded-full px-2 text-[10px]"
+                onClick={handleMarkAllRead}
+                title="Mark all as read"
+              >
+                <CheckCheck className="h-3 w-3" />
+                <span className="hidden sm:inline">Read</span>
+              </Button>
             )}
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-full"
+              onClick={handleSyncAll}
+              disabled={syncing}
+              title="Sync all accounts"
+            >
+              {syncing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
         <div className="border-border/30 border-b px-3 py-2">
           <div className="relative">
-            <Search className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+            <Search className="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               placeholder="Search emails..."
-              className="h-8 pl-8"
+              className="liquid-glass-inner h-8 rounded-full border-0 bg-transparent pl-9 shadow-none"
             />
           </div>
         </div>
@@ -459,10 +509,8 @@ export function Inbox() {
                 setSelectedMsg(null);
               }}
               className={cn(
-                "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                !folder
-                  ? "bg-white/20 dark:bg-white/5"
-                  : "text-muted-foreground hover:text-foreground",
+                "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                !folder ? "liquid-glass-pill" : "text-muted-foreground hover:text-foreground",
               )}
             >
               All
@@ -476,9 +524,9 @@ export function Inbox() {
                   setSelectedMsg(null);
                 }}
                 className={cn(
-                  "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                  "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
                   folder === f
-                    ? "bg-white/20 dark:bg-white/5"
+                    ? "liquid-glass-pill"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -494,10 +542,7 @@ export function Inbox() {
             {tagFilter && (
               <button
                 onClick={() => setTagFilter(null)}
-                className={cn(
-                  "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
-                  "bg-white/20 dark:bg-white/5",
-                )}
+                className="shrink-0 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium transition-colors dark:bg-white/5"
               >
                 <X className="mr-0.5 inline h-3 w-3" />
                 {tagFilter}
@@ -544,8 +589,8 @@ export function Inbox() {
                 <div key={msg.id}>
                   <button
                     className={cn(
-                      "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                      selectedId === msg.id && "bg-white/20 dark:bg-white/5",
+                      "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5",
+                      selectedId === msg.id && "bg-white/15 dark:bg-white/5",
                       !msg.isRead && "font-medium",
                     )}
                     onClick={() => handleSelect(msg)}
@@ -615,11 +660,11 @@ export function Inbox() {
       </GlassPanel>
 
       {/* Message detail — desktop only */}
-      <GlassPanel className="hidden flex-1 flex-col overflow-hidden md:flex">
+      <GlassPanel className="liquid-glass hidden flex-1 flex-col overflow-hidden border-0 bg-transparent md:flex">
         {selectedMessage ? (
           <>
             {/* Detail header with toolbar */}
-            <div className="border-border/50 flex flex-col gap-3 border-b px-6 py-4">
+            <div className="border-border/30 flex flex-col gap-3 border-b px-6 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-lg font-semibold">
@@ -695,7 +740,6 @@ export function Inbox() {
                         Add
                       </Button>
                     </div>
-                    {/* Suggest existing tags not yet on this message */}
                     {allTags.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {allTags
@@ -745,85 +789,85 @@ export function Inbox() {
         )}
       </GlassPanel>
 
-      {/* Message detail — mobile drawer */}
-      <Drawer open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
-        <DrawerContent className="max-h-[95vh]">
-          <DrawerHeader>
-            <div className="flex items-center gap-2">
+      {/* Message detail — mobile sheet */}
+      <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
+        <SheetContent className="liquid-glass flex w-full flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl">
+          <div className="flex h-full flex-col">
+            {/* Header */}
+            <SheetHeader className="border-border/30 flex items-center justify-between border-b px-4 pt-5 pb-3">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
+                className="-ml-2 h-7 w-7"
                 onClick={() => setMobileDetailOpen(false)}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <DrawerTitle className="truncate text-sm font-medium">
+              <SheetTitle className="truncate text-sm font-medium">
                 {selectedMessage?.subject || "Email"}
-              </DrawerTitle>
-            </div>
-          </DrawerHeader>
+              </SheetTitle>
+              <div className="w-7" />
+            </SheetHeader>
 
-          {selectedMessage && (
-            <div className="flex flex-col gap-0">
-              {/* Toolbar row */}
-              <div className="border-border/30 flex items-center justify-between border-b px-4 py-2">
-                <div className="flex items-center gap-1">
+            {selectedMessage && (
+              <>
+                {/* Toolbar row */}
+                <div className="border-border/30 flex items-center justify-between border-b px-4 py-2">
                   <MessageToolbar message={selectedMessage} onRefresh={refreshAll} />
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-0 px-4">
-                {/* Sender info */}
-                <div className="border-border/30 border-b py-3">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-medium">{getSender(selectedMessage)}</span>
-                    <span className="text-muted-foreground">→</span>
-                    <span className="text-muted-foreground truncate text-xs">
-                      {parseAddresses(selectedMessage.to).join(", ")}
-                    </span>
+                <div className="flex-1 overflow-y-auto px-4">
+                  {/* Sender info */}
+                  <div className="py-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-medium">{getSender(selectedMessage)}</span>
+                      <span className="text-muted-foreground">→</span>
+                      <span className="text-muted-foreground truncate text-xs">
+                        {parseAddresses(selectedMessage.to).join(", ")}
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
+                    </p>
                   </div>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
-                  </p>
-                </div>
 
-                {/* Tags */}
-                {selectedMessage.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 py-2">
-                    {selectedMessage.tags.map((tag) => (
-                      <Badge
-                        key={tag}
-                        className={cn(
-                          "cursor-pointer rounded-full px-2 py-0.5 text-xs",
-                          getTagColor(tag),
-                        )}
-                        onClick={() => handleRemoveTag(selectedMessage.id, tag)}
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                {/* Message body */}
-                <div className="max-h-[60vh] overflow-y-auto py-3 pb-4">
-                  {selectedMessage.bodyHtml ? (
-                    <div
-                      className="prose prose-sm dark:prose-invert max-w-none"
-                      dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
-                    />
-                  ) : (
-                    <pre className="text-sm whitespace-pre-wrap">
-                      {selectedMessage.bodyText || selectedMessage.bodyPreview}
-                    </pre>
+                  {/* Tags */}
+                  {selectedMessage.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 py-2">
+                      {selectedMessage.tags.map((tag) => (
+                        <Badge
+                          key={tag}
+                          className={cn(
+                            "cursor-pointer rounded-full px-2 py-0.5 text-xs",
+                            getTagColor(tag),
+                          )}
+                          onClick={() => handleRemoveTag(selectedMessage.id, tag)}
+                        >
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
                   )}
+
+                  {/* Message body */}
+                  <div className="pb-4">
+                    {selectedMessage.bodyHtml ? (
+                      <div
+                        className="prose prose-sm dark:prose-invert max-w-none"
+                        dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
+                      />
+                    ) : (
+                      <pre className="text-sm whitespace-pre-wrap">
+                        {selectedMessage.bodyText || selectedMessage.bodyPreview}
+                      </pre>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
-        </DrawerContent>
-      </Drawer>
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

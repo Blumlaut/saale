@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Inbox } from "@/components/mail/inbox";
-import { ComposeDialog } from "@/components/mail/compose-dialog";
-import { AccountDialog } from "@/components/mail/account-dialog";
+import { ComposeSheet } from "@/components/mail/compose-sheet";
+import { AccountSheet } from "@/components/mail/account-sheet";
 import { Button } from "@/components/ui/button";
 import { MailPlus, Plus } from "lucide-react";
 
@@ -23,16 +23,15 @@ export default function MailPage() {
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+            className="liquid-glass-pill h-8 w-8 rounded-full md:h-9 md:w-auto md:px-3"
             onClick={() => setShowAddAccount(true)}
           >
             <Plus className="h-4 w-4" />
             <span className="hidden md:inline">Add Account</span>
           </Button>
           <Button
-            variant="default"
+            className="liquid-glass-accent h-8 w-8 rounded-full md:h-9 md:w-auto md:px-3"
             size="icon"
-            className="h-8 w-8 md:h-9 md:w-auto md:px-3"
             onClick={() => setShowCompose(true)}
           >
             <MailPlus className="h-4 w-4" />
@@ -44,9 +43,9 @@ export default function MailPage() {
       {/* Inbox */}
       <Inbox />
 
-      {/* Dialogs */}
-      <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
-      <AccountDialog
+      {/* Sheets */}
+      <ComposeSheet open={showCompose} onOpenChange={setShowCompose} />
+      <AccountSheet
         open={showAddAccount}
         onOpenChange={setShowAddAccount}
         onSuccess={() => {
