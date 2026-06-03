@@ -203,7 +203,10 @@ export async function processJob(job: Job): Promise<void> {
           (s: { id: string; summary: string }) => s.id && s.summary,
         );
 
+        // Guard: only update emails from the scanned batch (defense against AI hallucination)
+        const scannedIds = new Set(emails.map((e) => e.id));
         for (const summary of summaries) {
+          if (!scannedIds.has(summary.id)) continue;
           await prisma.emailMessage.update({
             where: { id: summary.id },
             data: { aiSummary: summary.summary },
@@ -279,7 +282,10 @@ export async function processJob(job: Job): Promise<void> {
           (c: { id: string; tags: string[] }) => c.id && Array.isArray(c.tags),
         );
 
+        // Guard: only update emails from the scanned batch (defense against AI hallucination)
+        const scannedIds = new Set(emails.map((e) => e.id));
         for (const classification of classifications) {
+          if (!scannedIds.has(classification.id)) continue;
           const newTags = Array.from(
             new Set([
               ...(emails.find((e) => e.id === classification.id)?.tags ?? []),
@@ -324,10 +330,22 @@ export async function processJob(job: Job): Promise<void> {
         });
       }
     } else if (type === "email_to_calendar") {
+      // Validate target calendar belongs to user (defense in depth)
+      let effectiveTargetCalendarId: string | undefined;
+      if (config.targetCalendarId) {
+        const targetCal = await prisma.calendar.findFirst({
+          where: { id: config.targetCalendarId, account: { userId: task.userId } },
+        });
+        if (!targetCal) {
+          throw new Error(`Calendar ${config.targetCalendarId} not found`);
+        }
+        effectiveTargetCalendarId = config.targetCalendarId;
+      }
+
       const result = await extractEventsFromEmails({
         userId: task.userId,
         accountId: config.accountId || undefined,
-        targetCalendarId: config.targetCalendarId || undefined,
+        ...(effectiveTargetCalendarId ? { targetCalendarId: effectiveTargetCalendarId } : {}),
         limit: config.limit ?? 20,
         maxEmailAge: config.maxEmailAge ?? 48,
         modelId,
@@ -400,7 +418,10 @@ export async function processJob(job: Job): Promise<void> {
           (r: { id: string; spamScore: number }) => r.id && typeof r.spamScore === "number",
         );
 
+        // Guard: only update emails from the scanned batch (defense against AI hallucination)
+        const scannedIds = new Set(emails.map((e) => e.id));
         for (const result of spamResults) {
+          if (!scannedIds.has(result.id)) continue;
           const shouldMove = result.spamScore > (config.spamThreshold ?? 0.85);
           const updated = await prisma.emailMessage.update({
             where: { id: result.id },
