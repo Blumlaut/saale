@@ -7,7 +7,12 @@ import { InputBar } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { fetchJson, patchJson } from "@/lib/http";
-import { Loader2 } from "lucide-react";
+import { Loader2, Settings2, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 import type { Message, ToolCallData } from "./types";
 
@@ -504,10 +509,32 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         <span className="text-sm font-semibold">Chat</span>
         {isLoading && <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />}
 
-        {/* Model & thinking selectors */}
+        {/* Model & thinking selectors — inline on desktop, dropdown on mobile */}
         <div className="ml-auto flex items-center gap-1">
-          <ModelPicker value={modelId} onChange={setModelId} />
-          <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+          {/* Desktop: show selectors directly */}
+          <div className="hidden items-center gap-1 md:flex">
+            <ModelPicker value={modelId} onChange={setModelId} />
+            <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+          </div>
+          {/* Mobile: compact dropdown */}
+          <div className="md:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger>
+                <span className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+                  <Settings2 className="h-3.5 w-3.5" />
+                  <ChevronDown className="h-3 w-3" />
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="px-2 pt-1.5 pb-1">
+                  <ModelPicker value={modelId} onChange={setModelId} compact />
+                </div>
+                <div className="border-border/50 border-t px-2 pt-1.5 pb-1">
+                  <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 
