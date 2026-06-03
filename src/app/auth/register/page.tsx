@@ -1,14 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { AlertCircle, CheckCircle, ChevronRight } from "lucide-react";
+import { AlertCircle, CheckCircle, ChevronRight, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { fetchJson } from "@/lib/http";
 
 interface RegisterForm {
   name: string;
@@ -22,9 +23,17 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [signupsEnabled, setSignupsEnabled] = useState<boolean | null>(null);
   const { register, handleSubmit, watch } = useForm<RegisterForm>();
 
   const password = watch("password");
+
+  // Check if signups are enabled
+  useEffect(() => {
+    fetchJson<{ enabled: boolean }>("/api/signups/enabled")
+      .then((data) => setSignupsEnabled(data.enabled))
+      .catch(() => setSignupsEnabled(true)); // default to enabled
+  }, []);
 
   const onSubmit = handleSubmit(async (data) => {
     setLoading(true);
@@ -54,6 +63,38 @@ export default function RegisterPage() {
     setSuccess("Account created! Redirecting...");
     setTimeout(() => router.push("/dashboard/chat"), 1500);
   });
+
+  // Loading while checking signup status
+  if (signupsEnabled === null) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+
+  // Signups disabled
+  if (!signupsEnabled) {
+    return (
+      <GlassPanel className="animate-in fade-in slide-in-from-bottom-2 w-full max-w-md duration-200">
+        <GlassPanelContent className="space-y-6">
+          <div className="text-center">
+            <div className="mb-4 flex items-center justify-center gap-2">
+              <ChevronRight className="text-primary h-6 w-6" />
+              <span className="text-2xl font-bold tracking-tight">Saale</span>
+            </div>
+            <p className="text-muted-foreground text-sm">Registration is currently disabled</p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              Please check back later or contact an administrator
+            </p>
+          </div>
+          <Button variant="secondary" className="w-full" onClick={() => router.push("/auth/login")}>
+            Sign in instead
+          </Button>
+        </GlassPanelContent>
+      </GlassPanel>
+    );
+  }
 
   return (
     <GlassPanel className="animate-in fade-in slide-in-from-bottom-2 w-full max-w-md duration-200">
