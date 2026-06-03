@@ -3,11 +3,12 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { MessageSquare, ListTodo, Settings, Mail } from "lucide-react";
+import { Calendar, ListTodo, Mail, MessageSquare, Settings } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
   { href: "/dashboard/mail", label: "Mail", icon: Mail },
+  { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
