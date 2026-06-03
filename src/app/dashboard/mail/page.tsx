@@ -23,14 +23,14 @@ export default function MailPage() {
           <Button
             variant="outline"
             size="icon"
-            className="liquid-glass-pill h-8 w-8 rounded-full md:h-9 md:w-auto md:px-3"
+            className="liquid-glass-pill h-8 w-8 rounded-full md:h-9 md:w-auto md:gap-3 md:px-3"
             onClick={() => setShowAddAccount(true)}
           >
             <Plus className="h-4 w-4" />
             <span className="hidden md:inline">Add Account</span>
           </Button>
           <Button
-            className="liquid-glass-accent h-8 w-8 rounded-full md:h-9 md:w-auto md:px-3"
+            className="liquid-glass-accent h-8 w-8 rounded-full md:h-9 md:w-auto md:gap-3 md:px-3"
             size="icon"
             onClick={() => setShowCompose(true)}
           >

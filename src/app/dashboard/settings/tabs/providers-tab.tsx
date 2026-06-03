@@ -150,13 +150,15 @@ export function ProvidersTab({
                   onChange={(e) => setNewApiKey(e.target.value)}
                   className="pr-10 font-mono text-sm"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setShowApiKey((v) => !v)}
-                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2"
+                  className="absolute top-1/2 right-2.5 h-7 w-7 -translate-y-1/2"
                 >
                   {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
