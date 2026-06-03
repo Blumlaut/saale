@@ -158,10 +158,10 @@ export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }
   };
 
   return (
-    <div className="border-border/30 border-t bg-white/20 px-3 py-2 dark:bg-white/[0.02]">
+    <div className="border-border/30 border-t pt-2">
       {/* Image preview strip */}
       {pendingImages.length > 0 && (
-        <div className="mb-1.5 flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 px-3 pt-2">
           {pendingImages.map((img, index) => (
             <div key={index} className="group relative">
               {/* eslint-disable-next-line @next/next/no-img-element -- local object URLs for preview */}
@@ -185,7 +185,7 @@ export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }
         </div>
       )}
 
-      <div className="liquid-glass-inner relative flex items-center gap-2 rounded-2xl border-0 p-2">
+      <div className="liquid-glass-inner relative flex items-center gap-2 rounded-2xl border-0 px-3 py-2">
         {/* Tools toggle button */}
         {hasToolToggle && (
           <DropdownMenu>
