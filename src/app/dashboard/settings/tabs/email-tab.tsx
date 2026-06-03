@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AccountDialog } from "@/components/mail/account-dialog";
+import { AccountSheet } from "@/components/mail/account-sheet";
 import type { EmailAccount } from "../types";
 
 export function EmailTab() {
@@ -115,7 +115,7 @@ export function EmailTab() {
 
   return (
     <>
-      <GlassPanel>
+      <GlassPanel className="liquid-glass border-0 bg-transparent">
         <GlassPanelContent className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
@@ -132,6 +132,7 @@ export function EmailTab() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="liquid-glass-pill rounded-full"
                   onClick={handleSyncAll}
                   disabled={actionLoading === "sync-all"}
                 >
@@ -143,7 +144,11 @@ export function EmailTab() {
                   Sync All
                 </Button>
               )}
-              <Button size="sm" onClick={() => setAccountDialogOpen(true)}>
+              <Button
+                size="sm"
+                className="liquid-glass-accent rounded-full"
+                onClick={() => setAccountDialogOpen(true)}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Add Account
               </Button>
@@ -153,7 +158,7 @@ export function EmailTab() {
           {emailLoading ? (
             <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
           ) : emailAccounts.length === 0 ? (
-            <div className="border-border/50 rounded-2xl border border-dashed p-8 text-center">
+            <div className="liquid-glass-inner border-border/30 flex flex-col items-center rounded-2xl border border-dashed p-8 text-center">
               <Mail className="text-muted-foreground/50 mx-auto h-8 w-8" />
               <p className="text-muted-foreground mt-3 text-sm">
                 No email accounts connected. Add one to get started.
@@ -170,7 +175,7 @@ export function EmailTab() {
                 return (
                   <div
                     key={account.id}
-                    className="border-border/50 bg-background/40 flex items-center justify-between rounded-2xl border p-4"
+                    className="liquid-glass-inner flex items-center justify-between rounded-2xl border-0 p-4"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -253,7 +258,7 @@ export function EmailTab() {
         </GlassPanelContent>
       </GlassPanel>
 
-      <AccountDialog
+      <AccountSheet
         open={accountDialogOpen}
         onOpenChange={setAccountDialogOpen}
         onSuccess={loadAccounts}
