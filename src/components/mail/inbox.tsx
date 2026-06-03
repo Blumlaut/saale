@@ -724,10 +724,6 @@ export function Inbox() {
                       )}
                       onClick={() => handleSelect(msg)}
                     >
-                      {/* Unread indicator dot */}
-                      {!msg.isRead && (
-                        <div className="bg-foreground mt-2 h-2 w-2 shrink-0 rounded-full" />
-                      )}
                       <div onClick={(e) => handleToggleStar(msg, e)} className="cursor-pointer">
                         <Star
                           className={cn(
