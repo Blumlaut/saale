@@ -136,11 +136,11 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 function UserMessageItem({ message }: { message: Message }) {
   return (
     <div className="flex flex-row-reverse gap-3">
-      <div className="bg-primary/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
-        <User className="text-primary h-4 w-4" />
+      <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+        <User className="h-4 w-4" />
       </div>
       <div className="max-w-[85%] min-w-0 space-y-2">
-        <div className="bg-primary text-primary-foreground rounded-2xl px-4 py-3">
+        <div className="liquid-glass-inner rounded-2xl px-4 py-3">
           <div className="text-sm whitespace-pre-wrap">{message.content}</div>
         </div>
         <div className="text-muted-foreground text-right text-xs">
@@ -201,8 +201,8 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
   return (
     <div className="flex gap-3">
       {/* Single avatar for the entire group */}
-      <div className="bg-muted flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
-        <Bot className="text-muted-foreground h-4 w-4" />
+      <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+        <Bot className="h-4 w-4" />
       </div>
 
       {/* All turns' content flowing naturally */}
@@ -211,7 +211,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
           <div key={message.id}>
             {/* Thinking block */}
             {message.thinking && (
-              <div className="border-border/50 rounded-xl border bg-white/10 dark:bg-white/5">
+              <div className="liquid-glass-inner rounded-xl">
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-left"
                   onClick={() => toggleThinking(message.id)}
@@ -239,8 +239,8 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                 </button>
 
                 {expandedThinking.has(message.id) && (
-                  <div className="border-border/50 border-t px-3 py-2">
-                    <pre className="bg-muted/30 text-muted-foreground rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap">
+                  <div className="border-border/30 border-t px-3 py-2">
+                    <pre className="text-muted-foreground rounded-lg bg-white/10 p-3 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
                       {message.thinking}
                     </pre>
                   </div>
@@ -250,7 +250,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
 
             {/* Message bubble (only when there's text) */}
             {message.content && (
-              <div className="rounded-2xl bg-white/30 px-4 py-3 dark:bg-white/5">
+              <div className="liquid-glass-inner rounded-2xl px-4 py-3">
                 <MarkdownRenderer content={message.content} />
               </div>
             )}
@@ -259,7 +259,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
             {!message.content &&
               isStreaming &&
               message.id === visibleMessages[visibleMessages.length - 1]?.id && (
-                <div className="flex items-center gap-1 rounded-2xl bg-white/30 px-4 py-3 dark:bg-white/5">
+                <div className="liquid-glass-inner flex items-center gap-1 rounded-2xl px-4 py-3">
                   <span className="animate-pulse">...</span>
                 </div>
               )}
@@ -268,7 +268,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
             {message.toolCalls && message.toolCalls.length > 0 && (
               <div className="space-y-1">
                 {message.toolCalls.map((toolCall) => (
-                  <div key={toolCall.id} className="rounded-xl border bg-white/20 dark:bg-white/5">
+                  <div key={toolCall.id} className="liquid-glass-inner rounded-xl">
                     <button
                       className="flex w-full items-center gap-2 px-3 py-2 text-left"
                       onClick={() => toggleToolCall(toolCall.id)}
@@ -304,12 +304,12 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                     </button>
 
                     {expandedToolCalls.has(toolCall.id) && (
-                      <div className="border-t px-3 py-2">
+                      <div className="border-border/30 border-t px-3 py-2">
                         <div className="space-y-1">
                           <div className="text-muted-foreground text-xs">
                             <span className="font-medium">Arguments:</span>
                           </div>
-                          <pre className="bg-muted/50 overflow-x-auto rounded-lg p-2 text-xs">
+                          <pre className="overflow-x-auto rounded-lg bg-white/10 p-2 text-xs dark:bg-white/5">
                             {JSON.stringify(toolCall.args, null, 2)}
                           </pre>
                           {toolCall.result && (
@@ -322,7 +322,9 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                               <pre
                                 className={cn(
                                   "overflow-x-auto rounded-lg p-2 text-xs",
-                                  toolCall.isError ? "bg-red-500/10 text-red-600" : "bg-muted/50",
+                                  toolCall.isError
+                                    ? "bg-red-500/10 text-red-600"
+                                    : "bg-white/10 dark:bg-white/5",
                                 )}
                               >
                                 {toolCall.result.slice(0, 1000)}
