@@ -10,6 +10,7 @@ import type { EmailAccount } from "@/types/shared";
 import { Separator } from "@/components/ui/separator";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -139,6 +140,9 @@ export function DashboardNav() {
           <Link href="/dashboard" className="mb-1 flex items-center gap-2 px-3 py-2">
             <ChevronRight className="text-primary h-5 w-5" />
             <span className="text-lg font-bold tracking-tight">Saale</span>
+            <div className="ml-auto">
+              <NotificationBell />
+            </div>
           </Link>
 
           <Separator className="my-2" />
