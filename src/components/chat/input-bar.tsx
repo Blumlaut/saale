@@ -241,7 +241,7 @@ export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Message Saale... (paste or attach images)"
+            placeholder="Message Saale..."
             className={cn(
               "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
               "placeholder:text-muted-foreground",
@@ -271,9 +271,6 @@ export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }
             </Button>
           )}
         </div>
-        <p className="text-muted-foreground mt-2 text-center text-xs">
-          Saale can make mistakes. Verify important information.
-        </p>
       </div>
     </div>
   );
