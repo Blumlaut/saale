@@ -541,7 +541,7 @@ export async function processJob(job: Job): Promise<void> {
 
         // Build extraction prompt
         const extractionPrompt = `
-You are a knowledge curator. Extract memorable information from this conversation.
+You are a memory extraction engine. Scan this conversation for information worth remembering long-term.
 
 ${
   session.memorySummary
@@ -565,18 +565,33 @@ ${
     : "(none)"
 }
 
-Extract ONLY new information not already captured.
+Most conversations will have ZERO extractable memories. Default to an empty "add" array.
+
+What to extract (only if explicitly stated by the user):
+- Personal facts: name, location, job, relationships, health
+- Preferences: favorite tools, tastes, working style, dislikes
+- Goals and plans with specific details
+- Projects with concrete scope or status
+- Decisions that shape future work (architecture choices, tech stack picks)
+
+What to NEVER extract:
+- Errors, bugs, or troubleshooting steps (these are transient)
+- Task/job configurations or scheduling details
+- "Keep this enabled" / "try again" / workflow instructions
+- Technical how-to instructions the assistant provided
+- Observations about the conversation itself
+- Small talk, greetings, or pleasantries
+- Anything already captured in existing memories
 
 Categorization:
 - Place each memory into one of the existing categories above
-- Only create a new category if none of the existing ones fit the memory's purpose
+- Only create a new category if none of the existing ones fit
 - Category names should be lowercase, single words (e.g. "facts", "decisions", "projects")
 
 Rules:
-- Be conservative — only extract specific, concrete information
-- Skip vague observations, small talk, and things already in existing memories
-- If new info contradicts an existing memory, flag it for removal
-- Set importance 1-10: explicit user statements = 8-10, inferred = 3-5
+- If you're unsure whether something is worth remembering, skip it
+- Only extract when the user explicitly states something about themselves or their work
+- Set importance 1-10: explicit user statements = 7-10, inferred = 3-5
 
 Output JSON:
 {
@@ -590,7 +605,7 @@ Output JSON:
 
         const response = await dispatchAiTask(task.userId, extractionPrompt, {
           systemPrompt:
-            "You are a knowledge extraction engine. Analyze conversations and extract facts, decisions, preferences, and patterns. Output valid JSON only.",
+            "You are a selective memory extraction engine. Most conversations have nothing worth remembering. Extract only concrete, long-term user facts and preferences. Output valid JSON only.",
           modelId,
         });
 
