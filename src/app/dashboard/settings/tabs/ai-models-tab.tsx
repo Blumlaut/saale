@@ -8,13 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Bot,
   Loader2,
@@ -33,6 +27,7 @@ import {
   Eye,
   EyeOff as EyeOffIcon,
   Shield,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -102,6 +97,7 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
   const [loading, setLoading] = useState(true);
 
   const [newProvider, setNewProvider] = useState("");
+  const [providerOpen, setProviderOpen] = useState(false);
   const [newApiKey, setNewApiKey] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newBaseUrl, setNewBaseUrl] = useState("");
@@ -198,20 +194,37 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[160px] flex-1 space-y-1.5">
             <Label className="text-xs">Provider</Label>
-            <Select value={newProvider} onValueChange={(v) => setNewProvider(v ?? "")}>
-              <SelectTrigger className="h-8">
-                {availableProviders.find((p) => p.id === newProvider)?.name ?? (
-                  <SelectValue placeholder="Select…" />
-                )}
-              </SelectTrigger>
-              <SelectContent>
+            <Popover open={providerOpen} onOpenChange={setProviderOpen}>
+              <PopoverTrigger>
+                <span className="border-border/50 inline-flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-2.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+                  <span className="truncate text-sm">
+                    {availableProviders.find((p) => p.id === newProvider)?.name ?? (
+                      <span className="text-muted-foreground">Select…</span>
+                    )}
+                  </span>
+                  <ChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                </span>
+              </PopoverTrigger>
+              <PopoverContent className="w-[200px] p-1" align="start">
                 {availableProviders.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
+                  <button
+                    key={p.id}
+                    className={cn(
+                      "flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                      p.id === newProvider
+                        ? "bg-primary/10 font-medium"
+                        : "hover:bg-white/10 dark:hover:bg-white/5",
+                    )}
+                    onClick={() => {
+                      setNewProvider(p.id);
+                      setProviderOpen(false);
+                    }}
+                  >
                     {p.name}
-                  </SelectItem>
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="min-w-[180px] flex-1 space-y-1.5">
