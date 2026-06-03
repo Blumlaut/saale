@@ -13,16 +13,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Paperclip, Send, Loader2, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { type ToolConfig } from "@/lib/pi/tool-config";
 
-export interface ToolConfig {
-  bash: boolean;
-  files: boolean;
-  email: boolean;
-  jobs: boolean;
-  calendar: boolean;
-  chatSearch: boolean;
-  web: boolean;
-}
+export type { ToolConfig };
 
 interface InputBarProps {
   onSend: (message: string) => void;

@@ -16,31 +16,12 @@ import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
 import { createWebTools } from "./tools/web-tools";
+import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-config";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
-/**
- * Configuration for which tool categories are enabled.
- */
-export interface ToolConfig {
-  bash?: boolean;
-  files?: boolean;
-  email?: boolean;
-  jobs?: boolean;
-  calendar?: boolean;
-  chatSearch?: boolean;
-  web?: boolean;
-}
-
-const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
-  bash: false, // Disabled by default — must be explicitly enabled
-  files: true,
-  email: true,
-  jobs: true,
-  calendar: true,
-  chatSearch: true,
-  web: true,
-};
+// Re-export for consumers
+export type { ToolConfig };
 
 /**
  * Merge user tool config with defaults.
