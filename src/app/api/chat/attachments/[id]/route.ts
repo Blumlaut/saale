@@ -47,7 +47,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     return new NextResponse(buffer, {
       headers: {
-        "Content-Type": "image/webp",
+        "Content-Type": attachment.mimeType,
         "Cache-Control": "public, max-age=86400, immutable",
         "Content-Length": String(buffer.length),
       },

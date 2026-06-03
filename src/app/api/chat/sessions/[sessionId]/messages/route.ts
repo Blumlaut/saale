@@ -165,7 +165,7 @@ export async function POST(
             size: att.size,
             width: att.width ?? null,
             height: att.height ?? null,
-            storagePath: `images/${att.storageId}.webp`,
+            storagePath: `images/${att.storageId}.png`,
           })),
         },
       }),
