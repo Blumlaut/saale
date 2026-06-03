@@ -137,13 +137,13 @@ export function DashboardNav() {
       <GlassPanel className="shadow-md">
         <GlassPanelContent className="p-3">
           {/* Brand */}
-          <Link href="/dashboard" className="mb-1 flex items-center gap-2 px-3 py-2">
-            <ChevronRight className="text-primary h-5 w-5" />
-            <span className="text-lg font-bold tracking-tight">Saale</span>
-            <div className="ml-auto">
-              <NotificationBell />
-            </div>
-          </Link>
+          <div className="mb-1 flex items-center justify-between px-3 py-2">
+            <Link href="/dashboard" className="flex items-center gap-2">
+              <ChevronRight className="text-primary h-5 w-5" />
+              <span className="text-lg font-bold tracking-tight">Saale</span>
+            </Link>
+            <NotificationBell />
+          </div>
 
           <Separator className="my-2" />
 
