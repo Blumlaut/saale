@@ -470,7 +470,7 @@ export async function processJob(job: Job): Promise<void> {
         Prisma.sql`
           SELECT id, "lastSummarizedAt", "memorySummary"
           FROM "ChatSession"
-          WHERE userId = ${task.userId}
+          WHERE "userId" = ${task.userId}
             AND "messageCount" > 0
             AND ("lastSummarizedAt" IS NULL OR "lastSummarizedAt" < "updatedAt")
           ORDER BY "updatedAt" DESC
