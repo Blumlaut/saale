@@ -22,9 +22,9 @@ async function getGlobalModelConfig() {
 /**
  * Check if a model is allowed by the global config.
  * - If no global config exists, all models are allowed.
- * - If provider is disabled, no models from it are allowed.
  * - If provider has an explicit model list, only those models are allowed.
- * - If provider is enabled with no model list, all models from it are allowed.
+ * - If provider has an empty model list, no models from it are allowed.
+ * - If provider is not in config, all models from it are allowed.
  */
 function isModelAllowed(
   globalConfig: Record<string, ProviderModelConfig> | null,
@@ -35,14 +35,18 @@ function isModelAllowed(
 
   const providerConfig = globalConfig[provider];
   if (!providerConfig) return true; // not in config = allowed
-  if (!providerConfig.enabled) return false;
 
   // If explicit model list, check membership
   if (providerConfig.models && providerConfig.models.length > 0) {
     return providerConfig.models.includes(modelId);
   }
 
-  return true; // enabled with no explicit list = all allowed
+  // Empty list means all disabled
+  if (providerConfig.models && providerConfig.models.length === 0) {
+    return false;
+  }
+
+  return true; // no model list set = all allowed
 }
 
 /**
