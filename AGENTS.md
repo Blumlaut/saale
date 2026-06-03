@@ -74,6 +74,16 @@ This project is in its early stages. Heavy reworks and structural changes are ex
 <Button onClick={() => router.push("/path")}>Go</Button>
 ```
 
+## Mobile-First Layouts
+
+- **All new components are mobile-first.** Use responsive Tailwind classes: `px-4 md:px-6`, `text-sm md:text-base`, `gap-3 md:gap-4`, etc.
+- **Never use fixed padding larger than `px-4` without a responsive override.** If a component needs `px-6`, write `px-4 md:px-6`.
+- **Grids must have a mobile fallback.** `grid-cols-1 md:grid-cols-2`, not just `grid-cols-2`.
+- **Fixed widths (`w-96`, `w-72`) are forbidden** unless wrapped in an overflow container. Use `max-w-` or responsive widths instead.
+- **Height calculations must account for mobile nav.** Use `calc(100vh - X)` values that differ between `md:` and below.
+- **Horizontal scrollable areas** must have `overflow-x-auto` and `-webkit-overflow-scrolling: touch`.
+- When in doubt, preview at `375px` width (iPhone SE) before committing.
+
 ## No Hardcoded Values
 
 - **Never hardcode logic, configs, or environment-specific values in the code.**
