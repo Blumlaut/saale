@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { open } from "fs/promises";
 import fs from "fs/promises";
 import path from "path";
@@ -11,6 +12,7 @@ import {
   type CreateAgentSessionResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { createTerminalOperations } from "@/lib/terminal/operations";
 import { buildModelRegistry } from "./models";
 import { createChatSearchTool, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
@@ -24,6 +26,29 @@ const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
 // Re-export for consumers
 export type { ToolConfig };
+
+/**
+ * Derive the open-terminal Linux username from a Saale user ID.
+ * Mirrors open-terminal's sanitize_username() logic so we can compute
+ * the user's home directory path for the SDK's cwd parameter.
+ */
+function deriveOpenTerminalUsername(userId: string): string {
+  const cleaned = userId.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const name =
+    cleaned.length >= 4
+      ? cleaned.slice(0, 8)
+      : crypto.createHash("sha256").update(userId).digest("hex").slice(0, 8);
+  const prefix = process.env.OPEN_TERMINAL_USER_PREFIX ?? "";
+  const full = `${prefix}${name}`;
+  return full[0]?.match(/[0-9]/) ? `u${full}` : full;
+}
+
+/**
+ * Get the user's home directory inside the open-terminal container.
+ */
+function getTerminalHomeDir(userId: string): string {
+  return `/home/${deriveOpenTerminalUsername(userId)}`;
+}
 
 /**
  * Merge user tool config with defaults.
@@ -116,9 +141,10 @@ async function detectImageMimeType(filePath: string): Promise<string | null> {
 }
 
 /**
- * Create scoped Pi built-in tools locked to the user's workspace.
+ * Create local (host-side) Pi built-in tools locked to the user's workspace.
+ * Used when bash is disabled — fast, no network overhead.
  */
-function createScopedTools(userId: string) {
+function createLocalScopedTools(userId: string) {
   const userDir = getUserDir(userId);
 
   return {
@@ -173,14 +199,22 @@ function createScopedTools(userId: string) {
         },
       },
     }),
+  };
+}
 
-    // Scoped bash tool — cwd forced to user directory on every invocation
-    bash: createBashTool(userDir, {
-      spawnHook: (ctx) => ({
-        ...ctx,
-        cwd: userDir,
-      }),
-    }),
+/**
+ * Create terminal-backed Pi built-in tools (sandboxed via open-terminal).
+ * Used when bash is enabled — all file ops go through the container.
+ */
+function createTerminalScopedTools(userId: string, sessionId: string) {
+  const homeDir = getTerminalHomeDir(userId);
+  const ops = createTerminalOperations({ userId, sessionId, cwd: homeDir });
+
+  return {
+    read: createReadTool(homeDir, { operations: ops.read }),
+    write: createWriteTool(homeDir, { operations: ops.write }),
+    edit: createEditTool(homeDir, { operations: ops.edit }),
+    bash: createBashTool(homeDir, { operations: ops.bash }),
   };
 }
 
@@ -205,19 +239,27 @@ export async function createPiSession(options: {
   // Resolve tool config (which tool categories are enabled)
   const enabled = resolveToolConfig(options.toolConfig);
 
+  // Generate a session ID for open-terminal cwd persistence
+  const sessionId = crypto.randomUUID();
+
   // Build user-scoped custom tools (only if enabled)
   const allCustomTools: ToolDefinition[] = [...options.customTools];
 
-  // Pi built-in tools — scoped to user workspace
-  const scoped = createScopedTools(options.userId);
-
-  if (enabled.files) {
-    allCustomTools.push(scoped.read, scoped.write, scoped.edit);
-  }
-
+  // Pi built-in tools — choose backend based on bash setting
   if (enabled.bash) {
-    allCustomTools.push(scoped.bash);
+    // Terminal-backed tools (sandboxed via open-terminal)
+    const terminal = createTerminalScopedTools(options.userId, sessionId);
+    if (enabled.files) {
+      allCustomTools.push(terminal.read, terminal.write, terminal.edit);
+    }
+    allCustomTools.push(terminal.bash);
     allCustomTools.push(createShowFileTool(options.userId));
+  } else {
+    // Local fs tools (fast, no network overhead)
+    const local = createLocalScopedTools(options.userId);
+    if (enabled.files) {
+      allCustomTools.push(local.read, local.write, local.edit);
+    }
   }
 
   if (enabled.chatSearch) {

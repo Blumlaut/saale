@@ -1,0 +1,542 @@
+/**
+ * TypeScript client for the Open Terminal REST API.
+ *
+ * Wraps https://github.com/open-webui/open-terminal with typed methods,
+ * multi-user support (X-User-Id header), and session tracking (X-Session-Id).
+ */
+
+// ─── Configuration ──────────────────────────────────────────────────────────
+
+const BASE_URL = process.env.OPEN_TERMINAL_URL ?? "http://localhost:8000";
+const API_KEY = process.env.OPEN_TERMINAL_API_KEY;
+
+if (!API_KEY) {
+  throw new Error("OPEN_TERMINAL_API_KEY is required. Set it in your environment.");
+}
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface ExecuteOptions {
+  /** Working directory (relative to user home). */
+  cwd?: string;
+  /** Extra environment variables. */
+  env?: Record<string, string>;
+  /** Seconds to wait for completion before returning. */
+  wait?: number;
+  /** Return only the last N output entries. */
+  tail?: number;
+  /** Saale user ID — passed as X-User-Id header for multi-user isolation. */
+  userId: string;
+  /** Pi session ID — passed as X-Session-Id header for cwd persistence. */
+  sessionId?: string;
+}
+
+export interface ExecuteResult {
+  id: string;
+  command: string;
+  status: "running" | "done" | "killed";
+  exit_code: number | null;
+  output: Array<{ type: string; data: string } | string>;
+  truncated: boolean;
+  next_offset: number;
+  log_path?: string;
+}
+
+export interface StatusOptions {
+  /** Seconds to wait for the process to finish. */
+  wait?: number;
+  /** Number of output entries to skip. */
+  offset?: number;
+  /** Return only the last N output entries. */
+  tail?: number;
+  userId: string;
+  sessionId?: string;
+}
+
+export interface ReadFileOptions {
+  /** First line to return (1-indexed, inclusive). */
+  startLine?: number;
+  /** Last line to return (1-indexed, inclusive). */
+  endLine?: number;
+  userId: string;
+  sessionId?: string;
+}
+
+export interface ReadFileResult {
+  path: string;
+  total_lines: number;
+  content: string;
+}
+
+export interface ReadFileBinaryResult {
+  path: string;
+  mimeType: string;
+  buffer: Buffer;
+}
+
+export interface ListDirectoryResult {
+  dir: string;
+  entries: Array<{
+    name: string;
+    type: "file" | "directory";
+    size: number;
+    modified: number;
+  }>;
+}
+
+export interface GrepSearchOptions {
+  /** Directory or file to search in. */
+  path?: string;
+  /** Use regex (default: true). */
+  regex?: boolean;
+  /** Case-insensitive matching. */
+  caseInsensitive?: boolean;
+  /** Glob patterns to include (e.g. ['*.ts']). */
+  include?: string[];
+  /** Return per-line matches (default: true). */
+  matchPerLine?: boolean;
+  /** Maximum number of matches. */
+  maxResults?: number;
+  userId: string;
+  sessionId?: string;
+}
+
+export interface GrepSearchResult {
+  query: string;
+  path: string;
+  matches: Array<{
+    file: string;
+    line: number;
+    content: string;
+  }>;
+  truncated: boolean;
+}
+
+export interface GlobSearchOptions {
+  /** Directory to search within. */
+  path?: string;
+  /** Glob patterns to exclude. */
+  exclude?: string[];
+  /** Type filter: 'file', 'directory', or 'any'. */
+  type?: "file" | "directory" | "any";
+  /** Maximum number of matches. */
+  maxResults?: number;
+  userId: string;
+  sessionId?: string;
+}
+
+export interface GlobSearchResult {
+  pattern: string;
+  path: string;
+  matches: Array<{
+    path: string;
+    type: "file" | "directory";
+    size: number;
+    modified: number;
+  }>;
+  truncated: boolean;
+}
+
+export interface ReplacementChunk {
+  target: string;
+  replacement: string;
+  start_line?: number;
+  end_line?: number;
+  allow_multiple?: boolean;
+}
+
+// ─── Auth helpers ───────────────────────────────────────────────────────────
+
+function getHeaders(extra: HeadersInit = {}): HeadersInit {
+  return {
+    Authorization: `Bearer ${API_KEY}`,
+    "Content-Type": "application/json",
+    ...extra,
+  };
+}
+
+function getUserHeaders(
+  userId: string,
+  sessionId?: string,
+  extra: Record<string, string> = {},
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-User-Id": userId,
+    ...extra,
+  };
+  if (sessionId) {
+    headers["X-Session-Id"] = sessionId;
+  }
+  return getHeaders(headers) as Record<string, string>;
+}
+
+// ─── Request helper ─────────────────────────────────────────────────────────
+
+async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      ...getHeaders(),
+      ...init.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
+    );
+  }
+
+  // For JSON responses
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return response.json() as Promise<T>;
+  }
+
+  // For binary responses, return as ArrayBuffer (caller handles casting)
+  return (await response.arrayBuffer()) as unknown as T;
+}
+
+// ─── Execute ────────────────────────────────────────────────────────────────
+
+/**
+ * Execute a shell command.
+ * POST /execute
+ */
+export async function executeCommand(
+  command: string,
+  options: ExecuteOptions,
+): Promise<ExecuteResult> {
+  const { cwd, env, wait, tail, userId, sessionId } = options;
+  const url = new URL(`${BASE_URL}/execute`);
+
+  if (wait !== undefined) url.searchParams.append("wait", String(wait));
+  if (tail !== undefined) url.searchParams.append("tail", String(tail));
+
+  const body: Record<string, unknown> = { command };
+  if (cwd) body.cwd = cwd;
+  if (env) body.env = env;
+
+  return request<ExecuteResult>(url.toString(), {
+    method: "POST",
+    headers: getUserHeaders(userId, sessionId),
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Get command status and output.
+ * GET /execute/{process_id}/status
+ */
+export async function getCommandStatus(
+  processId: string,
+  options: StatusOptions,
+): Promise<ExecuteResult> {
+  const { wait, offset, tail, userId, sessionId } = options;
+  const url = new URL(`${BASE_URL}/execute/${encodeURIComponent(processId)}/status`);
+
+  if (wait !== undefined) url.searchParams.append("wait", String(wait));
+  if (offset !== undefined) url.searchParams.append("offset", String(offset));
+  if (tail !== undefined) url.searchParams.append("tail", String(tail));
+
+  return request<ExecuteResult>(url.toString(), {
+    method: "GET",
+    headers: getUserHeaders(userId, sessionId),
+  });
+}
+
+/**
+ * Kill a running command.
+ * DELETE /execute/{process_id}
+ */
+export async function killCommand(
+  processId: string,
+  options: { userId: string; sessionId?: string; force?: boolean },
+): Promise<{ status: string }> {
+  const { userId, sessionId, force } = options;
+  const url = new URL(`${BASE_URL}/execute/${encodeURIComponent(processId)}`);
+  if (force) url.searchParams.append("force", "true");
+
+  return request<{ status: string }>(url.toString(), {
+    method: "DELETE",
+    headers: getUserHeaders(userId, sessionId),
+  });
+}
+
+/**
+ * List running commands.
+ * GET /execute
+ */
+export async function listCommands(options: { userId: string; sessionId?: string }): Promise<
+  Array<{
+    id: string;
+    command: string;
+    status: string;
+    exit_code: number | null;
+    log_path?: string;
+  }>
+> {
+  const { userId, sessionId } = options;
+  return request<
+    Array<{
+      id: string;
+      command: string;
+      status: string;
+      exit_code: number | null;
+      log_path?: string;
+    }>
+  >(`${BASE_URL}/execute`, {
+    headers: getUserHeaders(userId, sessionId),
+  });
+}
+
+// ─── Files ──────────────────────────────────────────────────────────────────
+
+/**
+ * Read a file. Returns text for text files, binary for images.
+ * GET /files/read
+ *
+ * When the file is an image, the API returns raw binary with the image MIME type.
+ * The caller must check the response content-type to distinguish.
+ */
+export async function readFile(
+  filePath: string,
+  options: ReadFileOptions,
+): Promise<ReadFileResult | ReadFileBinaryResult> {
+  const { startLine, endLine, userId, sessionId } = options;
+  const url = new URL(`${BASE_URL}/files/read`);
+  url.searchParams.append("path", filePath);
+  if (startLine) url.searchParams.append("start_line", String(startLine));
+  if (endLine) url.searchParams.append("end_line", String(endLine));
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: getUserHeaders(userId, sessionId),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
+    );
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+
+  // Binary response (image)
+  if (contentType.startsWith("image/")) {
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return {
+      path: filePath,
+      mimeType: contentType,
+      buffer,
+    };
+  }
+
+  // JSON response (text file)
+  return response.json() as Promise<ReadFileResult>;
+}
+
+/**
+ * Read a file as raw binary (any type).
+ * GET /files/view
+ */
+export async function readFileBinary(
+  filePath: string,
+  options: { userId: string; sessionId?: string },
+): Promise<ReadFileBinaryResult> {
+  const { userId, sessionId } = options;
+  const url = new URL(`${BASE_URL}/files/view`);
+  url.searchParams.append("path", filePath);
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: getUserHeaders(userId, sessionId),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
+    );
+  }
+
+  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  return { path: filePath, mimeType: contentType, buffer };
+}
+
+/**
+ * Write a file.
+ * POST /files/write
+ */
+export async function writeFile(
+  filePath: string,
+  content: string,
+  options: { userId: string; sessionId?: string },
+): Promise<{ path: string; size: number }> {
+  const { userId, sessionId } = options;
+  return request<{ path: string; size: number }>(`${BASE_URL}/files/write`, {
+    method: "POST",
+    headers: getUserHeaders(userId, sessionId),
+    body: JSON.stringify({ path: filePath, content }),
+  });
+}
+
+/**
+ * List directory contents.
+ * GET /files/list
+ */
+export async function listDirectory(
+  directory: string,
+  options: { userId: string; sessionId?: string },
+): Promise<ListDirectoryResult> {
+  const { userId, sessionId } = options;
+  const url = new URL(`${BASE_URL}/files/list`);
+  url.searchParams.append("directory", directory);
+
+  return request<ListDirectoryResult>(url.toString(), {
+    headers: getUserHeaders(userId, sessionId),
+  });
+}
+
+/**
+ * Create a directory.
+ * POST /files/mkdir
+ */
+export async function createDirectory(
+  path: string,
+  options: { userId: string; sessionId?: string },
+): Promise<{ path: string }> {
+  const { userId, sessionId } = options;
+  return request<{ path: string }>(`${BASE_URL}/files/mkdir`, {
+    method: "POST",
+    headers: getUserHeaders(userId, sessionId),
+    body: JSON.stringify({ path }),
+  });
+}
+
+/**
+ * Delete a file or directory.
+ * DELETE /files/delete
+ */
+export async function deleteFile(
+  filePath: string,
+  options: { userId: string; sessionId?: string },
+): Promise<{ path: string; type: string }> {
+  const { userId, sessionId } = options;
+  const url = new URL(`${BASE_URL}/files/delete`);
+  url.searchParams.append("path", filePath);
+
+  return request<{ path: string; type: string }>(url.toString(), {
+    method: "DELETE",
+    headers: getUserHeaders(userId, sessionId),
+  });
+}
+
+/**
+ * Move/rename a file or directory.
+ * POST /files/move
+ */
+export async function moveFile(
+  source: string,
+  destination: string,
+  options: { userId: string; sessionId?: string },
+): Promise<{ source: string; destination: string }> {
+  const { userId, sessionId } = options;
+  return request<{ source: string; destination: string }>(`${BASE_URL}/files/move`, {
+    method: "POST",
+    headers: getUserHeaders(userId, sessionId),
+    body: JSON.stringify({ source, destination }),
+  });
+}
+
+/**
+ * Replace content in a file.
+ * POST /files/replace
+ */
+export async function replaceFileContent(
+  filePath: string,
+  replacements: ReplacementChunk[],
+  options: { userId: string; sessionId?: string },
+): Promise<{ path: string; size: number }> {
+  const { userId, sessionId } = options;
+  return request<{ path: string; size: number }>(`${BASE_URL}/files/replace`, {
+    method: "POST",
+    headers: getUserHeaders(userId, sessionId),
+    body: JSON.stringify({ path: filePath, replacements }),
+  });
+}
+
+// ─── Search ─────────────────────────────────────────────────────────────────
+
+/**
+ * Search file contents (grep).
+ * GET /files/grep
+ */
+export async function grepSearch(
+  query: string,
+  options: GrepSearchOptions,
+): Promise<GrepSearchResult> {
+  const {
+    path = ".",
+    regex = true,
+    caseInsensitive = false,
+    include,
+    matchPerLine = true,
+    maxResults = 50,
+    userId,
+    sessionId,
+  } = options;
+
+  const url = new URL(`${BASE_URL}/files/grep`);
+  url.searchParams.append("query", query);
+  url.searchParams.append("path", path);
+  url.searchParams.append("regex", String(regex));
+  url.searchParams.append("case_insensitive", String(caseInsensitive));
+  url.searchParams.append("match_per_line", String(matchPerLine));
+  url.searchParams.append("max_results", String(maxResults));
+  if (include) url.searchParams.append("include", include.join(","));
+
+  return request<GrepSearchResult>(url.toString(), {
+    headers: getUserHeaders(userId, sessionId),
+  });
+}
+
+/**
+ * Search files by name (glob).
+ * GET /files/glob
+ */
+export async function globSearch(
+  pattern: string,
+  options: GlobSearchOptions,
+): Promise<GlobSearchResult> {
+  const { path = ".", exclude, type = "any", maxResults = 50, userId, sessionId } = options;
+
+  const url = new URL(`${BASE_URL}/files/glob`);
+  url.searchParams.append("pattern", pattern);
+  url.searchParams.append("path", path);
+  url.searchParams.append("type", type);
+  url.searchParams.append("max_results", String(maxResults));
+  if (exclude) url.searchParams.append("exclude", exclude.join(","));
+
+  return request<GlobSearchResult>(url.toString(), {
+    headers: getUserHeaders(userId, sessionId),
+  });
+}
+
+// ─── Health ─────────────────────────────────────────────────────────────────
+
+/**
+ * Check if the terminal is reachable.
+ * GET /health (no auth required)
+ */
+export async function healthCheck(): Promise<{ status: string }> {
+  const response = await fetch(`${BASE_URL}/health`);
+  if (!response.ok) {
+    throw new Error(`Open Terminal health check failed: ${response.status}`);
+  }
+  return response.json();
+}
