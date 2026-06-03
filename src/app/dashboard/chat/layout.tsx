@@ -17,7 +17,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
   return (
     <div className="flex h-dvh flex-col">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between gap-4">
+      <div className="flex shrink-0 items-start justify-between gap-4 pb-2 md:pb-4">
         <div className="flex items-center gap-2">
           {/* Mobile: session list in a sheet — lives in header, not content */}
           <div className="md:hidden">
