@@ -1,6 +1,7 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
+import { Prisma } from "../../../../prisma/generated/prisma";
 
 /**
  * Create memory tools with userId injection for user isolation.
@@ -47,25 +48,8 @@ export function createMemoryTools(userId: string) {
         const collectionFilter = params.collection;
         const tagsFilter = params.tags;
 
-        // Build parameterized query
-        const paramsList: unknown[] = [userId, searchQuery];
-        let paramIndex = 3;
-        const whereClauses: string[] = [
-          `userId = $${paramIndex - 2}`,
-          `to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')) @@ plainto_tsquery('english', $${paramIndex - 1})`,
-        ];
-
-        if (collectionFilter) {
-          paramsList.push(collectionFilter);
-          whereClauses.push(`collection = $${paramIndex++}`);
-        }
-        if (tagsFilter && tagsFilter.length > 0) {
-          paramsList.push(tagsFilter);
-          whereClauses.push(`tags && $${paramIndex++}::text[]`);
-        }
-
-        // Use raw query for full-text search with tsvector
-        const results = await prisma.$queryRawUnsafe<
+        // Use raw query for full-text search with tsvector (parameterized via Prisma.sql)
+        const results = await prisma.$queryRaw<
           Array<{
             id: string;
             collection: string;
@@ -79,22 +63,28 @@ export function createMemoryTools(userId: string) {
             rank: number;
           }>
         >(
-          `
-          SELECT id, collection, title, content, tags, importance, "accessCount", "createdAt", "updatedAt",
-                 ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')), plainto_tsquery('english', $2)) AS rank
-          FROM "Memory"
-          WHERE ${whereClauses.join(" AND ")}
-          ORDER BY rank DESC
-          LIMIT ${limit}
+          Prisma.sql`
+            SELECT id, collection, title, content, tags, importance, "accessCount", "createdAt", "updatedAt",
+                   ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')), plainto_tsquery('english', ${searchQuery})) AS rank
+            FROM "Memory"
+            WHERE userId = ${userId}
+              AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')) @@ plainto_tsquery('english', ${searchQuery})
+              ${collectionFilter ? Prisma.sql`AND collection = ${collectionFilter}` : Prisma.empty}
+              ${
+                tagsFilter && tagsFilter.length > 0
+                  ? Prisma.sql`AND tags && ${tagsFilter}::text[]`
+                  : Prisma.empty
+              }
+            ORDER BY rank DESC
+            LIMIT ${limit}
           `,
-          ...paramsList,
         );
 
-        // Increment accessCount for returned memories (bulk update)
+        // Increment accessCount for returned memories (bulk update, scoped to user)
         const memoryIds = results.map((r) => r.id);
         if (memoryIds.length > 0) {
           await prisma.memory.updateMany({
-            where: { id: { in: memoryIds } },
+            where: { id: { in: memoryIds }, userId },
             data: { accessCount: { increment: 1 } },
           });
         }
