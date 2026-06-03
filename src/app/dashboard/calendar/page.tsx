@@ -13,6 +13,7 @@ import { MonthView } from "@/components/calendar/month-view";
 import { WeekView } from "@/components/calendar/week-view";
 import { DayView } from "@/components/calendar/day-view";
 import { EventDialog } from "@/components/calendar/event-dialog";
+import { EventViewSheet } from "@/components/calendar/event-view-sheet";
 
 interface CalendarAccount {
   id: string;
@@ -34,7 +35,8 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [accounts, setAccounts] = useState<CalendarAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [viewSheetOpen, setViewSheetOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
@@ -117,13 +119,13 @@ export default function CalendarPage() {
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
     setSelectedEvent(null);
-    setEventDialogOpen(true);
+    setCreateDialogOpen(true);
   };
 
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event);
-    setSelectedDate(new Date(event.dtStart));
-    setEventDialogOpen(true);
+    setSelectedDate(null);
+    setViewSheetOpen(true);
   };
 
   const handleEventCreated = useCallback(() => {
@@ -167,8 +169,7 @@ export default function CalendarPage() {
           size="sm"
           onClick={() => {
             setSelectedDate(new Date());
-            setSelectedEvent(null);
-            setEventDialogOpen(true);
+            setCreateDialogOpen(true);
           }}
         >
           <Plus className="mr-2 h-4 w-4" />
@@ -246,12 +247,20 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Event Dialog */}
-      <EventDialog
-        open={eventDialogOpen}
-        onOpenChange={setEventDialogOpen}
+      {/* View Event Sheet */}
+      <EventViewSheet
+        open={viewSheetOpen}
+        onOpenChange={setViewSheetOpen}
         accounts={accounts}
         event={selectedEvent}
+        onSuccess={handleEventCreated}
+      />
+
+      {/* Create Event Dialog */}
+      <EventDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        accounts={accounts}
         date={selectedDate}
         onSuccess={handleEventCreated}
       />
