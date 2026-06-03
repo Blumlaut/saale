@@ -366,14 +366,15 @@ export function MemoriesTab() {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger
-                          render={
+                          render={(triggerProps) => (
                             <button
                               type="button"
                               className="opacity-0 transition-opacity group-hover/col:opacity-100"
+                              {...triggerProps}
                             >
                               <MoreVertical className="h-3.5 w-3.5" />
                             </button>
-                          }
+                          )}
                         />
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
@@ -514,15 +515,16 @@ export function MemoriesTab() {
 
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      render={
+                      render={(triggerProps) => (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                          {...triggerProps}
                         >
                           <MoreVertical className="h-4 w-4" />
                         </Button>
-                      }
+                      )}
                     />
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEdit(memory)}>
