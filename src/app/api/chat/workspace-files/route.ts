@@ -80,7 +80,6 @@ export async function GET(request: NextRequest) {
   return new NextResponse(buffer, {
     headers: {
       "Content-Type": mimeType,
-      "Content-Disposition": `attachment; filename="${fileName}"`,
       "Content-Length": String(buffer.length),
       "Cache-Control": "private, max-age=3600",
     },
