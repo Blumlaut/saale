@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
-  const { title, modelProvider, modelName, thinkingLevel } = body;
+  const { title, modelProvider, modelName, thinkingLevel, toolConfig } = body;
 
   // Sanitize title: strip null bytes, limit length
   const sanitizedTitle = (title || "New Chat").replace(/\0/g, "").slice(0, 200);
@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
       modelProvider,
       modelName,
       thinkingLevel: thinkingLevel || "off",
+      toolConfig,
     },
   });
 

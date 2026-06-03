@@ -12,6 +12,7 @@ const ALLOWED_FIELDS = new Set([
   "emailWritingStyle",
   "purposeModelOverrides",
   "disabledModels",
+  "defaultToolConfig",
 ]);
 
 /**
@@ -44,6 +45,7 @@ export async function GET() {
       emailWritingStyle: settings.emailWritingStyle,
       purposeModelOverrides: settings.purposeModelOverrides,
       disabledModels: settings.disabledModels,
+      defaultToolConfig: settings.defaultToolConfig,
     },
   });
 }
@@ -84,6 +86,7 @@ export async function PATCH(request: NextRequest) {
       emailWritingStyle: settings.emailWritingStyle,
       purposeModelOverrides: settings.purposeModelOverrides,
       disabledModels: settings.disabledModels,
+      defaultToolConfig: settings.defaultToolConfig,
     },
   });
 }
