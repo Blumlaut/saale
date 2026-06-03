@@ -7,9 +7,7 @@ import { InputBar, type ToolConfig } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { fetchJson, patchJson } from "@/lib/http";
-import { Loader2, ChevronLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 interface ToolCallData {
   id: string;
@@ -67,7 +65,6 @@ const emptyTurn = (): TurnData => ({
 });
 
 export function ChatInterface({ sessionId }: { sessionId: string }) {
-  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState>({
@@ -510,23 +507,13 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <GlassPanel className="flex flex-1 flex-col overflow-hidden">
+    <GlassPanel className="liquid-glass flex flex-1 flex-col overflow-hidden border-0 bg-transparent">
       {/* Header */}
-      <div className="border-border/50 flex items-center gap-2 border-b px-3 py-2.5 md:px-4 md:py-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 md:h-8 md:w-8"
-          onClick={() => router.push("/dashboard/chat")}
-        >
-          <ChevronLeft className="h-3.5 w-3.5 md:h-4 md:w-4" />
-        </Button>
-        <span className="text-xs font-medium md:text-sm">Chat</span>
-        {isLoading && (
-          <Loader2 className="text-muted-foreground ml-auto h-3.5 w-3.5 animate-spin md:h-4 md:w-4" />
-        )}
+      <div className="border-border/30 flex items-center gap-2 border-b px-4 py-3 md:px-5 md:py-3">
+        <span className="text-sm font-semibold">Chat</span>
+        {isLoading && <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />}
 
-        {/* Model & thinking selectors — hidden on small mobile */}
+        {/* Model & thinking selectors */}
         <div className="ml-auto flex items-center gap-1">
           <ModelPicker value={modelId} onChange={setModelId} />
           <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />

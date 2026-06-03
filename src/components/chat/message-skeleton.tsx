@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function MessageSkeleton() {
@@ -15,5 +16,3 @@ export function MessageSkeleton() {
     </div>
   );
 }
-
-import { cn } from "@/lib/utils";

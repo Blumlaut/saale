@@ -21,6 +21,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const showNewChatButton = !activeSessionId;
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -74,65 +75,73 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   };
 
   return (
-    <div className="flex h-full flex-col gap-3 p-3">
-      {/* New chat button */}
-      <Button onClick={createSession} className="w-full gap-2 rounded-xl" variant="default">
-        <MessageSquarePlus className="h-4 w-4" />
-        New Chat
-      </Button>
+    <GlassPanel className="liquid-glass flex h-full flex-col overflow-hidden border-0 bg-transparent">
+      {/* Header */}
+      <div className="border-border/30 flex items-center justify-between border-b px-4 py-3">
+        <h2 className="text-sm font-semibold">Conversations</h2>
+        {showNewChatButton && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="liquid-glass-pill h-7 w-7 rounded-full"
+            onClick={createSession}
+            title="New Chat"
+          >
+            <MessageSquarePlus className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
 
       {/* Session list */}
-      <GlassPanel className="flex flex-1 flex-col overflow-hidden">
-        <GlassPanelContent className="flex flex-1 flex-col gap-0 overflow-hidden p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-            </div>
-          ) : sessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <p className="text-muted-foreground text-sm">No conversations yet</p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={cn(
-                    "group border-border/30 flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                    session.id === activeSessionId && "bg-white/20 dark:bg-white/5",
-                  )}
+      <GlassPanelContent className="flex flex-1 flex-col gap-0 overflow-hidden p-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <p className="text-muted-foreground text-sm">No conversations yet</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className={cn(
+                  "group flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5",
+                  session.id === activeSessionId && "bg-white/15 dark:bg-white/5",
+                )}
+              >
+                <button
+                  className="flex min-w-0 flex-1 flex-col items-start text-left"
+                  onClick={() => router.push(`/dashboard/chat/${session.id}`)}
                 >
-                  <button
-                    className="flex min-w-0 flex-1 flex-col items-start text-left"
-                    onClick={() => router.push(`/dashboard/chat/${session.id}`)}
-                  >
-                    <div className="truncate font-medium">{session.title}</div>
-                    <div className="text-muted-foreground text-xs">
-                      {formatDate(session.updatedAt)} · {session.messageCount} messages
-                    </div>
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteSession(session.id);
-                    }}
-                    disabled={deletingId === session.id}
-                  >
-                    {deletingId === session.id ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3 w-3" />
-                    )}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </GlassPanelContent>
-      </GlassPanel>
-    </div>
+                  <div className="truncate font-medium">{session.title}</div>
+                  <div className="text-muted-foreground text-xs">
+                    {formatDate(session.updatedAt)} · {session.messageCount} messages
+                  </div>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteSession(session.id);
+                  }}
+                  disabled={deletingId === session.id}
+                >
+                  {deletingId === session.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </GlassPanelContent>
+    </GlassPanel>
   );
 }

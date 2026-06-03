@@ -89,16 +89,16 @@ export function InputBar({
   };
 
   return (
-    <div className="border-border/50 border-t bg-white/40 px-3 py-2 md:px-4 md:py-3 dark:bg-black/20">
+    <div className="border-border/30 border-t bg-white/20 px-3 py-2 md:px-4 md:py-3 dark:bg-white/[0.02]">
       <div className="px-1 sm:px-2 md:px-4">
-        <div className="border-input bg-background/80 relative flex items-center gap-2 rounded-2xl border p-2 shadow-sm">
+        <div className="liquid-glass-inner relative flex items-center gap-2 rounded-2xl border-0 p-2">
           {/* Tools toggle button */}
           {hasToolToggle && (
             <DropdownMenu>
               {/* Use div instead of Button to avoid nested <button> inside DropdownMenuTrigger */}
               <DropdownMenuTrigger>
                 <div
-                  className="group/button hover:text-foreground aria-expanded:text-foreground inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/20 aria-expanded:bg-white/20 dark:hover:bg-white/5"
+                  className="hover:text-foreground aria-expanded:text-foreground inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/20 aria-expanded:bg-white/20 dark:hover:bg-white/5"
                   aria-label="Toggle tools"
                 >
                   <Wrench className="h-4 w-4" />
@@ -164,12 +164,8 @@ export function InputBar({
             </Button>
           ) : (
             <Button
-              variant="default"
+              className="liquid-glass-accent h-9 w-9 shrink-0 rounded-full transition-opacity disabled:opacity-50"
               size="icon"
-              className={cn(
-                "h-9 w-9 shrink-0 rounded-full transition-opacity",
-                !input.trim() && "opacity-50",
-              )}
               onClick={handleSubmit}
               disabled={!input.trim()}
             >
