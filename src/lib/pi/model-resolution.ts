@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
  * Priority:
  * 1. Explicit modelId override (e.g. from a job config)
  * 2. Purpose-specific override from AppSettings.purposeModelOverrides
- * 3. Global default from AppSettings.defaultModelProvider/defaultModelName
+ * 3. User default from AppSettings.defaultModelProvider/defaultModelName
+ * 4. Global admin default from AdminSettings.globalModelProvider/globalModelName
  *
  * @returns { provider, name } or undefined if no model can be resolved
  */
@@ -23,7 +24,7 @@ export async function resolveModelForPurpose(
     }
   }
 
-  // 2. Fetch user settings (covers both purpose override and global default)
+  // 2. Fetch user settings (covers both purpose override and user default)
   const settings = await prisma.appSettings.findUnique({
     where: { userId },
     select: {
@@ -47,11 +48,23 @@ export async function resolveModelForPurpose(
     };
   }
 
-  // 4. Global default
+  // 4. User default
   if (settings.defaultModelProvider && settings.defaultModelName) {
     return {
       provider: settings.defaultModelProvider,
       name: settings.defaultModelName,
+    };
+  }
+
+  // 5. Global admin default (fallback)
+  const adminSettings = await prisma.adminSettings.findUnique({
+    where: { id: "global" },
+    select: { globalModelProvider: true, globalModelName: true },
+  });
+  if (adminSettings?.globalModelProvider && adminSettings?.globalModelName) {
+    return {
+      provider: adminSettings.globalModelProvider,
+      name: adminSettings.globalModelName,
     };
   }
 

@@ -2,6 +2,49 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
 
+interface ProviderModelConfig {
+  enabled: boolean;
+  models?: string[];
+}
+
+/**
+ * Fetch global admin model config.
+ */
+async function getGlobalModelConfig() {
+  const settings = await prisma.adminSettings.findUnique({
+    where: { id: "global" },
+    select: { globalProviderModels: true },
+  });
+
+  return (settings?.globalProviderModels as unknown as Record<string, ProviderModelConfig>) ?? null;
+}
+
+/**
+ * Check if a model is allowed by the global config.
+ * - If no global config exists, all models are allowed.
+ * - If provider is disabled, no models from it are allowed.
+ * - If provider has an explicit model list, only those models are allowed.
+ * - If provider is enabled with no model list, all models from it are allowed.
+ */
+function isModelAllowed(
+  globalConfig: Record<string, ProviderModelConfig> | null,
+  provider: string,
+  modelId: string,
+): boolean {
+  if (!globalConfig) return true;
+
+  const providerConfig = globalConfig[provider];
+  if (!providerConfig) return true; // not in config = allowed
+  if (!providerConfig.enabled) return false;
+
+  // If explicit model list, check membership
+  if (providerConfig.models && providerConfig.models.length > 0) {
+    return providerConfig.models.includes(modelId);
+  }
+
+  return true; // enabled with no explicit list = all allowed
+}
+
 /**
  * Fetch model IDs from an OpenAI-compatible /models endpoint.
  */
@@ -29,13 +72,37 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
 
 /**
  * Build a fully-populated ModelRegistry for a user, with discovered models.
+ * Merges global (admin) + user-scoped providers (user keys take priority).
  * Returns the registry, auth storage, and a flat list of models for UI select options.
+ * Models are filtered by global admin config (if any).
  */
 export async function buildModelRegistry(userId: string) {
-  const storedKeys = await prisma.providerApiKey.findMany({
+  const globalConfig = await getGlobalModelConfig();
+
+  // Fetch global providers (userId = null)
+  const globalKeys = await prisma.providerApiKey.findMany({
+    where: { userId: null },
+    select: { provider: true, encryptedKey: true, baseUrl: true },
+  });
+
+  // Fetch user-scoped providers (user keys override global ones)
+  const userKeys = await prisma.providerApiKey.findMany({
     where: { userId },
     select: { provider: true, encryptedKey: true, baseUrl: true },
   });
+
+  // Merge: global keys as base, user keys override by provider
+  const mergedMap = new Map<
+    string,
+    { provider: string; encryptedKey: string; baseUrl: string | null }
+  >();
+  for (const key of globalKeys) {
+    mergedMap.set(key.provider, key);
+  }
+  for (const key of userKeys) {
+    mergedMap.set(key.provider, key);
+  }
+  const storedKeys = Array.from(mergedMap.values());
 
   const authStorage = AuthStorage.inMemory();
   for (const key of storedKeys) {
@@ -108,5 +175,8 @@ export async function buildModelRegistry(userId: string) {
           name: m.name,
         }));
 
-  return { modelRegistry, authStorage, models: allModels };
+  // Apply global admin model filtering
+  const filteredModels = allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
+
+  return { modelRegistry, authStorage, models: filteredModels };
 }

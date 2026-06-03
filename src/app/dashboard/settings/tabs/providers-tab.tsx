@@ -29,6 +29,7 @@ import type { ConfiguredProvider, ProviderInfo } from "../types";
 
 interface ProvidersTabProps {
   providers: ConfiguredProvider[];
+  globalProviders: ConfiguredProvider[];
   availableProviders: ProviderInfo[];
   providersLoading: boolean;
   onReload: () => Promise<void>;
@@ -36,6 +37,7 @@ interface ProvidersTabProps {
 
 export function ProvidersTab({
   providers,
+  globalProviders,
   availableProviders,
   providersLoading,
   onReload,
@@ -228,18 +230,46 @@ export function ProvidersTab({
           </div>
         </div>
 
-        {/* Configured providers */}
+        {/* Global providers (read-only) */}
+        {globalProviders.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-muted-foreground text-xs font-medium">Global Providers</h4>
+            {globalProviders.map((p) => (
+              <div
+                key={"global-" + p.provider}
+                className="border-border/50 bg-background/20 flex items-center justify-between rounded-2xl border p-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-muted/50 flex h-9 w-9 items-center justify-center rounded-xl">
+                    <Shield className="text-muted-foreground h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{p.displayName}</p>
+                    <p className="text-muted-foreground text-xs">Managed by admin</p>
+                  </div>
+                </div>
+                <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs text-blue-500">
+                  <Shield className="h-3 w-3" />
+                  Global
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* User providers */}
         {providersLoading ? (
           <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-        ) : providers.length === 0 ? (
+        ) : providers.length === 0 && globalProviders.length === 0 ? (
           <div className="border-border/50 rounded-2xl border border-dashed p-8 text-center">
             <Shield className="text-muted-foreground/50 mx-auto h-8 w-8" />
             <p className="text-muted-foreground mt-3 text-sm">
               No API keys configured yet. Add one above to get started.
             </p>
           </div>
-        ) : (
+        ) : providers.length > 0 ? (
           <div className="space-y-3">
+            <h4 className="text-muted-foreground text-xs font-medium">Your Providers</h4>
             {providers.map((p) => (
               <div
                 key={p.provider}
@@ -274,7 +304,7 @@ export function ProvidersTab({
               </div>
             ))}
           </div>
-        )}
+        ) : null}
 
         {/* Info */}
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">

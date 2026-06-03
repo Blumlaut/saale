@@ -25,6 +25,7 @@ export interface ConfiguredProvider {
   provider: string;
   label: string;
   configured: boolean;
+  isGlobal: boolean;
   displayName: string;
   createdAt: string;
   updatedAt: string;
@@ -33,6 +34,7 @@ export interface ConfiguredProvider {
 export interface ProviderInfo {
   id: string;
   name: string;
+  configured?: boolean;
 }
 
 export interface AvailableModel {
