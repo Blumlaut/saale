@@ -20,10 +20,14 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
       - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
+      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://open-terminal:8000}
+      - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      open-terminal:
         condition: service_healthy
     command: ${APP_COMMAND:-sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npm run worker & npm run dev"}
     healthcheck:
@@ -97,9 +101,27 @@ services:
       retries: 5
       start_period: 30s
 
+  open-terminal:
+    image: ghcr.io/open-webui/open-terminal:latest
+    container_name: saale-open-terminal
+    restart: unless-stopped
+    environment:
+      - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY:?Set OPEN_TERMINAL_API_KEY}
+      - OPEN_TERMINAL_MULTI_USER=true
+      - OPEN_TERMINAL_PIP_PACKAGES=yt-dlp
+    volumes:
+      - open-terminal-data:/home
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   postgres_data:
   redis_data:
   uploads_data:
   saale_node_modules:
   saale_next:
+  open-terminal-data:
