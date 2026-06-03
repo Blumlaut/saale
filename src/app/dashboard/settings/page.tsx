@@ -10,13 +10,11 @@ import {
   Bot,
   Palette,
   Loader2,
-  Key,
   PenTool,
   Calendar,
   Wrench,
   Brain,
 } from "lucide-react";
-import { ProvidersTab } from "./tabs/providers-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
 import { AgentPersonaTab } from "./tabs/agent-persona-tab";
 import { EmailTab } from "./tabs/email-tab";
@@ -24,29 +22,13 @@ import { CalendarTab } from "./tabs/calendar-tab";
 import { AppearanceTab } from "./tabs/appearance-tab";
 import { ToolsTab } from "./tabs/tools-tab";
 import { MemoriesTab } from "./tabs/memories-tab";
-import type {
-  UserSettings,
-  ConfiguredProvider,
-  ProviderInfo,
-  AvailableModel,
-  AvailableProvider,
-} from "./types";
+import type { UserSettings } from "./types";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
-
-  // Providers state (shared between providers and AI tabs)
-  const [providers, setProviders] = useState<ConfiguredProvider[]>([]);
-  const [globalProviders, setGlobalProviders] = useState<ConfiguredProvider[]>([]);
-  const [availableProviders, setAvailableProviders] = useState<ProviderInfo[]>([]);
-  const [providersLoading, setProvidersLoading] = useState(true);
-
-  // Models state (from Pi SDK, used by AI tab)
-  const [availableModels, setAvailableModels] = useState<Record<string, AvailableModel[]>>({});
-  const [availableModelProviders, setAvailableModelProviders] = useState<AvailableProvider[]>([]);
 
   // Load user settings
   useEffect(() => {
@@ -57,53 +39,6 @@ export default function SettingsPage() {
       })
       .catch(() => setLoading(false));
   }, []);
-
-  // Load providers
-  const loadProviders = useCallback(async () => {
-    try {
-      const data = await fetchJson<{
-        providers: ConfiguredProvider[];
-        globalProviders: ConfiguredProvider[];
-        availableProviders: ProviderInfo[];
-      }>("/api/providers");
-      setProviders(data.providers ?? []);
-      setGlobalProviders(data.globalProviders ?? []);
-      setAvailableProviders(data.availableProviders ?? []);
-    } finally {
-      setProvidersLoading(false);
-    }
-  }, []);
-
-  // Load available models
-  const loadModels = useCallback(async () => {
-    try {
-      const data = await fetchJson<{
-        models: Record<string, AvailableModel[]>;
-        providers: AvailableProvider[];
-      }>("/api/providers/models");
-      setAvailableModels(data.models ?? {});
-      setAvailableModelProviders(data.providers ?? []);
-    } catch {
-      // No models available yet
-    }
-  }, []);
-
-  useEffect(() => {
-    loadProviders();
-  }, [loadProviders]);
-
-  useEffect(() => {
-    if (!providersLoading) {
-      loadModels();
-    }
-  }, [providersLoading, loadModels]);
-
-  // Reload both providers and models (called after add/remove)
-  const reloadProvidersAndModels = useCallback(async () => {
-    setProvidersLoading(true);
-    await loadProviders();
-    await loadModels();
-  }, [loadProviders, loadModels]);
 
   // Auto-clear save status
   useEffect(() => {
@@ -144,21 +79,17 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight md:text-2xl">Settings</h1>
             <p className="text-muted-foreground text-xs md:text-sm">
-              Configure your AI providers, email accounts, and preferences
+              Configure your AI models, email accounts, and preferences
             </p>
           </div>
         </div>
 
-        <Tabs defaultValue="providers" className="space-y-6">
+        <Tabs defaultValue="ai" className="space-y-6">
           <div className="overflow-x-auto pb-1">
             <TabsList className="w-full sm:w-auto">
-              <TabsTrigger value="providers" className="gap-2">
-                <Key className="h-4 w-4" />
-                Model Providers
-              </TabsTrigger>
               <TabsTrigger value="ai" className="gap-2">
                 <Bot className="h-4 w-4" />
-                AI & Models
+                AI &amp; Models
               </TabsTrigger>
               <TabsTrigger value="persona" className="gap-2">
                 <PenTool className="h-4 w-4" />
@@ -187,22 +118,10 @@ export default function SettingsPage() {
             </TabsList>
           </div>
 
-          <TabsContent value="providers" className="space-y-6">
-            <ProvidersTab
-              providers={providers}
-              globalProviders={globalProviders}
-              availableProviders={availableProviders}
-              providersLoading={providersLoading}
-              onReload={reloadProvidersAndModels}
-            />
-          </TabsContent>
-
           <TabsContent value="ai" className="space-y-6">
             <AiModelsTab
               settings={settings}
               onSettingsChange={setSettings}
-              availableModels={availableModels}
-              availableModelProviders={availableModelProviders}
               saving={saving}
               saveStatus={saveStatus}
               onSave={handleSaveSettings}

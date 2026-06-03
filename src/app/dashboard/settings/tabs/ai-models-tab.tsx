@@ -9,6 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Bot,
   Loader2,
   CheckCircle,
@@ -20,12 +27,21 @@ import {
   RotateCcw,
   Globe,
   EyeOff,
+  Key,
+  Plus,
+  Trash2,
+  Eye,
+  EyeOff as EyeOffIcon,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { getAllPurposes } from "@/lib/pi/purposes";
+import { postJson, deleteJson } from "@/lib/http";
 import type {
   UserSettings,
+  ConfiguredProvider,
+  ProviderInfo,
   AvailableModel,
   AvailableProvider,
   PurposeModelSelection,
@@ -34,8 +50,6 @@ import type {
 interface AiModelsTabProps {
   settings: UserSettings | null;
   onSettingsChange: (settings: UserSettings) => void;
-  availableModels: Record<string, AvailableModel[]>;
-  availableModelProviders: AvailableProvider[];
   saving: boolean;
   saveStatus: "idle" | "success" | "error";
   onSave: () => Promise<void>;
@@ -47,7 +61,7 @@ interface FullModelInfo extends AvailableModel {
 }
 
 const thinkingLevels = [
-  { id: "off", label: "Off", description: "Fastest responses", icon: Zap },
+  { id: "off", label: "Off", description: "Fastest", icon: Zap },
   { id: "minimal", label: "Minimal", description: "Light reasoning", icon: Brain },
   { id: "low", label: "Low", description: "Basic reasoning", icon: Brain },
   { id: "medium", label: "Medium", description: "Balanced depth", icon: Brain },
@@ -65,50 +79,299 @@ function formatContextWindow(tokens: number): string {
   return String(tokens);
 }
 
-/**
- * Resolve the effective model for a purpose: purpose override → global default.
- */
 function resolveEffectiveModel(
   settings: UserSettings | null,
   purposeId: string,
 ): PurposeModelSelection | null {
   if (!settings) return null;
-
-  // Purpose-specific override
   const overrides = settings.purposeModelOverrides ?? {};
   const override = overrides[purposeId];
-  if (override?.provider && override?.model) {
-    return override;
-  }
-
-  // Global default
+  if (override?.provider && override?.model) return override;
   if (settings.defaultModelProvider && settings.defaultModelName) {
-    return {
-      provider: settings.defaultModelProvider,
-      model: settings.defaultModelName,
-    };
+    return { provider: settings.defaultModelProvider, model: settings.defaultModelName };
   }
-
   return null;
 }
+
+/* ─── Provider Management Section ─── */
+
+function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }) {
+  const [providers, setProviders] = useState<ConfiguredProvider[]>([]);
+  const [globalProviders, setGlobalProviders] = useState<ConfiguredProvider[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<ProviderInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [newProvider, setNewProvider] = useState("");
+  const [newApiKey, setNewApiKey] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [newBaseUrl, setNewBaseUrl] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [discoveryInfo, setDiscoveryInfo] = useState<{ count: number; error?: string } | null>(
+    null,
+  );
+
+  const loadAll = useCallback(async () => {
+    try {
+      const providersRes = await fetch("/api/providers").then((r) => r.json());
+      setProviders(providersRes.providers ?? []);
+      setGlobalProviders(providersRes.globalProviders ?? []);
+      setAvailableProviders(providersRes.availableProviders ?? []);
+      onModelsChanged();
+    } finally {
+      setLoading(false);
+    }
+  }, [onModelsChanged]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  useEffect(() => {
+    if (status !== "idle") {
+      const t = setTimeout(() => setStatus("idle"), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [status]);
+
+  useEffect(() => {
+    if (discoveryInfo) {
+      const t = setTimeout(() => setDiscoveryInfo(null), 8000);
+      return () => clearTimeout(t);
+    }
+  }, [discoveryInfo]);
+
+  const handleAdd = async () => {
+    if (!newProvider) return;
+    if (newProvider === "custom" && !newBaseUrl) return;
+    setAdding(true);
+    try {
+      const data = await postJson<{ modelCount?: number; modelError?: string }>("/api/providers", {
+        provider: newProvider,
+        apiKey: newApiKey,
+        label: newLabel,
+        baseUrl: newProvider === "custom" ? newBaseUrl : undefined,
+      });
+      setStatus("success");
+      setNewApiKey("");
+      setNewLabel("");
+      setNewBaseUrl("");
+      setNewProvider("");
+      if (data.modelCount !== undefined) {
+        const info: { count: number; error?: string } = { count: data.modelCount };
+        if (data.modelError) info.error = data.modelError;
+        setDiscoveryInfo(info);
+      }
+      await loadAll();
+    } catch {
+      setStatus("error");
+    }
+    setAdding(false);
+  };
+
+  const handleRemove = async (provider: string) => {
+    try {
+      await deleteJson(`/api/providers?provider=${encodeURIComponent(provider)}`);
+      await loadAll();
+    } catch {
+      // silently fail
+    }
+  };
+
+  const totalProviders = providers.length + globalProviders.length;
+
+  return (
+    <div className="border-border/50 bg-background/40 overflow-hidden rounded-2xl border">
+      <div className="flex items-center gap-2 px-4 pt-3">
+        <Key className="text-muted-foreground h-4 w-4" />
+        <span className="text-sm font-medium">API Keys</span>
+        {totalProviders > 0 && (
+          <Badge variant="secondary" className="rounded-full">
+            {totalProviders}
+          </Badge>
+        )}
+      </div>
+
+      <Separator />
+
+      <div className="space-y-4 px-4 py-3">
+        {/* Add form */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[160px] flex-1 space-y-1.5">
+            <Label className="text-xs">Provider</Label>
+            <Select value={newProvider} onValueChange={(v) => setNewProvider(v ?? "")}>
+              <SelectTrigger className="h-8">
+                {availableProviders.find((p) => p.id === newProvider)?.name ?? (
+                  <SelectValue placeholder="Select…" />
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                {availableProviders.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[180px] flex-1 space-y-1.5">
+            <Label className="text-xs">API Key</Label>
+            <div className="relative">
+              <Input
+                type={showApiKey ? "text" : "password"}
+                placeholder="sk-…"
+                value={newApiKey}
+                onChange={(e) => setNewApiKey(e.target.value)}
+                className="h-8 pr-8 font-mono text-xs"
+              />
+              <button
+                type="button"
+                className="text-muted-foreground absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2"
+                onClick={() => setShowApiKey((v) => !v)}
+              >
+                {showApiKey ? (
+                  <EyeOffIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {newProvider === "custom" && (
+            <div className="min-w-[200px] flex-1 space-y-1.5">
+              <Label className="text-xs">Base URL</Label>
+              <Input
+                placeholder="http://localhost:11434/v1"
+                value={newBaseUrl}
+                onChange={(e) => setNewBaseUrl(e.target.value)}
+                className="h-8 font-mono text-xs"
+              />
+            </div>
+          )}
+
+          <div className="min-w-[120px] space-y-1.5">
+            <Label className="text-xs">Label</Label>
+            <Input
+              placeholder="optional"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              className="h-8 text-xs"
+            />
+          </div>
+
+          <Button
+            size="sm"
+            className="h-8"
+            onClick={handleAdd}
+            disabled={adding || !newProvider || (newProvider === "custom" && !newBaseUrl)}
+          >
+            {adding ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Add
+          </Button>
+        </div>
+
+        {/* Status messages */}
+        <div className="flex items-center gap-3">
+          {status === "success" && (
+            <span className="flex items-center gap-1 text-xs text-emerald-500">
+              <CheckCircle className="h-3.5 w-3.5" /> Added
+            </span>
+          )}
+          {status === "error" && (
+            <span className="flex items-center gap-1 text-xs text-red-500">
+              <AlertCircle className="h-3.5 w-3.5" /> Failed
+            </span>
+          )}
+          {discoveryInfo && discoveryInfo.count > 0 && (
+            <span className="flex items-center gap-1 text-xs text-blue-500">
+              <Sparkles className="h-3.5 w-3.5" />
+              {discoveryInfo.count} models discovered
+            </span>
+          )}
+          {discoveryInfo && discoveryInfo.error && (
+            <span className="flex items-center gap-1 text-xs text-amber-500">
+              <AlertCircle className="h-3.5 w-3.5" /> {discoveryInfo.error}
+            </span>
+          )}
+        </div>
+
+        {/* Configured providers */}
+        {(globalProviders.length > 0 || providers.length > 0) && (
+          <div className="flex flex-wrap gap-2">
+            {globalProviders.map((p) => (
+              <div
+                key={"global-" + p.provider}
+                className="flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 px-2.5 py-1"
+              >
+                <Shield className="h-3 w-3 text-blue-500" />
+                <span className="text-xs text-blue-600 dark:text-blue-400">{p.displayName}</span>
+                <span className="text-[10px] text-blue-400/60">global</span>
+              </div>
+            ))}
+            {providers.map((p) => (
+              <div
+                key={p.provider}
+                className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1"
+              >
+                <Key className="h-3 w-3 text-emerald-500" />
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                  {p.displayName}
+                </span>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-red-500"
+                  onClick={() => handleRemove(p.provider)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {loading && <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main Tab ─── */
 
 export function AiModelsTab({
   settings,
   onSettingsChange,
-  availableModels,
-  availableModelProviders,
   saving,
   saveStatus,
   onSave,
 }: AiModelsTabProps) {
   const [search, setSearch] = useState("");
-  const [activePurpose, setActivePurpose] = useState<string>("__default__");
+  const [activePurpose, setActivePurpose] = useState("__default__");
   const [allModels, setAllModels] = useState<FullModelInfo[]>([]);
   const [disabledSet, setDisabledSet] = useState<Set<string>>(new Set());
+  const [availableModels, setAvailableModels] = useState<Record<string, AvailableModel[]>>({});
+  const [availableModelProviders, setAvailableModelProviders] = useState<AvailableProvider[]>([]);
 
   const purposes = useMemo(() => getAllPurposes(), []);
 
-  // Fetch ALL models (including disabled) for the settings page
+  // Load available models (enabled only)
+  const loadModels = useCallback(async () => {
+    try {
+      const data = await fetch("/api/providers/models").then((r) => r.json());
+      setAvailableModels(data.models ?? {});
+      setAvailableModelProviders(data.providers ?? []);
+    } catch {
+      // No models available yet
+    }
+  }, []);
+
+  // Load ALL models (including disabled)
   useEffect(() => {
     fetch("/api/providers/models?includeDisabled=true")
       .then((r) => r.json())
@@ -124,11 +387,7 @@ export function AiModelsTab({
               const providerName =
                 (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
               for (const m of modelsList) {
-                all.push({
-                  ...m,
-                  provider,
-                  providerName,
-                });
+                all.push({ ...m, provider, providerName });
               }
             }
           }
@@ -139,7 +398,12 @@ export function AiModelsTab({
       .catch(() => {});
   }, []);
 
-  // Build a flat list of providers with their models
+  // Initial load
+  useEffect(() => {
+    loadModels();
+  }, [loadModels]);
+
+  // Build providers with their models
   const providersWithModels = availableModelProviders
     .map((p) => ({
       ...p,
@@ -154,14 +418,13 @@ export function AiModelsTab({
       if (!groups[m.provider]) groups[m.provider] = [];
       groups[m.provider]!.push(m);
     }
-    // Sort models within each provider
     for (const key of Object.keys(groups)) {
       groups[key]!.sort((a, b) => a.name.localeCompare(b.name));
     }
     return groups;
   }, [allModels]);
 
-  // Filter by search query (includes disabled models)
+  // Filter by search
   const filteredAllProviders = useMemo(() => {
     if (!search.trim()) return allByProvider;
     const q = search.toLowerCase();
@@ -174,9 +437,7 @@ export function AiModelsTab({
           provider.toLowerCase().includes(q) ||
           providerName.toLowerCase().includes(q),
       );
-      if (filtered.length > 0) {
-        result[provider] = filtered;
-      }
+      if (filtered.length > 0) result[provider] = filtered;
     }
     return result;
   }, [allByProvider, search]);
@@ -198,11 +459,11 @@ export function AiModelsTab({
     setDisabledSet(new Set(updated));
   };
 
-  // Determine which model is selected for the active purpose
+  // Effective model for active purpose
   const effectiveModel = useMemo(
     () =>
       activePurpose === "__default__"
-        ? settings && settings.defaultModelProvider && settings.defaultModelName
+        ? settings?.defaultModelProvider && settings?.defaultModelName
           ? { provider: settings.defaultModelProvider, model: settings.defaultModelName }
           : null
         : resolveEffectiveModel(settings, activePurpose),
@@ -219,16 +480,13 @@ export function AiModelsTab({
 
   const handleSelectModel = (providerId: string, modelId: string) => {
     if (!settings) return;
-
     if (activePurpose === "__default__") {
-      // Setting the global default
       onSettingsChange({
         ...settings,
         defaultModelProvider: providerId,
         defaultModelName: modelId,
       });
     } else {
-      // Setting a purpose-specific override
       const overrides = settings.purposeModelOverrides ?? {};
       onSettingsChange({
         ...settings,
@@ -260,18 +518,25 @@ export function AiModelsTab({
             AI &amp; Models
           </h3>
           <p className="text-muted-foreground mt-1 text-sm">
-            Choose your default model, configure reasoning depth, and assign models per purpose.
+            Manage API keys, choose models, and configure reasoning per purpose.
           </p>
         </div>
 
         <Separator />
 
+        {/* API Keys section */}
+        <div className="px-6 pt-4 pb-2">
+          <ProviderManagement onModelsChanged={loadModels} />
+        </div>
+
+        <Separator />
+
         <div className="flex flex-col gap-6 lg:flex-row">
-          {/* Model Browser */}
+          {/* ─── Model Browser ─── */}
           <div className="flex-1">
             <div className="px-6 py-3">
               <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                Model
+                Models
               </Label>
             </div>
 
@@ -281,10 +546,10 @@ export function AiModelsTab({
                 <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                 <Input
                   type="text"
-                  placeholder="Search models..."
+                  placeholder="Search models…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-9 pl-9"
+                  className="h-8 pl-9 text-sm"
                 />
               </div>
             </div>
@@ -296,26 +561,24 @@ export function AiModelsTab({
                     <Sparkles className="text-muted-foreground/50 mb-3 h-8 w-8" />
                     <p className="text-sm font-medium">No models available</p>
                     <p className="text-muted-foreground mt-1 text-xs">
-                      Add an API key in the Model Providers tab to get started.
+                      Add an API key above to get started.
                     </p>
                   </div>
                 ) : Object.keys(filteredAllProviders).length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <Search className="text-muted-foreground/50 mb-3 h-8 w-8" />
-                    <p className="text-sm font-medium">No models match your search</p>
+                    <p className="text-sm font-medium">No models match</p>
                     <p className="text-muted-foreground mt-1 text-xs">Try a different keyword</p>
                   </div>
                 ) : (
                   Object.entries(filteredAllProviders).map(([providerKey, providerModels]) => (
                     <div key={providerKey} className="mb-1">
-                      {/* Provider label */}
                       <div className="px-3 py-2">
                         <span className="text-muted-foreground text-xs font-medium">
                           {providerModels[0]?.providerName ?? providerKey}
                         </span>
                       </div>
 
-                      {/* Models */}
                       {providerModels.map((model) => {
                         const isSelected =
                           effectiveModel?.provider === providerKey &&
@@ -326,18 +589,15 @@ export function AiModelsTab({
                           <div
                             key={model.id}
                             className={cn(
-                              "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors",
+                              "group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
                               !disabled && "cursor-pointer hover:bg-white/20 dark:hover:bg-white/5",
                               disabled && "opacity-50",
                               isSelected && !disabled && "bg-primary/10",
                             )}
                             onClick={() => {
-                              if (!disabled) {
-                                handleSelectModel(providerKey, model.id);
-                              }
+                              if (!disabled) handleSelectModel(providerKey, model.id);
                             }}
                           >
-                            {/* Selection indicator */}
                             <div
                               className={cn(
                                 "h-2 w-2 shrink-0 rounded-full transition-colors",
@@ -345,7 +605,6 @@ export function AiModelsTab({
                               )}
                             />
 
-                            {/* Model info */}
                             <div className="min-w-0 flex-1 text-left">
                               <div className="flex items-center gap-2">
                                 <span
@@ -374,17 +633,13 @@ export function AiModelsTab({
                               )}
                             </div>
 
-                            {/* Active check */}
                             {isSelected && !disabled && (
                               <CheckCircle className="text-primary h-4 w-4 shrink-0" />
                             )}
 
-                            {/* Enable/disable toggle */}
                             <Switch
                               checked={!disabled}
-                              onCheckedChange={() => {
-                                handleToggleModel(providerKey, model.id);
-                              }}
+                              onCheckedChange={() => handleToggleModel(providerKey, model.id)}
                               className="scale-75 data-[state=unchecked]:opacity-50"
                               onClick={(e) => e.stopPropagation()}
                             />
@@ -398,21 +653,20 @@ export function AiModelsTab({
             </ScrollArea>
           </div>
 
-          {/* Right sidebar: Purpose selector + Thinking level */}
-          <div className="w-full lg:w-[280px]">
-            <div className="sticky top-6 space-y-6">
+          {/* ─── Right Sidebar ─── */}
+          <div className="w-full lg:w-[260px]">
+            <div className="sticky top-6 space-y-5">
               {/* Purpose selector */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   Purpose
                 </Label>
 
-                <div className="border-border/50 bg-background/40 space-y-1 rounded-2xl border p-1.5">
-                  {/* Global default entry */}
+                <div className="border-border/50 bg-background/40 space-y-0.5 rounded-2xl border p-1">
                   <Button
                     variant="ghost"
                     className={cn(
-                      "w-full justify-start gap-3 rounded-xl px-3 py-2.5",
+                      "w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm",
                       activePurpose === "__default__"
                         ? "bg-primary/10 text-foreground"
                         : "hover:bg-white/20 dark:hover:bg-white/5",
@@ -421,27 +675,26 @@ export function AiModelsTab({
                   >
                     <div
                       className={cn(
-                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
                         activePurpose === "__default__"
                           ? "bg-primary/15 text-primary"
                           : "bg-muted/50 text-muted-foreground",
                       )}
                     >
-                      <Globe className="h-3.5 w-3.5" />
+                      <Globe className="h-3 w-3" />
                     </div>
                     <div className="flex-1 text-left">
                       <p
                         className={cn(
                           "text-sm leading-none",
-                          activePurpose === "__default__" ? "font-medium" : "font-normal",
+                          activePurpose === "__default__" && "font-medium",
                         )}
                       >
                         Default
                       </p>
-                      <p className="text-muted-foreground mt-0.5 text-xs">Fallback for all</p>
                     </div>
                     {activePurpose === "__default__" && (
-                      <CheckCircle className="text-primary h-4 w-4" />
+                      <CheckCircle className="text-primary h-3.5 w-3.5" />
                     )}
                   </Button>
 
@@ -457,7 +710,7 @@ export function AiModelsTab({
                         <Button
                           variant="ghost"
                           className={cn(
-                            "w-full justify-start gap-3 rounded-xl px-3 py-2.5",
+                            "w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm",
                             isActive
                               ? "bg-primary/10 text-foreground"
                               : "hover:bg-white/20 dark:hover:bg-white/5",
@@ -466,28 +719,23 @@ export function AiModelsTab({
                         >
                           <div
                             className={cn(
-                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                              "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
                               isActive
                                 ? "bg-primary/15 text-primary"
                                 : "bg-muted/50 text-muted-foreground",
                             )}
                           >
-                            <PurposeIcon className="h-3.5 w-3.5" />
+                            <PurposeIcon className="h-3 w-3" />
                           </div>
                           <div className="flex-1 text-left">
-                            <p
-                              className={cn(
-                                "text-sm leading-none",
-                                isActive ? "font-medium" : "font-normal",
-                              )}
-                            >
+                            <p className={cn("text-sm leading-none", isActive && "font-medium")}>
                               {purpose.label}
                             </p>
-                            <p className="text-muted-foreground mt-0.5 text-xs">
-                              {hasOverride ? "Custom model" : "Using default"}
+                            <p className="text-muted-foreground mt-0.5 text-[11px]">
+                              {hasOverride ? "Custom" : "Using default"}
                             </p>
                           </div>
-                          {isActive && <CheckCircle className="text-primary h-4 w-4" />}
+                          {isActive && <CheckCircle className="text-primary h-3.5 w-3.5" />}
                         </Button>
                       </div>
                     );
@@ -495,11 +743,11 @@ export function AiModelsTab({
                 </div>
               </div>
 
-              {/* Selected model summary */}
+              {/* Selected model */}
               {effectiveModel && selectedProvider && (
-                <div className="border-border/50 bg-background/40 rounded-2xl border p-4">
+                <div className="border-border/50 bg-background/40 rounded-2xl border p-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-muted-foreground text-[11px]">
                       {activePurpose === "__default__"
                         ? "Default model"
                         : (() => {
@@ -519,19 +767,19 @@ export function AiModelsTab({
                       </Button>
                     )}
                   </div>
-                  <p className="mt-1 text-sm font-medium">{effectiveModel.model}</p>
+                  <p className="mt-0.5 text-sm font-medium">{effectiveModel.model}</p>
                   <p className="text-muted-foreground text-xs">{selectedProvider.name}</p>
                 </div>
               )}
 
-              {/* Thinking level selector (only for default) */}
+              {/* Thinking level */}
               {activePurpose === "__default__" && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                    Thinking Level
+                    Thinking
                   </Label>
 
-                  <div className="border-border/50 bg-background/40 space-y-1 rounded-2xl border p-1.5">
+                  <div className="border-border/50 bg-background/40 space-y-0.5 rounded-2xl border p-1">
                     {thinkingLevels.map((level, index) => {
                       const isActive = settings?.defaultThinkingLevel === level.id;
                       const Icon = level.icon;
@@ -542,7 +790,7 @@ export function AiModelsTab({
                           <Button
                             variant="ghost"
                             className={cn(
-                              "w-full shrink-0 justify-start gap-3 rounded-xl px-3 py-2.5",
+                              "w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm",
                               isActive
                                 ? "bg-primary/10 text-foreground"
                                 : "hover:bg-white/20 dark:hover:bg-white/5",
@@ -558,28 +806,23 @@ export function AiModelsTab({
                           >
                             <div
                               className={cn(
-                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
                                 isActive
                                   ? "bg-primary/15 text-primary"
                                   : "bg-muted/50 text-muted-foreground",
                               )}
                             >
-                              <Icon className="h-3.5 w-3.5" />
+                              <Icon className="h-3 w-3" />
                             </div>
                             <div className="flex-1 text-left">
-                              <p
-                                className={cn(
-                                  "text-sm leading-none",
-                                  isActive ? "font-medium" : "font-normal",
-                                )}
-                              >
+                              <p className={cn("text-sm leading-none", isActive && "font-medium")}>
                                 {level.label}
                               </p>
-                              <p className="text-muted-foreground mt-0.5 text-xs">
+                              <p className="text-muted-foreground mt-0.5 text-[11px]">
                                 {level.description}
                               </p>
                             </div>
-                            {isActive && <CheckCircle className="text-primary h-4 w-4" />}
+                            {isActive && <CheckCircle className="text-primary h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       );
@@ -592,19 +835,17 @@ export function AiModelsTab({
         </div>
       </GlassPanelContent>
 
-      {/* Footer with save */}
+      {/* Footer */}
       <GlassPanelFooter>
         <div>
           {saveStatus === "success" && (
             <span className="flex items-center gap-1 text-sm text-emerald-500">
-              <CheckCircle className="h-4 w-4" />
-              Saved
+              <CheckCircle className="h-4 w-4" /> Saved
             </span>
           )}
           {saveStatus === "error" && (
             <span className="flex items-center gap-1 text-sm text-red-500">
-              <AlertCircle className="h-4 w-4" />
-              Failed to save
+              <AlertCircle className="h-4 w-4" /> Failed to save
             </span>
           )}
           {saveStatus === "idle" && (
