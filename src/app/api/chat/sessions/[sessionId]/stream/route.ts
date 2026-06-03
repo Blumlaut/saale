@@ -61,11 +61,16 @@ export async function GET(
     },
   });
 
+  // Resolve tool config to know which tool categories are enabled
+  const resolvedToolConfig: ToolConfig = chatSession.toolConfig
+    ? { ...(chatSession.toolConfig as ToolConfig) }
+    : {};
+
   // Create Pi session with custom tools (filtered by toolConfig)
   const { session: piSession } = await createPiSession({
     userId: authResult.user.id,
     customTools: [],
-    ...(chatSession.toolConfig && { toolConfig: chatSession.toolConfig as ToolConfig }),
+    ...(chatSession.toolConfig && { toolConfig: resolvedToolConfig }),
     ...(chatSession.modelProvider && { modelProvider: chatSession.modelProvider }),
     ...(chatSession.modelName && { modelName: chatSession.modelName }),
     thinkingLevel: chatSession.thinkingLevel || "off",
@@ -80,10 +85,18 @@ export async function GET(
   // Set up system prompt — use user-defined prompt if set, otherwise fall back to default
   const defaultSystemPrompt =
     "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
-  piSession.agent.state.systemPrompt =
+  const basePrompt =
     userSettings?.agentSystemPrompt && userSettings.agentSystemPrompt.trim()
       ? userSettings.agentSystemPrompt
       : defaultSystemPrompt;
+
+  // Conditionally append memory instruction only when memory tools are enabled
+  const memoryInstruction =
+    resolvedToolConfig.memory !== false
+      ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
+      : "";
+
+  piSession.agent.state.systemPrompt = basePrompt + memoryInstruction;
 
   // Reconstruct conversation history from DB messages.
   // buildHistoryMessages ensures byte-identical output to the live agent:

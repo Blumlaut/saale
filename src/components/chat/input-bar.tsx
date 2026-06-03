@@ -38,6 +38,7 @@ const TOOL_LABELS: Record<keyof ToolConfig, string> = {
   calendar: "Calendar",
   chatSearch: "Chat history",
   web: "Web",
+  memory: "Memory",
 };
 
 const ALLOWED_IMAGE_TYPES = new Set([

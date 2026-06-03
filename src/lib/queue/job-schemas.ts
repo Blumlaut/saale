@@ -292,6 +292,70 @@ export const jobTypeSchemas: JobTypeSchema[] = [
     usesAi: false,
     fields: [],
   },
+  {
+    type: "memory_extraction",
+    label: "Memory Extraction",
+    description: "Extract facts, decisions, and patterns from chat history",
+    icon: "Brain",
+    defaultCron: "0 */6 * * *",
+    usesAi: true,
+    fields: [
+      {
+        key: "maxSessionsPerRun",
+        label: "Max sessions per run",
+        description: "Batch size — sessions processed per execution",
+        type: "number",
+        default: 10,
+        min: 1,
+        max: 50,
+      },
+      {
+        key: "maxExistingMemories",
+        label: "Context memories",
+        description:
+          "Existing memories included for deduplication (higher = more accurate, more tokens)",
+        type: "number",
+        default: 15,
+        min: 5,
+        max: 50,
+      },
+      {
+        key: "modelId",
+        label: "AI Model",
+        description: "Override the default model for this task",
+        type: "model",
+        default: "",
+      },
+    ],
+  },
+  {
+    type: "memory_pruning",
+    label: "Memory Pruning",
+    description: "Remove stale and unused memories",
+    icon: "ScissorsLine",
+    defaultCron: "0 0 * * 0",
+    usesAi: false,
+    fields: [
+      {
+        key: "unusedDays",
+        label: "Unused threshold",
+        description: "Delete memories with 0 accesses older than this many days",
+        type: "number",
+        default: 90,
+        min: 30,
+        max: 365,
+      },
+      {
+        key: "lowImportanceDays",
+        label: "Low importance threshold",
+        description: "Delete memories with importance < 3 older than this many days",
+        type: "number",
+        default: 180,
+        min: 60,
+        max: 365,
+      },
+    ],
+  },
 ];
 
 /** Look up a schema by type */
