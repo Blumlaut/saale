@@ -72,10 +72,12 @@ export async function discoverCalendars(accountId: string): Promise<DAVCalendar[
 /**
  * Resolve a calendar by ID and connect to its CalDAV server.
  */
-async function resolveCalDAVClient(
-  calendarId: string,
-): Promise<
-  | { ok: true; calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findUnique>>>; client: DAVClient }
+async function resolveCalDAVClient(calendarId: string): Promise<
+  | {
+      ok: true;
+      calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findUnique>>>;
+      client: DAVClient;
+    }
   | { ok: false; error: string }
 > {
   const calendar = await prisma.calendar.findUnique({
@@ -94,10 +96,13 @@ async function resolveCalDAVClient(
  * Resolve a calendar by ID and connect to its CalDAV server.
  * Returns the calendar, client, and matched remote calendar.
  */
-async function resolveCalDAVCalendar(
-  calendarId: string,
-): Promise<
-  | { ok: true; calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findUnique>>>; client: DAVClient; remote: DAVCalendar }
+async function resolveCalDAVCalendar(calendarId: string): Promise<
+  | {
+      ok: true;
+      calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findUnique>>>;
+      client: DAVClient;
+      remote: DAVCalendar;
+    }
   | { ok: false; error: string }
 > {
   const base = await resolveCalDAVClient(calendarId);

@@ -9,10 +9,7 @@ import { pushEventToCalDAV } from "@/lib/calendar/caldav";
  */
 export function createCalendarTools(userId: string) {
   /** Find a single event, scoped to user */
-  async function findEventByUser(
-    eventId: string,
-    options?: { includeCalendar?: boolean },
-  ) {
+  async function findEventByUser(eventId: string, options?: { includeCalendar?: boolean }) {
     return prisma.calendarEvent.findFirst({
       where: {
         id: eventId,

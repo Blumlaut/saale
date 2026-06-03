@@ -9,7 +9,10 @@ import { addJobRun, updateJobRun } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { syncCalendarAccount } from "@/lib/calendar/sync";
 import { extractEventsFromEmails } from "@/lib/calendar/email-extraction";
-import { resolveUserEmailAccountIds, resolveUserCalendarAccountIds } from "@/lib/queue/user-isolation";
+import {
+  resolveUserEmailAccountIds,
+  resolveUserCalendarAccountIds,
+} from "@/lib/queue/user-isolation";
 
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
 
