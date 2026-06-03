@@ -11,7 +11,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { buildModelRegistry } from "./models";
-import { createChatSearchTool } from "./tools/chat-tools";
+import { createChatSearchTool, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
@@ -151,6 +151,7 @@ export async function createPiSession(options: {
 
   if (enabled.bash) {
     allCustomTools.push(scoped.bash);
+    allCustomTools.push(createShowFileTool(options.userId));
   }
 
   if (enabled.chatSearch) {
