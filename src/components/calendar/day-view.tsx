@@ -2,7 +2,11 @@
 
 import type { CalendarEvent } from "@/types/shared";
 import { cn } from "@/lib/utils";
-import { getAllDayEventsForDay, getTimedEventsForDay } from "@/lib/calendar/date-utils";
+import {
+  getAllDayEventsForDay,
+  getTimedEventsForDay,
+  isSameDayUTC,
+} from "@/lib/calendar/date-utils";
 
 interface DayViewProps {
   date: Date;
@@ -18,10 +22,7 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
   const allDayEvents = getAllDayEventsForDay(events, date);
 
   const today = new Date();
-  const isToday =
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear();
+  const isToday = isSameDayUTC(date, today);
 
   return (
     <div className="space-y-2">
@@ -91,7 +92,7 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
               <button
                 onClick={() => {
                   const slotDate = new Date(date);
-                  slotDate.setHours(hour, 0, 0, 0);
+                  slotDate.setUTCHours(hour, 0, 0, 0);
                   onTimeSlotClick(slotDate);
                 }}
                 className="border-border/20 flex-1 border-t p-1 transition-colors hover:bg-white/10"
