@@ -307,18 +307,40 @@ export function Inbox() {
     [activeAccountId, folder, debouncedSearch, tagFilter, offset],
   );
 
-  const loadMore = useCallback(() => {
-    if (!loadingMore && hasMore) {
-      loadMessages(true);
-    }
-  }, [loadMessages, loadingMore, hasMore]);
+  // Stable refresh function using refs internally
+  const refreshAll = useCallback(async () => {
+    await loadAccounts();
+    await loadMessages(false);
+  }, [loadAccounts, loadMessages]);
+
+  // Ref to always have the latest loadMessages without triggering re-renders
+  const loadMessagesRef = useRef(loadMessages);
+  useEffect(() => {
+    loadMessagesRef.current = loadMessages;
+  }, [loadMessages]);
+
+  // Initial load + filter changes
+  useEffect(() => {
+    loadAccounts();
+    loadMessagesRef.current(false);
+  }, [activeAccountId, folder, tagFilter, debouncedSearch, loadAccounts]);
+
+  // mail:refresh event listener
+  useEffect(() => {
+    const handler = () => {
+      loadAccounts();
+      loadMessagesRef.current(false);
+    };
+    window.addEventListener("mail:refresh", handler);
+    return () => window.removeEventListener("mail:refresh", handler);
+  }, [loadAccounts]);
 
   // Infinite scroll observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          loadMore();
+          loadMessagesRef.current(true);
         }
       },
       { rootMargin: "100px" },
@@ -329,25 +351,7 @@ export function Inbox() {
       observer.observe(el);
     }
     return () => observer.disconnect();
-  }, [hasMore, loadMore]);
-
-  const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadMessages(false)]);
-  }, [loadAccounts, loadMessages]);
-
-  useEffect(() => {
-    loadAccounts();
-    loadMessages(false);
-  }, [activeAccountId, folder, tagFilter, debouncedSearch, loadAccounts, loadMessages]);
-
-  useEffect(() => {
-    const handler = () => {
-      loadAccounts();
-      loadMessages(false);
-    };
-    window.addEventListener("mail:refresh", handler);
-    return () => window.removeEventListener("mail:refresh", handler);
-  }, [loadAccounts, loadMessages]);
+  }, [hasMore]);
 
   const handleSyncAll = async () => {
     setSyncing(true);
@@ -798,7 +802,7 @@ export function Inbox() {
                     <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
                   ) : (
                     <button
-                      onClick={loadMore}
+                      onClick={() => loadMessagesRef.current(true)}
                       className="text-muted-foreground rounded-full px-3 py-1 text-xs transition-colors hover:bg-white/10 dark:hover:bg-white/5"
                     >
                       Load more
