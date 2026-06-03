@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
+import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchJson, deleteJson } from "@/lib/http";
@@ -70,7 +70,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
       </div>
 
       {/* Session list */}
-      <GlassPanelContent className="flex flex-1 flex-col gap-0 overflow-hidden p-0">
+      <div className="flex flex-1 flex-col overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
@@ -80,21 +80,25 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
             <p className="text-muted-foreground text-sm">No conversations yet</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto px-2 py-1">
             {sessions.map((session) => (
               <div
                 key={session.id}
                 className={cn(
-                  "group flex items-center gap-2 px-2.5 py-2 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5",
-                  session.id === activeSessionId && "bg-white/15 dark:bg-white/5",
+                  "group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                  session.id === activeSessionId
+                    ? "bg-white/10 dark:bg-white/5"
+                    : "hover:bg-white/10 dark:hover:bg-white/5",
                 )}
               >
                 <button
                   className="flex min-w-0 flex-1 flex-col items-start text-left"
                   onClick={() => router.push(`/dashboard/chat/${session.id}`)}
                 >
-                  <div className="truncate font-medium">{session.title}</div>
-                  <div className="text-muted-foreground text-xs">
+                  <div className="truncate font-medium">
+                    {session.title.length > 25 ? `${session.title.slice(0, 25)}…` : session.title}
+                  </div>
+                  <div className="text-muted-foreground truncate text-xs">
                     {formatDate(session.updatedAt)} · {session.messageCount} messages
                   </div>
                 </button>
@@ -118,7 +122,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
             ))}
           </div>
         )}
-      </GlassPanelContent>
+      </div>
     </GlassPanel>
   );
 }
