@@ -9,6 +9,74 @@ import { Prisma } from "../../../../prisma/generated/prisma";
  */
 export function createMemoryTools(userId: string) {
   return {
+    // ─── memory_index ───────────────────────────────────────────────────
+
+    memoryIndexTool: defineTool({
+      name: "memory_index",
+      label: "Memory Index",
+      description:
+        "List all available memory collections with their sizes, top tags, and recent memory titles. Use this BEFORE searching to understand what knowledge is available.",
+      parameters: Type.Object({}),
+      execute: async (_toolCallId) => {
+        // Get collections with counts and top tags
+        const collections = await prisma.memory.groupBy({
+          by: ["collection"],
+          _count: { id: true },
+          orderBy: { _count: { id: "desc" } },
+          where: { userId },
+        });
+
+        const details = await Promise.all(
+          collections.map(async (c) => {
+            // Get top tags for this collection
+            const tagResults = await prisma.$queryRaw<Array<{ tag: string; count: number }>>(
+              Prisma.sql`
+                SELECT UNNEST(tags) AS tag, COUNT(*) AS count
+                FROM "Memory"
+                WHERE "userId" = ${userId} AND collection = ${c.collection}
+                GROUP BY tag
+                ORDER BY count DESC
+                LIMIT 5
+              `,
+            );
+
+            // Get 3 most recent memory titles
+            const recent = await prisma.memory.findMany({
+              where: { userId, collection: c.collection },
+              orderBy: { updatedAt: "desc" },
+              take: 3,
+              select: { title: true },
+            });
+
+            return {
+              collection: c.collection,
+              count: c._count.id,
+              topTags: tagResults.map((t) => t.tag),
+              recent: recent.map((r) => r.title),
+            };
+          }),
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  totalCollections: details.length,
+                  totalMemories: details.reduce((sum, d) => sum + d.count, 0),
+                  collections: details,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { collections: details.length },
+        };
+      },
+    }),
+
     // ─── memory_search ──────────────────────────────────────────────────
 
     memorySearchTool: defineTool({
