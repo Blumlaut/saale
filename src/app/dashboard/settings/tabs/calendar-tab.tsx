@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -566,11 +566,8 @@ export function CalendarTab() {
                 const isBusy = actionLoading === "sync-sub:" + sub.id;
 
                 return (
-                  <>
-                    <div
-                      key={sub.id}
-                      className="border-border/50 bg-background/40 flex items-center justify-between rounded-2xl border p-4"
-                    >
+                  <Fragment key={sub.id}>
+                    <div className="border-border/50 bg-background/40 flex items-center justify-between rounded-2xl border p-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium">{sub.name}</p>
@@ -662,7 +659,7 @@ export function CalendarTab() {
                           "No changes"}
                       </div>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </div>

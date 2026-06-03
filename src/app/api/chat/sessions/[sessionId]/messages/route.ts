@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { validateImageUpload, processAndStoreImage } from "@/lib/image-attachment";
 
 /**
  * GET /api/chat/sessions/:sessionId/messages — Get messages for a session
@@ -33,14 +34,8 @@ export async function GET(
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      role: true,
-      content: true,
-      thinking: true,
-      toolCalls: true,
-      parentMessageId: true,
-      createdAt: true,
+    include: {
+      attachments: true,
     },
   });
 
@@ -52,30 +47,33 @@ export async function GET(
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
     },
-    messages: messages.map(
-      (m: {
-        id: string;
-        role: string;
-        content: string;
-        thinking: string | null;
-        toolCalls: string | null;
-        parentMessageId: string | null;
-        createdAt: Date;
-      }) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        thinking: m.thinking || undefined,
-        toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
-        parentMessageId: m.parentMessageId || undefined,
-        createdAt: m.createdAt.toISOString(),
-      }),
-    ),
+    messages: messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      thinking: m.thinking || undefined,
+      toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
+      parentMessageId: m.parentMessageId || undefined,
+      createdAt: m.createdAt.toISOString(),
+      attachments: m.attachments.map((a) => ({
+        id: a.id,
+        storageId: a.storageId,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        size: a.size,
+        width: a.width,
+        height: a.height,
+      })),
+    })),
   });
 }
 
 /**
  * POST /api/chat/sessions/:sessionId/messages — Add a message (triggers streaming via SSE)
+ *
+ * Accepts either:
+ * - application/json: { content: string }
+ * - multipart/form-data: { content: string, files: File[] }
  */
 export async function POST(
   request: NextRequest,
@@ -94,8 +92,56 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const body = await request.json();
-  const { content } = body;
+  let content: string;
+  const imageAttachments: Array<{
+    storageId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    width?: number;
+    height?: number;
+  }> = [];
+
+  const contentType = request.headers.get("content-type") || "";
+
+  if (contentType.includes("multipart/form-data")) {
+    // Multipart: extract text content + image files
+    const formData = await request.formData();
+    content = (formData.get("content") as string) || "";
+
+    // Process image files
+    const files = formData.getAll("files");
+    for (const file of files) {
+      if (!(file instanceof File)) continue;
+
+      const error = validateImageUpload(file);
+      if (error) {
+        return NextResponse.json({ error }, { status: 400 });
+      }
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const result = await processAndStoreImage(
+        authResult.user.id,
+        buffer,
+        file.name,
+        file.type,
+        file.size,
+      );
+
+      imageAttachments.push({
+        storageId: result.storageId,
+        fileName: file.name,
+        mimeType: file.type,
+        size: file.size,
+        width: result.width,
+        height: result.height,
+      });
+    }
+  } else {
+    // JSON: plain text message
+    const body = await request.json();
+    content = body.content as string;
+  }
 
   if (!content || typeof content !== "string") {
     return NextResponse.json({ error: "Content is required" }, { status: 400 });
@@ -104,13 +150,32 @@ export async function POST(
   // Strip null bytes and limit length
   const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
-  // Save user message
+  // Save user message with attachments in a single transaction
   const userMessage = await prisma.chatMessage.create({
     data: {
       sessionId,
       role: "user",
       content: sanitizedContent,
+      ...(imageAttachments.length > 0 && {
+        attachments: {
+          create: imageAttachments.map((att) => ({
+            storageId: att.storageId,
+            fileName: att.fileName,
+            mimeType: att.mimeType,
+            size: att.size,
+            width: att.width ?? null,
+            height: att.height ?? null,
+            storagePath: `images/${att.storageId}.webp`,
+          })),
+        },
+      }),
     },
+  });
+
+  // Fetch the created message with attachments
+  const userMessageWithAttachments = await prisma.chatMessage.findUnique({
+    where: { id: userMessage.id },
+    include: { attachments: true },
   });
 
   // Update session metadata
@@ -120,7 +185,8 @@ export async function POST(
       messageCount: { increment: 1 },
       title:
         chatSession.title === "New Chat"
-          ? content.slice(0, 50) + (content.length > 50 ? "..." : "")
+          ? (sanitizedContent || "Image").slice(0, 50) +
+            ((sanitizedContent || "Image").length > 50 ? "..." : "")
           : chatSession.title,
     },
   });
@@ -130,10 +196,19 @@ export async function POST(
     ok: true,
     streamUrl: `/api/chat/sessions/${sessionId}/stream`,
     message: {
-      id: userMessage.id,
+      id: userMessageWithAttachments!.id,
       role: "user" as const,
-      content: userMessage.content,
-      createdAt: userMessage.createdAt.toISOString(),
+      content: userMessageWithAttachments!.content,
+      createdAt: userMessageWithAttachments!.createdAt.toISOString(),
+      attachments: userMessageWithAttachments!.attachments.map((a) => ({
+        id: a.id,
+        storageId: a.storageId,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        size: a.size,
+        width: a.width,
+        height: a.height,
+      })),
     },
   });
 }

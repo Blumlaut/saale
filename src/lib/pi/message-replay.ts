@@ -30,6 +30,14 @@ export interface StoredMessage {
   content: string;
   thinking: string | null;
   toolCalls: string | null; // JSON-stringified array of StoredToolCall | null
+  attachments?: Array<{ storagePath: string; mimeType: string }>;
+}
+
+/** An image attachment ready for the LLM (base64-encoded, read from disk). */
+export interface ImageContent {
+  type: "image";
+  data: string; // base64-encoded image data
+  mimeType: string; // e.g. "image/webp"
 }
 
 /** Resolved model info from the Pi agent session. */
@@ -163,11 +171,34 @@ export function buildAssistantMessage(
 
 /**
  * Build a user message for replay.
+ *
+ * When images are present, the content array is:
+ * [{ type: "text", text }, { type: "image", data, mimeType }, ...]
+ *
+ * The image data must be byte-identical to what was sent on the original turn
+ * to ensure LLM provider cache hits. This is guaranteed because images are
+ * re-encoded to deterministic WebP on upload, then read back from disk.
  */
-export function buildUserMessage(content: string, timestamp: number): Record<string, unknown> {
+export function buildUserMessage(
+  content: string,
+  timestamp: number,
+  images?: ImageContent[],
+): Record<string, unknown> {
+  const contentBlocks: Array<Record<string, unknown>> = [{ type: "text", text: content }];
+
+  if (images && images.length > 0) {
+    for (const img of images) {
+      contentBlocks.push({
+        type: "image" as const,
+        data: img.data,
+        mimeType: img.mimeType,
+      });
+    }
+  }
+
   return {
     role: "user",
-    content: [{ type: "text", text: content }],
+    content: contentBlocks,
     timestamp,
   };
 }
@@ -188,6 +219,23 @@ export function parseStoredToolCalls(toolCallsJson: string | null): StoredToolCa
 }
 
 /**
+ * Options for building history messages.
+ */
+export interface BuildHistoryOptions {
+  api: string | undefined;
+  provider: string | undefined;
+  id: string | undefined;
+  /**
+   * Pre-loaded image data for user messages with attachments.
+   * Map from message index (in storedMessages, 0-based) to ImageContent[].
+   *
+   * Images must be read from the deterministic WebP files on disk to ensure
+   * byte-identical base64 data across turns — critical for cache hits.
+   */
+  imageCache?: Map<number, ImageContent[]>;
+}
+
+/**
  * Reconstruct the full history message list from stored DB messages.
  *
  * This is the main entry point: given stored messages and the resolved model,
@@ -199,7 +247,7 @@ export function parseStoredToolCalls(toolCallsJson: string | null): StoredToolCa
  */
 export function buildHistoryMessages(
   storedMessages: StoredMessage[],
-  model: ResolvedModel | undefined,
+  options: BuildHistoryOptions,
 ): Record<string, unknown>[] {
   const history: Record<string, unknown>[] = [];
   const timestamp = Date.now();
@@ -207,13 +255,28 @@ export function buildHistoryMessages(
   // All messages except the last one (which is the current user prompt)
   const historyMessages = storedMessages.slice(0, -1);
 
-  for (const m of historyMessages) {
+  for (let i = 0; i < historyMessages.length; i++) {
+    const m = historyMessages[i]!;
     if (m.role === "user") {
-      history.push(buildUserMessage(m.content, timestamp));
+      // Look up pre-loaded images for this message (if any)
+      const images = options.imageCache?.get(i);
+      history.push(buildUserMessage(m.content, timestamp, images));
     } else if (m.role === "assistant") {
       const toolCalls = parseStoredToolCalls(m.toolCalls);
 
-      history.push(buildAssistantMessage(m.content, m.thinking, toolCalls, model, timestamp));
+      history.push(
+        buildAssistantMessage(
+          m.content,
+          m.thinking,
+          toolCalls,
+          {
+            api: options.api,
+            provider: options.provider,
+            id: options.id,
+          },
+          timestamp,
+        ),
+      );
 
       if (toolCalls && toolCalls.length > 0) {
         for (const tc of toolCalls) {

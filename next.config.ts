@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
     "@earendil-works/pi-ai",
     "@earendil-works/pi-coding-agent",
     "@earendil-works/pi-agent-core",
+    // Native bindings for image processing
+    "sharp",
   ],
   experimental: {
     serverActions: {

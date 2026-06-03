@@ -101,18 +101,38 @@ model ChatSession {
 }
 
 model ChatMessage {
-  id              String      @id @default(cuid())
+  id              String           @id @default(cuid())
   sessionId       String
   role            String // "user" | "assistant" | "system"
-  content         String      @db.Text
-  thinking        String?     @db.Text // thinking/reasoning content for assistant turns
-  toolCalls       String?     @db.Text // JSON array of tool calls
-  parentMessageId String?     // links turns to the root assistant message
-  createdAt       DateTime    @default(now())
-  session         ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  content         String           @db.Text
+  thinking        String?          @db.Text // thinking/reasoning content for assistant turns
+  toolCalls       String?          @db.Text // JSON array of tool calls
+  parentMessageId String?          // links turns to the root assistant message
+  createdAt       DateTime         @default(now())
+  session         ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  attachments     ChatAttachment[]
 
   @@index([sessionId, createdAt])
   @@map("ChatMessage")
+}
+
+/// Image/file attachments linked to a chat message.
+/// Stored as WebP on disk (re-encoded from original), path relative to user workspace.
+model ChatAttachment {
+  id          String      @id @default(cuid())
+  messageId   String
+  storageId   String      @unique // public ID for URL serving (no user leakage)
+  fileName    String      // original file name
+  mimeType    String      // original MIME type (e.g. "image/png")
+  size        Int         // original byte size
+  width       Int?
+  height      Int?
+  storagePath String      // path relative to user workspace (e.g. "images/abc.webp")
+  createdAt   DateTime    @default(now())
+  message     ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("ChatAttachment")
 }
 
 // ─── Email ─────────────────────────────────────────────────────
