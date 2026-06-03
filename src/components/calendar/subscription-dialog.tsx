@@ -5,8 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Loader2, Link as LinkIcon } from "lucide-react";
-import { postJson } from "@/lib/http";
+import { AlertCircle, Loader2, Link as LinkIcon, Trash2 } from "lucide-react";
+import { postJson, patchJson, deleteJson } from "@/lib/http";
 
 interface CalendarAccount {
   id: string;
@@ -21,10 +21,22 @@ interface CalendarAccount {
   }>;
 }
 
+interface SubscriptionData {
+  id: string;
+  name: string;
+  url: string;
+  calendarId: string;
+  calendarName: string;
+  calendarColor: string | null;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+}
+
 interface SubscriptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accounts: CalendarAccount[];
+  subscription?: SubscriptionData | null;
   onSuccess?: () => void;
 }
 
@@ -32,6 +44,7 @@ export function SubscriptionDialog({
   open,
   onOpenChange,
   accounts,
+  subscription,
   onSuccess,
 }: SubscriptionDialogProps) {
   const [name, setName] = useState("");
@@ -40,7 +53,9 @@ export function SubscriptionDialog({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const isEditing = !!subscription;
 
   const localAccount = accounts.find((a) => a.accountType === "local");
   const localCalendars = useMemo(
@@ -62,24 +77,43 @@ export function SubscriptionDialog({
       resetForm();
       return;
     }
-    const firstCalendar = localCalendars[0];
-    if (firstCalendar && !calendarId) {
-      setCalendarId(firstCalendar.id);
+
+    if (subscription) {
+      setName(subscription.name);
+      setUrl(subscription.url);
+      setCalendarId(subscription.calendarId);
+      setUsername("");
+      setPassword("");
+    } else {
+      const firstCalendar = localCalendars[0];
+      if (firstCalendar) {
+        setCalendarId(firstCalendar.id);
+      }
     }
-  }, [open, resetForm, localCalendars, calendarId]);
+    setError("");
+  }, [open, subscription, resetForm, localCalendars]);
 
   const handleSave = async () => {
     setSaving(true);
     setError("");
 
     try {
-      await postJson("/api/calendar/subscriptions", {
-        name,
-        url,
-        calendarId,
-        username: username || null,
-        password: password || null,
-      });
+      if (isEditing && subscription) {
+        await patchJson(`/api/calendar/subscriptions/${subscription.id}`, {
+          name,
+          url,
+          username: username || null,
+          password: password || null,
+        });
+      } else {
+        await postJson("/api/calendar/subscriptions", {
+          name,
+          url,
+          calendarId,
+          username: username || null,
+          password: password || null,
+        });
+      }
 
       resetForm();
       onOpenChange(false);
@@ -91,11 +125,26 @@ export function SubscriptionDialog({
     }
   };
 
+  const handleDelete = async () => {
+    if (!subscription) return;
+    setDeleting(true);
+    try {
+      await deleteJson(`/api/calendar/subscriptions/${subscription.id}`);
+      resetForm();
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add ICS Subscription</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit ICS Subscription" : "Add ICS Subscription"}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
@@ -125,7 +174,12 @@ export function SubscriptionDialog({
           {/* Target calendar */}
           <div className="space-y-2">
             <Label>Target Calendar</Label>
-            {localCalendars.length === 0 ? (
+            {isEditing ? (
+              <div className="text-muted-foreground rounded-lg border px-3 py-2 text-sm">
+                {localCalendars.find((c) => c.id === calendarId)?.name || calendarId}
+                <span className="text-muted-foreground/60 ml-2">(cannot be changed)</span>
+              </div>
+            ) : localCalendars.length === 0 ? (
               <div className="text-muted-foreground rounded-lg border border-dashed p-3 text-xs">
                 No local calendars available. Create one first.
               </div>
@@ -178,20 +232,42 @@ export function SubscriptionDialog({
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving || !name || !url || !calendarId}>
-              {saving ? (
-                <>
+          <div className="flex items-center justify-between">
+            {isEditing ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="text-destructive hover:text-destructive"
+              >
+                {deleting ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Add Subscription"
-              )}
-            </Button>
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                Remove
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={saving || !name || !url || !calendarId}>
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : isEditing ? (
+                  "Save Changes"
+                ) : (
+                  "Add Subscription"
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

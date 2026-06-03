@@ -104,7 +104,10 @@ function extractEvent(vevent: Record<string, unknown>): ParsedEvent {
     url: extractString(vevent.url) || null,
     status: (vevent.status as string) || null,
     transparency: (vevent.transparency as string) || null,
-    sequence: typeof vevent.sequence === "number" ? vevent.sequence : parseInt(String(vevent.sequence), 10) || 0,
+    sequence:
+      typeof vevent.sequence === "number"
+        ? vevent.sequence
+        : parseInt(String(vevent.sequence), 10) || 0,
     dtStart: startDate,
     dtEnd: endDate,
     allDay: !!allDay,

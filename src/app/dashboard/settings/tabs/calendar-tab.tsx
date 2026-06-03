@@ -8,6 +8,7 @@ import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
 import {
   Calendar,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Trash2,
@@ -74,6 +75,7 @@ export function CalendarTab() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
+  const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
   const [alertOpen, setAlertOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     id: string;
@@ -537,7 +539,10 @@ export function CalendarTab() {
             </div>
             <Button
               size="sm"
-              onClick={() => setSubscriptionDialogOpen(true)}
+              onClick={() => {
+                setEditingSubscription(null);
+                setSubscriptionDialogOpen(true);
+              }}
               disabled={!localAccount}
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -607,6 +612,15 @@ export function CalendarTab() {
                           />
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
+                              onClick={() => {
+                                setEditingSubscription(sub);
+                                setSubscriptionDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() =>
                                 handleActionRequest(sub.id, "sync-sub", "subscription")
                               }
@@ -664,8 +678,12 @@ export function CalendarTab() {
 
       <SubscriptionDialog
         open={subscriptionDialogOpen}
-        onOpenChange={setSubscriptionDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) setEditingSubscription(null);
+          setSubscriptionDialogOpen(open);
+        }}
         accounts={accounts}
+        subscription={editingSubscription}
         onSuccess={loadData}
       />
 
