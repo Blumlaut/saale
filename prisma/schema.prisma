@@ -30,6 +30,7 @@ model User {
   calendarAccounts CalendarAccount[]
   queueTasks       QueueTask[]
   settings      AppSettings?
+  providerApiKeys ProviderApiKey[] // user-scoped keys
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -286,7 +287,7 @@ model AppSettings {
   disabledModels       Json?                  // Array of "provider:modelId" strings for models the user has disabled
   defaultToolConfig    Json?                  // Default tool config for new chat sessions: { "files": true, "email": true, ... }
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  providerApiKeys      ProviderApiKey[]
+
   updatedAt            DateTime @updatedAt
 
   @@map("AppSettings")
@@ -294,19 +295,21 @@ model AppSettings {
 
 // ─── Provider API Keys ─────────────────────────────────────────
 
+/// API keys for model providers. null userId = global (admin-managed), non-null = user-scoped.
 model ProviderApiKey {
   id             String   @id @default(cuid())
-  userId         String
+  userId         String?  // null = global provider, non-null = user-specific
   provider       String   // "anthropic" | "openai" | "google" | "custom" | ...
   encryptedKey   String   @db.Text
-  label          String   @default("") // optional user label
+  label          String   @default("") // optional label
   baseUrl        String?  // for custom OpenAI-compatible providers
-  settings       AppSettings @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@unique([userId, provider])
   @@index([userId])
+  @@index([provider])
   @@map("provider_api_key")
 }
 

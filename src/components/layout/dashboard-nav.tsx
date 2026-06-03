@@ -19,6 +19,7 @@ import {
   ListTodo,
   Calendar,
   Settings,
+  Shield,
   ChevronRight,
   ChevronDown,
   Moon,
@@ -35,6 +36,8 @@ const navItems = [
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
+
+const adminNavItem = { href: "/admin/models", label: "Admin", icon: Shield };
 
 interface SearchResult {
   type: "chat" | "email";
@@ -55,6 +58,7 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Load email accounts
@@ -65,6 +69,15 @@ export function DashboardNav() {
         setEmailLoading(false);
       })
       .catch(() => setEmailLoading(false));
+  }, []);
+
+  // Check if user is admin
+  useEffect(() => {
+    fetchJson<{ user?: { role?: string | null } }>("/api/auth/get-session")
+      .then((data) => {
+        setIsAdmin(data.user?.role === "admin");
+      })
+      .catch(() => {});
   }, []);
 
   // Close search on Escape
@@ -362,6 +375,22 @@ export function DashboardNav() {
                   </Link>
                 );
               })}
+
+            {/* Admin link — shown only to admin users */}
+            {isAdmin && (
+              <Link
+                href={adminNavItem.href}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                  pathname.startsWith("/admin")
+                    ? "bg-white/20 font-medium dark:bg-white/5"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                )}
+              >
+                <adminNavItem.icon className="h-4 w-4" />
+                {adminNavItem.label}
+              </Link>
+            )}
           </div>
         </GlassPanelContent>
       </GlassPanel>

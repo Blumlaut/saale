@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Shield } from "lucide-react";
 import { fetchJson, patchJson } from "@/lib/http";
 import {
   Settings as SettingsIcon,
@@ -38,10 +35,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
-  const [isAdmin, setIsAdmin] = useState(false);
 
   // Providers state (shared between providers and AI tabs)
   const [providers, setProviders] = useState<ConfiguredProvider[]>([]);
+  const [globalProviders, setGlobalProviders] = useState<ConfiguredProvider[]>([]);
   const [availableProviders, setAvailableProviders] = useState<ProviderInfo[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
 
@@ -59,23 +56,16 @@ export default function SettingsPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  // Check if user is admin
-  useEffect(() => {
-    fetchJson<{ user?: { role?: string } }>("/api/auth/get-session")
-      .then((data) => {
-        setIsAdmin(data.user?.role === "admin");
-      })
-      .catch(() => {});
-  }, []);
-
   // Load providers
   const loadProviders = useCallback(async () => {
     try {
       const data = await fetchJson<{
         providers: ConfiguredProvider[];
+        globalProviders: ConfiguredProvider[];
         availableProviders: ProviderInfo[];
       }>("/api/providers");
       setProviders(data.providers ?? []);
+      setGlobalProviders(data.globalProviders ?? []);
       setAvailableProviders(data.availableProviders ?? []);
     } finally {
       setProvidersLoading(false);
@@ -193,6 +183,7 @@ export default function SettingsPage() {
         <TabsContent value="providers" className="space-y-6">
           <ProvidersTab
             providers={providers}
+            globalProviders={globalProviders}
             availableProviders={availableProviders}
             providersLoading={providersLoading}
             onReload={reloadProvidersAndModels}
@@ -243,20 +234,6 @@ export default function SettingsPage() {
           />
         </TabsContent>
       </Tabs>
-
-      {/* Admin link — shown only to admin users */}
-      {isAdmin && (
-        <Link
-          href="/admin/models"
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-sm"
-        >
-          <Shield className="h-4 w-4" />
-          Admin Panel
-          <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
-            admin
-          </Badge>
-        </Link>
-      )}
     </div>
   );
 }

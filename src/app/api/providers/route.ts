@@ -64,13 +64,15 @@ async function fetchOpenAIModels(
 }
 
 /**
- * GET /api/providers — List user's configured providers
+ * GET /api/providers — List user's configured providers (user-scoped only).
+ * Also returns global providers so the UI can show inherited access.
  */
 export async function GET() {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const keys = await prisma.providerApiKey.findMany({
+  // User-scoped providers (user can manage these)
+  const userKeys = await prisma.providerApiKey.findMany({
     where: { userId: authResult.user.id },
     select: {
       id: true,
@@ -83,15 +85,36 @@ export async function GET() {
     orderBy: { provider: "asc" },
   });
 
+  // Global providers (read-only for users)
+  const globalKeys = await prisma.providerApiKey.findMany({
+    where: { userId: null },
+    select: {
+      provider: true,
+      label: true,
+      baseUrl: true,
+    },
+    orderBy: { provider: "asc" },
+  });
+
+  const globalProviderIds = new Set(globalKeys.map((k) => k.provider));
+
   return NextResponse.json({
-    providers: keys.map((k) => ({
+    providers: userKeys.map((k) => ({
       ...k,
       configured: true,
+      isGlobal: false,
+      displayName: PROVIDERS[k.provider as keyof typeof PROVIDERS]?.label ?? k.provider,
+    })),
+    globalProviders: globalKeys.map((k) => ({
+      ...k,
+      configured: true,
+      isGlobal: true,
       displayName: PROVIDERS[k.provider as keyof typeof PROVIDERS]?.label ?? k.provider,
     })),
     availableProviders: Object.entries(PROVIDERS).map(([key, val]) => ({
       id: key,
       name: val.label,
+      configured: userKeys.some((u) => u.provider === key) || globalProviderIds.has(key),
     })),
   });
 }
