@@ -21,7 +21,6 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const showNewChatButton = !activeSessionId;
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -79,17 +78,15 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
       {/* Header */}
       <div className="border-border/30 flex items-center justify-between border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Conversations</h2>
-        {showNewChatButton && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="liquid-glass-pill h-7 w-7 rounded-full"
-            onClick={createSession}
-            title="New Chat"
-          >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          size="icon"
+          className="liquid-glass-pill h-7 w-7 rounded-full"
+          onClick={createSession}
+          title="New Chat"
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {/* Session list */}

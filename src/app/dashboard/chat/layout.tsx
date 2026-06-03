@@ -6,7 +6,7 @@ import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { PanelLeft, ChevronLeft, MessageSquarePlus } from "lucide-react";
+import { PanelLeft, MessageSquarePlus } from "lucide-react";
 import { createChatSession } from "@/lib/chat-session";
 
 export default function ChatLayout({ children: _children }: { children: React.ReactNode }) {
@@ -14,44 +14,27 @@ export default function ChatLayout({ children: _children }: { children: React.Re
   const pathname = usePathname();
   const segments = pathname.split("/");
   const sessionId = segments.length >= 4 && segments[3] ? segments[3] : null;
-  const isSessionPage = !!sessionId;
-
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isSessionPage && (
-            <button
-              type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5"
-              onClick={() => router.push("/dashboard/chat")}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-          )}
-          <div>
-            <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Chat</h1>
-            {!isSessionPage && (
-              <p className="text-muted-foreground mt-1 text-xs md:text-sm">
-                Ask questions, brainstorm ideas, or get help with your work
-              </p>
-            )}
-          </div>
+        <div>
+          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Chat</h1>
+          <p className="text-muted-foreground mt-1 text-xs md:text-sm">
+            Ask questions, brainstorm ideas, or get help with your work
+          </p>
         </div>
-        {!isSessionPage && (
-          <Button
-            className="liquid-glass-accent h-8 w-8 rounded-full md:h-9 md:w-auto md:px-3"
-            size="icon"
-            onClick={async () => {
-              const session = await createChatSession();
-              router.push(`/dashboard/chat/${session.id}`);
-            }}
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-            <span className="hidden md:inline">New Chat</span>
-          </Button>
-        )}
+        <Button
+          className="liquid-glass-accent h-8 w-8 rounded-full md:h-9 md:w-auto md:px-3"
+          size="icon"
+          onClick={async () => {
+            const session = await createChatSession();
+            router.push(`/dashboard/chat/${session.id}`);
+          }}
+        >
+          <MessageSquarePlus className="h-4 w-4" />
+          <span className="hidden md:inline">New Chat</span>
+        </Button>
       </div>
 
       {/* Content: sidebar + main */}
@@ -79,7 +62,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
 
         {/* Main area — layout controls which view is shown */}
         <div className="flex flex-1">
-          {isSessionPage ? <ChatInterface sessionId={sessionId} /> : <ChatEmptyState />}
+          {sessionId ? <ChatInterface sessionId={sessionId} /> : <ChatEmptyState />}
         </div>
       </div>
     </div>
