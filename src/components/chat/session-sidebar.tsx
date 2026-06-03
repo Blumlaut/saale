@@ -6,8 +6,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchJson, deleteJson } from "@/lib/http";
-import { createChatSession } from "@/lib/chat-session";
-import { MessageSquarePlus, Trash2, Loader2 } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 
 interface ChatSession {
   id: string;
@@ -36,16 +35,6 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
-
-  const createSession = async () => {
-    try {
-      const session = await createChatSession();
-      router.push(`/dashboard/chat/${session.id}`);
-      await fetchSessions();
-    } catch {
-      // Ignore
-    }
-  };
 
   const deleteSession = async (id: string) => {
     setDeletingId(id);
@@ -76,17 +65,8 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   return (
     <GlassPanel className="liquid-glass flex h-full flex-col overflow-hidden border-0 bg-transparent">
       {/* Header */}
-      <div className="border-border/30 flex items-center justify-between border-b px-4 py-3">
+      <div className="border-border/30 flex items-center border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Conversations</h2>
-        <Button
-          variant="outline"
-          size="icon"
-          className="liquid-glass-pill h-7 w-7 rounded-full"
-          onClick={createSession}
-          title="New Chat"
-        >
-          <MessageSquarePlus className="h-3.5 w-3.5" />
-        </Button>
       </div>
 
       {/* Session list */}
