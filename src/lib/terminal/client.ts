@@ -10,8 +10,12 @@
 const BASE_URL = process.env.OPEN_TERMINAL_URL ?? "http://localhost:8000";
 const API_KEY = process.env.OPEN_TERMINAL_API_KEY;
 
-if (!API_KEY) {
-  throw new Error("OPEN_TERMINAL_API_KEY is required. Set it in your environment.");
+/**
+ * Check if open-terminal is configured (API key is set).
+ * Call this before using any terminal operations.
+ */
+export function isConfigured(): boolean {
+  return !!API_KEY;
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────

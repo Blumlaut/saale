@@ -12,6 +12,7 @@ import {
   type CreateAgentSessionResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
 import { createTerminalOperations } from "@/lib/terminal/operations";
 import { buildModelRegistry } from "./models";
 import { createChatSearchTool, createShowFileTool } from "./tools/chat-tools";
@@ -246,7 +247,7 @@ export async function createPiSession(options: {
   const allCustomTools: ToolDefinition[] = [...options.customTools];
 
   // Pi built-in tools — choose backend based on bash setting
-  if (enabled.bash) {
+  if (enabled.bash && isTerminalConfigured()) {
     // Terminal-backed tools (sandboxed via open-terminal)
     const terminal = createTerminalScopedTools(options.userId, sessionId);
     if (enabled.files) {
@@ -254,6 +255,14 @@ export async function createPiSession(options: {
     }
     allCustomTools.push(terminal.bash);
     allCustomTools.push(createShowFileTool(options.userId));
+  } else if (enabled.bash) {
+    // Bash requested but open-terminal not configured — warn and fall back
+    console.warn("Bash tools enabled but OPEN_TERMINAL_API_KEY is not set. Bash tools disabled.");
+    // Still provide local file tools
+    if (enabled.files) {
+      const local = createLocalScopedTools(options.userId);
+      allCustomTools.push(local.read, local.write, local.edit);
+    }
   } else {
     // Local fs tools (fast, no network overhead)
     const local = createLocalScopedTools(options.userId);
