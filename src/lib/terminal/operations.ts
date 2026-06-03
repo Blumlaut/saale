@@ -174,6 +174,28 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
   const { userId, sessionId, cwd } = opts;
   const common: TerminalCommon = { userId, sessionId };
 
+  // ── Shared helpers (used by both read and edit operations) ──
+
+  async function readFileOp(absolutePath: string): Promise<Buffer> {
+    const result = await terminal.readFile(absolutePath, common);
+    if ("buffer" in result) {
+      return result.buffer;
+    }
+    return Buffer.from(result.content, "utf8");
+  }
+
+  async function accessOp(absolutePath: string): Promise<void> {
+    try {
+      await terminal.readFileBinary(absolutePath, common);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("404")) {
+        throw new Error(`ENOENT: no such file or directory, access '${absolutePath}'`);
+      }
+      throw err;
+    }
+  }
+
   return {
     // ─── Bash ───────────────────────────────────────────────────────────
 
@@ -202,25 +224,8 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
     // ─── Read ───────────────────────────────────────────────────────────
 
     read: {
-      readFile: async (absolutePath) => {
-        const result = await terminal.readFile(absolutePath, common);
-        if ("buffer" in result) {
-          return result.buffer;
-        }
-        return Buffer.from(result.content, "utf8");
-      },
-      access: async (absolutePath) => {
-        // Probe by reading via the view endpoint
-        try {
-          await terminal.readFileBinary(absolutePath, common);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("404")) {
-            throw new Error(`ENOENT: no such file or directory, access '${absolutePath}'`);
-          }
-          throw err;
-        }
-      },
+      readFile: readFileOp,
+      access: accessOp,
       detectImageMimeType: async (absolutePath) => {
         try {
           const result = await terminal.readFileBinary(absolutePath, common);
@@ -245,27 +250,11 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
     // ─── Edit ───────────────────────────────────────────────────────────
 
     edit: {
-      readFile: async (absolutePath) => {
-        const result = await terminal.readFile(absolutePath, common);
-        if ("buffer" in result) {
-          return result.buffer;
-        }
-        return Buffer.from(result.content, "utf8");
-      },
+      readFile: readFileOp,
       writeFile: async (absolutePath, content) => {
         await terminal.writeFile(absolutePath, content, common);
       },
-      access: async (absolutePath) => {
-        try {
-          await terminal.readFileBinary(absolutePath, common);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("404")) {
-            throw new Error(`ENOENT: no such file or directory, access '${absolutePath}'`);
-          }
-          throw err;
-        }
-      },
+      access: accessOp,
     },
   };
 }

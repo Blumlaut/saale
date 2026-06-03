@@ -174,37 +174,10 @@ async function syncCalendarEvents(
         const object = await fetchSingleObject(client, davCalendar, changedObj.url);
         if (!object?.data) continue;
 
-        const parsedEvents = parseICS(object.data);
-        for (const evt of parsedEvents) {
-          const existing = await prisma.calendarEvent.findUnique({
-            where: {
-              calendarId_uid: {
-                calendarId: calendar.id,
-                uid: evt.uid,
-              },
-            },
-          });
-
-          const eventData = buildEventData(evt, object);
-
-          if (existing) {
-            // Only update if sequence changed
-            if (eventData.sequence > existing.sequence) {
-              await prisma.calendarEvent.update({
-                where: { id: existing.id },
-                data: eventData,
-              });
-              updated++;
-            }
-          } else {
-            await prisma.calendarEvent.create({
-              data: {
-                ...eventData,
-                calendarId: calendar.id,
-              },
-            });
-            created++;
-          }
+        for (const evt of parseICS(object.data)) {
+          const result2 = await upsertCalendarEvent(calendar.id, evt, object);
+          if (result2 === "created") created++;
+          else if (result2 === "updated") updated++;
         }
       }
 
@@ -239,36 +212,10 @@ async function syncCalendarEvents(
   for (const obj of objects) {
     if (!obj?.data) continue;
 
-    const parsedEvents = parseICS(obj.data);
-    for (const evt of parsedEvents) {
-      const existing = await prisma.calendarEvent.findUnique({
-        where: {
-          calendarId_uid: {
-            calendarId: calendar.id,
-            uid: evt.uid,
-          },
-        },
-      });
-
-      const eventData = buildEventData(evt, obj);
-
-      if (existing) {
-        if (eventData.sequence > existing.sequence) {
-          await prisma.calendarEvent.update({
-            where: { id: existing.id },
-            data: eventData,
-          });
-          updated++;
-        }
-      } else {
-        await prisma.calendarEvent.create({
-          data: {
-            ...eventData,
-            calendarId: calendar.id,
-          },
-        });
-        created++;
-      }
+    for (const evt of parseICS(obj.data)) {
+      const result = await upsertCalendarEvent(calendar.id, evt, obj);
+      if (result === "created") created++;
+      else if (result === "updated") updated++;
     }
   }
 
@@ -306,6 +253,46 @@ async function fetchSingleObject(
 function extractUIDFromUrl(url: string): string | null {
   const match = url.match(/\/([^/]+)\.ics$/);
   return match?.[1] || null;
+}
+
+/**
+ * Upsert a single calendar event (used by both incremental and full sync).
+ * Returns "created", "updated", or "skipped".
+ */
+async function upsertCalendarEvent(
+  calendarId: string,
+  evt: ParsedEvent,
+  obj: DAVCalendarObject,
+): Promise<"created" | "updated" | "skipped"> {
+  const existing = await prisma.calendarEvent.findUnique({
+    where: {
+      calendarId_uid: {
+        calendarId,
+        uid: evt.uid,
+      },
+    },
+  });
+
+  const eventData = buildEventData(evt, obj);
+
+  if (existing) {
+    if (eventData.sequence > existing.sequence) {
+      await prisma.calendarEvent.update({
+        where: { id: existing.id },
+        data: eventData,
+      });
+      return "updated";
+    }
+    return "skipped";
+  }
+
+  await prisma.calendarEvent.create({
+    data: {
+      ...eventData,
+      calendarId,
+    },
+  });
+  return "created";
 }
 
 /**
