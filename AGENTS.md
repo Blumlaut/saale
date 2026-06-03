@@ -80,9 +80,33 @@ This project is in its early stages. Heavy reworks and structural changes are ex
 - **Never use fixed padding larger than `px-4` without a responsive override.** If a component needs `px-6`, write `px-4 md:px-6`.
 - **Grids must have a mobile fallback.** `grid-cols-1 md:grid-cols-2`, not just `grid-cols-2`.
 - **Fixed widths (`w-96`, `w-72`) are forbidden** unless wrapped in an overflow container. Use `max-w-` or responsive widths instead.
-- **Height calculations must account for mobile nav.** Use `calc(100vh - X)` values that differ between `md:` and below.
 - **Horizontal scrollable areas** must have `overflow-x-auto` and `-webkit-overflow-scrolling: touch`.
 - When in doubt, preview at `375px` width (iPhone SE) before committing.
+
+## No External Scroll (App Shell)
+
+- **The dashboard is a fixed-height app shell** (`h-dvh overflow-hidden`). The body/viewport NEVER scrolls.
+- **All scrolling is internal to panels.** Pages use `h-full flex flex-col` with `flex-1 min-h-0 overflow-y-auto` on the scrollable region.
+- **Interactive elements (input bars, toolbars, action buttons) must always be visible.** Pin them with `shrink-0` in a flex column — never let them scroll out of view.
+- **Never use `h-dvh`, `h-screen`, or `calc(100vh - X)` inside page components.** The dashboard layout handles viewport sizing; pages use `h-full` to fill their allocated space.
+- **The flex containment chain:** `h-full` (page) → `flex flex-col` → header (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scrollable area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
+
+### Pattern
+
+```tsx
+// ✅ GOOD — input always visible, messages scroll internally
+<div className="flex h-full flex-col">
+  <div className="shrink-0">Header</div>
+  <div className="min-h-0 flex-1 overflow-y-auto">Messages</div>
+  <div className="shrink-0">Input bar</div>
+</div>
+
+// ❌ BAD — input scrolls out of view
+<div className="flex flex-col">
+  <div>Header</div>
+  <div>Messages</div>
+  <div>Input bar</div>  {/* gets pushed off-screen */}
+</div>```
 
 ## No Hardcoded Values
 
