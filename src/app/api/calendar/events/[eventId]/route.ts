@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { pushUpdateToCalDAV, pushDeleteToCalDAV } from "@/lib/calendar/caldav";
+import type { ICSExportEvent } from "@/lib/calendar/ics-export";
 
 /**
  * GET /api/calendar/events/:eventId — Get a single event
@@ -76,6 +78,11 @@ export async function PATCH(
       id: eventId,
       calendar: { account: { userId: authResult.user.id } },
     },
+    include: {
+      calendar: {
+        include: { account: true },
+      },
+    },
   });
   if (!event) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -99,6 +106,31 @@ export async function PATCH(
     where: { id: eventId },
     data: updateData,
   });
+
+  // Push to CalDAV if this is a CalDAV calendar
+  if (event.calendar.account.accountType === "caldav" && event.source === "caldav") {
+    const icsEvent: ICSExportEvent & { url?: string; sequence?: number } = {
+      uid: updated.uid,
+      summary: updated.summary,
+      description: updated.description,
+      location: updated.location,
+      dtStart: updated.dtStart,
+      dtEnd: updated.dtEnd,
+      allDay: updated.allDay,
+      timeZone: updated.timeZone,
+      recurrenceRule: updated.recurrenceRule,
+      status: updated.status,
+      transparency: updated.transparency,
+      ...(updated.url ? { url: updated.url } : {}),
+      sequence: updated.sequence,
+    };
+
+    const result = await pushUpdateToCalDAV(updated.calendarId, icsEvent);
+    if (!result.success) {
+      console.error(`Failed to push update to CalDAV: ${result.error}`);
+      // Don't fail the request — local update succeeded
+    }
+  }
 
   return NextResponse.json({
     event: {
@@ -128,9 +160,23 @@ export async function DELETE(
       id: eventId,
       calendar: { account: { userId: authResult.user.id } },
     },
+    include: {
+      calendar: {
+        include: { account: true },
+      },
+    },
   });
   if (!event) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Delete from CalDAV first if this is a CalDAV event
+  if (event.calendar.account.accountType === "caldav" && event.source === "caldav" && event.url) {
+    const result = await pushDeleteToCalDAV(event.calendarId, event.url);
+    if (!result.success) {
+      console.error(`Failed to push delete to CalDAV: ${result.error}`);
+      // Don't fail the request — proceed with local delete
+    }
   }
 
   await prisma.calendarEvent.delete({
