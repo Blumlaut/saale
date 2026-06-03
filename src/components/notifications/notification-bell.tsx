@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Bell, CheckCircle, AlertCircle, Mail, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { fetchJson, patchJson } from "@/lib/http";
-import { useClickOutside } from "@/hooks/use-click-outside";
 
 interface Notification {
   id: string;
@@ -22,7 +22,6 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const ref = useRef<HTMLDivElement>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -38,8 +37,6 @@ export function NotificationBell() {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
-
-  useClickOutside(ref, () => setOpen(false));
 
   const markAsRead = async (id: string) => {
     try {
@@ -75,87 +72,89 @@ export function NotificationBell() {
   };
 
   return (
-    <div ref={ref} className="relative">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="relative h-8 w-8"
-        onClick={() => setOpen((prev) => !prev)}
+    <Popover open={open} onOpenChange={setOpen}>
+      {/* PopoverTrigger renders as <button> — use a styled <span> to avoid nesting */}
+      <PopoverTrigger>
+        <span className="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+          <Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <Badge
+              variant="destructive"
+              className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full p-0 text-[10px]"
+            >
+              {unreadCount}
+            </Badge>
+          )}
+        </span>
+      </PopoverTrigger>
+
+      <PopoverContent
+        side="bottom"
+        align="end"
+        sideOffset={4}
+        className="liquid-glass w-80 gap-0 border-0 bg-transparent p-0 shadow-2xl"
       >
-        <Bell className="h-4 w-4" />
-        {unreadCount > 0 && (
-          <Badge
-            variant="destructive"
-            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full p-0 text-[10px]"
-          >
-            {unreadCount}
-          </Badge>
-        )}
-      </Button>
+        <div className="flex items-center justify-between border-b border-white/20 px-4 py-3 dark:border-white/10">
+          <span className="text-sm font-medium">Notifications</span>
+          {unreadCount > 0 && (
+            <Button
+              variant="ghost"
+              className="liquid-glass-pill h-7 rounded-full px-2.5 text-xs font-medium"
+              onClick={markAllAsRead}
+            >
+              Mark all read
+            </Button>
+          )}
+        </div>
 
-      {open && (
-        <div className="bg-background/95 absolute top-full right-0 z-50 mt-1 w-80 rounded-xl border shadow-lg backdrop-blur-xl">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <span className="text-sm font-medium">Notifications</span>
-            {unreadCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs"
-                onClick={markAllAsRead}
+        <div className="max-h-80 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="text-muted-foreground py-8 text-center text-sm">No notifications</div>
+          ) : (
+            notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={cn(
+                  "flex items-start gap-3 border-b border-white/10 px-4 py-3 transition-colors hover:bg-white/10 dark:border-white/5 dark:hover:bg-white/5",
+                  !notification.read && "bg-white/5 dark:bg-white/5",
+                )}
               >
-                Mark all read
-              </Button>
-            )}
-          </div>
-
-          <div className="max-h-80 overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-              </div>
-            ) : notifications.length === 0 ? (
-              <div className="text-muted-foreground py-8 text-center text-sm">No notifications</div>
-            ) : (
-              notifications.map((notification) => (
                 <div
-                  key={notification.id}
                   className={cn(
-                    "border-border/30 flex items-start gap-3 border-b px-4 py-3 transition-colors hover:bg-white/10 dark:hover:bg-white/5",
-                    !notification.read && "bg-white/5 dark:bg-white/5",
+                    "mt-0.5 rounded-full p-1.5",
+                    !notification.read ? "bg-primary/10 text-primary" : "text-muted-foreground",
                   )}
                 >
-                  <div
-                    className={cn(
-                      "mt-0.5 rounded-full p-1.5",
-                      !notification.read ? "bg-primary/10 text-primary" : "text-muted-foreground",
-                    )}
-                  >
-                    {getIcon(notification.type)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{notification.title}</div>
-                    <div className="text-muted-foreground text-xs">{notification.message}</div>
-                    <div className="text-muted-foreground/60 mt-1 text-xs">
-                      {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
-                    </div>
-                  </div>
-                  {!notification.read && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => markAsRead(notification.id)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
+                  {getIcon(notification.type)}
                 </div>
-              ))
-            )}
-          </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{notification.title}</div>
+                  <div className="text-muted-foreground text-xs">{notification.message}</div>
+                  <div className="text-muted-foreground/60 mt-1 text-xs">
+                    {formatDistanceToNow(new Date(notification.createdAt), {
+                      addSuffix: true,
+                    })}
+                  </div>
+                </div>
+                {!notification.read && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 rounded-full"
+                    onClick={() => markAsRead(notification.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            ))
+          )}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
