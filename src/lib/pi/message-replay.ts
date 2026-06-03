@@ -37,7 +37,7 @@ export interface StoredMessage {
 export interface ImageContent {
   type: "image";
   data: string; // base64-encoded image data
-  mimeType: string; // e.g. "image/webp"
+  mimeType: string; // e.g. "image/png"
 }
 
 /** Resolved model info from the Pi agent session. */

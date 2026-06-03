@@ -7,8 +7,6 @@ const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
 // Max dimension for re-encoded images (keeps token costs reasonable for vision models)
 const MAX_DIMENSION = 2048;
-// WebP quality (0-100); 80 is a good balance of quality vs file size
-const WEBP_QUALITY = 80;
 // Max upload size: 15MB
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
@@ -69,10 +67,10 @@ export async function processAndStoreImage(
   await fs.mkdir(imageDir, { recursive: true });
 
   const storageId = randomUUID();
-  const storagePath = `images/${storageId}.webp`;
+  const storagePath = `images/${storageId}.png`;
   const fullPath = path.join(UPLOADS_DIR, userId, storagePath);
 
-  // Process with sharp: resize, convert to WebP
+  // Process with sharp: resize, convert to PNG
   const metadata = await sharp(fileBuffer)
     .resize({
       width: MAX_DIMENSION,
@@ -80,7 +78,7 @@ export async function processAndStoreImage(
       fit: "inside",
       withoutEnlargement: true,
     })
-    .webp({ quality: WEBP_QUALITY, effort: 4 })
+    .png()
     .toFile(fullPath);
 
   return {
@@ -102,7 +100,7 @@ export async function readImageAsBase64(
   const buffer = await fs.readFile(fullPath);
   return {
     data: buffer.toString("base64"),
-    mimeType: "image/webp",
+    mimeType: "image/png",
   };
 }
 

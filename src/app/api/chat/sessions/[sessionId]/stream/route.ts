@@ -147,11 +147,6 @@ export async function GET(
       }
     }
   }
-  // eslint-disable-next-line no-console -- debug image/multimodality
-  console.log(
-    `Stream: model=${model?.provider}/${model?.id}, input=${JSON.stringify(model?.input)}, images=${lastMessageImages.length}`,
-  );
-
   // Create SSE stream
   const encoder = new TextEncoder();
   let aborted = false;
@@ -335,8 +330,6 @@ export async function GET(
           }
 
           case "agent_end": {
-            // eslint-disable-next-line no-console -- debug
-            console.log("agent_end event, messages:", event.messages.length);
             // Get final assistant message(s)
             // Cast to access content property (AgentMessage is a union that includes non-content types)
             const assistantMessages = event.messages
@@ -412,10 +405,6 @@ export async function GET(
             controller.close();
             break;
           }
-          default:
-            // eslint-disable-next-line no-console -- debug
-            console.log(`Unhandled event: ${event.type}`);
-            break;
         }
       });
 
@@ -423,8 +412,6 @@ export async function GET(
       // Use agent.prompt() directly to bypass AgentSession preflight logic
       // which resets systemPrompt back to the Pi base prompt on every turn
       if (lastMessage && lastMessage.role === "user") {
-        // eslint-disable-next-line no-console -- debug image/multimodality
-        console.log(`Prompt: sending ${lastMessageImages.length} image(s) to agent`);
         const promptPromise =
           lastMessageImages.length > 0
             ? piSession.agent.prompt(lastMessage.content, lastMessageImages)

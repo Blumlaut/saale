@@ -382,6 +382,28 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           }
         });
 
+        eventSource.addEventListener("error", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          console.error("Stream error:", parsed);
+          eventSource.close();
+          eventSourceRef.current = null;
+          setIsLoading(false);
+          // Add error message to chat
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `error-${Date.now()}`,
+              role: "assistant" as const,
+              content: `Error: ${parsed.message || "Something went wrong"}`,
+              thinking: undefined,
+              toolCalls: undefined,
+              parentMessageId: undefined,
+              createdAt: new Date().toISOString(),
+              attachments: undefined,
+            },
+          ]);
+        });
+
         eventSource.onerror = () => {
           eventSource.close();
           eventSourceRef.current = null;
