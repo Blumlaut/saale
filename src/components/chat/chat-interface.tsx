@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
-import { InputBar, type ToolConfig } from "./input-bar";
+import { InputBar } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { fetchJson, patchJson } from "@/lib/http";
 import { Loader2 } from "lucide-react";
+import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 
 interface ToolCallData {
   id: string;
@@ -47,16 +48,6 @@ interface StreamingState {
   /** Current in-progress turn data */
   current: TurnData;
 }
-
-const DEFAULT_TOOL_CONFIG: ToolConfig = {
-  bash: true,
-  files: true,
-  email: true,
-  jobs: true,
-  calendar: true,
-  chatSearch: true,
-  web: true,
-};
 
 const emptyTurn = (): TurnData => ({
   text: "",
