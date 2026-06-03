@@ -1,16 +1,22 @@
-import type { Prisma } from "../../../prisma/generated/prisma";
 import { prisma } from "@/lib/db";
+
+interface AccountModel {
+  findMany(args: {
+    where: { userId: string; enabled: boolean };
+    select: { id: true };
+  }): Promise<Array<{ id: string }>>;
+}
 
 /**
  * Resolve this user's enabled account IDs for a given model (user isolation).
  * Optionally validates that a specific accountId belongs to the user.
  */
-async function resolveUserAccountIds<T extends Prisma.EmailAccountDelegate | Prisma.CalendarAccountDelegate>(
-  model: T,
+async function resolveUserAccountIds(
+  model: AccountModel,
   userId: string,
   accountId?: string,
 ): Promise<string[]> {
-  const accounts = await (model as any).findMany({
+  const accounts = await model.findMany({
     where: { userId, enabled: true },
     select: { id: true },
   });
