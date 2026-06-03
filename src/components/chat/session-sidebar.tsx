@@ -85,7 +85,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
               <div
                 key={session.id}
                 className={cn(
-                  "group flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5",
+                  "group flex items-center gap-2 px-2.5 py-2 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5",
                   session.id === activeSessionId && "bg-white/15 dark:bg-white/5",
                 )}
               >

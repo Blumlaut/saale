@@ -57,7 +57,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
       </div>
 
       {/* Content: sidebar + main — flex-1 fills remaining viewport, overflow contained */}
-      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden px-2 py-4 md:px-4">
         {/* Sidebar — desktop only */}
         <div className="hidden w-64 shrink-0 md:block">
           <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
