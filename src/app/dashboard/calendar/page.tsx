@@ -5,7 +5,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchJson } from "@/lib/http";
-import { startOfWeek } from "@/lib/calendar/date-utils";
+import { startOfWeekUTC } from "@/lib/calendar/date-utils";
 import type { CalendarEvent } from "@/types/shared";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { CalendarSidebar } from "@/components/calendar/calendar-sidebar";
@@ -54,12 +54,14 @@ export default function CalendarPage() {
       let end: Date;
 
       if (view === "month") {
-        start.setDate(1);
-        end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+        const year = start.getUTCFullYear();
+        const month = start.getUTCMonth();
+        start.setTime(Date.UTC(year, month, 1));
+        end = new Date(Date.UTC(year, month + 1, 0));
       } else if (view === "week") {
-        const weekStart = startOfWeek(start);
+        const weekStart = startOfWeekUTC(start);
         end = new Date(weekStart);
-        end.setDate(end.getDate() + 6);
+        end.setUTCDate(end.getUTCDate() + 6);
       } else {
         end = new Date(start);
       }
@@ -127,9 +129,9 @@ export default function CalendarPage() {
     if (view === "month") {
       return currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
     } else if (view === "week") {
-      const weekStart = startOfWeek(currentDate);
+      const weekStart = startOfWeekUTC(currentDate);
       const end = new Date(weekStart);
-      end.setDate(end.getDate() + 6);
+      end.setUTCDate(end.getUTCDate() + 6);
       return `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
     } else {
       return currentDate.toLocaleDateString("en-US", {

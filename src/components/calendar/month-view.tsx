@@ -2,7 +2,7 @@
 
 import type { CalendarEvent } from "@/types/shared";
 import { cn } from "@/lib/utils";
-import { getEventsForDay } from "@/lib/calendar/date-utils";
+import { getEventsForDay, isSameDayUTC } from "@/lib/calendar/date-utils";
 import { Badge } from "@/components/ui/badge";
 
 interface MonthViewProps {
@@ -15,36 +15,35 @@ interface MonthViewProps {
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function MonthView({ date, events, onDateClick, onEventClick }: MonthViewProps) {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startDay = (firstDay.getDay() + 6) % 7; // Monday start
+  // Use UTC to match DB timestamps
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getUTCDate();
+  const firstDayUtc = new Date(Date.UTC(year, month, 1));
+  const startDay = (firstDayUtc.getUTCDay() + 6) % 7; // Monday start
 
   const days: Array<{ date: Date; isCurrentMonth: boolean }> = [];
 
   // Previous month days
   for (let i = startDay - 1; i >= 0; i--) {
-    const d = new Date(year, month, -i);
+    const d = new Date(Date.UTC(year, month, -i));
     days.push({ date: d, isCurrentMonth: false });
   }
 
   // Current month days
-  for (let i = 1; i <= lastDay.getDate(); i++) {
-    days.push({ date: new Date(year, month, i), isCurrentMonth: true });
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push({ date: new Date(Date.UTC(year, month, i)), isCurrentMonth: true });
   }
 
   // Next month days
   while (days.length % 7 !== 0) {
-    const d = new Date(year, month + 1, days.length - startDay - lastDay.getDate() + 1);
+    const nextDay = days.length - startDay - daysInMonth + 1;
+    const d = new Date(Date.UTC(year, month + 1, nextDay));
     days.push({ date: d, isCurrentMonth: false });
   }
 
   const today = new Date();
-  const isToday = (d: Date) =>
-    d.getDate() === today.getDate() &&
-    d.getMonth() === today.getMonth() &&
-    d.getFullYear() === today.getFullYear();
+  const isToday = (d: Date) => isSameDayUTC(d, today);
 
   return (
     <div className="space-y-2">
@@ -82,7 +81,7 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
                   !isCurrentMonth && "text-muted-foreground/50",
                 )}
               >
-                {day.getDate()}
+                {day.getUTCDate()}
               </span>
               <div className="mt-0.5 flex flex-col gap-0.5">
                 {dayEvents.slice(0, 3).map((evt) => (

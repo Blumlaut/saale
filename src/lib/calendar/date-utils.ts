@@ -1,34 +1,23 @@
 import type { CalendarEvent } from "@/types/shared";
 
 /**
- * Strip time from a date, returning midnight local time.
+ * Strip time from a date, returning UTC midnight.
+ * All calendar dates are handled in UTC to avoid timezone drift
+ * between the browser (local time) and the DB (UTC timestamps).
  */
-export function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+export function startOfDayUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
 /**
- * Check if a calendar event overlaps a given day (midnight to midnight).
+ * Check if a calendar event overlaps a given day (UTC midnight to midnight).
  */
 export function eventOverlapsDay(event: CalendarEvent, day: Date): boolean {
-  const dayStart = startOfDay(day).getTime();
+  const dayStart = startOfDayUTC(day).getTime();
   const dayEnd = dayStart + 86400000; // +1 day
   const evtStart = new Date(event.dtStart).getTime();
   const evtEnd = event.dtEnd ? new Date(event.dtEnd).getTime() : evtStart;
-  const overlaps = evtStart < dayEnd && evtEnd > dayStart;
-  if (!overlaps && process.env.NODE_ENV === "development") {
-    console.warn(
-      "eventOverlapsDay miss",
-      event.summary,
-      "evtStart:",
-      new Date(evtStart).toISOString(),
-      "day:",
-      new Date(dayStart).toISOString(),
-      "dayEnd:",
-      new Date(dayEnd).toISOString(),
-    );
-  }
-  return overlaps;
+  return evtStart < dayEnd && evtEnd > dayStart;
 }
 
 /**
@@ -53,35 +42,34 @@ export function getEventsForDay(events: CalendarEvent[], day: Date): CalendarEve
 }
 
 /**
- * Check if two dates are the same calendar day.
+ * Check if two dates are the same calendar day (UTC).
  */
-export function isSameDay(a: Date, b: Date): boolean {
+export function isSameDayUTC(a: Date, b: Date): boolean {
   return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
   );
 }
 
 /**
- * Get the start of the week (Monday) for a given date.
+ * Get the start of the week (Monday) for a given date, in UTC.
  */
-export function startOfWeek(d: Date): Date {
+export function startOfWeekUTC(d: Date): Date {
   const date = new Date(d);
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  date.setDate(diff);
-  return startOfDay(date);
+  const day = date.getUTCDay();
+  const diff = date.getUTCDate() - day + (day === 0 ? -6 : 1);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), diff));
 }
 
 /**
- * Get the 7 days of the week starting from Monday.
+ * Get the 7 days of the week starting from Monday (UTC).
  */
-export function getWeekDays(d: Date): Date[] {
-  const weekStart = startOfWeek(d);
+export function getWeekDaysUTC(d: Date): Date[] {
+  const weekStart = startOfWeekUTC(d);
   return Array.from({ length: 7 }, (_, i) => {
     const day = new Date(weekStart);
-    day.setDate(day.getDate() + i);
+    day.setUTCDate(day.getUTCDate() + i);
     return day;
   });
 }

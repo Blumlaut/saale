@@ -3,9 +3,10 @@
 import type { CalendarEvent } from "@/types/shared";
 import { cn } from "@/lib/utils";
 import {
-  getWeekDays,
+  getWeekDaysUTC,
   getAllDayEventsForDay,
   getTimedEventsForDay,
+  isSameDayUTC,
 } from "@/lib/calendar/date-utils";
 
 interface WeekViewProps {
@@ -19,12 +20,9 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekViewProps) {
-  const weekDays = getWeekDays(date);
+  const weekDays = getWeekDaysUTC(date);
   const today = new Date();
-  const isToday = (d: Date) =>
-    d.getDate() === today.getDate() &&
-    d.getMonth() === today.getMonth() &&
-    d.getFullYear() === today.getFullYear();
+  const isToday = (d: Date) => isSameDayUTC(d, today);
 
   return (
     <div className="space-y-2">
@@ -40,7 +38,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
             )}
           >
             <span className="text-muted-foreground text-[10px]">{DAYS[i]}</span>
-            <span className="text-xs">{d.getDate()}</span>
+            <span className="text-xs">{d.getUTCDate()}</span>
           </div>
         ))}
       </div>
@@ -104,7 +102,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
                   key={dayIndex}
                   onClick={() => {
                     const slotDate = new Date(d);
-                    slotDate.setHours(hour, 0, 0, 0);
+                    slotDate.setUTCHours(hour, 0, 0, 0);
                     onTimeSlotClick(slotDate);
                   }}
                   className="border-border/20 border-t p-0.5 transition-colors hover:bg-white/10"
