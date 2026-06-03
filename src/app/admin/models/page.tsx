@@ -240,231 +240,239 @@ export default function AdminModelsPage() {
   const configuredProviderIds = new Set(providers.map((p) => p.provider));
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <GlassPanel className="rounded-xl p-2">
-            <Bot className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
-          </GlassPanel>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight md:text-2xl">Model Providers</h1>
-            <p className="text-muted-foreground text-xs md:text-sm">
-              Manage global API providers and model availability
-            </p>
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <GlassPanel className="rounded-xl p-2">
+              <Bot className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
+            </GlassPanel>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight md:text-2xl">Model Providers</h1>
+              <p className="text-muted-foreground text-xs md:text-sm">
+                Manage global API providers and model availability
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {saveStatus === "success" && (
+              <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                <CheckCircle className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+            {saveStatus === "error" && (
+              <span className="text-destructive flex items-center gap-1 text-xs">
+                <AlertCircle className="h-3.5 w-3.5" /> Error
+              </span>
+            )}
+            {activeTab === "models" && (
+              <Button size="sm" disabled={saving} onClick={handleSaveModels}>
+                {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                Save
+              </Button>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {saveStatus === "success" && (
-            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-              <CheckCircle className="h-3.5 w-3.5" /> Saved
-            </span>
-          )}
-          {saveStatus === "error" && (
-            <span className="text-destructive flex items-center gap-1 text-xs">
-              <AlertCircle className="h-3.5 w-3.5" /> Error
-            </span>
-          )}
-          {activeTab === "models" && (
-            <Button size="sm" disabled={saving} onClick={handleSaveModels}>
-              {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-              Save
-            </Button>
-          )}
-        </div>
-      </div>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "providers" | "models")}>
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="w-full sm:w-auto">
+              <TabsTrigger value="providers" className="gap-2">
+                <Key className="h-4 w-4" />
+                API Providers
+              </TabsTrigger>
+              <TabsTrigger value="models" className="gap-2">
+                <Bot className="h-4 w-4" />
+                Model Availability
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "providers" | "models")}>
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="providers" className="gap-2">
-              <Key className="h-4 w-4" />
-              API Providers
-            </TabsTrigger>
-            <TabsTrigger value="models" className="gap-2">
-              <Bot className="h-4 w-4" />
-              Model Availability
-            </TabsTrigger>
-          </TabsList>
-        </div>
-
-        {/* ─── Providers Tab ─── */}
-        <TabsContent value="providers" className="space-y-6">
-          <GlassPanel>
-            <GlassPanelHeader
-              title="Configured Providers"
-              action={
-                <Button variant="secondary" size="sm" onClick={() => setShowAddProvider(true)}>
-                  <Plus className="mr-1 h-3.5 w-3.5" /> Add
-                </Button>
-              }
-            />
-            <GlassPanelContent className="p-0">
-              {providers.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Key className="text-muted-foreground/50 mb-3 h-8 w-8" />
-                  <p className="text-sm font-medium">No global providers configured</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Add a provider to make its models available to all users
-                  </p>
-                </div>
-              ) : (
-                providers.map((prov, i) => (
-                  <div key={prov.id}>
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium">{prov.displayName}</span>
-                          {prov.provider === "custom" && prov.baseUrl && (
-                            <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
-                              custom
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="text-muted-foreground truncate text-xs">
-                          {prov.provider}
-                          {prov.baseUrl ? ` — ${prov.baseUrl}` : ""}
-                        </span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive h-8 w-8"
-                        onClick={() => handleRemoveProvider(prov.provider)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    {i < providers.length - 1 && <Separator className="px-4" />}
-                  </div>
-                ))
-              )}
-            </GlassPanelContent>
-          </GlassPanel>
-
-          {/* Available but not configured */}
-          {availableProviders.filter((p) => !configuredProviderIds.has(p.id)).length > 0 && (
+          {/* ─── Providers Tab ─── */}
+          <TabsContent value="providers" className="space-y-6">
             <GlassPanel>
-              <GlassPanelHeader title="Available Providers" />
+              <GlassPanelHeader
+                title="Configured Providers"
+                action={
+                  <Button variant="secondary" size="sm" onClick={() => setShowAddProvider(true)}>
+                    <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                  </Button>
+                }
+              />
               <GlassPanelContent className="p-0">
-                {availableProviders
-                  .filter((p) => !configuredProviderIds.has(p.id))
-                  .map((prov, i) => (
+                {providers.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Key className="text-muted-foreground/50 mb-3 h-8 w-8" />
+                    <p className="text-sm font-medium">No global providers configured</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Add a provider to make its models available to all users
+                    </p>
+                  </div>
+                ) : (
+                  providers.map((prov, i) => (
                     <div key={prov.id}>
                       <div className="flex items-center justify-between px-4 py-3">
-                        <span className="text-muted-foreground text-sm">{prov.name}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium">{prov.displayName}</span>
+                            {prov.provider === "custom" && prov.baseUrl && (
+                              <Badge
+                                variant="secondary"
+                                className="rounded-full px-1.5 text-[10px]"
+                              >
+                                custom
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-muted-foreground truncate text-xs">
+                            {prov.provider}
+                            {prov.baseUrl ? ` — ${prov.baseUrl}` : ""}
+                          </span>
+                        </div>
                         <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            setAddProvider(prov.id);
-                            setShowAddProvider(true);
-                          }}
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive h-8 w-8"
+                          onClick={() => handleRemoveProvider(prov.provider)}
                         >
-                          <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                      {i <
-                        availableProviders.filter((p) => !configuredProviderIds.has(p.id)).length -
-                          1 && <Separator className="px-4" />}
+                      {i < providers.length - 1 && <Separator className="px-4" />}
                     </div>
-                  ))}
+                  ))
+                )}
               </GlassPanelContent>
             </GlassPanel>
-          )}
-        </TabsContent>
 
-        {/* ─── Models Tab ─── */}
-        <TabsContent value="models" className="space-y-6">
-          {modelProviders.length === 0 && (
-            <GlassPanel>
-              <GlassPanelContent>
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Bot className="text-muted-foreground/50 mb-3 h-8 w-8" />
-                  <p className="text-sm font-medium">No models available</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Add API providers first to discover models
-                  </p>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => setActiveTab("providers")}
-                  >
-                    Go to providers
-                  </Button>
-                </div>
-              </GlassPanelContent>
-            </GlassPanel>
-          )}
-
-          {modelProviders.map((provider) => {
-            const models = availableModels[provider.id] ?? [];
-            const enabledModels = modelEnabled[provider.id] ?? new Set(models.map((m) => m.id));
-            const allEnabled = models.length > 0 && enabledModels.size === models.length;
-            return (
-              <GlassPanel key={provider.id}>
-                <GlassPanelHeader
-                  title={provider.name}
-                  action={
-                    <div className="flex items-center gap-3">
-                      <Badge variant="secondary" className="rounded-full text-xs">
-                        {enabledModels.size}/{models.length} enabled
-                      </Badge>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-xs">All</span>
-                        <Switch
-                          checked={allEnabled}
-                          onCheckedChange={(checked) => handleProviderToggle(provider.id, checked)}
-                        />
-                      </div>
-                    </div>
-                  }
-                />
+            {/* Available but not configured */}
+            {availableProviders.filter((p) => !configuredProviderIds.has(p.id)).length > 0 && (
+              <GlassPanel>
+                <GlassPanelHeader title="Available Providers" />
                 <GlassPanelContent className="p-0">
-                  {models.length === 0 ? (
-                    <div className="px-4 py-6 text-center">
-                      <p className="text-muted-foreground text-sm">No models discovered yet</p>
-                    </div>
-                  ) : (
-                    models.map((model, i) => {
-                      const isModelEnabled = enabledModels.has(model.id);
-                      return (
-                        <div key={model.id}>
-                          <div className="flex items-center justify-between px-4 py-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="truncate text-sm font-medium">{model.name}</span>
-                                {model.reasoning && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="rounded-full px-1.5 text-[10px]"
-                                  >
-                                    reasoning
-                                  </Badge>
-                                )}
-                              </div>
-                              <span className="text-muted-foreground text-xs">{model.id}</span>
-                            </div>
-                            <Switch
-                              checked={isModelEnabled}
-                              onCheckedChange={(checked) =>
-                                handleModelToggle(provider.id, model.id, checked)
-                              }
-                            />
-                          </div>
-                          {i < models.length - 1 && <Separator className="px-4" />}
+                  {availableProviders
+                    .filter((p) => !configuredProviderIds.has(p.id))
+                    .map((prov, i) => (
+                      <div key={prov.id}>
+                        <div className="flex items-center justify-between px-4 py-3">
+                          <span className="text-muted-foreground text-sm">{prov.name}</span>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setAddProvider(prov.id);
+                              setShowAddProvider(true);
+                            }}
+                          >
+                            <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                          </Button>
                         </div>
-                      );
-                    })
-                  )}
+                        {i <
+                          availableProviders.filter((p) => !configuredProviderIds.has(p.id))
+                            .length -
+                            1 && <Separator className="px-4" />}
+                      </div>
+                    ))}
                 </GlassPanelContent>
               </GlassPanel>
-            );
-          })}
-        </TabsContent>
-      </Tabs>
+            )}
+          </TabsContent>
+
+          {/* ─── Models Tab ─── */}
+          <TabsContent value="models" className="space-y-6">
+            {modelProviders.length === 0 && (
+              <GlassPanel>
+                <GlassPanelContent>
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Bot className="text-muted-foreground/50 mb-3 h-8 w-8" />
+                    <p className="text-sm font-medium">No models available</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Add API providers first to discover models
+                    </p>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => setActiveTab("providers")}
+                    >
+                      Go to providers
+                    </Button>
+                  </div>
+                </GlassPanelContent>
+              </GlassPanel>
+            )}
+
+            {modelProviders.map((provider) => {
+              const models = availableModels[provider.id] ?? [];
+              const enabledModels = modelEnabled[provider.id] ?? new Set(models.map((m) => m.id));
+              const allEnabled = models.length > 0 && enabledModels.size === models.length;
+              return (
+                <GlassPanel key={provider.id}>
+                  <GlassPanelHeader
+                    title={provider.name}
+                    action={
+                      <div className="flex items-center gap-3">
+                        <Badge variant="secondary" className="rounded-full text-xs">
+                          {enabledModels.size}/{models.length} enabled
+                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-xs">All</span>
+                          <Switch
+                            checked={allEnabled}
+                            onCheckedChange={(checked) =>
+                              handleProviderToggle(provider.id, checked)
+                            }
+                          />
+                        </div>
+                      </div>
+                    }
+                  />
+                  <GlassPanelContent className="p-0">
+                    {models.length === 0 ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-muted-foreground text-sm">No models discovered yet</p>
+                      </div>
+                    ) : (
+                      models.map((model, i) => {
+                        const isModelEnabled = enabledModels.has(model.id);
+                        return (
+                          <div key={model.id}>
+                            <div className="flex items-center justify-between px-4 py-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-medium">{model.name}</span>
+                                  {model.reasoning && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="rounded-full px-1.5 text-[10px]"
+                                    >
+                                      reasoning
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-muted-foreground text-xs">{model.id}</span>
+                              </div>
+                              <Switch
+                                checked={isModelEnabled}
+                                onCheckedChange={(checked) =>
+                                  handleModelToggle(provider.id, model.id, checked)
+                                }
+                              />
+                            </div>
+                            {i < models.length - 1 && <Separator className="px-4" />}
+                          </div>
+                        );
+                      })
+                    )}
+                  </GlassPanelContent>
+                </GlassPanel>
+              );
+            })}
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* Add provider dialog */}
       <Dialog open={showAddProvider} onOpenChange={setShowAddProvider}>
