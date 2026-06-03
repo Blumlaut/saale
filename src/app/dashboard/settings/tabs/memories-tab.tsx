@@ -386,9 +386,10 @@ export function MemoriesTab() {
                             Filter to {col.name}
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() =>
-                              setDeleteTarget({ type: "collection", id: col.name, name: col.name })
-                            }
+                            onClick={() => {
+                              setDeleteTarget({ type: "collection", id: col.name, name: col.name });
+                              setDeleteOpen(true);
+                            }}
                             className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -532,9 +533,10 @@ export function MemoriesTab() {
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() =>
-                          setDeleteTarget({ type: "memory", id: memory.id, name: memory.title })
-                        }
+                        onClick={() => {
+                          setDeleteTarget({ type: "memory", id: memory.id, name: memory.title });
+                          setDeleteOpen(true);
+                        }}
                         className="text-destructive focus:text-destructive"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
