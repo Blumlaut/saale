@@ -92,125 +92,136 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  let content: string;
-  const imageAttachments: Array<{
-    storageId: string;
-    fileName: string;
-    mimeType: string;
-    size: number;
-    width?: number;
-    height?: number;
-  }> = [];
+  try {
+    let content: string;
+    const imageAttachments: Array<{
+      storageId: string;
+      fileName: string;
+      mimeType: string;
+      size: number;
+      width?: number;
+      height?: number;
+    }> = [];
 
-  const contentType = request.headers.get("content-type") || "";
+    const contentType = request.headers.get("content-type") || "";
 
-  if (contentType.includes("multipart/form-data")) {
-    // Multipart: extract text content + image files
-    const formData = await request.formData();
-    content = (formData.get("content") as string) || "";
+    if (contentType.includes("multipart/form-data")) {
+      // Multipart: extract text content + image files
+      const formData = await request.formData();
+      content = (formData.get("content") as string) || "";
 
-    // Process image files
-    const files = formData.getAll("files");
-    for (const file of files) {
-      if (!(file instanceof File)) continue;
+      // Process image files
+      const files = formData.getAll("files");
+      for (const file of files) {
+        if (!(file instanceof File)) continue;
 
-      const error = validateImageUpload(file);
-      if (error) {
-        return NextResponse.json({ error }, { status: 400 });
+        const error = validateImageUpload(file);
+        if (error) {
+          return NextResponse.json({ error }, { status: 400 });
+        }
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const result = await processAndStoreImage(
+          authResult.user.id,
+          buffer,
+          file.name,
+          file.type,
+          file.size,
+        );
+
+        imageAttachments.push({
+          storageId: result.storageId,
+          fileName: file.name,
+          mimeType: file.type,
+          size: file.size,
+          width: result.width,
+          height: result.height,
+        });
       }
-
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const result = await processAndStoreImage(
-        authResult.user.id,
-        buffer,
-        file.name,
-        file.type,
-        file.size,
-      );
-
-      imageAttachments.push({
-        storageId: result.storageId,
-        fileName: file.name,
-        mimeType: file.type,
-        size: file.size,
-        width: result.width,
-        height: result.height,
-      });
+    } else {
+      // JSON: plain text message
+      const body = await request.json();
+      content = body.content as string;
     }
-  } else {
-    // JSON: plain text message
-    const body = await request.json();
-    content = body.content as string;
+
+    if (typeof content !== "string") {
+      return NextResponse.json({ error: "Content is required" }, { status: 400 });
+    }
+    if (!content.trim() && imageAttachments.length === 0) {
+      return NextResponse.json({ error: "Content is required" }, { status: 400 });
+    }
+
+    // Strip null bytes and limit length
+    const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
+
+    // Save user message with attachments in a single transaction
+    const userMessage = await prisma.chatMessage.create({
+      data: {
+        sessionId,
+        role: "user",
+        content: sanitizedContent,
+        ...(imageAttachments.length > 0 && {
+          attachments: {
+            create: imageAttachments.map((att) => ({
+              storageId: att.storageId,
+              fileName: att.fileName,
+              mimeType: att.mimeType,
+              size: att.size,
+              width: att.width ?? null,
+              height: att.height ?? null,
+              storagePath: `images/${att.storageId}.png`,
+            })),
+          },
+        }),
+      },
+    });
+
+    // Fetch the created message with attachments
+    const userMessageWithAttachments = await prisma.chatMessage.findUnique({
+      where: { id: userMessage.id },
+      include: { attachments: true },
+    });
+
+    // Update session metadata
+    await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        messageCount: { increment: 1 },
+        title:
+          chatSession.title === "New Chat"
+            ? (sanitizedContent || "Image").slice(0, 50) +
+              ((sanitizedContent || "Image").length > 50 ? "..." : "")
+            : chatSession.title,
+      },
+    });
+
+    // Return stream URL and the saved message for client-side replacement
+    return NextResponse.json({
+      ok: true,
+      streamUrl: `/api/chat/sessions/${sessionId}/stream`,
+      message: {
+        id: userMessageWithAttachments!.id,
+        role: "user" as const,
+        content: userMessageWithAttachments!.content,
+        createdAt: userMessageWithAttachments!.createdAt.toISOString(),
+        attachments: userMessageWithAttachments!.attachments.map((a) => ({
+          id: a.id,
+          storageId: a.storageId,
+          fileName: a.fileName,
+          mimeType: a.mimeType,
+          size: a.size,
+          width: a.width,
+          height: a.height,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/chat/sessions/:sessionId/messages error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Internal server error" },
+      { status: 500 },
+    );
   }
-
-  if (!content || typeof content !== "string") {
-    return NextResponse.json({ error: "Content is required" }, { status: 400 });
-  }
-
-  // Strip null bytes and limit length
-  const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
-
-  // Save user message with attachments in a single transaction
-  const userMessage = await prisma.chatMessage.create({
-    data: {
-      sessionId,
-      role: "user",
-      content: sanitizedContent,
-      ...(imageAttachments.length > 0 && {
-        attachments: {
-          create: imageAttachments.map((att) => ({
-            storageId: att.storageId,
-            fileName: att.fileName,
-            mimeType: att.mimeType,
-            size: att.size,
-            width: att.width ?? null,
-            height: att.height ?? null,
-            storagePath: `images/${att.storageId}.png`,
-          })),
-        },
-      }),
-    },
-  });
-
-  // Fetch the created message with attachments
-  const userMessageWithAttachments = await prisma.chatMessage.findUnique({
-    where: { id: userMessage.id },
-    include: { attachments: true },
-  });
-
-  // Update session metadata
-  await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: {
-      messageCount: { increment: 1 },
-      title:
-        chatSession.title === "New Chat"
-          ? (sanitizedContent || "Image").slice(0, 50) +
-            ((sanitizedContent || "Image").length > 50 ? "..." : "")
-          : chatSession.title,
-    },
-  });
-
-  // Return stream URL and the saved message for client-side replacement
-  return NextResponse.json({
-    ok: true,
-    streamUrl: `/api/chat/sessions/${sessionId}/stream`,
-    message: {
-      id: userMessageWithAttachments!.id,
-      role: "user" as const,
-      content: userMessageWithAttachments!.content,
-      createdAt: userMessageWithAttachments!.createdAt.toISOString(),
-      attachments: userMessageWithAttachments!.attachments.map((a) => ({
-        id: a.id,
-        storageId: a.storageId,
-        fileName: a.fileName,
-        mimeType: a.mimeType,
-        size: a.size,
-        width: a.width,
-        height: a.height,
-      })),
-    },
-  });
 }
 
 /**

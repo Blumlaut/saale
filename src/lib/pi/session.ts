@@ -1,3 +1,4 @@
+import { open } from "fs/promises";
 import fs from "fs/promises";
 import path from "path";
 import {
@@ -54,6 +55,67 @@ function validatePath(baseDir: string, filePath: string): void {
 }
 
 /**
+ * Detect image MIME type by reading magic bytes from a file.
+ * Returns the MIME type string for supported images, or null for non-images.
+ * Matches Pi's internal `detectSupportedImageMimeTypeFromFile` behavior.
+ */
+async function detectImageMimeType(filePath: string): Promise<string | null> {
+  const fileHandle = await open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(4100);
+    const { bytesRead } = await fileHandle.read(buffer, 0, 4100, 0);
+    const data = buffer.subarray(0, bytesRead);
+
+    // JPEG: FF D8 FF (skip FF D8 FF F7 which is a special variant)
+    if (data.length >= 4 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+      return data[3] === 0xf7 ? null : "image/jpeg";
+    }
+
+    // PNG: 89 50 4E 47 0D 0A 1A 0A + valid IHDR chunk
+    const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    if (data.length >= 16 && PNG_SIG.every((b, i) => data[i] === b)) {
+      // Check for IHDR at offset 8 (chunk length=13, type="IHDR")
+      const chunkLen =
+        ((data[8] ?? 0) << 24) | ((data[9] ?? 0) << 16) | ((data[10] ?? 0) << 8) | (data[11] ?? 0);
+      if (
+        chunkLen === 13 &&
+        data[12] === 0x49 &&
+        data[13] === 0x48 &&
+        data[14] === 0x44 &&
+        data[15] === 0x52
+      ) {
+        return "image/png";
+      }
+      return null; // Has PNG sig but not a valid PNG
+    }
+
+    // GIF: starts with ASCII "GIF"
+    if (data.length >= 3 && data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) {
+      return "image/gif";
+    }
+
+    // WebP: starts with "RIFF" then "WEBP" at offset 8
+    if (
+      data.length >= 12 &&
+      data[0] === 0x52 &&
+      data[1] === 0x49 &&
+      data[2] === 0x46 &&
+      data[3] === 0x46 &&
+      data[8] === 0x57 &&
+      data[9] === 0x45 &&
+      data[10] === 0x42 &&
+      data[11] === 0x50
+    ) {
+      return "image/webp";
+    }
+
+    return null;
+  } finally {
+    await fileHandle.close();
+  }
+}
+
+/**
  * Create scoped Pi built-in tools locked to the user's workspace.
  */
 function createScopedTools(userId: string) {
@@ -70,6 +132,10 @@ function createScopedTools(userId: string) {
         access: async (absolutePath: string) => {
           validatePath(userDir, absolutePath);
           await fs.access(absolutePath);
+        },
+        detectImageMimeType: async (absolutePath: string) => {
+          validatePath(userDir, absolutePath);
+          return await detectImageMimeType(absolutePath);
         },
       },
     }),

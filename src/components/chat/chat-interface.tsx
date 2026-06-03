@@ -237,7 +237,10 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           });
         }
 
-        if (!res.ok) throw new Error("Failed to send message");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(`Failed to send message: ${body.error || res.statusText}`);
+        }
 
         const data = await res.json();
 
