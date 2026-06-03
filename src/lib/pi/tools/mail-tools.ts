@@ -1,3 +1,4 @@
+import path from "path";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
@@ -6,6 +7,12 @@ import { sendEmail } from "@/lib/email/smtp";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
+
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
+
+function getUserDir(userId: string): string {
+  return path.join(UPLOADS_DIR, userId);
+}
 
 /**
  * Create mail tools with userId injection for user isolation.
@@ -582,7 +589,9 @@ export function createMailTools(userId: string) {
     mailSendTool: defineTool({
       name: "mail_send",
       label: "Send Email",
-      description: "Send an email via SMTP using the user's configured email account.",
+      description:
+        "Send an email via SMTP using the user's configured email account. " +
+        "Supports file attachments from the workspace using relative file paths.",
       parameters: Type.Object({
         accountId: Type.String({
           description: "The email account ID to send from.",
@@ -609,6 +618,19 @@ export function createMailTools(userId: string) {
             description: "Optional reply-to email address.",
           }),
         ),
+        attachments: Type.Optional(
+          Type.Array(
+            Type.String({
+              description:
+                "File path(s) relative to the workspace root. Files are read from the user's isolated workspace directory.",
+            }),
+            {
+              description: "Optional list of file paths to attach.",
+              minItems: 1,
+              maxItems: 10,
+            },
+          ),
+        ),
       }),
       execute: async (_toolCallId, params) => {
         const account = await prisma.emailAccount.findFirst({
@@ -629,6 +651,9 @@ export function createMailTools(userId: string) {
           body: params.body,
           ...(params.bodyHtml ? { bodyHtml: params.bodyHtml } : {}),
           ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+          ...(params.attachments
+            ? { attachmentPaths: params.attachments, attachmentBaseDir: getUserDir(userId) }
+            : {}),
         });
 
         return {
@@ -641,6 +666,9 @@ export function createMailTools(userId: string) {
                   messageId: result.messageId,
                   to: params.to,
                   subject: params.subject,
+                  attachments: params.attachments
+                    ? params.attachments.map((p: string) => path.basename(p))
+                    : undefined,
                 },
                 null,
                 2,
