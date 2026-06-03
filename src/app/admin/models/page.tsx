@@ -73,9 +73,7 @@ export default function AdminModelsPage() {
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
 
-  // Provider toggle state
-  const [providerEnabled, setProviderEnabled] = useState<Record<string, boolean>>({});
-  // Per-model toggle state
+  // Per-model toggle state (Set of enabled model IDs per provider)
   const [modelEnabled, setModelEnabled] = useState<Record<string, Set<string>>>({});
 
   // ─── Save status ───
@@ -128,17 +126,14 @@ export default function AdminModelsPage() {
 
       // Initialize toggle states from admin settings
       const providerModels = data.settings.globalProviderModels ?? {};
-      const enabled: Record<string, boolean> = {};
       const models: Record<string, Set<string>> = {};
 
       for (const [providerId, config] of Object.entries(providerModels)) {
-        enabled[providerId] = (config as ProviderModelConfig).enabled ?? true;
         if ((config as ProviderModelConfig).models) {
           models[providerId] = new Set((config as ProviderModelConfig).models);
         }
       }
 
-      setProviderEnabled(enabled);
       setModelEnabled(models);
     } finally {
       setSettingsLoading(false);
@@ -149,23 +144,6 @@ export default function AdminModelsPage() {
     Promise.all([loadProviders(), loadModels(), loadSettings()]).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Initialize providerEnabled for providers not in config (default to enabled)
-  useEffect(() => {
-    if (modelProviders.length > 0) {
-      setProviderEnabled((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        for (const prov of modelProviders) {
-          if (!(prov.id in next)) {
-            next[prov.id] = true;
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-    }
-  }, [modelProviders]);
 
   // ─── Provider actions ───
   const handleAddProvider = async () => {
@@ -201,7 +179,16 @@ export default function AdminModelsPage() {
 
   // ─── Model toggle actions ───
   const handleProviderToggle = (providerId: string, enabled: boolean) => {
-    setProviderEnabled((prev) => ({ ...prev, [providerId]: enabled }));
+    setModelEnabled((prev) => {
+      const models = availableModels[providerId] ?? [];
+      if (enabled) {
+        // Enable all models
+        return { ...prev, [providerId]: new Set(models.map((m) => m.id)) };
+      } else {
+        // Disable all models
+        return { ...prev, [providerId]: new Set() };
+      }
+    });
   };
 
   const handleModelToggle = (providerId: string, modelId: string, enabled: boolean) => {
@@ -222,9 +209,9 @@ export default function AdminModelsPage() {
     setSaving(true);
 
     const globalProviderModels: Record<string, ProviderModelConfig> = {};
-    for (const [providerId, enabled] of Object.entries(providerEnabled)) {
+    for (const providerId of Object.keys(availableModels)) {
       globalProviderModels[providerId] = {
-        enabled,
+        enabled: true,
         models: Array.from(modelEnabled[providerId] ?? []),
       };
     }
@@ -238,7 +225,7 @@ export default function AdminModelsPage() {
       setSaveStatus("error");
     }
     setSaving(false);
-  }, [adminSettings, providerEnabled, modelEnabled]);
+  }, [adminSettings, availableModels, modelEnabled]);
 
   const isLoading = providersLoading && modelsLoading && settingsLoading;
 
@@ -414,9 +401,8 @@ export default function AdminModelsPage() {
 
           {modelProviders.map((provider) => {
             const models = availableModels[provider.id] ?? [];
-            const isProviderEnabled = providerEnabled[provider.id] ?? true;
             const enabledModels = modelEnabled[provider.id] ?? new Set(models.map((m) => m.id));
-
+            const allEnabled = models.length > 0 && enabledModels.size === models.length;
             return (
               <GlassPanel key={provider.id}>
                 <GlassPanelHeader
@@ -424,12 +410,12 @@ export default function AdminModelsPage() {
                   action={
                     <div className="flex items-center gap-3">
                       <Badge variant="secondary" className="rounded-full text-xs">
-                        {provider.modelCount} models
+                        {enabledModels.size}/{models.length} enabled
                       </Badge>
                       <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-xs">Enabled</span>
+                        <span className="text-muted-foreground text-xs">All</span>
                         <Switch
-                          checked={isProviderEnabled}
+                          checked={allEnabled}
                           onCheckedChange={(checked) => handleProviderToggle(provider.id, checked)}
                         />
                       </div>
@@ -437,13 +423,7 @@ export default function AdminModelsPage() {
                   }
                 />
                 <GlassPanelContent className="p-0">
-                  {!isProviderEnabled ? (
-                    <div className="px-4 py-6 text-center">
-                      <p className="text-muted-foreground text-sm">
-                        Provider disabled — all models from this provider are unavailable
-                      </p>
-                    </div>
-                  ) : models.length === 0 ? (
+                  {models.length === 0 ? (
                     <div className="px-4 py-6 text-center">
                       <p className="text-muted-foreground text-sm">No models discovered yet</p>
                     </div>
@@ -472,7 +452,6 @@ export default function AdminModelsPage() {
                               onCheckedChange={(checked) =>
                                 handleModelToggle(provider.id, model.id, checked)
                               }
-                              disabled={!isProviderEnabled}
                             />
                           </div>
                           {i < models.length - 1 && <Separator className="px-4" />}
