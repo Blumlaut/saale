@@ -307,17 +307,20 @@ export function Inbox() {
     [activeAccountId, folder, debouncedSearch, tagFilter, offset],
   );
 
-  // Stable refresh function using refs internally
-  const refreshAll = useCallback(async () => {
-    await loadAccounts();
-    await loadMessages(false);
-  }, [loadAccounts, loadMessages]);
-
   // Ref to always have the latest loadMessages without triggering re-renders
   const loadMessagesRef = useRef(loadMessages);
   useEffect(() => {
     loadMessagesRef.current = loadMessages;
   }, [loadMessages]);
+
+  // Guard against concurrent load more requests
+  const isAppending = useRef(false);
+
+  // Stable refresh function
+  const refreshAll = useCallback(async () => {
+    await loadAccounts();
+    await loadMessagesRef.current(false);
+  }, [loadAccounts]);
 
   // Initial load + filter changes
   useEffect(() => {
@@ -339,8 +342,11 @@ export function Inbox() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
-          loadMessagesRef.current(true);
+        if (entries[0]?.isIntersecting && !isAppending.current) {
+          isAppending.current = true;
+          loadMessagesRef.current(true).finally(() => {
+            isAppending.current = false;
+          });
         }
       },
       { rootMargin: "100px" },
@@ -804,7 +810,14 @@ export function Inbox() {
                     <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
                   ) : (
                     <button
-                      onClick={() => loadMessagesRef.current(true)}
+                      onClick={() => {
+                        if (!isAppending.current) {
+                          isAppending.current = true;
+                          loadMessagesRef.current(true).finally(() => {
+                            isAppending.current = false;
+                          });
+                        }
+                      }}
                       className="text-muted-foreground rounded-full px-3 py-1 text-xs transition-colors hover:bg-white/10 dark:hover:bg-white/5"
                     >
                       Load more
