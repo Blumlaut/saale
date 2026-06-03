@@ -83,18 +83,20 @@ model Verification {
 // ─── Chat ──────────────────────────────────────────────────────
 
 model ChatSession {
-  id             String        @id @default(cuid())
-  userId         String
-  title          String
-  modelProvider  String?
-  modelName      String?
-  thinkingLevel  String        @default("off")
-  toolConfig     Json?         // { files: true, email: true, jobs: true, chatSearch: true }
-  messageCount   Int           @default(0)
-  messages       ChatMessage[]
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  userId           String
+  title            String
+  modelProvider    String?
+  modelName        String?
+  thinkingLevel    String        @default("off")
+  toolConfig       Json?         // { files: true, email: true, jobs: true, chatSearch: true, memory: true }
+  messageCount     Int           @default(0)
+  lastSummarizedAt DateTime?     // cursor — only process messages after this for memory extraction
+  memorySummary    String?       @db.Text // compressed running summary of the conversation
+  messages         ChatMessage[]
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@index([userId, createdAt])
   @@map("ChatSession")
@@ -133,6 +135,27 @@ model ChatAttachment {
 
   @@index([messageId])
   @@map("ChatAttachment")
+}
+
+// ─── Memory ──────────────────────────────────────────────────────
+
+/// Persistent memories extracted from chat history by the AI.
+model Memory {
+  id           String   @id @default(cuid())
+  userId       String
+  collection   String   // "facts" | "projects" | "people" | "preferences" | "decisions"
+  title        String
+  content      String   @db.Text
+  tags         String[] @default([])
+  importance   Int      @default(5)   // 1-10, set by extraction model
+  source       String?  // ChatSession.id this memory came from
+  accessCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, collection])
+  @@index([userId, tags])
+  @@map("Memory")
 }
 
 // ─── Email ─────────────────────────────────────────────────────

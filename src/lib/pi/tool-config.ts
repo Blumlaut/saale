@@ -14,6 +14,7 @@ export interface ToolConfig {
   calendar?: boolean;
   chatSearch?: boolean;
   web?: boolean;
+  memory?: boolean;
 }
 
 /**
@@ -27,4 +28,5 @@ export const DEFAULT_TOOL_CONFIG: Required<ToolConfig> = {
   calendar: true,
   chatSearch: true,
   web: true,
+  memory: true,
 };

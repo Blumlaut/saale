@@ -16,6 +16,7 @@ import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
 import { createWebTools } from "./tools/web-tools";
+import { createMemoryTools } from "./tools/memory-tools";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-config";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
@@ -197,6 +198,11 @@ export async function createPiSession(options: {
   if (enabled.web) {
     const webTools = createWebTools();
     allCustomTools.push(webTools.webSearchTool, webTools.webFetchTool);
+  }
+
+  if (enabled.memory) {
+    const memoryTools = createMemoryTools(options.userId);
+    allCustomTools.push(memoryTools.memorySearchTool);
   }
 
   // Resolve the model if specified

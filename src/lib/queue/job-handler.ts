@@ -1,6 +1,7 @@
 import type { Job } from "bullmq";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
+import { Prisma } from "../../../prisma/generated/prisma";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { moveMessage } from "@/lib/email/imap";
 import { buildModelRegistry } from "@/lib/pi/models";
@@ -453,6 +454,278 @@ export async function processJob(job: Job): Promise<void> {
           results: spamResults,
         });
       }
+    } else if (type === "memory_extraction") {
+      const maxSessions = config.maxSessionsPerRun ?? 10;
+      const maxExisting = config.maxExistingMemories ?? 15;
+
+      // Find sessions with unprocessed messages
+      // Use raw query to handle NULL-safe comparison: lastSummarizedAt IS NULL OR lastSummarizedAt < updatedAt
+      const sessions = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          lastSummarizedAt: Date | null;
+          memorySummary: string | null;
+        }>
+      >(
+        Prisma.sql`
+          SELECT id, "lastSummarizedAt", "memorySummary"
+          FROM "ChatSession"
+          WHERE userId = ${task.userId}
+            AND "messageCount" > 0
+            AND ("lastSummarizedAt" IS NULL OR "lastSummarizedAt" < "updatedAt")
+          ORDER BY "updatedAt" DESC
+          LIMIT ${maxSessions}
+        `,
+      );
+
+      let totalAdded = 0;
+      let totalRemoved = 0;
+      let sessionsProcessed = 0;
+
+      for (const session of sessions) {
+        // Fetch new messages since last summarized
+        const newMessages = await prisma.chatMessage.findMany({
+          where: {
+            sessionId: session.id,
+            ...(session.lastSummarizedAt ? { createdAt: { gt: session.lastSummarizedAt } } : {}),
+          },
+          orderBy: { createdAt: "asc" },
+          select: {
+            role: true,
+            content: true,
+            createdAt: true,
+          },
+        });
+
+        if (newMessages.length === 0) {
+          // No new messages — advance cursor anyway
+          await prisma.chatSession.update({
+            where: { id: session.id },
+            data: { lastSummarizedAt: new Date() },
+          });
+          sessionsProcessed++;
+          continue;
+        }
+
+        // Truncate if messages exceed ~15k tokens (rough estimate: 4 chars per token)
+        const maxChars = 15_000 * 4;
+        let messagesText = newMessages.map((m) => `[${m.role}] ${m.content}`).join("\n\n");
+        if (messagesText.length > maxChars) {
+          // Keep newest messages, discard oldest
+          const truncated = newMessages.slice(-Math.floor(newMessages.length / 2));
+          messagesText = truncated.map((m) => `[${m.role}] ${m.content}`).join("\n\n");
+        }
+
+        // Fetch existing categories
+        const categoryResults = await prisma.memory.findMany({
+          where: { userId: task.userId },
+          select: { collection: true },
+          distinct: ["collection"],
+        });
+        const existingCategories = categoryResults.map((r) => r.collection);
+
+        // Fetch top existing memories for dedup context
+        const existingMemories = await prisma.memory.findMany({
+          where: { userId: task.userId },
+          orderBy: [{ importance: "desc" }, { updatedAt: "desc" }],
+          take: maxExisting,
+          select: {
+            id: true,
+            collection: true,
+            title: true,
+            content: true,
+            tags: true,
+            importance: true,
+          },
+        });
+
+        // Build extraction prompt
+        const extractionPrompt = `
+You are a knowledge curator. Extract memorable information from this conversation.
+
+${
+  session.memorySummary
+    ? `Previous conversation summary:
+"${session.memorySummary}"`
+    : "No previous summary."
+}
+
+New messages:
+${messagesText}
+
+Existing memory categories:
+${existingCategories.length > 0 ? existingCategories.join(", ") : "(none yet)"}
+
+Existing memories (for deduplication — do not re-extract these):
+${
+  existingMemories.length > 0
+    ? existingMemories
+        .map((m) => `- [${m.collection}] ${m.title}: ${m.content.slice(0, 200)}`)
+        .join("\n")
+    : "(none)"
+}
+
+Extract ONLY new information not already captured.
+
+Categorization:
+- Place each memory into one of the existing categories above
+- Only create a new category if none of the existing ones fit the memory's purpose
+- Category names should be lowercase, single words (e.g. "facts", "decisions", "projects")
+
+Rules:
+- Be conservative — only extract specific, concrete information
+- Skip vague observations, small talk, and things already in existing memories
+- If new info contradicts an existing memory, flag it for removal
+- Set importance 1-10: explicit user statements = 8-10, inferred = 3-5
+
+Output JSON:
+{
+  "add": [
+    { "collection": "facts", "title": "...", "content": "...", "tags": ["..."], "importance": 7 }
+  ],
+  "remove": ["memory_id_1"],
+  "summary": "updated running summary of the full conversation so far"
+}
+`.trim();
+
+        const response = await dispatchAiTask(task.userId, extractionPrompt, {
+          systemPrompt:
+            "You are a knowledge extraction engine. Analyze conversations and extract facts, decisions, preferences, and patterns. Output valid JSON only.",
+          modelId,
+        });
+
+        let parsed;
+        try {
+          const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, response];
+          parsed = JSON.parse(jsonMatch[1].trim());
+        } catch {
+          parsed = { add: [], remove: [], summary: session.memorySummary ?? "" };
+        }
+
+        const candidates = (parsed.add ?? []).filter(
+          (m: { collection: string; title: string; content: string }) =>
+            m.collection && m.title && m.content,
+        );
+        const removals = (parsed.remove ?? []).filter((id: string) => typeof id === "string");
+        const newSummary =
+          typeof parsed.summary === "string" ? parsed.summary : (session.memorySummary ?? "");
+
+        // Code-level deduplication against existing memories
+        const existingByCollection = new Map<string, typeof existingMemories>();
+        for (const mem of existingMemories) {
+          const list = existingByCollection.get(mem.collection) ?? [];
+          list.push(mem);
+          existingByCollection.set(mem.collection, list);
+        }
+
+        for (const candidate of candidates) {
+          const existingInCollection = existingByCollection.get(candidate.collection) ?? [];
+          let bestOverlap = 0;
+          let bestMatch = null;
+
+          for (const existing of existingInCollection) {
+            const overlap = titleWordOverlap(candidate.title, existing.title);
+            if (overlap > bestOverlap) {
+              bestOverlap = overlap;
+              bestMatch = existing;
+            }
+          }
+
+          if (bestOverlap > 0.5 && bestMatch) {
+            // Duplicate — skip
+            continue;
+          } else if (bestOverlap >= 0.25 && bestMatch) {
+            // Similar — merge content into existing
+            await prisma.memory.update({
+              where: { id: bestMatch.id },
+              data: {
+                content: bestMatch.content + "\n\n" + candidate.content,
+                tags: Array.from(new Set([...bestMatch.tags, ...(candidate.tags ?? [])])),
+                importance: Math.max(bestMatch.importance, candidate.importance ?? 5),
+              },
+            });
+            totalAdded++;
+          } else {
+            // New memory
+            await prisma.memory.create({
+              data: {
+                userId: task.userId,
+                collection: candidate.collection,
+                title: candidate.title,
+                content: candidate.content,
+                tags: candidate.tags ?? [],
+                importance: candidate.importance ?? 5,
+                source: session.id,
+              },
+            });
+            totalAdded++;
+          }
+        }
+
+        // Handle removals
+        if (removals.length > 0) {
+          // Guard: only delete memories that belong to this user
+          const deletable = await prisma.memory.deleteMany({
+            where: {
+              id: { in: removals },
+              userId: task.userId,
+            },
+          });
+          totalRemoved += deletable.count;
+        }
+
+        // Update session cursor and summary
+        await prisma.chatSession.update({
+          where: { id: session.id },
+          data: {
+            lastSummarizedAt: new Date(),
+            memorySummary: newSummary,
+          },
+        });
+        sessionsProcessed++;
+      }
+
+      output = JSON.stringify({
+        sessionsProcessed,
+        memoriesAdded: totalAdded,
+        memoriesRemoved: totalRemoved,
+      });
+    } else if (type === "memory_pruning") {
+      const unusedDays = config.unusedDays ?? 90;
+      const lowImportanceDays = config.lowImportanceDays ?? 180;
+
+      const unusedCutoff = new Date(Date.now() - unusedDays * 24 * 60 * 60 * 1000);
+      const lowImportanceCutoff = new Date(Date.now() - lowImportanceDays * 24 * 60 * 60 * 1000);
+
+      // Delete unused memories (0 accesses, older than threshold)
+      const unusedDeleted = await prisma.memory.deleteMany({
+        where: {
+          userId: task.userId,
+          accessCount: 0,
+          createdAt: { lt: unusedCutoff },
+        },
+      });
+
+      // Delete low-importance memories (importance < 3, older than threshold)
+      const lowImportanceDeleted = await prisma.memory.deleteMany({
+        where: {
+          userId: task.userId,
+          importance: { lt: 3 },
+          createdAt: { lt: lowImportanceCutoff },
+        },
+      });
+
+      // Reset access counts for next cycle
+      await prisma.memory.updateMany({
+        where: { userId: task.userId },
+        data: { accessCount: 0 },
+      });
+
+      output = JSON.stringify({
+        unusedDeleted: unusedDeleted.count,
+        lowImportanceDeleted: lowImportanceDeleted.count,
+        totalDeleted: unusedDeleted.count + lowImportanceDeleted.count,
+      });
     } else {
       throw new Error(`Unknown job type: ${type}`);
     }
@@ -483,4 +756,25 @@ export async function processJob(job: Job): Promise<void> {
 
     throw err;
   }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Compute word overlap ratio between two titles.
+ * Returns a value between 0 (no overlap) and 1 (identical words).
+ */
+function titleWordOverlap(a: string, b: string): number {
+  const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
+  const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
+  if (wordsA.size === 0 || wordsB.size === 0) return 0;
+
+  let matches = 0;
+  for (const word of wordsA) {
+    if (wordsB.has(word)) matches++;
+  }
+
+  // Overlap relative to the smaller set
+  const minSize = Math.min(wordsA.size, wordsB.size);
+  return matches / minSize;
 }
