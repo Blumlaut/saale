@@ -15,36 +15,7 @@ import {
   ChevronRight,
   Lightbulb,
 } from "lucide-react";
-
-interface ToolCall {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  result: string | undefined;
-  isError: boolean | undefined;
-  status: "running" | "completed" | "error" | undefined;
-}
-
-interface AttachmentData {
-  id: string;
-  storageId: string;
-  fileName: string;
-  mimeType: string;
-  size: number;
-  width?: number;
-  height?: number;
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  thinking: string | undefined;
-  toolCalls: ToolCall[] | undefined;
-  parentMessageId: string | undefined;
-  createdAt: string;
-  attachments: AttachmentData[] | undefined;
-}
+import type { Message } from "./types";
 
 interface MessageListProps {
   messages: Message[];
@@ -333,7 +304,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                           "ml-auto rounded-full px-1.5 py-0 text-[10px]",
                           toolCall.status === "running" && "bg-yellow-500/10 text-yellow-600",
                           toolCall.status === "completed" && "bg-green-500/10 text-green-600",
-                          (toolCall.status === "error" || toolCall.isError) &&
+                          (toolCall.status === "error" || toolCall.error) &&
                             "bg-red-500/10 text-red-600",
                         )}
                       >
@@ -343,10 +314,10 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                         {toolCall.status === "completed" && (
                           <CheckCircle className="mr-1 h-2.5 w-2.5" />
                         )}
-                        {(toolCall.status === "error" || toolCall.isError) && (
+                        {(toolCall.status === "error" || toolCall.error) && (
                           <AlertCircle className="mr-1 h-2.5 w-2.5" />
                         )}
-                        {toolCall.status || (toolCall.isError ? "error" : "done")}
+                        {toolCall.status || (toolCall.error ? "error" : "done")}
                       </Badge>
                     </button>
 
@@ -363,13 +334,13 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                             <>
                               <div className="text-muted-foreground text-xs">
                                 <span className="font-medium">
-                                  {toolCall.isError ? "Error:" : "Result:"}
+                                  {toolCall.error ? "Error:" : "Result:"}
                                 </span>
                               </div>
                               <pre
                                 className={cn(
                                   "overflow-x-auto rounded-lg p-2 text-xs",
-                                  toolCall.isError
+                                  toolCall.error
                                     ? "bg-red-500/10 text-red-600"
                                     : "bg-white/10 dark:bg-white/5",
                                 )}

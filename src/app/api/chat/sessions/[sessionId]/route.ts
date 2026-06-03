@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { deleteImage } from "@/lib/image-attachment";
 
 /**
  * GET /api/chat/sessions/:sessionId — Get session details
@@ -106,6 +107,19 @@ export async function DELETE(
   if (!chatSession) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Fetch all attachment paths to clean up image files from disk
+  const messageIds = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    select: { id: true },
+  });
+  const attachments = await prisma.chatAttachment.findMany({
+    where: { messageId: { in: messageIds.map((m) => m.id) } },
+    select: { storagePath: true },
+  });
+
+  // Delete image files from disk (non-blocking — DB cascade handles the rest)
+  void Promise.allSettled(attachments.map((a) => deleteImage(authResult.user.id, a.storagePath)));
 
   await prisma.chatSession.delete({
     where: { id: sessionId },
