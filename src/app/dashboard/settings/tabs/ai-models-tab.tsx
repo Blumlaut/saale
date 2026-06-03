@@ -8,7 +8,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Bot,
   Loader2,
@@ -194,35 +193,41 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[160px] flex-1 space-y-1.5">
             <Label className="text-xs">Provider</Label>
-            <Popover open={providerOpen} onOpenChange={setProviderOpen}>
-              <PopoverTrigger className="border-border/50 focus-visible:ring-ring/50 inline-flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-2.5 text-sm outline-hidden transition-colors hover:bg-white/10 focus-visible:ring-3 dark:hover:bg-white/5">
+            <div className="relative">
+              <button
+                type="button"
+                className="border-border/50 inline-flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-2.5 text-sm outline-hidden transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+                onClick={() => setProviderOpen(!providerOpen)}
+              >
                 <span className="truncate text-sm">
                   {availableProviders.find((p) => p.id === newProvider)?.name ?? (
                     <span className="text-muted-foreground">Select…</span>
                   )}
                 </span>
                 <ChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-              </PopoverTrigger>
-              <PopoverContent className="w-[200px] p-1" align="start">
-                {availableProviders.map((p) => (
-                  <button
-                    key={p.id}
-                    className={cn(
-                      "flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-                      p.id === newProvider
-                        ? "bg-primary/10 font-medium"
-                        : "hover:bg-white/10 dark:hover:bg-white/5",
-                    )}
-                    onClick={() => {
-                      setNewProvider(p.id);
-                      setProviderOpen(false);
-                    }}
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </PopoverContent>
-            </Popover>
+              </button>
+              {providerOpen && (
+                <div className="border-border/50 bg-background/95 absolute top-full z-50 mt-1 w-full overflow-hidden rounded-lg border backdrop-blur-xl">
+                  {availableProviders.map((p) => (
+                    <button
+                      key={p.id}
+                      className={cn(
+                        "flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                        p.id === newProvider
+                          ? "bg-primary/10 font-medium"
+                          : "hover:bg-white/10 dark:hover:bg-white/5",
+                      )}
+                      onClick={() => {
+                        setNewProvider(p.id);
+                        setProviderOpen(false);
+                      }}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="min-w-[180px] flex-1 space-y-1.5">
