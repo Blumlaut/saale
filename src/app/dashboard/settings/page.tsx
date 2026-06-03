@@ -14,6 +14,7 @@ import {
   PenTool,
   Calendar,
   Wrench,
+  Brain,
 } from "lucide-react";
 import { ProvidersTab } from "./tabs/providers-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
@@ -22,6 +23,7 @@ import { EmailTab } from "./tabs/email-tab";
 import { CalendarTab } from "./tabs/calendar-tab";
 import { AppearanceTab } from "./tabs/appearance-tab";
 import { ToolsTab } from "./tabs/tools-tab";
+import { MemoriesTab } from "./tabs/memories-tab";
 import type {
   UserSettings,
   ConfiguredProvider,
@@ -174,6 +176,10 @@ export default function SettingsPage() {
                 <Palette className="h-4 w-4" />
                 Appearance
               </TabsTrigger>
+              <TabsTrigger value="memories" className="gap-2">
+                <Brain className="h-4 w-4" />
+                Memories
+              </TabsTrigger>
               <TabsTrigger value="tools" className="gap-2">
                 <Wrench className="h-4 w-4" />
                 Tools
@@ -223,6 +229,10 @@ export default function SettingsPage() {
 
           <TabsContent value="appearance" className="space-y-6">
             <AppearanceTab />
+          </TabsContent>
+
+          <TabsContent value="memories" className="space-y-6">
+            <MemoriesTab />
           </TabsContent>
 
           <TabsContent value="tools" className="space-y-6">
