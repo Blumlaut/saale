@@ -3,6 +3,8 @@
 import { useState, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { CalendarDays, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -20,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { patchJson, deleteJson, postJson } from "@/lib/http";
 
 interface CalendarAccount {
@@ -44,9 +47,10 @@ interface CalendarSidebarProps {
 export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarProps) {
   const [alertOpen, setAlertOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [addAccountId, setAddAccountId] = useState<string | null>(null);
   const [newCalendarName, setNewCalendarName] = useState("");
   const [newCalendarColor, setNewCalendarColor] = useState("#3b82f6");
-  const [addingForAccountId, setAddingForAccountId] = useState<string | null>(null);
   const [editingCalendarId, setEditingCalendarId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [editingColor, setEditingColor] = useState("");
@@ -81,24 +85,33 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
     }
   }, [pendingDelete, onAccountsChange]);
 
-  const handleAddCalendar = useCallback(
-    async (accountId: string) => {
-      if (!newCalendarName.trim()) return;
-      try {
-        await postJson("/api/calendar/calendars", {
-          name: newCalendarName.trim(),
-          color: newCalendarColor,
-          accountId,
-        });
-        setNewCalendarName("");
-        setAddingForAccountId(null);
-        await onAccountsChange();
-      } catch {
-        // Ignore
-      }
-    },
-    [newCalendarName, newCalendarColor, onAccountsChange],
-  );
+  const openAddSheet = (accountId: string) => {
+    setAddAccountId(accountId);
+    setNewCalendarName("");
+    setNewCalendarColor("#3b82f6");
+    setAddSheetOpen(true);
+  };
+
+  const closeAddSheet = () => {
+    setAddSheetOpen(false);
+    setAddAccountId(null);
+    setNewCalendarName("");
+  };
+
+  const handleAddCalendar = useCallback(async () => {
+    if (!newCalendarName.trim() || !addAccountId) return;
+    try {
+      await postJson("/api/calendar/calendars", {
+        name: newCalendarName.trim(),
+        color: newCalendarColor,
+        accountId: addAccountId,
+      });
+      closeAddSheet();
+      await onAccountsChange();
+    } catch {
+      // Ignore
+    }
+  }, [newCalendarName, newCalendarColor, addAccountId, onAccountsChange]);
 
   const handleEditCalendar = useCallback(
     async (calendarId: string) => {
@@ -132,8 +145,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
   const totalAccounts = accounts.length;
 
   return (
-    <div className="flex flex-col gap-4 md:w-52 md:shrink-0 md:flex-row">
-      {/* Summary — compact on desktop, takes available space on mobile */}
+    <div className="flex flex-row gap-4 md:w-52 md:shrink-0 md:flex-col">
+      {/* Summary */}
       <GlassPanel className="flex-shrink-0">
         <GlassPanelContent className="flex items-center gap-3 py-3">
           <CalendarDays className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -166,65 +179,12 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
                       variant="ghost"
                       size="icon"
                       className="h-5 w-5"
-                      onClick={() => setAddingForAccountId(account.id)}
+                      onClick={() => openAddSheet(account.id)}
                     >
                       <Plus className="h-3 w-3" />
                     </Button>
                   )}
                 </div>
-
-                {/* Add calendar form */}
-                {addingForAccountId === account.id && (
-                  <div className="border-border/50 mt-2 space-y-1.5 rounded-lg border p-2">
-                    <input
-                      autoFocus
-                      className="border-border/50 focus:border-ring w-full rounded bg-transparent px-1.5 py-1 text-xs outline-none"
-                      placeholder="Calendar name"
-                      value={newCalendarName}
-                      onChange={(e) => setNewCalendarName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleAddCalendar(account.id);
-                        if (e.key === "Escape") setAddingForAccountId(null);
-                      }}
-                    />
-                    <div className="flex items-center gap-1">
-                      {defaultColors.map((color) => (
-                        <button
-                          key={color}
-                          onClick={() => setNewCalendarColor(color)}
-                          className={`h-3.5 w-3.5 shrink-0 rounded-full transition-all ${
-                            newCalendarColor === color
-                              ? "ring-ring scale-110 ring-2 ring-offset-1 ring-offset-transparent"
-                              : "opacity-60 hover:opacity-100"
-                          }`}
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-5 px-2 text-[10px]"
-                        onClick={() => handleAddCalendar(account.id)}
-                        disabled={!newCalendarName.trim()}
-                      >
-                        Add
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 px-2 text-[10px]"
-                        onClick={() => {
-                          setAddingForAccountId(null);
-                          setNewCalendarName("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
 
                 {account.calendars.map((cal) => (
                   <div key={cal.id} className="mt-1">
@@ -339,6 +299,79 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
           )}
         </GlassPanelContent>
       </GlassPanel>
+
+      {/* Add Calendar Sheet */}
+      <Sheet open={addSheetOpen} onOpenChange={setAddSheetOpen}>
+        <SheetContent className="liquid-glass flex w-full flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl sm:w-[440px] sm:max-w-none">
+          <div className="flex h-full flex-col">
+            {/* Header */}
+            <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
+              <SheetTitle className="text-xl leading-tight font-semibold tracking-tight">
+                New Calendar
+              </SheetTitle>
+            </SheetHeader>
+
+            {/* Form */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <div className="space-y-5">
+                {/* Name */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Name</Label>
+                  <Input
+                    autoFocus
+                    className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+                    placeholder="Calendar name"
+                    value={newCalendarName}
+                    onChange={(e) => setNewCalendarName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddCalendar();
+                    }}
+                  />
+                </div>
+
+                {/* Color */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Color</Label>
+                  <div className="flex items-center gap-2">
+                    {defaultColors.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setNewCalendarColor(color)}
+                        className={`h-8 w-8 shrink-0 rounded-full transition-all ${
+                          newCalendarColor === color
+                            ? "ring-ring scale-110 ring-2 ring-offset-2 ring-offset-transparent"
+                            : "opacity-60 hover:opacity-100"
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-border/30 border-t px-6 py-4">
+              <div className="flex items-center gap-2">
+                <Button
+                  className="liquid-glass-pill h-9 flex-1 rounded-full text-xs font-medium"
+                  onClick={closeAddSheet}
+                  variant="ghost"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium"
+                  disabled={!newCalendarName.trim()}
+                  onClick={handleAddCalendar}
+                >
+                  Add Calendar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Delete confirmation */}
       <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
