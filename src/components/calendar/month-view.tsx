@@ -63,16 +63,16 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
           const isTodayDate = isToday(day);
 
           return (
-            <button
+            <div
               key={index}
-              onClick={() => onDateClick(day)}
               className={cn(
-                "border-border/30 min-h-[80px] border-r border-b p-1 text-left transition-colors hover:bg-white/10",
+                "border-border/30 min-h-[80px] cursor-pointer border-r border-b p-1 text-left transition-colors hover:bg-white/10",
                 !isCurrentMonth && "bg-muted/20 text-muted-foreground",
                 isTodayDate && "bg-primary/5",
                 index % 7 === 6 && "border-r-0",
                 index >= days.length - 7 && "border-b-0",
               )}
+              onClick={() => onDateClick(day)}
             >
               <span
                 className={cn(
@@ -85,14 +85,11 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
               </span>
               <div className="mt-0.5 flex flex-col gap-0.5">
                 {dayEvents.slice(0, 3).map((evt) => (
-                  <button
+                  <span
                     key={evt.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEventClick(evt);
-                    }}
+                    onClick={() => onEventClick(evt)}
                     className={cn(
-                      "truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
+                      "cursor-pointer truncate rounded px-1 py-0.5 text-[10px] transition-colors hover:brightness-110",
                       evt.allDay
                         ? "bg-primary/10 text-primary"
                         : "bg-muted/40 text-muted-foreground",
@@ -107,7 +104,7 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
                     }
                   >
                     {evt.summary}
-                  </button>
+                  </span>
                 ))}
                 {dayEvents.length > 3 && (
                   <Badge
@@ -118,7 +115,7 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
                   </Badge>
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
