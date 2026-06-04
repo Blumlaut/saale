@@ -47,6 +47,7 @@ COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Prisma CLI + generated client (not bundled by Next.js standalone, needed for `npx prisma migrate deploy`)
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+RUN ln -s /app/node_modules/prisma/build/index.js /app/node_modules/.bin/prisma
 
 ENTRYPOINT ["dumb-init", "--"]
 USER nextjs
