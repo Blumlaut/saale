@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { validateImageUpload, processAndStoreImage, deleteImage } from "@/lib/image-attachment";
+import { validateImageUpload, processAndStoreImage, deleteAllImages } from "@/lib/image-attachment";
 
 /**
  * GET /api/chat/sessions/:sessionId/messages — Get messages for a session
@@ -257,9 +257,26 @@ export async function DELETE(
     where: { messageId },
     select: { storagePath: true },
   });
+  const storagePaths = attachments.map((a) => a.storagePath);
 
-  // Delete image files from disk (non-blocking — DB cascade handles the rest)
-  void Promise.allSettled(attachments.map((a) => deleteImage(authResult.user.id, a.storagePath)));
+  // Delete image files from disk — throws if any deletion fails
+  if (storagePaths.length > 0) {
+    try {
+      await deleteAllImages(authResult.user.id, storagePaths);
+    } catch (err) {
+      console.error(
+        `Failed to delete images for message ${messageId}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return NextResponse.json(
+        {
+          error: "Failed to delete attached images",
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        { status: 500 },
+      );
+    }
+  }
 
   await prisma.chatMessage.deleteMany({
     where: { sessionId, id: messageId },

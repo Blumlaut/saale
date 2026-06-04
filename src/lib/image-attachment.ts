@@ -123,3 +123,119 @@ export async function deleteImage(userId: string, storagePath: string): Promise<
     // File already gone — nothing to do
   }
 }
+
+/**
+ * Delete multiple image files atomically.
+ *
+ * - Deletes all files in parallel
+ * - If ANY deletion fails, an error is thrown (files already deleted are gone,
+ *   remaining files and DB records stay intact for a clean retry)
+ * - Files already missing are treated as success
+ *
+ * Call this BEFORE the DB delete so the operation fails fast if disk I/O is broken.
+ */
+export async function deleteAllImages(userId: string, storagePaths: string[]): Promise<void> {
+  if (storagePaths.length === 0) return;
+
+  const results = await Promise.allSettled(
+    storagePaths.map(async (storagePath) => {
+      const fullPath = resolveImagePath(userId, storagePath);
+      await fs.unlink(fullPath);
+    }),
+  );
+
+  const failures = results
+    .map((result, index) =>
+      result.status === "rejected"
+        ? { storagePath: storagePaths[index]!, error: result.reason }
+        : null,
+    )
+    .filter(Boolean) as Array<{ storagePath: string; error: unknown }>;
+
+  if (failures.length > 0) {
+    const details = failures
+      .map(
+        (f) => `${f.storagePath}: ${f.error instanceof Error ? f.error.message : String(f.error)}`,
+      )
+      .join("; ");
+    throw new Error(
+      `Failed to delete ${failures.length}/${storagePaths.length} image(s): ${details}`,
+    );
+  }
+}
+
+/**
+ * Scan the uploads directory for orphaned image files.
+ *
+ * An orphan is a file on disk whose storagePath does not appear in any
+ * ChatAttachment record. These can arise from server crashes mid-deletion.
+ *
+ * @returns The number of orphaned files deleted.
+ */
+export async function cleanupOrphanedImages(): Promise<number> {
+  const knownPaths = await getKnownStoragePaths();
+  let deletedCount = 0;
+
+  try {
+    const entries = await readUserDirs();
+    for (const { filePath, relativePath } of entries) {
+      if (!knownPaths.has(relativePath)) {
+        try {
+          await fs.unlink(filePath);
+          deletedCount++;
+        } catch {
+          // File disappeared between scan and delete — fine
+        }
+      }
+    }
+  } catch {
+    // Uploads dir doesn't exist yet — nothing to clean
+  }
+
+  return deletedCount;
+}
+
+/**
+ * Collect all storage paths from the ChatAttachment table.
+ */
+async function getKnownStoragePaths(): Promise<Set<string>> {
+  const { prisma } = await import("@/lib/db");
+  const attachments = await prisma.chatAttachment.findMany({
+    select: { storagePath: true },
+  });
+  return new Set(attachments.map((a) => a.storagePath));
+}
+
+/**
+ * Walk the uploads directory and yield every image file found.
+ */
+async function readUserDirs(): Promise<
+  Array<{ userId: string; filePath: string; relativePath: string }>
+> {
+  const entries: Array<{ userId: string; filePath: string; relativePath: string }> = [];
+
+  try {
+    const userNames = await fs.readdir(UPLOADS_DIR);
+    for (const userName of userNames) {
+      const imageDir = path.join(UPLOADS_DIR, userName, "images");
+      try {
+        const files = await fs.readdir(imageDir);
+        for (const file of files) {
+          if (!file.endsWith(".png")) continue;
+          const relativePath = `images/${file}`;
+          entries.push({
+            userId: userName,
+            filePath: path.join(imageDir, file),
+            relativePath,
+          });
+        }
+      } catch {
+        // images/ subdirectory doesn't exist for this user — skip
+      }
+    }
+  } catch {
+    // Uploads dir doesn't exist — return empty
+  }
+
+  return entries;
+}
