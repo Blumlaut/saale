@@ -2,12 +2,33 @@
 
 ## Project Maturity
 
-This project is in its early stages. Heavy reworks and structural changes are expected and encouraged.
+This project is **production-ready**. There is live data that must not be lost.
 
-- **Do not aim for backwards compatibility.** There is no legacy code worth preserving.
-- Feel free to refactor, rename, move, or delete code freely if it improves the design.
-- If something feels wrong or could be done better, do it better — don't carry forward bad decisions "to be safe."
-- Breaking changes are the default, not an exception.
+- **All schema changes must go through migrations.** Use `npm run db:migrate` (`prisma migrate dev`) — never `prisma db push` or `db:push` with `--accept-data-loss`.
+- Migration files are version-controlled and represent the authoritative history of schema changes. Never edit or delete existing migration files.
+- When a migration is needed:
+  1. Edit `prisma/schema.prisma` with the desired changes.
+  2. Run `npm run db:migrate` — this generates a new migration SQL file.
+  3. Review the generated SQL before applying. If it looks wrong, revert the schema change and fix it.
+  4. Commit both the schema change and the migration file together.
+- **Destructive changes** (dropping columns, renaming tables, changing column types with data loss) require explicit thought:
+  - If a column is needed at runtime during deployment, split the migration into steps (e.g., add new column → backfill data → drop old column in a later migration).
+  - Never drop a column that still has data you need without a data migration step.
+- Refactoring application code is fine, but always consider the impact on existing data and running instances.
+- If a schema change feels risky, discuss it — don't rush it.
+
+### Examples
+
+```bash
+# ✅ GOOD — creates a tracked migration
+npm run db:migrate
+
+# ❌ BAD — silently alters production schema, can drop data
+npx prisma db push --accept-data-loss
+
+# ❌ BAD — editing a migration after it has been applied
+# (this silently diverges the migration history from reality)
+```
 
 ## Investigate Before Using
 
