@@ -3,7 +3,7 @@
  * Queries a self-hosted SearXNG instance via its JSON API.
  */
 
-const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://localhost:8080";
+const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://saale-searxng:8080";
 
 export interface SearchResult {
   title: string;

@@ -16,7 +16,7 @@ services:
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
-      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
+      - SEARXNG_URL=${SEARXNG_URL:-http://saale-searxng:8080}
       - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://saale-open-terminal:8000}
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
@@ -24,6 +24,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      searxng:
         condition: service_healthy
       open-terminal:
         condition: service_healthy
@@ -64,7 +66,7 @@ services:
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
-      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
+      - SEARXNG_URL=${SEARXNG_URL:-http://saale-searxng:8080}
       - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://saale-open-terminal:8000}
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
@@ -73,6 +75,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      searxng:
         condition: service_healthy
       web:
         condition: service_healthy
