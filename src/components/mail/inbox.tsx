@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { formatDistanceToNow, format } from "date-fns";
+import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ReplyForwardSheet } from "@/components/mail/reply-forward-sheet";
 import { toast } from "sonner";
@@ -55,13 +55,18 @@ interface EmailMessage {
   subject: string;
   date: string;
   bodyPreview: string;
-  bodyHtml: string | null;
-  bodyText: string | null;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
   isRead: boolean;
   isStarred: boolean;
   folder: string;
   tags: string[];
   accountId: string;
+}
+
+interface EmailMessageDetail extends EmailMessage {
+  bodyHtml: string | null;
+  bodyText: string | null;
 }
 
 interface InboxEmailAccount extends EmailAccount {
@@ -72,6 +77,30 @@ function getSender(msg: EmailMessage): string {
   if (msg.fromName) return msg.fromName;
   if (msg.fromEmail) return msg.fromEmail;
   return "Unknown Sender";
+}
+
+/** Bucket date to nearest minute so the result is memoization-stable */
+function formatRelativeDate(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = now - then;
+
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return "just now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+
+  return `${Math.floor(months / 12)}y ago`;
 }
 
 /** Shared toolbar for desktop detail and mobile sheet */
@@ -211,7 +240,7 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
           fromEmail: message.fromEmail,
           to: message.to,
           subject: message.subject,
-          bodyText: message.bodyText,
+          bodyText: message.bodyText ?? null,
           bodyPreview: message.bodyPreview,
           accountId: message.accountId,
         }}
@@ -233,7 +262,8 @@ export function Inbox() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedMsg, setSelectedMsg] = useState<EmailMessage | null>(null);
+  const [selectedMsg, setSelectedMsg] = useState<EmailMessageDetail | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
@@ -377,20 +407,47 @@ export function Inbox() {
     }
   };
 
+  const fetchMessageDetail = useCallback(
+    async (msgId: string): Promise<EmailMessageDetail | null> => {
+      try {
+        const data = await fetchJson<{ message: EmailMessageDetail }>(
+          `/api/email/messages/${msgId}`,
+        );
+        return data.message;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
   const handleSelect = async (msg: EmailMessage) => {
     setSelectedId(msg.id);
-    setSelectedMsg(msg);
+    setLoadingMessage(true);
     if (isMobile) {
       setMobileDetailOpen(true);
     }
+
+    // Mark as read in local state immediately
     if (!msg.isRead) {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
-      setSelectedMsg((prev) => (prev ? { ...prev, isRead: true } : prev));
-      // Persist to server
+    }
+
+    // Fetch full message detail (bodyHtml, bodyText)
+    const detail = await fetchMessageDetail(msg.id);
+    if (detail) {
+      setSelectedMsg(detail);
+    } else {
+      // Fallback: use list data (won't have body)
+      setSelectedMsg({ ...msg, bodyHtml: null, bodyText: null } as EmailMessageDetail);
+    }
+    setLoadingMessage(false);
+
+    // Persist read status to server (best-effort)
+    if (!msg.isRead) {
       patchJson(`/api/email/messages/${msg.id}`, { isRead: true }).catch(() => {
         // Revert local state on failure
         setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: false } : m)));
-        setSelectedMsg((prev) => (prev ? { ...prev, isRead: false } : prev));
       });
     }
   };
@@ -764,9 +821,7 @@ export function Inbox() {
                             )}
                           </div>
                           <span className="text-muted-foreground ml-2 shrink-0 text-xs">
-                            {formatDistanceToNow(new Date(msg.date), {
-                              addSuffix: false,
-                            })}
+                            {formatRelativeDate(msg.date)}
                           </span>
                         </div>
                         <div className={cn("truncate text-sm", !msg.isRead && "font-medium")}>
@@ -836,7 +891,11 @@ export function Inbox() {
 
       {/* Message detail — desktop only */}
       <GlassPanel className="hidden flex-1 flex-col overflow-hidden border-0 md:flex">
-        {selectedMessage ? (
+        {loadingMessage ? (
+          <GlassPanelContent className="flex flex-1 items-center justify-center">
+            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+          </GlassPanelContent>
+        ) : selectedMessage ? (
           <>
             {/* Detail header with toolbar */}
             <div className="border-border/30 flex flex-col gap-3 border-b px-6 py-4">
@@ -986,63 +1045,69 @@ export function Inbox() {
               <div className="w-7" />
             </SheetHeader>
 
-            {selectedMessage && (
-              <>
-                {/* Toolbar row — scrollable on small screens */}
-                <div className="border-border/30 flex items-center gap-1 overflow-x-auto border-b px-4 py-2">
-                  <MessageToolbar message={selectedMessage} onRefresh={refreshAll} />
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-4">
-                  {/* Sender info */}
-                  <div className="py-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-medium">{getSender(selectedMessage)}</span>
-                      <span className="text-muted-foreground text-xs">
-                        &lt;{selectedMessage.fromEmail}&gt;
-                      </span>
-                    </div>
-                    <div className="text-muted-foreground mt-0.5 text-xs">
-                      To: {parseAddresses(selectedMessage.to).join(", ")}
-                    </div>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
-                    </p>
+            {loadingMessage ? (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+              </div>
+            ) : (
+              selectedMessage && (
+                <>
+                  {/* Toolbar row — scrollable on small screens */}
+                  <div className="border-border/30 flex items-center gap-1 overflow-x-auto border-b px-4 py-2">
+                    <MessageToolbar message={selectedMessage} onRefresh={refreshAll} />
                   </div>
 
-                  {/* Tags */}
-                  {selectedMessage.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 py-2">
-                      {selectedMessage.tags.map((tag) => (
-                        <Badge
-                          key={tag}
-                          className={cn(
-                            "cursor-pointer rounded-full px-2 py-0.5 text-xs",
-                            getTagColor(tag),
-                          )}
-                          onClick={() => handleRemoveTag(selectedMessage.id, tag)}
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
+                  <div className="flex-1 overflow-y-auto px-4">
+                    {/* Sender info */}
+                    <div className="py-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">{getSender(selectedMessage)}</span>
+                        <span className="text-muted-foreground text-xs">
+                          &lt;{selectedMessage.fromEmail}&gt;
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground mt-0.5 text-xs">
+                        To: {parseAddresses(selectedMessage.to).join(", ")}
+                      </div>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
+                      </p>
                     </div>
-                  )}
 
-                  {/* Message body — use .email-content styles, not prose */}
-                  <div className="pb-4">
-                    {selectedMessage.bodyHtml ? (
-                      <div
-                        className="max-w-none"
-                        dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
-                      />
-                    ) : (
-                      <pre className="text-sm whitespace-pre-wrap">
-                        {selectedMessage.bodyText || selectedMessage.bodyPreview}
-                      </pre>
+                    {/* Tags */}
+                    {selectedMessage.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 py-2">
+                        {selectedMessage.tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            className={cn(
+                              "cursor-pointer rounded-full px-2 py-0.5 text-xs",
+                              getTagColor(tag),
+                            )}
+                            onClick={() => handleRemoveTag(selectedMessage.id, tag)}
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
+
+                    {/* Message body — use .email-content styles, not prose */}
+                    <div className="pb-4">
+                      {selectedMessage.bodyHtml ? (
+                        <div
+                          className="max-w-none"
+                          dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
+                        />
+                      ) : (
+                        <pre className="text-sm whitespace-pre-wrap">
+                          {selectedMessage.bodyText || selectedMessage.bodyPreview}
+                        </pre>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </>
+                </>
+              )
             )}
           </div>
         </SheetContent>
