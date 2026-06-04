@@ -65,13 +65,17 @@ RUN addgroup --system --gid 1001 nodejs && \
 # Copy source + tsconfig + deps (tsx needs full source for @/ resolution)
 COPY --from=build --chown=nextjs:nodejs /app/src ./src
 COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=build --chown=nextjs:nodejs /app/.prisma ./.prisma
 COPY --from=build --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/package-lock.json ./package-lock.json
 
 RUN npm ci --omit=dev --ignore-scripts && \
     chown -R nextjs:nodejs /app/node_modules
+
+# Generate Prisma client (npm ci --ignore-scripts skips the prepare script)
+ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
+RUN npx prisma generate && \
+    chown -R nextjs:nodejs /app/node_modules/.prisma
 
 ENTRYPOINT ["dumb-init", "--"]
 USER nextjs
