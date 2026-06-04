@@ -6,11 +6,12 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchJson, deleteJson } from "@/lib/http";
-import { Trash2, Loader2 } from "lucide-react";
+import { Trash2, Loader2, Ghost } from "lucide-react";
 
 interface ChatSession {
   id: string;
   title: string;
+  temporary: boolean;
   messageCount: number;
   updatedAt: string;
 }
@@ -95,11 +96,17 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
                   className="flex min-w-0 flex-1 flex-col items-start text-left"
                   onClick={() => router.push(`/dashboard/chat/${session.id}`)}
                 >
-                  <div className="truncate font-medium">
-                    {session.title.length > 25 ? `${session.title.slice(0, 25)}…` : session.title}
+                  <div className="flex items-center gap-1.5">
+                    <div className="truncate font-medium">
+                      {session.title.length > 25 ? `${session.title.slice(0, 25)}…` : session.title}
+                    </div>
+                    {session.temporary && (
+                      <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />
+                    )}
                   </div>
                   <div className="text-muted-foreground truncate text-xs">
                     {formatDate(session.updatedAt)} · {session.messageCount} messages
+                    {session.temporary && " · auto-delete"}
                   </div>
                 </button>
                 <Button

@@ -20,6 +20,7 @@ export async function GET(
     where: { id: sessionId, userId: authResult.user.id },
     select: {
       id: true,
+      temporary: true,
       modelProvider: true,
       modelName: true,
       thinkingLevel: true,
@@ -42,6 +43,7 @@ export async function GET(
   return NextResponse.json({
     session: {
       id: chatSession.id,
+      temporary: chatSession.temporary,
       modelProvider: chatSession.modelProvider,
       modelName: chatSession.modelName,
       thinkingLevel: chatSession.thinkingLevel,

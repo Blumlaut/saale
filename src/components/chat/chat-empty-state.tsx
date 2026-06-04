@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { createChatSession } from "@/lib/chat-session";
-import { MessageSquarePlus } from "lucide-react";
+import { MessageSquarePlus, Ghost } from "lucide-react";
 
-export function ChatEmptyState() {
+export function ChatEmptyState({ temporaryMode }: { temporaryMode: boolean }) {
   const router = useRouter();
 
   return (
@@ -20,10 +20,16 @@ export function ChatEmptyState() {
           <p className="text-muted-foreground mt-1 max-w-sm text-sm">
             Ask questions, brainstorm ideas, or get help with your work.
           </p>
+          {temporaryMode && (
+            <span className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
+              <Ghost className="h-3 w-3" />
+              Temporary mode — chat will be deleted on close
+            </span>
+          )}
           <Button
             className="liquid-glass-accent mt-6"
             onClick={async () => {
-              const session = await createChatSession();
+              const session = await createChatSession({ temporary: temporaryMode });
               router.push(`/dashboard/chat/${session.id}`);
             }}
           >

@@ -10,8 +10,11 @@ interface UserSettings {
 
 /**
  * Create a new chat session, optionally using user settings for default model.
+ * @param options - Optional config including `temporary` flag for auto-delete on close.
  */
-export async function createChatSession(): Promise<{ id: string }> {
+export async function createChatSession(options?: {
+  temporary?: boolean;
+}): Promise<{ id: string }> {
   // Fetch user settings for default model
   let settings: UserSettings | null = null;
 
@@ -24,6 +27,7 @@ export async function createChatSession(): Promise<{ id: string }> {
 
   const data = await postJson<{ session: { id: string } }>("/api/chat/sessions", {
     title: "New Chat",
+    temporary: options?.temporary || false,
     modelProvider: settings?.defaultModelProvider || undefined,
     modelName: settings?.defaultModelName || undefined,
     thinkingLevel: settings?.defaultThinkingLevel || "off",
