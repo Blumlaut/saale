@@ -1,7 +1,7 @@
 import type { Job } from "bullmq";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { Prisma } from "../../../prisma/generated/prisma";
+import { Prisma } from "@prisma/client";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { moveMessage } from "@/lib/email/imap";
 import { buildModelRegistry } from "@/lib/pi/models";

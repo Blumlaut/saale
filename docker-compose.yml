@@ -1,15 +1,12 @@
 services:
-  app:
+  web:
     build:
       context: .
       target: ${BUILD_TARGET:-production}
-    container_name: saale-app
+    container_name: saale-web
     ports:
       - "3630:3000"
     volumes:
-      - .:/app
-      - saale_node_modules:/app/node_modules
-      - saale_next:/app/.next
       - uploads_data:/app/uploads
     environment:
       - NODE_ENV=${NODE_ENV:-production}
@@ -22,6 +19,7 @@ services:
       - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
       - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://open-terminal:8000}
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
+      - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,9 +27,9 @@ services:
         condition: service_healthy
       open-terminal:
         condition: service_healthy
-    command: ${APP_COMMAND:-}
+    command: ${WEB_COMMAND:-}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -50,6 +48,34 @@ services:
           path: package.json
         - action: rebuild
           path: prisma/schema.prisma
+
+  worker:
+    build:
+      context: .
+      target: production-worker
+    container_name: saale-worker
+    volumes:
+      - uploads_data:/app/uploads
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@postgres:5432/saale}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
+      - UPLOADS_DIR=/app/uploads
+      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
+      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://open-terminal:8000}
+      - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
+      - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
+      - WORKER_APP_URL=http://saale-web:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
 
   postgres:
     image: postgres:17-alpine
@@ -116,6 +142,4 @@ volumes:
   postgres_data:
   redis_data:
   uploads_data:
-  saale_node_modules:
-  saale_next:
   open-terminal-data:

@@ -1,7 +1,31 @@
 services:
-  app:
+  web:
     build:
       target: development
+    volumes:
+      - .:/app
+      - saale_node_modules:/app/node_modules
+      - saale_next:/app/.next
+      - uploads_data:/app/uploads
     environment:
       - NODE_ENV=development
-    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npm run worker & npm run dev"
+    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npm run dev"
+
+  worker:
+    build:
+      target: development
+    volumes:
+      - .:/app
+      - saale_node_modules:/app/node_modules
+      - uploads_data:/app/uploads
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+      - REDIS_URL=redis://redis:6379
+      - WORKER_APP_URL=http://saale-web:3630
+    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && ./node_modules/.bin/tsx --watch src/lib/queue/worker.ts"
+
+volumes:
+  saale_node_modules:
+  saale_next:
+  uploads_data:

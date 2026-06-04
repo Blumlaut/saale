@@ -1,7 +1,7 @@
 # ─── Base ─────────────────────────────────────────────────────────────────────
 
 FROM node:25-alpine AS base
-RUN apk add --no-cache curl dumb-init
+RUN apk add --no-cache dumb-init
 
 # ─── Dependencies ─────────────────────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ RUN npm ci --ignore-scripts
 COPY . .
 CMD ["npm", "run", "dev"]
 
-# ─── Build stage ──────────────────────────────────────────────────────────────
+# ─── Build stage (shared by web and worker) ──────────────────────────────────
 
 FROM base AS build
 WORKDIR /app
@@ -29,33 +29,47 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# ─── Production stage — minimal, non-root user, standalone ────────────────────
+# ─── Production: Web (Next.js standalone) ─────────────────────────────────────
 
 FROM node:25-alpine AS production
 RUN apk add --no-cache dumb-init
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy only necessary files from build
 COPY --from=build /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=build /app/prisma ./prisma
 
-# Worker needs tsx + source files
-COPY --from=build /app/src ./src
-COPY --from=build /app/package.json ./package.json
-RUN npm install --no-save tsx
-
-# Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
-
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["sh", "-c", "tsx src/lib/queue/worker.ts & node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null; node server.js"]
+
+# ─── Production: Worker (BullMQ, tsx) ────────────────────────────────────────
+
+FROM node:25-alpine AS production-worker
+RUN apk add --no-cache dumb-init
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy source + tsconfig + deps (tsx needs full source for @/ resolution)
+COPY --from=build --chown=nextjs:nodejs /app/src ./src
+COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=build --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/package-lock.json ./package-lock.json
+
+RUN npm ci --omit=dev --ignore-scripts && \
+    chown -R nextjs:nodejs /app/node_modules
+
+ENTRYPOINT ["dumb-init", "--"]
+USER nextjs
+CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null; TSCONFIG_PROJECT=/app/tsconfig.json ./node_modules/.bin/tsx src/lib/queue/worker.ts"]

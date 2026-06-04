@@ -7,10 +7,11 @@ import { cleanupOrphanedImages } from "@/lib/image-attachment";
 /** How often to scan for orphaned image files (30 min) */
 const ORPHAN_CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
 
-/**
- * Schedule a recurring orphan cleanup job in BullMQ.
- * Runs independently of user-scoped tasks.
- */
+/** URL of the Next.js app (for job execution via API) */
+const APP_URL = process.env.WORKER_APP_URL ?? "http://localhost:3000";
+/** Shared secret for worker → app authentication */
+const WORKER_API_KEY = process.env.WORKER_API_KEY ?? "";
+
 async function scheduleOrphanCleanup(): Promise<void> {
   const queue = getQueue();
   await queue.add(
@@ -27,9 +28,33 @@ async function scheduleOrphanCleanup(): Promise<void> {
 }
 
 /**
- * Wrap the user-job handler to also process system-wide jobs.
+ * Execute a user job by calling the Next.js app's internal API.
+ * The app handles all Pi-dependent logic (AI dispatch, etc.).
  */
-function createJobRouter(userJobHandler: Processor): Processor {
+async function executeJobViaApp(job: Job): Promise<unknown> {
+  const response = await fetch(`${APP_URL}/api/jobs/execute`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-worker-key": WORKER_API_KEY,
+    },
+    body: JSON.stringify({
+      jobId: job.id,
+      name: job.name,
+      data: job.data,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Job execution failed (${response.status}): ${text}`);
+  }
+
+  return response.json();
+}
+
+/** Route jobs: system jobs inline, user jobs via Next.js API. */
+function createJobRouter(): Processor {
   return async (job: Job) => {
     if (job.name === "cleanup_orphaned_images") {
       const deleted = await cleanupOrphanedImages();
@@ -38,23 +63,14 @@ function createJobRouter(userJobHandler: Processor): Processor {
       }
       return;
     }
-    return userJobHandler(job);
+    return executeJobViaApp(job);
   };
 }
 
-/**
- * Standalone BullMQ worker process.
- * Listens to all task queues and processes jobs.
- * Scheduled via `npm run worker` (runs alongside Next.js dev server).
- */
 async function main() {
   console.log("[worker] Starting BullMQ worker...");
 
-  // Lazy-load processJob to avoid importing Pi dependencies at startup
-  // (tsx/Node 25 have issues resolving @earendil-works/pi-coding-agent statically)
-  const { processJob } = await import("@/lib/queue/job-handler");
-
-  const worker = createWorker(createJobRouter(processJob));
+  const worker = createWorker(createJobRouter());
 
   worker.on("error", (err) => {
     console.error("[worker] Worker error:", err.message);
@@ -70,15 +86,12 @@ async function main() {
 
   console.log("[worker] Worker started, listening for jobs...");
 
-  // Schedule all enabled jobs from the database
   await scheduleAllJobs();
   console.log("[worker] All enabled jobs scheduled");
 
-  // Schedule periodic orphan cleanup (system-wide, not user-scoped)
   await scheduleOrphanCleanup();
   console.log("[worker] Orphan cleanup scheduled (every 30min)");
 
-  // Keep the process alive
   process.on("SIGINT", async () => {
     console.log("[worker] Shutting down...");
     await worker.close();
