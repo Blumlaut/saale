@@ -26,6 +26,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 COPY . .
+# Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — not used at runtime
+ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 RUN npx prisma generate
 RUN npm run build
 
