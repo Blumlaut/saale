@@ -1,6 +1,6 @@
 # ─── Base ─────────────────────────────────────────────────────────────────────
 
-FROM node:22-alpine AS base
+FROM node:25-alpine AS base
 RUN apk add --no-cache curl dumb-init
 
 # ─── Dependencies ─────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ RUN npm run build
 
 # ─── Production stage — minimal, non-root user, standalone ────────────────────
 
-FROM node:22-alpine AS production
+FROM node:25-alpine AS production
 RUN apk add --no-cache dumb-init
 WORKDIR /app
 ENV NODE_ENV=production
