@@ -5,7 +5,7 @@ services:
       target: ${BUILD_TARGET:-production}
     container_name: saale-app
     ports:
-      - "3000:3000"
+      - "3630:3000"
     volumes:
       - .:/app
       - saale_node_modules:/app/node_modules
@@ -16,7 +16,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@postgres:5432/saale}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
       - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
@@ -55,8 +55,6 @@ services:
     image: postgres:17-alpine
     container_name: saale-postgres
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -73,8 +71,6 @@ services:
     image: redis:8-alpine
     container_name: saale-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -87,8 +83,6 @@ services:
     image: searxng/searxng:latest
     container_name: saale-searxng
     restart: unless-stopped
-    ports:
-      - "8080:8080"
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     environment:
