@@ -8,10 +8,38 @@ import { Plus } from "lucide-react";
 
 export default function TasksPage() {
   const [showJobDialog, setShowJobDialog] = useState(false);
+  const [editingJob, setEditingJob] = useState<{
+    id: string;
+    type: string;
+    enabled: boolean;
+    modelId: string | null;
+    config: Record<string, unknown>;
+  } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleJobCreated = useCallback(() => {
     setRefreshKey((k) => k + 1);
+  }, []);
+
+  const handleEdit = useCallback(
+    (job: {
+      id: string;
+      type: string;
+      enabled: boolean;
+      modelId: string | null;
+      config: Record<string, unknown>;
+    }) => {
+      setEditingJob(job);
+      setShowJobDialog(true);
+    },
+    [],
+  );
+
+  const handleDialogClose = useCallback((open: boolean) => {
+    setShowJobDialog(open);
+    if (!open) {
+      setEditingJob(null);
+    }
   }, []);
 
   return (
@@ -34,13 +62,14 @@ export default function TasksPage() {
       </div>
 
       {/* Job list */}
-      <JobList key={refreshKey} />
+      <JobList key={refreshKey} onEdit={handleEdit} />
 
       {/* Dialog */}
       <JobDialog
         open={showJobDialog}
-        onOpenChange={setShowJobDialog}
+        onOpenChange={handleDialogClose}
         onSuccess={handleJobCreated}
+        job={editingJob}
       />
     </div>
   );
