@@ -10,8 +10,8 @@ services:
       - uploads_data:/app/uploads
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@postgres:5432/saale}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@saale-postgres:5432/saale}
+      - REDIS_URL=${REDIS_URL:-redis://saale-redis:6379}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
@@ -60,8 +60,8 @@ services:
       - uploads_data:/app/uploads
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@postgres:5432/saale}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@saale-postgres:5432/saale}
+      - REDIS_URL=${REDIS_URL:-redis://saale-redis:6379}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
