@@ -45,6 +45,11 @@ COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build /app/prisma ./prisma
 
+# Worker needs tsx + source files
+COPY --from=build /app/src ./src
+COPY --from=build /app/package.json ./package.json
+RUN npm install --no-save tsx
+
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
@@ -52,4 +57,4 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "tsx src/lib/queue/worker.ts & node server.js"]

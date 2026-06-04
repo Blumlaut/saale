@@ -45,7 +45,7 @@ cp .env.example .env
 # Edit .env with your secrets (see Environment Variables below)
 
 # Start everything with hot reload
-docker compose up
+npm run docker:dev
 ```
 
 The app will be available at http://localhost:3000.
@@ -108,15 +108,24 @@ npm test             # Vitest unit tests
 npm run test:e2e     # Playwright E2E tests
 ```
 
-### Docker Development
+### Docker
+
+The project uses two compose files layered together:
+
+- **`docker-compose.yml`** — base config (production defaults)
+- **`docker-compose.dev.yml`** — dev overrides (build target, hot reload command)
 
 ```bash
-# Start all services with hot reload
-docker compose up
+# Dev mode — hot reload via docker compose watch
+npm run docker:dev
+# or: docker compose -f docker-compose.yml -f docker-compose.dev.yml watch
 
-# Watch mode (rebuilds on file changes)
-docker compose watch
+# Production mode — standalone Next.js server
+npm run docker:prod
+# or: docker compose up
 ```
+
+The dev override only changes `build.target`, `NODE_ENV`, and the startup command — everything else (volumes, dependencies, infrastructure services) is shared from the base file.
 
 ## Environment Variables
 
@@ -146,12 +155,12 @@ openssl rand -hex 32
 ## Production
 
 ```bash
-# Build production image
-docker compose build --target production
-
-# Run with production config
-BUILD_TARGET=production docker compose up -d
+# Build and start production image
+npm run docker:prod
+# or: docker compose up -d
 ```
+
+The base compose file defaults to the `production` build target — a minimal standalone Next.js server with no dev tools.
 
 ## Open Terminal (Sandboxed Execution)
 

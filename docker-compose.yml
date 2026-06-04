@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: .
-      target: ${BUILD_TARGET:-development}
+      target: ${BUILD_TARGET:-production}
     container_name: saale-app
     ports:
       - "3000:3000"
@@ -12,7 +12,7 @@ services:
       - saale_next:/app/.next
       - uploads_data:/app/uploads
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_ENV=${NODE_ENV:-production}
       - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@postgres:5432/saale}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
@@ -29,7 +29,7 @@ services:
         condition: service_healthy
       open-terminal:
         condition: service_healthy
-    command: ${APP_COMMAND:-sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npm run worker & npm run dev"}
+    command: ${APP_COMMAND:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
       interval: 15s
