@@ -63,7 +63,7 @@ export function createWebTools() {
         const formatted = result.results
           .map(
             (r, i) =>
-              `${i + 1}. **[${r.title}](${r.url})**\n${r.engine.join(", ")}${r.content ? `\n${r.content.slice(0, 300)}` : ""}`,
+              `${i + 1}. **[${r.title}](${r.url})**\n${Array.isArray(r.engine) ? r.engine.join(", ") : (r.engine ?? "")}${r.content ? `\n${r.content.slice(0, 300)}` : ""}`,
           )
           .join("\n\n");
 
