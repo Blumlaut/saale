@@ -48,12 +48,13 @@ COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 
-ENTRYPOINT ["dumb-init", "--"]
-USER nextjs
+COPY docker/entrypoint.sh /docker/entrypoint.sh
+RUN chmod +x /docker/entrypoint.sh
+ENTRYPOINT ["/docker/entrypoint.sh"]
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["sh", "-c", "npx prisma migrate deploy; node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
 
 # ─── Production: Worker (BullMQ, tsx) ────────────────────────────────────────
 
@@ -80,6 +81,7 @@ ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 RUN npx prisma generate && \
     chown -R nextjs:nodejs /app/node_modules/.prisma
 
-ENTRYPOINT ["dumb-init", "--"]
-USER nextjs
+COPY docker/entrypoint.sh /docker/entrypoint.sh
+RUN chmod +x /docker/entrypoint.sh
+ENTRYPOINT ["/docker/entrypoint.sh"]
 CMD ["sh", "-c", "TSCONFIG_PROJECT=/app/tsconfig.json ./node_modules/.bin/tsx src/lib/queue/worker.ts"]

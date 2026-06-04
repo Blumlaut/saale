@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth";
 import fs from "fs/promises";
 import path from "path";
 
-const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+const UPLOAD_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 /** Allowed MIME types for uploads. */
