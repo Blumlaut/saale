@@ -227,7 +227,7 @@ export function ReplyForwardSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="liquid-glass flex w-full flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl sm:w-[560px] sm:max-w-none">
+      <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[560px] sm:max-w-none">
         <EmailComposeForm
           accounts={accounts}
           accountId={accountId}

@@ -150,10 +150,7 @@ function PromptSection({
         {expanded && (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {examples.map((example) => (
-              <div
-                key={example.title}
-                className="border-border/50 bg-background/40 rounded-xl border p-2.5"
-              >
+              <div key={example.title} className="liquid-glass-inner rounded-xl border-0 p-2.5">
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-xs font-medium">{example.title}</span>
                   <Button

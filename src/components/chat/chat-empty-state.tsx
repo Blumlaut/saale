@@ -10,7 +10,7 @@ export function ChatEmptyState({ temporaryMode }: { temporaryMode: boolean }) {
   const router = useRouter();
 
   return (
-    <GlassPanel className="liquid-glass flex flex-1 flex-col border-0 bg-transparent">
+    <GlassPanel className="flex flex-1 flex-col border-0">
       <GlassPanelContent className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/30 dark:bg-white/5">

@@ -207,7 +207,7 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
                 <ChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
               </button>
               {providerOpen && (
-                <div className="border-border/50 bg-background/95 absolute top-full z-50 mt-1 w-full overflow-hidden rounded-lg border backdrop-blur-xl">
+                <div className="liquid-glass absolute top-full z-50 mt-1 w-full overflow-hidden rounded-lg border-0 shadow-2xl">
                   {availableProviders.map((p) => (
                     <button
                       key={p.id}
@@ -676,7 +676,7 @@ export function AiModelsTab({
                   Purpose
                 </Label>
 
-                <div className="border-border/50 bg-background/40 space-y-0.5 rounded-2xl border p-1">
+                <div className="liquid-glass-inner space-y-0.5 rounded-2xl border-0 p-1">
                   <Button
                     variant="ghost"
                     className={cn(
@@ -759,7 +759,7 @@ export function AiModelsTab({
 
               {/* Selected model */}
               {effectiveModel && selectedProvider && (
-                <div className="border-border/50 bg-background/40 rounded-2xl border p-3">
+                <div className="liquid-glass-inner rounded-2xl border-0 p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-muted-foreground text-[11px]">
                       {activePurpose === "__default__"
@@ -793,7 +793,7 @@ export function AiModelsTab({
                     Thinking
                   </Label>
 
-                  <div className="border-border/50 bg-background/40 space-y-0.5 rounded-2xl border p-1">
+                  <div className="liquid-glass-inner space-y-0.5 rounded-2xl border-0 p-1">
                     {thinkingLevels.map((level, index) => {
                       const isActive = settings?.defaultThinkingLevel === level.id;
                       const Icon = level.icon;

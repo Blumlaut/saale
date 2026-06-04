@@ -58,7 +58,7 @@ export function ToolsTab({
           <p className="text-muted-foreground mt-1 text-sm">
             Configure which tools are enabled by default for new chat sessions.
           </p>
-          <div className="border-border/50 bg-background/40 mt-3 flex items-start gap-2 rounded-xl border px-4 py-3">
+          <div className="liquid-glass-inner mt-3 flex items-start gap-2 rounded-xl border-0 px-4 py-3">
             <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
             <p className="text-muted-foreground text-xs">
               These defaults apply to new chat sessions. You can override tools per-session using

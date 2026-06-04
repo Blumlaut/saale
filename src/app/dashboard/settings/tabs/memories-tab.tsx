@@ -320,7 +320,7 @@ export function MemoriesTab() {
 
   return (
     <>
-      <GlassPanel className="liquid-glass border-0 bg-transparent">
+      <GlassPanel className="border-0">
         <GlassPanelContent className="space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">

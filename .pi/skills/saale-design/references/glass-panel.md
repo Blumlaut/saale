@@ -4,81 +4,21 @@
 
 The `GlassPanel` is the primary content container in Saale. Every section of the dashboard lives inside a glass panel.
 
-## Installation
+**All panels use liquid glass by default.** The `GlassPanel` component applies both `glass-panel` and `liquid-glass` classes automatically. You should never need to add `liquid-glass` manually to a `GlassPanel`.
 
-Create the component at `src/components/ui/glass-panel.tsx`:
+## Component Signature
 
 ```tsx
-import * as React from "react";
-import { cn } from "@/lib/utils";
-
-function GlassPanel({ className, children, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      className={cn(
-        "glass-panel relative flex flex-col overflow-hidden rounded-2xl border border-white/20 bg-white/60 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-white/5",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </div>
-  );
-}
-
-function GlassPanelHeader({
-  className,
-  title,
-  action,
-  children,
-  ...props
-}: React.ComponentProps<"div"> & { title?: string; action?: React.ReactNode }) {
-  return (
-    <div
-      className={cn(
-        "border-border/50 flex items-center justify-between border-b px-6 py-4",
-        className,
-      )}
-      {...props}
-    >
-      <h2 className="text-lg leading-snug font-semibold">{title || children}</h2>
-      {action && <div>{action}</div>}
-    </div>
-  );
-}
-
-function GlassPanelContent({ className, children, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div className={cn("px-6 py-4", className)} {...props}>
-      {children}
-    </div>
-  );
-}
-
-function GlassPanelFooter({ className, children, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      className={cn(
-        "border-border/50 flex items-center justify-between border-t bg-white/30 px-6 py-3 dark:bg-white/5",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </div>
-  );
-}
-
-export { GlassPanel, GlassPanelHeader, GlassPanelContent, GlassPanelFooter };
+import { GlassPanel, GlassPanelHeader, GlassPanelContent, GlassPanelFooter } from "@/components/ui/glass-panel";
 ```
+
+The base `GlassPanel` applies: `glass-panel liquid-glass` — translucent, frosted glass surface with specular edge glow.
 
 ## Usage
 
 ### Basic Panel
 
 ```tsx
-import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
-
 export function MyView() {
   return (
     <GlassPanel>
@@ -120,8 +60,8 @@ import { Button } from "@/components/ui/button";
   <GlassPanelFooter>
     <Button variant="ghost">Cancel</Button>
     <Button variant="default">Save Changes</Button>
-  </GlassPanelContent>
-</GlassPanel>
+  </GlassPanelFooter>
+</GlassPanel>;
 ```
 
 ### Panel Without Header (Content Only)
@@ -132,33 +72,75 @@ import { Button } from "@/components/ui/button";
 </GlassPanel>
 ```
 
-## Variants
-
-### Subtle Panel
-
-For inline elements that need slight separation:
+### Remove Border (when inside another panel)
 
 ```tsx
-className =
-  "glass-panel-subtle border border-white/10 dark:border-white/5 bg-white/30 dark:bg-white/5 backdrop-blur-lg rounded-xl shadow-none";
+<GlassPanel className="border-0">
+  <GlassPanelContent>{/* nested content */}</GlassPanelContent>
+</GlassPanel>
 ```
 
-### Deep Panel
+## Overlay Surfaces (Dialogs, Sheets, Popovers, Dropdowns)
 
-For modals or overlays that need to stand out:
+All overlay surfaces use `liquid-glass` by default:
+
+| Component         | Glass Applied |
+| ----------------- | ------------- |
+| `DialogContent`   | ✅ `liquid-glass` |
+| `AlertDialogContent` | ✅ `liquid-glass` |
+| `SheetContent`    | ✅ `liquid-glass` |
+| `PopoverContent`  | ✅ `liquid-glass` |
+| `DropdownMenuContent` | ✅ `liquid-glass` |
+| `SelectContent`   | ✅ `liquid-glass` |
+| `TabsList`        | ✅ `liquid-glass-inner` |
+
+**Never add `liquid-glass` manually to these components** — it's baked into the base styling.
+
+### SheetContent Usage
 
 ```tsx
-className =
-  "glass-panel-deep border border-white/30 dark:border-white/10 bg-white/80 dark:bg-black/40 backdrop-blur-2xl rounded-3xl shadow-xl";
+<SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[440px]">
+  {/* content */}
+</SheetContent>
+```
+
+### DialogContent Usage
+
+```tsx
+<DialogContent className="max-w-lg">
+  <DialogHeader>
+    <DialogTitle>Title</DialogTitle>
+  </DialogHeader>
+  {/* content */}
+</DialogContent>
+```
+
+## Inner Elements
+
+For nested content areas inside panels, use `liquid-glass-inner`:
+
+```tsx
+<div className="liquid-glass-inner rounded-2xl border-0 p-4">
+  {/* nested card-like content */}
+</div>
+```
+
+For buttons, badges, and toggles, use `liquid-glass-pill` or `liquid-glass-accent`:
+
+```tsx
+<Button className="liquid-glass-pill rounded-full">Pill Button</Button>
+<Button className="liquid-glass-accent rounded-full">Accent Button</Button>
 ```
 
 ## Rules
 
-- **Never nest GlassPanels more than 1 level deep.** If you need nesting, use a subtle inner div instead.
+- **Never add `liquid-glass` manually to `GlassPanel`** — it's automatic.
+- **Never nest GlassPanels more than 1 level deep.** If you need nesting, use `liquid-glass-inner` div instead.
 - **Always use `GlassPanelContent` for padding consistency.** Don't add arbitrary `p-*` classes to the panel itself.
 - **Headers always have `border-b`.** This separates the title from content.
 - **Footers always have `border-t` and a subtle background.** This separates actions from content.
 - **Max one header action.** If you need multiple actions, use a dropdown or toolbar.
+- **Use `border-0` on GlassPanel when the border should be hidden** (e.g., inside a sheet or when adjacent panels share edges).
 
 ## Extending with shadcn Card
 

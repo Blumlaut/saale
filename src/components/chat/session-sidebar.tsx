@@ -64,7 +64,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   };
 
   return (
-    <GlassPanel className="liquid-glass flex h-full flex-col overflow-hidden border-0 bg-transparent">
+    <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
       {/* Header */}
       <div className="border-border/30 flex items-center border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Conversations</h2>

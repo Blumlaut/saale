@@ -516,7 +516,7 @@ export function Inbox() {
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4 md:h-[calc(100vh-7rem)]">
       {/* Mail list */}
-      <GlassPanel className="liquid-glass flex h-full w-full flex-col overflow-hidden border-0 bg-transparent md:w-96">
+      <GlassPanel className="flex h-full w-full flex-col overflow-hidden border-0 md:w-96">
         {/* Header */}
         <div className="border-border/30 flex items-center justify-between border-b px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -835,7 +835,7 @@ export function Inbox() {
       </GlassPanel>
 
       {/* Message detail — desktop only */}
-      <GlassPanel className="liquid-glass hidden flex-1 flex-col overflow-hidden border-0 bg-transparent md:flex">
+      <GlassPanel className="hidden flex-1 flex-col overflow-hidden border-0 md:flex">
         {selectedMessage ? (
           <>
             {/* Detail header with toolbar */}
@@ -968,7 +968,7 @@ export function Inbox() {
 
       {/* Message detail — mobile sheet */}
       <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
-        <SheetContent className="liquid-glass flex w-full flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl">
+        <SheetContent className="flex w-full flex-col overflow-hidden p-0">
           <div className="flex h-full flex-col">
             {/* Header */}
             <SheetHeader className="border-border/30 flex items-center justify-between border-b px-4 pt-5 pb-3">

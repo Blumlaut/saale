@@ -129,6 +129,44 @@ npx prisma db push --accept-data-loss
   <div>Input bar</div>  {/* gets pushed off-screen */}
 </div>```
 
+## Unified Glass Panels
+
+- **All panels use liquid glass by default.** The `GlassPanel` component applies `glass-panel liquid-glass` automatically.
+- **Never add `liquid-glass` manually to `GlassPanel`** — it's baked in.
+- **All overlay surfaces include `liquid-glass` by default:** `DialogContent`, `AlertDialogContent`, `SheetContent`, `PopoverContent`, `DropdownMenuContent`, `SelectContent`, `TabsList`.
+- **Never add `liquid-glass` manually to overlay components** — it's baked into the base UI components.
+- For nested content areas inside panels, use `liquid-glass-inner` on a plain `<div>`.
+- For buttons/badges/toggles, use `liquid-glass-pill` or `liquid-glass-accent`.
+
+### Examples
+
+```tsx
+// ✅ GOOD — GlassPanel has liquid-glass automatically
+<GlassPanel>
+  <GlassPanelContent>Content</GlassPanelContent>
+</GlassPanel>
+
+// ✅ GOOD — remove border when needed
+<GlassPanel className="border-0">
+  <GlassPanelContent>Content</GlassPanelContent>
+</GlassPanel>
+
+// ❌ BAD — liquid-glass is redundant on GlassPanel
+<GlassPanel className="liquid-glass border-0 bg-transparent">
+  <GlassPanelContent>Content</GlassPanelContent>
+</GlassPanel>
+
+// ✅ GOOD — SheetContent has liquid-glass automatically
+<SheetContent className="flex w-full flex-col p-0 sm:w-[440px]">
+  {children}
+</SheetContent>
+
+// ❌ BAD — liquid-glass is redundant on SheetContent
+<SheetContent className="liquid-glass flex w-full flex-col border-0 bg-transparent p-0">
+  {children}
+</SheetContent>
+```
+
 ## User Isolation
 
 - **Every database query must be scoped to the authenticated user.** No exceptions.
