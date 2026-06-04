@@ -17,7 +17,7 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
       - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
-      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://open-terminal:8000}
+      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://saale-open-terminal:8000}
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
     depends_on:
@@ -65,7 +65,7 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
       - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
-      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://open-terminal:8000}
+      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://saale-open-terminal:8000}
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
       - WORKER_APP_URL=http://saale-web:3000
