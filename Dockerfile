@@ -65,6 +65,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 # Copy source + tsconfig + deps (tsx needs full source for @/ resolution)
 COPY --from=build --chown=nextjs:nodejs /app/src ./src
 COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=build --chown=nextjs:nodejs /app/.prisma ./.prisma
 COPY --from=build --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/package-lock.json ./package-lock.json
