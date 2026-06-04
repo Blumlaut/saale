@@ -32,6 +32,7 @@ RUN npm run build
 # ─── Production stage — minimal, non-root user, standalone ────────────────────
 
 FROM node:22-alpine AS production
+RUN apk add --no-cache dumb-init
 WORKDIR /app
 ENV NODE_ENV=production
 
