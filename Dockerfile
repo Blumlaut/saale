@@ -38,19 +38,14 @@ RUN apk add --no-cache dumb-init
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
 COPY --from=build /app/public ./public
-COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
 # Prisma schema + migrations + generated client (not bundled by Next.js standalone)
-COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=build --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 
-COPY docker/entrypoint.sh /docker/entrypoint.sh
-RUN chmod +x /docker/entrypoint.sh
-ENTRYPOINT ["/docker/entrypoint.sh"]
+ENTRYPOINT ["dumb-init", "--"]
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
@@ -63,25 +58,18 @@ RUN apk add --no-cache dumb-init
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
 # Copy source + tsconfig + deps (tsx needs full source for @/ resolution)
-COPY --from=build --chown=nextjs:nodejs /app/src ./src
-COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=build --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+COPY --from=build /app/src ./src
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/package-lock.json ./package-lock.json
 
-RUN npm ci --omit=dev --ignore-scripts && \
-    chown -R nextjs:nodejs /app/node_modules
+RUN npm ci --omit=dev --ignore-scripts
 
 # Generate Prisma client (npm ci --ignore-scripts skips the prepare script)
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
-RUN npx prisma generate && \
-    chown -R nextjs:nodejs /app/node_modules/.prisma
+RUN npx prisma generate
 
-COPY docker/entrypoint.sh /docker/entrypoint.sh
-RUN chmod +x /docker/entrypoint.sh
-ENTRYPOINT ["/docker/entrypoint.sh"]
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["sh", "-c", "TSCONFIG_PROJECT=/app/tsconfig.json ./node_modules/.bin/tsx src/lib/queue/worker.ts"]
