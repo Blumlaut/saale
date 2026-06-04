@@ -330,7 +330,7 @@ export function CalendarTab() {
             <div className="space-y-3">
               {/* Local account */}
               {localAccount && (
-                <div className="border-border/50 bg-background/40 overflow-hidden rounded-2xl border">
+                <div className="liquid-glass-inner overflow-hidden rounded-2xl border-0">
                   <div className="flex items-center justify-between p-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -397,7 +397,7 @@ export function CalendarTab() {
                 return (
                   <div
                     key={account.id}
-                    className="border-border/50 bg-background/40 overflow-hidden rounded-2xl border"
+                    className="liquid-glass-inner overflow-hidden rounded-2xl border-0"
                   >
                     <div className="flex items-center justify-between p-4">
                       <div className="flex-1">
@@ -567,7 +567,7 @@ export function CalendarTab() {
 
                 return (
                   <Fragment key={sub.id}>
-                    <div className="border-border/50 bg-background/40 flex items-center justify-between rounded-2xl border p-4">
+                    <div className="liquid-glass-inner flex items-center justify-between rounded-2xl border-0 p-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium">{sub.name}</p>

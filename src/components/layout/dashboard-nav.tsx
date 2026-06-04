@@ -177,7 +177,7 @@ export function DashboardNav() {
 
               {/* Search dropdown */}
               {searchOpen && (
-                <div className="bg-background/95 absolute top-full left-0 z-50 mt-1 w-72 rounded-xl border shadow-lg backdrop-blur-xl">
+                <div className="liquid-glass absolute top-full left-0 z-50 mt-1 w-72 rounded-xl border-0 shadow-2xl">
                   <div className="flex items-center gap-2 border-b px-3 py-2">
                     <Search className="text-muted-foreground h-4 w-4" />
                     <Input

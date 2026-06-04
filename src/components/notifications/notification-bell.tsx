@@ -88,12 +88,7 @@ export function NotificationBell() {
         </span>
       </PopoverTrigger>
 
-      <PopoverContent
-        side="bottom"
-        align="end"
-        sideOffset={4}
-        className="liquid-glass w-80 gap-0 border-0 bg-transparent p-0 shadow-2xl"
-      >
+      <PopoverContent side="bottom" align="end" sideOffset={4} className="w-80 gap-0 p-0">
         <div className="flex items-center justify-between border-b border-white/20 px-4 py-3 dark:border-white/10">
           <span className="text-sm font-medium">Notifications</span>
           {unreadCount > 0 && (

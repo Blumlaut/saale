@@ -92,19 +92,21 @@ See `references/shadcn-components.md` for the full mapping.
 
 ### Glass Panel with Content
 
+`GlassPanel` applies `glass-panel liquid-glass` automatically — never add `liquid-glass` manually.
+
 ```tsx
-import { GlassPanel } from "@/components/ui/glass-panel";
+import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 
 export function MyView() {
   return (
     <GlassPanel>
-      <GlassPanel.Header title="My Section">
+      <GlassPanelHeader title="My Section">
         <Button variant="secondary" size="sm">
           Action
         </Button>
-      </GlassPanel.Header>
-      <GlassPanel.Content>{/* content */}</GlassPanel.Content>
+      </GlassPanelHeader>
+      <GlassPanelContent>{/* content */}</GlassPanelContent>
     </GlassPanel>
   );
 }
@@ -113,14 +115,14 @@ export function MyView() {
 ### List with Rows
 
 ```tsx
-import { GlassPanel } from "@/components/ui/glass-panel";
+import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 
 export function MyList() {
   return (
     <GlassPanel>
-      <GlassPanel.Header title="Items" />
-      <GlassPanel.Content className="p-0">
+      <GlassPanelHeader title="Items" />
+      <GlassPanelContent className="p-0">
         {items.map((item, i) => (
           <Fragment key={item.id}>
             <div className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-white/20 dark:hover:bg-white/5">
@@ -129,11 +131,25 @@ export function MyList() {
             {i < items.length - 1 && <Separator className="px-4" />}
           </Fragment>
         ))}
-      </GlassPanel.Content>
+      </GlassPanelContent>
     </GlassPanel>
   );
 }
 ```
+
+### Unified Glass Surfaces
+
+All overlay surfaces include `liquid-glass` by default — no manual class needed:
+
+- `DialogContent` → liquid glass
+- `AlertDialogContent` → liquid glass
+- `SheetContent` → liquid glass
+- `PopoverContent` → liquid glass
+- `DropdownMenuContent` → liquid glass
+- `SelectContent` → liquid glass
+- `TabsList` → liquid glass inner
+
+For nested content inside panels, use `liquid-glass-inner` on a plain `<div>`.
 
 ## Anti-Patterns (Never Do These)
 

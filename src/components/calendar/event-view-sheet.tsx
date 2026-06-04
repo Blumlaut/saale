@@ -167,7 +167,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         showCloseButton
-        className="liquid-glass flex w-full flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl backdrop-blur-2xl sm:w-[440px] sm:max-w-none dark:sm:w-[460px]"
+        className="flex w-full flex-col overflow-hidden p-0 sm:w-[440px] sm:max-w-none dark:sm:w-[460px]"
       >
         {mode === "view" ? (
           <div className="flex h-full flex-col">

@@ -562,7 +562,7 @@ export function ChatInterface({
   return (
     <>
       {/* Scrollable message area — fills all available space */}
-      <GlassPanel className="liquid-glass flex flex-1 flex-col overflow-hidden border-0 bg-transparent">
+      <GlassPanel className="flex flex-1 flex-col overflow-hidden border-0">
         {/* Header */}
         <div className="border-border/30 flex items-center gap-2 border-b px-4 py-3 md:px-5 md:py-3">
           <span className="text-sm font-semibold">Chat</span>
