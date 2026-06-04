@@ -50,7 +50,7 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null; node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy; node server.js"]
 
 # ─── Production: Worker (BullMQ, tsx) ────────────────────────────────────────
 
@@ -79,4 +79,4 @@ RUN npx prisma generate && \
 
 ENTRYPOINT ["dumb-init", "--"]
 USER nextjs
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null; TSCONFIG_PROJECT=/app/tsconfig.json ./node_modules/.bin/tsx src/lib/queue/worker.ts"]
+CMD ["sh", "-c", "TSCONFIG_PROJECT=/app/tsconfig.json ./node_modules/.bin/tsx src/lib/queue/worker.ts"]

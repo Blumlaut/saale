@@ -67,8 +67,35 @@ function createJobRouter(): Processor {
   };
 }
 
+/** Retry a function with exponential backoff until it succeeds. */
+async function retryUntilSuccess(
+  label: string,
+  fn: () => Promise<void>,
+  { maxDelay = 30_000, initialDelay = 3_000 }: { maxDelay?: number; initialDelay?: number } = {},
+): Promise<void> {
+  let delay = initialDelay;
+  while (true) {
+    try {
+      await fn();
+      console.log(`[worker] ${label} — ok`);
+      return;
+    } catch (err) {
+      console.error(
+        `[worker] ${label} failed (${(err as Error).message}), retrying in ${delay / 1000}s...`,
+      );
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 2, maxDelay);
+    }
+  }
+}
+
 async function main() {
   console.log("[worker] Starting BullMQ worker...");
+  console.log("");
+  console.log("[worker] DATABASE_URL:", process.env.DATABASE_URL ? "set" : "missing");
+  console.log("[worker] REDIS_URL:", process.env.REDIS_URL ?? "redis://localhost:6379");
+  console.log("[worker] WORKER_APP_URL:", APP_URL);
+  console.log("");
 
   const worker = createWorker(createJobRouter());
 
@@ -86,11 +113,8 @@ async function main() {
 
   console.log("[worker] Worker started, listening for jobs...");
 
-  await scheduleAllJobs();
-  console.log("[worker] All enabled jobs scheduled");
-
-  await scheduleOrphanCleanup();
-  console.log("[worker] Orphan cleanup scheduled (every 30min)");
+  await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
+  await retryUntilSuccess("Schedule orphan cleanup", scheduleOrphanCleanup);
 
   process.on("SIGINT", async () => {
     console.log("[worker] Shutting down...");
