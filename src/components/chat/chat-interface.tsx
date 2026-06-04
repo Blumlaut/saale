@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { GlassPanel } from "@/components/ui/glass-panel";
+import { Input } from "@/components/ui/input";
 import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { fetchJson, patchJson } from "@/lib/http";
-import { Loader2, Settings2, ChevronDown, Ghost } from "lucide-react";
+import { Loader2, Settings2, ChevronDown, Ghost, Pencil } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -133,6 +134,9 @@ export function ChatInterface({
     current: emptyTurn(),
   });
   const streamingRef = useRef<StreamingState>(streaming);
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
@@ -174,15 +178,29 @@ export function ChatInterface({
     }
   };
 
+  const loadSessionTitle = async () => {
+    try {
+      const data = await fetchJson<{ session: { title: string } }>(
+        `/api/chat/sessions/${sessionId}`,
+      );
+      if (data.session?.title) {
+        setSessionTitle(data.session.title);
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   // Keep streamingRef in sync
   useEffect(() => {
     streamingRef.current = streaming;
   }, [streaming]);
 
-  // Load messages
+  // Load messages and session title
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     loadMessages();
+    loadSessionTitle();
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
@@ -219,6 +237,22 @@ export function ChatInterface({
       }
     };
   }, [sessionId]); // sessionId stable per mount — cleanup fires only on unmount
+
+  // Save the session title
+  const handleSaveTitle = useCallback(
+    async (newTitle: string) => {
+      const sanitized = newTitle.replace(/\0/g, "").slice(0, 50).trim();
+      if (!sanitized) return;
+      setSessionTitle(sanitized);
+      setEditingTitle(false);
+      try {
+        await patchJson(`/api/chat/sessions/${sessionId}`, { title: sanitized });
+      } catch {
+        // Silently fail — local state is already updated
+      }
+    },
+    [sessionId],
+  );
 
   // Toggle a tool category and persist
   const handleToggleTool = useCallback(
@@ -565,7 +599,37 @@ export function ChatInterface({
       <GlassPanel className="flex flex-1 flex-col overflow-hidden border-0">
         {/* Header */}
         <div className="border-border/30 flex items-center gap-2 border-b px-4 py-3 md:px-5 md:py-3">
-          <span className="text-sm font-semibold">Chat</span>
+          {/* Editable session title */}
+          {editingTitle ? (
+            <Input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value.slice(0, 50))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSaveTitle(titleDraft);
+                } else if (e.key === "Escape") {
+                  setEditingTitle(false);
+                  setTitleDraft(sessionTitle);
+                }
+              }}
+              onBlur={() => handleSaveTitle(titleDraft)}
+              autoFocus
+              className="h-6 w-40 text-sm font-semibold"
+            />
+          ) : (
+            <button
+              onClick={() => {
+                setEditingTitle(true);
+                setTitleDraft(sessionTitle);
+              }}
+              className="group/title -ml-1 flex items-center gap-1 rounded px-1 py-0.5 text-sm font-semibold transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+            >
+              <span className="max-w-[200px] truncate md:max-w-[300px]">
+                {sessionTitle || "Chat"}
+              </span>
+              <Pencil className="text-muted-foreground h-3 w-3 opacity-0 transition-opacity group-hover/title:opacity-70" />
+            </button>
+          )}
           {temporaryMode && (
             <span className="text-muted-foreground flex items-center gap-1 text-xs">
               <Ghost className="h-3 w-3" />

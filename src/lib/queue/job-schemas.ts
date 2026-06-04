@@ -356,6 +356,32 @@ export const jobTypeSchemas: JobTypeSchema[] = [
       },
     ],
   },
+  {
+    type: "chat_title_generation",
+    label: "Chat Title Generation",
+    description: "Generate better titles for chats still using default or auto-generated titles",
+    icon: "MessageSquarePlus",
+    defaultCron: "0 */4 * * *",
+    usesAi: true,
+    fields: [
+      {
+        key: "maxSessionsPerRun",
+        label: "Max sessions per run",
+        description: "Number of sessions to process per execution",
+        type: "number",
+        default: 10,
+        min: 1,
+        max: 50,
+      },
+      {
+        key: "modelId",
+        label: "AI Model",
+        description: "Override the default model for this task",
+        type: "model",
+        default: "",
+      },
+    ],
+  },
 ];
 
 /** Look up a schema by type */
