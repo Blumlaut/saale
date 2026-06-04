@@ -44,17 +44,18 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=build /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
-# Prisma CLI + generated client (not bundled by Next.js standalone, needed for `npx prisma migrate deploy`)
-COPY --from=build --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+# Prisma runtime files (not bundled by Next.js standalone)
+COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=build --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-RUN ln -s /app/node_modules/prisma/build/index.js /app/node_modules/.bin/prisma
+COPY --from=build --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
 
 ENTRYPOINT ["dumb-init", "--"]
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["sh", "-c", "npx prisma migrate deploy; node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy; node server.js"]
 
 # ─── Production: Worker (BullMQ, tsx) ────────────────────────────────────────
 
