@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { deleteImage } from "@/lib/image-attachment";
+import { deleteAllImages } from "@/lib/image-attachment";
 
 /**
  * GET /api/chat/sessions/:sessionId — Get session details
@@ -93,6 +93,12 @@ export async function PATCH(
 /**
  * Delete a chat session and all its messages + attachments.
  * Used by both DELETE and sendBeacon (POST with _method=DELETE).
+ *
+ * Order of operations:
+ * 1. Verify session ownership
+ * 2. Fetch all attachment storage paths
+ * 3. Delete image files from disk (fails fast if any deletion fails)
+ * 4. Delete session from DB (cascade removes messages + attachment records)
  */
 async function deleteSession(request: NextRequest, params: Promise<{ sessionId: string }>) {
   const authResult = await requireSession();
@@ -108,19 +114,34 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Fetch all attachment paths to clean up image files from disk
-  const messageIds = await prisma.chatMessage.findMany({
+  // Fetch all attachment storage paths in a single query
+  const messages = await prisma.chatMessage.findMany({
     where: { sessionId },
-    select: { id: true },
+    include: { attachments: true },
   });
-  const attachments = await prisma.chatAttachment.findMany({
-    where: { messageId: { in: messageIds.map((m) => m.id) } },
-    select: { storagePath: true },
-  });
+  const storagePaths = messages.flatMap((m) => m.attachments.map((a) => a.storagePath));
 
-  // Delete image files from disk (non-blocking — DB cascade handles the rest)
-  void Promise.allSettled(attachments.map((a) => deleteImage(authResult.user.id, a.storagePath)));
+  // Delete image files from disk — throws if any deletion fails
+  // Files are deleted BEFORE DB records so a failure leaves the DB intact for retry
+  if (storagePaths.length > 0) {
+    try {
+      await deleteAllImages(authResult.user.id, storagePaths);
+    } catch (err) {
+      console.error(
+        `Failed to delete images for session ${sessionId}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return NextResponse.json(
+        {
+          error: "Failed to delete attached images",
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        { status: 500 },
+      );
+    }
+  }
 
+  // DB cascade (onDelete: Cascade) removes messages + attachment records
   await prisma.chatSession.delete({
     where: { id: sessionId },
   });
