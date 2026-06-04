@@ -93,6 +93,7 @@ model ChatSession {
   id               String        @id @default(cuid())
   userId           String
   title            String
+  temporary        Boolean       @default(false) // auto-deleted when user navigates away
   modelProvider    String?
   modelName        String?
   thinkingLevel    String        @default("off")

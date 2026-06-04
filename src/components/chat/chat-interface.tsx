@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
-import { fetchJson, patchJson } from "@/lib/http";
-import { Loader2, Settings2, ChevronDown } from "lucide-react";
+import { fetchJson, patchJson, deleteJson } from "@/lib/http";
+import { Loader2, Settings2, ChevronDown, Ghost } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -117,7 +118,14 @@ const emptyTurn = (): TurnData => ({
   toolCalls: [],
 });
 
-export function ChatInterface({ sessionId }: { sessionId: string }) {
+export function ChatInterface({
+  sessionId,
+  temporaryMode,
+}: {
+  sessionId: string;
+  temporaryMode: boolean;
+}) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState>({
@@ -128,6 +136,8 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
+  const temporaryRef = useRef(temporaryMode);
+  const loadingRef = useRef(isLoading);
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -154,8 +164,12 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
           setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...data.session.toolConfig });
         }
       }
-    } catch {
-      // Ignore
+    } catch (err) {
+      // Session was deleted (e.g. temporary chat closed elsewhere) — redirect
+      if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {
+        router.push("/dashboard/chat");
+        return;
+      }
     }
   };
 
@@ -170,6 +184,25 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
     loadMessages();
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
+
+  // Keep refs in sync for auto-delete cleanup
+  useEffect(() => {
+    temporaryRef.current = temporaryMode;
+  }, [temporaryMode]);
+
+  useEffect(() => {
+    loadingRef.current = isLoading;
+  }, [isLoading]);
+
+  // Auto-delete temporary sessions on unmount only (not on dep changes)
+  useEffect(() => {
+    return () => {
+      if (temporaryRef.current && !loadingRef.current) {
+        // Fire-and-forget — don't block navigation
+        void deleteJson(`/api/chat/sessions/${sessionId}`);
+      }
+    };
+  }, [sessionId]); // sessionId stable per mount — cleanup fires only on unmount
 
   // Toggle a tool category and persist
   const handleToggleTool = useCallback(
@@ -239,6 +272,11 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
+          if (res.status === 404) {
+            // Session was deleted (temporary chat closed) — redirect
+            router.push("/dashboard/chat");
+            return;
+          }
           throw new Error(`Failed to send message: ${body.error || res.statusText}`);
         }
 
@@ -423,7 +461,7 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         console.error("Send error:", err);
       }
     },
-    [sessionId],
+    [sessionId, router],
   );
 
   // Stop streaming
@@ -512,6 +550,12 @@ export function ChatInterface({ sessionId }: { sessionId: string }) {
         {/* Header */}
         <div className="border-border/30 flex items-center gap-2 border-b px-4 py-3 md:px-5 md:py-3">
           <span className="text-sm font-semibold">Chat</span>
+          {temporaryMode && (
+            <span className="text-muted-foreground flex items-center gap-1 text-xs">
+              <Ghost className="h-3 w-3" />
+              temporary
+            </span>
+          )}
           {isLoading && <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />}
 
           {/* Model & thinking selectors — inline on desktop, dropdown on mobile */}

@@ -20,6 +20,7 @@ export async function GET(
     select: {
       id: true,
       title: true,
+      temporary: true,
       modelProvider: true,
       modelName: true,
       thinkingLevel: true,
@@ -63,12 +64,13 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const { title, modelProvider, modelName, thinkingLevel, toolConfig } = body;
+  const { title, temporary, modelProvider, modelName, thinkingLevel, toolConfig } = body;
 
   const updated = await prisma.chatSession.update({
     where: { id: sessionId },
     data: {
       ...(title && { title }),
+      ...(typeof temporary === "boolean" && { temporary }),
       ...(modelProvider && { modelProvider }),
       ...(modelName && { modelName }),
       ...(thinkingLevel && { thinkingLevel }),

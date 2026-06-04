@@ -16,6 +16,7 @@ export async function GET() {
     select: {
       id: true,
       title: true,
+      temporary: true,
       messageCount: true,
       modelProvider: true,
       modelName: true,
@@ -30,6 +31,7 @@ export async function GET() {
       (s: {
         id: string;
         title: string;
+        temporary: boolean;
         messageCount: number;
         modelProvider: string | null;
         modelName: string | null;
@@ -39,6 +41,7 @@ export async function GET() {
       }) => ({
         id: s.id,
         title: s.title,
+        temporary: s.temporary,
         messageCount: s.messageCount,
         modelProvider: s.modelProvider,
         modelName: s.modelName,
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
-  const { title, modelProvider, modelName, thinkingLevel, toolConfig } = body;
+  const { title, temporary, modelProvider, modelName, thinkingLevel, toolConfig } = body;
 
   // Sanitize title: strip null bytes, limit length
   const sanitizedTitle = (title || "New Chat").replace(/\0/g, "").slice(0, 200);
@@ -67,6 +70,7 @@ export async function POST(request: NextRequest) {
     data: {
       userId: authResult.user.id,
       title: sanitizedTitle,
+      temporary: !!temporary,
       modelProvider,
       modelName,
       thinkingLevel: thinkingLevel || "off",
