@@ -1,16 +1,17 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { searchWeb } from "@/lib/web/search";
 import { fetchUrl } from "@/lib/web/fetch";
 
 /**
  * Create web tools (search + fetch) for Pi agent sessions.
+ * Returns an array of tool definitions for direct spread into the agent session.
  */
-export function createWebTools() {
-  return {
+export function createWebTools(): ToolDefinition[] {
+  return [
     // ─── web_search ──────────────────────────────────────────────
 
-    webSearchTool: defineTool({
+    defineTool({
       name: "web_search",
       label: "Web Search",
       description:
@@ -81,7 +82,7 @@ export function createWebTools() {
 
     // ─── web_fetch ───────────────────────────────────────────────
 
-    webFetchTool: defineTool({
+    defineTool({
       name: "web_fetch",
       label: "Fetch URL",
       description:
@@ -180,5 +181,5 @@ export function createWebTools() {
         };
       },
     }),
-  };
+  ];
 }

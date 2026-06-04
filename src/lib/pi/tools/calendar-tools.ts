@@ -1,4 +1,4 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { pushEventToCalDAV } from "@/lib/calendar/caldav";
@@ -6,8 +6,9 @@ import { pushEventToCalDAV } from "@/lib/calendar/caldav";
 /**
  * Create calendar tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's calendars.
+ * Returns an array of tool definitions for direct spread into the agent session.
  */
-export function createCalendarTools(userId: string) {
+export function createCalendarTools(userId: string): ToolDefinition[] {
   /** Find a single event, scoped to user */
   async function findEventByUser(eventId: string, options?: { includeCalendar?: boolean }) {
     return prisma.calendarEvent.findFirst({
@@ -46,10 +47,10 @@ export function createCalendarTools(userId: string) {
     }));
   }
 
-  return {
+  return [
     // ─── calendar_list ──────────────────────────────────────────────────────
 
-    calendarListTool: defineTool({
+    defineTool({
       name: "calendar_list",
       label: "List Calendars",
       description: "List all connected calendars with their names, colors, and event counts.",
@@ -98,7 +99,7 @@ export function createCalendarTools(userId: string) {
 
     // ─── calendar_upcoming ──────────────────────────────────────────────────
 
-    calendarUpcomingTool: defineTool({
+    defineTool({
       name: "calendar_upcoming",
       label: "Upcoming Events",
       description:
@@ -160,7 +161,7 @@ export function createCalendarTools(userId: string) {
 
     // ─── calendar_search ────────────────────────────────────────────────────
 
-    calendarSearchTool: defineTool({
+    defineTool({
       name: "calendar_search",
       label: "Search Events",
       description:
@@ -208,7 +209,7 @@ export function createCalendarTools(userId: string) {
 
     // ─── calendar_create ────────────────────────────────────────────────────
 
-    calendarCreateTool: defineTool({
+    defineTool({
       name: "calendar_create",
       label: "Create Event",
       description:
@@ -333,7 +334,7 @@ export function createCalendarTools(userId: string) {
 
     // ─── calendar_update ────────────────────────────────────────────────────
 
-    calendarUpdateTool: defineTool({
+    defineTool({
       name: "calendar_update",
       label: "Update Event",
       description: "Update an existing calendar event by its ID.",
@@ -418,7 +419,7 @@ export function createCalendarTools(userId: string) {
 
     // ─── calendar_delete ────────────────────────────────────────────────────
 
-    calendarDeleteTool: defineTool({
+    defineTool({
       name: "calendar_delete",
       label: "Delete Event",
       description: "Delete a calendar event by its ID.",
@@ -456,5 +457,5 @@ export function createCalendarTools(userId: string) {
         };
       },
     }),
-  };
+  ];
 }

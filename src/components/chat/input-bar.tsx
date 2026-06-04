@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Paperclip, Send, Loader2, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type ToolConfig } from "@/lib/pi/tool-config";
+import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
 
 export type { ToolConfig };
 
@@ -27,19 +27,8 @@ interface InputBarProps {
   isLoading: boolean;
   onStop: () => void;
   toolConfig?: ToolConfig;
-  onToggleTool?: (category: keyof ToolConfig) => void;
+  onToggleTool?: (category: string) => void;
 }
-
-const TOOL_LABELS: Record<keyof ToolConfig, string> = {
-  bash: "Bash",
-  files: "Files",
-  email: "Email",
-  jobs: "Jobs",
-  calendar: "Calendar",
-  chatSearch: "Chat history",
-  web: "Web",
-  memory: "Memory",
-};
 
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/png",
@@ -201,13 +190,13 @@ export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Available Tools</DropdownMenuLabel>
-                {(Object.keys(TOOL_LABELS) as Array<keyof ToolConfig>).map((key) => (
+                {TOOL_CATEGORIES.map((category) => (
                   <DropdownMenuCheckboxItem
-                    key={key}
-                    checked={!!toolConfig[key]}
-                    onCheckedChange={() => onToggleTool(key)}
+                    key={category.key}
+                    checked={!!toolConfig[category.key]}
+                    onCheckedChange={() => onToggleTool(category.key)}
                   >
-                    {TOOL_LABELS[key]}
+                    {category.label}
                   </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuGroup>
