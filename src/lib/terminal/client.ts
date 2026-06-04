@@ -10,6 +10,12 @@
 const BASE_URL = process.env.OPEN_TERMINAL_URL ?? "http://localhost:8000";
 const API_KEY = process.env.OPEN_TERMINAL_API_KEY;
 
+// Log config at startup (redacted key for security)
+if (API_KEY) {
+  // eslint-disable-next-line no-console
+  console.log(`[terminal] OPEN_TERMINAL_URL=${BASE_URL} API_KEY=<${API_KEY.length} chars>`);
+}
+
 /**
  * Check if open-terminal is configured (API key is set).
  * Call this before using any terminal operations.
