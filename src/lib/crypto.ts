@@ -12,12 +12,16 @@ function getKey(): Buffer {
 
   const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
   if (!ENCRYPTION_KEY) {
-    throw new Error("ENCRYPTION_KEY environment variable is required (32-char hex string)");
+    throw new Error(
+      "ENCRYPTION_KEY environment variable is required (64-char hex string = 32 bytes / 256-bit key)",
+    );
   }
 
   const key = Buffer.from(ENCRYPTION_KEY, "hex");
   if (key.length !== 32) {
-    throw new Error("ENCRYPTION_KEY must be a 32-character hex string (256-bit key)");
+    throw new Error(
+      `ENCRYPTION_KEY must be a 64-character hex string (32 bytes / 256-bit key), got ${ENCRYPTION_KEY.length} chars (${key.length} bytes)`,
+    );
   }
 
   _key = key;
