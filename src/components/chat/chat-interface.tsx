@@ -7,7 +7,7 @@ import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
-import { fetchJson, patchJson, deleteJson } from "@/lib/http";
+import { fetchJson, patchJson } from "@/lib/http";
 import { Loader2, Settings2, ChevronDown, Ghost } from "lucide-react";
 import {
   DropdownMenu,
@@ -207,9 +207,15 @@ export function ChatInterface({
     return () => {
       const mountedFor = Date.now() - mountedAt;
       if (mountedFor < 1000) return; // StrictMode double-mount guard
-      if (temporaryRef.current && !loadingRef.current) {
-        // Fire-and-forget — don't block navigation
-        void deleteJson(`/api/chat/sessions/${sessionId}`);
+      if (!temporaryRef.current || loadingRef.current) return;
+
+      // Use sendBeacon for reliable delivery on page unload/refresh,
+      // fallback to fetch for in-app navigation
+      const url = `${window.location.origin}/api/chat/sessions/${sessionId}`;
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new URLSearchParams({ _method: "DELETE" }));
+      } else {
+        void fetch(url, { method: "DELETE" });
       }
     };
   }, [sessionId]); // sessionId stable per mount — cleanup fires only on unmount

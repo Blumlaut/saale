@@ -35,7 +35,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
 
   useEffect(() => {
     fetchSessions();
-  }, [fetchSessions]);
+  }, [fetchSessions, activeSessionId]); // refetch when active session changes
 
   const deleteSession = async (id: string) => {
     setDeletingId(id);
