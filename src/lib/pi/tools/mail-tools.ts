@@ -1,5 +1,5 @@
 import path from "path";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
@@ -17,12 +17,13 @@ function getUserDir(userId: string): string {
 /**
  * Create mail tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's email accounts.
+ * Returns an array of tool definitions for direct spread into the agent session.
  */
-export function createMailTools(userId: string) {
-  return {
+export function createMailTools(userId: string): ToolDefinition[] {
+  return [
     // ─── mail_accounts ──────────────────────────────────────────────────────
 
-    mailAccountsTool: defineTool({
+    defineTool({
       name: "mail_accounts",
       label: "List Email Accounts",
       description:
@@ -83,7 +84,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_folders ───────────────────────────────────────────────────────
 
-    mailFoldersTool: defineTool({
+    defineTool({
       name: "mail_folders",
       label: "List Folders",
       description:
@@ -151,7 +152,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_sync ──────────────────────────────────────────────────────────
 
-    mailSyncTool: defineTool({
+    defineTool({
       name: "mail_sync",
       label: "Sync Email Account",
       description:
@@ -196,7 +197,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_list ──────────────────────────────────────────────────────────
 
-    mailListTool: defineTool({
+    defineTool({
       name: "mail_list",
       label: "List Emails",
       description:
@@ -356,7 +357,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_read ──────────────────────────────────────────────────────────
 
-    mailReadTool: defineTool({
+    defineTool({
       name: "mail_read",
       label: "Read Email(s)",
       description:
@@ -474,7 +475,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_search ────────────────────────────────────────────────────────
 
-    mailSearchTool: defineTool({
+    defineTool({
       name: "mail_search",
       label: "Search Emails",
       description:
@@ -586,7 +587,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_send ──────────────────────────────────────────────────────────
 
-    mailSendTool: defineTool({
+    defineTool({
       name: "mail_send",
       label: "Send Email",
       description:
@@ -682,7 +683,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_tag ───────────────────────────────────────────────────────────
 
-    mailTagTool: defineTool({
+    defineTool({
       name: "mail_tag",
       label: "Tag Email(s)",
       description: "Add or remove tags from one or more emails. Accepts an array of email IDs.",
@@ -762,7 +763,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_move ──────────────────────────────────────────────────────────
 
-    mailMoveTool: defineTool({
+    defineTool({
       name: "mail_move",
       label: "Move Email(s)",
       description:
@@ -825,7 +826,7 @@ export function createMailTools(userId: string) {
 
     // ─── mail_delete ────────────────────────────────────────────────────────
 
-    mailDeleteTool: defineTool({
+    defineTool({
       name: "mail_delete",
       label: "Delete Email(s)",
       description:
@@ -880,5 +881,5 @@ export function createMailTools(userId: string) {
         };
       },
     }),
-  };
+  ];
 }

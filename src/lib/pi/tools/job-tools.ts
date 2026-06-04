@@ -1,4 +1,4 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { getQueue, addJobRun } from "@/lib/queue";
@@ -7,14 +7,15 @@ import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 /**
  * Create task (job) tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's tasks.
+ * Returns an array of tool definitions for direct spread into the agent session.
  *
  * Tool names use "task_*" to match the frontend "Tasks" sidebar label.
  */
-export function createJobTools(userId: string) {
-  return {
+export function createJobTools(userId: string): ToolDefinition[] {
+  return [
     // ─── task_list ──────────────────────────────────────────────────────────
 
-    taskListTool: defineTool({
+    defineTool({
       name: "task_list",
       label: "List Tasks",
       description: "List all configured tasks with their current status, schedule, and run count.",
@@ -86,7 +87,7 @@ export function createJobTools(userId: string) {
 
     // ─── task_enable ────────────────────────────────────────────────────────
 
-    taskEnableTool: defineTool({
+    defineTool({
       name: "task_enable",
       label: "Enable/Disable Task",
       description: "Enable or disable a task by its ID.",
@@ -151,7 +152,7 @@ export function createJobTools(userId: string) {
 
     // ─── task_run ───────────────────────────────────────────────────────────
 
-    taskRunTool: defineTool({
+    defineTool({
       name: "task_run",
       label: "Run Task Now",
       description: "Trigger an immediate manual run of a task by its ID.",
@@ -206,7 +207,7 @@ export function createJobTools(userId: string) {
 
     // ─── task_logs ──────────────────────────────────────────────────────────
 
-    taskLogsTool: defineTool({
+    defineTool({
       name: "task_logs",
       label: "Task Logs",
       description: "View recent run history for a task, including status, output, and errors.",
@@ -302,7 +303,7 @@ export function createJobTools(userId: string) {
 
     // ─── task_types ─────────────────────────────────────────────────────────
 
-    taskTypesTool: defineTool({
+    defineTool({
       name: "task_types",
       label: "List Task Types",
       description:
@@ -357,7 +358,7 @@ export function createJobTools(userId: string) {
 
     // ─── task_create ────────────────────────────────────────────────────────
 
-    taskCreateTool: defineTool({
+    defineTool({
       name: "task_create",
       label: "Create Task",
       description:
@@ -476,5 +477,5 @@ export function createJobTools(userId: string) {
         };
       },
     }),
-  };
+  ];
 }

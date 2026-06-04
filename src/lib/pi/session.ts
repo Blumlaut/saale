@@ -12,16 +12,10 @@ import {
   type CreateAgentSessionResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
 import { createTerminalOperations } from "@/lib/terminal/operations";
 import { buildModelRegistry } from "./models";
-import { createChatSearchTool, createShowFileTool } from "./tools/chat-tools";
-import { createMailTools } from "./tools/mail-tools";
-import { createJobTools } from "./tools/job-tools";
-import { createCalendarTools } from "./tools/calendar-tools";
-import { createWebTools } from "./tools/web-tools";
-import { createMemoryTools } from "./tools/memory-tools";
-import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-config";
+import { resolveTools } from "./tool-registry";
+import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-categories";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
@@ -246,84 +240,12 @@ export async function createPiSession(options: {
   // Build user-scoped custom tools (only if enabled)
   const allCustomTools: ToolDefinition[] = [...options.customTools];
 
-  // Pi built-in tools — choose backend based on bash setting
-  if (enabled.bash && isTerminalConfigured()) {
-    // Terminal-backed tools (sandboxed via open-terminal)
-    const terminal = createTerminalScopedTools(options.userId, sessionId);
-    if (enabled.files) {
-      allCustomTools.push(terminal.read, terminal.write, terminal.edit);
-    }
-    allCustomTools.push(terminal.bash);
-    allCustomTools.push(createShowFileTool(options.userId));
-  } else if (enabled.bash) {
-    // Bash requested but open-terminal not configured — warn and fall back
-    console.warn("Bash tools enabled but OPEN_TERMINAL_API_KEY is not set. Bash tools disabled.");
-    // Still provide local file tools
-    if (enabled.files) {
-      const local = createLocalScopedTools(options.userId);
-      allCustomTools.push(local.read, local.write, local.edit);
-    }
-  } else {
-    // Local fs tools (fast, no network overhead)
-    const local = createLocalScopedTools(options.userId);
-    if (enabled.files) {
-      allCustomTools.push(local.read, local.write, local.edit);
-    }
-  }
-
-  if (enabled.chatSearch) {
-    allCustomTools.push(createChatSearchTool(options.userId));
-  }
-
-  if (enabled.email) {
-    const mailTools = createMailTools(options.userId);
-    allCustomTools.push(
-      mailTools.mailAccountsTool,
-      mailTools.mailFoldersTool,
-      mailTools.mailSyncTool,
-      mailTools.mailListTool,
-      mailTools.mailReadTool,
-      mailTools.mailSearchTool,
-      mailTools.mailSendTool,
-      mailTools.mailTagTool,
-      mailTools.mailMoveTool,
-      mailTools.mailDeleteTool,
-    );
-  }
-
-  if (enabled.jobs) {
-    const jobTools = createJobTools(options.userId);
-    allCustomTools.push(
-      jobTools.taskListTool,
-      jobTools.taskEnableTool,
-      jobTools.taskRunTool,
-      jobTools.taskLogsTool,
-      jobTools.taskTypesTool,
-      jobTools.taskCreateTool,
-    );
-  }
-
-  if (enabled.calendar) {
-    const calendarTools = createCalendarTools(options.userId);
-    allCustomTools.push(
-      calendarTools.calendarListTool,
-      calendarTools.calendarUpcomingTool,
-      calendarTools.calendarSearchTool,
-      calendarTools.calendarCreateTool,
-      calendarTools.calendarUpdateTool,
-      calendarTools.calendarDeleteTool,
-    );
-  }
-
-  if (enabled.web) {
-    const webTools = createWebTools();
-    allCustomTools.push(webTools.webSearchTool, webTools.webFetchTool);
-  }
-
-  if (enabled.memory) {
-    const memoryTools = createMemoryTools(options.userId);
-    allCustomTools.push(memoryTools.memoryIndexTool, memoryTools.memorySearchTool);
-  }
+  // Resolve tools from the registry (handles bash/files interdependency + all custom tools)
+  const resolvedTools = resolveTools(options.userId, sessionId, enabled, {
+    createLocalScopedTools,
+    createTerminalScopedTools,
+  });
+  allCustomTools.push(...resolvedTools);
 
   // Resolve the model if specified
   let model;

@@ -1,6 +1,6 @@
 // Re-export shared types
 export type { EmailAccount } from "@/types/shared";
-import type { ToolConfig } from "@/lib/pi/tool-config";
+import type { ToolConfig } from "@/lib/pi/tool-categories";
 export type { ToolConfig };
 
 export interface PurposeModelSelection {

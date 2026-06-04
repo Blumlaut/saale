@@ -7,18 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Wrench, Loader2, CheckCircle, AlertCircle, Info } from "lucide-react";
 import type { UserSettings, ToolConfig } from "../types";
-import { DEFAULT_TOOL_CONFIG } from "@/lib/pi/tool-config";
-
-const TOOL_LABELS: Record<keyof ToolConfig, { label: string; description: string }> = {
-  bash: { label: "Bash", description: "Run shell commands in a sandboxed workspace" },
-  files: { label: "Files", description: "Read, write, and edit files" },
-  email: { label: "Email", description: "Access and manage email accounts" },
-  jobs: { label: "Jobs", description: "Manage scheduled background tasks" },
-  calendar: { label: "Calendar", description: "Access and manage calendar events" },
-  chatSearch: { label: "Chat history", description: "Search through past conversations" },
-  web: { label: "Web", description: "Search and fetch web content" },
-  memory: { label: "Memory", description: "Search persistent AI memories" },
-};
+import { DEFAULT_TOOL_CONFIG, TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
 
 interface ToolsTabProps {
   settings: UserSettings | null;
@@ -37,7 +26,7 @@ export function ToolsTab({
 }: ToolsTabProps) {
   const toolConfig = (settings?.defaultToolConfig ?? DEFAULT_TOOL_CONFIG) as Required<ToolConfig>;
 
-  const handleToggle = (key: keyof ToolConfig) => {
+  const handleToggle = (key: string) => {
     if (!settings) return;
     const updated = { ...toolConfig, [key]: !toolConfig[key] };
     onSettingsChange({
@@ -72,19 +61,18 @@ export function ToolsTab({
         {/* Tool toggles */}
         <div className="px-6 py-4">
           <div className="space-y-1">
-            {(Object.keys(TOOL_LABELS) as Array<keyof ToolConfig>).map((key, index) => {
-              const { label, description } = TOOL_LABELS[key]!;
-              const enabled = !!toolConfig[key];
+            {TOOL_CATEGORIES.map((category, index) => {
+              const enabled = !!toolConfig[category.key];
 
               return (
-                <div key={key}>
+                <div key={category.key}>
                   {index > 0 && <Separator className="mx-2" />}
                   <div className="flex items-center justify-between py-3">
                     <div className="space-y-0.5">
-                      <Label className="text-sm font-medium">{label}</Label>
-                      <p className="text-muted-foreground text-xs">{description}</p>
+                      <Label className="text-sm font-medium">{category.label}</Label>
+                      <p className="text-muted-foreground text-xs">{category.description}</p>
                     </div>
-                    <Switch checked={enabled} onCheckedChange={() => handleToggle(key)} />
+                    <Switch checked={enabled} onCheckedChange={() => handleToggle(category.key)} />
                   </div>
                 </div>
               );

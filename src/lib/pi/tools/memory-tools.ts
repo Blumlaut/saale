@@ -1,4 +1,4 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
@@ -6,12 +6,13 @@ import { Prisma } from "@prisma/client";
 /**
  * Create memory tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's memories.
+ * Returns an array of tool definitions for direct spread into the agent session.
  */
-export function createMemoryTools(userId: string) {
-  return {
+export function createMemoryTools(userId: string): ToolDefinition[] {
+  return [
     // ─── memory_index ───────────────────────────────────────────────────
 
-    memoryIndexTool: defineTool({
+    defineTool({
       name: "memory_index",
       label: "Memory Index",
       description:
@@ -79,7 +80,7 @@ export function createMemoryTools(userId: string) {
 
     // ─── memory_search ──────────────────────────────────────────────────
 
-    memorySearchTool: defineTool({
+    defineTool({
       name: "memory_search",
       label: "Search Memory",
       description:
@@ -185,5 +186,5 @@ export function createMemoryTools(userId: string) {
         };
       },
     }),
-  };
+  ];
 }
