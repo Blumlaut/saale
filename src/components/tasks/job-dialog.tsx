@@ -6,11 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConfigForm } from "@/components/tasks/config-form";
 import { fetchJson, postJson, patchJson } from "@/lib/http";
 import { RefreshCw, FileText, Tags, Shield, Loader2, Brain } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { JobSchema } from "@/types/shared";
 
 // Icon map (keeps the import bundle small)
@@ -113,7 +118,8 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
   }, [job, schemas, resetForm]);
 
   const handleTypeChange = useCallback(
-    (type: string) => {
+    (type: string | null) => {
+      if (!type) return;
       setSelectedType(type);
       const schema = schemas.find((s) => s.type === type);
       if (schema) {
@@ -205,36 +211,39 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
 
         <div className="flex flex-col gap-4">
           {/* Template selection */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            {loadingSchemas ? (
-              <div className="col-span-2 flex items-center justify-center py-6">
-                <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-              </div>
-            ) : (
-              schemas.map((schema) => {
-                const Icon = schema.icon ? (iconMap[schema.icon] ?? RefreshCw) : RefreshCw;
-                return (
-                  <button
-                    key={schema.type}
-                    onClick={() => handleTypeChange(schema.type)}
-                    className={cn(
-                      "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                      selectedType === schema.type && "border-primary bg-white/20 dark:bg-white/5",
-                    )}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Icon className="h-4 w-4" />
-                      {schema.usesAi && <Brain className="text-muted-foreground h-3 w-3" />}
-                    </div>
-                    <span className="text-sm font-medium">{schema.label}</span>
-                    <span className="text-muted-foreground text-xs">{schema.description}</span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          <Separator />
+          {loadingSchemas ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Task Type</Label>
+              <Select value={selectedType} onValueChange={handleTypeChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a task type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schemas.map((schema) => {
+                    const Icon = schema.icon ? (iconMap[schema.icon] ?? RefreshCw) : RefreshCw;
+                    return (
+                      <SelectItem key={schema.type} value={schema.type}>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="h-4 w-4" />
+                            <span className="font-medium">{schema.label}</span>
+                            {schema.usesAi && <Brain className="text-muted-foreground h-3 w-3" />}
+                          </div>
+                          <span className="text-muted-foreground text-xs">
+                            {schema.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Schedule */}
           <div className="space-y-2">
