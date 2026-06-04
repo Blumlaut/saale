@@ -1,0 +1,7 @@
+services:
+  app:
+    build:
+      target: development
+    environment:
+      - NODE_ENV=development
+    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npm run worker & npm run dev"
