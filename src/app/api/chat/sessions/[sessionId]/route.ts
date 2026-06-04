@@ -91,12 +91,10 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/chat/sessions/:sessionId — Delete a session and all its messages
+ * Delete a chat session and all its messages + attachments.
+ * Used by both DELETE and sendBeacon (POST with _method=DELETE).
  */
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> },
-) {
+async function deleteSession(request: NextRequest, params: Promise<{ sessionId: string }>) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
@@ -128,4 +126,29 @@ export async function DELETE(
   });
 
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * DELETE /api/chat/sessions/:sessionId — Delete a session and all its messages
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> },
+) {
+  return deleteSession(request, params);
+}
+
+/**
+ * POST /api/chat/sessions/:sessionId — Method override for sendBeacon (DELETE via POST)
+ * sendBeacon only supports POST, so we accept _method=DELETE in the body.
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> },
+) {
+  const formData = await request.formData();
+  if (formData.get("_method") === "DELETE") {
+    return deleteSession(request, params);
+  }
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
