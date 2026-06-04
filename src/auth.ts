@@ -25,6 +25,21 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh every day
   },
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          const count = await prisma.user.count();
+          if (count <= 1) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { role: "admin" },
+            });
+          }
+        },
+      },
+    },
+  },
   plugins: [
     admin({
       defaultRole: "user",
