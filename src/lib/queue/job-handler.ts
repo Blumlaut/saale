@@ -34,7 +34,7 @@ export async function dispatchAiTask(
     modelId?: string | null;
   },
 ): Promise<string> {
-  const modelInfo = await resolveModelForPurpose(userId, "", options?.modelId);
+  const modelInfo = await resolveModelForPurpose(userId, "tasks", options?.modelId);
 
   // Build a minimal model registry (no tools, no extensions — just the model)
   const { modelRegistry, authStorage } = await buildModelRegistry(userId);
