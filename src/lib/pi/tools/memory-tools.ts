@@ -1,7 +1,7 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
-import { Prisma } from "../../../../prisma/generated/prisma";
+import { Prisma } from "@prisma/client";
 
 /**
  * Create memory tools with userId injection for user isolation.
