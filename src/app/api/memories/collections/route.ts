@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { Prisma } from "../../../../../prisma/generated/prisma";
+import { Prisma } from "@prisma/client";
 
 /**
  * GET /api/memories/collections — List collections with counts and top tags
