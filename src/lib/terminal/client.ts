@@ -7,7 +7,7 @@
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-const BASE_URL = process.env.OPEN_TERMINAL_URL ?? "http://localhost:8000";
+const BASE_URL = process.env.OPEN_TERMINAL_URL ?? "http://saale-open-terminal:8000";
 const API_KEY = process.env.OPEN_TERMINAL_API_KEY;
 
 // Log config at startup (redacted key for security)
