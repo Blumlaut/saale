@@ -138,6 +138,7 @@ export function ChatInterface({
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
+  const mountTimeRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -185,6 +186,11 @@ export function ChatInterface({
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
+  // Record mount time on first render
+  useEffect(() => {
+    mountTimeRef.current = Date.now();
+  }, []);
+
   // Keep refs in sync for auto-delete cleanup
   useEffect(() => {
     temporaryRef.current = temporaryMode;
@@ -195,8 +201,12 @@ export function ChatInterface({
   }, [isLoading]);
 
   // Auto-delete temporary sessions on unmount only (not on dep changes)
+  // Grace period prevents StrictMode double-mount from deleting instantly
   useEffect(() => {
+    const mountedAt = mountTimeRef.current;
     return () => {
+      const mountedFor = Date.now() - mountedAt;
+      if (mountedFor < 1000) return; // StrictMode double-mount guard
       if (temporaryRef.current && !loadingRef.current) {
         // Fire-and-forget — don't block navigation
         void deleteJson(`/api/chat/sessions/${sessionId}`);
