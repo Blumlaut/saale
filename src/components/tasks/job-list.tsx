@@ -16,6 +16,7 @@ import {
   Settings,
   Calendar,
   Brain,
+  Pencil,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -77,9 +78,10 @@ function getModelLabel(modelId: string | null): string | null {
 
 interface JobListProps {
   onRefresh?: () => void;
+  onEdit?: (job: Job) => void;
 }
 
-export function JobList({ onRefresh }: JobListProps) {
+export function JobList({ onRefresh, onEdit }: JobListProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -280,6 +282,14 @@ export function JobList({ onRefresh }: JobListProps) {
                           ) : (
                             <Play className="h-3 w-3" />
                           )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => onEdit?.(job)}
+                        >
+                          <Pencil className="h-3 w-3" />
                         </Button>
                         <Button
                           variant="ghost"

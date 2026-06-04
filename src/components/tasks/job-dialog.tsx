@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ConfigForm } from "@/components/tasks/config-form";
-import { fetchJson, postJson } from "@/lib/http";
+import { fetchJson, postJson, patchJson } from "@/lib/http";
 import { RefreshCw, FileText, Tags, Shield, Loader2, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { JobSchema } from "@/types/shared";
@@ -25,9 +25,17 @@ interface JobDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  /** Job to edit (edit mode). If absent, dialog is in create mode. */
+  job?: {
+    id: string;
+    type: string;
+    enabled: boolean;
+    modelId: string | null;
+    config: Record<string, unknown>;
+  } | null;
 }
 
-export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
+export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps) {
   const [schemas, setSchemas] = useState<JobSchema[]>([]);
   const [loadingSchemas, setLoadingSchemas] = useState(true);
   const [selectedType, setSelectedType] = useState("");
@@ -36,6 +44,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const isEditMode = !!job;
 
   // Fetch schemas from API
   useEffect(() => {
@@ -47,6 +56,28 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
       .finally(() => setLoadingSchemas(false));
   }, [open]);
 
+  // Pre-populate form when editing
+  useEffect(() => {
+    if (!open || !job) return;
+    setSelectedType(job.type);
+    setCronExpression((job.config?.cronExpression as string) ?? "");
+    setEnabled(job.enabled);
+
+    const defaults: Record<string, unknown> = {};
+    const schema = schemas.find((s) => s.type === job.type);
+    if (schema) {
+      for (const field of schema.fields) {
+        if (job.config?.[field.key] !== undefined) {
+          defaults[field.key] = job.config[field.key];
+        } else if (field.default !== undefined) {
+          defaults[field.key] = field.default;
+        }
+      }
+    }
+    setConfigValues(defaults);
+    setError("");
+  }, [open, job, schemas]);
+
   const selectedSchema = schemas.find((s) => s.type === selectedType);
 
   const resetForm = useCallback(() => {
@@ -56,6 +87,30 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
     setConfigValues({});
     setError("");
   }, []);
+
+  const handleReset = useCallback(() => {
+    if (job) {
+      // Re-populate from the original job data
+      setSelectedType(job.type);
+      setCronExpression((job.config?.cronExpression as string) ?? "");
+      setEnabled(job.enabled);
+      const defaults: Record<string, unknown> = {};
+      const schema = schemas.find((s) => s.type === job.type);
+      if (schema) {
+        for (const field of schema.fields) {
+          if (job.config?.[field.key] !== undefined) {
+            defaults[field.key] = job.config[field.key];
+          } else if (field.default !== undefined) {
+            defaults[field.key] = field.default;
+          }
+        }
+      }
+      setConfigValues(defaults);
+    } else {
+      resetForm();
+    }
+    setError("");
+  }, [job, schemas, resetForm]);
 
   const handleTypeChange = useCallback(
     (type: string) => {
@@ -80,7 +135,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
     setConfigValues((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const handleCreate = async () => {
+  const handleSubmit = async () => {
     if (!selectedType) return;
 
     setLoading(true);
@@ -110,14 +165,22 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
       const modelId = config.modelId || undefined;
       delete config.modelId;
 
-      await postJson("/api/jobs", {
-        type: selectedType,
-        enabled,
-        config,
-        modelId,
-      });
+      if (isEditMode && job) {
+        await patchJson(`/api/jobs/${job.id}`, {
+          type: selectedType,
+          enabled,
+          config,
+          modelId,
+        });
+      } else {
+        await postJson("/api/jobs", {
+          type: selectedType,
+          enabled,
+          config,
+          modelId,
+        });
+      }
 
-      resetForm();
       onOpenChange(false);
       onSuccess?.();
     } catch (err) {
@@ -137,7 +200,7 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
     >
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Create Job</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edit Job" : "Create Job"}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
@@ -212,11 +275,17 @@ export function JobDialog({ open, onOpenChange, onSuccess }: JobDialogProps) {
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2">
-            <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            <Button variant="secondary" onClick={handleReset}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={loading || !selectedType}>
-              {loading ? "Creating..." : "Create Job"}
+            <Button onClick={handleSubmit} disabled={loading || !selectedType}>
+              {loading
+                ? isEditMode
+                  ? "Saving..."
+                  : "Creating..."
+                : isEditMode
+                  ? "Save Changes"
+                  : "Create Job"}
             </Button>
           </div>
         </div>
