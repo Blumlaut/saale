@@ -9,7 +9,7 @@ export interface SearchResult {
   title: string;
   url: string;
   content: string | undefined;
-  engine: string[];
+  engine: string[] | string;
   parsedUrl: string[] | undefined;
   score: number;
   iAmMath: boolean;
