@@ -1,4 +1,4 @@
-import { MessageSquare, Mail, type LucideIcon } from "lucide-react";
+import { MessageSquare, Mail, ListTodo, type LucideIcon } from "lucide-react";
 
 /**
  * A "purpose" is a distinct AI use-case in Saale that can have its own
@@ -32,6 +32,12 @@ export const MODEL_PURPOSES: Record<string, ModelPurpose> = {
     label: "Email Drafts",
     description: "AI-generated email reply drafts",
     icon: Mail,
+  },
+  tasks: {
+    id: "tasks",
+    label: "Tasks",
+    description: "Scheduled AI tasks (summarization, classification, etc.)",
+    icon: ListTodo,
   },
 };
 
