@@ -6,6 +6,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchJson, deleteJson } from "@/lib/http";
+import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import { Trash2, Loader2, Ghost, GitBranch } from "lucide-react";
 
 interface ChatSession {
@@ -22,6 +23,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { streamingIds, finishedIds } = useStreamingSessions();
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -108,6 +110,14 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
                     <div className="truncate font-medium">
                       {session.title.length > 25 ? `${session.title.slice(0, 25)}…` : session.title}
                     </div>
+                    {(streamingIds.has(session.id) || finishedIds.has(session.id)) && (
+                      <span
+                        className={cn(
+                          "text-muted-foreground -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current",
+                          streamingIds.has(session.id) ? "animate-pulse-dot" : "animate-pop-dot",
+                        )}
+                      />
+                    )}
                     {session.forkedFromSessionId && (
                       <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
                     )}

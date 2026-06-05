@@ -432,6 +432,45 @@
   color: #e6c07b;
 }
 
+/* ===== Streaming indicator — subtle breathing dot ===== */
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ===== Response just arrived — sharp pop then dissolve ===== */
+
+@keyframes pop-dot {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+}
+
+.animate-pop-dot {
+  animation: pop-dot 0.6s ease-out forwards;
+}
+
 /* ===== Reduced motion ===== */
 
 @media (prefers-reduced-motion: reduce) {
