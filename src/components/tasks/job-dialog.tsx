@@ -6,16 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ConfigForm } from "@/components/tasks/config-form";
 import { fetchJson, postJson, patchJson } from "@/lib/http";
-import { RefreshCw, FileText, Tags, Shield, Loader2, Brain } from "lucide-react";
+import {
+  RefreshCw,
+  FileText,
+  Tags,
+  Shield,
+  Loader2,
+  Brain,
+  Check,
+  ChevronDown,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
 import type { JobSchema } from "@/types/shared";
 
 // Icon map (keeps the import bundle small)
@@ -218,30 +223,83 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
           ) : (
             <div className="space-y-2">
               <Label>Task Type</Label>
-              <Select value={selectedType} onValueChange={handleTypeChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a task type" />
-                </SelectTrigger>
-                <SelectContent>
+              <Popover>
+                <PopoverTrigger>
+                  <button
+                    type="button"
+                    className={cn(
+                      "border-input bg-background flex h-9 w-full items-center gap-2 rounded-md border px-3 text-sm transition-colors hover:bg-white/5",
+                      !selectedType && "text-muted-foreground",
+                    )}
+                  >
+                    {selectedType ? (
+                      <>
+                        {(() => {
+                          const schema = schemas.find((s) => s.type === selectedType);
+                          const Icon = schema?.icon
+                            ? (iconMap[schema.icon] ?? RefreshCw)
+                            : RefreshCw;
+                          return <Icon className="text-muted-foreground h-4 w-4 shrink-0" />;
+                        })()}
+                        <span className="flex-1 text-left">
+                          {schemas.find((s) => s.type === selectedType)?.label}
+                        </span>
+                        <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="text-muted-foreground h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">Select a task type</span>
+                        <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
+                      </>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] gap-0 p-1" align="start">
                   {schemas.map((schema) => {
                     const Icon = schema.icon ? (iconMap[schema.icon] ?? RefreshCw) : RefreshCw;
+                    const isSelected = schema.type === selectedType;
+
                     return (
-                      <SelectItem key={schema.type} value={schema.type}>
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <Icon className="h-4 w-4" />
-                            <span className="font-medium">{schema.label}</span>
-                            {schema.usesAi && <Brain className="text-muted-foreground h-3 w-3" />}
+                      <button
+                        key={schema.type}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                          "hover:bg-white/10 dark:hover:bg-white/5",
+                          isSelected && "bg-primary/10",
+                        )}
+                        onClick={() => {
+                          handleTypeChange(schema.type);
+                        }}
+                      >
+                        {/* Check indicator */}
+                        <div className="flex h-4 w-4 shrink-0 items-center justify-center pt-0.5">
+                          {isSelected && <Check className="text-primary h-3.5 w-3.5" />}
+                        </div>
+
+                        {/* Icon */}
+                        <Icon className="text-muted-foreground h-4 w-4 shrink-0 pt-0.5" />
+
+                        {/* Label + description */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1">
+                            <span className={cn("text-sm", isSelected ? "font-medium" : "")}>
+                              {schema.label}
+                            </span>
+                            {schema.usesAi && (
+                              <Brain className="text-muted-foreground h-3 w-3 shrink-0" />
+                            )}
                           </div>
                           <span className="text-muted-foreground text-xs">
                             {schema.description}
                           </span>
                         </div>
-                      </SelectItem>
+                      </button>
                     );
                   })}
-                </SelectContent>
-              </Select>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
