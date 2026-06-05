@@ -142,7 +142,6 @@ export function ChatInterface({
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
-  const [hasDefaultModel, setHasDefaultModel] = useState(false);
   const { streamingIds, markStreaming, markDone } = useStreamingSessions();
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
@@ -173,21 +172,6 @@ export function ChatInterface({
         if (data.session.toolConfig) {
           setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...data.session.toolConfig });
         }
-      }
-
-      // Check if user has a default model configured (fallback when session has no model)
-      try {
-        const settingsData = await fetchJson<{
-          settings: { defaultModelProvider?: string; defaultModelName?: string };
-        }>("/api/settings");
-        if (
-          settingsData.settings?.defaultModelProvider &&
-          settingsData.settings?.defaultModelName
-        ) {
-          setHasDefaultModel(true);
-        }
-      } catch {
-        // Ignore
       }
     } catch (err) {
       // Session was deleted (e.g. temporary chat closed elsewhere) — redirect
@@ -517,24 +501,9 @@ export function ChatInterface({
     [toolConfig, sessionId],
   );
 
-  // Check if a model is available (session-level or user default)
-  const hasModel = modelId || hasDefaultModel;
-
   // Send message
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
-      // Guard: no model configured
-      if (!hasModel) {
-        toast.error("No AI model configured", {
-          description: "Select a default model in Settings > AI & Models to start chatting.",
-          action: {
-            label: "Open Settings",
-            onClick: () => router.push("/dashboard/settings"),
-          },
-        });
-        return;
-      }
-
       const userMsg: Message = {
         id: `temp-${Date.now()}`,
         role: "user",
@@ -786,7 +755,7 @@ export function ChatInterface({
         console.error("Send error:", err);
       }
     },
-    [sessionId, router, hasModel],
+    [sessionId, router],
   );
 
   // Stop streaming
