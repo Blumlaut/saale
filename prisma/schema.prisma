@@ -118,6 +118,7 @@ model ChatMessage {
   toolCalls       String?          @db.Text // JSON array of tool calls
   parentMessageId String?          // links turns to the root assistant message
   createdAt       DateTime         @default(now())
+  editedAt        DateTime?
   session         ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   attachments     ChatAttachment[]
 
