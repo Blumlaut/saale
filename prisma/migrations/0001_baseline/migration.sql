@@ -93,6 +93,7 @@ CREATE TABLE "ChatMessage" (
     "toolCalls" TEXT,
     "parentMessageId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "editedAt" TIMESTAMP(3),
 
     CONSTRAINT "ChatMessage_pkey" PRIMARY KEY ("id")
 );
