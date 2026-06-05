@@ -6,71 +6,51 @@ This project is **production-ready**. There is live data that must not be lost.
 
 ### Database Migrations
 
-- **All schema changes must go through migrations.** Use `npm run db:migrate` (`prisma migrate dev`) — never `prisma db push` or `db:push` with `--accept-data-loss`.
-- Migration files are version-controlled and represent the authoritative history of schema changes. Never edit or delete existing migration files.
-- `.env` uses `localhost` for DATABASE_URL so prisma CLI works from the host. Docker compose uses docker internal hostnames (e.g. `postgres`, `redis`) — never reference `.env` values for internal service URLs in docker-compose.
-- `prisma.config.mjs` loads `.env` directly (no dotenv dependency), so all prisma commands read DATABASE_URL automatically. **Do not modify this file** — it handles both local dev (reads .env) and Docker (DATABASE_URL set by docker-compose).
+Saale uses a **single baseline + auto-diff** migration strategy. Migrations **never break** — for local dev, remote deployments, or existing users upgrading. Full docs: `.pi/skills/database-migrations/SKILL.md`.
+
+**How it works:** `prisma/schema.prisma` is the single source of truth. `prisma/migrations/0001_baseline/migration.sql` is a full SQL dump, regenerated on every schema change. `scripts/migrate.mjs` runs at container startup — it diffs the live DB against the target schema and applies only the delta. No migration history tracking, no "out of sync" errors.
 
 #### Workflow
 
 1. Edit `prisma/schema.prisma` with the desired changes.
-2. Run `npm run db:migrate` — this generates a new migration SQL file.
-3. Review the generated SQL before applying. If it looks wrong, revert the schema change and fix it.
-4. Run `npx prisma generate` to regenerate the Prisma client types.
-5. Commit the schema change, migration file, and any code changes together.
-6. On deploy, `prisma migrate deploy` runs automatically in the Docker entrypoint.
+2. Regenerate the baseline: `npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script > prisma/migrations/0001_baseline/migration.sql`
+3. Regenerate the Prisma client: `npx prisma generate`
+4. Restart the container — `scripts/migrate.mjs` runs automatically and applies the diff.
+5. Verify: check `docker compose logs web | grep migrate` for "Migration complete."
+6. Commit `prisma/schema.prisma` + `prisma/migrations/0001_baseline/migration.sql` together.
 
 ```bash
-# ✅ GOOD — creates a tracked migration, applies to DB, regenerates client
-npm run db:migrate
+# ✅ GOOD — regenerate baseline + client
+npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script \
+  > prisma/migrations/0001_baseline/migration.sql
 npx prisma generate
 
-# ✅ GOOD — verify migration state
-npx prisma migrate status
+# ✅ GOOD — verify migration ran
+sudo docker compose logs web | grep migrate
 
-# ❌ BAD — silently alters production schema, can drop data
+# ❌ BAD — never use prisma migrate dev (creates incremental migrations, not used)
+npx prisma migrate dev --name something
+
+# ❌ BAD — never use prisma db push (can drop data)
 npx prisma db push --accept-data-loss
 
-# ❌ BAD — editing a migration after it has been applied
-# (this silently diverges the migration history from reality)
-```
-
-#### Destructive Changes
-
-- If a column is needed at runtime during deployment, split the migration into steps (e.g., add new column → backfill data → drop old column in a later migration).
-- Never drop a column that still has data you need without a data migration step.
-- If a schema change feels risky, discuss it — don't rush it.
-
-#### No Manual DB Manipulation
-
-- **Never manipulate the database schema directly.** No `docker exec psql`, no raw `ALTER TABLE`, no direct SQL to add/drop/alter columns or tables.
-- **All schema changes must go through Prisma migrations.** Even in development, even for quick fixes, even when the migration tooling is inconvenient.
-- If `prisma migrate dev` can't run (e.g., migrations folder out of sync), fix the migration state — don't bypass it with manual SQL.
-
-```bash
-# ✅ GOOD — schema change through proper migration
-npm run db:migrate
-npx prisma generate
-
-# ❌ BAD — manual SQL to alter schema
+# ❌ BAD — never manipulate DB manually
 docker exec postgres psql -c "ALTER TABLE ..."
-
-# ❌ BAD — direct SQL to add/drop columns
-psql -c "CREATE COLUMN ..."
 ```
 
-#### Verify Before Committing
+#### Rules
 
-- **Every migration must be verified before committing.** After running `npm run db:migrate`, confirm:
-  1. The migration applied without errors (`npx prisma migrate status` shows no pending migrations).
-  2. The generated Prisma client types match expectations (`npx prisma generate` succeeds).
-  3. The app starts and the affected code paths work (e.g., the API route that uses the new field).
-- If a migration needs adjustment, revert the schema change, fix it, and regenerate — don't patch the migration SQL manually.
+- **`prisma/schema.prisma` is the only place you define schema changes.** Never write raw SQL.
+- **Always regenerate the baseline** after editing the schema. The baseline must match the schema exactly.
+- **Always regenerate the Prisma client** (`npx prisma generate`) after schema changes.
+- **Never drop columns or tables.** Add new fields as nullable; deprecate old fields rather than removing them.
+- **Never edit migration SQL manually.** Regenerate from the schema.
+- **Test migrations before committing.** Restart the container and verify the logs.
 
 #### Never Touch These Files
 
 - **`prisma.config.mjs`** — handles env loading for both local dev and Docker. Changing it breaks deployments.
-- **`prisma/migrations/*`** — never edit or delete existing migrations. Only add new ones via `npm run db:migrate`.
+- **`scripts/migrate.mjs`** — the migration runner. Do not modify unless you understand the diff strategy.
 
 ## Investigate Before Using
 
