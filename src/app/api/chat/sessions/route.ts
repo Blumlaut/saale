@@ -21,38 +21,23 @@ export async function GET() {
       modelProvider: true,
       modelName: true,
       thinkingLevel: true,
-      forkedFromSessionId: true,
       createdAt: true,
       updatedAt: true,
     },
   });
 
   return NextResponse.json({
-    sessions: sessions.map(
-      (s: {
-        id: string;
-        title: string;
-        temporary: boolean;
-        messageCount: number;
-        modelProvider: string | null;
-        modelName: string | null;
-        thinkingLevel: string;
-        forkedFromSessionId: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-      }) => ({
-        id: s.id,
-        title: s.title,
-        temporary: s.temporary,
-        messageCount: s.messageCount,
-        modelProvider: s.modelProvider,
-        modelName: s.modelName,
-        thinkingLevel: s.thinkingLevel,
-        forkedFromSessionId: s.forkedFromSessionId || undefined,
-        createdAt: s.createdAt.toISOString(),
-        updatedAt: s.updatedAt.toISOString(),
-      }),
-    ),
+    sessions: sessions.map((s) => ({
+      id: s.id,
+      title: s.title,
+      temporary: s.temporary,
+      messageCount: s.messageCount,
+      modelProvider: s.modelProvider,
+      modelName: s.modelName,
+      thinkingLevel: s.thinkingLevel,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+    })),
   });
 }
 
@@ -69,8 +54,13 @@ export async function POST(request: NextRequest) {
   // Sanitize title: strip null bytes, limit length
   const sanitizedTitle = (title || "New Chat").replace(/\0/g, "").slice(0, 50);
 
+  // Generate a single ID used for both the session and its main branch.
+  // This lets the message endpoints default branchId to sessionId.
+  const id = crypto.randomUUID();
+
   const chatSession = await prisma.chatSession.create({
     data: {
+      id,
       userId: authResult.user.id,
       title: sanitizedTitle,
       temporary: !!temporary,
@@ -78,6 +68,11 @@ export async function POST(request: NextRequest) {
       modelName,
       thinkingLevel: thinkingLevel || "off",
       toolConfig,
+      branches: {
+        create: {
+          id,
+        },
+      },
     },
   });
 
