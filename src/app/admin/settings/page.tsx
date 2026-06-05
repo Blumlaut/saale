@@ -7,7 +7,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, patchJson } from "@/lib/http";
-import { Settings, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { ModelPicker } from "@/components/shared/model-picker";
+import { Settings, Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
 
 interface AdminSettings {
   signupsEnabled: boolean;
@@ -24,6 +25,7 @@ export default function AdminSettingsPage() {
 
   // Local state for toggles
   const [signupsEnabled, setSignupsEnabled] = useState(true);
+  const [globalModelId, setGlobalModelId] = useState("");
 
   // Load admin settings
   useEffect(() => {
@@ -31,6 +33,11 @@ export default function AdminSettingsPage() {
       .then((data) => {
         setSettings(data.settings);
         setSignupsEnabled(data.settings.signupsEnabled);
+        const modelStr =
+          data.settings.globalModelProvider && data.settings.globalModelName
+            ? `${data.settings.globalModelProvider}/${data.settings.globalModelName}`
+            : "";
+        setGlobalModelId(modelStr);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -47,15 +54,18 @@ export default function AdminSettingsPage() {
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
+      const [provider, ...modelParts] = globalModelId.split("/");
       await patchJson("/api/admin/settings", {
         signupsEnabled,
+        globalModelProvider: globalModelId ? provider : "",
+        globalModelName: globalModelId ? modelParts.join("/") : "",
       });
       setSaveStatus("success");
     } catch {
       setSaveStatus("error");
     }
     setSaving(false);
-  }, [signupsEnabled]);
+  }, [signupsEnabled, globalModelId]);
 
   if (loading) {
     return (
@@ -109,6 +119,26 @@ export default function AdminSettingsPage() {
               </p>
             </div>
             <Switch checked={signupsEnabled} onCheckedChange={setSignupsEnabled} />
+          </div>
+        </GlassPanelContent>
+      </GlassPanel>
+
+      {/* Global default model */}
+      <GlassPanel>
+        <GlassPanelHeader title="Default Model" />
+        <GlassPanelContent className="p-0">
+          <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <Label className="text-sm font-medium">Global fallback model</Label>
+              <p className="text-muted-foreground text-xs">
+                Used when a user hasn&apos;t configured their own model. Leave empty to require
+                users to select one.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!globalModelId && <Brain className="text-muted-foreground h-4 w-4" />}
+              <ModelPicker value={globalModelId} onChange={setGlobalModelId} />
+            </div>
           </div>
         </GlassPanelContent>
       </GlassPanel>
