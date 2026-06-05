@@ -162,7 +162,7 @@ export async function GET(
   }
   // Create SSE stream
   const encoder = new TextEncoder();
-  let aborted = false;
+  let clientDisconnected = false;
 
   /**
    * Send an SSE event with proper escaping.
@@ -176,6 +176,7 @@ export async function GET(
     event: string,
     data: unknown,
   ): void {
+    if (clientDisconnected) return;
     const json = JSON.stringify(data);
     // Replace literal newlines with \n to prevent SSE event termination
     const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
@@ -207,9 +208,7 @@ export async function GET(
       }
 
       // Subscribe to agent events
-      const unsubscribe = piSession.subscribe((event) => {
-        if (aborted) return;
-
+      piSession.subscribe((event) => {
         switch (event.type) {
           case "message_update": {
             if (event.message.role !== "assistant") return;
@@ -415,7 +414,9 @@ export async function GET(
 
             sendEvent(controller, "done", {});
 
-            controller.close();
+            if (!clientDisconnected) {
+              controller.close();
+            }
             break;
           }
         }
@@ -432,15 +433,17 @@ export async function GET(
         promptPromise.catch((err) => {
           console.error("agent.prompt() failed:", err);
           sendEvent(controller, "error", { message: err.message });
-          controller.close();
+          if (!clientDisconnected) {
+            controller.close();
+          }
         });
       }
 
-      // Handle client disconnect
+      // Handle client disconnect — stop sending SSE events but let the agent
+      // finish processing so messages are still saved to the database.
+      // When the user navigates back, loadMessages() picks up the saved response.
       request.signal.addEventListener("abort", () => {
-        aborted = true;
-        unsubscribe();
-        piSession.abort();
+        clientDisconnected = true;
         controller.close();
       });
     },
