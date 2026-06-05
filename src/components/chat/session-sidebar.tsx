@@ -6,7 +6,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchJson, deleteJson } from "@/lib/http";
-import { Trash2, Loader2, Ghost } from "lucide-react";
+import { Trash2, Loader2, Ghost, GitBranch } from "lucide-react";
 
 interface ChatSession {
   id: string;
@@ -14,6 +14,7 @@ interface ChatSession {
   temporary: boolean;
   messageCount: number;
   updatedAt: string;
+  forkedFromSessionId?: string;
 }
 
 export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }) {
@@ -107,12 +108,16 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
                     <div className="truncate font-medium">
                       {session.title.length > 25 ? `${session.title.slice(0, 25)}…` : session.title}
                     </div>
+                    {session.forkedFromSessionId && (
+                      <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
+                    )}
                     {session.temporary && (
                       <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />
                     )}
                   </div>
                   <div className="text-muted-foreground truncate text-xs">
                     {formatDate(session.updatedAt)} · {session.messageCount} messages
+                    {session.forkedFromSessionId && " · fork"}
                     {session.temporary && " · auto-delete"}
                   </div>
                 </button>

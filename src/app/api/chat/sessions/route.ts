@@ -21,6 +21,7 @@ export async function GET() {
       modelProvider: true,
       modelName: true,
       thinkingLevel: true,
+      forkedFromSessionId: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -36,6 +37,7 @@ export async function GET() {
         modelProvider: string | null;
         modelName: string | null;
         thinkingLevel: string;
+        forkedFromSessionId: string | null;
         createdAt: Date;
         updatedAt: Date;
       }) => ({
@@ -46,6 +48,7 @@ export async function GET() {
         modelProvider: s.modelProvider,
         modelName: s.modelName,
         thinkingLevel: s.thinkingLevel,
+        forkedFromSessionId: s.forkedFromSessionId || undefined,
         createdAt: s.createdAt.toISOString(),
         updatedAt: s.updatedAt.toISOString(),
       }),
