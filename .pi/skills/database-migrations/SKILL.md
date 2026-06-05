@@ -1,3 +1,8 @@
+---
+name: database-migrations
+description: Prisma migration workflow for Saale. Use when changing the database schema — adding fields, creating models, dropping columns, or running migrations. Covers the full workflow from schema edit to deploy.
+---
+
 # Database Migrations
 
 Saale uses Prisma's native incremental migration system. This is the official, well-tested approach — no custom scripts, no workarounds.
