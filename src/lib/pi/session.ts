@@ -13,6 +13,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createTerminalOperations } from "@/lib/terminal/operations";
+import { getTerminalHomeDir } from "@/lib/terminal/client";
 import { buildModelRegistry } from "./models";
 import { resolveTools } from "./tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-categories";
@@ -21,29 +22,6 @@ const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
 // Re-export for consumers
 export type { ToolConfig };
-
-/**
- * Derive the open-terminal Linux username from a Saale user ID.
- * Mirrors open-terminal's sanitize_username() logic so we can compute
- * the user's home directory path for the SDK's cwd parameter.
- */
-function deriveOpenTerminalUsername(userId: string): string {
-  const cleaned = userId.replace(/[^a-z0-9]/gi, "").toLowerCase();
-  const name =
-    cleaned.length >= 4
-      ? cleaned.slice(0, 8)
-      : crypto.createHash("sha256").update(userId).digest("hex").slice(0, 8);
-  const prefix = process.env.OPEN_TERMINAL_USER_PREFIX ?? "";
-  const full = `${prefix}${name}`;
-  return full[0]?.match(/[0-9]/) ? `u${full}` : full;
-}
-
-/**
- * Get the user's home directory inside the open-terminal container.
- */
-function getTerminalHomeDir(userId: string): string {
-  return `/home/${deriveOpenTerminalUsername(userId)}`;
-}
 
 /**
  * Merge user tool config with defaults.
