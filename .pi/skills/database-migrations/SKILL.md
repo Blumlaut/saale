@@ -45,13 +45,14 @@ If a schema change requires removing a field, **deprecate it** (keep the column,
 
 # 2. Regenerate the baseline migration
 npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script \
-  > prisma/migrations/0001_baseline/migration.sql
+  1> prisma/migrations/0001_baseline/migration.sql 2>/dev/null
 
 # 3. Regenerate the Prisma client
 npx prisma generate
 
-# 4. Test locally (docker compose rebuilds and runs migrate.mjs on startup)
-sudo docker compose up -d --force-recreate web
+# 4. Test locally — rebuild production image and restart
+#    (migrate.mjs runs automatically on startup)
+BUILD_TARGET=production sudo docker compose up -d --force-recreate web
 
 # 5. Verify the migration ran
 sudo docker compose logs web | grep migrate
@@ -68,11 +69,11 @@ The local Docker setup uses the same migration script. After changing the schema
 ```bash
 # Regenerate baseline + client
 npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script \
-  > prisma/migrations/0001_baseline/migration.sql
+  1> prisma/migrations/0001_baseline/migration.sql 2>/dev/null
 npx prisma generate
 
-# Restart — migrate.mjs runs automatically
-sudo docker compose up -d --force-recreate web
+# Rebuild production image and restart — migrate.mjs runs automatically
+BUILD_TARGET=production sudo docker compose up -d --force-recreate web
 ```
 
 The diff will detect the new column and add it. No manual SQL, no migration state issues.
