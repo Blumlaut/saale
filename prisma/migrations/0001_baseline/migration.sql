@@ -1,5 +1,3 @@
-Loaded Prisma config from prisma.config.mjs.
-
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
