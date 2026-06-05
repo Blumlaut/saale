@@ -9,7 +9,7 @@ This project is **production-ready**. There is live data that must not be lost.
 - **All schema changes must go through migrations.** Use `npm run db:migrate` (`prisma migrate dev`) — never `prisma db push` or `db:push` with `--accept-data-loss`.
 - Migration files are version-controlled and represent the authoritative history of schema changes. Never edit or delete existing migration files.
 - `.env` uses `localhost` for DATABASE_URL so prisma CLI works from the host. Docker compose uses docker internal hostnames (e.g. `postgres`, `redis`) — never reference `.env` values for internal service URLs in docker-compose.
-- `prisma.config.mjs` loads `.env` via `dotenv/config`, so all prisma commands read DATABASE_URL automatically.
+- `prisma.config.mjs` loads `.env` directly (no dotenv dependency), so all prisma commands read DATABASE_URL automatically. **Do not modify this file** — it handles both local dev (reads .env) and Docker (DATABASE_URL set by docker-compose).
 
 #### Workflow
 
@@ -40,6 +40,11 @@ npx prisma db push --accept-data-loss
 - If a column is needed at runtime during deployment, split the migration into steps (e.g., add new column → backfill data → drop old column in a later migration).
 - Never drop a column that still has data you need without a data migration step.
 - If a schema change feels risky, discuss it — don't rush it.
+
+#### Never Touch These Files
+
+- **`prisma.config.mjs`** — handles env loading for both local dev and Docker. Changing it breaks deployments.
+- **`prisma/migrations/*`** — never edit or delete existing migrations. Only add new ones via `npm run db:migrate`.
 
 ## Investigate Before Using
 
