@@ -10,14 +10,14 @@ services:
       - uploads_data:/app/uploads
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@saale-postgres:5432/saale}
-      - REDIS_URL=${REDIS_URL:-redis://saale-redis:6379}
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+      - REDIS_URL=redis://redis:6379
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
-      - SEARXNG_URL=${SEARXNG_URL:-http://saale-searxng:8080}
-      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://saale-open-terminal:8000}
+      - SEARXNG_URL=http://searxng:8080
+      - OPEN_TERMINAL_URL=http://open-terminal:8000
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
     depends_on:
@@ -60,17 +60,17 @@ services:
       - uploads_data:/app/uploads
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://saale:saale@saale-postgres:5432/saale}
-      - REDIS_URL=${REDIS_URL:-redis://saale-redis:6379}
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+      - REDIS_URL=redis://redis:6379
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
-      - SEARXNG_URL=${SEARXNG_URL:-http://saale-searxng:8080}
-      - OPEN_TERMINAL_URL=${OPEN_TERMINAL_URL:-http://saale-open-terminal:8000}
+      - SEARXNG_URL=http://searxng:8080
+      - OPEN_TERMINAL_URL=http://open-terminal:8000
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
-      - WORKER_APP_URL=http://saale-web:3000
+      - WORKER_APP_URL=http://web:3000
     depends_on:
       postgres:
         condition: service_healthy
