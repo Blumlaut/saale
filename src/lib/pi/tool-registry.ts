@@ -76,7 +76,7 @@ export function resolveTools(
       tools.push(terminal.read, terminal.write, terminal.edit);
     }
     tools.push(terminal.bash);
-    tools.push(createShowFileTool(userId));
+    tools.push(createShowFileTool(userId, sessionId));
   } else if (config.bash) {
     console.warn("Bash tools enabled but OPEN_TERMINAL_API_KEY is not set. Bash tools disabled.");
     if (config.files) {

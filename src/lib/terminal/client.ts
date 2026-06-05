@@ -5,10 +5,34 @@
  * multi-user support (X-User-Id header), and session tracking (X-Session-Id).
  */
 
+import crypto from "crypto";
+
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 const BASE_URL = process.env.OPEN_TERMINAL_URL ?? "http://saale-open-terminal:8000";
 const API_KEY = process.env.OPEN_TERMINAL_API_KEY;
+
+/**
+ * Derive the open-terminal Linux username from a Saale user ID.
+ * Mirrors open-terminal's sanitize_username() logic.
+ */
+export function deriveOpenTerminalUsername(userId: string): string {
+  const cleaned = userId.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const name =
+    cleaned.length >= 4
+      ? cleaned.slice(0, 8)
+      : crypto.createHash("sha256").update(userId).digest("hex").slice(0, 8);
+  const prefix = process.env.OPEN_TERMINAL_USER_PREFIX ?? "";
+  const full = `${prefix}${name}`;
+  return full[0]?.match(/[0-9]/) ? `u${full}` : full;
+}
+
+/**
+ * Get the user's home directory inside the open-terminal container.
+ */
+export function getTerminalHomeDir(userId: string): string {
+  return `/home/${deriveOpenTerminalUsername(userId)}`;
+}
 
 // Log config at startup (redacted key for security)
 if (API_KEY) {

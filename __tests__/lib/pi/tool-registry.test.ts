@@ -13,7 +13,7 @@ vi.mock("@/lib/pi/tools/chat-tools", () => ({
     name: "chat_search",
     userId,
   })),
-  createShowFileTool: vi.fn((userId: string) => ({
+  createShowFileTool: vi.fn((userId: string, _sessionId: string) => ({
     name: "show_file",
     userId,
   })),
