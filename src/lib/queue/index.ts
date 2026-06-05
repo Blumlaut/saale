@@ -1,9 +1,6 @@
 import { Queue, Worker, type Processor } from "bullmq";
 import { prisma } from "@/lib/db";
 
-// Re-export job type schemas for convenience
-export { jobTypeSchemas, getJobSchema } from "./job-schemas";
-
 // ─── Connection ──────────────────────────────────────────────────────────────
 
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
