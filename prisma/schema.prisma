@@ -101,6 +101,7 @@ model ChatSession {
   messageCount     Int           @default(0)
   lastSummarizedAt DateTime?     // cursor — only process messages after this for memory extraction
   memorySummary    String?       @db.Text // compressed running summary of the conversation
+  responseInProgress Boolean     @default(false) // true while AI is processing (survives refresh)
   messages         ChatMessage[]
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt        DateTime      @default(now())

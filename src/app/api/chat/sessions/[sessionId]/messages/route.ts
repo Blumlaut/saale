@@ -25,6 +25,7 @@ export async function GET(
       modelName: true,
       thinkingLevel: true,
       toolConfig: true,
+      responseInProgress: true,
     },
   });
 
@@ -48,6 +49,7 @@ export async function GET(
       modelName: chatSession.modelName,
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
+      responseInProgress: chatSession.responseInProgress,
     },
     messages: messages.map((m) => ({
       id: m.id,
@@ -88,10 +90,19 @@ export async function POST(
 
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authResult.user.id },
+    select: { id: true, title: true, responseInProgress: true },
   });
 
   if (!chatSession) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Prevent sending another message while one is being processed
+  if (chatSession.responseInProgress) {
+    return NextResponse.json(
+      { error: "A response is already being generated. Please wait." },
+      { status: 409 },
+    );
   }
 
   try {
@@ -184,11 +195,12 @@ export async function POST(
       include: { attachments: true },
     });
 
-    // Update session metadata
+    // Update session metadata and mark response as in-progress
     await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
         messageCount: { increment: 1 },
+        responseInProgress: true,
         title:
           chatSession.title === "New Chat"
             ? (sanitizedContent || "Image").slice(0, 50) +

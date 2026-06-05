@@ -150,7 +150,7 @@ export function ChatInterface({
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  const loadMessages = async () => {
+  const loadMessages = async (): Promise<{ responseInProgress?: boolean } | null> => {
     try {
       const data = await fetchJson<{
         messages: Message[];
@@ -159,6 +159,7 @@ export function ChatInterface({
           modelName?: string;
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
+          responseInProgress?: boolean;
         };
       }>(`/api/chat/sessions/${sessionId}/messages`);
       setMessages(data.messages);
@@ -173,12 +174,14 @@ export function ChatInterface({
           setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...data.session.toolConfig });
         }
       }
+      return data.session ?? null;
     } catch (err) {
       // Session was deleted (e.g. temporary chat closed elsewhere) — redirect
       if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {
         router.push("/dashboard/chat");
-        return;
+        return null;
       }
+      return null;
     }
   };
 
@@ -368,61 +371,80 @@ export function ChatInterface({
   );
 
   // Load messages and session title.
-  // If the session was streaming when we navigated away, poll for the response.
+  // If responseInProgress is true (user refreshed during "Thinking..."), poll for the response.
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
-    const wasStreaming = streamingIds.has(sessionId);
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    const pollIntervalRef: { current: ReturnType<typeof setInterval> | null } = { current: null };
+    let checkTimer: ReturnType<typeof setTimeout> | null = null;
+    const RESPONSE_POLL_TIMEOUT = 120_000; // 2 min safety net
 
-    loadMessages();
-    loadSessionTitle();
+    const init = async () => {
+      const sessionInfo = await loadMessages();
+      loadSessionTitle();
 
-    if (!wasStreaming) return;
+      // Check if a response is being processed (survives page refresh)
+      const wasStreaming = streamingIds.has(sessionId);
+      const responseInProgress = sessionInfo?.responseInProgress === true;
 
-    // Delay check to let initial loadMessages() settle
-    const checkTimer = setTimeout(async () => {
-      try {
-        const data = await fetchJson<{ messages: Message[] }>(
-          `/api/chat/sessions/${sessionId}/messages`,
-        );
-        const lastMessage = data.messages[data.messages.length - 1];
+      if (!wasStreaming && !responseInProgress) return;
 
-        if (lastMessage && lastMessage.role === "assistant") {
-          // Response already saved — update and clear streaming indicator
-          setMessages(data.messages);
-          markDone(sessionId);
-          return;
-        }
+      // Delay check to let initial loadMessages() settle
+      checkTimer = setTimeout(async () => {
+        try {
+          const data = await fetchJson<{ messages: Message[] }>(
+            `/api/chat/sessions/${sessionId}/messages`,
+          );
+          const lastMessage = data.messages[data.messages.length - 1];
 
-        // Response not yet saved — start polling
-        setIsLoading(true);
-        pollInterval = setInterval(async () => {
-          try {
-            const data = await fetchJson<{ messages: Message[] }>(
-              `/api/chat/sessions/${sessionId}/messages`,
-            );
-            const lastMsg = data.messages[data.messages.length - 1];
-            if (lastMsg && lastMsg.role === "assistant") {
-              clearInterval(pollInterval!);
-              pollInterval = null;
-              setMessages(data.messages);
+          if (lastMessage && lastMessage.role === "assistant") {
+            // Response already saved — update and clear streaming indicator
+            setMessages(data.messages);
+            markDone(sessionId);
+            return;
+          }
+
+          // Response not yet saved — start polling
+          setIsLoading(true);
+          const startedAt = Date.now();
+          pollIntervalRef.current = setInterval(async () => {
+            // Safety net: stop polling after timeout
+            if (Date.now() - startedAt > RESPONSE_POLL_TIMEOUT) {
+              clearInterval(pollIntervalRef.current!);
+              pollIntervalRef.current = null;
               setIsLoading(false);
               markDone(sessionId);
+              return;
             }
-          } catch {
-            clearInterval(pollInterval!);
-            pollInterval = null;
-            setIsLoading(false);
-          }
-        }, 1500);
-      } catch {
-        // Session deleted — ignore
-      }
-    }, 500);
+
+            try {
+              const data = await fetchJson<{ messages: Message[] }>(
+                `/api/chat/sessions/${sessionId}/messages`,
+              );
+              const lastMsg = data.messages[data.messages.length - 1];
+              if (lastMsg && lastMsg.role === "assistant") {
+                clearInterval(pollIntervalRef.current!);
+                pollIntervalRef.current = null;
+                setMessages(data.messages);
+                setIsLoading(false);
+                markDone(sessionId);
+              }
+            } catch {
+              clearInterval(pollIntervalRef.current!);
+              pollIntervalRef.current = null;
+              setIsLoading(false);
+            }
+          }, 1500);
+        } catch {
+          // Session deleted — ignore
+        }
+      }, 500);
+    };
+
+    init();
 
     return () => {
-      clearTimeout(checkTimer);
-      if (pollInterval) clearInterval(pollInterval);
+      if (checkTimer) clearTimeout(checkTimer);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */

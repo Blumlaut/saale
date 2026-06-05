@@ -81,6 +81,11 @@ export async function GET(
 
   // No model available — return an error stream
   if (!modelProvider || !modelName) {
+    // Clear in-progress flag so the user can try again
+    prisma.chatSession
+      .update({ where: { id: sessionId }, data: { responseInProgress: false } })
+      .catch(console.error);
+
     const encoder = new TextEncoder();
     const errorEvent = encoder.encode(
       `event: error\ndata: ${JSON.stringify({ message: "No AI model configured. Please select a model in Settings > AI & Models." })}\n\n`,
@@ -443,11 +448,14 @@ export async function GET(
                 ).catch(console.error);
               }
 
-              // Update message count (count turns, not just root messages)
+              // Update message count and clear in-progress flag
               prisma.chatSession
                 .update({
                   where: { id: sessionId },
-                  data: { messageCount: { increment: turnIndex || 1 } },
+                  data: {
+                    messageCount: { increment: turnIndex || 1 },
+                    responseInProgress: false,
+                  },
                 })
                 .catch(console.error);
             }
@@ -472,6 +480,10 @@ export async function GET(
             : piSession.agent.prompt(lastMessage.content);
         promptPromise.catch((err) => {
           console.error("agent.prompt() failed:", err);
+          // Clear in-progress flag so the user can retry
+          prisma.chatSession
+            .update({ where: { id: sessionId }, data: { responseInProgress: false } })
+            .catch(console.error);
           sendEvent(controller, "error", { message: err.message });
           if (!clientDisconnected) {
             controller.close();
