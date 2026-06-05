@@ -37,6 +37,13 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
     fetchSessions();
   }, [fetchSessions, activeSessionId]); // refetch when active session changes
 
+  // Refetch when a chat is renamed
+  useEffect(() => {
+    const handler = () => fetchSessions();
+    window.addEventListener("chat-renamed", handler);
+    return () => window.removeEventListener("chat-renamed", handler);
+  }, [fetchSessions]);
+
   const deleteSession = async (id: string) => {
     setDeletingId(id);
     try {

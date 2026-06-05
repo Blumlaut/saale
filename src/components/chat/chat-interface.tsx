@@ -247,6 +247,8 @@ export function ChatInterface({
       setEditingTitle(false);
       try {
         await patchJson(`/api/chat/sessions/${sessionId}`, { title: sanitized });
+        // Notify sidebar to refresh
+        window.dispatchEvent(new CustomEvent("chat-renamed"));
       } catch {
         // Silently fail — local state is already updated
       }
