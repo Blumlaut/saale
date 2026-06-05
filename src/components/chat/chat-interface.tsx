@@ -141,7 +141,7 @@ export function ChatInterface({
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
-  const { markStreaming, markDone } = useStreamingSessions();
+  const { streamingIds, markStreaming, markDone } = useStreamingSessions();
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
   const prevLoadingRef = useRef(isLoading);
@@ -366,11 +366,63 @@ export function ChatInterface({
     [sessionId], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
   );
 
-  // Load messages and session title
+  // Load messages and session title.
+  // If the session was streaming when we navigated away, poll for the response.
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
+    const wasStreaming = streamingIds.has(sessionId);
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
     loadMessages();
     loadSessionTitle();
+
+    if (!wasStreaming) return;
+
+    // Delay check to let initial loadMessages() settle
+    const checkTimer = setTimeout(async () => {
+      try {
+        const data = await fetchJson<{ messages: Message[] }>(
+          `/api/chat/sessions/${sessionId}/messages`,
+        );
+        const lastMessage = data.messages[data.messages.length - 1];
+
+        if (lastMessage && lastMessage.role === "assistant") {
+          // Response already saved — update and clear streaming indicator
+          setMessages(data.messages);
+          markDone(sessionId);
+          return;
+        }
+
+        // Response not yet saved — start polling
+        setIsLoading(true);
+        pollInterval = setInterval(async () => {
+          try {
+            const data = await fetchJson<{ messages: Message[] }>(
+              `/api/chat/sessions/${sessionId}/messages`,
+            );
+            const lastMsg = data.messages[data.messages.length - 1];
+            if (lastMsg && lastMsg.role === "assistant") {
+              clearInterval(pollInterval!);
+              pollInterval = null;
+              setMessages(data.messages);
+              setIsLoading(false);
+              markDone(sessionId);
+            }
+          } catch {
+            clearInterval(pollInterval!);
+            pollInterval = null;
+            setIsLoading(false);
+          }
+        }, 1500);
+      } catch {
+        // Session deleted — ignore
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(checkTimer);
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
