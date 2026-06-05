@@ -9,6 +9,7 @@ import { InputBar } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { fetchJson, patchJson } from "@/lib/http";
+import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import { Loader2, Settings2, ChevronDown, Ghost, Pencil } from "lucide-react";
 import {
   DropdownMenu,
@@ -140,8 +141,10 @@ export function ChatInterface({
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
+  const { markStreaming, markDone } = useStreamingSessions();
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
+  const prevLoadingRef = useRef(isLoading);
   const mountTimeRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -383,7 +386,14 @@ export function ChatInterface({
 
   useEffect(() => {
     loadingRef.current = isLoading;
-  }, [isLoading]);
+    if (isLoading) {
+      markStreaming(sessionId);
+    } else if (prevLoadingRef.current) {
+      // Was loading, now done — trigger pop animation
+      markDone(sessionId);
+    }
+    prevLoadingRef.current = isLoading;
+  }, [isLoading, sessionId, markStreaming, markDone]);
 
   // Auto-delete temporary sessions on unmount only (not on dep changes)
   // Grace period prevents StrictMode double-mount from deleting instantly
