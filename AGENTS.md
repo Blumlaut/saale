@@ -6,55 +6,9 @@ This project is **production-ready**. There is live data that must not be lost.
 
 ### Database Migrations
 
-Saale uses Prisma's native incremental migrations (`prisma migrate dev` → `prisma migrate deploy`). Full docs: `.pi/skills/database-migrations/SKILL.md`.
+See `.pi/skills/database-migrations/SKILL.md` for the full workflow, rules, and troubleshooting.
 
-#### Workflow
-
-1. Edit `prisma/schema.prisma` with the desired changes.
-2. Run `npm run db:migrate` — this creates a new migration file and applies it to the local DB.
-3. Review the generated SQL in `prisma/migrations/<timestamp>_<name>/migration.sql`. If it looks wrong, revert the schema change and fix it.
-4. Run `npx prisma generate` to regenerate the Prisma client types.
-5. Commit the schema change + migration file together.
-6. On deploy, `prisma migrate deploy` runs automatically in the Docker entrypoint.
-
-```bash
-# ✅ GOOD — creates a tracked migration, applies to DB, regenerates client
-npm run db:migrate
-npx prisma generate
-
-# ✅ GOOD — verify migration state
-npx prisma migrate status
-
-# ❌ BAD — silently alters schema, can drop data
-npx prisma db push --accept-data-loss
-
-# ❌ BAD — editing a migration after it has been applied
-# (this changes the hash, causes "out of sync" errors on deploy)
-
-# ❌ BAD — manual SQL to alter schema
-docker exec postgres psql -c "ALTER TABLE ..."
-```
-
-#### Rules
-
-- **`prisma/schema.prisma` is the only place you define schema changes.** Never write raw SQL or manipulate the DB directly.
-- **Never edit an applied migration file.** This changes its hash and causes "out of sync" errors. If a migration needs fixing, revert the schema change and create a new one.
-- **Never delete migration files.** They represent the authoritative history of schema changes.
-- **Always commit migration files immediately.** A migration that exists locally but not in git will cause the remote deploy to fail.
-- **Always regenerate the Prisma client** (`npx prisma generate`) after schema changes.
-- **Test migrations before committing.** Verify `npx prisma migrate status` shows no pending migrations, and the app starts with the new schema.
-
-#### Dropping Columns or Tables
-
-Dropping data is allowed but must be deliberate:
-- **Never drop a column that still has data you need.** If you need the data during deployment, split into steps: add new column → backfill → drop old column in a later migration.
-- **Dropping is fine for:** unused debug fields, renamed columns (add new → backfill → drop old), or tables that are truly obsolete.
-- **The migration SQL is generated automatically** — review it before applying. If it drops something unexpected, fix the schema change.
-
-#### Never Touch These Files
-
-- **`prisma.config.mjs`** — handles env loading for both local dev and Docker. Changing it breaks deployments.
-- **`prisma/migrations/*`** — never edit or delete existing migrations. Only add new ones via `npm run db:migrate`.
+**Never touch:** `prisma.config.mjs` (handles env loading — changing it breaks deployments).
 
 ## Investigate Before Using
 

@@ -1,6 +1,6 @@
 ---
 name: database-migrations
-description: Prisma migration workflow for Saale. Use when changing the database schema — adding fields, creating models, dropping columns, or running migrations. Covers the full workflow from schema edit to deploy.
+description: Prisma migration workflow for Saale. MUST be consulted before writing any migration or making database changes — adding fields, creating models, dropping columns, enabling extensions, creating indexes, or any other DB modification. Covers the full workflow from schema edit to deploy.
 ---
 
 # Database Migrations
@@ -81,6 +81,7 @@ sudo docker compose up -d --force-recreate web  # migrate deploy runs automatica
 5. **Always regenerate the Prisma client** (`npx prisma generate`) after schema changes.
 6. **Test before committing.** Verify `npx prisma migrate status` shows no pending migrations.
 7. **Review generated SQL.** Especially for destructive changes (DROP COLUMN, DROP TABLE).
+8. **Every migration MUST be automatically runnable on deploy.** `prisma migrate deploy` is the only mechanism that applies migrations on the remote server. Never execute migration SQL manually (e.g. `psql -f`, `docker exec psql -c`) — the remote has no way to replay it. If a migration was manually executed, register it with `npx prisma migrate resolve --applied <name>` so Prisma tracks it correctly.
 
 ## Dropping Columns or Tables
 
@@ -122,8 +123,9 @@ Each step is a separate migration, deployed separately.
 ## What NOT to Do
 
 ```bash
-# ❌ BAD — manual SQL
+# ❌ BAD — manual SQL (remote deploy can't replay this)
 docker exec postgres psql -c "ALTER TABLE ..."
+psql -f migration.sql
 
 # ❌ BAD — prisma db push (bypasses migrations, can drop data)
 npx prisma db push --accept-data-loss
@@ -138,6 +140,26 @@ rm prisma/migrations/20240101_something/
 git add prisma/schema.prisma
 git commit -m "add field"  # migration file not included!
 ```
+
+## Non-Schema Migrations (Extensions, Custom Indexes)
+
+Some database changes can't be expressed in Prisma's schema DSL — extensions (`pg_trgm`, `pgvector`), GIN/BRIN indexes, or custom functions. These still need tracked migrations:
+
+1. **Create the migration directory manually** with a descriptive name:
+   ```bash
+   mkdir prisma/migrations/enable_pg_trgm
+   ```
+2. **Write the `migration.sql`** inside it. Use `IF NOT EXISTS` / `DROP ... IF EXISTS` for idempotency:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS pg_trgm;
+   CREATE INDEX IF NOT EXISTS idx_x_trgm ON "MyModel" USING gin ("myField" gin_trgm_ops);
+   ```
+3. **Register it as applied** (since Prisma can't auto-apply non-schema migrations):
+   ```bash
+   npx prisma migrate resolve --applied enable_pg_trgm
+   ```
+   This records the migration in `_prisma_migrations` without re-running the SQL.
+4. **On remote deploy**, `prisma migrate deploy` sees the migration file is not in the remote `_prisma_migrations` and applies it automatically.
 
 ## Troubleshooting
 
