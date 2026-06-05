@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatInterface } from "@/components/chat/chat-interface";
@@ -15,10 +15,8 @@ import { createChatSession } from "@/lib/chat-session";
 export default function ChatLayout({ children: _children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const segments = pathname.split("/");
   const sessionId = segments.length >= 4 && segments[3] ? segments[3] : null;
-  const streamUrl = searchParams.get("streamUrl");
 
   // `temporaryMode` controls whether new chats are temporary.
   // When inside a session it reflects that session's `temporary` flag.
@@ -127,11 +125,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
         {/* Main area — flex column so ChatInterface can flex-1 to fill height */}
         <div className="flex min-w-0 flex-1 flex-col">
           {sessionId ? (
-            <ChatInterface
-              sessionId={sessionId}
-              temporaryMode={temporaryMode}
-              {...(streamUrl && { initialStreamUrl: streamUrl })}
-            />
+            <ChatInterface sessionId={sessionId} temporaryMode={temporaryMode} />
           ) : (
             <ChatEmptyState temporaryMode={temporaryMode} />
           )}

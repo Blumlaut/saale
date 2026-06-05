@@ -100,8 +100,7 @@ model ChatSession {
   messageCount     Int           @default(0)
   lastSummarizedAt DateTime?     // cursor — only process messages after this for memory extraction
   memorySummary    String?       @db.Text // compressed running summary of the conversation
-  forkedFromSessionId String?    // original session ID if this is a fork
-  forkedAtMessageId   String?    // message ID in original session that this fork branched from
+  branches         ChatBranch[]
   messages         ChatMessage[]
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt        DateTime      @default(now())
@@ -114,18 +113,37 @@ model ChatSession {
 model ChatMessage {
   id              String           @id @default(cuid())
   sessionId       String
+  branchId        String           // ChatBranch.id — main branch id == sessionId
   role            String // "user" | "assistant" | "system"
   content         String           @db.Text
   thinking        String?          @db.Text // thinking/reasoning content for assistant turns
   toolCalls       String?          @db.Text // JSON array of tool calls
   parentMessageId String?          // links turns to the root assistant message
-  editedAt        DateTime?        // when a user message was edited (triggers fork if not last)
+  editedAt        DateTime?        // when a user message was edited (triggers branch)
   createdAt       DateTime         @default(now())
   session         ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  branch          ChatBranch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   attachments     ChatAttachment[]
 
   @@index([sessionId, createdAt])
+  @@index([branchId])
   @@map("ChatMessage")
+}
+
+/// A conversation branch within a session.
+/// The main branch has id == sessionId and divergenceMessageId == null.
+/// Edit-branches copy messages up to the divergence point and continue independently.
+model ChatBranch {
+  id                    String        @id @default(cuid())
+  sessionId             String
+  divergenceMessageId   String?       // ChatMessage.id this branch diverged from (null for main)
+  messages              ChatMessage[]
+  session               ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([sessionId])
+  @@map("ChatBranch")
 }
 
 /// Image/file attachments linked to a chat message.

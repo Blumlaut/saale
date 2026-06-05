@@ -5,14 +5,11 @@ import { prisma } from "@/lib/db";
 /**
  * PATCH /api/chat/sessions/:sessionId/messages/:messageId — Edit a user message.
  *
- * Behavior:
- * - If no assistant messages exist after the edited message: update in-place.
- *   Returns { ok: true, message, streamUrl } — caller should connect to streamUrl for new AI response.
- * - If assistant messages exist after: fork the session.
- *   Returns { ok: true, forkedSessionId, message, streamUrl }.
+ * Creates a new branch instead of forking the session.
+ * Returns { ok: true, branchId, message, streamUrl }.
  *
- * In both cases, messages after the edit point (assistant responses) are removed
- * so the AI generates a fresh response to the edited message.
+ * The client connects to streamUrl to get the new AI response.
+ * No navigation needed — everything stays in the same session.
  */
 export async function PATCH(
   request: NextRequest,
@@ -55,123 +52,126 @@ export async function PATCH(
   // Sanitize content
   const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
-  // Check if there are assistant messages after this one
-  const messagesAfter = await prisma.chatMessage.findMany({
+  // Create a new branch
+  const newBranch = await prisma.chatBranch.create({
+    data: {
+      sessionId,
+      divergenceMessageId: messageId,
+    },
+  });
+
+  // Copy messages up to and including the edited message
+  const messagesBefore = await prisma.chatMessage.findMany({
     where: {
       sessionId,
-      createdAt: { gt: message.createdAt },
-      role: { in: ["assistant", "toolResult"] },
+      branchId: message.branchId,
+      createdAt: { lte: message.createdAt },
     },
     orderBy: { createdAt: "asc" },
+    include: { attachments: true },
   });
 
-  if (messagesAfter.length > 0) {
-    // FORK: Create a new session
-    const forkedSession = await prisma.chatSession.create({
-      data: {
-        userId: authResult.user.id,
-        title: chatSession.title,
-        temporary: chatSession.temporary,
-        modelProvider: chatSession.modelProvider,
-        modelName: chatSession.modelName,
-        thinkingLevel: chatSession.thinkingLevel,
-        ...(chatSession.toolConfig && { toolConfig: chatSession.toolConfig }),
-        forkedFromSessionId: sessionId,
-        forkedAtMessageId: messageId,
-      },
-    });
+  // Build a map of old message id -> new message id for parentMessageId rewriting
+  const idMap = new Map<string, string>();
 
-    // Copy messages up to (but not including) the edited message
-    const messagesBefore = await prisma.chatMessage.findMany({
-      where: {
-        sessionId,
-        createdAt: { lt: message.createdAt },
-      },
-      orderBy: { createdAt: "asc" },
-    });
-
-    const messageData = messagesBefore.map((m) => ({
-      sessionId: forkedSession.id,
+  const messageData = messagesBefore.map((m, index) => {
+    const isEditedMessage = m.id === messageId;
+    return {
+      sessionId,
+      branchId: newBranch.id,
       role: m.role,
-      content: m.content,
+      content: isEditedMessage ? sanitizedContent : m.content,
       thinking: m.thinking,
       toolCalls: m.toolCalls,
-      parentMessageId: m.parentMessageId,
-    }));
-
-    // Add the edited message (editedAt set via raw SQL after bulk insert)
-    messageData.push({
-      sessionId: forkedSession.id,
-      role: "user",
-      content: sanitizedContent,
-      thinking: null,
-      toolCalls: null,
-      parentMessageId: null,
-    });
-
-    // Bulk create messages in forked session
-    if (messageData.length > 0) {
-      await prisma.chatMessage.createMany({
-        data: messageData,
-      });
-
-      // Set editedAt on the last (edited) message via raw SQL
-      // (editedAt field added by migration, Prisma client may not have it yet)
-      await prisma.$executeRaw`UPDATE "ChatMessage" SET "editedAt" = NOW() WHERE "sessionId" = ${forkedSession.id} AND "role" = 'user' AND "editedAt" IS NULL`;
-    }
-
-    // Update message count
-    await prisma.chatSession.update({
-      where: { id: forkedSession.id },
-      data: { messageCount: messageData.length },
-    });
-
-    // Delete assistant messages after the edit point in the original session
-    if (messagesAfter.length > 0) {
-      await prisma.chatMessage.deleteMany({
-        where: {
-          sessionId,
-          createdAt: { gt: message.createdAt },
-        },
-      });
-    }
-
-    return NextResponse.json({
-      ok: true,
-      forkedSessionId: forkedSession.id,
-      message: {
-        id: messageId,
-        content: sanitizedContent,
-        editedAt: new Date().toISOString(),
-      },
-      streamUrl: `/api/chat/sessions/${forkedSession.id}/stream`,
-    });
-  }
-
-  // IN-PLACE UPDATE: No messages after, just update
-  await prisma.chatMessage.update({
-    where: { id: messageId },
-    data: {
-      content: sanitizedContent,
-      editedAt: new Date(),
-    },
+      parentMessageId: m.parentMessageId, // will be rewritten below
+      createdAt: new Date(Date.now() + index), // preserve ordering
+    };
   });
 
-  // Also delete any assistant messages that might exist (safety net)
+  // Bulk create messages in new branch
+  if (messageData.length > 0) {
+    const createdMessages = await prisma.chatMessage.createManyAndReturn({
+      data: messageData,
+    });
+
+    // Build ID map for parentMessageId rewriting
+    for (const [index, orig] of messagesBefore.entries()) {
+      const created = createdMessages[index];
+      if (orig && created) {
+        idMap.set(orig.id, created.id);
+      }
+    }
+
+    // Rewrite parentMessageId references to point to new branch messages
+    for (const created of createdMessages) {
+      if (created.parentMessageId && idMap.has(created.parentMessageId)) {
+        const newParentId = idMap.get(created.parentMessageId)!;
+        await prisma.chatMessage.update({
+          where: { id: created.id },
+          data: { parentMessageId: newParentId },
+        });
+      }
+    }
+
+    // Set editedAt on the edited message
+    const editedMessage = createdMessages.find((_, i) => messagesBefore[i]?.id === messageId);
+    if (editedMessage) {
+      await prisma.chatMessage.update({
+        where: { id: editedMessage.id },
+        data: { editedAt: new Date() },
+      });
+    }
+
+    // Copy attachments for user messages in the new branch
+    for (const [index, orig] of messagesBefore.entries()) {
+      if (orig && orig.attachments.length > 0) {
+        const created = createdMessages[index];
+        if (created) {
+          for (const att of orig.attachments) {
+            await prisma.chatAttachment.create({
+              data: {
+                messageId: created.id,
+                storageId: att.storageId,
+                fileName: att.fileName,
+                mimeType: att.mimeType,
+                size: att.size,
+                width: att.width,
+                height: att.height,
+                storagePath: att.storagePath,
+              },
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Delete messages AFTER the edit point in the source branch (not the whole session)
   await prisma.chatMessage.deleteMany({
     where: {
       sessionId,
+      branchId: message.branchId,
       createdAt: { gt: message.createdAt },
     },
+  });
+
+  // Update message count on session (use new branch's count)
+  const newBranchMessageCount = await prisma.chatMessage.count({
+    where: { sessionId, branchId: newBranch.id },
+  });
+  await prisma.chatSession.update({
+    where: { id: sessionId },
+    data: { messageCount: newBranchMessageCount },
   });
 
   return NextResponse.json({
     ok: true,
+    branchId: newBranch.id,
     message: {
-      id: messageId,
+      id: idMap.get(messageId) || messageId,
       content: sanitizedContent,
       editedAt: new Date().toISOString(),
     },
-    streamUrl: `/api/chat/sessions/${sessionId}/stream`,
+    streamUrl: `/api/chat/sessions/${sessionId}/stream?branch=${newBranch.id}`,
   });
 }
