@@ -1,6 +1,6 @@
 // Saale — Database Schema
-// Migration: edit this file → npm run db:migrate → commit → deploy
-// See scripts/migrate.mjs and .pi/skills/database-migrations/SKILL.md
+// Migration: npm run db:migrate (creates incremental migration)
+// See AGENTS.md "Database Migrations" section
 
 generator client {
   provider = "prisma-client-js"

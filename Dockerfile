@@ -45,14 +45,12 @@ COPY --from=build /app/.next/static ./.next/static
 # Prisma schema + migrations + generated client (not bundled by Next.js standalone)
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-# Custom migration script (single baseline + auto-diff, never breaks)
-COPY --from=build /app/scripts ./scripts
 
 ENTRYPOINT ["dumb-init", "--"]
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["sh", "-c", "node scripts/migrate.mjs && node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
 
 # ─── Production: Worker (BullMQ, pre-compiled) ──────────────────────────────
 
@@ -64,7 +62,6 @@ ENV NODE_ENV=production
 # Pre-compiled worker binary + prisma schema for client generation
 COPY --from=build /app/dist/worker.js ./worker.js
 COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/package-lock.json ./package-lock.json

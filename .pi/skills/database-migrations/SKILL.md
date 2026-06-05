@@ -1,39 +1,13 @@
 # Database Migrations
 
-Saale uses a **single baseline + auto-diff** migration strategy. This guarantees migrations **never break** — for local dev, remote deployments, or existing users upgrading.
+Saale uses Prisma's native incremental migration system. This is the official, well-tested approach — no custom scripts, no workarounds.
 
 ## How It Works
 
 1. **`prisma/schema.prisma`** — the single source of truth for the database schema.
-2. **`prisma/migrations/0001_baseline/migration.sql`** — a full SQL dump of the schema. Regenerated on every schema change.
-3. **`scripts/migrate.mjs`** — runs at container startup. Diffs the live DB against the target schema and applies only the delta.
-
-### Fresh Install (no tables)
-
-The baseline migration is applied as-is. All tables, indexes, and constraints are created in one transaction.
-
-### Existing Install (upgrade)
-
-`scripts/migrate.mjs` uses `prisma migrate diff --from-url --to-schema` to compute the exact SQL needed to transform the current DB into the target schema. Only the delta is applied — no "out of sync" errors, no dependency on migration history.
-
-## Why This Never Breaks
-
-| Problem | Traditional Prisma | Saale's Approach |
-|---|---|---|
-| Migration history diverges | ❌ `migrate deploy` fails | ✅ Diffs against live DB state, ignores history |
-| Baseline modified after apply | ❌ Hash mismatch, blocks all migrations | ✅ Baseline is regenerated — no hash tracking |
-| User skips a version | ❌ Missing migrations error | ✅ Diff computes full delta regardless |
-| Manual DB changes | ❌ State divergence | ✅ Diff detects actual state, reconciles |
-| Destructive change slips through | ❌ Data loss | ✅ Safety checks block DROP operations |
-
-## Safety Guarantees
-
-The migration script **blocks** these operations:
-- `DROP TABLE` — never drop tables
-- `DROP COLUMN` — never drop columns
-- `DROP INDEX CONCURRENTLY` — never drop indexes
-
-If a schema change requires removing a field, **deprecate it** (keep the column, stop using it in code) rather than dropping it.
+2. **`prisma/migrations/`** — incremental migration files, each representing one schema change. Applied in order, tracked in `_prisma_migrations` table.
+3. **`npm run db:migrate`** — creates a new migration from schema changes and applies it locally.
+4. **`prisma migrate deploy`** — runs in Docker entrypoint, applies any pending migrations on the remote DB.
 
 ## Workflow
 
@@ -43,61 +17,102 @@ If a schema change requires removing a field, **deprecate it** (keep the column,
 # 1. Edit the schema
 #    prisma/schema.prisma — add the field to the model
 
-# 2. Regenerate the baseline migration
-npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script \
-  1> prisma/migrations/0001_baseline/migration.sql 2>/dev/null
+# 2. Create and apply the migration
+npm run db:migrate
+# This creates prisma/migrations/<timestamp>_add_<field>/migration.sql
 
-# 3. Regenerate the Prisma client
+# 3. Review the generated SQL
+cat prisma/migrations/*/migration.sql  # check the last one
+
+# 4. Regenerate the Prisma client
 npx prisma generate
 
-# 4. Test locally — rebuild production image and restart
-#    (migrate.mjs runs automatically on startup)
-BUILD_TARGET=production sudo docker compose up -d --force-recreate web
+# 5. Verify
+npx prisma migrate status  # should show "up to date"
 
-# 5. Verify the migration ran
-sudo docker compose logs web | grep migrate
-
-# 6. Commit everything together
-git add prisma/schema.prisma prisma/migrations/0001_baseline/migration.sql
+# 6. Commit together
+git add prisma/schema.prisma prisma/migrations/
 git commit -m "add <field> to <model>"
 ```
 
 ### Local Development
 
-The local Docker setup uses the same migration script. After changing the schema:
+After changing the schema:
 
 ```bash
-# Regenerate baseline + client
-npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script \
-  1> prisma/migrations/0001_baseline/migration.sql 2>/dev/null
-npx prisma generate
-
-# Rebuild production image and restart — migrate.mjs runs automatically
-BUILD_TARGET=production sudo docker compose up -d --force-recreate web
+npm run db:migrate    # creates + applies migration
+npx prisma generate   # regenerates client types
 ```
 
-The diff will detect the new column and add it. No manual SQL, no migration state issues.
+The Docker container will pick up new migrations on restart — `prisma migrate deploy` runs in the entrypoint.
 
 ### Resetting Local DB
 
 If you need a clean slate locally:
 
 ```bash
-sudo docker compose down
-sudo docker compose run --rm postgres dropdb --if-exists -U saale saale
-sudo docker compose run --rm postgres createdb -U saale saale
-sudo docker compose up -d web  # baseline applied automatically
+# Drop and recreate via the host's PostgreSQL
+sudo -u postgres dropdb saale
+sudo -u postgres createdb -O saale saale
+
+# Re-apply all migrations
+npx prisma migrate deploy
+```
+
+Or via Docker (when containers are running):
+
+```bash
+sudo docker compose exec postgres dropdb --if-exists -U saale saale
+sudo docker compose exec postgres createdb -U saale saale
+sudo docker compose up -d --force-recreate web  # migrate deploy runs automatically
 ```
 
 ## Rules
 
 1. **`prisma/schema.prisma` is the only place you define schema changes.** Never write raw SQL to alter the database.
-2. **Always regenerate the baseline** after editing the schema. The baseline must match the schema exactly.
-3. **Always regenerate the Prisma client** (`npx prisma generate`) after schema changes.
-4. **Never drop columns or tables.** Add new fields as nullable, backfill if needed, deprecate old fields.
-5. **Never edit migration SQL manually.** Regenerate from the schema.
-6. **Test migrations before committing.** Restart the container and verify the logs show "Migration complete."
-7. **Commit schema + baseline together.** They are a unit — never commit one without the other.
+2. **Never edit an applied migration file.** This changes its hash and causes "migration out of sync" errors. If a migration is wrong, revert the schema change and create a new one.
+3. **Never delete migration files.** They represent the authoritative history.
+4. **Always commit migration files immediately.** A migration that exists locally but not in git will cause the remote deploy to have no migrations to apply.
+5. **Always regenerate the Prisma client** (`npx prisma generate`) after schema changes.
+6. **Test before committing.** Verify `npx prisma migrate status` shows no pending migrations.
+7. **Review generated SQL.** Especially for destructive changes (DROP COLUMN, DROP TABLE).
+
+## Dropping Columns or Tables
+
+Dropping is allowed — it's a normal part of schema evolution. The key is to do it deliberately through migrations, not accidentally.
+
+### When Dropping Is Fine
+
+- Debug/test fields that served their purpose
+- Columns replaced by a new column (add new → backfill → drop old in separate migration)
+- Tables that are truly obsolete with no remaining data needs
+
+### When to Be Careful
+
+- Columns with data needed at runtime during deployment (split into steps)
+- Foreign key columns (drop the constraint first, then the column)
+- Indexed columns (the index is dropped automatically with the column)
+
+### Example: Safe Column Replacement
+
+```prisma
+// Step 1: Add new column (nullable)
+model User {
+  // ...
+  oldName    String?
+  displayName String?
+}
+
+// Deploy, backfill data via script or app code
+
+// Step 2: Make new column required, drop old
+model User {
+  // ...
+  displayName String
+}
+```
+
+Each step is a separate migration, deployed separately.
 
 ## What NOT to Do
 
@@ -105,37 +120,44 @@ sudo docker compose up -d web  # baseline applied automatically
 # ❌ BAD — manual SQL
 docker exec postgres psql -c "ALTER TABLE ..."
 
-# ❌ BAD — prisma db push (can drop data)
+# ❌ BAD — prisma db push (bypasses migrations, can drop data)
 npx prisma db push --accept-data-loss
 
-# ❌ BAD — incremental migrations (not used in this project)
-npx prisma migrate dev --name add_something
+# ❌ BAD — editing a migration after it was applied
+nano prisma/migrations/20240101_something/migration.sql
 
-# ❌ BAD — editing migration SQL manually
-nano prisma/migrations/0001_baseline/migration.sql
+# ❌ BAD — deleting a migration
+rm prisma/migrations/20240101_something/
 
-# ❌ BAD — dropping a column because "it's not used"
-# Remove the field from schema.prisma → this generates DROP COLUMN → blocked
-# Instead: keep the field, stop using it in code
+# ❌ BAD — forgetting to commit the migration file
+git add prisma/schema.prisma
+git commit -m "add field"  # migration file not included!
 ```
 
 ## Troubleshooting
 
-### "DATABASE_URL not set"
+### "Migration was modified after it was applied"
 
-The migration script reads `DATABASE_URL` from the environment. In Docker, this is set by `docker-compose.yml`. Locally, ensure `.env` has it.
+The migration file was edited after being applied, changing its hash. Fix:
+1. Check out the original migration from git: `git checkout -- prisma/migrations/<name>/migration.sql`
+2. If the original is lost, reset the DB and re-apply: `npx prisma migrate reset`
 
-### "Diff contains a destructive operation"
+### "Migrations from the database are not found locally"
 
-The safety check blocked a DROP operation. To fix:
-1. Re-add the dropped field to `prisma/schema.prisma` (make it nullable if needed).
-2. Regenerate the baseline.
-3. If you truly need to remove data, do it in application code (delete rows) before removing the schema field.
+The DB has migrations that don't exist in the local `prisma/migrations/` folder. This happens when migration files weren't committed. Fix:
+1. Pull the latest migrations from git: `git pull`
+2. If they were never committed, the migration history is corrupted. Reset: `npx prisma migrate reset`
 
-### "Verification failed — database still differs"
+### "Database schema is up to date" but fields are missing
 
-The migration applied but the DB doesn't match the schema. This indicates a partial failure. Check the logs for SQL errors. The transaction should have rolled back, so the DB should be in a consistent state. Fix the schema change and retry.
+The migration was applied but the Prisma client types are stale. Fix:
+```bash
+npx prisma generate
+```
 
-### Local DB out of sync with schema
+### Remote deploy says "no migrations to apply"
 
-Reset the local DB (see "Resetting Local DB" above). The baseline will be applied fresh.
+The migration file wasn't committed/pushed. Fix:
+1. Check `git status` — migration file should be committed
+2. Push: `git push`
+3. Redeploy
