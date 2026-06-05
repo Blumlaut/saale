@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
 import { MessageList } from "./message-list";
@@ -9,7 +9,7 @@ import { InputBar } from "./input-bar";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { fetchJson, patchJson } from "@/lib/http";
-import { Loader2, Settings2, ChevronDown, Ghost, Pencil, GitBranch } from "lucide-react";
+import { Loader2, Settings2, ChevronDown, Ghost, Pencil } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -122,14 +122,29 @@ const emptyTurn = (): TurnData => ({
 export function ChatInterface({
   sessionId,
   temporaryMode,
-  initialStreamUrl,
 }: {
   sessionId: string;
   temporaryMode: boolean;
-  /** Stream URL to connect on mount (set after a message edit/fork) */
-  initialStreamUrl?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Active branch — from URL ?branch=xxx, defaults to sessionId (main)
+  const activeBranchId = searchParams.get("branch") || sessionId;
+
+  /** Switch to a different branch (updates URL, reloads messages) */
+  const switchBranch = useCallback(
+    (branchId: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (branchId === sessionId) {
+        params.delete("branch");
+      } else {
+        params.set("branch", branchId);
+      }
+      router.replace(`/dashboard/chat/${sessionId}?${params.toString()}`);
+    },
+    [sessionId, searchParams, router],
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState>({
@@ -143,7 +158,6 @@ export function ChatInterface({
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
-  const [isForking, setIsForking] = useState(false);
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
   const mountTimeRef = useRef(0);
@@ -152,6 +166,7 @@ export function ChatInterface({
 
   const loadMessages = async () => {
     try {
+      const branchParam = activeBranchId !== sessionId ? `?branch=${activeBranchId}` : "";
       const data = await fetchJson<{
         messages: Message[];
         session: {
@@ -160,7 +175,7 @@ export function ChatInterface({
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
         };
-      }>(`/api/chat/sessions/${sessionId}/messages`);
+      }>(`/api/chat/sessions/${sessionId}/messages${branchParam}`);
       setMessages(data.messages);
       if (data.session) {
         const modelStr =
@@ -200,333 +215,174 @@ export function ChatInterface({
     streamingRef.current = streaming;
   }, [streaming]);
 
-  // Connect to initial stream URL (from a message edit/fork)
-  useEffect(() => {
-    if (!initialStreamUrl) return;
-    setIsLoading(true);
-    setStreaming({ turns: [], current: emptyTurn() });
-
-    const eventSource = new EventSource(initialStreamUrl);
-    eventSourceRef.current = eventSource;
-
-    const cleanup = () => {
-      eventSource.close();
-      eventSourceRef.current = null;
-    };
-
-    eventSource.addEventListener("token", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: { ...prev.current, text: parsed.text },
-      }));
-    });
-
-    eventSource.addEventListener("thinking", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: { ...prev.current, thinking: parsed.thinking },
-      }));
-    });
-
-    eventSource.addEventListener("tool_start", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: {
-          ...prev.current,
-          toolCalls: [
-            ...prev.current.toolCalls,
-            {
-              toolCallId: parsed.toolCallId,
-              toolName: parsed.toolName,
-              args: parsed.args,
-              status: "running" as const,
-            },
-          ],
-        },
-      }));
-    });
-
-    eventSource.addEventListener("tool_end", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: {
-          ...prev.current,
-          toolCalls: prev.current.toolCalls.map((tc) =>
-            tc.toolCallId === parsed.toolCallId
-              ? {
-                  ...tc,
-                  status: parsed.isError ? ("error" as const) : ("completed" as const),
-                  result: parsed.result,
-                  error: parsed.isError ? parsed.result : undefined,
-                }
-              : tc,
-          ),
-        },
-      }));
-    });
-
-    eventSource.addEventListener("turn_end", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        turns: [
-          ...prev.turns,
-          {
-            text: parsed.text || prev.current.text,
-            thinking: parsed.thinking || prev.current.thinking,
-            toolCalls:
-              parsed.toolCalls?.length > 0
-                ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                    toolCallId: tc.id,
-                    toolName: tc.name,
-                    args: tc.args,
-                    status: tc.error ? "error" : "completed",
-                    result: tc.result,
-                  }))
-                : prev.current.toolCalls,
-          },
-        ],
-        current: emptyTurn(),
-      }));
-    });
-
-    eventSource.addEventListener("done", (event: MessageEvent) => {
-      setIsLoading(false);
-      cleanup();
-
-      const allTurns = collectAllTurns(streamingRef.current);
-      const parsed = JSON.parse(event.data);
-
-      if (allTurns.length > 0) {
-        const baseId = `assistant-turn-${Date.now()}`;
-        setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-      } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
-        const finalToolCalls: ToolCallData[] | undefined =
-          parsed.toolCalls?.length > 0
-            ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                id: tc.id,
-                name: tc.name,
-                args: tc.args,
-                error: tc.error,
-                status: tc.status,
-                result: tc.result || undefined,
-              }))
-            : undefined;
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-${Date.now()}`,
-            role: "assistant" as const,
-            content: parsed.text,
-            thinking: parsed.thinking || undefined,
-            toolCalls: finalToolCalls,
-            parentMessageId: undefined,
-            createdAt: new Date().toISOString(),
-            attachments: undefined,
-          },
-        ]);
-      }
-
-      // Reload messages to get persisted data
-      loadMessages();
-    });
-
-    eventSource.addEventListener("error", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      console.error("Stream error:", parsed);
-      cleanup();
-      setIsLoading(false);
-    });
-
-    eventSource.onerror = () => {
-      cleanup();
-      setIsLoading(false);
-      finalizeStreaming(streamingRef, setMessages);
-      loadMessages();
-    };
-  }, [initialStreamUrl, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Edit a user message
+  // Edit a user message — creates a new branch, switches to it, streams new response
   const handleEditMessage = useCallback(
     async (messageId: string, newContent: string) => {
-      setIsForking(true);
+      setIsLoading(true);
       try {
         const data = await patchJson<{
           ok: boolean;
-          forkedSessionId?: string;
+          branchId: string;
           streamUrl: string;
           message: { id: string; content: string; editedAt: string };
         }>(`/api/chat/sessions/${sessionId}/messages/${messageId}`, {
           content: newContent,
         });
 
-        if (data.forkedSessionId) {
-          // Forked — navigate to new session with stream URL
-          router.push(
-            `/dashboard/chat/${data.forkedSessionId}?streamUrl=${encodeURIComponent(data.streamUrl)}`,
-          );
-        } else {
-          // In-place edit — update local state and stream new response
-          setMessages((prev) =>
-            prev.map((m) => (m.id === messageId ? { ...m, content: newContent } : m)),
-          );
+        // Switch to the new branch (updates URL, triggers message reload via effect)
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("branch", data.branchId);
+        router.replace(`/dashboard/chat/${sessionId}?${params.toString()}`);
 
-          // Connect to stream for new AI response
-          setIsLoading(true);
-          setStreaming({ turns: [], current: emptyTurn() });
+        // Connect to stream for new AI response
+        setStreaming({ turns: [], current: emptyTurn() });
 
-          const eventSource = new EventSource(data.streamUrl);
-          eventSourceRef.current = eventSource;
+        const eventSource = new EventSource(data.streamUrl);
+        eventSourceRef.current = eventSource;
 
-          const cleanup = () => {
-            eventSource.close();
-            eventSourceRef.current = null;
-          };
+        const cleanup = () => {
+          eventSource.close();
+          eventSourceRef.current = null;
+        };
 
-          eventSource.addEventListener("token", (event: MessageEvent) => {
-            const parsed = JSON.parse(event.data);
-            setStreaming((prev) => ({
-              ...prev,
-              current: { ...prev.current, text: parsed.text },
-            }));
-          });
+        eventSource.addEventListener("token", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          setStreaming((prev) => ({
+            ...prev,
+            current: { ...prev.current, text: parsed.text },
+          }));
+        });
 
-          eventSource.addEventListener("thinking", (event: MessageEvent) => {
-            const parsed = JSON.parse(event.data);
-            setStreaming((prev) => ({
-              ...prev,
-              current: { ...prev.current, thinking: parsed.thinking },
-            }));
-          });
+        eventSource.addEventListener("thinking", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          setStreaming((prev) => ({
+            ...prev,
+            current: { ...prev.current, thinking: parsed.thinking },
+          }));
+        });
 
-          eventSource.addEventListener("tool_start", (event: MessageEvent) => {
-            const parsed = JSON.parse(event.data);
-            setStreaming((prev) => ({
-              ...prev,
-              current: {
-                ...prev.current,
-                toolCalls: [
-                  ...prev.current.toolCalls,
-                  {
-                    toolCallId: parsed.toolCallId,
-                    toolName: parsed.toolName,
-                    args: parsed.args,
-                    status: "running" as const,
-                  },
-                ],
-              },
-            }));
-          });
-
-          eventSource.addEventListener("tool_end", (event: MessageEvent) => {
-            const parsed = JSON.parse(event.data);
-            setStreaming((prev) => ({
-              ...prev,
-              current: {
-                ...prev.current,
-                toolCalls: prev.current.toolCalls.map((tc) =>
-                  tc.toolCallId === parsed.toolCallId
-                    ? {
-                        ...tc,
-                        status: parsed.isError ? ("error" as const) : ("completed" as const),
-                        result: parsed.result,
-                        error: parsed.isError ? parsed.result : undefined,
-                      }
-                    : tc,
-                ),
-              },
-            }));
-          });
-
-          eventSource.addEventListener("turn_end", (event: MessageEvent) => {
-            const parsed = JSON.parse(event.data);
-            setStreaming((prev) => ({
-              ...prev,
-              turns: [
-                ...prev.turns,
+        eventSource.addEventListener("tool_start", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          setStreaming((prev) => ({
+            ...prev,
+            current: {
+              ...prev.current,
+              toolCalls: [
+                ...prev.current.toolCalls,
                 {
-                  text: parsed.text || prev.current.text,
-                  thinking: parsed.thinking || prev.current.thinking,
-                  toolCalls:
-                    parsed.toolCalls?.length > 0
-                      ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                          toolCallId: tc.id,
-                          toolName: tc.name,
-                          args: tc.args,
-                          status: tc.error ? "error" : "completed",
-                          result: tc.result,
-                        }))
-                      : prev.current.toolCalls,
+                  toolCallId: parsed.toolCallId,
+                  toolName: parsed.toolName,
+                  args: parsed.args,
+                  status: "running" as const,
                 },
               ],
-              current: emptyTurn(),
-            }));
-          });
+            },
+          }));
+        });
 
-          eventSource.addEventListener("done", (event: MessageEvent) => {
-            setIsLoading(false);
-            cleanup();
-            const allTurns = collectAllTurns(streamingRef.current);
-            const parsed = JSON.parse(event.data);
+        eventSource.addEventListener("tool_end", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          setStreaming((prev) => ({
+            ...prev,
+            current: {
+              ...prev.current,
+              toolCalls: prev.current.toolCalls.map((tc) =>
+                tc.toolCallId === parsed.toolCallId
+                  ? {
+                      ...tc,
+                      status: parsed.isError ? ("error" as const) : ("completed" as const),
+                      result: parsed.result,
+                      error: parsed.isError ? parsed.result : undefined,
+                    }
+                  : tc,
+              ),
+            },
+          }));
+        });
 
-            if (allTurns.length > 0) {
-              const baseId = `assistant-turn-${Date.now()}`;
-              setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-            } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
-              const finalToolCalls: ToolCallData[] | undefined =
-                parsed.toolCalls?.length > 0
-                  ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                      id: tc.id,
-                      name: tc.name,
-                      args: tc.args,
-                      error: tc.error,
-                      status: tc.status,
-                      result: tc.result || undefined,
-                    }))
-                  : undefined;
+        eventSource.addEventListener("turn_end", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          setStreaming((prev) => ({
+            ...prev,
+            turns: [
+              ...prev.turns,
+              {
+                text: parsed.text || prev.current.text,
+                thinking: parsed.thinking || prev.current.thinking,
+                toolCalls:
+                  parsed.toolCalls?.length > 0
+                    ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                        toolCallId: tc.id,
+                        toolName: tc.name,
+                        args: tc.args,
+                        status: tc.error ? "error" : "completed",
+                        result: tc.result,
+                      }))
+                    : prev.current.toolCalls,
+              },
+            ],
+            current: emptyTurn(),
+          }));
+        });
 
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `assistant-${Date.now()}`,
-                  role: "assistant" as const,
-                  content: parsed.text,
-                  thinking: parsed.thinking || undefined,
-                  toolCalls: finalToolCalls,
-                  parentMessageId: undefined,
-                  createdAt: new Date().toISOString(),
-                  attachments: undefined,
-                },
-              ]);
-            }
+        eventSource.addEventListener("done", (event: MessageEvent) => {
+          setIsLoading(false);
+          cleanup();
+          const allTurns = collectAllTurns(streamingRef.current);
+          const parsed = JSON.parse(event.data);
 
-            loadMessages();
-          });
+          if (allTurns.length > 0) {
+            const baseId = `assistant-turn-${Date.now()}`;
+            setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
+          } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
+            const finalToolCalls: ToolCallData[] | undefined =
+              parsed.toolCalls?.length > 0
+                ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                    id: tc.id,
+                    name: tc.name,
+                    args: tc.args,
+                    error: tc.error,
+                    status: tc.status,
+                    result: tc.result || undefined,
+                  }))
+                : undefined;
 
-          eventSource.addEventListener("error", (event: MessageEvent) => {
-            const parsed = JSON.parse(event.data);
-            console.error("Stream error:", parsed);
-            cleanup();
-            setIsLoading(false);
-          });
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `assistant-${Date.now()}`,
+                role: "assistant" as const,
+                content: parsed.text,
+                thinking: parsed.thinking || undefined,
+                toolCalls: finalToolCalls,
+                parentMessageId: undefined,
+                createdAt: new Date().toISOString(),
+                attachments: undefined,
+              },
+            ]);
+          }
 
-          eventSource.onerror = () => {
-            cleanup();
-            setIsLoading(false);
-            finalizeStreaming(streamingRef, setMessages);
-            loadMessages();
-          };
-        }
-      } finally {
-        setIsForking(false);
+          loadMessages();
+        });
+
+        eventSource.addEventListener("error", (event: MessageEvent) => {
+          const parsed = JSON.parse(event.data);
+          console.error("Stream error:", parsed);
+          cleanup();
+          setIsLoading(false);
+        });
+
+        eventSource.onerror = () => {
+          cleanup();
+          setIsLoading(false);
+          finalizeStreaming(streamingRef, setMessages);
+          loadMessages();
+        };
+      } catch {
+        setIsLoading(false);
       }
     },
-    [sessionId, router], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
+    [sessionId, searchParams, router], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
   );
 
   // Load messages and session title
@@ -534,7 +390,7 @@ export function ChatInterface({
   useEffect(() => {
     loadMessages();
     loadSessionTitle();
-  }, [sessionId]);
+  }, [sessionId, activeBranchId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Record mount time on first render
@@ -635,6 +491,8 @@ export function ChatInterface({
       try {
         let res: Response;
 
+        const branchParam = activeBranchId !== sessionId ? `?branch=${activeBranchId}` : "";
+
         if (files && files.length > 0) {
           // Multipart form data for messages with images
           const formData = new FormData();
@@ -642,13 +500,13 @@ export function ChatInterface({
           for (const file of files) {
             formData.append("files", file);
           }
-          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+          res = await fetch(`/api/chat/sessions/${sessionId}/messages${branchParam}`, {
             method: "POST",
             body: formData,
           });
         } else {
           // Plain JSON for text-only messages
-          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+          res = await fetch(`/api/chat/sessions/${sessionId}/messages${branchParam}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content }),
@@ -846,7 +704,7 @@ export function ChatInterface({
         console.error("Send error:", err);
       }
     },
-    [sessionId, router],
+    [sessionId, router, activeBranchId],
   );
 
   // Stop streaming
@@ -971,12 +829,6 @@ export function ChatInterface({
               temporary
             </span>
           )}
-          {isForking && (
-            <span className="text-muted-foreground flex items-center gap-1 text-xs">
-              <GitBranch className="h-3 w-3" />
-              forking...
-            </span>
-          )}
           {isLoading && <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />}
 
           {/* Model & thinking selectors — inline on desktop, dropdown on mobile */}
@@ -1013,6 +865,9 @@ export function ChatInterface({
           messages={displayMessages}
           isLoading={isLoading}
           onEditMessage={handleEditMessage}
+          activeBranchId={activeBranchId}
+          sessionId={sessionId}
+          onSwitchBranch={switchBranch}
         />
       </GlassPanel>
 

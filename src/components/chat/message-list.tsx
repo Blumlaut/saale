@@ -19,18 +19,59 @@ import {
   Lightbulb,
   Pencil,
   X,
+  GitBranch,
+  ChevronLeft,
+  ChevronRight as ChevronRightIcon,
 } from "lucide-react";
 import type { Message } from "./types";
+
+interface BranchInfo {
+  id: string;
+  isMain: boolean;
+  divergenceMessageId: string | null;
+  messageCount: number;
+  createdAt: string;
+}
 
 interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
   onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
+  /** Current active branch ID */
+  activeBranchId?: string;
+  /** Session ID (for branch API calls) */
+  sessionId?: string;
+  /** Callback when user switches branches */
+  onSwitchBranch?: (branchId: string) => void;
 }
 
-export function MessageList({ messages, isLoading, onEditMessage }: MessageListProps) {
+export function MessageList({
+  messages,
+  isLoading,
+  onEditMessage,
+  activeBranchId,
+  sessionId,
+  onSwitchBranch,
+}: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Load branches for switcher
+  const [branches, setBranches] = useState<BranchInfo[]>([]);
+  useEffect(() => {
+    if (!sessionId || !activeBranchId) {
+      setBranches([]);
+      return;
+    }
+    fetch(`/api/chat/sessions/${sessionId}/branches`)
+      .then((r) => r.json())
+      .then((data) => setBranches(data.branches || []))
+      .catch(() => setBranches([]));
+  }, [sessionId, activeBranchId]);
+
+  // Find which branch index we're on and which branches diverge from visible messages
+  const activeBranchIndex = branches.findIndex((b) => b.id === activeBranchId);
+  const otherBranches = branches.filter((b) => b.id !== activeBranchId);
 
   // Group consecutive assistant messages that share a parentMessageId
   const groupedMessages = useMemo(() => {
@@ -116,6 +157,67 @@ export function MessageList({ messages, isLoading, onEditMessage }: MessageListP
           <div className="text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span className="text-sm">Thinking...</span>
+          </div>
+        )}
+
+        {/* Branch switcher — shown when there are alternative branches */}
+        {otherBranches.length > 0 && onSwitchBranch && (
+          <div className="liquid-glass-inner rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2 text-xs">
+              <GitBranch className="text-muted-foreground h-3.5 w-3.5" />
+              <span className="text-muted-foreground font-medium">
+                {otherBranches.length} alternative version{otherBranches.length > 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {otherBranches.map((branch, idx) => (
+                <Button
+                  key={branch.id}
+                  variant="outline"
+                  size="sm"
+                  className="liquid-glass-inner h-7 gap-1.5 text-xs"
+                  onClick={() => onSwitchBranch(branch.id)}
+                >
+                  {branch.isMain ? "Original" : `Version ${idx + 2}`}
+                  <span className="text-muted-foreground">{branch.messageCount} msgs</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Current branch label (when not on main) */}
+        {activeBranchId && otherBranches.length > 0 && (
+          <div className="text-muted-foreground flex items-center justify-center gap-1 text-xs">
+            {activeBranchIndex >= 0 && (
+              <>
+                {activeBranchIndex > 0 && (
+                  <button
+                    className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-white/10"
+                    onClick={() => {
+                      const prev = branches[activeBranchIndex - 1];
+                      if (prev) onSwitchBranch?.(prev.id);
+                    }}
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </button>
+                )}
+                <span>
+                  Branch {activeBranchIndex + 1} of {branches.length}
+                </span>
+                {activeBranchIndex < branches.length - 1 && (
+                  <button
+                    className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-white/10"
+                    onClick={() => {
+                      const next = branches[activeBranchIndex + 1];
+                      if (next) onSwitchBranch?.(next.id);
+                    }}
+                  >
+                    <ChevronRightIcon className="h-3 w-3" />
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -301,25 +403,27 @@ function UserMessageItem({
 
         {/* Text content (only when there's text) */}
         {message.content && (
-          <div className="liquid-glass-inner relative rounded-2xl px-4 py-3">
+          <div className="liquid-glass-inner rounded-2xl px-4 py-3">
             <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-            {/* Edit button — appears on hover */}
-            {onEdit && (
-              <button
-                onClick={startEditing}
-                className="text-muted-foreground hover:text-foreground absolute top-2 right-2 opacity-0 transition-opacity group-hover/message:opacity-70"
-                aria-label="Edit message"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
         )}
-        <div className="text-muted-foreground text-right text-xs">
-          {new Date(message.createdAt).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+        {/* Timestamp + edit button */}
+        <div className="flex items-center justify-end gap-2 text-xs">
+          <span className="text-muted-foreground">
+            {new Date(message.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+          {onEdit && (
+            <button
+              onClick={startEditing}
+              className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover/message:opacity-70"
+              aria-label="Edit message"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </div>
