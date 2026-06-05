@@ -54,8 +54,6 @@ export async function POST(request: NextRequest) {
   // Sanitize title: strip null bytes, limit length
   const sanitizedTitle = (title || "New Chat").replace(/\0/g, "").slice(0, 50);
 
-  // Generate a single ID used for both the session and its main branch.
-  // This lets the message endpoints default branchId to sessionId.
   const id = crypto.randomUUID();
 
   const chatSession = await prisma.chatSession.create({
@@ -68,11 +66,6 @@ export async function POST(request: NextRequest) {
       modelName,
       thinkingLevel: thinkingLevel || "off",
       toolConfig,
-      branches: {
-        create: {
-          id,
-        },
-      },
     },
   });
 

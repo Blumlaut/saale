@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
 import { MessageList } from "./message-list";
@@ -127,24 +127,6 @@ export function ChatInterface({
   temporaryMode: boolean;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-
-  // Active branch — from URL ?branch=xxx, defaults to sessionId (main)
-  const activeBranchId = searchParams.get("branch") || sessionId;
-
-  /** Switch to a different branch (updates URL, reloads messages) */
-  const switchBranch = useCallback(
-    (branchId: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (branchId === sessionId) {
-        params.delete("branch");
-      } else {
-        params.set("branch", branchId);
-      }
-      router.replace(`/dashboard/chat/${sessionId}?${params.toString()}`);
-    },
-    [sessionId, searchParams, router],
-  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState>({
@@ -166,7 +148,6 @@ export function ChatInterface({
 
   const loadMessages = async () => {
     try {
-      const branchParam = activeBranchId !== sessionId ? `?branch=${activeBranchId}` : "";
       const data = await fetchJson<{
         messages: Message[];
         session: {
@@ -175,7 +156,7 @@ export function ChatInterface({
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
         };
-      }>(`/api/chat/sessions/${sessionId}/messages${branchParam}`);
+      }>(`/api/chat/sessions/${sessionId}/messages`);
       setMessages(data.messages);
       if (data.session) {
         const modelStr =
@@ -215,24 +196,21 @@ export function ChatInterface({
     streamingRef.current = streaming;
   }, [streaming]);
 
-  // Edit a user message — creates a new branch, switches to it, streams new response
+  // Edit a user message — updates in place, deletes messages after, streams new response
   const handleEditMessage = useCallback(
     async (messageId: string, newContent: string) => {
       setIsLoading(true);
       try {
         const data = await patchJson<{
           ok: boolean;
-          branchId: string;
+          messageId: string;
           streamUrl: string;
-          message: { id: string; content: string; editedAt: string };
         }>(`/api/chat/sessions/${sessionId}/messages/${messageId}`, {
           content: newContent,
         });
 
-        // Switch to the new branch (updates URL, triggers message reload via effect)
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("branch", data.branchId);
-        router.replace(`/dashboard/chat/${sessionId}?${params.toString()}`);
+        // Reload messages to reflect the edit + deletion of messages after
+        loadMessages();
 
         // Connect to stream for new AI response
         setStreaming({ turns: [], current: emptyTurn() });
@@ -382,7 +360,7 @@ export function ChatInterface({
         setIsLoading(false);
       }
     },
-    [sessionId, searchParams, router], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
+    [sessionId], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
   );
 
   // Load messages and session title
@@ -390,7 +368,7 @@ export function ChatInterface({
   useEffect(() => {
     loadMessages();
     loadSessionTitle();
-  }, [sessionId, activeBranchId]);
+  }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Record mount time on first render
@@ -491,8 +469,6 @@ export function ChatInterface({
       try {
         let res: Response;
 
-        const branchParam = activeBranchId !== sessionId ? `?branch=${activeBranchId}` : "";
-
         if (files && files.length > 0) {
           // Multipart form data for messages with images
           const formData = new FormData();
@@ -500,13 +476,13 @@ export function ChatInterface({
           for (const file of files) {
             formData.append("files", file);
           }
-          res = await fetch(`/api/chat/sessions/${sessionId}/messages${branchParam}`, {
+          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
             method: "POST",
             body: formData,
           });
         } else {
           // Plain JSON for text-only messages
-          res = await fetch(`/api/chat/sessions/${sessionId}/messages${branchParam}`, {
+          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content }),
@@ -704,7 +680,7 @@ export function ChatInterface({
         console.error("Send error:", err);
       }
     },
-    [sessionId, router, activeBranchId],
+    [sessionId, router],
   );
 
   // Stop streaming
@@ -865,9 +841,6 @@ export function ChatInterface({
           messages={displayMessages}
           isLoading={isLoading}
           onEditMessage={handleEditMessage}
-          activeBranchId={activeBranchId}
-          sessionId={sessionId}
-          onSwitchBranch={switchBranch}
         />
       </GlassPanel>
 

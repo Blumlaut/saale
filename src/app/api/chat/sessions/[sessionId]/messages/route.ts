@@ -5,18 +5,15 @@ import { validateImageUpload, processAndStoreImage, deleteAllImages } from "@/li
 
 /**
  * GET /api/chat/sessions/:sessionId/messages — Get messages for a session
- * Accepts ?branch=<branchId> to filter by branch (defaults to main branch = sessionId)
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
-  const url = new URL(request.url);
-  const branchId = url.searchParams.get("branch") || sessionId;
 
   // Verify session belongs to user
   const chatSession = await prisma.chatSession.findFirst({
@@ -36,7 +33,7 @@ export async function GET(
   }
 
   const messages = await prisma.chatMessage.findMany({
-    where: { sessionId, branchId },
+    where: { sessionId },
     orderBy: { createdAt: "asc" },
     include: {
       attachments: true,
@@ -88,8 +85,6 @@ export async function POST(
   if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
-  const url = new URL(request.url);
-  const branchId = url.searchParams.get("branch") || sessionId;
 
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authResult.user.id },
@@ -165,7 +160,6 @@ export async function POST(
     const userMessage = await prisma.chatMessage.create({
       data: {
         sessionId,
-        branchId,
         role: "user",
         content: sanitizedContent,
         ...(imageAttachments.length > 0 && {
