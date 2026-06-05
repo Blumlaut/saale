@@ -41,6 +41,32 @@ npx prisma db push --accept-data-loss
 - Never drop a column that still has data you need without a data migration step.
 - If a schema change feels risky, discuss it — don't rush it.
 
+#### No Manual DB Manipulation
+
+- **Never manipulate the database schema directly.** No `docker exec psql`, no raw `ALTER TABLE`, no direct SQL to add/drop/alter columns or tables.
+- **All schema changes must go through Prisma migrations.** Even in development, even for quick fixes, even when the migration tooling is inconvenient.
+- If `prisma migrate dev` can't run (e.g., migrations folder out of sync), fix the migration state — don't bypass it with manual SQL.
+
+```bash
+# ✅ GOOD — schema change through proper migration
+npm run db:migrate
+npx prisma generate
+
+# ❌ BAD — manual SQL to alter schema
+docker exec postgres psql -c "ALTER TABLE ..."
+
+# ❌ BAD — direct SQL to add/drop columns
+psql -c "CREATE COLUMN ..."
+```
+
+#### Verify Before Committing
+
+- **Every migration must be verified before committing.** After running `npm run db:migrate`, confirm:
+  1. The migration applied without errors (`npx prisma migrate status` shows no pending migrations).
+  2. The generated Prisma client types match expectations (`npx prisma generate` succeeds).
+  3. The app starts and the affected code paths work (e.g., the API route that uses the new field).
+- If a migration needs adjustment, revert the schema change, fix it, and regenerate — don't patch the migration SQL manually.
+
 #### Never Touch These Files
 
 - **`prisma.config.mjs`** — handles env loading for both local dev and Docker. Changing it breaks deployments.
