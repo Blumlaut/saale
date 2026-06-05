@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -60,6 +61,25 @@ export function DashboardNav() {
   const [emailLoading, setEmailLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [searchPosition, setSearchPosition] = useState<{ top: number; left: number } | null>(null);
+
+  // Update portal position on open, scroll, and resize
+  useEffect(() => {
+    if (!searchOpen || !searchRef.current) return;
+
+    const updatePosition = () => {
+      const rect = searchRef.current!.getBoundingClientRect();
+      setSearchPosition({ top: rect.bottom, left: rect.left });
+    };
+
+    updatePosition();
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [searchOpen]);
 
   // Load email accounts
   useEffect(() => {
@@ -175,70 +195,79 @@ export function DashboardNav() {
                 </kbd>
               </Button>
 
-              {/* Search dropdown */}
-              {searchOpen && (
-                <div className="liquid-glass absolute top-full left-0 z-50 mt-1 w-72 rounded-xl border-0 shadow-2xl">
-                  <div className="flex items-center gap-2 border-b px-3 py-2">
-                    <Search className="text-muted-foreground h-4 w-4" />
-                    <Input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search chats, emails..."
-                      className="h-8 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
-                      autoFocus
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => {
-                        setSearchOpen(false);
-                        setSearchQuery("");
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
+              {/* Search dropdown — rendered via portal to escape GlassPanel's overflow-hidden */}
+              {searchOpen &&
+                searchPosition &&
+                createPortal(
+                  <div
+                    className="liquid-glass fixed z-50 mt-1 w-72 rounded-xl border-0 shadow-2xl"
+                    style={{
+                      top: searchPosition.top,
+                      left: searchPosition.left,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 border-b px-3 py-2">
+                      <Search className="text-muted-foreground h-4 w-4" />
+                      <Input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search chats, emails..."
+                        className="h-8 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+                        autoFocus
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setSearchQuery("");
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
 
-                  <div className="max-h-64 overflow-y-auto p-1">
-                    {searchLoading ? (
-                      <div className="flex items-center justify-center py-4">
-                        <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                      </div>
-                    ) : !searchQuery ? null : searchResults.length === 0 ? (
-                      <div className="text-muted-foreground py-4 text-center text-sm">
-                        No results found
-                      </div>
-                    ) : (
-                      searchResults.map((result) => (
-                        <button
-                          key={result.id}
-                          onClick={() => handleResultClick(result)}
-                          className="hover:bg-muted/50 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors"
-                        >
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "shrink-0 rounded-full px-1.5 py-0 text-[10px]",
-                              result.type === "chat"
-                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                                : "bg-green-500/10 text-green-600 dark:text-green-400",
-                            )}
+                    <div className="max-h-64 overflow-y-auto p-1">
+                      {searchLoading ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                        </div>
+                      ) : !searchQuery ? null : searchResults.length === 0 ? (
+                        <div className="text-muted-foreground py-4 text-center text-sm">
+                          No results found
+                        </div>
+                      ) : (
+                        searchResults.map((result) => (
+                          <button
+                            key={result.id}
+                            onClick={() => handleResultClick(result)}
+                            className="hover:bg-muted/50 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors"
                           >
-                            {result.type}
-                          </Badge>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">{result.title}</div>
-                            <div className="text-muted-foreground truncate text-xs">
-                              {result.snippet}
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "shrink-0 rounded-full px-1.5 py-0 text-[10px]",
+                                result.type === "chat"
+                                  ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                  : "bg-green-500/10 text-green-600 dark:text-green-400",
+                              )}
+                            >
+                              {result.type}
+                            </Badge>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium">{result.title}</div>
+                              <div className="text-muted-foreground truncate text-xs">
+                                {result.snippet}
+                              </div>
                             </div>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>,
+                  document.body,
+                )}
             </div>
           </div>
 
