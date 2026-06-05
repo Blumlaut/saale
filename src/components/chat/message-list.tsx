@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { FileCard } from "./file-card";
 import {
@@ -15,15 +17,18 @@ import {
   ChevronDown,
   ChevronRight,
   Lightbulb,
+  Pencil,
+  X,
 } from "lucide-react";
 import type { Message } from "./types";
 
 interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
+  onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
 }
 
-export function MessageList({ messages, isLoading }: MessageListProps) {
+export function MessageList({ messages, isLoading, onEditMessage }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -92,7 +97,11 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
       <div className="space-y-4 px-3 py-4 md:space-y-6 md:px-6 md:py-6">
         {groupedMessages.map((group, groupIndex) =>
           group.type === "user" ? (
-            <UserMessageItem key={group.message.id} message={group.message} />
+            <UserMessageItem
+              key={group.message.id}
+              message={group.message}
+              {...(onEditMessage && { onEdit: onEditMessage })}
+            />
           ) : (
             <AssistantGroup
               key={groupIndex}
@@ -116,7 +125,63 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
   );
 }
 
-function UserMessageItem({ message }: { message: Message }) {
+function UserMessageItem({
+  message,
+  onEdit,
+}: {
+  message: Message;
+  onEdit?: (messageId: string, newContent: string) => Promise<void>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(message.content);
+  const [isSaving, setIsSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const startEditing = useCallback(() => {
+    setEditDraft(message.content);
+    setIsEditing(true);
+  }, [message.content]);
+
+  const cancelEditing = useCallback(() => {
+    setIsEditing(false);
+    setEditDraft(message.content);
+  }, [message.content]);
+
+  const saveEditing = useCallback(async () => {
+    if (!editDraft.trim() || !onEdit) return;
+    setIsSaving(true);
+    try {
+      await onEdit(message.id, editDraft.trim());
+    } finally {
+      setIsSaving(false);
+      setIsEditing(false);
+    }
+  }, [message.id, editDraft, onEdit]);
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveEditing();
+    } else if (e.key === "Escape") {
+      cancelEditing();
+    }
+  };
+
+  const autoResize = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
+    }
+  };
+
+  // Focus and resize textarea when entering edit mode
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+      autoResize();
+    }
+  }, [isEditing]);
+
   // Determine image URLs: temp messages use object URLs, real messages use API route
   const imageAttachments = message.attachments?.map((att) => {
     if (att.storageId.startsWith("temp-")) {
@@ -126,8 +191,86 @@ function UserMessageItem({ message }: { message: Message }) {
     return { ...att, url: `/api/chat/attachments/${att.storageId}` };
   });
 
+  if (isEditing) {
+    return (
+      <div className="flex flex-row-reverse gap-3">
+        <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+          <User className="h-4 w-4" />
+        </div>
+        <div className="max-w-[85%] min-w-0 space-y-2">
+          {/* Image attachments (read-only during edit) */}
+          {imageAttachments && imageAttachments.length > 0 && (
+            <div className="flex flex-row-reverse flex-wrap gap-2">
+              {imageAttachments.map((att) =>
+                att.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
+                  <img
+                    key={att.id}
+                    src={att.url}
+                    alt={att.fileName}
+                    className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
+                  />
+                ) : (
+                  <div
+                    key={att.id}
+                    className="bg-muted/50 text-muted-foreground flex h-24 w-32 items-center justify-center rounded-xl text-xs"
+                  >
+                    {att.fileName}
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+
+          {/* Edit textarea */}
+          <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+            <Textarea
+              ref={textareaRef}
+              value={editDraft}
+              onChange={(e) => {
+                setEditDraft(e.target.value);
+                autoResize();
+              }}
+              onKeyDown={handleEditKeyDown}
+              className="min-h-[40px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+              rows={1}
+              disabled={isSaving}
+            />
+          </div>
+
+          {/* Edit actions */}
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={cancelEditing}
+              disabled={isSaving}
+            >
+              <X className="mr-1 h-3 w-3" />
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="liquid-glass-accent h-7 px-2 text-xs"
+              onClick={saveEditing}
+              disabled={!editDraft.trim() || isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <CheckCircle className="mr-1 h-3 w-3" />
+              )}
+              Save
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-row-reverse gap-3">
+    <div className="group/message flex flex-row-reverse gap-3">
       <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
         <User className="h-4 w-4" />
       </div>
@@ -158,8 +301,18 @@ function UserMessageItem({ message }: { message: Message }) {
 
         {/* Text content (only when there's text) */}
         {message.content && (
-          <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+          <div className="liquid-glass-inner relative rounded-2xl px-4 py-3">
             <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+            {/* Edit button — appears on hover */}
+            {onEdit && (
+              <button
+                onClick={startEditing}
+                className="text-muted-foreground hover:text-foreground absolute top-2 right-2 opacity-0 transition-opacity group-hover/message:opacity-70"
+                aria-label="Edit message"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         )}
         <div className="text-muted-foreground text-right text-xs">
