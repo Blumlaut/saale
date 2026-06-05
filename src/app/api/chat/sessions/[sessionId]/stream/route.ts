@@ -25,8 +25,6 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await params;
-  const url = new URL(request.url);
-  const branchId = url.searchParams.get("branch") || sessionId;
 
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authResult.user.id },
@@ -51,7 +49,7 @@ export async function GET(
 
   // Get all messages for context (with attachments for image support)
   const messages = await prisma.chatMessage.findMany({
-    where: { sessionId, branchId },
+    where: { sessionId },
     orderBy: { createdAt: "asc" },
     include: {
       attachments: {
@@ -317,7 +315,6 @@ export async function GET(
             // Save this turn's message to DB
             const savedMessage = saveAssistantMessage(
               sessionId,
-              branchId,
               currentTurnText,
               currentTurnThinking || undefined,
               turnToolCalls.length > 0 ? turnToolCalls : undefined,
@@ -400,7 +397,6 @@ export async function GET(
               if (turnIndex === 0) {
                 saveAssistantMessage(
                   sessionId,
-                  branchId,
                   finalText,
                   finalThinking || undefined,
                   toolCalls.length > 0 ? toolCalls : undefined,
@@ -462,7 +458,6 @@ export async function GET(
 
 async function saveAssistantMessage(
   sessionId: string,
-  branchId: string,
   content: string,
   thinking?: string,
   toolCalls?: Array<{
@@ -477,7 +472,6 @@ async function saveAssistantMessage(
   return prisma.chatMessage.create({
     data: {
       sessionId,
-      branchId,
       role: "assistant",
       content,
       thinking: thinking || null,
