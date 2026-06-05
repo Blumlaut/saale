@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { createPiSession, type ToolConfig } from "@/lib/pi/session";
+import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import {
   normalizeToolResult,
   buildHistoryMessages,
@@ -66,13 +67,52 @@ export async function GET(
     ? { ...(chatSession.toolConfig as ToolConfig) }
     : {};
 
+  // Resolve model: session-level first, then fall back to user/admin defaults
+  let modelProvider = chatSession.modelProvider || undefined;
+  let modelName = chatSession.modelName || undefined;
+
+  if (!modelProvider || !modelName) {
+    const resolved = await resolveModelForPurpose(authResult.user.id, "chat", undefined);
+    if (resolved) {
+      modelProvider = resolved.provider;
+      modelName = resolved.name;
+    }
+  }
+
+  // No model available — return an error stream
+  if (!modelProvider || !modelName) {
+    const encoder = new TextEncoder();
+    const errorEvent = encoder.encode(
+      `event: error\ndata: ${JSON.stringify({ message: "No AI model configured. Please select a model in Settings > AI & Models." })}\n\n`,
+    );
+    const doneEvent = encoder.encode(`event: done\ndata: {}\n\n`);
+
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(errorEvent);
+          controller.enqueue(doneEvent);
+          controller.close();
+        },
+      }),
+      {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      },
+    );
+  }
+
   // Create Pi session with custom tools (filtered by toolConfig)
   const { session: piSession } = await createPiSession({
     userId: authResult.user.id,
     customTools: [],
     ...(chatSession.toolConfig && { toolConfig: resolvedToolConfig }),
-    ...(chatSession.modelProvider && { modelProvider: chatSession.modelProvider }),
-    ...(chatSession.modelName && { modelName: chatSession.modelName }),
+    modelProvider,
+    modelName,
     thinkingLevel: chatSession.thinkingLevel || "off",
   });
 
