@@ -14,7 +14,9 @@ import {
   Calendar,
   Wrench,
   Brain,
+  Shield,
 } from "lucide-react";
+import { AccountTab } from "./tabs/account-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
 import { AgentPersonaTab } from "./tabs/agent-persona-tab";
 import { EmailTab } from "./tabs/email-tab";
@@ -111,6 +113,10 @@ export default function SettingsPage() {
                 <Brain className="h-4 w-4" />
                 Memories
               </TabsTrigger>
+              <TabsTrigger value="account" className="gap-2">
+                <Shield className="h-4 w-4" />
+                Account
+              </TabsTrigger>
               <TabsTrigger value="tools" className="gap-2">
                 <Wrench className="h-4 w-4" />
                 Tools
@@ -152,6 +158,10 @@ export default function SettingsPage() {
 
           <TabsContent value="memories" className="space-y-6">
             <MemoriesTab />
+          </TabsContent>
+
+          <TabsContent value="account" className="space-y-6">
+            <AccountTab />
           </TabsContent>
 
           <TabsContent value="tools" className="space-y-6">
