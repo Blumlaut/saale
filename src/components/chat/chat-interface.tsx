@@ -198,74 +198,49 @@ export function ChatInterface({
     }
   };
 
-  // Reconnect to SSE stream when processing is in progress (refresh / 409).
-  // Shared between mount effect and 409 error handlers.
-  const startReconnection = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
+  // Recovery polling: when user refreshes during generation, poll for saved turns
+  // until processingSince is cleared. Shared between mount effect and 409 handlers.
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isPollingRef = useRef(false);
 
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    isPollingRef.current = false;
+  }, []);
+
+  const startPolling = useCallback(() => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
     setIsLoading(true);
     markStreaming(sessionId);
-    setStreaming({ turns: [], current: emptyTurn() });
 
-    const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream?reconnect=1`);
-    eventSourceRef.current = eventSource;
+    const startedAt = Date.now();
+    const TIMEOUT = 120_000;
 
-    const cleanup = () => {
-      eventSource.close();
-      eventSourceRef.current = null;
-    };
-
-    eventSource.addEventListener("turn_end", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        turns: [
-          ...prev.turns,
-          {
-            text: parsed.text || "",
-            thinking: parsed.thinking || "",
-            toolCalls: (parsed.toolCalls || []).map((tc: ToolCallData) => ({
-              toolCallId: tc.id,
-              toolName: tc.name,
-              args: tc.args,
-              status: tc.error ? "error" : "completed",
-              result: tc.result,
-            })),
-          },
-        ],
-        current: emptyTurn(),
-      }));
-    });
-
-    eventSource.addEventListener("done", () => {
-      setIsLoading(false);
-      cleanup();
-      const allTurns = collectAllTurns(streamingRef.current);
-      if (allTurns.length > 0) {
-        const baseId = `assistant-turn-${Date.now()}`;
-        setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
+    pollIntervalRef.current = setInterval(async () => {
+      if (Date.now() - startedAt > TIMEOUT) {
+        stopPolling();
+        setIsLoading(false);
+        markDone(sessionId);
+        return;
       }
-      loadMessages();
-      markDone(sessionId);
-    });
 
-    eventSource.addEventListener("error", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      console.error("Stream error:", parsed);
-      cleanup();
-      setIsLoading(false);
-      markDone(sessionId);
-    });
-
-    eventSource.onerror = () => {
-      cleanup();
-      setIsLoading(false);
-      finalizeStreaming(streamingRef, setMessages);
-      markDone(sessionId);
-    };
-  }, [sessionId, markStreaming, markDone]); // eslint-disable-line react-hooks/exhaustive-deps
+      try {
+        const sessionInfo = await loadMessages();
+        if (sessionInfo?.processingSince == null) {
+          stopPolling();
+          setIsLoading(false);
+          markDone(sessionId);
+        }
+      } catch {
+        stopPolling();
+        setIsLoading(false);
+      }
+    }, 1500);
+  }, [sessionId, markStreaming, markDone, stopPolling]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep streamingRef in sync
   useEffect(() => {
@@ -439,9 +414,9 @@ export function ChatInterface({
           "status" in err &&
           (err as { status?: number }).status === 409
         ) {
-          // Response already in progress — reload and reconnect
+          // Response already in progress — reload and poll
           loadMessages();
-          startReconnection();
+          startPolling();
         }
       }
     },
@@ -449,7 +424,7 @@ export function ChatInterface({
   );
 
   // Load messages and session title.
-  // If processingSince is set (user refreshed during processing), reconnect via SSE.
+  // If processingSince is set (user refreshed during processing), poll until done.
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     const init = async () => {
@@ -461,16 +436,13 @@ export function ChatInterface({
 
       if (!wasStreaming && !isProcessing) return;
 
-      startReconnection();
+      startPolling();
     };
 
     init();
 
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      stopPolling();
     };
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -608,10 +580,10 @@ export function ChatInterface({
             return;
           }
           if (res.status === 409) {
-            // Response already in progress — remove temp message and reconnect
+            // Response already in progress — remove temp message and poll
             setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
             loadMessages();
-            startReconnection();
+            startPolling();
             return;
           }
           throw new Error(`Failed to send message: ${body.error || res.statusText}`);
