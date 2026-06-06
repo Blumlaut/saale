@@ -66,18 +66,6 @@ function collectAllTurns(state: StreamingState): TurnData[] {
   ];
 }
 
-/** Finalize streaming state by adding all turns as messages */
-function finalizeStreaming(
-  streamingRef: React.RefObject<StreamingState>,
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
-) {
-  const allTurns = collectAllTurns(streamingRef.current);
-  if (allTurns.length > 0) {
-    const baseId = `assistant-turn-${Date.now()}`;
-    setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-  }
-}
-
 /** Build a display message from a single turn */
 function buildTurnMessage(
   turn: TurnData,
@@ -121,12 +109,61 @@ function buildAssistantMessages(turns: TurnData[], prefix: string): Message[] {
 }
 
 /**
+ * Finalize streaming state by adding all turns as messages.
+ *
+ * This is the safety net — it ensures streamed content is NEVER lost.
+ * Called on done/error/connection-error to persist streamed turns into the messages array.
+ */
+function finalizeStreaming(
+  streamingState: StreamingState,
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+) {
+  const allTurns = collectAllTurns(streamingState);
+  if (allTurns.length > 0) {
+    const baseId = `assistant-turn-${Date.now()}`;
+    setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
+  }
+}
+
+/**
+ * Load messages from DB, but only replace if we actually got new assistant messages.
+ * This prevents the "flash of blank" when DB hasn't saved yet.
+ *
+ * @param messageCountBefore  Number of assistant messages before streaming started.
+ * @returns true if messages were successfully loaded from DB.
+ */
+async function tryLoadFromDb(
+  sessionId: string,
+  messageCountBefore: number,
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/chat/sessions/${sessionId}/messages`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    const assistantCount = (data.messages || []).filter(
+      (m: { role: string }) => m.role === "assistant",
+    ).length;
+    // Only replace if DB has more assistant messages than before streaming
+    if (assistantCount > messageCountBefore) {
+      setMessages(data.messages);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Failed to load messages from DB:", err);
+    return false;
+  }
+}
+
+/**
  * Set up common SSE event listeners for streaming.
+ *
+ * CRITICAL: updates streamingRef synchronously alongside setStreaming.
+ * This ensures streamingRef is NEVER stale when done/error fires.
  *
  * Handles: token, thinking, tool_start, tool_end, turn_end
  * Accepts callbacks for: done, error, onerror (connection failure)
- *
- * Returns a cleanup function that closes the EventSource.
  */
 interface StreamCallbacks {
   onDone: (eventSource: EventSource, event: MessageEvent) => void;
@@ -137,22 +174,31 @@ interface StreamCallbacks {
 function setupStreamListeners(
   eventSource: EventSource,
   setStreaming: Dispatch<SetStateAction<StreamingState>>,
+  streamingRef: React.RefObject<StreamingState>,
   callbacks: StreamCallbacks,
 ): () => void {
   eventSource.addEventListener("token", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { text: string };
-    setStreaming((prev) => ({
-      ...prev,
-      current: { ...prev.current, text: parsed.text },
-    }));
+    setStreaming((prev) => {
+      const next = {
+        ...prev,
+        current: { ...prev.current, text: parsed.text },
+      };
+      streamingRef.current = next;
+      return next;
+    });
   });
 
   eventSource.addEventListener("thinking", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { thinking: string };
-    setStreaming((prev) => ({
-      ...prev,
-      current: { ...prev.current, thinking: parsed.thinking },
-    }));
+    setStreaming((prev) => {
+      const next = {
+        ...prev,
+        current: { ...prev.current, thinking: parsed.thinking },
+      };
+      streamingRef.current = next;
+      return next;
+    });
   });
 
   eventSource.addEventListener("tool_start", (event: MessageEvent) => {
@@ -161,23 +207,27 @@ function setupStreamListeners(
       toolName: string;
       args: Record<string, unknown>;
     };
-    setStreaming((prev) => ({
-      ...prev,
-      current: {
-        ...prev.current,
-        toolCalls: [
-          ...prev.current.toolCalls,
-          {
-            toolCallId: parsed.toolCallId,
-            toolName: parsed.toolName,
-            args: parsed.args,
-            status: "running" as const,
-            result: undefined,
-            error: undefined,
-          },
-        ],
-      },
-    }));
+    setStreaming((prev) => {
+      const next = {
+        ...prev,
+        current: {
+          ...prev.current,
+          toolCalls: [
+            ...prev.current.toolCalls,
+            {
+              toolCallId: parsed.toolCallId,
+              toolName: parsed.toolName,
+              args: parsed.args,
+              status: "running" as const,
+              result: undefined,
+              error: undefined,
+            },
+          ],
+        },
+      };
+      streamingRef.current = next;
+      return next;
+    });
   });
 
   eventSource.addEventListener("tool_end", (event: MessageEvent) => {
@@ -186,22 +236,26 @@ function setupStreamListeners(
       result?: string;
       isError?: boolean;
     };
-    setStreaming((prev) => ({
-      ...prev,
-      current: {
-        ...prev.current,
-        toolCalls: prev.current.toolCalls.map((tc) =>
-          tc.toolCallId === parsed.toolCallId
-            ? {
-                ...tc,
-                status: parsed.isError ? ("error" as const) : ("completed" as const),
-                result: parsed.result ?? undefined,
-                error: parsed.isError ? (parsed.result ?? undefined) : undefined,
-              }
-            : tc,
-        ),
-      },
-    }));
+    setStreaming((prev) => {
+      const next = {
+        ...prev,
+        current: {
+          ...prev.current,
+          toolCalls: prev.current.toolCalls.map((tc) =>
+            tc.toolCallId === parsed.toolCallId
+              ? {
+                  ...tc,
+                  status: parsed.isError ? ("error" as const) : ("completed" as const),
+                  result: parsed.result ?? undefined,
+                  error: parsed.isError ? (parsed.result ?? undefined) : undefined,
+                }
+              : tc,
+          ),
+        },
+      };
+      streamingRef.current = next;
+      return next;
+    });
   });
 
   eventSource.addEventListener("turn_end", (event: MessageEvent) => {
@@ -221,18 +275,22 @@ function setupStreamListeners(
             error: tc.error ?? undefined,
           }))
         : [];
-    setStreaming((prev) => ({
-      ...prev,
-      turns: [
-        ...prev.turns,
-        {
-          text: parsed.text || prev.current.text,
-          thinking: parsed.thinking || prev.current.thinking,
-          toolCalls: toolCalls.length > 0 ? toolCalls : prev.current.toolCalls,
-        },
-      ],
-      current: emptyTurn(),
-    }));
+    setStreaming((prev) => {
+      const next = {
+        ...prev,
+        turns: [
+          ...prev.turns,
+          {
+            text: parsed.text || prev.current.text,
+            thinking: parsed.thinking || prev.current.thinking,
+            toolCalls: toolCalls.length > 0 ? toolCalls : prev.current.toolCalls,
+          },
+        ],
+        current: emptyTurn(),
+      };
+      streamingRef.current = next;
+      return next;
+    });
   });
 
   eventSource.addEventListener("done", (event: MessageEvent) => {
@@ -268,7 +326,11 @@ export function ChatInterface({
     turns: [],
     current: emptyTurn(),
   });
+
+  // Source of truth for streaming state — updated synchronously in event handlers.
+  // NEVER stale when done/error fires.
   const streamingRef = useRef<StreamingState>(streaming);
+
   const [sessionTitle, setSessionTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -331,6 +393,11 @@ export function ChatInterface({
     }
   };
 
+  // Count assistant messages (for DB poll comparison after streaming)
+  const countAssistantMessages = useCallback(() => {
+    return messages.filter((m) => m.role === "assistant").length;
+  }, [messages]);
+
   // Recovery: when user refreshes during generation, reconnect via SSE.
   // The stream endpoint subscribes to Redis pub/sub and forwards live events.
   // Shared between mount effect and 409 handlers.
@@ -346,7 +413,9 @@ export function ChatInterface({
 
     setIsLoading(true);
     markStreaming(sessionId);
-    setStreaming({ turns: [], current: emptyTurn() });
+    const initState = { turns: [], current: emptyTurn() };
+    setStreaming(initState);
+    streamingRef.current = initState;
 
     const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream?reconnect=1`);
     eventSourceRef.current = eventSource;
@@ -367,27 +436,28 @@ export function ChatInterface({
     };
 
     // Set up common stream listeners
-    setupStreamListeners(eventSource, setStreaming, {
+    setupStreamListeners(eventSource, setStreaming, streamingRef, {
       onDone: () => {
-        setIsLoading(false);
         cleanup();
-        const allTurns = collectAllTurns(streamingRef.current);
-        if (allTurns.length > 0) {
-          const baseId = `assistant-turn-${Date.now()}`;
-          setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-        }
+        // Safety net: finalize streamed content into messages
+        finalizeStreaming(streamingRef.current, setMessages);
+        setIsLoading(false);
+        // Reload from DB to get canonical state
         loadMessages();
         markDone(sessionId);
       },
       onError: () => {
         cleanup();
+        // Safety net: finalize streamed content
+        finalizeStreaming(streamingRef.current, setMessages);
         setIsLoading(false);
         markDone(sessionId);
       },
       onConnectionError: () => {
         cleanup();
+        // Safety net: finalize streamed content
+        finalizeStreaming(streamingRef.current, setMessages);
         setIsLoading(false);
-        finalizeStreaming(streamingRef, setMessages);
         markDone(sessionId);
       },
     });
@@ -403,6 +473,8 @@ export function ChatInterface({
     // Safety timeout — if no events received within 2 min, give up
     reconnectTimerRef.current = setTimeout(() => {
       cleanup();
+      // Safety net: finalize streamed content
+      finalizeStreaming(streamingRef.current, setMessages);
       setIsLoading(false);
       markDone(sessionId);
     }, 120_000);
@@ -413,7 +485,6 @@ export function ChatInterface({
     const markReceived = () => {
       redisEventsReceived = true;
     };
-    // addEventListener allows multiple handlers per type — add a tracker to each
     for (const type of [
       "token",
       "thinking",
@@ -454,11 +525,6 @@ export function ChatInterface({
     }, 3000);
   }, [sessionId, markStreaming, markDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep streamingRef in sync
-  useEffect(() => {
-    streamingRef.current = streaming;
-  }, [streaming]);
-
   // Edit a user message — updates in place, deletes messages after, streams new response
   const handleEditMessage = useCallback(
     async (messageId: string, newContent: string) => {
@@ -475,8 +541,13 @@ export function ChatInterface({
         // Reload messages to reflect the edit + deletion of messages after
         loadMessages();
 
+        // Capture assistant count before streaming starts
+        const assistantCountBefore = countAssistantMessages();
+
         // Connect to stream for new AI response
-        setStreaming({ turns: [], current: emptyTurn() });
+        const initState = { turns: [], current: emptyTurn() };
+        setStreaming(initState);
+        streamingRef.current = initState;
 
         const eventSource = new EventSource(data.streamUrl);
         eventSourceRef.current = eventSource;
@@ -486,55 +557,26 @@ export function ChatInterface({
           eventSourceRef.current = null;
         };
 
-        setupStreamListeners(eventSource, setStreaming, {
-          onDone: (_es, event) => {
-            setIsLoading(false);
+        setupStreamListeners(eventSource, setStreaming, streamingRef, {
+          onDone: () => {
             cleanup();
-            const allTurns = collectAllTurns(streamingRef.current);
-            const parsed = JSON.parse(event.data);
-
-            if (allTurns.length > 0) {
-              const baseId = `assistant-turn-${Date.now()}`;
-              setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-            } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
-              const finalToolCalls: ToolCallData[] | undefined =
-                parsed.toolCalls?.length > 0
-                  ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                      id: tc.id,
-                      name: tc.name,
-                      args: tc.args,
-                      error: tc.error,
-                      status: tc.status,
-                      result: tc.result || undefined,
-                    }))
-                  : undefined;
-
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `assistant-${Date.now()}`,
-                  role: "assistant" as const,
-                  content: parsed.text,
-                  thinking: parsed.thinking || undefined,
-                  toolCalls: finalToolCalls,
-                  parentMessageId: undefined,
-                  createdAt: new Date().toISOString(),
-                  attachments: undefined,
-                },
-              ]);
-            }
-
-            loadMessages();
+            // Safety net: finalize streamed content into messages
+            finalizeStreaming(streamingRef.current, setMessages);
+            setIsLoading(false);
+            // Poll DB until messages are saved (prevents flash of blank)
+            void tryLoadFromDb(sessionId, assistantCountBefore, setMessages);
           },
           onError: () => {
             cleanup();
+            // Safety net: finalize streamed content
+            finalizeStreaming(streamingRef.current, setMessages);
             setIsLoading(false);
           },
           onConnectionError: () => {
             cleanup();
+            // Safety net: finalize streamed content
+            finalizeStreaming(streamingRef.current, setMessages);
             setIsLoading(false);
-            finalizeStreaming(streamingRef, setMessages);
-            loadMessages();
           },
         });
       } catch (err) {
@@ -550,7 +592,7 @@ export function ChatInterface({
         }
       }
     },
-    [sessionId], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
+    [sessionId, countAssistantMessages], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Load messages and session title.
@@ -677,7 +719,14 @@ export function ChatInterface({
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
-      setStreaming({ turns: [], current: emptyTurn() });
+
+      // Capture assistant count before streaming starts (for DB poll comparison)
+      const assistantCountBefore = countAssistantMessages();
+
+      // Reset streaming state
+      const initState = { turns: [], current: emptyTurn() };
+      setStreaming(initState);
+      streamingRef.current = initState;
 
       const abortController = new AbortController();
       abortRef.current = abortController;
@@ -744,49 +793,28 @@ export function ChatInterface({
         const eventSource = new EventSource(data.streamUrl);
         eventSourceRef.current = eventSource;
 
-        setupStreamListeners(eventSource, setStreaming, {
-          onDone: (_es, event) => {
-            setIsLoading(false);
+        setupStreamListeners(eventSource, setStreaming, streamingRef, {
+          onDone: () => {
             eventSource.close();
             eventSourceRef.current = null;
 
-            const allTurns = collectAllTurns(streamingRef.current);
-            const parsed = JSON.parse(event.data);
+            // Safety net: finalize streamed content into messages array.
+            // This ensures the reply is NEVER lost — even if DB reload fails.
+            finalizeStreaming(streamingRef.current, setMessages);
 
-            if (allTurns.length > 0) {
-              const baseId = `assistant-turn-${Date.now()}`;
-              setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-            } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
-              const finalToolCalls: ToolCallData[] | undefined =
-                parsed.toolCalls?.length > 0
-                  ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                      id: tc.id,
-                      name: tc.name,
-                      args: tc.args,
-                      error: tc.error,
-                      status: tc.status,
-                      result: tc.result || undefined,
-                    }))
-                  : undefined;
+            // Clear loading — streaming display will be replaced by finalized messages
+            setIsLoading(false);
 
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `assistant-${Date.now()}`,
-                  role: "assistant" as const,
-                  content: parsed.text,
-                  thinking: parsed.thinking || undefined,
-                  toolCalls: finalToolCalls,
-                  parentMessageId: undefined,
-                  createdAt: new Date().toISOString(),
-                  attachments: undefined,
-                },
-              ]);
-            }
+            // Poll DB to replace temp messages with canonical DB versions.
+            // Only replaces if DB has more assistant messages (prevents flash of blank).
+            void tryLoadFromDb(sessionId, assistantCountBefore, setMessages);
           },
           onError: (_es, event) => {
             eventSource.close();
             eventSourceRef.current = null;
+
+            // Safety net: finalize streamed content
+            finalizeStreaming(streamingRef.current, setMessages);
             setIsLoading(false);
 
             const parsed = JSON.parse(event.data);
@@ -817,8 +845,10 @@ export function ChatInterface({
           onConnectionError: () => {
             eventSource.close();
             eventSourceRef.current = null;
+
+            // Safety net: finalize streamed content
+            finalizeStreaming(streamingRef.current, setMessages);
             setIsLoading(false);
-            finalizeStreaming(streamingRef, setMessages);
           },
         });
       } catch (err) {
@@ -826,7 +856,7 @@ export function ChatInterface({
         console.error("Send error:", err);
       }
     },
-    [sessionId, router], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
+    [sessionId, router, countAssistantMessages], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Stop streaming — explicitly cancel the generation on the backend.
@@ -839,8 +869,9 @@ export function ChatInterface({
     fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" }).catch((err) => {
       console.error("Failed to call stop endpoint:", err);
     });
+    // Safety net: finalize streamed content
+    finalizeStreaming(streamingRef.current, setMessages);
     setIsLoading(false);
-    finalizeStreaming(streamingRef, setMessages);
   }, [sessionId]);
 
   // Cleanup on unmount
