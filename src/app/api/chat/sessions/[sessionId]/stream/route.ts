@@ -24,6 +24,9 @@ const BUFFER_KEY_PREFIX = "chat:stream:buf:";
 const BUFFER_TTL_SECONDS = 60; // keep buffer for 60s
 const BUFFER_MAX_SIZE = 200; // max events in buffer
 
+/** In-memory cache of running Pi sessions (for explicit cancellation via stop endpoint). */
+export const activeSessions = new Map<string, { agent: { abort: () => void } }>();
+
 /** Publish an SSE-formatted event to Redis for other clients to receive. */
 async function publishStreamEvent(sessionId: string, event: string, data: unknown): Promise<void> {
   try {
@@ -309,6 +312,9 @@ export async function GET(
     modelName,
     thinkingLevel: chatSession.thinkingLevel || "off",
   });
+
+  // Register session for explicit cancellation (stop endpoint)
+  activeSessions.set(sessionId, { agent: piSession.agent });
 
   // Capture resolved model for consistent history reconstruction.
   // Using the actual model's api/provider/id ensures transformMessages treats
@@ -652,6 +658,9 @@ export async function GET(
                 .catch(console.error);
             }
 
+            // Clean up session cache
+            activeSessions.delete(sessionId);
+
             sendEvent(controller, "done", {});
 
             if (!clientDisconnected) {
@@ -675,8 +684,12 @@ export async function GET(
           // Clear in-progress flag so the user can retry
           prisma.chatSession
             .update({ where: { id: sessionId }, data: { processingSince: null } })
-            .catch(console.error);
+            .catch((updateErr) => {
+              console.error("Failed to clear processingSince on error:", updateErr);
+            });
+          activeSessions.delete(sessionId);
           sendEvent(controller, "error", { message: err.message });
+          sendEvent(controller, "done", {});
           if (!clientDisconnected) {
             controller.close();
           }
