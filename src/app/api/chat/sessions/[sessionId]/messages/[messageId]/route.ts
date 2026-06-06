@@ -20,14 +20,14 @@ export async function PATCH(
   // Verify session ownership and check if a response is already in progress
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authResult.user.id },
-    select: { id: true, responseInProgress: true },
+    select: { id: true, processingSince: true },
   });
 
   if (!chatSession) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (chatSession.responseInProgress) {
+  if (chatSession.processingSince) {
     return NextResponse.json(
       { error: "A response is already being generated. Please wait." },
       { status: 409 },
@@ -78,7 +78,7 @@ export async function PATCH(
     // Mark response as in progress
     await tx.chatSession.update({
       where: { id: sessionId },
-      data: { responseInProgress: true },
+      data: { processingSince: new Date() },
     });
   });
 

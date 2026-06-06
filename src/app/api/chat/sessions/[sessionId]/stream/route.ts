@@ -35,6 +35,7 @@ export async function GET(
       modelName: true,
       thinkingLevel: true,
       toolConfig: true,
+      processingSince: true,
     },
   });
 
@@ -83,7 +84,7 @@ export async function GET(
   if (!modelProvider || !modelName) {
     // Clear in-progress flag so the user can try again
     prisma.chatSession
-      .update({ where: { id: sessionId }, data: { responseInProgress: false } })
+      .update({ where: { id: sessionId }, data: { processingSince: null } })
       .catch(console.error);
 
     const encoder = new TextEncoder();
@@ -109,6 +110,112 @@ export async function GET(
         },
       },
     );
+  }
+
+  // Check if another request is already processing this session.
+  // If so, enter reconnection mode: poll for saved results and emit them via SSE.
+  const isReconnection = chatSession.processingSince != null;
+  const RECONNECT_POLL_INTERVAL = 1500;
+  const RECONNECT_TIMEOUT = 120_000; // 2 min safety net
+
+  if (isReconnection) {
+    const reconnectStream = new ReadableStream({
+      start(controller) {
+        let clientDisconnected = false;
+        const startedAt = Date.now();
+        let knownMessageCount = messages.filter((m) => m.role === "assistant").length;
+
+        const poll = setInterval(() => {
+          if (clientDisconnected) {
+            clearInterval(poll);
+            return;
+          }
+          if (Date.now() - startedAt > RECONNECT_TIMEOUT) {
+            clearInterval(poll);
+            const json = JSON.stringify({ message: "Processing timed out. Please try again." });
+            controller.enqueue(encoder.encode(`event: error\ndata: ${json}\n\n`));
+            controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
+            controller.close();
+            return;
+          }
+
+          // Check current messages
+          prisma.chatMessage
+            .count({ where: { sessionId, role: "assistant" } })
+            .then((count) => {
+              if (count > knownMessageCount) {
+                // New messages saved — fetch them
+                knownMessageCount = count;
+              }
+            })
+            .catch(console.error);
+
+          // Check if processing is done
+          prisma.chatSession
+            .findUnique({ where: { id: sessionId }, select: { processingSince: true } })
+            .then((session) => {
+              if (session?.processingSince == null) {
+                // Processing complete — load all messages and emit them
+                clearInterval(poll);
+
+                prisma.chatMessage
+                  .findMany({
+                    where: { sessionId },
+                    orderBy: { createdAt: "asc" },
+                  })
+                  .then((allMessages) => {
+                    // Emit each assistant message as a turn_end event
+                    const assistantMessages = allMessages.filter((m) => m.role === "assistant");
+                    assistantMessages.forEach((msg, index) => {
+                      const toolCalls = msg.toolCalls ? JSON.parse(msg.toolCalls) : [];
+                      controller.enqueue(
+                        encoder.encode(
+                          `event: turn_end\ndata: ${JSON.stringify({
+                            turnIndex: index,
+                            text: msg.content,
+                            thinking: msg.thinking || null,
+                            toolCalls,
+                          }).replace(/\n/g, "\\n")}\n\n`,
+                        ),
+                      );
+                    });
+
+                    controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
+                    if (!clientDisconnected) {
+                      controller.close();
+                    }
+                  })
+                  .catch((err) => {
+                    console.error("Reconnection error loading messages:", err);
+                    controller.enqueue(
+                      encoder.encode(
+                        `event: error\ndata: ${JSON.stringify({ message: "Failed to load response" })}\n\n`,
+                      ),
+                    );
+                    controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
+                    controller.close();
+                  });
+              }
+            })
+            .catch(console.error);
+        }, RECONNECT_POLL_INTERVAL);
+
+        request.signal.addEventListener("abort", () => {
+          clientDisconnected = true;
+          clearInterval(poll);
+          controller.close();
+        });
+      },
+    });
+
+    return new Response(reconnectStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
   }
 
   // Create Pi session with custom tools (filtered by toolConfig)
@@ -454,7 +561,7 @@ export async function GET(
                   where: { id: sessionId },
                   data: {
                     messageCount: { increment: turnIndex || 1 },
-                    responseInProgress: false,
+                    processingSince: null,
                   },
                 })
                 .catch(console.error);
@@ -482,7 +589,7 @@ export async function GET(
           console.error("agent.prompt() failed:", err);
           // Clear in-progress flag so the user can retry
           prisma.chatSession
-            .update({ where: { id: sessionId }, data: { responseInProgress: false } })
+            .update({ where: { id: sessionId }, data: { processingSince: null } })
             .catch(console.error);
           sendEvent(controller, "error", { message: err.message });
           if (!clientDisconnected) {

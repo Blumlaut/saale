@@ -25,7 +25,7 @@ export async function GET(
       modelName: true,
       thinkingLevel: true,
       toolConfig: true,
-      responseInProgress: true,
+      processingSince: true,
     },
   });
 
@@ -49,7 +49,7 @@ export async function GET(
       modelName: chatSession.modelName,
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
-      responseInProgress: chatSession.responseInProgress,
+      processingSince: chatSession.processingSince,
     },
     messages: messages.map((m) => ({
       id: m.id,
@@ -90,7 +90,7 @@ export async function POST(
 
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authResult.user.id },
-    select: { id: true, title: true, responseInProgress: true },
+    select: { id: true, title: true, processingSince: true },
   });
 
   if (!chatSession) {
@@ -98,7 +98,7 @@ export async function POST(
   }
 
   // Prevent sending another message while one is being processed
-  if (chatSession.responseInProgress) {
+  if (chatSession.processingSince) {
     return NextResponse.json(
       { error: "A response is already being generated. Please wait." },
       { status: 409 },
@@ -200,7 +200,7 @@ export async function POST(
       where: { id: sessionId },
       data: {
         messageCount: { increment: 1 },
-        responseInProgress: true,
+        processingSince: new Date(),
         title:
           chatSession.title === "New Chat"
             ? (sanitizedContent || "Image").slice(0, 50) +
