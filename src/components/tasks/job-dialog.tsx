@@ -62,7 +62,9 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
     setLoadingSchemas(true);
     fetchJson<{ schemas: JobSchema[] }>("/api/jobs/schemas")
       .then((data) => setSchemas(data.schemas ?? []))
-      .catch(() => {})
+      .catch((err) => {
+        console.error("Failed to load job schemas:", err);
+      })
       .finally(() => setLoadingSchemas(false));
   }, [open]);
 

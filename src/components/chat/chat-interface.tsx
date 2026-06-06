@@ -329,6 +329,15 @@ export function ChatInterface({
       markDone(sessionId);
     });
 
+    // Resume event: backend DB polling detected generation is done.
+    // Reload from DB to get canonical state with completed messages.
+    eventSource.addEventListener("resume", () => {
+      cleanup();
+      setIsLoading(false);
+      loadMessages();
+      markDone(sessionId);
+    });
+
     eventSource.addEventListener("error", (event: MessageEvent) => {
       const parsed = JSON.parse(event.data);
       console.error("Stream error:", parsed);
@@ -366,6 +375,7 @@ export function ChatInterface({
       "turn_end",
       "done",
       "error",
+      "resume",
     ] as const) {
       eventSource.addEventListener(type, markReceived);
     }
@@ -391,8 +401,8 @@ export function ChatInterface({
             markDone(sessionId);
           }
         }
-      } catch {
-        // ignore polling errors
+      } catch (err) {
+        console.error("Reconnection DB poll error:", err);
       }
     }, 3000);
   }, [sessionId, markStreaming, markDone]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -169,8 +169,8 @@ function ProviderManagement({ onModelsChanged }: { onModelsChanged: () => void }
     try {
       await deleteJson(`/api/providers?provider=${encodeURIComponent(provider)}`);
       await loadAll();
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("Failed to delete provider:", err);
     }
   };
 
@@ -409,7 +409,9 @@ export function AiModelsTab({
           setDisabledSet(new Set(data.disabledModels ?? []));
         },
       )
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to load admin model settings:", err);
+      });
   }, []);
 
   // Initial load

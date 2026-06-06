@@ -57,7 +57,9 @@ export async function PATCH(
     } else if (!body.enabled) {
       await queue
         .removeRepeatable("execute", { pattern: jobConfig.cronExpression, tz: "UTC" })
-        .catch(() => {});
+        .catch((err) => {
+          console.error("Failed to remove repeatable job:", err);
+        });
     }
   }
 
@@ -99,7 +101,9 @@ export async function DELETE(
   if (jobConfig.cronExpression) {
     await queue
       .removeRepeatable("execute", { pattern: jobConfig.cronExpression, tz: "UTC" })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to remove repeatable job on delete:", err);
+      });
   }
 
   await prisma.queueTask.delete({

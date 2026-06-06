@@ -99,7 +99,9 @@ export async function POST(
   } catch (err) {
     // Clean up temp account on failure
     if (!accountId || accountId === "new") {
-      await prisma.calendarAccount.delete({ where: { id: testAccountId } }).catch(() => {});
+      await prisma.calendarAccount.delete({ where: { id: testAccountId } }).catch((err) => {
+        console.error("Failed to clean up temp calendar account:", err);
+      });
     }
 
     return NextResponse.json({ success: false, error: sanitizeError(err) }, { status: 502 });

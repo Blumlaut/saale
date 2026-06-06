@@ -99,7 +99,9 @@ export function CalendarTab() {
 
       // Ensure local account exists
       if (!accountsList.some((a) => a.accountType === "local")) {
-        await fetchJson("/api/calendar/ensure-local-account").catch(() => {});
+        await fetchJson("/api/calendar/ensure-local-account").catch((err) => {
+          console.error("Failed to ensure local calendar account:", err);
+        });
         accountsRes = await fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts");
         accountsList.length = 0;
         accountsList.push(...(accountsRes.accounts ?? []));

@@ -166,70 +166,127 @@ export async function GET(
   if (isReconnect && chatSession.processingSince) {
     const encoder = new TextEncoder();
 
-    const reconnectStream = new ReadableStream({
-      async start(controller) {
-        let clientDisconnected = false;
-        let subscriber: ReturnType<typeof createRedisClient> | null = null;
+    const sse = (event: string, data: unknown): string => {
+      const json = JSON.stringify(data);
+      const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+      return `event: ${event}\ndata: ${escaped}\n\n`;
+    };
 
-        const sendSse = (event: string, data: unknown) => {
-          if (clientDisconnected) return;
-          const json = JSON.stringify(data);
-          const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
-        };
+    // Async iterator — proper pattern for indefinite async SSE streams.
+    // Yields buffered events first, then live pub/sub events.
+    // Falls back to DB polling if pub/sub delivers nothing.
+    async function* reconnectEvents() {
+      let subscriber: ReturnType<typeof createRedisClient> | null = null;
+      let done = false;
 
-        const cleanup = () => {
-          if (subscriber) {
-            subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
-            subscriber.quit().catch(() => {});
-          }
-        };
-
-        request.signal.addEventListener("abort", () => {
-          clientDisconnected = true;
-          cleanup();
-          controller.close();
-        });
-
-        try {
-          // Send buffered events first (catch up on anything we missed)
-          const buffered = await getBufferedEvents(sessionId);
-          for (const raw of buffered) {
-            try {
-              const { event, data } = JSON.parse(raw);
-              sendSse(event, data);
-            } catch {
-              // skip malformed
-            }
-          }
-
-          // Subscribe to live events
-          subscriber = createRedisClient();
-          await subscriber.subscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
-          subscriber.on("message", (_channel, raw) => {
-            if (clientDisconnected) return;
-            try {
-              const { event, data } = JSON.parse(raw);
-              sendSse(event, data);
-
-              if (event === "done" || event === "error") {
-                setTimeout(() => {
-                  cleanup();
-                  if (!clientDisconnected) {
-                    controller.close();
-                  }
-                }, 500);
-              }
-            } catch {
-              // skip malformed
-            }
+      const cleanup = () => {
+        if (subscriber) {
+          subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+          subscriber.quit().catch((err) => {
+            console.error("Failed to close Redis subscriber:", err);
           });
-        } catch (err) {
-          console.error("Reconnection setup error:", err);
-          cleanup();
-          sendSse("error", { message: "Failed to reconnect to stream" });
-          controller.close();
+          subscriber = null;
         }
+      };
+
+      request.signal.addEventListener("abort", cleanup, { once: true });
+
+      try {
+        // Send buffered events first (catch up on anything we missed)
+        const buffered = await getBufferedEvents(sessionId);
+        for (const raw of buffered) {
+          try {
+            const { event, data } = JSON.parse(raw);
+            yield encoder.encode(sse(event, data));
+            if (event === "done" || event === "error") {
+              done = true;
+            }
+          } catch (err) {
+            console.error("Malformed buffered event:", err);
+          }
+        }
+        if (done) return;
+
+        // Subscribe to live pub/sub events
+        subscriber = createRedisClient();
+        await subscriber.subscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+
+        // Wait for pub/sub messages with timeout.
+        // If no message arrives within 30s, fall back to DB polling.
+        while (!done && !request.signal.aborted) {
+          const message = await new Promise<{ event: string; data: unknown } | null>((resolve) => {
+            const handler = (_channel: string, raw: string) => {
+              try {
+                resolve(JSON.parse(raw));
+              } catch (err) {
+                console.error("Malformed pub/sub message:", err);
+                resolve(null);
+              }
+            };
+            subscriber!.once("message", handler);
+            setTimeout(() => {
+              subscriber?.off("message", handler);
+              resolve(null);
+            }, 30000);
+          });
+
+          if (request.signal.aborted) break;
+
+          if (message) {
+            // Pub/sub delivered an event — forward it
+            yield encoder.encode(sse(message.event, message.data));
+            if (message.event === "done" || message.event === "error") {
+              done = true;
+            }
+            continue;
+          }
+
+          // No pub/sub event within 30s — poll DB for completed messages
+          const session = await prisma.chatSession.findUnique({
+            where: { id: sessionId },
+            select: { processingSince: true },
+          });
+          if (!session?.processingSince) {
+            // Agent finished — load latest assistant messages from DB
+            const messages = await prisma.chatMessage.findMany({
+              where: { sessionId, role: "assistant" },
+              orderBy: { createdAt: "asc" },
+              take: 10,
+            });
+            if (messages.length > 0) {
+              yield encoder.encode(
+                sse("resume", {
+                  messages: messages.map((m) => ({
+                    id: m.id,
+                    content: m.content,
+                    thinking: m.thinking,
+                    toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
+                  })),
+                }),
+              );
+            }
+            yield encoder.encode(sse("done", {}));
+            done = true;
+          }
+        }
+
+        cleanup();
+      } catch (err) {
+        console.error("Reconnection error:", err);
+        cleanup();
+        yield encoder.encode(sse("error", { message: "Reconnection failed" }));
+      }
+    }
+
+    const iterator = reconnectEvents();
+    const reconnectStream = new ReadableStream({
+      async pull(controller) {
+        const result = await iterator.next();
+        if (result.done) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(result.value);
       },
     });
 

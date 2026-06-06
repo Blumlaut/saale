@@ -91,7 +91,9 @@ export async function POST(request: NextRequest) {
   });
 
   // Trigger initial sync in background
-  syncSubscription(subscription.id, authResult.user.id).catch(() => {});
+  syncSubscription(subscription.id, authResult.user.id).catch((err) => {
+    console.error("Background calendar sync failed:", err);
+  });
 
   return NextResponse.json({
     subscription: {
