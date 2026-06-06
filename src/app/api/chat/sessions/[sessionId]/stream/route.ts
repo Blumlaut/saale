@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getRedis } from "@/lib/redis";
+import { createRedisClient, getRedis } from "@/lib/redis";
 import { createPiSession, type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import {
@@ -164,7 +164,7 @@ export async function GET(
     const reconnectStream = new ReadableStream({
       async start(controller) {
         let clientDisconnected = false;
-        let subscriber: ReturnType<typeof getRedis> | null = null;
+        let subscriber: ReturnType<typeof createRedisClient> | null = null;
 
         const sendSse = (event: string, data: unknown) => {
           if (clientDisconnected) return;
@@ -199,7 +199,7 @@ export async function GET(
           }
 
           // Subscribe to live events
-          subscriber = getRedis();
+          subscriber = createRedisClient();
           await subscriber.subscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
           subscriber.on("message", (_channel, raw) => {
             if (clientDisconnected) return;
