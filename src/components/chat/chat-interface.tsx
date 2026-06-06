@@ -150,12 +150,7 @@ export function ChatInterface({
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Polling refs (shared between mount effect and 409 handler)
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isPollingRef = useRef(false);
-  const startPollingRef = useRef<(() => void) | null>(null);
-
-  const loadMessages = async (): Promise<{ responseInProgress?: boolean } | null> => {
+  const loadMessages = async (): Promise<{ processingSince?: string } | null> => {
     try {
       const data = await fetchJson<{
         messages: Message[];
@@ -164,7 +159,7 @@ export function ChatInterface({
           modelName?: string;
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
-          responseInProgress?: boolean;
+          processingSince?: string;
         };
       }>(`/api/chat/sessions/${sessionId}/messages`);
       setMessages(data.messages);
@@ -202,6 +197,75 @@ export function ChatInterface({
       // Ignore
     }
   };
+
+  // Reconnect to SSE stream when processing is in progress (refresh / 409).
+  // Shared between mount effect and 409 error handlers.
+  const startReconnection = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    setIsLoading(true);
+    markStreaming(sessionId);
+    setStreaming({ turns: [], current: emptyTurn() });
+
+    const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream`);
+    eventSourceRef.current = eventSource;
+
+    const cleanup = () => {
+      eventSource.close();
+      eventSourceRef.current = null;
+    };
+
+    eventSource.addEventListener("turn_end", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      setStreaming((prev) => ({
+        ...prev,
+        turns: [
+          ...prev.turns,
+          {
+            text: parsed.text || "",
+            thinking: parsed.thinking || "",
+            toolCalls: (parsed.toolCalls || []).map((tc: ToolCallData) => ({
+              toolCallId: tc.id,
+              toolName: tc.name,
+              args: tc.args,
+              status: tc.error ? "error" : "completed",
+              result: tc.result,
+            })),
+          },
+        ],
+        current: emptyTurn(),
+      }));
+    });
+
+    eventSource.addEventListener("done", () => {
+      setIsLoading(false);
+      cleanup();
+      const allTurns = collectAllTurns(streamingRef.current);
+      if (allTurns.length > 0) {
+        const baseId = `assistant-turn-${Date.now()}`;
+        setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
+      }
+      loadMessages();
+      markDone(sessionId);
+    });
+
+    eventSource.addEventListener("error", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      console.error("Stream error:", parsed);
+      cleanup();
+      setIsLoading(false);
+      markDone(sessionId);
+    });
+
+    eventSource.onerror = () => {
+      cleanup();
+      setIsLoading(false);
+      finalizeStreaming(streamingRef, setMessages);
+      markDone(sessionId);
+    };
+  }, [sessionId, markStreaming, markDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep streamingRef in sync
   useEffect(() => {
@@ -375,9 +439,9 @@ export function ChatInterface({
           "status" in err &&
           (err as { status?: number }).status === 409
         ) {
-          // Response already in progress — reload and poll
+          // Response already in progress — reload and reconnect
           loadMessages();
-          startPollingRef.current?.();
+          startReconnection();
         }
       }
     },
@@ -385,80 +449,28 @@ export function ChatInterface({
   );
 
   // Load messages and session title.
-  // If responseInProgress is true (user refreshed during processing), poll until the agent finishes.
-  // Critical: we must NOT stop polling when an assistant message appears — multi-turn responses
-  // save intermediate turns (tool calls) on turn_end, but the agent may still be working.
-  // Only stop when responseInProgress === false (set by agent_end in the stream route).
+  // If processingSince is set (user refreshed during processing), reconnect via SSE.
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
-    const RESPONSE_POLL_TIMEOUT = 120_000; // 2 min safety net
-
-    const stopPolling = () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-      isPollingRef.current = false;
-    };
-
-    const startPolling = () => {
-      if (isPollingRef.current) return; // already polling
-      isPollingRef.current = true;
-      setIsLoading(true);
-      const startedAt = Date.now();
-
-      pollIntervalRef.current = setInterval(async () => {
-        // Safety net: stop polling after timeout
-        if (Date.now() - startedAt > RESPONSE_POLL_TIMEOUT) {
-          stopPolling();
-          setIsLoading(false);
-          markDone(sessionId);
-          return;
-        }
-
-        try {
-          const data = await fetchJson<{
-            messages: Message[];
-            session: { responseInProgress?: boolean };
-          }>(`/api/chat/sessions/${sessionId}/messages`);
-
-          // Always update messages (new turns may have been saved)
-          setMessages(data.messages);
-
-          // Only stop when the backend says it's done
-          if (data.session?.responseInProgress !== true) {
-            stopPolling();
-            setIsLoading(false);
-            markDone(sessionId);
-          }
-        } catch {
-          // Session deleted or network error — stop polling
-          stopPolling();
-          setIsLoading(false);
-        }
-      }, 1500);
-    };
-
-    // Expose for use outside this effect (e.g., 409 handler)
-    startPollingRef.current = startPolling;
-
     const init = async () => {
       const sessionInfo = await loadMessages();
       loadSessionTitle();
 
-      // Check if a response is being processed (survives page refresh)
       const wasStreaming = streamingIds.has(sessionId);
-      const responseInProgress = sessionInfo?.responseInProgress === true;
+      const isProcessing = sessionInfo?.processingSince != null;
 
-      if (!wasStreaming && !responseInProgress) return;
+      if (!wasStreaming && !isProcessing) return;
 
-      startPolling();
+      startReconnection();
     };
 
     init();
 
     return () => {
-      stopPolling();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
     };
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -596,10 +608,10 @@ export function ChatInterface({
             return;
           }
           if (res.status === 409) {
-            // Response already in progress — remove temp message and start polling
+            // Response already in progress — remove temp message and reconnect
             setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
             loadMessages();
-            startPollingRef.current?.();
+            startReconnection();
             return;
           }
           throw new Error(`Failed to send message: ${body.error || res.statusText}`);
