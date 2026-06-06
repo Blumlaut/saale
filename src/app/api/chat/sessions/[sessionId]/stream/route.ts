@@ -25,6 +25,8 @@ export async function GET(
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
+  const searchParams = request.nextUrl.searchParams;
+
   const { sessionId } = await params;
 
   const chatSession = await prisma.chatSession.findFirst({
@@ -112,9 +114,11 @@ export async function GET(
     );
   }
 
-  // Check if another request is already processing this session.
-  // If so, enter reconnection mode: poll for saved results and emit them via SSE.
-  const isReconnection = chatSession.processingSince != null;
+  // Check if this is a reconnection request (frontend reconnecting after refresh).
+  // Only enter reconnection mode when explicitly requested via ?reconnect=1
+  // AND processingSince is set (another request is actively processing).
+  const isReconnection =
+    searchParams.get("reconnect") === "1" && chatSession.processingSince != null;
   const RECONNECT_POLL_INTERVAL = 1500;
   const RECONNECT_TIMEOUT = 120_000; // 2 min safety net
 

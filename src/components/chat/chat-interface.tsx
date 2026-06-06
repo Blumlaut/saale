@@ -209,7 +209,7 @@ export function ChatInterface({
     markStreaming(sessionId);
     setStreaming({ turns: [], current: emptyTurn() });
 
-    const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream`);
+    const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream?reconnect=1`);
     eventSourceRef.current = eventSource;
 
     const cleanup = () => {
