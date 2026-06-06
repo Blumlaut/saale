@@ -953,18 +953,19 @@ export function ChatInterface({
     [sessionId, router], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
   );
 
-  // Stop streaming
+  // Stop streaming — explicitly cancel the generation on the backend.
   const handleStop = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
+    // Tell backend to abort the LLM and clear processingSince
+    fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" }).catch((err) => {
+      console.error("Failed to call stop endpoint:", err);
+    });
     setIsLoading(false);
     finalizeStreaming(streamingRef, setMessages);
-  }, []);
+  }, [sessionId]);
 
   // Cleanup on unmount
   useEffect(() => {
