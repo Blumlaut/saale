@@ -92,7 +92,7 @@ model Verification {
 model ChatSession {
   id               String        @id @default(cuid())
   userId           String
-  title            String
+  title            String   @db.VarChar(50)
   temporary        Boolean       @default(false) // auto-deleted when user navigates away
   modelProvider    String?
   modelName        String?

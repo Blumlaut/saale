@@ -1,12 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-/**
- * Simple in-memory rate limiter.
- * In production, use Redis for distributed rate limiting.
- */
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const RATE_LIMIT_MAX = 60; // requests per window
+import { isRateLimited } from "@/lib/redis";
 
 function getRateLimitKey(request: NextRequest): string {
   // Use IP address as the rate limit key
@@ -19,29 +12,12 @@ function getRateLimitKey(request: NextRequest): string {
   return `${ip}:${request.nextUrl.pathname}`;
 }
 
-function isRateLimited(key: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return true;
-  }
-
-  entry.count++;
-  return false;
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Rate limiting for API routes
+  // Rate limiting for API routes (Redis-backed, works across instances)
   if (pathname.startsWith("/api/")) {
-    if (isRateLimited(getRateLimitKey(request))) {
+    if (await isRateLimited(getRateLimitKey(request))) {
       return new NextResponse(JSON.stringify({ error: "Too many requests. Try again later." }), {
         status: 429,
         headers: {
@@ -66,7 +42,7 @@ export async function middleware(request: NextRequest) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",

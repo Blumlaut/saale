@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { unregisterActiveSession } from "@/lib/redis";
 import { activeSessions } from "../stream/route";
 
 /**
@@ -27,12 +28,15 @@ export async function POST(
     return NextResponse.json({ error: "No active generation to stop" }, { status: 400 });
   }
 
-  // Abort the running agent
+  // Abort the running agent (same-process only — Redis tracks cross-instance state)
   const session = activeSessions.get(sessionId);
   if (session) {
     session.agent.abort();
     activeSessions.delete(sessionId);
   }
+
+  // Clear Redis tracking (works across instances)
+  await unregisterActiveSession(authResult.user.id, sessionId);
 
   // Clear processing flag so the user can send a new message
   await prisma.chatSession

@@ -1,7 +1,12 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { createRedisClient, getRedis } from "@/lib/redis";
+import {
+  createRedisClient,
+  getRedis,
+  registerActiveSession,
+  unregisterActiveSession,
+} from "@/lib/redis";
 import { createPiSession, type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import {
@@ -24,7 +29,7 @@ const BUFFER_KEY_PREFIX = "chat:stream:buf:";
 const BUFFER_TTL_SECONDS = 60; // keep buffer for 60s
 const BUFFER_MAX_SIZE = 200; // max events in buffer
 
-/** In-memory cache of running Pi sessions (for explicit cancellation via stop endpoint). */
+/** In-memory cache of running Pi sessions (for explicit cancellation via stop endpoint within the same process). */
 export const activeSessions = new Map<string, { agent: { abort: () => void } }>();
 
 /** Publish an SSE-formatted event to Redis for other clients to receive. */
@@ -181,10 +186,16 @@ export async function GET(
     async function* reconnectEvents() {
       let subscriber: ReturnType<typeof createRedisClient> | null = null;
       let done = false;
+      let aborted = false;
 
       const cleanup = () => {
+        aborted = true;
         if (subscriber) {
-          subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+          try {
+            subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+          } catch {
+            // Ignore — already closed
+          }
           subscriber.quit().catch((err) => {
             console.error("Failed to close Redis subscriber:", err);
           });
@@ -198,6 +209,7 @@ export async function GET(
         // Send buffered events first (catch up on anything we missed)
         const buffered = await getBufferedEvents(sessionId);
         for (const raw of buffered) {
+          if (aborted) break;
           try {
             const { event, data } = JSON.parse(raw);
             yield encoder.encode(sse(event, data));
@@ -208,7 +220,10 @@ export async function GET(
             console.error("Malformed buffered event:", err);
           }
         }
-        if (done) return;
+        if (done || aborted) {
+          cleanup();
+          return;
+        }
 
         // Subscribe to live pub/sub events
         subscriber = createRedisClient();
@@ -216,9 +231,12 @@ export async function GET(
 
         // Wait for pub/sub messages with timeout.
         // If no message arrives within 30s, fall back to DB polling.
-        while (!done && !request.signal.aborted) {
+        while (!done && !aborted) {
           const message = await new Promise<{ event: string; data: unknown } | null>((resolve) => {
+            let resolved = false;
             const handler = (_channel: string, raw: string) => {
+              if (resolved) return;
+              resolved = true;
               try {
                 resolve(JSON.parse(raw));
               } catch (err) {
@@ -226,14 +244,29 @@ export async function GET(
                 resolve(null);
               }
             };
-            subscriber!.once("message", handler);
-            setTimeout(() => {
+            subscriber!.on("message", handler);
+
+            const timer = setTimeout(() => {
+              if (resolved) return;
+              resolved = true;
               subscriber?.off("message", handler);
               resolve(null);
             }, 30000);
+
+            // If resolved by handler, clear the timeout
+            const originalResolve = resolve;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (resolve as any) = (val: Parameters<typeof originalResolve>[0]) => {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                subscriber?.off("message", handler);
+                originalResolve(val);
+              }
+            };
           });
 
-          if (request.signal.aborted) break;
+          if (aborted) break;
 
           if (message) {
             // Pub/sub delivered an event — forward it
@@ -314,7 +347,10 @@ export async function GET(
   });
 
   // Register session for explicit cancellation (stop endpoint)
+  // In-memory map: same-process abort
   activeSessions.set(sessionId, { agent: piSession.agent });
+  // Redis: cross-instance tracking (used by stop endpoint to detect stale state)
+  await registerActiveSession(authResult.user.id, sessionId);
 
   // Capture resolved model for consistent history reconstruction.
   // Using the actual model's api/provider/id ensures transformMessages treats
@@ -660,6 +696,7 @@ export async function GET(
 
             // Clean up session cache
             activeSessions.delete(sessionId);
+            unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
 
             sendEvent(controller, "done", {});
 
@@ -688,6 +725,7 @@ export async function GET(
               console.error("Failed to clear processingSince on error:", updateErr);
             });
           activeSessions.delete(sessionId);
+          unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
           sendEvent(controller, "error", { message: err.message });
           sendEvent(controller, "done", {});
           if (!clientDisconnected) {
