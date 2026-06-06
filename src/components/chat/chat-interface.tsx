@@ -198,49 +198,153 @@ export function ChatInterface({
     }
   };
 
-  // Recovery polling: when user refreshes during generation, poll for saved turns
-  // until processingSince is cleared. Shared between mount effect and 409 handlers.
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isPollingRef = useRef(false);
+  // Recovery: when user refreshes during generation, reconnect via SSE.
+  // The stream endpoint subscribes to Redis pub/sub and forwards live events.
+  // Shared between mount effect and 409 handlers.
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
+  const startReconnection = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
     }
-    isPollingRef.current = false;
-  }, []);
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+    }
 
-  const startPolling = useCallback(() => {
-    if (isPollingRef.current) return;
-    isPollingRef.current = true;
     setIsLoading(true);
     markStreaming(sessionId);
+    setStreaming({ turns: [], current: emptyTurn() });
 
-    const startedAt = Date.now();
-    const TIMEOUT = 120_000;
+    const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream`);
+    eventSourceRef.current = eventSource;
 
-    pollIntervalRef.current = setInterval(async () => {
-      if (Date.now() - startedAt > TIMEOUT) {
-        stopPolling();
-        setIsLoading(false);
-        markDone(sessionId);
-        return;
+    const cleanup = () => {
+      eventSource.close();
+      eventSourceRef.current = null;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
+    };
 
-      try {
-        const sessionInfo = await loadMessages();
-        if (sessionInfo?.processingSince == null) {
-          stopPolling();
-          setIsLoading(false);
-          markDone(sessionId);
-        }
-      } catch {
-        stopPolling();
-        setIsLoading(false);
+    eventSource.addEventListener("token", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      setStreaming((prev) => ({
+        ...prev,
+        current: { ...prev.current, text: parsed.text },
+      }));
+    });
+
+    eventSource.addEventListener("thinking", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      setStreaming((prev) => ({
+        ...prev,
+        current: { ...prev.current, thinking: parsed.thinking },
+      }));
+    });
+
+    eventSource.addEventListener("tool_start", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      setStreaming((prev) => ({
+        ...prev,
+        current: {
+          ...prev.current,
+          toolCalls: [
+            ...prev.current.toolCalls,
+            {
+              toolCallId: parsed.toolCallId,
+              toolName: parsed.toolName,
+              args: parsed.args,
+              status: "running" as const,
+            },
+          ],
+        },
+      }));
+    });
+
+    eventSource.addEventListener("tool_end", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      setStreaming((prev) => ({
+        ...prev,
+        current: {
+          ...prev.current,
+          toolCalls: prev.current.toolCalls.map((tc) =>
+            tc.toolCallId === parsed.toolCallId
+              ? {
+                  ...tc,
+                  status: parsed.isError ? ("error" as const) : ("completed" as const),
+                  result: parsed.result,
+                  error: parsed.isError ? parsed.result : undefined,
+                }
+              : tc,
+          ),
+        },
+      }));
+    });
+
+    eventSource.addEventListener("turn_end", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      setStreaming((prev) => ({
+        ...prev,
+        turns: [
+          ...prev.turns,
+          {
+            text: parsed.text || prev.current.text,
+            thinking: parsed.thinking || prev.current.thinking,
+            toolCalls:
+              parsed.toolCalls?.length > 0
+                ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                    toolCallId: tc.id,
+                    toolName: tc.name,
+                    args: tc.args,
+                    status: tc.error ? ("error" as const) : ("completed" as const),
+                    result: tc.result,
+                  }))
+                : prev.current.toolCalls.map((tc) => ({
+                    ...tc,
+                    status: tc.status === "running" ? ("completed" as const) : tc.status,
+                  })),
+          },
+        ],
+        current: emptyTurn(),
+      }));
+    });
+
+    eventSource.addEventListener("done", () => {
+      setIsLoading(false);
+      cleanup();
+      const allTurns = collectAllTurns(streamingRef.current);
+      if (allTurns.length > 0) {
+        const baseId = `assistant-turn-${Date.now()}`;
+        setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
       }
-    }, 1500);
-  }, [sessionId, markStreaming, markDone, stopPolling]); // eslint-disable-line react-hooks/exhaustive-deps
+      // Reload from DB to get canonical state
+      loadMessages();
+      markDone(sessionId);
+    });
+
+    eventSource.addEventListener("error", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data);
+      console.error("Stream error:", parsed);
+      cleanup();
+      setIsLoading(false);
+      markDone(sessionId);
+    });
+
+    eventSource.onerror = () => {
+      cleanup();
+      setIsLoading(false);
+      finalizeStreaming(streamingRef, setMessages);
+      markDone(sessionId);
+    };
+
+    // Safety timeout — if no events received within 2 min, give up
+    reconnectTimerRef.current = setTimeout(() => {
+      cleanup();
+      setIsLoading(false);
+      markDone(sessionId);
+    }, 120_000);
+  }, [sessionId, markStreaming, markDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep streamingRef in sync
   useEffect(() => {
@@ -414,9 +518,9 @@ export function ChatInterface({
           "status" in err &&
           (err as { status?: number }).status === 409
         ) {
-          // Response already in progress — reload and poll
+          // Response already in progress — reload and reconnect
           loadMessages();
-          startPolling();
+          startReconnection();
         }
       }
     },
@@ -424,7 +528,7 @@ export function ChatInterface({
   );
 
   // Load messages and session title.
-  // If processingSince is set (user refreshed during processing), poll until done.
+  // If processingSince is set (user refreshed during processing), reconnect via SSE.
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     const init = async () => {
@@ -436,13 +540,16 @@ export function ChatInterface({
 
       if (!wasStreaming && !isProcessing) return;
 
-      startPolling();
+      startReconnection();
     };
 
     init();
 
     return () => {
-      stopPolling();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
     };
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -580,10 +687,10 @@ export function ChatInterface({
             return;
           }
           if (res.status === 409) {
-            // Response already in progress — remove temp message and poll
+            // Response already in progress — remove temp message and reconnect
             setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
             loadMessages();
-            startPolling();
+            startReconnection();
             return;
           }
           throw new Error(`Failed to send message: ${body.error || res.statusText}`);

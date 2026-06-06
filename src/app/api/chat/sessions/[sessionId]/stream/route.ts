@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getRedis } from "@/lib/redis";
 import { createPiSession, type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import {
@@ -10,6 +11,49 @@ import {
   type ImageContent,
 } from "@/lib/pi/message-replay";
 import { readImageAsBase64 } from "@/lib/image-attachment";
+
+/**
+ * Redis pub/sub for SSE reconnection.
+ *
+ * Every SSE event is published to `chat:stream:{sessionId}` so that multiple
+ * SSE clients (original + reconnecting after refresh) receive the same events.
+ * Events are also buffered in a Redis list for catch-up on reconnect.
+ */
+const STREAM_CHANNEL_PREFIX = "chat:stream:";
+const BUFFER_KEY_PREFIX = "chat:stream:buf:";
+const BUFFER_TTL_SECONDS = 60; // keep buffer for 60s
+const BUFFER_MAX_SIZE = 200; // max events in buffer
+
+/** Publish an SSE-formatted event to Redis for other clients to receive. */
+function publishStreamEvent(sessionId: string, event: string, data: unknown): void {
+  try {
+    const redis = getRedis();
+    const payload = JSON.stringify({ event, data });
+    const channel = `${STREAM_CHANNEL_PREFIX}${sessionId}`;
+    redis.publish(channel, payload);
+
+    // Buffer event for reconnecting clients
+    const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
+    redis.lpush(bufKey, payload);
+    redis.ltrim(bufKey, 0, BUFFER_MAX_SIZE - 1);
+    redis.expire(bufKey, BUFFER_TTL_SECONDS);
+  } catch (err) {
+    console.error("Redis publish error:", err);
+  }
+}
+
+/** Get buffered events for a session (oldest first). */
+async function getBufferedEvents(sessionId: string): Promise<string[]> {
+  try {
+    const redis = getRedis();
+    const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
+    const events = await redis.lrange(bufKey, 0, -1);
+    return events.reverse(); // lrange returns newest first after lpush
+  } catch (err) {
+    console.error("Redis buffer read error:", err);
+    return [];
+  }
+}
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -112,6 +156,88 @@ export async function GET(
     );
   }
 
+  // If another request is already processing this session, enter reconnection mode:
+  // subscribe to Redis pub/sub and forward events to this SSE client.
+  if (chatSession.processingSince) {
+    const encoder = new TextEncoder();
+
+    const reconnectStream = new ReadableStream({
+      async start(controller) {
+        let clientDisconnected = false;
+        let subscriber: ReturnType<typeof getRedis> | null = null;
+
+        const sendSse = (event: string, data: unknown) => {
+          if (clientDisconnected) return;
+          const json = JSON.stringify(data);
+          const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
+        };
+
+        const cleanup = () => {
+          if (subscriber) {
+            subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+            subscriber.quit().catch(() => {});
+          }
+        };
+
+        request.signal.addEventListener("abort", () => {
+          clientDisconnected = true;
+          cleanup();
+          controller.close();
+        });
+
+        try {
+          // Send buffered events first (catch up on anything we missed)
+          const buffered = await getBufferedEvents(sessionId);
+          for (const raw of buffered) {
+            try {
+              const { event, data } = JSON.parse(raw);
+              sendSse(event, data);
+            } catch {
+              // skip malformed
+            }
+          }
+
+          // Subscribe to live events
+          subscriber = getRedis();
+          await subscriber.subscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+          subscriber.on("message", (_channel, raw) => {
+            if (clientDisconnected) return;
+            try {
+              const { event, data } = JSON.parse(raw);
+              sendSse(event, data);
+
+              if (event === "done" || event === "error") {
+                setTimeout(() => {
+                  cleanup();
+                  if (!clientDisconnected) {
+                    controller.close();
+                  }
+                }, 500);
+              }
+            } catch {
+              // skip malformed
+            }
+          });
+        } catch (err) {
+          console.error("Reconnection setup error:", err);
+          cleanup();
+          sendSse("error", { message: "Failed to reconnect to stream" });
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(reconnectStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  }
+
   // Create Pi session with custom tools (filtered by toolConfig)
   const { session: piSession } = await createPiSession({
     userId: authResult.user.id,
@@ -211,7 +337,7 @@ export async function GET(
   let clientDisconnected = false;
 
   /**
-   * Send an SSE event with proper escaping.
+   * Send an SSE event with proper escaping and publish to Redis for reconnection.
    * SSE spec: a line containing only "\n" terminates the event block.
    * JSON.stringify can produce \n inside strings (from tool results, etc.),
    * which would prematurely terminate the event and inject a new one.
@@ -227,6 +353,9 @@ export async function GET(
     // Replace literal newlines with \n to prevent SSE event termination
     const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
     controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
+
+    // Publish to Redis for reconnecting clients
+    publishStreamEvent(sessionId, event, data);
   }
 
   // Track tool call results for the final message
