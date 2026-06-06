@@ -25,18 +25,18 @@ const BUFFER_TTL_SECONDS = 60; // keep buffer for 60s
 const BUFFER_MAX_SIZE = 200; // max events in buffer
 
 /** Publish an SSE-formatted event to Redis for other clients to receive. */
-function publishStreamEvent(sessionId: string, event: string, data: unknown): void {
+async function publishStreamEvent(sessionId: string, event: string, data: unknown): Promise<void> {
   try {
     const redis = getRedis();
     const payload = JSON.stringify({ event, data });
     const channel = `${STREAM_CHANNEL_PREFIX}${sessionId}`;
-    redis.publish(channel, payload);
+    await redis.publish(channel, payload);
 
     // Buffer event for reconnecting clients
     const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
-    redis.lpush(bufKey, payload);
-    redis.ltrim(bufKey, 0, BUFFER_MAX_SIZE - 1);
-    redis.expire(bufKey, BUFFER_TTL_SECONDS);
+    await redis.lpush(bufKey, payload);
+    await redis.ltrim(bufKey, 0, BUFFER_MAX_SIZE - 1);
+    await redis.expire(bufKey, BUFFER_TTL_SECONDS);
   } catch (err) {
     console.error("Redis publish error:", err);
   }
@@ -359,8 +359,8 @@ export async function GET(
     const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
     controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
 
-    // Publish to Redis for reconnecting clients
-    publishStreamEvent(sessionId, event, data);
+    // Publish to Redis for reconnecting clients (fire-and-forget)
+    publishStreamEvent(sessionId, event, data).catch(console.error);
   }
 
   // Track tool call results for the final message

@@ -218,12 +218,18 @@ export function ChatInterface({
     const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream?reconnect=1`);
     eventSourceRef.current = eventSource;
 
+    let dbPollInterval: ReturnType<typeof setInterval> | null = null;
+
     const cleanup = () => {
       eventSource.close();
       eventSourceRef.current = null;
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+      }
+      if (dbPollInterval) {
+        clearInterval(dbPollInterval);
+        dbPollInterval = null;
       }
     };
 
@@ -344,6 +350,51 @@ export function ChatInterface({
       setIsLoading(false);
       markDone(sessionId);
     }, 120_000);
+
+    // Fallback: poll the DB during reconnection. If generation finishes before Redis
+    // events arrive (buffer empty, pub/sub failure, etc.), pick up the result from DB.
+    let redisEventsReceived = false;
+    const markReceived = () => {
+      redisEventsReceived = true;
+    };
+    // addEventListener allows multiple handlers per type — add a tracker to each
+    for (const type of [
+      "token",
+      "thinking",
+      "tool_start",
+      "tool_end",
+      "turn_end",
+      "done",
+      "error",
+    ] as const) {
+      eventSource.addEventListener(type, markReceived);
+    }
+
+    dbPollInterval = setInterval(async () => {
+      if (redisEventsReceived) {
+        clearInterval(dbPollInterval!);
+        dbPollInterval = null;
+        return;
+      }
+      try {
+        const res = await fetch(`/api/chat/sessions/${sessionId}/messages`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.session?.processingSince) {
+          const assistantMessages = data.messages?.filter(
+            (m: { role: string }) => m.role === "assistant",
+          );
+          if (assistantMessages && assistantMessages.length > 0) {
+            cleanup();
+            setIsLoading(false);
+            await loadMessages();
+            markDone(sessionId);
+          }
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 3000);
   }, [sessionId, markStreaming, markDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep streamingRef in sync
