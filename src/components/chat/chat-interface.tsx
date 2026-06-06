@@ -388,8 +388,8 @@ export function ChatInterface({
       if (data.session?.title) {
         setSessionTitle(data.session.title);
       }
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load session title:", err);
     }
   };
 
@@ -898,8 +898,8 @@ export function ChatInterface({
           modelName: modelName || undefined,
           thinkingLevel,
         });
-      } catch {
-        // Silently fail
+      } catch (err) {
+        console.error("Failed to persist model/thinking settings:", err);
       }
     }, 300);
     return () => clearTimeout(saveTimer);
