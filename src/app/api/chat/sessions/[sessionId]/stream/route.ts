@@ -156,9 +156,14 @@ export async function GET(
     );
   }
 
-  // If another request is already processing this session, enter reconnection mode:
-  // subscribe to Redis pub/sub and forward events to this SSE client.
-  if (chatSession.processingSince) {
+  // If another request is already processing this session and the client explicitly
+  // requests reconnection (?reconnect=1), subscribe to Redis pub/sub and forward events.
+  // Without ?reconnect=1 this is the primary stream — always process normally even if
+  // processingSince is set (the POST endpoint sets it before returning the stream URL).
+  const url = new URL(request.url);
+  const isReconnect = url.searchParams.get("reconnect") === "1";
+
+  if (isReconnect && chatSession.processingSince) {
     const encoder = new TextEncoder();
 
     const reconnectStream = new ReadableStream({
