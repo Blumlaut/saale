@@ -1,8 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isRateLimited } from "@/lib/redis";
+
+/**
+ * Rate limiting for API routes.
+ *
+ * Uses an in-memory Map — this is best-effort per-instance only.
+ * For cross-instance rate limiting, handle it at the reverse proxy level (nginx/Traefik).
+ */
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 60;
+
+function isRateLimited(key: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+
+  entry.count++;
+  return entry.count > RATE_LIMIT_MAX;
+}
 
 function getRateLimitKey(request: NextRequest): string {
-  // Use IP address as the rate limit key
   const reqWithIp = request as NextRequest & { ip?: string };
   const ip =
     reqWithIp.ip ??
@@ -15,17 +36,15 @@ function getRateLimitKey(request: NextRequest): string {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Rate limiting for API routes (Redis-backed, works across instances)
-  if (pathname.startsWith("/api/")) {
-    if (await isRateLimited(getRateLimitKey(request))) {
-      return new NextResponse(JSON.stringify({ error: "Too many requests. Try again later." }), {
-        status: 429,
-        headers: {
-          "Content-Type": "application/json",
-          "Retry-After": "60",
-        },
-      });
-    }
+  // Rate limiting for API routes (in-memory, best-effort per-instance)
+  if (pathname.startsWith("/api/") && isRateLimited(getRateLimitKey(request))) {
+    return new NextResponse(JSON.stringify({ error: "Too many requests. Try again later." }), {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "60",
+      },
+    });
   }
 
   // Add security headers to all responses
