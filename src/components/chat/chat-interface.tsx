@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 import type { Message, ToolCallData } from "./types";
+import type { Dispatch, SetStateAction } from "react";
 
 interface TurnData {
   text: string;
@@ -28,10 +29,21 @@ interface TurnData {
     toolName: string;
     args: Record<string, unknown>;
     status: "running" | "completed" | "error";
-    result?: string;
-    error?: string;
+    result: string | undefined;
+    error: string | undefined;
   }>;
 }
+
+interface StreamingState {
+  turns: TurnData[];
+  current: TurnData;
+}
+
+const emptyTurn = (): TurnData => ({
+  text: "",
+  thinking: "",
+  toolCalls: [],
+});
 
 function convertToolCalls(turns: TurnData["toolCalls"]): ToolCallData[] {
   return turns.map((tc) => ({
@@ -108,18 +120,139 @@ function buildAssistantMessages(turns: TurnData[], prefix: string): Message[] {
   }));
 }
 
-interface StreamingState {
-  /** Completed turns (finalized from turn_end events) */
-  turns: TurnData[];
-  /** Current in-progress turn data */
-  current: TurnData;
+/**
+ * Set up common SSE event listeners for streaming.
+ *
+ * Handles: token, thinking, tool_start, tool_end, turn_end
+ * Accepts callbacks for: done, error, onerror (connection failure)
+ *
+ * Returns a cleanup function that closes the EventSource.
+ */
+interface StreamCallbacks {
+  onDone: (eventSource: EventSource, event: MessageEvent) => void;
+  onError: (eventSource: EventSource, event: MessageEvent) => void;
+  onConnectionError: (eventSource: EventSource) => void;
 }
 
-const emptyTurn = (): TurnData => ({
-  text: "",
-  thinking: "",
-  toolCalls: [],
-});
+function setupStreamListeners(
+  eventSource: EventSource,
+  setStreaming: Dispatch<SetStateAction<StreamingState>>,
+  callbacks: StreamCallbacks,
+): () => void {
+  eventSource.addEventListener("token", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as { text: string };
+    setStreaming((prev) => ({
+      ...prev,
+      current: { ...prev.current, text: parsed.text },
+    }));
+  });
+
+  eventSource.addEventListener("thinking", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as { thinking: string };
+    setStreaming((prev) => ({
+      ...prev,
+      current: { ...prev.current, thinking: parsed.thinking },
+    }));
+  });
+
+  eventSource.addEventListener("tool_start", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as {
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    };
+    setStreaming((prev) => ({
+      ...prev,
+      current: {
+        ...prev.current,
+        toolCalls: [
+          ...prev.current.toolCalls,
+          {
+            toolCallId: parsed.toolCallId,
+            toolName: parsed.toolName,
+            args: parsed.args,
+            status: "running" as const,
+            result: undefined,
+            error: undefined,
+          },
+        ],
+      },
+    }));
+  });
+
+  eventSource.addEventListener("tool_end", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as {
+      toolCallId: string;
+      result?: string;
+      isError?: boolean;
+    };
+    setStreaming((prev) => ({
+      ...prev,
+      current: {
+        ...prev.current,
+        toolCalls: prev.current.toolCalls.map((tc) =>
+          tc.toolCallId === parsed.toolCallId
+            ? {
+                ...tc,
+                status: parsed.isError ? ("error" as const) : ("completed" as const),
+                result: parsed.result ?? undefined,
+                error: parsed.isError ? (parsed.result ?? undefined) : undefined,
+              }
+            : tc,
+        ),
+      },
+    }));
+  });
+
+  eventSource.addEventListener("turn_end", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as {
+      text?: string;
+      thinking?: string;
+      toolCalls?: ToolCallData[];
+    };
+    const toolCalls =
+      parsed.toolCalls && parsed.toolCalls.length > 0
+        ? parsed.toolCalls.map((tc: ToolCallData) => ({
+            toolCallId: tc.id,
+            toolName: tc.name,
+            args: tc.args,
+            status: tc.error ? ("error" as const) : ("completed" as const),
+            result: tc.result ?? undefined,
+            error: tc.error ?? undefined,
+          }))
+        : [];
+    setStreaming((prev) => ({
+      ...prev,
+      turns: [
+        ...prev.turns,
+        {
+          text: parsed.text || prev.current.text,
+          thinking: parsed.thinking || prev.current.thinking,
+          toolCalls: toolCalls.length > 0 ? toolCalls : prev.current.toolCalls,
+        },
+      ],
+      current: emptyTurn(),
+    }));
+  });
+
+  eventSource.addEventListener("done", (event: MessageEvent) => {
+    callbacks.onDone(eventSource, event);
+  });
+
+  eventSource.addEventListener("error", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data);
+    console.error("Stream error:", parsed);
+    callbacks.onError(eventSource, event);
+  });
+
+  eventSource.onerror = () => {
+    callbacks.onConnectionError(eventSource);
+  };
+
+  return () => {
+    eventSource.close();
+  };
+}
 
 export function ChatInterface({
   sessionId,
@@ -233,125 +366,39 @@ export function ChatInterface({
       }
     };
 
-    eventSource.addEventListener("token", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: { ...prev.current, text: parsed.text },
-      }));
-    });
-
-    eventSource.addEventListener("thinking", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: { ...prev.current, thinking: parsed.thinking },
-      }));
-    });
-
-    eventSource.addEventListener("tool_start", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: {
-          ...prev.current,
-          toolCalls: [
-            ...prev.current.toolCalls,
-            {
-              toolCallId: parsed.toolCallId,
-              toolName: parsed.toolName,
-              args: parsed.args,
-              status: "running" as const,
-            },
-          ],
-        },
-      }));
-    });
-
-    eventSource.addEventListener("tool_end", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        current: {
-          ...prev.current,
-          toolCalls: prev.current.toolCalls.map((tc) =>
-            tc.toolCallId === parsed.toolCallId
-              ? {
-                  ...tc,
-                  status: parsed.isError ? ("error" as const) : ("completed" as const),
-                  result: parsed.result,
-                  error: parsed.isError ? parsed.result : undefined,
-                }
-              : tc,
-          ),
-        },
-      }));
-    });
-
-    eventSource.addEventListener("turn_end", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      setStreaming((prev) => ({
-        ...prev,
-        turns: [
-          ...prev.turns,
-          {
-            text: parsed.text || prev.current.text,
-            thinking: parsed.thinking || prev.current.thinking,
-            toolCalls:
-              parsed.toolCalls?.length > 0
-                ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                    toolCallId: tc.id,
-                    toolName: tc.name,
-                    args: tc.args,
-                    status: tc.error ? ("error" as const) : ("completed" as const),
-                    result: tc.result,
-                  }))
-                : prev.current.toolCalls.map((tc) => ({
-                    ...tc,
-                    status: tc.status === "running" ? ("completed" as const) : tc.status,
-                  })),
-          },
-        ],
-        current: emptyTurn(),
-      }));
-    });
-
-    eventSource.addEventListener("done", () => {
-      setIsLoading(false);
-      cleanup();
-      const allTurns = collectAllTurns(streamingRef.current);
-      if (allTurns.length > 0) {
-        const baseId = `assistant-turn-${Date.now()}`;
-        setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-      }
-      // Reload from DB to get canonical state
-      loadMessages();
-      markDone(sessionId);
+    // Set up common stream listeners
+    setupStreamListeners(eventSource, setStreaming, {
+      onDone: () => {
+        setIsLoading(false);
+        cleanup();
+        const allTurns = collectAllTurns(streamingRef.current);
+        if (allTurns.length > 0) {
+          const baseId = `assistant-turn-${Date.now()}`;
+          setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
+        }
+        loadMessages();
+        markDone(sessionId);
+      },
+      onError: () => {
+        cleanup();
+        setIsLoading(false);
+        markDone(sessionId);
+      },
+      onConnectionError: () => {
+        cleanup();
+        setIsLoading(false);
+        finalizeStreaming(streamingRef, setMessages);
+        markDone(sessionId);
+      },
     });
 
     // Resume event: backend DB polling detected generation is done.
-    // Reload from DB to get canonical state with completed messages.
     eventSource.addEventListener("resume", () => {
       cleanup();
       setIsLoading(false);
       loadMessages();
       markDone(sessionId);
     });
-
-    eventSource.addEventListener("error", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data);
-      console.error("Stream error:", parsed);
-      cleanup();
-      setIsLoading(false);
-      markDone(sessionId);
-    });
-
-    eventSource.onerror = () => {
-      cleanup();
-      setIsLoading(false);
-      finalizeStreaming(streamingRef, setMessages);
-      markDone(sessionId);
-    };
 
     // Safety timeout — if no events received within 2 min, give up
     reconnectTimerRef.current = setTimeout(() => {
@@ -439,139 +486,57 @@ export function ChatInterface({
           eventSourceRef.current = null;
         };
 
-        eventSource.addEventListener("token", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: { ...prev.current, text: parsed.text },
-          }));
-        });
+        setupStreamListeners(eventSource, setStreaming, {
+          onDone: (_es, event) => {
+            setIsLoading(false);
+            cleanup();
+            const allTurns = collectAllTurns(streamingRef.current);
+            const parsed = JSON.parse(event.data);
 
-        eventSource.addEventListener("thinking", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: { ...prev.current, thinking: parsed.thinking },
-          }));
-        });
+            if (allTurns.length > 0) {
+              const baseId = `assistant-turn-${Date.now()}`;
+              setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
+            } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
+              const finalToolCalls: ToolCallData[] | undefined =
+                parsed.toolCalls?.length > 0
+                  ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                      id: tc.id,
+                      name: tc.name,
+                      args: tc.args,
+                      error: tc.error,
+                      status: tc.status,
+                      result: tc.result || undefined,
+                    }))
+                  : undefined;
 
-        eventSource.addEventListener("tool_start", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: {
-              ...prev.current,
-              toolCalls: [
-                ...prev.current.toolCalls,
+              setMessages((prev) => [
+                ...prev,
                 {
-                  toolCallId: parsed.toolCallId,
-                  toolName: parsed.toolName,
-                  args: parsed.args,
-                  status: "running" as const,
+                  id: `assistant-${Date.now()}`,
+                  role: "assistant" as const,
+                  content: parsed.text,
+                  thinking: parsed.thinking || undefined,
+                  toolCalls: finalToolCalls,
+                  parentMessageId: undefined,
+                  createdAt: new Date().toISOString(),
+                  attachments: undefined,
                 },
-              ],
-            },
-          }));
+              ]);
+            }
+
+            loadMessages();
+          },
+          onError: () => {
+            cleanup();
+            setIsLoading(false);
+          },
+          onConnectionError: () => {
+            cleanup();
+            setIsLoading(false);
+            finalizeStreaming(streamingRef, setMessages);
+            loadMessages();
+          },
         });
-
-        eventSource.addEventListener("tool_end", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: {
-              ...prev.current,
-              toolCalls: prev.current.toolCalls.map((tc) =>
-                tc.toolCallId === parsed.toolCallId
-                  ? {
-                      ...tc,
-                      status: parsed.isError ? ("error" as const) : ("completed" as const),
-                      result: parsed.result,
-                      error: parsed.isError ? parsed.result : undefined,
-                    }
-                  : tc,
-              ),
-            },
-          }));
-        });
-
-        eventSource.addEventListener("turn_end", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            turns: [
-              ...prev.turns,
-              {
-                text: parsed.text || prev.current.text,
-                thinking: parsed.thinking || prev.current.thinking,
-                toolCalls:
-                  parsed.toolCalls?.length > 0
-                    ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                        toolCallId: tc.id,
-                        toolName: tc.name,
-                        args: tc.args,
-                        status: tc.error ? "error" : "completed",
-                        result: tc.result,
-                      }))
-                    : prev.current.toolCalls,
-              },
-            ],
-            current: emptyTurn(),
-          }));
-        });
-
-        eventSource.addEventListener("done", (event: MessageEvent) => {
-          setIsLoading(false);
-          cleanup();
-          const allTurns = collectAllTurns(streamingRef.current);
-          const parsed = JSON.parse(event.data);
-
-          if (allTurns.length > 0) {
-            const baseId = `assistant-turn-${Date.now()}`;
-            setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-          } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
-            const finalToolCalls: ToolCallData[] | undefined =
-              parsed.toolCalls?.length > 0
-                ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                    id: tc.id,
-                    name: tc.name,
-                    args: tc.args,
-                    error: tc.error,
-                    status: tc.status,
-                    result: tc.result || undefined,
-                  }))
-                : undefined;
-
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `assistant-${Date.now()}`,
-                role: "assistant" as const,
-                content: parsed.text,
-                thinking: parsed.thinking || undefined,
-                toolCalls: finalToolCalls,
-                parentMessageId: undefined,
-                createdAt: new Date().toISOString(),
-                attachments: undefined,
-              },
-            ]);
-          }
-
-          loadMessages();
-        });
-
-        eventSource.addEventListener("error", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          console.error("Stream error:", parsed);
-          cleanup();
-          setIsLoading(false);
-        });
-
-        eventSource.onerror = () => {
-          cleanup();
-          setIsLoading(false);
-          finalizeStreaming(streamingRef, setMessages);
-          loadMessages();
-        };
       } catch (err) {
         setIsLoading(false);
         if (
@@ -667,8 +632,8 @@ export function ChatInterface({
         await patchJson(`/api/chat/sessions/${sessionId}`, { title: sanitized });
         // Notify sidebar to refresh
         window.dispatchEvent(new CustomEvent("chat-renamed"));
-      } catch {
-        // Silently fail — local state is already updated
+      } catch (err) {
+        console.error("Failed to save session title:", err);
       }
     },
     [sessionId],
@@ -682,8 +647,8 @@ export function ChatInterface({
 
       try {
         await patchJson(`/api/chat/sessions/${sessionId}`, { toolConfig: updated });
-      } catch {
-        // Silently fail — local state is already updated
+      } catch (err) {
+        console.error("Failed to save tool config:", err);
       }
     },
     [toolConfig, sessionId],
@@ -779,172 +744,83 @@ export function ChatInterface({
         const eventSource = new EventSource(data.streamUrl);
         eventSourceRef.current = eventSource;
 
-        eventSource.addEventListener("token", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: { ...prev.current, text: parsed.text },
-          }));
-        });
+        setupStreamListeners(eventSource, setStreaming, {
+          onDone: (_es, event) => {
+            setIsLoading(false);
+            eventSource.close();
+            eventSourceRef.current = null;
 
-        eventSource.addEventListener("thinking", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: { ...prev.current, thinking: parsed.thinking },
-          }));
-        });
+            const allTurns = collectAllTurns(streamingRef.current);
+            const parsed = JSON.parse(event.data);
 
-        eventSource.addEventListener("tool_start", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: {
-              ...prev.current,
-              toolCalls: [
-                ...prev.current.toolCalls,
+            if (allTurns.length > 0) {
+              const baseId = `assistant-turn-${Date.now()}`;
+              setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
+            } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
+              const finalToolCalls: ToolCallData[] | undefined =
+                parsed.toolCalls?.length > 0
+                  ? parsed.toolCalls.map((tc: ToolCallData) => ({
+                      id: tc.id,
+                      name: tc.name,
+                      args: tc.args,
+                      error: tc.error,
+                      status: tc.status,
+                      result: tc.result || undefined,
+                    }))
+                  : undefined;
+
+              setMessages((prev) => [
+                ...prev,
                 {
-                  toolCallId: parsed.toolCallId,
-                  toolName: parsed.toolName,
-                  args: parsed.args,
-                  status: "running" as const,
+                  id: `assistant-${Date.now()}`,
+                  role: "assistant" as const,
+                  content: parsed.text,
+                  thinking: parsed.thinking || undefined,
+                  toolCalls: finalToolCalls,
+                  parentMessageId: undefined,
+                  createdAt: new Date().toISOString(),
+                  attachments: undefined,
                 },
-              ],
-            },
-          }));
-        });
+              ]);
+            }
+          },
+          onError: (_es, event) => {
+            eventSource.close();
+            eventSourceRef.current = null;
+            setIsLoading(false);
 
-        eventSource.addEventListener("tool_end", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          setStreaming((prev) => ({
-            ...prev,
-            current: {
-              ...prev.current,
-              toolCalls: prev.current.toolCalls.map((tc) =>
-                tc.toolCallId === parsed.toolCallId
-                  ? {
-                      ...tc,
-                      status: parsed.isError ? ("error" as const) : ("completed" as const),
-                      result: parsed.result,
-                      error: parsed.isError ? parsed.result : undefined,
-                    }
-                  : tc,
-              ),
-            },
-          }));
-        });
-
-        eventSource.addEventListener("turn_end", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          // Finalize the current turn and add it to completed turns
-          setStreaming((prev) => ({
-            ...prev,
-            turns: [
-              ...prev.turns,
-              {
-                text: parsed.text || prev.current.text,
-                thinking: parsed.thinking || prev.current.thinking,
-                toolCalls:
-                  parsed.toolCalls?.length > 0
-                    ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                        toolCallId: tc.id,
-                        toolName: tc.name,
-                        args: tc.args,
-                        status: tc.error ? "error" : "completed",
-                        result: tc.result,
-                      }))
-                    : prev.current.toolCalls,
-              },
-            ],
-            current: emptyTurn(),
-          }));
-        });
-
-        eventSource.addEventListener("done", (event: MessageEvent) => {
-          setIsLoading(false);
-          eventSource.close();
-          eventSourceRef.current = null;
-
-          // Finalize any remaining current turn
-          const allTurns = collectAllTurns(streamingRef.current);
-
-          // If we got turn_end events, use those. Otherwise create a single message from streaming state.
-          const parsed = JSON.parse(event.data);
-
-          if (allTurns.length > 0) {
-            // Multi-turn response: add each turn as a separate message
-            const baseId = `assistant-turn-${Date.now()}`;
-            setMessages((prev) => [...prev, ...buildAssistantMessages(allTurns, baseId)]);
-          } else if (parsed.text || parsed.thinking || parsed.toolCalls?.length > 0) {
-            // Legacy single-turn fallback (from done event data)
-            const finalToolCalls: ToolCallData[] | undefined =
-              parsed.toolCalls?.length > 0
-                ? parsed.toolCalls.map((tc: ToolCallData) => ({
-                    id: tc.id,
-                    name: tc.name,
-                    args: tc.args,
-                    error: tc.error,
-                    status: tc.status,
-                    result: tc.result || undefined,
-                  }))
-                : undefined;
+            const parsed = JSON.parse(event.data);
+            if (parsed.message?.includes("No AI model configured")) {
+              toast.error("No AI model configured", {
+                description: "Select a default model in Settings > AI & Models to start chatting.",
+                action: {
+                  label: "Open Settings",
+                  onClick: () => router.push("/dashboard/settings"),
+                },
+              });
+            }
 
             setMessages((prev) => [
               ...prev,
               {
-                id: `assistant-${Date.now()}`,
+                id: `error-${Date.now()}`,
                 role: "assistant" as const,
-                content: parsed.text,
-                thinking: parsed.thinking || undefined,
-                toolCalls: finalToolCalls,
+                content: `Error: ${parsed.message || "Something went wrong"}`,
+                thinking: undefined,
+                toolCalls: undefined,
                 parentMessageId: undefined,
                 createdAt: new Date().toISOString(),
                 attachments: undefined,
               },
             ]);
-          }
+          },
+          onConnectionError: () => {
+            eventSource.close();
+            eventSourceRef.current = null;
+            setIsLoading(false);
+            finalizeStreaming(streamingRef, setMessages);
+          },
         });
-
-        eventSource.addEventListener("error", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          console.error("Stream error:", parsed);
-          eventSource.close();
-          eventSourceRef.current = null;
-          setIsLoading(false);
-
-          // Handle "no model configured" error with a toast + settings link
-          if (parsed.message?.includes("No AI model configured")) {
-            toast.error("No AI model configured", {
-              description: "Select a default model in Settings > AI & Models to start chatting.",
-              action: {
-                label: "Open Settings",
-                onClick: () => router.push("/dashboard/settings"),
-              },
-            });
-          }
-
-          // Add error message to chat
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `error-${Date.now()}`,
-              role: "assistant" as const,
-              content: `Error: ${parsed.message || "Something went wrong"}`,
-              thinking: undefined,
-              toolCalls: undefined,
-              parentMessageId: undefined,
-              createdAt: new Date().toISOString(),
-              attachments: undefined,
-            },
-          ]);
-        });
-
-        eventSource.onerror = () => {
-          eventSource.close();
-          eventSourceRef.current = null;
-          setIsLoading(false);
-          finalizeStreaming(streamingRef, setMessages);
-        };
       } catch (err) {
         setIsLoading(false);
         console.error("Send error:", err);

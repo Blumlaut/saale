@@ -3,6 +3,7 @@ import { Stats } from "fs";
 import path from "path";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import * as terminal from "@/lib/terminal/client";
 
@@ -93,52 +94,42 @@ export function createChatSearchTool(userId: string) {
       ),
     }),
     execute: async (_toolCallId: string, params: { query: string; limit?: number }) => {
-      const query = params.query.toLowerCase();
-      const limit = params.limit ?? 20;
+      const searchQuery = params.query.trim();
+      const limit = Math.min(params.limit ?? 20, 100);
 
-      // Search across all chat sessions for this user
-      const sessions = await prisma.chatSession.findMany({
-        where: { userId },
-        orderBy: { updatedAt: "desc" },
-        include: {
-          messages: {
-            orderBy: { createdAt: "desc" },
-            take: 50,
-          },
-        },
-      });
-
-      const results: Array<{
-        sessionId: string;
-        sessionTitle: string;
-        messageId: string;
-        role: string;
-        content: string;
-        date: string;
-      }> = [];
-
-      for (const session of sessions) {
-        for (const message of session.messages) {
-          if (message.content.toLowerCase().includes(query)) {
-            results.push({
-              sessionId: session.id,
-              sessionTitle: session.title,
-              messageId: message.id,
-              role: message.role,
-              content: message.content.slice(0, 300),
-              date: message.createdAt.toISOString(),
-            });
-
-            if (results.length >= limit) {
-              break;
-            }
-          }
-        }
-
-        if (results.length >= limit) {
-          break;
-        }
-      }
+      // Use PostgreSQL full-text search for efficient, ranked results.
+      // Joins ChatSession + ChatMessage, searches both title and content.
+      const results = await prisma.$queryRaw<
+        Array<{
+          sessionId: string;
+          sessionTitle: string;
+          messageId: string;
+          role: string;
+          content: string;
+          date: string;
+          rank: number;
+        }>
+      >(
+        Prisma.sql`
+          SELECT
+            "ChatSession".id AS "sessionId",
+            "ChatSession".title AS "sessionTitle",
+            "ChatMessage".id AS "messageId",
+            "ChatMessage".role,
+            LEFT("ChatMessage".content, 300) AS content,
+            "ChatMessage"."createdAt"::text AS date,
+            ts_rank(
+              to_tsvector('english', COALESCE("ChatMessage".content, '')),
+              plainto_tsquery('english', ${searchQuery})
+            ) AS rank
+          FROM "ChatMessage"
+          JOIN "ChatSession" ON "ChatMessage"."sessionId" = "ChatSession".id
+          WHERE "ChatSession"."userId" = ${userId}
+            AND to_tsvector('english', COALESCE("ChatMessage".content, '')) @@ plainto_tsquery('english', ${searchQuery})
+          ORDER BY rank DESC
+          LIMIT ${limit}
+        `,
+      );
 
       return {
         content: [
@@ -148,7 +139,14 @@ export function createChatSearchTool(userId: string) {
               {
                 query: params.query,
                 count: results.length,
-                results,
+                results: results.map((r) => ({
+                  sessionId: r.sessionId,
+                  sessionTitle: r.sessionTitle,
+                  messageId: r.messageId,
+                  role: r.role,
+                  content: r.content,
+                  date: r.date,
+                })),
               },
               null,
               2,
