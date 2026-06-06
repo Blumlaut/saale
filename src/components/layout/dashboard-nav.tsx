@@ -97,7 +97,9 @@ export function DashboardNav() {
       .then((data) => {
         setIsAdmin(data.user?.role === "admin");
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to check admin status:", err);
+      });
   }, []);
 
   // Close search on Escape

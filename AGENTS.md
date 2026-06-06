@@ -44,6 +44,37 @@ See `.pi/skills/database-migrations/SKILL.md` for the full workflow, rules, and 
 - Use `@/` import alias. No relative imports reaching up more than 2 levels.
 - Error boundaries around user-facing components.
 
+## Never Swallow Errors
+
+- **Every `catch` block must log the error.** No empty `catch {}`, no `.catch(() => {})`, no `// silently fail`.
+- Use `console.error("descriptive context:", err)` at minimum. The context string must identify *what* failed, not just repeat the error message.
+- Fire-and-forget promises (`.catch(...)`) must still log — the error is swallowed from the caller but must appear in logs for debugging.
+- The only exception is intentional early-exit guards (e.g., `if (!condition) return;`), which are not error handling.
+
+### Examples
+
+```ts
+// ❌ BAD — error silently disappears
+await fetch(url).catch(() => {});
+
+try {
+  parse(data);
+} catch {
+  // skip malformed
+}
+
+// ✅ GOOD — error logged with context
+await fetch(url).catch((err) => {
+  console.error("Failed to fetch config:", err);
+});
+
+try {
+  parse(data);
+} catch (err) {
+  console.error("Malformed config data:", err);
+}
+```
+
 ## No Nested Interactive Elements
 
 - **Never nest `<button>` inside `<button>`, `<a>` inside `<button>`, or `<button>` inside `<a>`.** This causes hydration errors in Next.js and is invalid HTML.

@@ -141,7 +141,9 @@ export default function AdminModelsPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadProviders(), loadModels(), loadSettings()]).catch(() => {});
+    Promise.all([loadProviders(), loadModels(), loadSettings()]).catch((err) => {
+      console.error("Failed to load admin model data:", err);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

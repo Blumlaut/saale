@@ -128,7 +128,9 @@ export function createJobTools(userId: string): ToolDefinition[] {
             );
           }
         } else {
-          await queue.remove(`scheduled-${params.id}`).catch(() => {});
+          await queue.remove(`scheduled-${params.id}`).catch((err) => {
+            console.error("Failed to remove scheduled job:", err);
+          });
         }
 
         return {
