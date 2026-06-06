@@ -150,6 +150,11 @@ export function ChatInterface({
   const abortRef = useRef<AbortController | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
+  // Polling refs (shared between mount effect and 409 handler)
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isPollingRef = useRef(false);
+  const startPollingRef = useRef<(() => void) | null>(null);
+
   const loadMessages = async (): Promise<{ responseInProgress?: boolean } | null> => {
     try {
       const data = await fetchJson<{
@@ -363,20 +368,79 @@ export function ChatInterface({
           finalizeStreaming(streamingRef, setMessages);
           loadMessages();
         };
-      } catch {
+      } catch (err) {
         setIsLoading(false);
+        if (
+          err instanceof Error &&
+          "status" in err &&
+          (err as { status?: number }).status === 409
+        ) {
+          // Response already in progress — reload and poll
+          loadMessages();
+          startPollingRef.current?.();
+        }
       }
     },
     [sessionId], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
   );
 
   // Load messages and session title.
-  // If responseInProgress is true (user refreshed during "Thinking..."), poll for the response.
+  // If responseInProgress is true (user refreshed during processing), poll until the agent finishes.
+  // Critical: we must NOT stop polling when an assistant message appears — multi-turn responses
+  // save intermediate turns (tool calls) on turn_end, but the agent may still be working.
+  // Only stop when responseInProgress === false (set by agent_end in the stream route).
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
-    const pollIntervalRef: { current: ReturnType<typeof setInterval> | null } = { current: null };
-    let checkTimer: ReturnType<typeof setTimeout> | null = null;
     const RESPONSE_POLL_TIMEOUT = 120_000; // 2 min safety net
+
+    const stopPolling = () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      isPollingRef.current = false;
+    };
+
+    const startPolling = () => {
+      if (isPollingRef.current) return; // already polling
+      isPollingRef.current = true;
+      setIsLoading(true);
+      const startedAt = Date.now();
+
+      pollIntervalRef.current = setInterval(async () => {
+        // Safety net: stop polling after timeout
+        if (Date.now() - startedAt > RESPONSE_POLL_TIMEOUT) {
+          stopPolling();
+          setIsLoading(false);
+          markDone(sessionId);
+          return;
+        }
+
+        try {
+          const data = await fetchJson<{
+            messages: Message[];
+            session: { responseInProgress?: boolean };
+          }>(`/api/chat/sessions/${sessionId}/messages`);
+
+          // Always update messages (new turns may have been saved)
+          setMessages(data.messages);
+
+          // Only stop when the backend says it's done
+          if (data.session?.responseInProgress !== true) {
+            stopPolling();
+            setIsLoading(false);
+            markDone(sessionId);
+          }
+        } catch {
+          // Session deleted or network error — stop polling
+          stopPolling();
+          setIsLoading(false);
+        }
+      }, 1500);
+    };
+
+    // Expose for use outside this effect (e.g., 409 handler)
+    startPollingRef.current = startPolling;
 
     const init = async () => {
       const sessionInfo = await loadMessages();
@@ -388,63 +452,13 @@ export function ChatInterface({
 
       if (!wasStreaming && !responseInProgress) return;
 
-      // Delay check to let initial loadMessages() settle
-      checkTimer = setTimeout(async () => {
-        try {
-          const data = await fetchJson<{ messages: Message[] }>(
-            `/api/chat/sessions/${sessionId}/messages`,
-          );
-          const lastMessage = data.messages[data.messages.length - 1];
-
-          if (lastMessage && lastMessage.role === "assistant") {
-            // Response already saved — update and clear streaming indicator
-            setMessages(data.messages);
-            markDone(sessionId);
-            return;
-          }
-
-          // Response not yet saved — start polling
-          setIsLoading(true);
-          const startedAt = Date.now();
-          pollIntervalRef.current = setInterval(async () => {
-            // Safety net: stop polling after timeout
-            if (Date.now() - startedAt > RESPONSE_POLL_TIMEOUT) {
-              clearInterval(pollIntervalRef.current!);
-              pollIntervalRef.current = null;
-              setIsLoading(false);
-              markDone(sessionId);
-              return;
-            }
-
-            try {
-              const data = await fetchJson<{ messages: Message[] }>(
-                `/api/chat/sessions/${sessionId}/messages`,
-              );
-              const lastMsg = data.messages[data.messages.length - 1];
-              if (lastMsg && lastMsg.role === "assistant") {
-                clearInterval(pollIntervalRef.current!);
-                pollIntervalRef.current = null;
-                setMessages(data.messages);
-                setIsLoading(false);
-                markDone(sessionId);
-              }
-            } catch {
-              clearInterval(pollIntervalRef.current!);
-              pollIntervalRef.current = null;
-              setIsLoading(false);
-            }
-          }, 1500);
-        } catch {
-          // Session deleted — ignore
-        }
-      }, 500);
+      startPolling();
     };
 
     init();
 
     return () => {
-      if (checkTimer) clearTimeout(checkTimer);
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      stopPolling();
     };
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -579,6 +593,13 @@ export function ChatInterface({
           if (res.status === 404) {
             // Session was deleted (temporary chat closed) — redirect
             router.push("/dashboard/chat");
+            return;
+          }
+          if (res.status === 409) {
+            // Response already in progress — remove temp message and start polling
+            setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
+            loadMessages();
+            startPollingRef.current?.();
             return;
           }
           throw new Error(`Failed to send message: ${body.error || res.statusText}`);
@@ -777,7 +798,7 @@ export function ChatInterface({
         console.error("Send error:", err);
       }
     },
-    [sessionId, router],
+    [sessionId, router], // eslint-disable-line react-hooks/exhaustive-deps -- loadMessages is stable
   );
 
   // Stop streaming

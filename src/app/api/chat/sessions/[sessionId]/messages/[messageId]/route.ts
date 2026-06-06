@@ -17,13 +17,21 @@ export async function PATCH(
 
   const { sessionId, messageId } = await params;
 
-  // Verify session ownership
+  // Verify session ownership and check if a response is already in progress
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authResult.user.id },
+    select: { id: true, responseInProgress: true },
   });
 
   if (!chatSession) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (chatSession.responseInProgress) {
+    return NextResponse.json(
+      { error: "A response is already being generated. Please wait." },
+      { status: 409 },
+    );
   }
 
   // Fetch the message
@@ -48,7 +56,7 @@ export async function PATCH(
   // Sanitize content
   const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
-  // Update the message in place and delete all messages after it
+  // Update the message in place, delete messages after it, and mark response in progress
   await prisma.$transaction(async (tx) => {
     // Update the message content
     await tx.chatMessage.update({
@@ -65,6 +73,12 @@ export async function PATCH(
         sessionId,
         createdAt: { gt: message.createdAt },
       },
+    });
+
+    // Mark response as in progress
+    await tx.chatSession.update({
+      where: { id: sessionId },
+      data: { responseInProgress: true },
     });
   });
 
