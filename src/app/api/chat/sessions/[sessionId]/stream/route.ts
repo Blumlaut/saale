@@ -193,8 +193,8 @@ export async function GET(
         if (subscriber) {
           try {
             subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
-          } catch {
-            // Ignore — already closed
+          } catch (err) {
+            console.error("Error unsubscribing from Redis (may already be closed):", err);
           }
           subscriber.quit().catch((err) => {
             console.error("Failed to close Redis subscriber:", err);
