@@ -20,8 +20,15 @@ const eslintConfig = defineConfig([
       // --- Existing ---
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
-        "warn",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          // Catch unused exports within the same file (e.g., functions defined but never called)
+          // Note: this does NOT catch exports unused by OTHER files — that requires
+          // import/no-unused-modules which is incompatible with re-export patterns.
+          caughtErrorsIgnorePattern: "^_",
+        },
       ],
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "prefer-const": "error",
