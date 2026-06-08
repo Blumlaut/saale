@@ -288,14 +288,27 @@ export async function GET(
     { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
   > = new Map();
 
-  // Track turn state
+  // Track turn state (for streaming to frontend)
   let turnIndex = 0;
   let currentTurnText = "";
   let currentTurnThinking = "";
   // Track tool calls that belong to the current turn (by toolCallId)
   const currentTurnToolCallIds = new Set<string>();
 
-  // Root assistant message ID (first turn's DB message id, used as parentMessageId for subsequent turns)
+  // Buffer turns for DB save on agent_end (avoids duplicate saves from multiple turn_end events)
+  const bufferedTurns: Array<{
+    text: string;
+    thinking: string | undefined;
+    toolCalls:
+      | Array<{
+          id: string;
+          name: string;
+          args: Record<string, unknown>;
+          result: string | undefined;
+          isError: boolean | undefined;
+        }>
+      | undefined;
+  }> = [];
   let rootMessageId: string | null = null;
 
   const stream = new ReadableStream({
@@ -400,19 +413,11 @@ export async function GET(
               };
             });
 
-            // Save this turn's message to DB
-            const savedMessage = saveAssistantMessage(
-              sessionId,
-              currentTurnText,
-              currentTurnThinking || undefined,
-              turnToolCalls.length > 0 ? turnToolCalls : undefined,
-              rootMessageId, // parentMessageId (null for first turn)
-            );
-
-            savedMessage.then((msg) => {
-              if (!rootMessageId) {
-                rootMessageId = msg.id;
-              }
+            // Buffer for DB save on agent_end (not here — turn_end fires per inner-loop iteration)
+            bufferedTurns.push({
+              text: currentTurnText,
+              thinking: currentTurnThinking || "",
+              toolCalls: turnToolCalls.length > 0 ? turnToolCalls : undefined,
             });
 
             // Emit turn_end event to frontend
@@ -446,80 +451,34 @@ export async function GET(
           }
 
           case "agent_end": {
-            // Get final assistant message(s)
-            const assistantMessages = event.messages
-              .filter((m) => m.role === "assistant")
-              .map((m) => m as { role: "assistant"; content: unknown[] });
-            const lastAssistant = assistantMessages[assistantMessages.length - 1];
+            // Save all buffered turns to DB (one save per turn, no duplicates)
+            const saveTurns = bufferedTurns.map((turn, i) =>
+              saveAssistantMessage(
+                sessionId,
+                turn.text,
+                turn.thinking,
+                turn.toolCalls,
+                i === 0 ? null : rootMessageId, // parentMessageId
+              ).then((msg) => {
+                if (i === 0) rootMessageId = msg.id;
+              }),
+            );
 
-            if (lastAssistant) {
-              // Extract final text
-              const textBlocks = lastAssistant.content.filter(
-                (c) =>
-                  typeof c === "object" &&
-                  c !== null &&
-                  (c as Record<string, unknown>).type === "text",
-              );
-              const finalText = textBlocks
-                .map((c) => ((c as Record<string, unknown>).text as string) || "")
-                .join("");
-
-              // Extract thinking
-              const thinkingBlock = lastAssistant.content.find(
-                (c) =>
-                  typeof c === "object" &&
-                  c !== null &&
-                  (c as Record<string, unknown>).type === "thinking",
-              );
-              const finalThinking =
-                thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock
-                  ? ((thinkingBlock as Record<string, unknown>).thinking as string)
-                  : "";
-
-              // Extract tool calls from the message content
-              const toolCallBlocks = lastAssistant.content.filter(
-                (c) =>
-                  typeof c === "object" &&
-                  c !== null &&
-                  (c as Record<string, unknown>).type === "toolCall",
-              ) as Record<string, unknown>[];
-              const toolCalls = toolCallBlocks.map((tc) => {
-                const result = toolCallResults.get(tc.id as string);
-                return {
-                  id: tc.id as string,
-                  name: tc.name as string,
-                  args: tc.arguments as unknown as Record<string, unknown>,
-                  result: result?.result,
-                  isError: result?.isError,
-                };
-              });
-
-              // If there were no turn_end events (single-turn response with no tools),
-              // save the message here
-              if (turnIndex === 0) {
-                saveAssistantMessage(
-                  sessionId,
-                  finalText,
-                  finalThinking || undefined,
-                  toolCalls.length > 0 ? toolCalls : undefined,
-                  null,
-                ).catch(console.error);
-              }
-
-              // Update message count and clear in-progress flag
-              prisma.chatSession
-                .update({
-                  where: { id: sessionId },
-                  data: {
-                    messageCount: { increment: turnIndex || 1 },
-                    processingSince: null,
-                  },
-                })
-                .catch(console.error);
-            }
+            // Update message count and clear in-progress flag
+            prisma.chatSession
+              .update({
+                where: { id: sessionId },
+                data: {
+                  messageCount: { increment: bufferedTurns.length || 1 },
+                  processingSince: null,
+                },
+              })
+              .catch(console.error);
 
             // Clean up Redis tracking (agent stays in pool for reuse)
             unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
+
+            Promise.allSettled(saveTurns).catch(console.error);
 
             sendEvent(controller, "done", {});
             closeController(controller);
@@ -540,6 +499,21 @@ export async function GET(
 
         promptPromise.catch((err) => {
           console.error("agent.prompt() failed:", err);
+          // Save any partial turns buffered before the error
+          if (bufferedTurns.length > 0) {
+            const saveTurns = bufferedTurns.map((turn, i) =>
+              saveAssistantMessage(
+                sessionId,
+                turn.text,
+                turn.thinking,
+                turn.toolCalls,
+                i === 0 ? null : rootMessageId,
+              ).then((msg) => {
+                if (i === 0) rootMessageId = msg.id;
+              }),
+            );
+            Promise.allSettled(saveTurns).catch(console.error);
+          }
           // Clear in-progress flag so the user can retry
           prisma.chatSession
             .update({ where: { id: sessionId }, data: { processingSince: null } })
@@ -749,15 +723,17 @@ function handleReconnectFromRedis(sessionId: string, request: NextRequest): Resp
 async function saveAssistantMessage(
   sessionId: string,
   content: string,
-  thinking?: string,
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-    result: string | undefined;
-    isError: boolean | undefined;
-  }>,
-  parentMessageId?: string | null,
+  thinking: string | undefined,
+  toolCalls:
+    | Array<{
+        id: string;
+        name: string;
+        args: Record<string, unknown>;
+        result: string | undefined;
+        isError: boolean | undefined;
+      }>
+    | undefined,
+  parentMessageId: string | null | undefined,
 ): Promise<{ id: string }> {
   return prisma.chatMessage.create({
     data: {
