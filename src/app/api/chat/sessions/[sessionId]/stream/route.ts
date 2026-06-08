@@ -240,6 +240,7 @@ export async function GET(
   // Create SSE stream
   const encoder = new TextEncoder();
   let clientDisconnected = false;
+  let controllerClosed = false;
 
   /**
    * Send an SSE event with proper escaping and publish to Redis for reconnection.
@@ -253,14 +254,32 @@ export async function GET(
     event: string,
     data: unknown,
   ): void {
-    if (clientDisconnected) return;
+    if (clientDisconnected || controllerClosed) return;
     const json = JSON.stringify(data);
     // Replace literal newlines with \n to prevent SSE event termination
     const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
+    try {
+      controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
+    } catch (err) {
+      // Controller may have been closed by another handler (race condition)
+      console.error("Failed to enqueue SSE event (controller may be closed):", err);
+    }
 
     // Publish to Redis for reconnecting clients (fire-and-forget)
     publishStreamEvent(sessionId, event, data).catch(console.error);
+  }
+
+  /**
+   * Safely close the controller (idempotent — won't throw if already closed).
+   */
+  function closeController(controller: ReadableStreamDefaultController): void {
+    if (controllerClosed) return;
+    controllerClosed = true;
+    try {
+      controller.close();
+    } catch (err) {
+      console.error("Failed to close controller (may already be closed):", err);
+    }
   }
 
   // Track tool call results for the final message
@@ -503,10 +522,7 @@ export async function GET(
             unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
 
             sendEvent(controller, "done", {});
-
-            if (!clientDisconnected) {
-              controller.close();
-            }
+            closeController(controller);
             break;
           }
         }
@@ -533,9 +549,7 @@ export async function GET(
           unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
           sendEvent(controller, "error", { message: err.message });
           sendEvent(controller, "done", {});
-          if (!clientDisconnected) {
-            controller.close();
-          }
+          closeController(controller);
         });
       } else if (!shouldPrompt && pooled.lastPromptedMessageId) {
         // Reconnect case — agent already processed this message
@@ -549,7 +563,7 @@ export async function GET(
       // When the user navigates back, loadMessages() picks up the saved response.
       request.signal.addEventListener("abort", () => {
         clientDisconnected = true;
-        controller.close();
+        closeController(controller);
       });
     },
   });
