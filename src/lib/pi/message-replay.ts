@@ -4,6 +4,11 @@
  * These functions ensure that replayed messages are byte-identical to what the
  * live agent produced, which is critical for LLM provider cache hits.
  *
+ * NOTE: This module is no longer used by the streaming chat path (stream/route.ts).
+ * The stream now uses Pi's SessionManager with file-based persistence and long-lived
+ * agents. This module is kept for queue jobs and offline message processing.
+ * Consider removing once all consumers migrate.
+ *
  * @see {@link https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching}
  */
 

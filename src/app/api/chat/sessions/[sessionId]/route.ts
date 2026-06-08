@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { deleteAllImages } from "@/lib/image-attachment";
+import { remove, getPoolKey, getSessionDir } from "@/lib/pi/agent-pool";
+import fs from "fs/promises";
 
 /**
  * GET /api/chat/sessions/:sessionId — Get session details
@@ -145,6 +147,18 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
   await prisma.chatSession.delete({
     where: { id: sessionId },
   });
+
+  // Clean up agent pool entry (disposes agent, removes from pool)
+  const poolKey = getPoolKey(authResult.user.id, sessionId);
+  remove(poolKey);
+
+  // Clean up session files on disk (Pi's JSONL session files)
+  const sessionDir = getSessionDir(authResult.user.id, sessionId);
+  try {
+    await fs.rm(sessionDir, { recursive: true, force: true });
+  } catch (err) {
+    console.error(`Failed to clean up session files for ${sessionId}:`, err);
+  }
 
   return NextResponse.json({ ok: true });
 }
