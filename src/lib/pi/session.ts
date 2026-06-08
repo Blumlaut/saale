@@ -117,7 +117,7 @@ async function detectImageMimeType(filePath: string): Promise<string | null> {
  * Create local (host-side) Pi built-in tools locked to the user's workspace.
  * Used when bash is disabled — fast, no network overhead.
  */
-function createLocalScopedTools(userId: string) {
+export function createLocalScopedTools(userId: string) {
   const userDir = getUserDir(userId);
 
   return {
@@ -179,7 +179,7 @@ function createLocalScopedTools(userId: string) {
  * Create terminal-backed Pi built-in tools (sandboxed via open-terminal).
  * Used when bash is enabled — all file ops go through the container.
  */
-function createTerminalScopedTools(userId: string, sessionId: string) {
+export function createTerminalScopedTools(userId: string, sessionId: string) {
   const homeDir = getTerminalHomeDir(userId);
   const ops = createTerminalOperations({ userId, sessionId, cwd: homeDir });
 
@@ -189,6 +189,37 @@ function createTerminalScopedTools(userId: string, sessionId: string) {
     edit: createEditTool(homeDir, { operations: ops.edit }),
     bash: createBashTool(homeDir, { operations: ops.bash }),
   };
+}
+
+/**
+ * Build the model registry and resolve tools for a user.
+ * Shared between createPiSession and createPersistentSession.
+ */
+export async function buildSessionDeps(options: {
+  userId: string;
+  sessionId: string;
+  customTools: ToolDefinition[];
+  toolConfig: ToolConfig | null | undefined;
+  modelProvider: string | undefined;
+  modelName: string | undefined;
+}) {
+  const { modelRegistry, authStorage } = await buildModelRegistry(options.userId);
+
+  const enabled = resolveToolConfig(options.toolConfig);
+  const allCustomTools: ToolDefinition[] = [...options.customTools];
+
+  const resolvedTools = resolveTools(options.userId, options.sessionId, enabled, {
+    createLocalScopedTools,
+    createTerminalScopedTools,
+  });
+  allCustomTools.push(...resolvedTools);
+
+  let model;
+  if (options.modelProvider && options.modelName) {
+    model = modelRegistry.find(options.modelProvider, options.modelName);
+  }
+
+  return { modelRegistry, authStorage, allCustomTools, model };
 }
 
 /**
@@ -206,30 +237,18 @@ export async function createPiSession(options: {
   const userDir = getUserDir(options.userId);
   await fs.mkdir(userDir, { recursive: true });
 
-  // Build model registry with user's providers and discovered models
-  const { modelRegistry, authStorage } = await buildModelRegistry(options.userId);
-
-  // Resolve tool config (which tool categories are enabled)
-  const enabled = resolveToolConfig(options.toolConfig);
-
   // Generate a session ID for open-terminal cwd persistence
   const sessionId = crypto.randomUUID();
 
-  // Build user-scoped custom tools (only if enabled)
-  const allCustomTools: ToolDefinition[] = [...options.customTools];
-
-  // Resolve tools from the registry (handles bash/files interdependency + all custom tools)
-  const resolvedTools = resolveTools(options.userId, sessionId, enabled, {
-    createLocalScopedTools,
-    createTerminalScopedTools,
+  // Build shared dependencies (model registry, tools, model resolution)
+  const { modelRegistry, authStorage, allCustomTools, model } = await buildSessionDeps({
+    userId: options.userId,
+    sessionId,
+    customTools: options.customTools,
+    toolConfig: options.toolConfig,
+    modelProvider: options.modelProvider,
+    modelName: options.modelName,
   });
-  allCustomTools.push(...resolvedTools);
-
-  // Resolve the model if specified
-  let model;
-  if (options.modelProvider && options.modelName) {
-    model = modelRegistry.find(options.modelProvider, options.modelName);
-  }
 
   const result = await createAgentSession({
     sessionManager: SessionManager.inMemory(),

@@ -7,15 +7,12 @@ import {
   registerActiveSession,
   unregisterActiveSession,
 } from "@/lib/redis";
-import { createPiSession, type ToolConfig } from "@/lib/pi/session";
+import { type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
-import {
-  normalizeToolResult,
-  buildHistoryMessages,
-  type StoredMessage,
-  type ImageContent,
-} from "@/lib/pi/message-replay";
+import { normalizeToolResult, type ImageContent } from "@/lib/pi/message-replay";
 import { readImageAsBase64 } from "@/lib/image-attachment";
+import { getPoolKey, getSessionDir, createAndPool } from "@/lib/pi/agent-pool";
+import { createPersistentSession } from "@/lib/pi/persistent-session";
 
 /**
  * Redis pub/sub for SSE reconnection.
@@ -28,9 +25,6 @@ const STREAM_CHANNEL_PREFIX = "chat:stream:";
 const BUFFER_KEY_PREFIX = "chat:stream:buf:";
 const BUFFER_TTL_SECONDS = 60; // keep buffer for 60s
 const BUFFER_MAX_SIZE = 200; // max events in buffer
-
-/** In-memory cache of running Pi sessions (for explicit cancellation via stop endpoint within the same process). */
-export const activeSessions = new Map<string, { agent: { abort: () => void } }>();
 
 /** Publish an SSE-formatted event to Redis for other clients to receive. */
 async function publishStreamEvent(sessionId: string, event: string, data: unknown): Promise<void> {
@@ -67,8 +61,8 @@ async function getBufferedEvents(sessionId: string): Promise<string[]> {
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
  *
  * Streams Pi agent responses as Server-Sent Events.
- * Emits: token (cumulative text for current turn), thinking (cumulative thinking for current turn),
- *         tool_start, tool_end, turn_end (completed turn data), done
+ * Uses long-lived agents backed by Pi's file-based SessionManager.
+ * Emits: token, thinking, tool_start, tool_end, turn_end, done, compaction_start, compaction_end
  */
 export async function GET(
   request: NextRequest,
@@ -101,21 +95,7 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  // Get all messages for context (with attachments for image support)
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "asc" },
-    include: {
-      attachments: {
-        select: {
-          storagePath: true,
-          mimeType: true,
-        },
-      },
-    },
-  });
-
-  // Resolve tool config to know which tool categories are enabled
+  // Resolve tool config
   const resolvedToolConfig: ToolConfig = chatSession.toolConfig
     ? { ...(chatSession.toolConfig as ToolConfig) }
     : {};
@@ -164,269 +144,89 @@ export async function GET(
     );
   }
 
-  // If another request is already processing this session and the client explicitly
-  // requests reconnection (?reconnect=1), subscribe to Redis pub/sub and forward events.
-  // Without ?reconnect=1 this is the primary stream — always process normally even if
-  // processingSince is set (the POST endpoint sets it before returning the stream URL).
+  // Check for reconnect request
   const url = new URL(request.url);
   const isReconnect = url.searchParams.get("reconnect") === "1";
 
   if (isReconnect && chatSession.processingSince) {
-    const encoder = new TextEncoder();
-
-    const sse = (event: string, data: unknown): string => {
-      const json = JSON.stringify(data);
-      const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-      return `event: ${event}\ndata: ${escaped}\n\n`;
-    };
-
-    // Async iterator — proper pattern for indefinite async SSE streams.
-    // Yields buffered events first, then live pub/sub events.
-    // Falls back to DB polling if pub/sub delivers nothing.
-    async function* reconnectEvents() {
-      let subscriber: ReturnType<typeof createRedisClient> | null = null;
-      let done = false;
-      let aborted = false;
-
-      const cleanup = () => {
-        aborted = true;
-        if (subscriber) {
-          try {
-            subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
-          } catch (err) {
-            console.error("Error unsubscribing from Redis (may already be closed):", err);
-          }
-          subscriber.quit().catch((err) => {
-            console.error("Failed to close Redis subscriber:", err);
-          });
-          subscriber = null;
-        }
-      };
-
-      request.signal.addEventListener("abort", cleanup, { once: true });
-
-      try {
-        // Send buffered events first (catch up on anything we missed)
-        const buffered = await getBufferedEvents(sessionId);
-        for (const raw of buffered) {
-          if (aborted) break;
-          try {
-            const { event, data } = JSON.parse(raw);
-            yield encoder.encode(sse(event, data));
-            if (event === "done" || event === "error") {
-              done = true;
-            }
-          } catch (err) {
-            console.error("Malformed buffered event:", err);
-          }
-        }
-        if (done || aborted) {
-          cleanup();
-          return;
-        }
-
-        // Subscribe to live pub/sub events
-        subscriber = createRedisClient();
-        await subscriber.subscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
-
-        // Wait for pub/sub messages with timeout.
-        // If no message arrives within 30s, fall back to DB polling.
-        while (!done && !aborted) {
-          const message = await new Promise<{ event: string; data: unknown } | null>((resolve) => {
-            let resolved = false;
-            const handler = (_channel: string, raw: string) => {
-              if (resolved) return;
-              resolved = true;
-              try {
-                resolve(JSON.parse(raw));
-              } catch (err) {
-                console.error("Malformed pub/sub message:", err);
-                resolve(null);
-              }
-            };
-            subscriber!.on("message", handler);
-
-            const timer = setTimeout(() => {
-              if (resolved) return;
-              resolved = true;
-              subscriber?.off("message", handler);
-              resolve(null);
-            }, 30000);
-
-            // If resolved by handler, clear the timeout
-            const originalResolve = resolve;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (resolve as any) = (val: Parameters<typeof originalResolve>[0]) => {
-              if (!resolved) {
-                resolved = true;
-                clearTimeout(timer);
-                subscriber?.off("message", handler);
-                originalResolve(val);
-              }
-            };
-          });
-
-          if (aborted) break;
-
-          if (message) {
-            // Pub/sub delivered an event — forward it
-            yield encoder.encode(sse(message.event, message.data));
-            if (message.event === "done" || message.event === "error") {
-              done = true;
-            }
-            continue;
-          }
-
-          // No pub/sub event within 30s — poll DB for completed messages
-          const session = await prisma.chatSession.findUnique({
-            where: { id: sessionId },
-            select: { processingSince: true },
-          });
-          if (!session?.processingSince) {
-            // Agent finished — load latest assistant messages from DB
-            const messages = await prisma.chatMessage.findMany({
-              where: { sessionId, role: "assistant" },
-              orderBy: { createdAt: "asc" },
-              take: 10,
-            });
-            if (messages.length > 0) {
-              yield encoder.encode(
-                sse("resume", {
-                  messages: messages.map((m) => ({
-                    id: m.id,
-                    content: m.content,
-                    thinking: m.thinking,
-                    toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
-                  })),
-                }),
-              );
-            }
-            yield encoder.encode(sse("done", {}));
-            done = true;
-          }
-        }
-
-        cleanup();
-      } catch (err) {
-        console.error("Reconnection error:", err);
-        cleanup();
-        yield encoder.encode(sse("error", { message: "Reconnection failed" }));
-      }
-    }
-
-    const iterator = reconnectEvents();
-    const reconnectStream = new ReadableStream({
-      async pull(controller) {
-        const result = await iterator.next();
-        if (result.done) {
-          controller.close();
-          return;
-        }
-        controller.enqueue(result.value);
-      },
-    });
-
-    return new Response(reconnectStream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
-    });
+    // Reconnect: the primary stream handler publishes events to Redis.
+    // The reconnected client subscribes to Redis pub/sub for catch-up.
+    // This works whether the agent is in the pool (same process) or not (restart).
+    return handleReconnectFromRedis(sessionId, request);
   }
 
-  // Create Pi session with custom tools (filtered by toolConfig)
-  const { session: piSession } = await createPiSession({
-    userId: authResult.user.id,
-    customTools: [],
-    ...(chatSession.toolConfig && { toolConfig: resolvedToolConfig }),
-    modelProvider,
-    modelName,
-    thinkingLevel: chatSession.thinkingLevel || "off",
+  // ── Primary stream path ──────────────────────────────────────────────
+
+  const poolKey = getPoolKey(authResult.user.id, sessionId);
+  const sessionDir = getSessionDir(authResult.user.id, sessionId);
+
+  // Get or create pooled agent
+  const pooled = await createAndPool(poolKey, async () => {
+    const result = await createPersistentSession({
+      userId: authResult.user.id,
+      sessionId,
+      sessionDir,
+      customTools: [],
+      toolConfig: resolvedToolConfig,
+      modelProvider,
+      modelName,
+      thinkingLevel: chatSession.thinkingLevel || "off",
+    });
+
+    // Set system prompt on the agent
+    const defaultSystemPrompt =
+      "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
+    const basePrompt =
+      userSettings?.agentSystemPrompt && userSettings.agentSystemPrompt.trim()
+        ? userSettings.agentSystemPrompt
+        : defaultSystemPrompt;
+
+    const memoryInstruction =
+      resolvedToolConfig.memory !== false
+        ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
+        : "";
+
+    result.session.agent.state.systemPrompt = basePrompt + memoryInstruction;
+
+    return { session: result.session, sessionDir };
   });
 
   // Register session for explicit cancellation (stop endpoint)
-  // In-memory map: same-process abort
-  activeSessions.set(sessionId, { agent: piSession.agent });
-  // Redis: cross-instance tracking (used by stop endpoint to detect stale state)
   await registerActiveSession(authResult.user.id, sessionId);
 
-  // Capture resolved model for consistent history reconstruction.
-  // Using the actual model's api/provider/id ensures transformMessages treats
-  // replayed messages as same-model (isSameModel=true), preserving thinking
-  // blocks, tool signatures, etc. — critical for cache hits.
-  const model = piSession.model;
+  // Get the latest user message from DB (the one to prompt with)
+  const messages = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "asc" },
+    include: {
+      attachments: {
+        select: {
+          storagePath: true,
+          mimeType: true,
+        },
+      },
+    },
+  });
 
-  // Set up system prompt — use user-defined prompt if set, otherwise fall back to default
-  const defaultSystemPrompt =
-    "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
-  const basePrompt =
-    userSettings?.agentSystemPrompt && userSettings.agentSystemPrompt.trim()
-      ? userSettings.agentSystemPrompt
-      : defaultSystemPrompt;
+  const lastMessage = messages[messages.length - 1];
 
-  // Conditionally append memory instruction only when memory tools are enabled
-  const memoryInstruction =
-    resolvedToolConfig.memory !== false
-      ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
-      : "";
-
-  piSession.agent.state.systemPrompt = basePrompt + memoryInstruction;
-
-  // Reconstruct conversation history from DB messages.
-  // buildHistoryMessages ensures byte-identical output to the live agent:
-  // - toolCallId (not toolUseId) for correct provider adapter mapping
-  // - resolved model metadata for same-model detection in transformMessages
-  // - canonical content block order: thinking → text → toolCall
-  // - toolResult text extracted (not double-encoded)
-  // - image attachments re-read from disk (deterministic WebP → base64)
-  const storedMessages: StoredMessage[] = messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-    thinking: m.thinking,
-    toolCalls: m.toolCalls,
-    attachments: m.attachments.map((a) => ({
-      storagePath: a.storagePath,
-      mimeType: a.mimeType,
-    })),
-  }));
-
-  // Pre-load images for all user messages in history (not the last one — that's the current prompt).
-  // This ensures byte-identical base64 data across turns → LLM cache hits.
-  // Map from history index (0-based, excludes last message) to ImageContent[].
-  const imageCache = new Map<number, ImageContent[]>();
-  const historyMessagesSlice = storedMessages.slice(0, -1);
-  for (let i = 0; i < historyMessagesSlice.length; i++) {
-    const m = historyMessagesSlice[i]!;
-    if (m.role === "user" && m.attachments && m.attachments.length > 0) {
-      const images: ImageContent[] = [];
-      for (const att of m.attachments) {
-        try {
-          const { data, mimeType } = await readImageAsBase64(authResult.user.id, att.storagePath);
-          images.push({ type: "image" as const, data, mimeType });
-        } catch (err) {
-          console.error(`Failed to load image for history message ${i}:`, err);
-        }
-      }
-      if (images.length > 0) {
-        imageCache.set(i, images);
-      }
+  // Double-prompting guard: only prompt if this message hasn't been processed
+  let shouldPrompt = false;
+  if (lastMessage && lastMessage.role === "user") {
+    if (pooled.lastPromptedMessageId !== lastMessage.id) {
+      shouldPrompt = true;
     }
   }
-
-  const historyMessages = buildHistoryMessages(storedMessages, {
-    api: model?.api,
-    provider: model?.provider,
-    id: model?.id,
-    imageCache,
-  });
 
   // Pre-load images for the current (last) user message.
   // Must be done outside the stream's start() callback (which is not async).
   const lastMessageImages: ImageContent[] = [];
-  const lastMessage = messages[messages.length - 1];
-  if (lastMessage && lastMessage.role === "user" && lastMessage.attachments.length > 0) {
+  if (
+    shouldPrompt &&
+    lastMessage &&
+    lastMessage.role === "user" &&
+    lastMessage.attachments.length > 0
+  ) {
     for (const att of lastMessage.attachments) {
       try {
         const { data, mimeType } = await readImageAsBase64(authResult.user.id, att.storagePath);
@@ -436,6 +236,7 @@ export async function GET(
       }
     }
   }
+
   // Create SSE stream
   const encoder = new TextEncoder();
   let clientDisconnected = false;
@@ -480,14 +281,8 @@ export async function GET(
 
   const stream = new ReadableStream({
     start(controller) {
-      // Inject conversation history into the agent state
-      if (historyMessages.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AgentMessage type requires full AssistantMessage fields (api/provider/model/usage), but convertToLlm handles simple {role, content} objects at runtime
-        piSession.agent.state.messages = historyMessages as any;
-      }
-
       // Subscribe to agent events
-      piSession.subscribe((event) => {
+      pooled.session.subscribe((event) => {
         switch (event.type) {
           case "message_update": {
             if (event.message.role !== "assistant") return;
@@ -548,8 +343,6 @@ export async function GET(
 
           case "tool_execution_end": {
             // Normalize result to string for consistent frontend typing.
-            // Uses the same logic as buildHistoryMessages to ensure the stored
-            // result matches what would be replayed — critical for cache hits.
             const resultStr = normalizeToolResult(event.result);
             const existing = toolCallResults.get(event.toolCallId);
             if (existing) {
@@ -567,8 +360,6 @@ export async function GET(
 
           case "turn_end": {
             // Collect tool calls for this turn from the message content
-            // event.message is AgentMessage which may not have .content (e.g., BashExecutionMessage)
-            // Narrow to messages that have content
             const assistantMsg =
               event.message.role === "assistant" ? (event.message as { content: unknown[] }) : null;
             const toolCallBlocks = assistantMsg
@@ -620,9 +411,23 @@ export async function GET(
             break;
           }
 
+          case "compaction_start": {
+            sendEvent(controller, "compaction_start", { reason: event.reason });
+            break;
+          }
+
+          case "compaction_end": {
+            sendEvent(controller, "compaction_end", {
+              reason: event.reason,
+              tokensBefore: event.result?.tokensBefore,
+              aborted: event.aborted,
+              errorMessage: event.errorMessage,
+            });
+            break;
+          }
+
           case "agent_end": {
             // Get final assistant message(s)
-            // Cast to access content property (AgentMessage is a union that includes non-content types)
             const assistantMessages = event.messages
               .filter((m) => m.role === "assistant")
               .map((m) => m as { role: "assistant"; content: unknown[] });
@@ -694,8 +499,7 @@ export async function GET(
                 .catch(console.error);
             }
 
-            // Clean up session cache
-            activeSessions.delete(sessionId);
+            // Clean up Redis tracking (agent stays in pool for reuse)
             unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
 
             sendEvent(controller, "done", {});
@@ -708,14 +512,16 @@ export async function GET(
         }
       });
 
-      // Send the user message to the agent
-      // Use agent.prompt() directly to bypass AgentSession preflight logic
-      // which resets systemPrompt back to the Pi base prompt on every turn
-      if (lastMessage && lastMessage.role === "user") {
+      // Send the user message to the agent (only if this is a new message)
+      if (shouldPrompt && lastMessage && lastMessage.role === "user") {
+        // Track that we've prompted this message
+        pooled.lastPromptedMessageId = lastMessage.id;
+
         const promptPromise =
           lastMessageImages.length > 0
-            ? piSession.agent.prompt(lastMessage.content, lastMessageImages)
-            : piSession.agent.prompt(lastMessage.content);
+            ? pooled.session.prompt(lastMessage.content, { images: lastMessageImages })
+            : pooled.session.prompt(lastMessage.content);
+
         promptPromise.catch((err) => {
           console.error("agent.prompt() failed:", err);
           // Clear in-progress flag so the user can retry
@@ -724,7 +530,6 @@ export async function GET(
             .catch((updateErr) => {
               console.error("Failed to clear processingSince on error:", updateErr);
             });
-          activeSessions.delete(sessionId);
           unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
           sendEvent(controller, "error", { message: err.message });
           sendEvent(controller, "done", {});
@@ -732,6 +537,11 @@ export async function GET(
             controller.close();
           }
         });
+      } else if (!shouldPrompt && pooled.lastPromptedMessageId) {
+        // Reconnect case — agent already processed this message
+        // Subscribe to events is already active above
+        // If processing is done, the agent_end event will have been emitted already
+        // In that case, fall through to Redis pub/sub for catch-up
       }
 
       // Handle client disconnect — stop sending SSE events but let the agent
@@ -745,6 +555,174 @@ export async function GET(
   });
 
   return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+/**
+ * Handle reconnection via Redis pub/sub (agent not in pool or as fallback).
+ */
+function handleReconnectFromRedis(sessionId: string, request: NextRequest): Response {
+  const encoder = new TextEncoder();
+
+  const sse = (event: string, data: unknown): string => {
+    const json = JSON.stringify(data);
+    const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+    return `event: ${event}\ndata: ${escaped}\n\n`;
+  };
+
+  // Async iterator — proper pattern for indefinite async SSE streams.
+  // Yields buffered events first, then live pub/sub events.
+  // Falls back to DB polling if pub/sub delivers nothing.
+  async function* reconnectEvents() {
+    let subscriber: ReturnType<typeof createRedisClient> | null = null;
+    let done = false;
+    let aborted = false;
+
+    const cleanup = () => {
+      aborted = true;
+      if (subscriber) {
+        try {
+          subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+        } catch (err) {
+          console.error("Error unsubscribing from Redis (may already be closed):", err);
+        }
+        subscriber.quit().catch((err) => {
+          console.error("Failed to close Redis subscriber:", err);
+        });
+        subscriber = null;
+      }
+    };
+
+    request.signal.addEventListener("abort", cleanup, { once: true });
+
+    try {
+      // Send buffered events first (catch up on anything we missed)
+      const buffered = await getBufferedEvents(sessionId);
+      for (const raw of buffered) {
+        if (aborted) break;
+        try {
+          const { event, data } = JSON.parse(raw);
+          yield encoder.encode(sse(event, data));
+          if (event === "done" || event === "error") {
+            done = true;
+          }
+        } catch (err) {
+          console.error("Malformed buffered event:", err);
+        }
+      }
+      if (done || aborted) {
+        cleanup();
+        return;
+      }
+
+      // Subscribe to live pub/sub events
+      subscriber = createRedisClient();
+      await subscriber.subscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
+
+      // Wait for pub/sub messages with timeout.
+      // If no message arrives within 30s, fall back to DB polling.
+      while (!done && !aborted) {
+        const message = await new Promise<{ event: string; data: unknown } | null>((resolve) => {
+          let resolved = false;
+          const handler = (_channel: string, raw: string) => {
+            if (resolved) return;
+            resolved = true;
+            try {
+              resolve(JSON.parse(raw));
+            } catch (err) {
+              console.error("Malformed pub/sub message:", err);
+              resolve(null);
+            }
+          };
+          subscriber!.on("message", handler);
+
+          const timer = setTimeout(() => {
+            if (resolved) return;
+            resolved = true;
+            subscriber?.off("message", handler);
+            resolve(null);
+          }, 30000);
+
+          // If resolved by handler, clear the timeout
+          const originalResolve = resolve;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (resolve as any) = (val: Parameters<typeof originalResolve>[0]) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              subscriber?.off("message", handler);
+              originalResolve(val);
+            }
+          };
+        });
+
+        if (aborted) break;
+
+        if (message) {
+          // Pub/sub delivered an event — forward it
+          yield encoder.encode(sse(message.event, message.data));
+          if (message.event === "done" || message.event === "error") {
+            done = true;
+          }
+          continue;
+        }
+
+        // No pub/sub event within 30s — poll DB for completed messages
+        const session = await prisma.chatSession.findUnique({
+          where: { id: sessionId },
+          select: { processingSince: true },
+        });
+        if (!session?.processingSince) {
+          // Agent finished — load latest assistant messages from DB
+          const messages = await prisma.chatMessage.findMany({
+            where: { sessionId, role: "assistant" },
+            orderBy: { createdAt: "asc" },
+            take: 10,
+          });
+          if (messages.length > 0) {
+            yield encoder.encode(
+              sse("resume", {
+                messages: messages.map((m) => ({
+                  id: m.id,
+                  content: m.content,
+                  thinking: m.thinking,
+                  toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
+                })),
+              }),
+            );
+          }
+          yield encoder.encode(sse("done", {}));
+          done = true;
+        }
+      }
+
+      cleanup();
+    } catch (err) {
+      console.error("Reconnection error:", err);
+      cleanup();
+      yield encoder.encode(sse("error", { message: "Reconnection failed" }));
+    }
+  }
+
+  const iterator = reconnectEvents();
+  const reconnectStream = new ReadableStream({
+    async pull(controller) {
+      const result = await iterator.next();
+      if (result.done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(result.value);
+    },
+  });
+
+  return new Response(reconnectStream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

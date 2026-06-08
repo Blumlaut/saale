@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { unregisterActiveSession } from "@/lib/redis";
-import { activeSessions } from "../stream/route";
+import { get, getPoolKey } from "@/lib/pi/agent-pool";
 
 /**
  * Explicitly cancel an in-progress generation.
@@ -28,11 +28,13 @@ export async function POST(
     return NextResponse.json({ error: "No active generation to stop" }, { status: 400 });
   }
 
-  // Abort the running agent (same-process only — Redis tracks cross-instance state)
-  const session = activeSessions.get(sessionId);
-  if (session) {
-    session.agent.abort();
-    activeSessions.delete(sessionId);
+  // Abort the running agent via the agent pool
+  const poolKey = getPoolKey(authResult.user.id, sessionId);
+  const pooled = get(poolKey);
+  if (pooled) {
+    pooled.session.abort();
+    // Don't remove from pool — let it be reused for the next message
+    // (eviction handles cleanup)
   }
 
   // Clear Redis tracking (works across instances)
