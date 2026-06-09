@@ -160,8 +160,14 @@ export async function GET(
   const poolKey = getPoolKey(authResult.user.id, sessionId);
   const sessionDir = getSessionDir(authResult.user.id, sessionId);
 
+  // Debug log prefix (temporary — remove after investigating duplication bug)
+  const log = (tag: string, ...args: unknown[]) =>
+    // eslint-disable-next-line no-console
+    console.log(`[chat:${sessionId}] ${tag}`, ...args);
+
   // Get or create pooled agent
   const pooled = await createAndPool(poolKey, async () => {
+    log("pool", "creating new agent");
     const result = await createPersistentSession({
       userId: authResult.user.id,
       sessionId,
@@ -191,6 +197,8 @@ export async function GET(
     return { session: result.session, sessionDir };
   });
 
+  log("pool", "lastPromptedMessageId=", pooled.lastPromptedMessageId);
+
   // Register session for explicit cancellation (stop endpoint)
   await registerActiveSession(authResult.user.id, sessionId);
 
@@ -217,6 +225,11 @@ export async function GET(
       shouldPrompt = true;
     }
   }
+
+  log(
+    "prompt_guard",
+    `shouldPrompt=${shouldPrompt}, lastMessage.id=${lastMessage?.id}, role=${lastMessage?.role}, lastPromptedMessageId=${pooled.lastPromptedMessageId}, dbMessages=${messages.length}`,
+  );
 
   // Pre-load images for the current (last) user message.
   // Must be done outside the stream's start() callback (which is not async).
@@ -300,8 +313,14 @@ export async function GET(
 
   const stream = new ReadableStream({
     start(controller) {
-      // Subscribe to agent events
-      pooled.session.subscribe((event) => {
+      // Subscribe to agent events — capture unsubscribe to prevent listener leak
+      // (pooled sessions survive across requests; old listeners must be removed)
+      const unsubscribe = pooled.session.subscribe((event) => {
+        log(
+          "event",
+          event.type,
+          "message" in event && event.message ? { role: event.message.role } : undefined,
+        );
         switch (event.type) {
           case "message_update": {
             if (event.message.role !== "assistant") return;
@@ -378,6 +397,10 @@ export async function GET(
           }
 
           case "turn_end": {
+            log(
+              "turn_end",
+              `turnIndex=${turnIndex}, textLen=${currentTurnText.length}, thinkingLen=${(currentTurnThinking || "").length}`,
+            );
             // Collect tool calls for this turn from the message content
             const assistantMsg =
               event.message.role === "assistant" ? (event.message as { content: unknown[] }) : null;
@@ -410,6 +433,10 @@ export async function GET(
             );
 
             savedMessage.then((msg) => {
+              log(
+                "db_save",
+                `turnIndex=${turnIndex}, msgId=${msg.id}, textPreview=${currentTurnText.slice(0, 50)}`,
+              );
               if (!rootMessageId) {
                 rootMessageId = msg.id;
               }
@@ -446,6 +473,7 @@ export async function GET(
           }
 
           case "agent_end": {
+            log("agent_end", `totalMessages=${event.messages.length}, turnIndex=${turnIndex}`);
             // Get final assistant message(s)
             const assistantMessages = event.messages
               .filter((m) => m.role === "assistant")
@@ -521,6 +549,9 @@ export async function GET(
             // Clean up Redis tracking (agent stays in pool for reuse)
             unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
 
+            // Unsubscribe to prevent listener leak on pooled sessions
+            unsubscribe();
+
             sendEvent(controller, "done", {});
             closeController(controller);
             break;
@@ -532,6 +563,10 @@ export async function GET(
       if (shouldPrompt && lastMessage && lastMessage.role === "user") {
         // Track that we've prompted this message
         pooled.lastPromptedMessageId = lastMessage.id;
+        log(
+          "prompt",
+          `sending prompt, message.id=${lastMessage.id}, content=${lastMessage.content?.slice(0, 60)}`,
+        );
 
         const promptPromise =
           lastMessageImages.length > 0
@@ -540,6 +575,8 @@ export async function GET(
 
         promptPromise.catch((err) => {
           console.error("agent.prompt() failed:", err);
+          // Unsubscribe to prevent listener leak
+          unsubscribe();
           // Clear in-progress flag so the user can retry
           prisma.chatSession
             .update({ where: { id: sessionId }, data: { processingSince: null } })
@@ -563,6 +600,7 @@ export async function GET(
       // When the user navigates back, loadMessages() picks up the saved response.
       request.signal.addEventListener("abort", () => {
         clientDisconnected = true;
+        unsubscribe();
         closeController(controller);
       });
     },
