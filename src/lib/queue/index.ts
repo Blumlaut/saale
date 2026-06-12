@@ -113,7 +113,7 @@ export async function scheduleAllJobs(): Promise<void> {
           { ...config, taskId: task.id, type: task.type, modelId: task.modelId },
           {
             jobId: `scheduled-${task.id}`,
-            repeat: { pattern: config.cronExpression, tz: "UTC" },
+            repeat: { pattern: config.cronExpression, tz: "UTC", key: `scheduled-${task.id}` },
           },
         );
       } catch (err) {

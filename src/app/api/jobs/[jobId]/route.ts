@@ -48,18 +48,16 @@ export async function PATCH(
           { ...jobConfig, taskId: jobId, type: updated.type, modelId: updated.modelId },
           {
             jobId: `scheduled-${jobId}`,
-            repeat: { pattern: jobConfig.cronExpression, tz: "UTC" },
+            repeat: { pattern: jobConfig.cronExpression, tz: "UTC", key: `scheduled-${jobId}` },
           },
         )
         .catch((err) => {
           console.error(`Failed to schedule job ${jobId}: ${err.message}`);
         });
     } else if (!body.enabled) {
-      await queue
-        .removeRepeatable("execute", { pattern: jobConfig.cronExpression, tz: "UTC" })
-        .catch((err) => {
-          console.error("Failed to remove repeatable job:", err);
-        });
+      await queue.removeJobScheduler(`scheduled-${jobId}`).catch((err) => {
+        console.error("Failed to remove job scheduler:", err);
+      });
     }
   }
 
@@ -95,16 +93,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Remove repeatable job from BullMQ
+  // Remove job scheduler from BullMQ
   const queue = getQueue();
-  const jobConfig = JSON.parse(job.config);
-  if (jobConfig.cronExpression) {
-    await queue
-      .removeRepeatable("execute", { pattern: jobConfig.cronExpression, tz: "UTC" })
-      .catch((err) => {
-        console.error("Failed to remove repeatable job on delete:", err);
-      });
-  }
+  await queue.removeJobScheduler(`scheduled-${jobId}`).catch((err) => {
+    console.error("Failed to remove job scheduler on delete:", err);
+  });
 
   await prisma.queueTask.delete({
     where: { id: jobId },

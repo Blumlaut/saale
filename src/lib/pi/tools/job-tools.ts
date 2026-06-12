@@ -123,13 +123,17 @@ export function createJobTools(userId: string): ToolDefinition[] {
               { ...config, taskId: params.id, type: job.type, modelId: job.modelId },
               {
                 jobId: `scheduled-${params.id}`,
-                repeat: { pattern: config.cronExpression, tz: "UTC" },
+                repeat: {
+                  pattern: config.cronExpression,
+                  tz: "UTC",
+                  key: `scheduled-${params.id}`,
+                },
               },
             );
           }
         } else {
-          await queue.remove(`scheduled-${params.id}`).catch((err) => {
-            console.error("Failed to remove scheduled job:", err);
+          await queue.removeJobScheduler(`scheduled-${params.id}`).catch((err) => {
+            console.error("Failed to remove job scheduler:", err);
           });
         }
 
@@ -446,7 +450,11 @@ export function createJobTools(userId: string): ToolDefinition[] {
               },
               {
                 jobId: `scheduled-${job.id}`,
-                repeat: { pattern: mergedConfig.cronExpression as string, tz: "UTC" },
+                repeat: {
+                  pattern: mergedConfig.cronExpression as string,
+                  tz: "UTC",
+                  key: `scheduled-${job.id}`,
+                },
               },
             )
             .catch((err) => {
