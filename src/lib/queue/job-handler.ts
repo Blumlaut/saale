@@ -97,7 +97,10 @@ export async function processJob(job: Job): Promise<void> {
   });
 
   if (!task) {
-    throw new Error(`Task ${taskId} not found`);
+    // Task was deleted — gracefully skip instead of throwing,
+    // which would cause BullMQ to retry and spam error logs.
+    console.warn(`[queue/job-handler] Task ${taskId} not found, skipping job execution.`);
+    return;
   }
 
   // Look up handler from registry
