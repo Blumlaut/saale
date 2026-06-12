@@ -149,6 +149,11 @@ export async function GET(
     );
   }
 
+  // Debug log prefix
+  const log = (tag: string, ...args: unknown[]) =>
+    // eslint-disable-next-line no-console
+    console.log(`[chat:${sessionId}] ${tag}`, ...args);
+
   // Check for reconnect request
   const url = new URL(request.url);
   const isReconnect = url.searchParams.get("reconnect") === "1";
@@ -157,18 +162,27 @@ export async function GET(
     // Reconnect: the primary stream handler publishes events to Redis.
     // The reconnected client subscribes to Redis pub/sub for catch-up.
     // This works whether the agent is in the pool (same process) or not (restart).
-    return handleReconnectFromRedis(sessionId, request);
+    //
+    // However, if the agent is in the pool and already finished (isStreaming=false),
+    // processingSince may be stale (DB update hasn't flushed yet). In that case,
+    // skip the Redis path and fall through to the primary path which will emit done.
+    const poolKey = getPoolKey(authResult.user.id, sessionId);
+    const pooledForCheck = getPoolEntry(poolKey);
+    if (pooledForCheck && !pooledForCheck.session.isStreaming) {
+      log(
+        "reconnect",
+        "processingSince is set but agent in pool is finished (isStreaming=false) — using primary path",
+      );
+      // Fall through to primary path below
+    } else {
+      return handleReconnectFromRedis(sessionId, request);
+    }
   }
 
   // ── Primary stream path ──────────────────────────────────────────────
 
   const poolKey = getPoolKey(authResult.user.id, sessionId);
   const sessionDir = getSessionDir(authResult.user.id, sessionId);
-
-  // Debug log prefix (temporary — remove after investigating duplication bug)
-  const log = (tag: string, ...args: unknown[]) =>
-    // eslint-disable-next-line no-console
-    console.log(`[chat:${sessionId}] ${tag}`, ...args);
 
   // Get or create pooled agent
   const existingPoolEntry = getPoolEntry(poolKey);
