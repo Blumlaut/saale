@@ -117,7 +117,5 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   },
-  "overrides": {
-    "kysely": "0.28.17"
-  }
+  "overrides": {}
 }
