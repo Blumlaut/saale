@@ -13,6 +13,11 @@ import { normalizeToolResult, type ImageContent } from "@/lib/pi/message-replay"
 import { readImageAsBase64 } from "@/lib/image-attachment";
 import { getPoolKey, getSessionDir, createAndPool, get as getPoolEntry } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
+import {
+  evaluatePromptGuard,
+  evaluateReconnectAction,
+  formatSseEvent,
+} from "@/lib/pi/stream-logic";
 
 /**
  * Redis pub/sub for SSE reconnection.
@@ -226,16 +231,21 @@ export async function GET(
   const lastMessage = messages[messages.length - 1];
 
   // Double-prompting guard: only prompt if this message hasn't been processed
-  let shouldPrompt = false;
-  if (lastMessage && lastMessage.role === "user") {
-    if (pooled.lastPromptedMessageId !== lastMessage.id) {
-      shouldPrompt = true;
-    }
-  }
+  const promptGuard = evaluatePromptGuard(
+    lastMessage
+      ? {
+          id: lastMessage.id,
+          role: lastMessage.role as "user" | "assistant" | "toolResult" | "custom",
+          content: lastMessage.content,
+        }
+      : undefined,
+    pooled.lastPromptedMessageId,
+  );
+  const shouldPrompt = promptGuard.shouldPrompt;
 
   log(
     "prompt_guard",
-    `shouldPrompt=${shouldPrompt}, lastMessage.id=${lastMessage?.id}, role=${lastMessage?.role}, lastPromptedMessageId=${pooled.lastPromptedMessageId}, dbMessages=${messages.length}`,
+    `shouldPrompt=${shouldPrompt} (${promptGuard.reason}), lastMessage.id=${lastMessage?.id}, role=${lastMessage?.role}, lastPromptedMessageId=${pooled.lastPromptedMessageId}, dbMessages=${messages.length}`,
   );
 
   // Pre-load images for the current (last) user message.
@@ -275,11 +285,8 @@ export async function GET(
     data: unknown,
   ): void {
     if (clientDisconnected || controllerClosed) return;
-    const json = JSON.stringify(data);
-    // Replace literal newlines with \n to prevent SSE event termination
-    const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
     try {
-      controller.enqueue(encoder.encode(`event: ${event}\ndata: ${escaped}\n\n`));
+      controller.enqueue(encoder.encode(formatSseEvent(event, data)));
     } catch (err) {
       // Controller may have been closed by another handler (race condition)
       console.error("Failed to enqueue SSE event (controller may be closed):", err);
@@ -602,15 +609,19 @@ export async function GET(
       } else if (!shouldPrompt && pooled.lastPromptedMessageId) {
         // Reconnect case — agent already processed this message.
         // Subscribe to events is already active above (catches in-progress turns).
-        // If the agent has already finished, agent_end was emitted to the previous
-        // client — this new subscription won't see it, so emit done immediately.
-        if (!pooled.session.isStreaming) {
-          log("prompt_guard", "agent already finished (isStreaming=false), emitting done");
+        const reconnectAction = evaluateReconnectAction(
+          pooled.session.isStreaming,
+          pooled.lastPromptedMessageId,
+        );
+        if (reconnectAction.type === "emit-done") {
+          // agent_end was emitted to the previous client — this new subscription
+          // won't see it, so emit done immediately.
+          log("prompt_guard", `reconnect: ${reconnectAction.reason}, emitting done`);
           unsubscribe();
           sendEvent(controller, "done", {});
           closeController(controller);
         } else {
-          log("prompt_guard", "agent still streaming (isStreaming=true), waiting for events");
+          log("prompt_guard", `reconnect: ${reconnectAction.reason}, waiting for events`);
         }
       }
 
@@ -641,12 +652,6 @@ export async function GET(
  */
 function handleReconnectFromRedis(sessionId: string, request: NextRequest): Response {
   const encoder = new TextEncoder();
-
-  const sse = (event: string, data: unknown): string => {
-    const json = JSON.stringify(data);
-    const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-    return `event: ${event}\ndata: ${escaped}\n\n`;
-  };
 
   // Async iterator — proper pattern for indefinite async SSE streams.
   // Yields buffered events first, then live pub/sub events.
@@ -680,7 +685,7 @@ function handleReconnectFromRedis(sessionId: string, request: NextRequest): Resp
         if (aborted) break;
         try {
           const { event, data } = JSON.parse(raw);
-          yield encoder.encode(sse(event, data));
+          yield encoder.encode(formatSseEvent(event, data));
           if (event === "done" || event === "error") {
             done = true;
           }
@@ -738,7 +743,7 @@ function handleReconnectFromRedis(sessionId: string, request: NextRequest): Resp
 
         if (message) {
           // Pub/sub delivered an event — forward it
-          yield encoder.encode(sse(message.event, message.data));
+          yield encoder.encode(formatSseEvent(message.event, message.data));
           if (message.event === "done" || message.event === "error") {
             done = true;
           }
@@ -759,7 +764,7 @@ function handleReconnectFromRedis(sessionId: string, request: NextRequest): Resp
           });
           if (messages.length > 0) {
             yield encoder.encode(
-              sse("resume", {
+              formatSseEvent("resume", {
                 messages: messages.map((m) => ({
                   id: m.id,
                   content: m.content,
@@ -769,7 +774,7 @@ function handleReconnectFromRedis(sessionId: string, request: NextRequest): Resp
               }),
             );
           }
-          yield encoder.encode(sse("done", {}));
+          yield encoder.encode(formatSseEvent("done", {}));
           done = true;
         }
       }
@@ -778,7 +783,7 @@ function handleReconnectFromRedis(sessionId: string, request: NextRequest): Resp
     } catch (err) {
       console.error("Reconnection error:", err);
       cleanup();
-      yield encoder.encode(sse("error", { message: "Reconnection failed" }));
+      yield encoder.encode(formatSseEvent("error", { message: "Reconnection failed" }));
     }
   }
 
