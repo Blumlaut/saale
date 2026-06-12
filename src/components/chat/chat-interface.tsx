@@ -470,36 +470,29 @@ export function ChatInterface({
       markDone(sessionId);
     });
 
-    // Safety timeout — if no events received within 2 min, give up
+    // Safety timeout — if still loading after 15s, force-clear and reload from DB.
+    // This catches cases where the SSE stream never emits done (backend bug, Redis failure).
     reconnectTimerRef.current = setTimeout(() => {
       cleanup();
       // Safety net: finalize streamed content
       finalizeStreaming(streamingRef.current, setMessages);
       setIsLoading(false);
+      loadMessages();
       markDone(sessionId);
-    }, 120_000);
+    }, 15_000);
 
-    // Fallback: poll the DB during reconnection. If generation finishes before Redis
+    // Fallback: poll the DB during reconnection. If generation finishes before SSE
     // events arrive (buffer empty, pub/sub failure, etc.), pick up the result from DB.
-    let redisEventsReceived = false;
-    const markReceived = () => {
-      redisEventsReceived = true;
+    let dbPollDone = false;
+    const markDbPollDone = () => {
+      dbPollDone = true;
     };
-    for (const type of [
-      "token",
-      "thinking",
-      "tool_start",
-      "tool_end",
-      "turn_end",
-      "done",
-      "error",
-      "resume",
-    ] as const) {
-      eventSource.addEventListener(type, markReceived);
+    for (const type of ["done", "error", "resume"] as const) {
+      eventSource.addEventListener(type, markDbPollDone);
     }
 
     dbPollInterval = setInterval(async () => {
-      if (redisEventsReceived) {
+      if (dbPollDone) {
         clearInterval(dbPollInterval!);
         dbPollInterval = null;
         return;
