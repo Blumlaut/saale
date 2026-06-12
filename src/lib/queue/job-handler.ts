@@ -2,7 +2,7 @@ import type { Job } from "bullmq";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { buildModelRegistry } from "@/lib/pi/models";
-import { addJobRun, updateJobRun } from "@/lib/queue";
+import { getQueue, addJobRun, updateJobRun } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { handlerMap } from "./jobs/registry";
 
@@ -97,9 +97,16 @@ export async function processJob(job: Job): Promise<void> {
   });
 
   if (!task) {
-    // Task was deleted — gracefully skip instead of throwing,
-    // which would cause BullMQ to retry and spam error logs.
-    console.warn(`[queue/job-handler] Task ${taskId} not found, skipping job execution.`);
+    // Task was deleted — remove the scheduler so it doesn't keep firing,
+    // then skip silently instead of throwing (which would cause retries).
+    if (!runId) {
+      getQueue()
+        .removeJobScheduler(`scheduled-${taskId}`)
+        .catch((err) => {
+          console.error(`[queue/job-handler] Failed to remove scheduler for ${taskId}:`, err);
+        });
+    }
+    console.warn(`[queue/job-handler] Task ${taskId} not found, skipping.`);
     return;
   }
 
