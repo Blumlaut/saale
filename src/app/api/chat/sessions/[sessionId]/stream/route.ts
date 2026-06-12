@@ -339,11 +339,16 @@ export async function GET(
   // Root assistant message ID (first turn's DB message id, used as parentMessageId for subsequent turns)
   let rootMessageId: string | null = null;
 
+  // Guard to ensure agent_end DB persistence runs exactly once across all SSE connections.
+  // Multiple connections can exist (original + reconnects); each has its own agent_end listener.
+  // Only the first to fire should save to DB and clear processingSince.
+  let agentEndPersisted = false;
+
   const stream = new ReadableStream({
     start(controller) {
-      // Subscribe to agent events — capture unsubscribe to prevent listener leak
-      // (pooled sessions survive across requests; old listeners must be removed)
-      const unsubscribe = pooled.session.subscribe((event) => {
+      // Subscribe to agent events for SSE forwarding (token, thinking, tool events).
+      // This is unsubscribed on client disconnect.
+      const unsubscribeSse = pooled.session.subscribe((event) => {
         log(
           "event",
           event.type,
@@ -501,90 +506,103 @@ export async function GET(
           }
 
           case "agent_end": {
+            // DB persistence is handled by the separate agent_end listener below.
+            // This SSE forwarding handler just logs — the separate listener emits done.
             log("agent_end", `totalMessages=${event.messages.length}, turnIndex=${turnIndex}`);
-            // Get final assistant message(s)
-            const assistantMessages = event.messages
-              .filter((m) => m.role === "assistant")
-              .map((m) => m as { role: "assistant"; content: unknown[] });
-            const lastAssistant = assistantMessages[assistantMessages.length - 1];
-
-            if (lastAssistant) {
-              // Extract final text
-              const textBlocks = lastAssistant.content.filter(
-                (c) =>
-                  typeof c === "object" &&
-                  c !== null &&
-                  (c as Record<string, unknown>).type === "text",
-              );
-              const finalText = textBlocks
-                .map((c) => ((c as Record<string, unknown>).text as string) || "")
-                .join("");
-
-              // Extract thinking
-              const thinkingBlock = lastAssistant.content.find(
-                (c) =>
-                  typeof c === "object" &&
-                  c !== null &&
-                  (c as Record<string, unknown>).type === "thinking",
-              );
-              const finalThinking =
-                thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock
-                  ? ((thinkingBlock as Record<string, unknown>).thinking as string)
-                  : "";
-
-              // Extract tool calls from the message content
-              const toolCallBlocks = lastAssistant.content.filter(
-                (c) =>
-                  typeof c === "object" &&
-                  c !== null &&
-                  (c as Record<string, unknown>).type === "toolCall",
-              ) as Record<string, unknown>[];
-              const toolCalls = toolCallBlocks.map((tc) => {
-                const result = toolCallResults.get(tc.id as string);
-                return {
-                  id: tc.id as string,
-                  name: tc.name as string,
-                  args: tc.arguments as unknown as Record<string, unknown>,
-                  result: result?.result,
-                  isError: result?.isError,
-                };
-              });
-
-              // If there were no turn_end events (single-turn response with no tools),
-              // save the message here
-              if (turnIndex === 0) {
-                saveAssistantMessage(
-                  sessionId,
-                  finalText,
-                  finalThinking || undefined,
-                  toolCalls.length > 0 ? toolCalls : undefined,
-                  null,
-                ).catch(console.error);
-              }
-
-              // Update message count and clear in-progress flag
-              prisma.chatSession
-                .update({
-                  where: { id: sessionId },
-                  data: {
-                    messageCount: { increment: turnIndex || 1 },
-                    processingSince: null,
-                  },
-                })
-                .catch(console.error);
-            }
-
-            // Clean up Redis tracking (agent stays in pool for reuse)
-            unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
-
-            // Unsubscribe to prevent listener leak on pooled sessions
-            unsubscribe();
-
-            sendEvent(controller, "done", {});
-            closeController(controller);
             break;
           }
         }
+      });
+
+      // Separate subscription for agent_end DB persistence.
+      // This survives client disconnects — ensures the final message is ALWAYS saved
+      // even if the SSE client refreshes/navigates away mid-stream.
+      const unsubscribeAgentEnd = pooled.session.subscribe((event) => {
+        if (event.type !== "agent_end") return;
+
+        // Atomic guard: only the first agent_end handler (across all SSE connections)
+        // persists to DB. This prevents duplicate saves when old + new listeners both fire.
+        if (!agentEndPersisted) {
+          agentEndPersisted = true;
+          log("agent_end", `persisting to DB (totalMessages=${event.messages.length})`);
+
+          const assistantMessages = event.messages
+            .filter((m) => m.role === "assistant")
+            .map((m) => m as { role: "assistant"; content: unknown[] });
+          const lastAssistant = assistantMessages[assistantMessages.length - 1];
+
+          if (lastAssistant) {
+            const textBlocks = lastAssistant.content.filter(
+              (c) =>
+                typeof c === "object" &&
+                c !== null &&
+                (c as Record<string, unknown>).type === "text",
+            );
+            const finalText = textBlocks
+              .map((c) => ((c as Record<string, unknown>).text as string) || "")
+              .join("");
+
+            const thinkingBlock = lastAssistant.content.find(
+              (c) =>
+                typeof c === "object" &&
+                c !== null &&
+                (c as Record<string, unknown>).type === "thinking",
+            );
+            const finalThinking =
+              thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock
+                ? ((thinkingBlock as Record<string, unknown>).thinking as string)
+                : "";
+
+            const toolCallBlocks = lastAssistant.content.filter(
+              (c) =>
+                typeof c === "object" &&
+                c !== null &&
+                (c as Record<string, unknown>).type === "toolCall",
+            ) as Record<string, unknown>[];
+            const toolCalls = toolCallBlocks.map((tc) => {
+              const result = toolCallResults.get(tc.id as string);
+              return {
+                id: tc.id as string,
+                name: tc.name as string,
+                args: tc.arguments as unknown as Record<string, unknown>,
+                result: result?.result,
+                isError: result?.isError,
+              };
+            });
+
+            // Save if no turn_end events fired (single-turn response)
+            if (turnIndex === 0) {
+              saveAssistantMessage(
+                sessionId,
+                finalText,
+                finalThinking || undefined,
+                toolCalls.length > 0 ? toolCalls : undefined,
+                null,
+              ).catch(console.error);
+            }
+
+            prisma.chatSession
+              .update({
+                where: { id: sessionId },
+                data: {
+                  messageCount: { increment: turnIndex || 1 },
+                  processingSince: null,
+                },
+              })
+              .catch(console.error);
+          }
+
+          unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
+        }
+
+        // Always send done to this SSE client (safe — sendEvent catches closed controller)
+        sendEvent(controller, "done", {});
+        closeController(controller);
+
+        // Clean up this listener
+        unsubscribeAgentEnd();
+        // Also clean up SSE forwarding if still active
+        unsubscribeSse();
       });
 
       // Send the user message to the agent (only if this is a new message)
@@ -607,8 +625,9 @@ export async function GET(
           })
           .catch((err) => {
             console.error("agent.prompt() failed:", err);
-            // Unsubscribe to prevent listener leak
-            unsubscribe();
+            // Unsubscribe both listeners to prevent leak
+            unsubscribeSse();
+            unsubscribeAgentEnd();
             // Clear in-progress flag so the user can retry
             prisma.chatSession
               .update({ where: { id: sessionId }, data: { processingSince: null } })
@@ -631,7 +650,9 @@ export async function GET(
           // agent_end was emitted to the previous client — this new subscription
           // won't see it, so emit done immediately.
           log("prompt_guard", `reconnect: ${reconnectAction.reason}, emitting done`);
-          unsubscribe();
+          // Agent already finished — unsubscribe both and emit done
+          unsubscribeSse();
+          unsubscribeAgentEnd();
           sendEvent(controller, "done", {});
           closeController(controller);
         } else {
@@ -639,13 +660,12 @@ export async function GET(
         }
       }
 
-      // Handle client disconnect — stop sending SSE events but let the agent
-      // finish processing so messages are still saved to the database.
-      // When the user navigates back, loadMessages() picks up the saved response.
+      // Handle client disconnect — stop SSE forwarding but keep the agent_end
+      // listener alive so the final message is still saved to the database.
       request.signal.addEventListener("abort", () => {
-        log("client", "disconnect detected, unsubscribing (agent continues)");
+        log("client", "disconnect detected, stopping SSE forwarding (agent continues)");
         clientDisconnected = true;
-        unsubscribe();
+        unsubscribeSse();
         closeController(controller);
       });
     },
