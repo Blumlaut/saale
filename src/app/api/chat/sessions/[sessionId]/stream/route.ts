@@ -11,7 +11,7 @@ import { type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { normalizeToolResult, type ImageContent } from "@/lib/pi/message-replay";
 import { readImageAsBase64 } from "@/lib/image-attachment";
-import { getPoolKey, getSessionDir, createAndPool } from "@/lib/pi/agent-pool";
+import { getPoolKey, getSessionDir, createAndPool, get as getPoolEntry } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 
 /**
@@ -166,8 +166,9 @@ export async function GET(
     console.log(`[chat:${sessionId}] ${tag}`, ...args);
 
   // Get or create pooled agent
+  const existingPoolEntry = getPoolEntry(poolKey);
   const pooled = await createAndPool(poolKey, async () => {
-    log("pool", "creating new agent");
+    log("pool", "miss — creating new agent");
     const result = await createPersistentSession({
       userId: authResult.user.id,
       sessionId,
@@ -197,6 +198,12 @@ export async function GET(
     return { session: result.session, sessionDir };
   });
 
+  if (existingPoolEntry) {
+    log(
+      "pool",
+      `hit — isStreaming=${pooled.session.isStreaming}, lastPromptedMessageId=${pooled.lastPromptedMessageId}`,
+    );
+  }
   log("pool", "lastPromptedMessageId=", pooled.lastPromptedMessageId);
 
   // Register session for explicit cancellation (stop endpoint)
@@ -573,32 +580,45 @@ export async function GET(
             ? pooled.session.prompt(lastMessage.content, { images: lastMessageImages })
             : pooled.session.prompt(lastMessage.content);
 
-        promptPromise.catch((err) => {
-          console.error("agent.prompt() failed:", err);
-          // Unsubscribe to prevent listener leak
+        promptPromise
+          .then(() => {
+            log("prompt", "agent.prompt() resolved");
+          })
+          .catch((err) => {
+            console.error("agent.prompt() failed:", err);
+            // Unsubscribe to prevent listener leak
+            unsubscribe();
+            // Clear in-progress flag so the user can retry
+            prisma.chatSession
+              .update({ where: { id: sessionId }, data: { processingSince: null } })
+              .catch((updateErr) => {
+                console.error("Failed to clear processingSince on error:", updateErr);
+              });
+            unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
+            sendEvent(controller, "error", { message: err.message });
+            sendEvent(controller, "done", {});
+            closeController(controller);
+          });
+      } else if (!shouldPrompt && pooled.lastPromptedMessageId) {
+        // Reconnect case — agent already processed this message.
+        // Subscribe to events is already active above (catches in-progress turns).
+        // If the agent has already finished, agent_end was emitted to the previous
+        // client — this new subscription won't see it, so emit done immediately.
+        if (!pooled.session.isStreaming) {
+          log("prompt_guard", "agent already finished (isStreaming=false), emitting done");
           unsubscribe();
-          // Clear in-progress flag so the user can retry
-          prisma.chatSession
-            .update({ where: { id: sessionId }, data: { processingSince: null } })
-            .catch((updateErr) => {
-              console.error("Failed to clear processingSince on error:", updateErr);
-            });
-          unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
-          sendEvent(controller, "error", { message: err.message });
           sendEvent(controller, "done", {});
           closeController(controller);
-        });
-      } else if (!shouldPrompt && pooled.lastPromptedMessageId) {
-        // Reconnect case — agent already processed this message
-        // Subscribe to events is already active above
-        // If processing is done, the agent_end event will have been emitted already
-        // In that case, fall through to Redis pub/sub for catch-up
+        } else {
+          log("prompt_guard", "agent still streaming (isStreaming=true), waiting for events");
+        }
       }
 
       // Handle client disconnect — stop sending SSE events but let the agent
       // finish processing so messages are still saved to the database.
       // When the user navigates back, loadMessages() picks up the saved response.
       request.signal.addEventListener("abort", () => {
+        log("client", "disconnect detected, unsubscribing (agent continues)");
         clientDisconnected = true;
         unsubscribe();
         closeController(controller);
