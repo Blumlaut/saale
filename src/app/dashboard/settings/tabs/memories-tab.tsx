@@ -51,6 +51,8 @@ import {
   Layers,
   Database,
 } from "lucide-react";
+import { ImportanceStars } from "../components/importance-stars";
+import { MemoryForm } from "../components/memory-form";
 
 interface Memory {
   id: string;
@@ -90,37 +92,7 @@ const collectionIcons: Record<string, React.ReactNode> = {
 
 const defaultCollections = ["facts", "projects", "people", "preferences", "decisions"];
 
-function ImportanceStars({
-  value,
-  onChange,
-  readonly,
-}: {
-  value: number;
-  onChange?: (v: number) => void;
-  readonly?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: 10 }, (_, i) => (
-        <button
-          key={i}
-          type="button"
-          disabled={readonly}
-          onClick={() => onChange?.(i + 1)}
-          className={`transition-colors ${readonly ? "cursor-default" : "cursor-pointer hover:scale-110"}`}
-        >
-          <Star
-            className={`h-3.5 w-3.5 ${
-              i < value
-                ? "fill-amber-400 text-amber-400"
-                : "text-muted-foreground/40 fill-transparent"
-            }`}
-          />
-        </button>
-      ))}
-    </div>
-  );
-}
+
 
 export function MemoriesTab() {
   // Data state
@@ -559,87 +531,21 @@ export function MemoriesTab() {
             <DialogDescription>Update the details of this memory.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Memory title..."
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Content</Label>
-              <Textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                placeholder="Memory content..."
-                rows={4}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Collection</Label>
-                <Select value={editCollection} onValueChange={(v) => v && setEditCollection(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allCollectionNames.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        <span className="capitalize">{name}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Importance</Label>
-                <ImportanceStars value={editImportance} onChange={setEditImportance} />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tags</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {editTags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="rounded-full px-2 py-0.5">
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(editTags, setEditTags, tag)}
-                      className="ml-1"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={editTagInput}
-                  onChange={(e) => setEditTagInput(e.target.value)}
-                  placeholder="Add a tag..."
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addTag(editTags, setEditTags, editTagInput, setEditTagInput);
-                    }
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addTag(editTags, setEditTags, editTagInput, setEditTagInput)}
-                >
-                  Add
-                </Button>
-              </div>
-            </div>
-          </div>
+          <MemoryForm
+            title={editTitle}
+            onTitleChange={setEditTitle}
+            content={editContent}
+            onContentChange={setEditContent}
+            collection={editCollection}
+            onCollectionChange={(v) => v && setEditCollection(v)}
+            collectionOptions={allCollectionNames}
+            importance={editImportance}
+            onImportanceChange={setEditImportance}
+            tags={editTags}
+            onTagsChange={setEditTags}
+            tagInput={editTagInput}
+            onTagInputChange={setEditTagInput}
+          />
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>
@@ -664,87 +570,21 @@ export function MemoriesTab() {
             <DialogDescription>Create a new memory entry.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Memory title..."
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Content</Label>
-              <Textarea
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                placeholder="Memory content..."
-                rows={4}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Collection</Label>
-                <Select value={newCollection} onValueChange={(v) => v && setNewCollection(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {defaultCollections.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        <span className="capitalize">{name}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Importance</Label>
-                <ImportanceStars value={newImportance} onChange={setNewImportance} />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tags</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {newTags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="rounded-full px-2 py-0.5">
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(newTags, setNewTags, tag)}
-                      className="ml-1"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={newTagInput}
-                  onChange={(e) => setNewTagInput(e.target.value)}
-                  placeholder="Add a tag..."
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addTag(newTags, setNewTags, newTagInput, setNewTagInput);
-                    }
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addTag(newTags, setNewTags, newTagInput, setNewTagInput)}
-                >
-                  Add
-                </Button>
-              </div>
-            </div>
-          </div>
+          <MemoryForm
+            title={newTitle}
+            onTitleChange={setNewTitle}
+            content={newContent}
+            onContentChange={setNewContent}
+            collection={newCollection}
+            onCollectionChange={(v) => v && setNewCollection(v)}
+            collectionOptions={defaultCollections}
+            importance={newImportance}
+            onImportanceChange={setNewImportance}
+            tags={newTags}
+            onTagsChange={setNewTags}
+            tagInput={newTagInput}
+            onTagInputChange={setNewTagInput}
+          />
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
