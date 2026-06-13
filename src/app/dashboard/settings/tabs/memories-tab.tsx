@@ -4,8 +4,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -91,8 +89,6 @@ const collectionIcons: Record<string, React.ReactNode> = {
 };
 
 const defaultCollections = ["facts", "projects", "people", "preferences", "decisions"];
-
-
 
 export function MemoriesTab() {
   // Data state
@@ -270,24 +266,6 @@ export function MemoriesTab() {
     setDeleting(false);
     setDeleteOpen(false);
     setDeleteTarget(null);
-  };
-
-  // Tag helpers
-  const addTag = (
-    tags: string[],
-    setTags: (v: string[]) => void,
-    input: string,
-    setInput: (v: string) => void,
-  ) => {
-    const trimmed = input.trim().toLowerCase();
-    if (trimmed && !tags.includes(trimmed)) {
-      setTags([...tags, trimmed]);
-    }
-    setInput("");
-  };
-
-  const removeTag = (tags: string[], setTags: (v: string[]) => void, tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
   };
 
   return (

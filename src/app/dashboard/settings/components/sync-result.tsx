@@ -2,7 +2,13 @@
 
 interface SyncResultProps {
   itemId: string;
-  syncResult: { id: string; created: number; updated: number; deleted: number; parsed: number | null } | null;
+  syncResult: {
+    id: string;
+    created: number;
+    updated: number;
+    deleted: number;
+    parsed: number | null;
+  } | null;
   showParsed?: boolean;
   className?: string;
 }

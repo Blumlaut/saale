@@ -145,7 +145,11 @@ export async function DELETE(
   if (!calendarWithAccount) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Delete from CalDAV first if this is a CalDAV event
-  if (calendarWithAccount.account.accountType === "caldav" && event.source === "caldav" && event.url) {
+  if (
+    calendarWithAccount.account.accountType === "caldav" &&
+    event.source === "caldav" &&
+    event.url
+  ) {
     const result = await pushDeleteToCalDAV(event.calendarId, event.url);
     if (!result.success) {
       console.error(`Failed to push delete to CalDAV: ${result.error}`);

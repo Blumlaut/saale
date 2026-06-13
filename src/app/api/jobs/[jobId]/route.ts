@@ -14,7 +14,6 @@ export async function PATCH(
 
   const authResult = await requireJobOwner(jobId);
   if (!authResult.ok) return authResult.response;
-  const job = authResult.job;
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};

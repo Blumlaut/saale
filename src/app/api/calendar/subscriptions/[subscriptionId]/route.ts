@@ -15,7 +15,6 @@ export async function PATCH(
 
   const authResult = await requireCalendarSubscriptionOwner(subscriptionId);
   if (!authResult.ok) return authResult.response;
-  const subscription = authResult.subscription;
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};

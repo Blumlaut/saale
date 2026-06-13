@@ -106,10 +106,12 @@ export async function requireCalendarAccountOwner(
  * Require a chat session owned by the current user.
  * Returns the session if found, or a 401/404 NextResponse.
  */
-export async function requireChatSessionOwner(
-  sessionId: string,
-): Promise<
-  | { ok: true; session: NonNullable<Awaited<ReturnType<typeof prisma.chatSession.findFirst>>>; userId: string }
+export async function requireChatSessionOwner(sessionId: string): Promise<
+  | {
+      ok: true;
+      session: NonNullable<Awaited<ReturnType<typeof prisma.chatSession.findFirst>>>;
+      userId: string;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authResult = await requireSession();
@@ -133,10 +135,12 @@ export async function requireChatSessionOwner(
  * Require a memory owned by the current user.
  * Returns the memory if found, or a 401/404 NextResponse.
  */
-export async function requireMemoryOwner(
-  memoryId: string,
-): Promise<
-  | { ok: true; memory: NonNullable<Awaited<ReturnType<typeof prisma.memory.findFirst>>>; userId: string }
+export async function requireMemoryOwner(memoryId: string): Promise<
+  | {
+      ok: true;
+      memory: NonNullable<Awaited<ReturnType<typeof prisma.memory.findFirst>>>;
+      userId: string;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authResult = await requireSession();
@@ -161,10 +165,12 @@ export async function requireMemoryOwner(
  * Returns the event if found, or a 401/404 NextResponse.
  * Uses nested where clause for ownership check; callers should include relations via separate queries if needed.
  */
-export async function requireCalendarEventOwner(
-  eventId: string,
-): Promise<
-  | { ok: true; event: NonNullable<Awaited<ReturnType<typeof prisma.calendarEvent.findFirst>>>; userId: string }
+export async function requireCalendarEventOwner(eventId: string): Promise<
+  | {
+      ok: true;
+      event: NonNullable<Awaited<ReturnType<typeof prisma.calendarEvent.findFirst>>>;
+      userId: string;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authResult = await requireSession();
@@ -191,10 +197,12 @@ export async function requireCalendarEventOwner(
  * Require a calendar owned by the current user (via account).
  * Returns the calendar if found, or a 401/404 NextResponse.
  */
-export async function requireCalendarOwner(
-  calendarId: string,
-): Promise<
-  | { ok: true; calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findFirst>>>; userId: string }
+export async function requireCalendarOwner(calendarId: string): Promise<
+  | {
+      ok: true;
+      calendar: NonNullable<Awaited<ReturnType<typeof prisma.calendar.findFirst>>>;
+      userId: string;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authResult = await requireSession();
@@ -221,10 +229,12 @@ export async function requireCalendarOwner(
  * Require a calendar subscription owned by the current user.
  * Returns the subscription if found, or a 401/404 NextResponse.
  */
-export async function requireCalendarSubscriptionOwner(
-  subscriptionId: string,
-): Promise<
-  | { ok: true; subscription: NonNullable<Awaited<ReturnType<typeof prisma.calendarSubscription.findFirst>>>; userId: string }
+export async function requireCalendarSubscriptionOwner(subscriptionId: string): Promise<
+  | {
+      ok: true;
+      subscription: NonNullable<Awaited<ReturnType<typeof prisma.calendarSubscription.findFirst>>>;
+      userId: string;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authResult = await requireSession();
@@ -248,10 +258,12 @@ export async function requireCalendarSubscriptionOwner(
  * Require a queue task (job) owned by the current user.
  * Returns the task if found, or a 401/404 NextResponse.
  */
-export async function requireJobOwner(
-  jobId: string,
-): Promise<
-  | { ok: true; job: NonNullable<Awaited<ReturnType<typeof prisma.queueTask.findFirst>>>; userId: string }
+export async function requireJobOwner(jobId: string): Promise<
+  | {
+      ok: true;
+      job: NonNullable<Awaited<ReturnType<typeof prisma.queueTask.findFirst>>>;
+      userId: string;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authResult = await requireSession();
@@ -275,10 +287,12 @@ export async function requireJobOwner(
  * Require an email message owned by the current user (via account).
  * Returns the message if found, or a 401/404 NextResponse.
  */
-export async function requireEmailMessageOwner(
-  messageId: string,
-): Promise<
-  | { ok: true; message: NonNullable<Awaited<ReturnType<typeof prisma.emailMessage.findFirst>>>; userId: string }
+export async function requireEmailMessageOwner(messageId: string): Promise<
+  | {
+      ok: true;
+      message: NonNullable<Awaited<ReturnType<typeof prisma.emailMessage.findFirst>>>;
+      userId: string;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authResult = await requireSession();

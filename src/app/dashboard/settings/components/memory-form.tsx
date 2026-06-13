@@ -62,7 +62,11 @@ export function MemoryForm({
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Title</Label>
-        <Input value={title} onChange={(e) => onTitleChange(e.target.value)} placeholder="Memory title..." />
+        <Input
+          value={title}
+          onChange={(e) => onTitleChange(e.target.value)}
+          placeholder="Memory title..."
+        />
       </div>
 
       <div className="space-y-2">
@@ -104,11 +108,7 @@ export function MemoryForm({
           {tags.map((tag) => (
             <Badge key={tag} variant="secondary" className="rounded-full px-2 py-0.5">
               {tag}
-              <button
-                type="button"
-                onClick={() => handleRemoveTag(tag)}
-                className="ml-1"
-              >
+              <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-1">
                 <X className="h-3 w-3" />
               </button>
             </Badge>
