@@ -132,6 +132,23 @@ Prisma's auto-generated migrations often use `DROP INDEX` without `IF EXISTS`. *
 - Dropping columns that might have been manually removed
 - Adding columns that might exist from a partial previous run
 
+### Casting to a Shorter Type
+
+When changing a column from `TEXT` to `VARCHAR(N)`, existing data may exceed the new limit. PostgreSQL will reject the cast with `value too long for type character varying(N)`.
+
+**Always truncate existing data before the type change:**
+
+```sql
+-- ✅ Safe — truncate first, then cast
+UPDATE "MyTable" SET "myColumn" = LEFT("myColumn", 50) WHERE CHAR_LENGTH("myColumn") > 50;
+ALTER TABLE "MyTable" ALTER COLUMN "myColumn" TYPE VARCHAR(50);
+
+-- ❌ Fails if any row has data > 50 chars
+ALTER TABLE "MyTable" ALTER COLUMN "myColumn" TYPE VARCHAR(50);
+```
+
+This is especially critical for production databases where existing rows may have long values. Prisma's auto-generated migrations never add the `UPDATE` step — you must add it manually.
+
 ## Dropping Columns or Tables
 
 Dropping is allowed — it's a normal part of schema evolution. The key is to do it deliberately through migrations, not accidentally.
