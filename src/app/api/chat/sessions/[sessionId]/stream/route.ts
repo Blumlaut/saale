@@ -614,10 +614,12 @@ export async function GET(
           `sending prompt, message.id=${lastMessage.id}, content=${lastMessage.content?.slice(0, 60)}`,
         );
 
+        // Use agent.prompt() directly to bypass AgentSession's preflight logic
+        // which resets systemPrompt back to the Pi base prompt on every turn.
         const promptPromise =
           lastMessageImages.length > 0
-            ? pooled.session.prompt(lastMessage.content, { images: lastMessageImages })
-            : pooled.session.prompt(lastMessage.content);
+            ? pooled.session.agent.prompt(lastMessage.content, lastMessageImages)
+            : pooled.session.agent.prompt(lastMessage.content);
 
         promptPromise
           .then(() => {
