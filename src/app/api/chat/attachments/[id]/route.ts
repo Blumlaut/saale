@@ -16,9 +16,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   const { id } = await params;
 
-  // Look up the attachment and verify ownership
+  // Look up the attachment and verify ownership via session
   const attachment = await prisma.chatAttachment.findFirst({
-    where: { storageId: id },
+    where: {
+      storageId: id,
+      message: {
+        session: {
+          userId: authResult.user.id,
+        },
+      },
+    },
     include: {
       message: {
         select: {
@@ -32,10 +39,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   if (!attachment) {
     return new NextResponse("Not found", { status: 404 });
-  }
-
-  if (attachment.message.session.userId !== authResult.user.id) {
-    return new NextResponse("Forbidden", { status: 403 });
   }
 
   // Resolve the user from the chat session (not the auth session — could differ if sharing)

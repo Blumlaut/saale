@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   createRedisClient,
@@ -73,26 +73,15 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { sessionId } = await params;
 
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-    select: {
-      id: true,
-      modelProvider: true,
-      modelName: true,
-      thinkingLevel: true,
-      toolConfig: true,
-      processingSince: true,
-    },
-  });
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return new Response("Unauthorized", { status: 401 });
+  const chatSession = authResult.session;
 
   // Fetch user's custom agent system prompt
   const userSettings = await prisma.appSettings.findUnique({
-    where: { userId: authResult.user.id },
+    where: { userId: authResult.userId },
     select: { agentCustomInstructions: true },
   });
 
@@ -110,7 +99,7 @@ export async function GET(
   let modelName = chatSession.modelName || undefined;
 
   if (!modelProvider || !modelName) {
-    const resolved = await resolveModelForPurpose(authResult.user.id, "chat", undefined);
+    const resolved = await resolveModelForPurpose(authResult.userId, "chat", undefined);
     if (resolved) {
       modelProvider = resolved.provider;
       modelName = resolved.name;
@@ -166,7 +155,7 @@ export async function GET(
     // However, if the agent is in the pool and already finished (isStreaming=false),
     // processingSince may be stale (DB update hasn't flushed yet). In that case,
     // skip the Redis path and fall through to the primary path which will emit done.
-    const poolKey = getPoolKey(authResult.user.id, sessionId);
+    const poolKey = getPoolKey(authResult.userId, sessionId);
     const pooledForCheck = getPoolEntry(poolKey);
     if (pooledForCheck && !pooledForCheck.session.isStreaming) {
       log(
@@ -181,15 +170,15 @@ export async function GET(
 
   // ── Primary stream path ──────────────────────────────────────────────
 
-  const poolKey = getPoolKey(authResult.user.id, sessionId);
-  const sessionDir = getSessionDir(authResult.user.id, sessionId);
+  const poolKey = getPoolKey(authResult.userId, sessionId);
+  const sessionDir = getSessionDir(authResult.userId, sessionId);
 
   // Get or create pooled agent
   const existingPoolEntry = getPoolEntry(poolKey);
   const pooled = await createAndPool(poolKey, async () => {
     log("pool", "miss — creating new agent");
     const result = await createPersistentSession({
-      userId: authResult.user.id,
+      userId: authResult.userId,
       sessionId,
       sessionDir,
       customTools: [],
@@ -234,7 +223,7 @@ Guidelines:
   log("pool", "lastPromptedMessageId=", pooled.lastPromptedMessageId);
 
   // Register session for explicit cancellation (stop endpoint)
-  await registerActiveSession(authResult.user.id, sessionId);
+  await registerActiveSession(authResult.userId, sessionId);
 
   // Get the latest user message from DB (the one to prompt with)
   const messages = await prisma.chatMessage.findMany({
@@ -281,7 +270,7 @@ Guidelines:
   ) {
     for (const att of lastMessage.attachments) {
       try {
-        const { data, mimeType } = await readImageAsBase64(authResult.user.id, att.storagePath);
+        const { data, mimeType } = await readImageAsBase64(authResult.userId, att.storagePath);
         lastMessageImages.push({ type: "image" as const, data, mimeType });
       } catch (err) {
         console.error("Failed to load image for current message:", err);
@@ -600,7 +589,7 @@ Guidelines:
               .catch(console.error);
           }
 
-          unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
+          unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
         }
 
         // Always send done to this SSE client (safe — sendEvent catches closed controller)
@@ -644,7 +633,7 @@ Guidelines:
               .catch((updateErr) => {
                 console.error("Failed to clear processingSince on error:", updateErr);
               });
-            unregisterActiveSession(authResult.user.id, sessionId).catch(console.error);
+            unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
             sendEvent(controller, "error", { message: err.message });
             sendEvent(controller, "done", {});
             closeController(controller);

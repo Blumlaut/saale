@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { unregisterActiveSession } from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
@@ -14,22 +14,17 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
   const { sessionId } = await params;
 
-  // Verify session belongs to user
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-    select: { processingSince: true },
-  });
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
 
-  if (!chatSession?.processingSince) {
+  if (!authResult.session.processingSince) {
     return NextResponse.json({ error: "No active generation to stop" }, { status: 400 });
   }
 
   // Abort the running agent via the agent pool
-  const poolKey = getPoolKey(authResult.user.id, sessionId);
+  const poolKey = getPoolKey(authResult.userId, sessionId);
   const pooled = get(poolKey);
   if (pooled) {
     pooled.session.abort();
@@ -38,7 +33,7 @@ export async function POST(
   }
 
   // Clear Redis tracking (works across instances)
-  await unregisterActiveSession(authResult.user.id, sessionId);
+  await unregisterActiveSession(authResult.userId, sessionId);
 
   // Clear processing flag so the user can send a new message
   await prisma.chatSession

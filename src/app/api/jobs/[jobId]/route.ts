@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireJobOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getQueue, addJobRun } from "@/lib/queue";
 
@@ -10,18 +10,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { jobId } = await params;
 
-  const job = await prisma.queueTask.findFirst({
-    where: { id: jobId, userId: authResult.user.id },
-  });
-
-  if (!job) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireJobOwner(jobId);
+  if (!authResult.ok) return authResult.response;
+  const job = authResult.job;
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};
@@ -80,18 +73,10 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { jobId } = await params;
 
-  const job = await prisma.queueTask.findFirst({
-    where: { id: jobId, userId: authResult.user.id },
-  });
-
-  if (!job) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireJobOwner(jobId);
+  if (!authResult.ok) return authResult.response;
 
   // Remove job scheduler from BullMQ
   const queue = getQueue();
@@ -113,18 +98,11 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { jobId } = await params;
 
-  const job = await prisma.queueTask.findFirst({
-    where: { id: jobId, userId: authResult.user.id },
-  });
-
-  if (!job) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireJobOwner(jobId);
+  if (!authResult.ok) return authResult.response;
+  const job = authResult.job;
 
   const config = JSON.parse(job.config);
   const queue = getQueue();

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireCalendarOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
@@ -11,18 +11,9 @@ export async function PATCH(
 ) {
   const { calendarId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarOwner(calendarId);
   if (!authResult.ok) return authResult.response;
-
-  const calendar = await prisma.calendar.findFirst({
-    where: {
-      id: calendarId,
-      account: { userId: authResult.user.id },
-    },
-  });
-  if (!calendar) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const calendar = authResult.calendar;
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};
@@ -55,18 +46,8 @@ export async function DELETE(
 ) {
   const { calendarId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarOwner(calendarId);
   if (!authResult.ok) return authResult.response;
-
-  const calendar = await prisma.calendar.findFirst({
-    where: {
-      id: calendarId,
-      account: { userId: authResult.user.id },
-    },
-  });
-  if (!calendar) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
 
   await prisma.calendar.delete({
     where: { id: calendarId },

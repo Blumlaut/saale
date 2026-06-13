@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireEmailMessageOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { syncMessageFlags, deleteMessage, moveMessage } from "@/lib/email/imap";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
@@ -11,56 +11,28 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ messageId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { messageId } = await params;
 
-  const message = await prisma.emailMessage.findFirst({
-    where: {
-      id: messageId,
-      account: { userId: authResult.user.id },
-    },
-    select: {
-      id: true,
-      uid: true,
-      fromName: true,
-      fromEmail: true,
-      to: true,
-      subject: true,
-      date: true,
-      bodyPreview: true,
-      bodyHtml: true,
-      bodyText: true,
-      isRead: true,
-      isStarred: true,
-      folder: true,
-      tags: true,
-      accountId: true,
-    },
-  });
-
-  if (!message) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireEmailMessageOwner(messageId);
+  if (!authResult.ok) return authResult.response;
 
   return NextResponse.json({
     message: {
-      id: message.id,
-      uid: message.uid,
-      fromName: message.fromName,
-      fromEmail: message.fromEmail,
-      to: message.to,
-      subject: message.subject,
-      date: message.date.toISOString(),
-      bodyPreview: message.bodyPreview,
-      bodyHtml: sanitizeEmailHtml(message.bodyHtml),
-      bodyText: message.bodyText,
-      isRead: message.isRead,
-      isStarred: message.isStarred,
-      folder: message.folder,
-      tags: message.tags,
-      accountId: message.accountId,
+      id: authResult.message.id,
+      uid: authResult.message.uid,
+      fromName: authResult.message.fromName,
+      fromEmail: authResult.message.fromEmail,
+      to: authResult.message.to,
+      subject: authResult.message.subject,
+      date: authResult.message.date.toISOString(),
+      bodyPreview: authResult.message.bodyPreview,
+      bodyHtml: sanitizeEmailHtml(authResult.message.bodyHtml),
+      bodyText: authResult.message.bodyText,
+      isRead: authResult.message.isRead,
+      isStarred: authResult.message.isStarred,
+      folder: authResult.message.folder,
+      tags: authResult.message.tags,
+      accountId: authResult.message.accountId,
     },
   });
 }
@@ -72,21 +44,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ messageId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { messageId } = await params;
 
-  const message = await prisma.emailMessage.findFirst({
-    where: {
-      id: messageId,
-      account: { userId: authResult.user.id },
-    },
-  });
-
-  if (!message) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireEmailMessageOwner(messageId);
+  if (!authResult.ok) return authResult.response;
+  const message = authResult.message;
 
   const body = await request.json();
 
