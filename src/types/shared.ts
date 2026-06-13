@@ -11,7 +11,7 @@ export interface EmailAccount {
   folders?: string[];
 }
 
-// --- Tasks / Jobs ---
+// --- Jobs ---
 
 export interface FieldDef {
   key: string;

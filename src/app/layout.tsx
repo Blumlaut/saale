@@ -10,7 +10,7 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: "Saale",
-  description: "AI-powered productivity hub: email, chat, tasks — one interface.",
+  description: "AI-powered productivity hub: email, chat, jobs — one interface.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

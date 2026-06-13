@@ -9,16 +9,16 @@ import { handlerMap } from "./jobs/registry";
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
 
 /**
- * Dispatch a non-streaming AI task using the Pi agent.
+ * Dispatch a non-streaming AI job using the Pi agent.
  * Creates a one-shot session, sends a prompt, and waits for the response.
  *
  * @param userId - The user whose API keys and model registry to use
  * @param prompt - The prompt to send to the AI
- * @param systemPrompt - Optional system prompt (defaults to a task-oriented prompt)
+ * @param systemPrompt - Optional system prompt (defaults to a job-oriented prompt)
  * @param modelId - Optional model override ("provider:modelName")
  * @returns The AI's text response
  */
-export async function dispatchAiTask(
+export async function dispatchAiJob(
   userId: string,
   prompt: string,
   options?: {
@@ -26,7 +26,7 @@ export async function dispatchAiTask(
     modelId?: string | null;
   },
 ): Promise<string> {
-  const modelInfo = await resolveModelForPurpose(userId, "tasks", options?.modelId);
+  const modelInfo = await resolveModelForPurpose(userId, "jobs", options?.modelId);
 
   // Build a minimal model registry (no tools, no extensions — just the model)
   const { modelRegistry, authStorage } = await buildModelRegistry(userId);
@@ -47,7 +47,7 @@ export async function dispatchAiTask(
 
   session.agent.state.systemPrompt =
     options?.systemPrompt ??
-    `You are an AI assistant processing automated tasks. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
+    `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
 
   let timerId: ReturnType<typeof setTimeout>;
 
@@ -71,7 +71,7 @@ export async function dispatchAiTask(
     // Timeout after 5min
     timerId = setTimeout(() => {
       unsubscribe();
-      reject(new Error("AI task timed out (5min)"));
+      reject(new Error("AI job timed out (5min)"));
     }, 5 * 60_000);
 
     // Call agent.prompt directly to bypass AgentSession's preflight logic
@@ -90,14 +90,14 @@ export async function dispatchAiTask(
 export async function processJob(job: Job): Promise<void> {
   const { taskId, runId, type, modelId, ...config } = job.data;
 
-  // Resolve the user for this task
-  const task = await prisma.queueTask.findUnique({
+  // Resolve the user for this job
+  const queueJob = await prisma.queueTask.findUnique({
     where: { id: taskId },
     select: { userId: true },
   });
 
-  if (!task) {
-    // Task was deleted — remove the scheduler so it doesn't keep firing,
+  if (!queueJob) {
+    // Job was deleted — remove the scheduler so it doesn't keep firing,
     // then skip silently instead of throwing (which would cause retries).
     if (!runId) {
       getQueue()
@@ -106,7 +106,7 @@ export async function processJob(job: Job): Promise<void> {
           console.error(`[queue/job-handler] Failed to remove scheduler for ${taskId}:`, err);
         });
     }
-    console.warn(`[queue/job-handler] Task ${taskId} not found, skipping.`);
+    console.warn(`[queue/job-handler] Job ${taskId} not found, skipping.`);
     return;
   }
 
@@ -131,7 +131,7 @@ export async function processJob(job: Job): Promise<void> {
   try {
     const output = await handlerModule.handler({
       config,
-      userId: task.userId,
+      userId: queueJob.userId,
       modelId,
     });
 
@@ -140,7 +140,7 @@ export async function processJob(job: Job): Promise<void> {
       await updateJobRun(effectiveRunId, { status: "completed", output, completedAt: new Date() });
     }
 
-    // Update task metadata
+    // Update job metadata
     await prisma.queueTask.update({
       where: { id: taskId },
       data: {

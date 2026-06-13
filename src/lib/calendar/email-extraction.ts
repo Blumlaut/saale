@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { dispatchAiTask } from "@/lib/queue/job-handler";
+import { dispatchAiJob } from "@/lib/queue/job-handler";
 
 export interface ExtractedEvent {
   title: string;
@@ -160,7 +160,7 @@ async function extractSingleEvent(
     },
   });
 
-  const response = await dispatchAiTask(userId, prompt, {
+  const response = await dispatchAiJob(userId, prompt, {
     modelId: modelId ?? null,
   });
   const text = response.trim();

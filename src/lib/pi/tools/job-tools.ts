@@ -5,20 +5,19 @@ import { getQueue, addJobRun } from "@/lib/queue";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 
 /**
- * Create task (job) tools with userId injection for user isolation.
- * All queries are scoped to the authenticated user's tasks.
+ * Create job tools with userId injection for user isolation.
+ * All queries are scoped to the authenticated user's jobs.
  * Returns an array of tool definitions for direct spread into the agent session.
- *
- * Tool names use "task_*" to match the frontend "Tasks" sidebar label.
+ * Tool names use "job_*" to match the frontend "Jobs" sidebar label.
  */
 export function createJobTools(userId: string): ToolDefinition[] {
   return [
-    // ─── task_list ──────────────────────────────────────────────────────────
+    // ─── job_list ───────────────────────────────────────────────────────────
 
     defineTool({
-      name: "task_list",
-      label: "List Tasks",
-      description: "List all configured tasks with their current status, schedule, and run count.",
+      name: "job_list",
+      label: "List Jobs",
+      description: "List all configured jobs with their current status, schedule, and run count.",
       parameters: Type.Object({
         enabled: Type.Optional(
           Type.Boolean({
@@ -28,7 +27,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
         type: Type.Optional(
           Type.String({
             description:
-              "Filter by task type (e.g. 'summarization', 'classification', 'spam_filtering').",
+              "Filter by job type (e.g. 'summarization', 'classification', 'spam_filtering').",
           }),
         ),
       }),
@@ -53,7 +52,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
               text: JSON.stringify(
                 {
                   count: jobs.length,
-                  tasks: jobs.map(
+                  jobs: jobs.map(
                     (j: {
                       id: string;
                       type: string;
@@ -85,18 +84,18 @@ export function createJobTools(userId: string): ToolDefinition[] {
       },
     }),
 
-    // ─── task_enable ────────────────────────────────────────────────────────
+    // ─── job_enable ─────────────────────────────────────────────────────────
 
     defineTool({
-      name: "task_enable",
-      label: "Enable/Disable Task",
-      description: "Enable or disable a task by its ID.",
+      name: "job_enable",
+      label: "Enable/Disable Job",
+      description: "Enable or disable a job by its ID.",
       parameters: Type.Object({
         id: Type.String({
-          description: "Task ID.",
+          description: "Job ID.",
         }),
         enabled: Type.Boolean({
-          description: "Whether to enable (true) or disable (false) the task.",
+          description: "Whether to enable (true) or disable (false) the job.",
         }),
       }),
       execute: async (_toolCallId, params) => {
@@ -105,7 +104,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         if (!job) {
-          throw new Error(`Task ${params.id} not found`);
+          throw new Error(`Job ${params.id} not found`);
         }
 
         await prisma.queueTask.update({
@@ -156,15 +155,15 @@ export function createJobTools(userId: string): ToolDefinition[] {
       },
     }),
 
-    // ─── task_run ───────────────────────────────────────────────────────────
+    // ─── job_run ────────────────────────────────────────────────────────────
 
     defineTool({
-      name: "task_run",
-      label: "Run Task Now",
-      description: "Trigger an immediate manual run of a task by its ID.",
+      name: "job_run",
+      label: "Run Job Now",
+      description: "Trigger an immediate manual run of a job by its ID.",
       parameters: Type.Object({
         id: Type.String({
-          description: "Task ID to run.",
+          description: "Job ID to run.",
         }),
       }),
       execute: async (_toolCallId, params) => {
@@ -173,7 +172,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         if (!job) {
-          throw new Error(`Task ${params.id} not found`);
+          throw new Error(`Job ${params.id} not found`);
         }
 
         const queue = getQueue();
@@ -198,7 +197,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
               text: JSON.stringify(
                 {
                   queued: true,
-                  taskId: params.id,
+                  jobId: params.id,
                   runId: jobRun.id,
                 },
                 null,
@@ -211,15 +210,15 @@ export function createJobTools(userId: string): ToolDefinition[] {
       },
     }),
 
-    // ─── task_logs ──────────────────────────────────────────────────────────
+    // ─── job_logs ───────────────────────────────────────────────────────────
 
     defineTool({
-      name: "task_logs",
-      label: "Task Logs",
-      description: "View recent run history for a task, including status, output, and errors.",
+      name: "job_logs",
+      label: "Job Logs",
+      description: "View recent run history for a job, including status, output, and errors.",
       parameters: Type.Object({
         id: Type.String({
-          description: "Task ID.",
+          description: "Job ID.",
         }),
         limit: Type.Optional(
           Type.Integer({
@@ -234,14 +233,14 @@ export function createJobTools(userId: string): ToolDefinition[] {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        // Verify the task belongs to this user
+        // Verify the job belongs to this user
         const job = await prisma.queueTask.findFirst({
           where: { id: params.id, userId },
           select: { id: true },
         });
 
         if (!job) {
-          throw new Error(`Task ${params.id} not found`);
+          throw new Error(`Job ${params.id} not found`);
         }
 
         const where: Record<string, unknown> = { taskId: params.id };
@@ -271,7 +270,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
               type: "text",
               text: JSON.stringify(
                 {
-                  taskId: params.id,
+                  jobId: params.id,
                   count: runs.length,
                   runs: runs.map(
                     (r: {
@@ -307,13 +306,13 @@ export function createJobTools(userId: string): ToolDefinition[] {
       },
     }),
 
-    // ─── task_types ─────────────────────────────────────────────────────────
+    // ─── job_types ──────────────────────────────────────────────────────────
 
     defineTool({
-      name: "task_types",
-      label: "List Task Types",
+      name: "job_types",
+      label: "List Job Types",
       description:
-        "List all available task types that can be created, with their descriptions, config fields, and default schedules.",
+        "List all available job types that can be created, with their descriptions, config fields, and default schedules.",
       parameters: Type.Object({}),
       execute: async (_toolCallId, _params) => {
         // Fetch email accounts for context on accountId fields
@@ -362,17 +361,17 @@ export function createJobTools(userId: string): ToolDefinition[] {
       },
     }),
 
-    // ─── task_create ────────────────────────────────────────────────────────
+    // ─── job_create ─────────────────────────────────────────────────────────
 
     defineTool({
-      name: "task_create",
-      label: "Create Task",
+      name: "job_create",
+      label: "Create Job",
       description:
-        "Create a new scheduled task. Use 'task_types' first to see available types and their config fields. The 'config' object should include 'cronExpression' (required) plus any type-specific fields.",
+        "Create a new scheduled job. Use 'job_types' first to see available types and their config fields. The 'config' object should include 'cronExpression' (required) plus any type-specific fields.",
       parameters: Type.Object({
         type: Type.String({
           description:
-            "Task type identifier. Use 'task_types' to see available types (e.g. 'summarization', 'email_sync', 'calendar_sync').",
+            "Job type identifier. Use 'job_types' to see available types (e.g. 'summarization', 'email_sync', 'calendar_sync').",
         }),
         config: Type.Object({
           cronExpression: Type.String({
@@ -381,13 +380,13 @@ export function createJobTools(userId: string): ToolDefinition[] {
         }),
         enabled: Type.Optional(
           Type.Boolean({
-            description: "Whether the task is enabled on creation. Default: true.",
+            description: "Whether the job is enabled on creation. Default: true.",
             default: true,
           }),
         ),
         modelId: Type.Optional(
           Type.String({
-            description: "Override the default AI model for this task (for AI-powered task types).",
+            description: "Override the default AI model for this job (for AI-powered job types).",
           }),
         ),
       }),
@@ -396,7 +395,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
         if (!schema) {
           const available = jobTypeSchemas.map((s) => s.type).join(", ");
           throw new Error(
-            `Unknown task type "${params.type}". Available types: ${available}. Use 'task_types' for details.`,
+            `Unknown job type "${params.type}". Available types: ${available}. Use 'job_types' for details.`,
           );
         }
 
@@ -458,7 +457,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
               },
             )
             .catch((err) => {
-              console.error(`Failed to schedule task ${job.id}: ${err.message}`);
+              console.error(`Failed to schedule job ${job.id}: ${err.message}`);
             });
         }
 
@@ -469,7 +468,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
               text: JSON.stringify(
                 {
                   created: true,
-                  task: {
+                  job: {
                     id: job.id,
                     type: job.type,
                     enabled: job.enabled,

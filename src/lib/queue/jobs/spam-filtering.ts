@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { moveMessage } from "@/lib/email/imap";
-import { dispatchAiTask } from "@/lib/queue/job-handler";
+import { dispatchAiJob } from "@/lib/queue/job-handler";
 import { resolveUserEmailAccountIds } from "@/lib/queue/user-isolation";
 
 export const metadata = {
@@ -54,7 +54,7 @@ export const fields = [
   {
     key: "modelId",
     label: "AI Model",
-    description: "Override the default model for this task",
+    description: "Override the default model for this job",
     type: "model" as const,
     default: "",
   },
@@ -112,7 +112,7 @@ export async function handler(params: {
     })),
   });
 
-  const response = await dispatchAiTask(userId, prompt, ...(modelId ? [{ modelId }] : []));
+  const response = await dispatchAiJob(userId, prompt, ...(modelId ? [{ modelId }] : []));
 
   let parsed;
   try {

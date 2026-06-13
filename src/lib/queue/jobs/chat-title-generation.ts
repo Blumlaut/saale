@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { dispatchAiTask } from "@/lib/queue/job-handler";
+import { dispatchAiJob } from "@/lib/queue/job-handler";
 
 export const metadata = {
   type: "chat_title_generation",
@@ -23,7 +23,7 @@ export const fields = [
   {
     key: "modelId",
     label: "AI Model",
-    description: "Override the default model for this task",
+    description: "Override the default model for this job",
     type: "model" as const,
     default: "",
   },
@@ -102,7 +102,7 @@ Output JSON only:
 { "title": "..." }
 `.trim();
 
-    const response = await dispatchAiTask(userId, titlePrompt, {
+    const response = await dispatchAiJob(userId, titlePrompt, {
       systemPrompt:
         "You are a chat title generator. Produce concise, descriptive titles for conversations. Output valid JSON only.",
       ...(modelId ? { modelId } : {}),

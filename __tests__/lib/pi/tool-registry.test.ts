@@ -29,8 +29,8 @@ vi.mock("@/lib/pi/tools/mail-tools", () => ({
 
 vi.mock("@/lib/pi/tools/job-tools", () => ({
   createJobTools: vi.fn((userId: string) => [
-    { name: "task_list", userId },
-    { name: "task_run", userId },
+    { name: "job_list", userId },
+    { name: "job_run", userId },
   ]),
 }));
 
@@ -214,8 +214,8 @@ describe("resolveTools", () => {
       "mail_accounts",
       "mail_list",
       "mail_read",
-      "task_list",
-      "task_run",
+      "job_list",
+      "job_run",
       "calendar_list",
       "calendar_create",
       "chat_search",
@@ -262,8 +262,8 @@ describe("resolveTools", () => {
     const mailTools = tools.find((t) => t.name === "mail_accounts");
     expect(mailTools).toHaveProperty("userId", userId);
 
-    const taskTool = tools.find((t) => t.name === "task_list");
-    expect(taskTool).toHaveProperty("userId", userId);
+    const jobTool = tools.find((t) => t.name === "job_list");
+    expect(jobTool).toHaveProperty("userId", userId);
 
     const chatTool = tools.find((t) => t.name === "chat_search");
     expect(chatTool).toHaveProperty("userId", userId);

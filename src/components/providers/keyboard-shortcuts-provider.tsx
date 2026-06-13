@@ -41,10 +41,10 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
         router.push("/dashboard/mail");
       }
 
-      // Cmd/Ctrl + 3 — Tasks
+      // Cmd/Ctrl + 3 — Jobs
       if (mod && e.key === "3") {
         e.preventDefault();
-        router.push("/dashboard/tasks");
+        router.push("/dashboard/jobs");
       }
 
       // Cmd/Ctrl + , — Settings

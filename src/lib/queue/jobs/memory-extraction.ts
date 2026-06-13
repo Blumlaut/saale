@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { dispatchAiTask } from "@/lib/queue/job-handler";
+import { dispatchAiJob } from "@/lib/queue/job-handler";
 import { titleWordOverlap } from "./_helpers";
 
 export const metadata = {
@@ -35,7 +35,7 @@ export const fields = [
   {
     key: "modelId",
     label: "AI Model",
-    description: "Override the default model for this task",
+    description: "Override the default model for this job",
     type: "model" as const,
     default: "",
   },
@@ -166,7 +166,7 @@ What to extract (only if explicitly stated by the user):
 
 What to NEVER extract:
 - Errors, bugs, or troubleshooting steps (these are transient)
-- Task/job configurations or scheduling details
+- Job configurations or scheduling details
 - "Keep this enabled" / "try again" / workflow instructions
 - Technical how-to instructions the assistant provided
 - Observations about the conversation itself
@@ -193,7 +193,7 @@ Output JSON:
 }
 `.trim();
 
-    const response = await dispatchAiTask(userId, extractionPrompt, {
+    const response = await dispatchAiJob(userId, extractionPrompt, {
       systemPrompt:
         "You are a selective memory extraction engine. Most conversations have nothing worth remembering. Extract only concrete, long-term user facts and preferences. Output valid JSON only.",
       ...(modelId ? { modelId } : {}),

@@ -14,12 +14,12 @@ export function getConnection(): string {
 
 // ─── Shared Queue ────────────────────────────────────────────────────────────
 
-const QUEUE_NAME = "saale-tasks";
+const QUEUE_NAME = "saale-jobs";
 let _queue: Queue | null = null;
 
 /**
  * Get the shared BullMQ queue (singleton to avoid connection leaks).
- * All tasks share one queue; jobs are differentiated by taskId in job data.
+ * All jobs share one queue; entries are differentiated by taskId in job data.
  */
 export function getQueue(): Queue {
   if (!_queue) {
@@ -68,7 +68,7 @@ export async function updateJobRun(
 // ─── Worker creation ─────────────────────────────────────────────────────────
 
 /**
- * Create a BullMQ worker for the shared task queue.
+ * Create a BullMQ worker for the shared job queue.
  * @param processHandler - Job processing function (lazy-loaded to avoid Pi imports at startup)
  * @param concurrency - Number of concurrent jobs
  */
@@ -92,7 +92,7 @@ export function createWorker(processHandler: Processor, concurrency = 5): Worker
  * Call this on server startup.
  */
 export async function scheduleAllJobs(): Promise<void> {
-  const tasks = await prisma.queueTask.findMany({
+  const jobs = await prisma.queueTask.findMany({
     where: { enabled: true },
     select: {
       id: true,
@@ -103,21 +103,21 @@ export async function scheduleAllJobs(): Promise<void> {
   });
 
   const queue = getQueue();
-  for (const task of tasks) {
-    const config = JSON.parse(task.config);
+  for (const job of jobs) {
+    const config = JSON.parse(job.config);
 
     if (config.cronExpression) {
       try {
         await queue.add(
           "execute",
-          { ...config, taskId: task.id, type: task.type, modelId: task.modelId },
+          { ...config, taskId: job.id, type: job.type, modelId: job.modelId },
           {
-            jobId: `scheduled-${task.id}`,
-            repeat: { pattern: config.cronExpression, tz: "UTC", key: `scheduled-${task.id}` },
+            jobId: `scheduled-${job.id}`,
+            repeat: { pattern: config.cronExpression, tz: "UTC", key: `scheduled-${job.id}` },
           },
         );
       } catch (err) {
-        console.error(`Failed to schedule job ${task.id}: ${(err as Error).message}`);
+        console.error(`Failed to schedule job ${job.id}: ${(err as Error).message}`);
       }
     }
   }
