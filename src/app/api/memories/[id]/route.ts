@@ -1,35 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireMemoryOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
  * GET /api/memories/[id] — Get a single memory
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { id } = await params;
-  const memory = await prisma.memory.findFirst({
-    where: { id, userId: authResult.user.id },
-  });
 
-  if (!memory) {
-    return NextResponse.json({ error: "Memory not found" }, { status: 404 });
-  }
+  const authResult = await requireMemoryOwner(id);
+  if (!authResult.ok) return authResult.response;
 
   return NextResponse.json({
     memory: {
-      id: memory.id,
-      collection: memory.collection,
-      title: memory.title,
-      content: memory.content,
-      tags: memory.tags,
-      importance: memory.importance,
-      source: memory.source,
-      accessCount: memory.accessCount,
-      createdAt: memory.createdAt.toISOString(),
-      updatedAt: memory.updatedAt.toISOString(),
+      id: authResult.memory.id,
+      collection: authResult.memory.collection,
+      title: authResult.memory.title,
+      content: authResult.memory.content,
+      tags: authResult.memory.tags,
+      importance: authResult.memory.importance,
+      source: authResult.memory.source,
+      accessCount: authResult.memory.accessCount,
+      createdAt: authResult.memory.createdAt.toISOString(),
+      updatedAt: authResult.memory.updatedAt.toISOString(),
     },
   });
 }
@@ -38,18 +31,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
  * PATCH /api/memories/[id] — Update a memory
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireSession();
+  const { id } = await params;
+
+  const authResult = await requireMemoryOwner(id);
   if (!authResult.ok) return authResult.response;
 
-  const { id } = await params;
   const body = await request.json();
-
-  const existing = await prisma.memory.findFirst({
-    where: { id, userId: authResult.user.id },
-  });
-  if (!existing) {
-    return NextResponse.json({ error: "Memory not found" }, { status: 404 });
-  }
 
   const memory = await prisma.memory.update({
     where: { id },
@@ -84,16 +71,10 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { id } = await params;
-  const existing = await prisma.memory.findFirst({
-    where: { id, userId: authResult.user.id },
-  });
-  if (!existing) {
-    return NextResponse.json({ error: "Memory not found" }, { status: 404 });
-  }
+
+  const authResult = await requireMemoryOwner(id);
+  if (!authResult.ok) return authResult.response;
 
   await prisma.memory.delete({ where: { id } });
   return NextResponse.json({ success: true });

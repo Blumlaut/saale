@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireJobOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
@@ -9,18 +9,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { jobId } = await params;
 
-  const job = await prisma.queueTask.findFirst({
-    where: { id: jobId, userId: authResult.user.id },
-  });
-
-  if (!job) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireJobOwner(jobId);
+  if (!authResult.ok) return authResult.response;
 
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get("limit") ?? "20", 10);

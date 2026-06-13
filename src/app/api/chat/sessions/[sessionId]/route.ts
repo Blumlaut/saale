@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { deleteAllImages } from "@/lib/image-attachment";
 import { remove, getPoolKey, getSessionDir } from "@/lib/pi/agent-pool";
@@ -12,35 +12,16 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { sessionId } = await params;
 
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-    select: {
-      id: true,
-      title: true,
-      temporary: true,
-      modelProvider: true,
-      modelName: true,
-      thinkingLevel: true,
-      messageCount: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-
-  if (!chatSession) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
 
   return NextResponse.json({
     session: {
-      ...chatSession,
-      createdAt: chatSession.createdAt.toISOString(),
-      updatedAt: chatSession.updatedAt.toISOString(),
+      ...authResult.session,
+      createdAt: authResult.session.createdAt.toISOString(),
+      updatedAt: authResult.session.updatedAt.toISOString(),
     },
   });
 }
@@ -52,18 +33,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { sessionId } = await params;
 
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-  });
-
-  if (!chatSession) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
   const { title, temporary, modelProvider, modelName, thinkingLevel, toolConfig } = body;
@@ -103,18 +76,10 @@ export async function PATCH(
  * 4. Delete session from DB (cascade removes messages + attachment records)
  */
 async function deleteSession(request: NextRequest, params: Promise<{ sessionId: string }>) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { sessionId } = await params;
 
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-  });
-
-  if (!chatSession) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
 
   // Fetch all attachment storage paths in a single query
   const messages = await prisma.chatMessage.findMany({
@@ -127,7 +92,7 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
   // Files are deleted BEFORE DB records so a failure leaves the DB intact for retry
   if (storagePaths.length > 0) {
     try {
-      await deleteAllImages(authResult.user.id, storagePaths);
+      await deleteAllImages(authResult.userId, storagePaths);
     } catch (err) {
       console.error(
         `Failed to delete images for session ${sessionId}:`,
@@ -149,11 +114,11 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
   });
 
   // Clean up agent pool entry (disposes agent, removes from pool)
-  const poolKey = getPoolKey(authResult.user.id, sessionId);
+  const poolKey = getPoolKey(authResult.userId, sessionId);
   remove(poolKey);
 
   // Clean up session files on disk (Pi's JSONL session files)
-  const sessionDir = getSessionDir(authResult.user.id, sessionId);
+  const sessionDir = getSessionDir(authResult.userId, sessionId);
   try {
     await fs.rm(sessionDir, { recursive: true, force: true });
   } catch (err) {

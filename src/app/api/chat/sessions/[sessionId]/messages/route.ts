@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { validateImageUpload, processAndStoreImage, deleteAllImages } from "@/lib/image-attachment";
 
@@ -10,28 +10,11 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { sessionId } = await params;
 
-  // Verify session belongs to user
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-    select: {
-      id: true,
-      temporary: true,
-      modelProvider: true,
-      modelName: true,
-      thinkingLevel: true,
-      toolConfig: true,
-      processingSince: true,
-    },
-  });
-
-  if (!chatSession) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
+  const chatSession = authResult.session;
 
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId },
@@ -83,19 +66,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
   const { sessionId } = await params;
 
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-    select: { id: true, title: true, processingSince: true },
-  });
-
-  if (!chatSession) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
+  const chatSession = authResult.session;
 
   // Prevent sending another message while one is being processed
   if (chatSession.processingSince) {
@@ -135,7 +110,7 @@ export async function POST(
 
         const buffer = Buffer.from(await file.arrayBuffer());
         const result = await processAndStoreImage(
-          authResult.user.id,
+          authResult.userId,
           buffer,
           file.name,
           file.type,
@@ -245,23 +220,16 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const authResult = await requireSession();
+  const { sessionId } = await params;
+
+  const authResult = await requireChatSessionOwner(sessionId);
   if (!authResult.ok) return authResult.response;
 
-  const { sessionId } = await params;
   const url = new URL(request.url);
   const messageId = url.searchParams.get("id");
 
   if (!messageId) {
     return NextResponse.json({ error: "Message ID is required" }, { status: 400 });
-  }
-
-  const chatSession = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId: authResult.user.id },
-  });
-
-  if (!chatSession) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   // Fetch attachments for this message to clean up image files from disk
@@ -274,7 +242,7 @@ export async function DELETE(
   // Delete image files from disk — throws if any deletion fails
   if (storagePaths.length > 0) {
     try {
-      await deleteAllImages(authResult.user.id, storagePaths);
+      await deleteAllImages(authResult.userId, storagePaths);
     } catch (err) {
       console.error(
         `Failed to delete images for message ${messageId}:`,

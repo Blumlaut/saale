@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireCalendarEventOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { pushUpdateToCalDAV, pushDeleteToCalDAV } from "@/lib/calendar/caldav";
 import type { ICSExportEvent } from "@/lib/calendar/ics-export";
@@ -13,36 +13,24 @@ export async function GET(
 ) {
   const { eventId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarEventOwner(eventId);
   if (!authResult.ok) return authResult.response;
+  const event = authResult.event;
 
-  const event = await prisma.calendarEvent.findFirst({
-    where: {
-      id: eventId,
-      calendar: { account: { userId: authResult.user.id } },
-    },
-    include: {
-      calendar: {
-        select: {
-          id: true,
-          name: true,
-          color: true,
-        },
-      },
-    },
+  // Fetch calendar details for response
+  const calendar = await prisma.calendar.findUnique({
+    where: { id: event.calendarId },
+    select: { id: true, name: true, color: true },
   });
-
-  if (!event) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!calendar) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return NextResponse.json({
     event: {
       id: event.id,
       uid: event.uid,
       calendarId: event.calendarId,
-      calendarName: event.calendar.name,
-      calendarColor: event.calendar.color,
+      calendarName: calendar.name,
+      calendarColor: calendar.color,
       summary: event.summary,
       description: event.description,
       location: event.location,
@@ -70,23 +58,16 @@ export async function PATCH(
 ) {
   const { eventId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarEventOwner(eventId);
   if (!authResult.ok) return authResult.response;
+  const event = authResult.event;
 
-  const event = await prisma.calendarEvent.findFirst({
-    where: {
-      id: eventId,
-      calendar: { account: { userId: authResult.user.id } },
-    },
-    include: {
-      calendar: {
-        include: { account: true },
-      },
-    },
+  // Fetch calendar with account for CalDAV push
+  const calendarWithAccount = await prisma.calendar.findUnique({
+    where: { id: event.calendarId },
+    include: { account: true },
   });
-  if (!event) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!calendarWithAccount) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};
@@ -108,7 +89,7 @@ export async function PATCH(
   });
 
   // Push to CalDAV if this is a CalDAV calendar
-  if (event.calendar.account.accountType === "caldav" && event.source === "caldav") {
+  if (calendarWithAccount.account.accountType === "caldav" && event.source === "caldav") {
     const icsEvent: ICSExportEvent & { url?: string; sequence?: number } = {
       uid: updated.uid,
       summary: updated.summary,
@@ -125,7 +106,7 @@ export async function PATCH(
       sequence: updated.sequence,
     };
 
-    const result = await pushUpdateToCalDAV(updated.calendarId, icsEvent);
+    const result = await pushUpdateToCalDAV(event.calendarId, icsEvent);
     if (!result.success) {
       console.error(`Failed to push update to CalDAV: ${result.error}`);
       // Don't fail the request — local update succeeded
@@ -152,26 +133,19 @@ export async function DELETE(
 ) {
   const { eventId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarEventOwner(eventId);
   if (!authResult.ok) return authResult.response;
+  const event = authResult.event;
 
-  const event = await prisma.calendarEvent.findFirst({
-    where: {
-      id: eventId,
-      calendar: { account: { userId: authResult.user.id } },
-    },
-    include: {
-      calendar: {
-        include: { account: true },
-      },
-    },
+  // Fetch calendar with account for CalDAV delete
+  const calendarWithAccount = await prisma.calendar.findUnique({
+    where: { id: event.calendarId },
+    include: { account: true },
   });
-  if (!event) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!calendarWithAccount) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Delete from CalDAV first if this is a CalDAV event
-  if (event.calendar.account.accountType === "caldav" && event.source === "caldav" && event.url) {
+  if (calendarWithAccount.account.accountType === "caldav" && event.source === "caldav" && event.url) {
     const result = await pushDeleteToCalDAV(event.calendarId, event.url);
     if (!result.success) {
       console.error(`Failed to push delete to CalDAV: ${result.error}`);

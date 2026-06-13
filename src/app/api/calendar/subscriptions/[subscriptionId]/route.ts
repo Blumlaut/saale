@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireCalendarSubscriptionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { syncSubscription } from "@/lib/calendar/subscription-sync";
@@ -13,15 +13,9 @@ export async function PATCH(
 ) {
   const { subscriptionId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarSubscriptionOwner(subscriptionId);
   if (!authResult.ok) return authResult.response;
-
-  const subscription = await prisma.calendarSubscription.findFirst({
-    where: { id: subscriptionId, userId: authResult.user.id },
-  });
-  if (!subscription) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const subscription = authResult.subscription;
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};
@@ -59,17 +53,10 @@ export async function POST(
 ) {
   const { subscriptionId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarSubscriptionOwner(subscriptionId);
   if (!authResult.ok) return authResult.response;
 
-  const subscription = await prisma.calendarSubscription.findFirst({
-    where: { id: subscriptionId, userId: authResult.user.id },
-  });
-  if (!subscription) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  const result = await syncSubscription(subscriptionId, authResult.user.id);
+  const result = await syncSubscription(subscriptionId, authResult.userId);
 
   return NextResponse.json({
     sync: {
@@ -91,15 +78,9 @@ export async function DELETE(
 ) {
   const { subscriptionId } = await params;
 
-  const authResult = await requireSession();
+  const authResult = await requireCalendarSubscriptionOwner(subscriptionId);
   if (!authResult.ok) return authResult.response;
-
-  const subscription = await prisma.calendarSubscription.findFirst({
-    where: { id: subscriptionId, userId: authResult.user.id },
-  });
-  if (!subscription) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const subscription = authResult.subscription;
 
   await prisma.calendarSubscription.delete({
     where: { id: subscriptionId },
