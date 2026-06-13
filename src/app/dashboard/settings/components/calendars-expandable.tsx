@@ -46,9 +46,7 @@ export function CalendarsExpandable({ calendars, isExpanded, onToggle }: Calenda
                 }}
               />
               <span className="text-xs">{cal.name}</span>
-              <span className="text-muted-foreground/60 text-[10px]">
-                {cal.eventCount} events
-              </span>
+              <span className="text-muted-foreground/60 text-[10px]">{cal.eventCount} events</span>
             </div>
           ))}
         </div>

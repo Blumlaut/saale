@@ -13,7 +13,6 @@ export async function PATCH(
 
   const authResult = await requireCalendarOwner(calendarId);
   if (!authResult.ok) return authResult.response;
-  const calendar = authResult.calendar;
 
   const body = await request.json();
   const updateData: Record<string, unknown> = {};
