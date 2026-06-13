@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import type { AppSettings } from "@prisma/client";
 
 /** Fields that may be updated via PATCH /api/settings. */
 const ALLOWED_FIELDS = new Set([
@@ -8,12 +9,27 @@ const ALLOWED_FIELDS = new Set([
   "defaultModelName",
   "defaultThinkingLevel",
   "theme",
-  "agentSystemPrompt",
+  "agentCustomInstructions",
   "emailWritingStyle",
   "purposeModelOverrides",
   "disabledModels",
   "defaultToolConfig",
 ]);
+
+/** Serialize AppSettings to the shape sent to the frontend. */
+function serializeSettings(settings: AppSettings) {
+  return {
+    defaultModelProvider: settings.defaultModelProvider,
+    defaultModelName: settings.defaultModelName,
+    defaultThinkingLevel: settings.defaultThinkingLevel,
+    theme: settings.theme,
+    agentCustomInstructions: settings.agentCustomInstructions,
+    emailWritingStyle: settings.emailWritingStyle,
+    purposeModelOverrides: settings.purposeModelOverrides,
+    disabledModels: settings.disabledModels,
+    defaultToolConfig: settings.defaultToolConfig,
+  };
+}
 
 /**
  * GET /api/settings — Get user settings
@@ -35,19 +51,7 @@ export async function GET() {
     });
   }
 
-  return NextResponse.json({
-    settings: {
-      defaultModelProvider: settings.defaultModelProvider,
-      defaultModelName: settings.defaultModelName,
-      defaultThinkingLevel: settings.defaultThinkingLevel,
-      theme: settings.theme,
-      agentSystemPrompt: settings.agentSystemPrompt,
-      emailWritingStyle: settings.emailWritingStyle,
-      purposeModelOverrides: settings.purposeModelOverrides,
-      disabledModels: settings.disabledModels,
-      defaultToolConfig: settings.defaultToolConfig,
-    },
-  });
+  return NextResponse.json({ settings: serializeSettings(settings) });
 }
 
 /**
@@ -76,17 +80,5 @@ export async function PATCH(request: NextRequest) {
     update: updateData,
   });
 
-  return NextResponse.json({
-    settings: {
-      defaultModelProvider: settings.defaultModelProvider,
-      defaultModelName: settings.defaultModelName,
-      defaultThinkingLevel: settings.defaultThinkingLevel,
-      theme: settings.theme,
-      agentSystemPrompt: settings.agentSystemPrompt,
-      emailWritingStyle: settings.emailWritingStyle,
-      purposeModelOverrides: settings.purposeModelOverrides,
-      disabledModels: settings.disabledModels,
-      defaultToolConfig: settings.defaultToolConfig,
-    },
-  });
+  return NextResponse.json({ settings: serializeSettings(settings) });
 }

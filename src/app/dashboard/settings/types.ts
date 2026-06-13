@@ -13,7 +13,7 @@ export interface UserSettings {
   defaultModelName: string;
   defaultThinkingLevel: string;
   theme: string;
-  agentSystemPrompt: string | null;
+  agentCustomInstructions: string | null;
   emailWritingStyle: string | null;
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
   disabledModels: string[] | null; // Array of "provider:modelId" strings

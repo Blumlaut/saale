@@ -93,7 +93,7 @@ export async function GET(
   // Fetch user's custom agent system prompt
   const userSettings = await prisma.appSettings.findUnique({
     where: { userId: authResult.user.id },
-    select: { agentSystemPrompt: true },
+    select: { agentCustomInstructions: true },
   });
 
   if (!chatSession) {
@@ -200,19 +200,27 @@ export async function GET(
     });
 
     // Set system prompt on the agent
-    const defaultSystemPrompt =
-      "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
-    const basePrompt =
-      userSettings?.agentSystemPrompt && userSettings.agentSystemPrompt.trim()
-        ? userSettings.agentSystemPrompt
-        : defaultSystemPrompt;
+    const defaultSystemPrompt = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, task management, calendar, and file organization.
+
+Guidelines:
+- Be concise and direct — get to the point without unnecessary preamble.
+- Write naturally, like a capable colleague, not a generic AI.
+- Use bullet points or short paragraphs when listing things.
+- When uncertain, say so briefly rather than guessing.
+- Match the user's tone and language preference.`;
+
+    const customInstructions =
+      userSettings?.agentCustomInstructions && userSettings.agentCustomInstructions.trim()
+        ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
+        : "";
 
     const memoryInstruction =
       resolvedToolConfig.memory !== false
         ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
         : "";
 
-    result.session.agent.state.systemPrompt = basePrompt + memoryInstruction;
+    result.session.agent.state.systemPrompt =
+      defaultSystemPrompt + customInstructions + memoryInstruction;
 
     return { session: result.session, sessionDir };
   });
