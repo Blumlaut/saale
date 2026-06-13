@@ -1,11 +1,11 @@
 "use client";
 
-import { GlassPanel, GlassPanelContent, GlassPanelFooter } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
+import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Wrench, Loader2, CheckCircle, AlertCircle, Info } from "lucide-react";
+import { Wrench, Info } from "lucide-react";
+import { SaveFooter } from "../components/save-footer";
 import type { UserSettings, ToolConfig } from "../types";
 import { DEFAULT_TOOL_CONFIG, TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
 
@@ -81,30 +81,7 @@ export function ToolsTab({
         </div>
       </GlassPanelContent>
 
-      {/* Footer with save */}
-      <GlassPanelFooter>
-        <div>
-          {saveStatus === "success" && (
-            <span className="flex items-center gap-1 text-sm text-emerald-500">
-              <CheckCircle className="h-4 w-4" />
-              Saved
-            </span>
-          )}
-          {saveStatus === "error" && (
-            <span className="flex items-center gap-1 text-sm text-red-500">
-              <AlertCircle className="h-4 w-4" />
-              Failed to save
-            </span>
-          )}
-          {saveStatus === "idle" && (
-            <span className="text-muted-foreground text-sm">Changes are applied when you save</span>
-          )}
-        </div>
-        <Button onClick={onSave} disabled={saving}>
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          {saving ? "Saving" : "Save"}
-        </Button>
-      </GlassPanelFooter>
+      <SaveFooter saving={saving} saveStatus={saveStatus} onSave={onSave} />
     </GlassPanel>
   );
 }
