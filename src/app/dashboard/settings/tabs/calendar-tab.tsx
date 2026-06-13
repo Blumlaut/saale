@@ -13,12 +13,11 @@ import {
   RefreshCw,
   Trash2,
   MoreVertical,
-  ChevronRight,
-  ChevronDown,
   HardDrive,
   Globe,
   Link as LinkIcon,
 } from "lucide-react";
+import { CalendarsExpandable } from "../components/calendars-expandable";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -350,42 +349,11 @@ export function CalendarTab() {
                   </div>
 
                   {localAccount.calendars.length > 0 && (
-                    <div className="border-border/50 border-t">
-                      <button
-                        className="flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-white/10"
-                        onClick={() => toggleExpanded(localAccount.id)}
-                      >
-                        {expandedAccounts.has(localAccount.id) ? (
-                          <ChevronDown className="text-muted-foreground h-3 w-3" />
-                        ) : (
-                          <ChevronRight className="text-muted-foreground h-3 w-3" />
-                        )}
-                        <span className="text-muted-foreground">
-                          {expandedAccounts.has(localAccount.id) ? "Hide" : "Show"}{" "}
-                          {localAccount.calendars.length} calendar
-                          {localAccount.calendars.length !== 1 ? "s" : ""}
-                        </span>
-                      </button>
-
-                      {expandedAccounts.has(localAccount.id) && (
-                        <div className="border-border/50 border-t px-4 py-2">
-                          {localAccount.calendars.map((cal) => (
-                            <div key={cal.id} className="flex items-center gap-2 py-1.5">
-                              <span
-                                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: cal.color || "var(--muted-foreground)",
-                                }}
-                              />
-                              <span className="text-xs">{cal.name}</span>
-                              <span className="text-muted-foreground/60 text-[10px]">
-                                {cal.eventCount} events
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <CalendarsExpandable
+                      calendars={localAccount.calendars}
+                      isExpanded={expandedAccounts.has(localAccount.id)}
+                      onToggle={() => toggleExpanded(localAccount.id)}
+                    />
                   )}
                 </div>
               )}
@@ -469,41 +437,11 @@ export function CalendarTab() {
                     </div>
 
                     {account.calendars.length > 0 && (
-                      <div className="border-border/50 border-t">
-                        <button
-                          className="flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-white/10"
-                          onClick={() => toggleExpanded(account.id)}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="text-muted-foreground h-3 w-3" />
-                          ) : (
-                            <ChevronRight className="text-muted-foreground h-3 w-3" />
-                          )}
-                          <span className="text-muted-foreground">
-                            {isExpanded ? "Hide" : "Show"} {account.calendars.length} calendar
-                            {account.calendars.length !== 1 ? "s" : ""}
-                          </span>
-                        </button>
-
-                        {isExpanded && (
-                          <div className="border-border/50 border-t px-4 py-2">
-                            {account.calendars.map((cal) => (
-                              <div key={cal.id} className="flex items-center gap-2 py-1.5">
-                                <span
-                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: cal.color || "var(--muted-foreground)",
-                                  }}
-                                />
-                                <span className="text-xs">{cal.name}</span>
-                                <span className="text-muted-foreground/60 text-[10px]">
-                                  {cal.eventCount} events
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <CalendarsExpandable
+                        calendars={account.calendars}
+                        isExpanded={isExpanded}
+                        onToggle={() => toggleExpanded(account.id)}
+                      />
                     )}
 
                     {/* Sync result */}
