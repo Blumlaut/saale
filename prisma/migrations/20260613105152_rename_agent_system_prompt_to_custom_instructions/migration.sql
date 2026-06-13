@@ -6,18 +6,24 @@
 
 */
 -- DropIndex
-DROP INDEX "idx_chat_session_title_trgm";
+DROP INDEX IF EXISTS "idx_chat_session_title_trgm";
 
 -- DropIndex
-DROP INDEX "idx_email_body_preview_trgm";
+DROP INDEX IF EXISTS "idx_email_body_preview_trgm";
 
 -- DropIndex
-DROP INDEX "idx_email_subject_trgm";
+DROP INDEX IF EXISTS "idx_email_subject_trgm";
 
 -- AlterTable
-ALTER TABLE "AppSettings" DROP COLUMN "agentSystemPrompt",
-ADD COLUMN     "agentCustomInstructions" TEXT;
+ALTER TABLE "AppSettings" DROP COLUMN IF EXISTS "agentSystemPrompt";
+
+-- Add column only if it doesn't exist (safe for re-runs)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='AppSettings' AND column_name='agentCustomInstructions') THEN
+    ALTER TABLE "AppSettings" ADD COLUMN "agentCustomInstructions" TEXT;
+  END IF;
+END $$;
 
 -- AlterTable
-ALTER TABLE "ChatSession" ALTER COLUMN "title" SET DATA TYPE VARCHAR(50),
-ALTER COLUMN "processingSince" SET DATA TYPE TIMESTAMP(3);
+ALTER TABLE "ChatSession" ALTER COLUMN "title" TYPE VARCHAR(50);
+ALTER TABLE "ChatSession" ALTER COLUMN "processingSince" TYPE TIMESTAMP(3);
