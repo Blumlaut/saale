@@ -20,29 +20,26 @@ import {
 import { useState, useCallback } from "react";
 import type { UserSettings } from "../types";
 
-const DEFAULT_CHAT_PROMPT =
-  "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
-
-const CHAT_EXAMPLE_PROMPTS = [
+const CHAT_EXAMPLE_INSTRUCTIONS = [
   {
-    title: "Professional & Formal",
-    prompt:
-      "You are a professional AI assistant. Use formal language, complete sentences, and a polished tone. Avoid slang, contractions, and casual expressions. Be thorough but concise.",
+    title: "Always Use Code Blocks",
+    instruction:
+      "Always wrap code snippets in fenced code blocks with language tags. Never inline code without formatting.",
   },
   {
-    title: "Friendly & Conversational",
-    prompt:
-      "You are a friendly and approachable AI assistant. Write in a warm, conversational tone. Use contractions naturally, keep things light, and feel free to use occasional humor. Be helpful without being overly formal.",
+    title: "Explain Your Reasoning",
+    instruction:
+      "Before giving an answer, briefly explain your reasoning or approach. Show your work step by step for complex questions.",
   },
   {
-    title: "Direct & Minimal",
-    prompt:
-      "You are a no-nonsense AI assistant. Get straight to the point. Use short sentences, bullet points when helpful, and skip pleasantries. Focus on facts and actionable information only.",
+    title: "Ultra-Concise",
+    instruction:
+      "Keep responses under 3 sentences unless the user asks for detail. Skip all pleasantries and introductions — start directly with the answer.",
   },
   {
-    title: "Creative & Expressive",
-    prompt:
-      "You are a creative and expressive AI assistant. Use vivid language, varied sentence structure, and an engaging tone. Feel free to be witty and use metaphors when appropriate. Make responses interesting to read.",
+    title: "Teach Don't Just Answer",
+    instruction:
+      "When answering, explain the underlying concepts so the user learns. Use analogies when helpful. Assume the user is curious but not an expert.",
   },
 ];
 
@@ -77,8 +74,9 @@ interface PromptSectionProps {
   placeholder: string;
   value: string;
   onChange: (value: string | null) => void;
-  examples: { title: string; prompt: string }[];
+  examples: { title: string; prompt?: string; instruction?: string }[];
   exampleLabel: string;
+  fieldKey: "instruction" | "prompt";
 }
 
 function PromptSection({
@@ -91,9 +89,10 @@ function PromptSection({
   onChange,
   examples,
   exampleLabel,
+  fieldKey,
 }: PromptSectionProps) {
   const [expanded, setExpanded] = useState(false);
-  const isDefault = !value;
+  const isEmpty = !value || value.trim() === "";
 
   return (
     <div className="space-y-4">
@@ -108,7 +107,7 @@ function PromptSection({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor={label}>{label}</Label>
-          {isDefault && <span className="text-muted-foreground text-xs">Using default</span>}
+          {isEmpty && <span className="text-muted-foreground text-xs">Using defaults</span>}
         </div>
 
         <Textarea
@@ -121,7 +120,7 @@ function PromptSection({
 
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground text-xs">{value.length} characters</span>
-          {!isDefault && (
+          {!isEmpty && (
             <Button
               variant="ghost"
               size="sm"
@@ -129,7 +128,7 @@ function PromptSection({
               onClick={() => onChange(null)}
             >
               <RotateCcw className="h-3 w-3" />
-              Reset
+              Clear
             </Button>
           )}
         </div>
@@ -149,24 +148,27 @@ function PromptSection({
 
         {expanded && (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            {examples.map((example) => (
-              <div key={example.title} className="liquid-glass-inner rounded-xl border-0 p-2.5">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-xs font-medium">{example.title}</span>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-5 px-1.5 text-[10px]"
-                    onClick={() => onChange(example.prompt)}
-                  >
-                    Apply
-                  </Button>
+            {examples.map((example) => {
+              const text = fieldKey === "instruction" ? example.instruction : example.prompt;
+              return (
+                <div key={example.title} className="liquid-glass-inner rounded-xl border-0 p-2.5">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-xs font-medium">{example.title}</span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-5 px-1.5 text-[10px]"
+                      onClick={() => onChange(text ?? null)}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                  <p className="text-muted-foreground line-clamp-3 text-[11px] leading-relaxed">
+                    {text}
+                  </p>
                 </div>
-                <p className="text-muted-foreground line-clamp-3 text-[11px] leading-relaxed">
-                  {example.prompt}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -189,10 +191,10 @@ export function AgentPersonaTab({
   saveStatus,
   onSave,
 }: AgentPersonaTabProps) {
-  const handleChatPromptChange = useCallback(
+  const handleCustomInstructionsChange = useCallback(
     (value: string | null) => {
       if (settings) {
-        onSettingsChange({ ...settings, agentSystemPrompt: value });
+        onSettingsChange({ ...settings, agentCustomInstructions: value });
       }
     },
     [settings, onSettingsChange],
@@ -224,17 +226,18 @@ export function AgentPersonaTab({
 
         <Separator />
 
-        {/* Chat Persona Section */}
+        {/* Chat Custom Instructions Section */}
         <PromptSection
-          title="Chat Persona"
-          description="Defines the personality and behavior of your AI assistant in chat conversations."
+          title="Chat — Custom Instructions"
+          description="These instructions are appended to Saale's default behavior. Use them to add specific rules, preferences, or formatting guidelines."
           icon={MessageSquare}
-          label="Chat System Prompt"
-          placeholder={DEFAULT_CHAT_PROMPT}
-          value={settings?.agentSystemPrompt ?? ""}
-          onChange={handleChatPromptChange}
-          examples={CHAT_EXAMPLE_PROMPTS}
-          exampleLabel="Example Personas"
+          label="Custom Instructions"
+          placeholder="e.g. Always respond in German. / Prefer bullet points. / Never use markdown headings..."
+          value={settings?.agentCustomInstructions ?? ""}
+          onChange={handleCustomInstructionsChange}
+          examples={CHAT_EXAMPLE_INSTRUCTIONS}
+          exampleLabel="Example Instructions"
+          fieldKey="instruction"
         />
 
         <Separator />
@@ -250,6 +253,7 @@ export function AgentPersonaTab({
           onChange={handleEmailStyleChange}
           examples={EMAIL_EXAMPLE_STYLES}
           exampleLabel="Example Styles"
+          fieldKey="prompt"
         />
       </GlassPanelContent>
 

@@ -284,7 +284,7 @@ model AppSettings {
   defaultModelName     String   @default("")
   defaultThinkingLevel String   @default("off")
   theme                String   @default("system") // "dark" | "light" | "system"
-  agentSystemPrompt      String?  @db.Text // User-defined AI personality for chat conversations
+  agentCustomInstructions String?  @db.Text // User-defined custom instructions appended to the default system prompt
   emailWritingStyle      String?  @db.Text // User-defined writing style for email reply drafts
   purposeModelOverrides  Json?                  // Per-purpose model overrides: { "email_draft": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } }
   disabledModels       Json?                  // Array of "provider:modelId" strings for models the user has disabled
