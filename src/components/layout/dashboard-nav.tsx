@@ -34,7 +34,7 @@ import { useTheme } from "next-themes";
 const navItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
-  { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
+  { href: "/dashboard/jobs", label: "Jobs", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
@@ -383,7 +383,7 @@ export function DashboardNav() {
               )}
             </div>
 
-            {/* Remaining nav items (Tasks, Settings) */}
+            {/* Remaining nav items (Jobs, Settings) */}
             {navItems
               .filter((item) => item.href !== "/dashboard/chat")
               .map((item) => {

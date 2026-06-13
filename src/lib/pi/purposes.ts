@@ -33,10 +33,10 @@ export const MODEL_PURPOSES: Record<string, ModelPurpose> = {
     description: "AI-generated email reply drafts",
     icon: Mail,
   },
-  tasks: {
-    id: "tasks",
-    label: "Tasks",
-    description: "Scheduled AI tasks (summarization, classification, etc.)",
+  jobs: {
+    id: "jobs",
+    label: "Jobs",
+    description: "Scheduled AI jobs (summarization, classification, etc.)",
     icon: ListTodo,
   },
 };

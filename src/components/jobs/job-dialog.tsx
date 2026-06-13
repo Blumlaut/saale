@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ConfigForm } from "@/components/tasks/config-form";
+import { ConfigForm } from "@/components/jobs/config-form";
 import { fetchJson, postJson, patchJson } from "@/lib/http";
 import {
   RefreshCw,
@@ -224,7 +224,7 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
             </div>
           ) : (
             <div className="space-y-2">
-              <Label>Task Type</Label>
+              <Label>Job Type</Label>
               <Popover>
                 <PopoverTrigger>
                   <button
@@ -251,7 +251,7 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
                     ) : (
                       <>
                         <RefreshCw className="text-muted-foreground h-4 w-4 shrink-0" />
-                        <span className="flex-1 text-left">Select a task type</span>
+                        <span className="flex-1 text-left">Select a job type</span>
                         <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
                       </>
                     )}

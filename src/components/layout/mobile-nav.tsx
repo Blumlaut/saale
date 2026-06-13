@@ -9,7 +9,7 @@ const navItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
   { href: "/dashboard/mail", label: "Mail", icon: Mail },
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
-  { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
+  { href: "/dashboard/jobs", label: "Jobs", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

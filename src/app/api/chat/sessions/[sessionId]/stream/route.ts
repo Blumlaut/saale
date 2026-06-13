@@ -146,7 +146,7 @@ export async function GET(
     });
 
     // Set system prompt on the agent
-    const defaultSystemPrompt = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, task management, calendar, and file organization.
+    const defaultSystemPrompt = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
 
 Guidelines:
 - Be concise and direct — get to the point without unnecessary preamble.

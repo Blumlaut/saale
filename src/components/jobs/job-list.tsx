@@ -22,7 +22,7 @@ import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import { GlassPanelHeader } from "@/components/ui/glass-panel";
-import { ConfigDisplay } from "@/components/tasks/config-form";
+import { ConfigDisplay } from "@/components/jobs/config-form";
 import type { JobSchema } from "@/types/shared";
 
 interface JobConfig {

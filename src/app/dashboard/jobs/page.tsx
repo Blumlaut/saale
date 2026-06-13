@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { JobList } from "@/components/tasks/job-list";
-import { JobDialog } from "@/components/tasks/job-dialog";
+import { JobList } from "@/components/jobs/job-list";
+import { JobDialog } from "@/components/jobs/job-dialog";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 
-export default function TasksPage() {
+export default function JobsPage() {
   const [showJobDialog, setShowJobDialog] = useState(false);
   const [editingJob, setEditingJob] = useState<{
     id: string;
@@ -47,8 +47,8 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Tasks</h1>
-          <p className="text-muted-foreground mt-1 text-xs md:text-sm">Automated AI tasks</p>
+          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Jobs</h1>
+          <p className="text-muted-foreground mt-1 text-xs md:text-sm">Automated background jobs</p>
         </div>
         <Button
           variant="default"
@@ -57,7 +57,7 @@ export default function TasksPage() {
           onClick={() => setShowJobDialog(true)}
         >
           <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">New Task</span>
+          <span className="hidden md:inline">New Job</span>
         </Button>
       </div>
 

@@ -255,8 +255,8 @@ export async function requireCalendarSubscriptionOwner(subscriptionId: string): 
 }
 
 /**
- * Require a queue task (job) owned by the current user.
- * Returns the task if found, or a 401/404 NextResponse.
+ * Require a queue job owned by the current user.
+ * Returns the job if found, or a 401/404 NextResponse.
  */
 export async function requireJobOwner(jobId: string): Promise<
   | {

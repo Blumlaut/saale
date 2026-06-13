@@ -64,7 +64,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   {
     key: "jobs",
     label: "Jobs",
-    description: "Manage scheduled background tasks",
+    description: "Manage scheduled background jobs",
     icon: ListTodo,
     defaultEnabled: true,
   },
