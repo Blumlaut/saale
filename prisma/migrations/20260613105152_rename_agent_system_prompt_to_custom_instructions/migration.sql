@@ -25,5 +25,7 @@ DO $$ BEGIN
 END $$;
 
 -- AlterTable
+-- Truncate titles > 50 chars before changing type (prevents "value too long" errors)
+UPDATE "ChatSession" SET "title" = LEFT("title", 50) WHERE CHAR_LENGTH("title") > 50;
 ALTER TABLE "ChatSession" ALTER COLUMN "title" TYPE VARCHAR(50);
 ALTER TABLE "ChatSession" ALTER COLUMN "processingSince" TYPE TIMESTAMP(3);
