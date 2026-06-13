@@ -18,6 +18,7 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { CalendarsExpandable } from "../components/calendars-expandable";
+import { SyncResult } from "../components/sync-result";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -445,17 +446,11 @@ export function CalendarTab() {
                     )}
 
                     {/* Sync result */}
-                    {syncResult?.id === account.id && (
-                      <div className="text-muted-foreground border-border/50 border-t px-4 py-2 text-xs">
-                        {syncResult.created > 0 && `${syncResult.created} new · `}
-                        {syncResult.updated > 0 && `${syncResult.updated} updated · `}
-                        {syncResult.deleted > 0 && `${syncResult.deleted} removed · `}
-                        {syncResult.created === 0 &&
-                          syncResult.updated === 0 &&
-                          syncResult.deleted === 0 &&
-                          "No changes"}
-                      </div>
-                    )}
+                    <SyncResult
+                      itemId={account.id}
+                      syncResult={syncResult}
+                      className="border-border/50 border-t px-4 py-2"
+                    />
                   </div>
                 );
               })}
@@ -586,19 +581,12 @@ export function CalendarTab() {
                     </div>
 
                     {/* Sync result */}
-                    {syncResult?.id === sub.id && (
-                      <div className="text-muted-foreground -mt-1 px-4 text-xs">
-                        {syncResult.parsed !== null && `(${syncResult.parsed} parsed) · `}
-                        {syncResult.created > 0 && `${syncResult.created} new · `}
-                        {syncResult.updated > 0 && `${syncResult.updated} updated · `}
-                        {syncResult.deleted > 0 && `${syncResult.deleted} removed · `}
-                        {syncResult.created === 0 &&
-                          syncResult.updated === 0 &&
-                          syncResult.deleted === 0 &&
-                          (syncResult.parsed ?? 0) === 0 &&
-                          "No changes"}
-                      </div>
-                    )}
+                    <SyncResult
+                      itemId={sub.id}
+                      syncResult={syncResult}
+                      showParsed
+                      className="-mt-1 px-4"
+                    />
                   </Fragment>
                 );
               })}
