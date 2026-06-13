@@ -1,12 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import {
-  createRedisClient,
-  getRedis,
-  registerActiveSession,
-  unregisterActiveSession,
-} from "@/lib/redis";
+import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { normalizeToolResult, type ImageContent } from "@/lib/pi/message-replay";
@@ -18,49 +13,11 @@ import {
   evaluateReconnectAction,
   formatSseEvent,
 } from "@/lib/pi/stream-logic";
-
-/**
- * Redis pub/sub for SSE reconnection.
- *
- * Every SSE event is published to `chat:stream:{sessionId}` so that multiple
- * SSE clients (original + reconnecting after refresh) receive the same events.
- * Events are also buffered in a Redis list for catch-up on reconnect.
- */
-const STREAM_CHANNEL_PREFIX = "chat:stream:";
-const BUFFER_KEY_PREFIX = "chat:stream:buf:";
-const BUFFER_TTL_SECONDS = 60; // keep buffer for 60s
-const BUFFER_MAX_SIZE = 200; // max events in buffer
-
-/** Publish an SSE-formatted event to Redis for other clients to receive. */
-async function publishStreamEvent(sessionId: string, event: string, data: unknown): Promise<void> {
-  try {
-    const redis = getRedis();
-    const payload = JSON.stringify({ event, data });
-    const channel = `${STREAM_CHANNEL_PREFIX}${sessionId}`;
-    await redis.publish(channel, payload);
-
-    // Buffer event for reconnecting clients
-    const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
-    await redis.lpush(bufKey, payload);
-    await redis.ltrim(bufKey, 0, BUFFER_MAX_SIZE - 1);
-    await redis.expire(bufKey, BUFFER_TTL_SECONDS);
-  } catch (err) {
-    console.error("Redis publish error:", err);
-  }
-}
-
-/** Get buffered events for a session (oldest first). */
-async function getBufferedEvents(sessionId: string): Promise<string[]> {
-  try {
-    const redis = getRedis();
-    const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
-    const events = await redis.lrange(bufKey, 0, -1);
-    return events.reverse(); // lrange returns newest first after lpush
-  } catch (err) {
-    console.error("Redis buffer read error:", err);
-    return [];
-  }
-}
+import {
+  publishStreamEvent,
+  handleReconnectFromRedis,
+  saveAssistantMessage,
+} from "@/lib/pi/stream-helpers";
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -676,193 +633,6 @@ Guidelines:
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
-    },
-  });
-}
-
-/**
- * Handle reconnection via Redis pub/sub (agent not in pool or as fallback).
- */
-function handleReconnectFromRedis(sessionId: string, request: NextRequest): Response {
-  const encoder = new TextEncoder();
-
-  // Async iterator — proper pattern for indefinite async SSE streams.
-  // Yields buffered events first, then live pub/sub events.
-  // Falls back to DB polling if pub/sub delivers nothing.
-  async function* reconnectEvents() {
-    let subscriber: ReturnType<typeof createRedisClient> | null = null;
-    let done = false;
-    let aborted = false;
-
-    const cleanup = () => {
-      aborted = true;
-      if (subscriber) {
-        try {
-          subscriber.unsubscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
-        } catch (err) {
-          console.error("Error unsubscribing from Redis (may already be closed):", err);
-        }
-        subscriber.quit().catch((err) => {
-          console.error("Failed to close Redis subscriber:", err);
-        });
-        subscriber = null;
-      }
-    };
-
-    request.signal.addEventListener("abort", cleanup, { once: true });
-
-    try {
-      // Send buffered events first (catch up on anything we missed)
-      const buffered = await getBufferedEvents(sessionId);
-      for (const raw of buffered) {
-        if (aborted) break;
-        try {
-          const { event, data } = JSON.parse(raw);
-          yield encoder.encode(formatSseEvent(event, data));
-          if (event === "done" || event === "error") {
-            done = true;
-          }
-        } catch (err) {
-          console.error("Malformed buffered event:", err);
-        }
-      }
-      if (done || aborted) {
-        cleanup();
-        return;
-      }
-
-      // Subscribe to live pub/sub events
-      subscriber = createRedisClient();
-      await subscriber.subscribe(`${STREAM_CHANNEL_PREFIX}${sessionId}`);
-
-      // Wait for pub/sub messages with timeout.
-      // If no message arrives within 30s, fall back to DB polling.
-      while (!done && !aborted) {
-        const message = await new Promise<{ event: string; data: unknown } | null>((resolve) => {
-          let resolved = false;
-          const handler = (_channel: string, raw: string) => {
-            if (resolved) return;
-            resolved = true;
-            try {
-              resolve(JSON.parse(raw));
-            } catch (err) {
-              console.error("Malformed pub/sub message:", err);
-              resolve(null);
-            }
-          };
-          subscriber!.on("message", handler);
-
-          const timer = setTimeout(() => {
-            if (resolved) return;
-            resolved = true;
-            subscriber?.off("message", handler);
-            resolve(null);
-          }, 30000);
-
-          // If resolved by handler, clear the timeout
-          const originalResolve = resolve;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (resolve as any) = (val: Parameters<typeof originalResolve>[0]) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timer);
-              subscriber?.off("message", handler);
-              originalResolve(val);
-            }
-          };
-        });
-
-        if (aborted) break;
-
-        if (message) {
-          // Pub/sub delivered an event — forward it
-          yield encoder.encode(formatSseEvent(message.event, message.data));
-          if (message.event === "done" || message.event === "error") {
-            done = true;
-          }
-          continue;
-        }
-
-        // No pub/sub event within 30s — poll DB for completed messages
-        const session = await prisma.chatSession.findUnique({
-          where: { id: sessionId },
-          select: { processingSince: true },
-        });
-        if (!session?.processingSince) {
-          // Agent finished — load latest assistant messages from DB
-          const messages = await prisma.chatMessage.findMany({
-            where: { sessionId, role: "assistant" },
-            orderBy: { createdAt: "asc" },
-            take: 10,
-          });
-          if (messages.length > 0) {
-            yield encoder.encode(
-              formatSseEvent("resume", {
-                messages: messages.map((m) => ({
-                  id: m.id,
-                  content: m.content,
-                  thinking: m.thinking,
-                  toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
-                })),
-              }),
-            );
-          }
-          yield encoder.encode(formatSseEvent("done", {}));
-          done = true;
-        }
-      }
-
-      cleanup();
-    } catch (err) {
-      console.error("Reconnection error:", err);
-      cleanup();
-      yield encoder.encode(formatSseEvent("error", { message: "Reconnection failed" }));
-    }
-  }
-
-  const iterator = reconnectEvents();
-  const reconnectStream = new ReadableStream({
-    async pull(controller) {
-      const result = await iterator.next();
-      if (result.done) {
-        controller.close();
-        return;
-      }
-      controller.enqueue(result.value);
-    },
-  });
-
-  return new Response(reconnectStream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
-}
-
-async function saveAssistantMessage(
-  sessionId: string,
-  content: string,
-  thinking?: string,
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-    result: string | undefined;
-    isError: boolean | undefined;
-  }>,
-  parentMessageId?: string | null,
-): Promise<{ id: string }> {
-  return prisma.chatMessage.create({
-    data: {
-      sessionId,
-      role: "assistant",
-      content,
-      thinking: thinking || null,
-      toolCalls: toolCalls && toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
-      parentMessageId: parentMessageId || null,
     },
   });
 }
