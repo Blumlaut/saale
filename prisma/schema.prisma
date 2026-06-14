@@ -103,12 +103,17 @@ model ChatSession {
   lastSummarizedAt DateTime?     // cursor — only process messages after this for memory extraction
   memorySummary    String?       @db.Text // compressed running summary of the conversation
   processingSince  DateTime?     // set when AI starts processing, cleared when done (auto-detects stale state)
+  // Sharing
+  shared           Boolean       @default(false) // owner has enabled sharing
+  shareToken       String?       @unique          // random 32-char token for /share/[token]
+  sourceShareToken String?                          // shareToken this session was copied from (idempotency guard)
   messages         ChatMessage[]
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
   @@index([userId, createdAt])
+  @@index([shareToken])
   @@map("ChatSession")
 }
 
