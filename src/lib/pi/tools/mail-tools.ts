@@ -325,7 +325,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
                       to: string;
                       subject: string;
                       date: Date;
-                      bodyPreview: string;
+                      bodyPreview: string | null;
                       isRead: boolean;
                       isStarred: boolean;
                       folder: string;
@@ -337,7 +337,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
                       to: e.to,
                       subject: e.subject,
                       date: e.date.toISOString(),
-                      preview: e.bodyPreview.slice(0, 200),
+                      preview: (e.bodyPreview ?? "").slice(0, 200),
                       read: e.isRead,
                       starred: e.isStarred,
                       folder: e.folder,
@@ -440,7 +440,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
                     date: Date;
                     bodyText: string | null;
                     bodyHtml: string | null;
-                    bodyPreview: string;
+                    bodyPreview: string | null;
                     isRead: boolean;
                     isStarred: boolean;
                     folder: string;
@@ -561,7 +561,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
                       fromEmail: string;
                       subject: string;
                       date: Date;
-                      bodyPreview: string;
+                      bodyPreview: string | null;
                       isRead: boolean;
                       folder: string;
                     }) => ({
@@ -569,7 +569,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
                       from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
                       subject: e.subject,
                       date: e.date.toISOString(),
-                      preview: e.bodyPreview.slice(0, 200),
+                      preview: (e.bodyPreview ?? "").slice(0, 200),
                       read: e.isRead,
                       folder: e.folder,
                     }),

@@ -99,7 +99,6 @@ export async function GET(request: NextRequest) {
       { subject: { contains: search, mode: "insensitive" } },
       { fromEmail: { contains: search, mode: "insensitive" } },
       { fromName: { contains: search, mode: "insensitive" } },
-      { bodyPreview: { contains: search, mode: "insensitive" } },
     ];
   }
 
@@ -138,7 +137,7 @@ export async function GET(request: NextRequest) {
         to: string;
         subject: string;
         date: Date;
-        bodyPreview: string;
+        bodyPreview: string | null;
         isRead: boolean;
         isStarred: boolean;
         folder: string;

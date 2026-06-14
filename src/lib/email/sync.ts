@@ -1,8 +1,7 @@
+import type { FetchMessageObject, MessageAddressObject, MessageEnvelopeObject } from "imapflow";
 import { ImapFlow, ListResponse } from "imapflow";
-import { simpleParser } from "mailparser";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /** Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects */
 function sanitize(str: unknown): string | null {
@@ -94,6 +93,74 @@ async function discoverFolders(
 }
 
 /**
+ * Extract a comma-separated address list from an imapflow address array.
+ */
+function addressesToString(addrs: MessageAddressObject[] | undefined): string {
+  if (!addrs || addrs.length === 0) return "";
+  return addrs.map((a) => a.address ?? "").join(",");
+}
+
+/**
+ * Upsert a single message from its IMAP envelope (headers only).
+ * Body fields (bodyPreview, bodyHtml, bodyText) are stored as null
+ * and fetched on-demand when the user opens the message.
+ */
+async function syncMessageFromEnvelope(
+  msg: FetchMessageObject,
+  accountId: string,
+  folder: string,
+  sanitize: (val: unknown) => string | null,
+): Promise<void> {
+  const uid = String(msg.uid ?? "");
+  const envelope = msg.envelope as MessageEnvelopeObject | undefined;
+  const flags = msg.flags ?? new Set<string>();
+  const flagsArray = flags instanceof Set ? Array.from(flags) : [];
+
+  const fromAddr = envelope?.from?.[0];
+  const fromName = fromAddr?.name || null;
+  const fromEmail = fromAddr?.address || "";
+  const toList = addressesToString(envelope?.to);
+  const subject = envelope?.subject || "(no subject)";
+  const date = envelope?.date || new Date();
+
+  const existing = await prisma.emailMessage.findUnique({
+    where: {
+      accountId_uid: {
+        accountId,
+        uid,
+      },
+    },
+  });
+
+  const updateData = {
+    uid,
+    fromName: sanitize(fromName),
+    fromEmail: sanitize(fromEmail) ?? "",
+    to: sanitize(toList) ?? "",
+    subject: sanitize(subject) ?? "(no subject)",
+    date,
+    folder,
+    isRead: flagsArray.includes("\\Seen"),
+    isStarred: flagsArray.includes("\\Flagged"),
+    // Body fields are null — fetched on-demand
+    bodyPreview: null,
+    bodyHtml: null,
+    bodyText: null,
+  };
+
+  if (existing) {
+    await prisma.emailMessage.update({
+      where: { id: existing.id },
+      data: updateData,
+    });
+  } else {
+    await prisma.emailMessage.create({
+      data: { ...updateData, accountId },
+    });
+  }
+}
+
+/**
  * Sync a single email account via IMAP.
  * Uses incremental sync based on lastSyncedAt timestamp.
  */
@@ -172,131 +239,32 @@ export async function syncEmailAccount(accountId: string): Promise<{
           continue;
         }
 
-        // Fetch messages
+        // Fetch only headers (envelope + flags) — bodies are fetched on-demand
         const fetchOpts: Record<string, unknown> = {
-          source: true,
+          uid: true,
+          envelope: true,
+          flags: true,
         };
 
         // Process messages from the async iterator
         for await (const msg of mailbox.fetch(uids, fetchOpts)) {
           try {
-            const parsed = await simpleParser(msg.source ?? Buffer.alloc(0));
-            const uid = String(msg.uid ?? "");
+            await syncMessageFromEnvelope(msg, accountId, folder, sanitize);
 
-            // Check if message already exists
-            const existing = await prisma.emailMessage.findUnique({
-              where: {
-                accountId_uid: {
-                  accountId,
-                  uid,
-                },
-              },
-            });
-
-            // mailparser returns { value: [{ address, name }], html, text }
-            // Extract addresses from the value array, fallback to text
-            const extractAddresses = (field: unknown): string => {
-              if (!field) return "";
-              if (typeof field === "string") return field;
-              if (Array.isArray(field)) {
-                return field
-                  .map((a) => {
-                    if (typeof a === "string") return a;
-                    if (typeof a === "object" && a && "address" in a) return String(a.address);
-                    return String(a);
-                  })
-                  .join(",");
-              }
-              // mailparser envelope: { value: [...], html, text }
-              if (typeof field === "object" && "value" in field && Array.isArray(field.value)) {
-                return field.value
-                  .map((a) => {
-                    if (typeof a === "string") return a;
-                    if (typeof a === "object" && a && "address" in a) return String(a.address);
-                    return String(a);
-                  })
-                  .join(",");
-              }
-              return String(field);
-            };
-
-            const toList = extractAddresses(parsed.to);
-
-            // from is also { value: [{ address, name }], html, text }
-            const fromField = parsed.from;
-            let fromName: string | null = null;
-            let fromEmail: string = "";
-            if (
-              fromField &&
-              typeof fromField === "object" &&
-              "value" in fromField &&
-              Array.isArray(fromField.value) &&
-              fromField.value.length > 0
-            ) {
-              const firstAddr = fromField.value[0];
-              if (typeof firstAddr === "object" && firstAddr) {
-                fromName = "name" in firstAddr ? (firstAddr.name as string) || null : null;
-                fromEmail = "address" in firstAddr ? (firstAddr.address as string) || "" : "";
-              }
-            } else if (fromField && typeof fromField === "object") {
-              // Fallback: direct object with name/address
-              fromName = "name" in fromField ? (fromField.name as string) || null : null;
-              fromEmail = "address" in fromField ? (fromField.address as string) || "" : "";
-            }
-
-            const flags = msg.flags ?? new Set<string>();
-            const flagsArray = flags instanceof Set ? Array.from(flags) : flags;
-
-            const bodyHtml = sanitizeEmailHtml(sanitize(parsed.html));
-
-            if (existing) {
-              await prisma.emailMessage.update({
-                where: { id: existing.id },
-                data: {
-                  uid,
-                  fromName: sanitize(fromName),
-                  fromEmail: sanitize(fromEmail) ?? "",
-                  to: sanitize(toList) ?? "",
-                  subject: sanitize(parsed.subject) ?? "(no subject)",
-                  date: parsed.date ?? new Date(),
-                  bodyPreview: sanitize(parsed.text?.slice(0, 500)) ?? "",
-                  bodyHtml,
-                  bodyText: sanitize(parsed.text),
-                  folder,
-                  isRead: flagsArray.includes("\\Seen") ?? existing.isRead,
-                  isStarred: flagsArray.includes("\\Flagged") ?? existing.isStarred,
-                },
-              });
+            if (msg.envelope) {
               updatedMessages++;
             } else {
-              await prisma.emailMessage.create({
-                data: {
-                  accountId,
-                  uid,
-                  fromName: sanitize(fromName),
-                  fromEmail: sanitize(fromEmail) ?? "",
-                  to: sanitize(toList) ?? "",
-                  subject: sanitize(parsed.subject) ?? "(no subject)",
-                  date: parsed.date ?? new Date(),
-                  bodyPreview: sanitize(parsed.text?.slice(0, 500)) ?? "",
-                  bodyHtml,
-                  bodyText: sanitize(parsed.text),
-                  folder,
-                  isRead: flagsArray.includes("\\Seen") ?? false,
-                  isStarred: flagsArray.includes("\\Flagged") ?? false,
-                },
-              });
               newMessages++;
             }
           } catch (err) {
             const msgErr = err as Error;
             console.error(
-              `[email-sync] Failed to parse message UID ${msg.uid} in ${folder}:`,
+              `[email-sync] Failed to process message UID ${msg.uid} in ${folder}:`,
               msgErr.message,
               msgErr.cause,
             );
             errors.push(
-              `Failed to parse message UID ${msg.uid}: ${msgErr.message}${msgErr.cause ? ` (${String(msgErr.cause)})` : ""}`,
+              `Failed to process message UID ${msg.uid}: ${msgErr.message}${msgErr.cause ? ` (${String(msgErr.cause)})` : ""}`,
             );
           }
         }

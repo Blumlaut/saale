@@ -22,7 +22,7 @@ interface ReplyForwardSheetProps {
     to: unknown;
     subject: string;
     bodyText: string | null;
-    bodyPreview: string;
+    bodyPreview: string | null;
     accountId: string;
   } | null;
   onSuccess: () => void;

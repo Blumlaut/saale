@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
         subject: string;
         fromName: string | null;
         fromEmail: string;
-        bodyPreview: string;
+        bodyPreview: string | null;
         date: Date;
         folder: string;
         isRead: boolean;
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
             similarity("EmailMessage".subject, ${trimmedQuery}) * 3.0
             + similarity("EmailMessage"."fromName", ${trimmedQuery}) * 1.5
             + similarity("EmailMessage"."fromEmail", ${trimmedQuery}) * 1.5
-            + similarity("EmailMessage"."bodyPreview", ${trimmedQuery}) * 1.0
+            + similarity(COALESCE("EmailMessage"."bodyPreview", ''), ${trimmedQuery}) * 1.0
           ) AS score
         FROM "EmailMessage"
         JOIN "EmailAccount" ON "EmailMessage"."accountId" = "EmailAccount".id
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
             "EmailMessage".subject % ${trimmedQuery}
             OR "EmailMessage"."fromName" % ${trimmedQuery}
             OR "EmailMessage"."fromEmail" % ${trimmedQuery}
-            OR "EmailMessage"."bodyPreview" % ${trimmedQuery}
+            OR COALESCE("EmailMessage"."bodyPreview", '') % ${trimmedQuery}
           )
         ORDER BY score DESC
         LIMIT ${limit}
@@ -121,10 +121,11 @@ export async function GET(request: NextRequest) {
     );
 
     for (const row of emailRows) {
+      const preview = row.bodyPreview ?? "";
       const snippet =
         `${row.fromName || row.fromEmail}: ` +
-        row.bodyPreview.slice(0, 150) +
-        (row.bodyPreview.length >= 150 ? "..." : "");
+        preview.slice(0, 150) +
+        (preview.length >= 150 ? "..." : "");
 
       results.push({
         type: "email",
