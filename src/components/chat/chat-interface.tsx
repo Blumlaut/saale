@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
+import { ShareButton } from "./share-button";
 import type { Message, ToolCallData } from "./types";
 import type { Dispatch, SetStateAction } from "react";
 
@@ -990,6 +991,9 @@ export function ChatInterface({
             </span>
           )}
           {isLoading && <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />}
+
+          {/* Share button */}
+          <ShareButton sessionId={sessionId} />
 
           {/* Model & thinking selectors — inline on desktop, dropdown on mobile */}
           <div className="ml-auto flex items-center gap-1">
