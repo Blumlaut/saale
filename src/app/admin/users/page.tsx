@@ -15,7 +15,17 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { fetchJson, postJson } from "@/lib/http";
-import { Users, Loader2, Plus, CheckCircle, AlertCircle, Trash2, Pencil } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
+import {
+  Users,
+  Loader2,
+  Plus,
+  CheckCircle,
+  AlertCircle,
+  Trash2,
+  Pencil,
+  UserCog,
+} from "lucide-react";
 
 interface AdminUser {
   id: string;
@@ -51,6 +61,9 @@ export default function AdminUsersPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Impersonate
+  const [impersonating, setImpersonating] = useState<string | null>(null);
 
   // Load users
   const loadUsers = useCallback(async () => {
@@ -133,6 +146,19 @@ export default function AdminUsersPage() {
   const openDelete = (user: AdminUser) => {
     setDeleteUser(user);
     setShowDelete(true);
+  };
+
+  const handleImpersonate = async (user: AdminUser) => {
+    setImpersonating(user.id);
+    try {
+      await authClient.admin.impersonateUser({ userId: user.id });
+      // eslint-disable-next-line react-hooks/immutability -- full page redirect after impersonation
+      window.location.href = "/dashboard/chat";
+    } catch (err) {
+      console.error("Failed to impersonate user:", err);
+      setImpersonating(null);
+      setSaveStatus("error");
+    }
   };
 
   const handleDelete = async () => {
@@ -243,6 +269,24 @@ export default function AdminUsersPage() {
                     <span className="text-muted-foreground truncate text-xs">{user.email}</span>
                   </div>
                   <div className="flex shrink-0 gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleImpersonate(user)}
+                      disabled={impersonating === user.id || user.role === "admin"}
+                      title={
+                        user.role === "admin"
+                          ? "Cannot impersonate admins"
+                          : "Impersonate this user"
+                      }
+                    >
+                      {impersonating === user.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <UserCog className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
