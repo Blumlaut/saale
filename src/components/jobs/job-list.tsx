@@ -93,23 +93,33 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [schemas, setSchemas] = useState<JobSchema[]>([]);
 
-  const loadJobs = useCallback(async () => {
-    try {
-      const data = await fetchJson<{ jobs: Job[] }>("/api/jobs");
-      setJobs(() => {
+  const loadJobs = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const data = await fetchJson<{ jobs: Job[] }>("/api/jobs");
         const sorted = data.jobs.sort((a, b) => {
           const labelA = schemas.find((s) => s.type === a.type)?.label ?? a.type;
           const labelB = schemas.find((s) => s.type === b.type)?.label ?? b.type;
           return labelA.localeCompare(labelB);
         });
-        return sorted;
-      });
-    } catch {
-      // Ignore
-    } finally {
-      setLoading(false);
-    }
-  }, [schemas]);
+        setJobs(sorted);
+
+        // Clear runningId for any jobs that are no longer running
+        setRunningId((currentId) => {
+          if (!currentId) return null;
+          const job = data.jobs.find((j) => j.id === currentId);
+          if (job && job.latestRunStatus === "running") return currentId;
+          return null;
+        });
+      } catch {
+        // Ignore
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [schemas],
+  );
 
   const loadSchemas = useCallback(async () => {
     try {
@@ -120,15 +130,15 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
     }
   }, []);
 
-  const loadRuns = useCallback(async (jobId: string) => {
-    setLoadingRuns(true);
+  const loadRuns = useCallback(async (jobId: string, silent = false) => {
+    if (!silent) setLoadingRuns(true);
     try {
       const data = await fetchJson<{ runs: JobRun[] }>(`/api/jobs/${jobId}/runs?limit=10`);
       setRuns(data.runs);
     } catch {
       // Ignore
     } finally {
-      setLoadingRuns(false);
+      if (!silent) setLoadingRuns(false);
     }
   }, []);
 
@@ -143,12 +153,12 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
     }
   }, [selectedJob, loadRuns]);
 
-  // Poll for job state updates every 5 seconds
+  // Poll for job state updates every 5 seconds (silent — no loading states)
   useEffect(() => {
     const interval = setInterval(() => {
-      loadJobs();
+      loadJobs(true);
       if (selectedJob) {
-        loadRuns(selectedJob.id);
+        loadRuns(selectedJob.id, true);
       }
     }, 5000);
     return () => clearInterval(interval);
@@ -158,14 +168,9 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
     setRunningId(jobId);
     try {
       await fetchJson(`/api/jobs/${jobId}`, { method: "POST" });
-      loadJobs();
-      onRefresh?.();
-      if (selectedJob?.id === jobId) {
-        loadRuns(jobId);
-      }
+      // Don't clear runningId here — the next silent poll will clear it
+      // once the job is no longer in "running" status
     } catch {
-      // Ignore
-    } finally {
       setRunningId(null);
     }
   };
