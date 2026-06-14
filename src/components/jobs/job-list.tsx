@@ -43,6 +43,7 @@ interface Job {
   lastRunAt: string | null;
   runCount: number;
   runHistoryCount: number;
+  latestRunStatus: string | null;
   createdAt: string;
 }
 
@@ -95,13 +96,20 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
   const loadJobs = useCallback(async () => {
     try {
       const data = await fetchJson<{ jobs: Job[] }>("/api/jobs");
-      setJobs(data.jobs);
+      setJobs(() => {
+        const sorted = data.jobs.sort((a, b) => {
+          const labelA = schemas.find((s) => s.type === a.type)?.label ?? a.type;
+          const labelB = schemas.find((s) => s.type === b.type)?.label ?? b.type;
+          return labelA.localeCompare(labelB);
+        });
+        return sorted;
+      });
     } catch {
       // Ignore
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [schemas]);
 
   const loadSchemas = useCallback(async () => {
     try {
@@ -134,6 +142,17 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
       loadRuns(selectedJob.id);
     }
   }, [selectedJob, loadRuns]);
+
+  // Poll for job state updates every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadJobs();
+      if (selectedJob) {
+        loadRuns(selectedJob.id);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadJobs, selectedJob, loadRuns]);
 
   const handleRun = async (jobId: string) => {
     setRunningId(jobId);
@@ -272,19 +291,25 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
                         </div>
                       </button>
                       <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleRun(job.id)}
-                          disabled={runningId === job.id}
-                        >
-                          {runningId === job.id ? (
+                        {job.latestRunStatus === "running" ? (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
                             <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Play className="h-3 w-3" />
-                          )}
-                        </Button>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleRun(job.id)}
+                            disabled={runningId === job.id}
+                          >
+                            {runningId === job.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Play className="h-3 w-3" />
+                            )}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
