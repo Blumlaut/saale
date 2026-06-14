@@ -314,3 +314,32 @@ export async function requireEmailMessageOwner(messageId: string): Promise<
 
   return { ok: true, message, userId: authResult.user.id };
 }
+
+/**
+ * Require a task owned by the current user.
+ * Returns the task if found, or a 401/404 NextResponse.
+ */
+export async function requireTaskOwner(taskId: string): Promise<
+  | {
+      ok: true;
+      task: NonNullable<Awaited<ReturnType<typeof prisma.task.findFirst>>>;
+      userId: string;
+    }
+  | { ok: false; response: NextResponse }
+> {
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult;
+
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, userId: authResult.user.id },
+  });
+
+  if (!task) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Task not found" }, { status: 404 }),
+    };
+  }
+
+  return { ok: true, task, userId: authResult.user.id };
+}

@@ -8,7 +8,7 @@ import {
 
 describe("tool categories", () => {
   it("has 7 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(7);
+    expect(TOOL_CATEGORIES).toHaveLength(8);
   });
 
   it("has unique keys", () => {

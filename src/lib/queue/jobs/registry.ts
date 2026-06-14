@@ -13,6 +13,8 @@ import * as subscriptionSync from "./subscription-sync";
 import * as memoryExtraction from "./memory-extraction";
 import * as memoryPruning from "./memory-pruning";
 import * as chatTitleGeneration from "./chat-title-generation";
+import * as taskExtraction from "./task-extraction";
+import * as taskReminders from "./task-reminders";
 
 /** All registered job handlers, keyed by type. */
 export const handlers = [
@@ -26,6 +28,8 @@ export const handlers = [
   memoryExtraction,
   memoryPruning,
   chatTitleGeneration,
+  taskExtraction,
+  taskReminders,
 ] as const;
 
 /** Lookup map: type → handler module */

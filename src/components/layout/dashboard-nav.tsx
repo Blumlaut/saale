@@ -28,12 +28,14 @@ import {
   Search,
   X,
   Loader2,
+  CheckSquare,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
 const navItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
+  { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/dashboard/jobs", label: "Jobs", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];

@@ -37,11 +37,13 @@ model Task {
   description String?  @db.Text
   status      String   @default("pending") // "pending" | "completed"
   priority    String   @default("medium")  // "low" | "medium" | "high"
-  dueDate     DateTime?
+  dueDate     DateTime? // Date-only — stored at midnight UTC, rendered as a date in the user's timezone
   tags        String[] @default([])
+  order       Int      @default(0)          // Manual sort within groups (drag reorder)
   source      String   @default("manual")  // "manual" | "chat" | "email_extraction"
-  sourceEmailId String? // Link back to EmailMessage if created by email extraction
+  sourceEmailId String? // EmailMessage.id — no FK (cross-model traceability, resolved via separate query)
   completedAt DateTime?
+  notifiedAt  DateTime? // Last time a due-date notification was sent for this task
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -57,8 +59,11 @@ model Task {
 
 **Why these fields:**
 - `status` instead of `isCompleted` — leaves room for "cancelled" or "in-progress" later
-- `source` + `sourceEmailId` — traceability back to where the task came from
+- `dueDate` is date-only (midnight UTC) — tasks have no fixed time slot, only a target date. The UI renders it in the user's local timezone.
+- `source` + `sourceEmailId` — traceability back to where the task came from. `sourceEmailId` is a plain string (no Prisma relation), resolved with a separate query when the user clicks through from a task to its source email.
+- `order` — persists drag-to-reorder within groups. Grouping (overdue/today/etc.) is primary sort; `order` is secondary within the same bucket.
 - `completedAt` — separate from `updatedAt`, needed for "completed X days ago" sorting
+- `notifiedAt` — prevents duplicate notifications. Checked before sending: only notify if `notifiedAt` is null or earlier than the notification window.
 - No `projectId` or `categoryId` — tags cover grouping for now
 
 ## AI Tools
@@ -103,13 +108,27 @@ defineTool({
 });
 ```
 
+### `task_list_pending`
+
+```ts
+defineTool({
+  name: "task_list_pending",
+  label: "List Pending Tasks",
+  description: "Get all pending tasks, sorted by due date then priority. Use to review what's open before creating new tasks or deciding what to work on next.",
+  parameters: Type.Object({
+    limit: Type.Optional(Type.Integer({ description: "Maximum results. Default: 50." })),
+  }),
+  // ...
+});
+```
+
 ### `task_search`
 
 ```ts
 defineTool({
   name: "task_search",
   label: "Search Tasks",
-  description: "Search tasks by title, tags, or status. Use to find existing tasks before creating duplicates.",
+  description: "Search tasks by title, description, tags, or status. Use to find existing tasks before creating duplicates. Results include task IDs for reference in update/delete operations.",
   parameters: Type.Object({
     query: Type.Optional(Type.String({ description: "Search in titles and descriptions." })),
     status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("completed")])),
@@ -137,24 +156,57 @@ defineTool({
 
 ## Email Extraction Job
 
-New job type: `"task_extraction"`. Configurable per email account.
+New job type: `"task_extraction"`. Follows the same pattern as `email_to_calendar` — single `accountId` select field (leave empty = all accounts), user creates multiple job instances for different accounts.
 
-### Job Config
+### Job Fields (matches existing pattern)
 
-```json
-{
-  "enabled": true,
-  "accounts": ["account-id-1", "account-id-2"],
-  "cronExpression": "0 */6 * * *"  // every 6 hours
-}
+```ts
+export const fields = [
+  {
+    key: "accountId",
+    label: "Email Account",
+    description: "Leave empty to scan all enabled email accounts",
+    type: "select" as const,
+    default: "",
+    options: [] as Array<{ value: string; label: string }>,
+  },
+  {
+    key: "limit",
+    label: "Batch size",
+    description: "Number of emails to scan per run",
+    type: "number" as const,
+    default: 20,
+    min: 1,
+    max: 100,
+    step: 1,
+  },
+  {
+    key: "maxEmailAge",
+    label: "Max email age",
+    description: "Only scan emails received within this many hours (0 = no limit)",
+    type: "number" as const,
+    default: 48,
+    min: 0,
+    max: 720,
+    step: 1,
+  },
+  {
+    key: "modelId",
+    label: "AI Model",
+    description: "Model used for task extraction",
+    type: "model" as const,
+    default: "",
+  },
+];
 ```
 
 ### Behavior
 
-- Scans unread emails on configured accounts that haven't been task-scanned yet
+- Scans unprocessed emails (`taskScanned == false`) on the configured account(s)
+- Delegates to `extractTasksFromEmails()` (new lib module, analog to `extractEventsFromEmails`)
 - Uses the AI to extract action items from email content
 - Creates tasks with `source: "email_extraction"` and `sourceEmailId` linking back
-- Marks emails as task-scanned (new field on `EmailMessage`)
+- Marks emails as task-scanned (`taskScanned: true`)
 
 ### New DB Field
 
@@ -240,11 +292,12 @@ Add "Tasks" to the dashboard sidebar navigation alongside Chat, Mail, Calendar, 
 
 ### Notification Integration
 
-Tasks due today/tomorrow trigger notifications via the existing notification system:
+Tasks due today/tomorrow trigger notifications via the existing Redis-based notification system (`POST /api/notifications`).
 
-- A background job (or the existing email sync job) checks for tasks due within 24 hours
-- Creates a notification: `"Task due today: {title}"`
-- Only notifies once per task (track via a `notifiedAt` field or check notification history)
+- A new background job ("task_reminders", runs daily at 08:00) scans for pending tasks due within 24 hours
+- Creates a notification per task: `"Task due today: {title}"` with type `"task_reminder"`
+- Only notifies once per task: checks `notifiedAt` is null or earlier than the current notification window before sending, then sets `notifiedAt = now()`
+- The notification bell UI auto-picks up the new type via its default icon fallback
 
 ## Files to Create
 
@@ -252,22 +305,24 @@ Tasks due today/tomorrow trigger notifications via the existing notification sys
 - `prisma/migrations/xxxx_add_tasks/` — migration for Task model + EmailMessage.taskScanned
 
 ### Backend
-- `src/lib/pi/tools/task-tools.ts` — AI tool definitions (task_create, task_update, task_search, task_delete)
-- `src/lib/queue/jobs/task-extraction.ts` — email-to-task extraction job
+- `src/lib/pi/tools/task-tools.ts` — AI tool definitions (task_create, task_update, task_list_pending, task_search, task_delete)
+- `src/lib/tasks/task-extraction.ts` — AI extraction logic (analog to `lib/calendar/email-extraction.ts`)
+- `src/lib/queue/jobs/task-extraction.ts` — job handler (delegates to lib module)
+- `src/lib/queue/jobs/task-reminders.ts` — daily reminder job for due-date notifications
 - `src/app/api/tasks/route.ts` — list + create
 - `src/app/api/tasks/[id]/route.ts` — get + update + delete
 - `src/app/api/tasks/bulk/route.ts` — bulk operations
 
 ### Frontend
-- `src/app/dashboard/tasks/page.tsx` — tasks page
-- `src/components/tasks/task-list.tsx` — grouped task list
-- `src/components/tasks/task-item.tsx` — individual task row
-- `src/components/tasks/task-form.tsx` — create/edit form (modal)
-- `src/components/tasks/task-groups.tsx` — grouping sections (overdue, today, etc.)
+- `src/app/dashboard/tasks/page.tsx` — tasks page (server component — fetches initial data)
+- `src/components/tasks/task-list.tsx` — grouped task list (client component — drag reorder, checkbox state)
+- `src/components/tasks/task-item.tsx` — individual task row (client component — checkbox, click handlers)
+- `src/components/tasks/task-form.tsx` — create/edit form (modal, client component)
+- `src/components/tasks/task-groups.tsx` — grouping sections (server component — receives grouped data from page)
 
 ### Tool Registry
 - Register task tools in `src/lib/pi/tool-registry.ts`
-- Add "tasks" to tool config schema in `src/lib/pi/tool-config.ts`
+- Add "tasks" category to `src/lib/pi/tool-categories.ts` (single source of truth — types, defaults, and UI all derive from here)
 
 ## Files to Modify
 
@@ -275,13 +330,12 @@ Tasks due today/tomorrow trigger notifications via the existing notification sys
 - `prisma/schema.prisma` — add `Task` model, `tasks` relation on `User`, `taskScanned` on `EmailMessage`
 
 ### Backend
-- `src/lib/pi/tool-categories.ts` — add "tasks" category
-- `src/lib/queue/job-schemas.ts` — add "task_extraction" job type
-- `src/lib/queue/jobs/registry.ts` — register task extraction handler
+- `src/lib/pi/tool-categories.ts` — add "tasks" category (types, defaults, and UI toggles all auto-derive)
+- `src/lib/queue/jobs/registry.ts` — register task extraction + task reminders handlers (`job-schemas.ts` auto-derives from registry)
 
 ### Frontend
-- `src/app/dashboard/layout.tsx` — add Tasks to sidebar nav
-- Settings tools tab — add "Tasks" toggle to default tool config
+- `src/components/layout/dashboard-nav.tsx` — add Tasks to sidebar nav
+- Settings tools tab — auto-picks up new category from `tool-categories.ts` (no manual changes needed)
 
 ## Migration Steps
 
@@ -292,9 +346,9 @@ Tasks due today/tomorrow trigger notifications via the existing notification sys
 4. Run migration
 
 ### Phase 2: AI Tools
-5. Create `task-tools.ts` with 4 tool definitions
-6. Register tools in tool registry
-7. Add "tasks" to tool config
+5. Create `task-tools.ts` with 5 tool definitions (task_create, task_update, task_list_pending, task_search, task_delete)
+6. Register tools in `tool-registry.ts`
+7. Add "tasks" category to `tool-categories.ts` (auto-derives types, defaults, and settings UI toggle)
 8. Test via chat ("add a task: pick up dry cleaning")
 
 ### Phase 3: API
@@ -309,25 +363,27 @@ Tasks due today/tomorrow trigger notifications via the existing notification sys
 15. Add drag-to-reorder
 
 ### Phase 5: Email Extraction Job
-16. Create task extraction job handler
-17. Register in job registry
-18. Add job type to queue schemas
+16. Create `src/lib/tasks/task-extraction.ts` — AI extraction logic (analog to `lib/calendar/email-extraction.ts`)
+17. Create `src/lib/queue/jobs/task-extraction.ts` — job handler (delegates to lib module)
+18. Register in `jobs/registry.ts` (schemas auto-derive from handler metadata)
 19. Test extraction from emails
 
-### Phase 6: Notifications
-20. Add due-date notification logic (background check)
-21. Integrate with existing notification system
-22. Test notification delivery
+### Phase 6: Notifications + Auto-Archive
+20. Create `src/lib/queue/jobs/task-reminders.ts` — daily job scanning for pending tasks due within 24h, checks `notifiedAt` before sending, sets `notifiedAt = now()` after
+21. Register reminder job in `jobs/registry.ts`
+22. Test notification delivery (Redis-backed, existing bell UI renders automatically)
+23. Add auto-archive logic: completed tasks older than 30 days are soft-deleted (or paginated out — decide based on volume)
 
 ## Risks and Mitigations
 
 | Risk | Mitigation |
 |------|-----------|
-| **AI creates duplicate tasks** | `task_search` tool lets AI check before creating. UI deduplicates by title similarity. |
-| **Email extraction is too aggressive** | On/off per account. No aggression slider — AI uses conservative defaults. User can delete unwanted tasks. |
+| **AI creates duplicate tasks** | `task_list_pending` + `task_search` tools let AI review existing tasks before creating. Search results include task IDs for reference in update operations. |
+| **Email extraction is too aggressive** | On/off per account via job instances. No aggression slider — AI uses conservative defaults. User can delete unwanted tasks. |
 | **Tasks vs calendar confusion** | Clear visual distinction: tasks = list groups, calendar = time grid. No time slots on tasks. |
-| **Completed tasks pile up** | Auto-archive completed tasks older than 30 days (background job). Or just paginate. |
-| **Drag reorder conflicts with due date sort** | Drag reorder only within groups. Grouping still respects due date. Manual order is a secondary sort within the same due date bucket. |
+| **Completed tasks pile up** | Paginated API (limit/offset) keeps queries fast. Auto-archive in Phase 6 soft-deletes completed tasks older than 30 days. |
+| **Drag reorder conflicts with due date sort** | Drag reorder only within groups. Grouping (overdue/today/this week/someday) is primary sort; `order` field is secondary within the same bucket. Persisted in DB so it survives refresh. |
+| **`dueDate` timezone confusion** | Stored at midnight UTC, rendered as a date in the user's local timezone. The API returns ISO strings; the client formats them with date-only display. |
 
 ## What Doesn't Change
 
@@ -336,4 +392,4 @@ Tasks due today/tomorrow trigger notifications via the existing notification sys
 - **Memory** — unchanged (tasks are separate from memories)
 - **Chat** — unchanged (adds task tools to available toolset)
 - **Notifications** — unchanged (tasks use existing notification API)
-- **Jobs** — unchanged (adds one new job type)
+- **Jobs** — unchanged (adds two new job types: task_extraction, task_reminders)
