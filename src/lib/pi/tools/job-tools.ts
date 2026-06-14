@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { getQueue, addJobRun } from "@/lib/queue";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
+import { buildModelRegistry } from "@/lib/pi/models";
 
 /**
  * Create job tools with userId injection for user isolation.
@@ -483,6 +484,267 @@ export function createJobTools(userId: string): ToolDefinition[] {
             },
           ],
           details: { id: job.id },
+        };
+      },
+    }),
+
+    // ─── model_list ────────────────────────────────────────────────────────
+
+    defineTool({
+      name: "model_list",
+      label: "List Models",
+      description:
+        "List all available AI models for this user. Use this to find valid model IDs before creating or updating jobs. Returns models grouped by provider, filtered by admin config.",
+      parameters: Type.Object({}),
+      execute: async (_toolCallId, _params) => {
+        const { models } = await buildModelRegistry(userId);
+
+        // Group by provider
+        const byProvider = new Map<string, Array<{ id: string; name: string }>>();
+        for (const m of models) {
+          if (!byProvider.has(m.provider)) {
+            byProvider.set(m.provider, []);
+          }
+          byProvider.get(m.provider)!.push({ id: m.id, name: m.name });
+        }
+
+        // Also fetch user default + job default for context
+        const settings = await prisma.appSettings.findUnique({
+          where: { userId },
+          select: {
+            defaultModelProvider: true,
+            defaultModelName: true,
+            purposeModelOverrides: true,
+          },
+        });
+
+        const overrides = settings?.purposeModelOverrides as Record<
+          string,
+          { provider: string; model: string }
+        > | null;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  count: models.length,
+                  providers: Array.from(byProvider.entries()).map(([provider, modelList]) => ({
+                    provider,
+                    models: modelList,
+                  })),
+                  defaults: {
+                    user: settings?.defaultModelProvider
+                      ? {
+                          provider: settings.defaultModelProvider,
+                          model: settings.defaultModelName,
+                        }
+                      : null,
+                    jobs: overrides?.jobs
+                      ? {
+                          provider: overrides.jobs.provider,
+                          model: overrides.jobs.model,
+                        }
+                      : null,
+                  },
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { count: models.length },
+        };
+      },
+    }),
+
+    // ─── job_update ────────────────────────────────────────────────────────
+
+    defineTool({
+      name: "job_update",
+      label: "Update Job",
+      description:
+        "Update an existing job's configuration. Can change the model, schedule, enabled state, or type-specific config fields. Use 'job_list' to find job IDs and 'job_types' to see valid config fields.",
+      parameters: Type.Object({
+        id: Type.String({
+          description: "Job ID to update.",
+        }),
+        modelId: Type.Optional(
+          Type.String({
+            description:
+              "Override the AI model for this job (format: 'provider:modelId'). Use 'model_list' to see available models. Pass null or omit to use the default.",
+          }),
+        ),
+        enabled: Type.Optional(
+          Type.Boolean({
+            description: "Enable or disable the job.",
+          }),
+        ),
+        config: Type.Optional(
+          Type.Object({
+            cronExpression: Type.Optional(
+              Type.String({
+                description: "Cron schedule expression (e.g. '*/30 * * * *').",
+              }),
+            ),
+          }),
+        ),
+      }),
+      execute: async (_toolCallId, params) => {
+        const job = await prisma.queueTask.findFirst({
+          where: { id: params.id, userId },
+        });
+
+        if (!job) {
+          throw new Error(`Job ${params.id} not found`);
+        }
+
+        const existingConfig = JSON.parse(job.config) as Record<string, unknown>;
+        const newConfig = { ...existingConfig };
+        let newModelId = job.modelId;
+        let newEnabled = job.enabled;
+
+        // Update modelId
+        if (params.modelId !== undefined) {
+          newModelId = params.modelId || null;
+        }
+
+        // Update enabled
+        if (params.enabled !== undefined) {
+          newEnabled = params.enabled;
+        }
+
+        // Merge config changes
+        if (params.config) {
+          if (params.config.cronExpression !== undefined) {
+            newConfig.cronExpression = params.config.cronExpression;
+          }
+          // Merge any other top-level config fields passed
+          for (const [key, value] of Object.entries(params.config)) {
+            if (key !== "cronExpression") {
+              newConfig[key] = value;
+            }
+          }
+        }
+
+        // Update the database
+        await prisma.queueTask.update({
+          where: { id: params.id },
+          data: {
+            ...(newModelId !== job.modelId ? { modelId: newModelId } : {}),
+            ...(newEnabled !== job.enabled ? { enabled: newEnabled } : {}),
+            ...(JSON.stringify(newConfig) !== job.config
+              ? { config: JSON.stringify(newConfig) }
+              : {}),
+          },
+        });
+
+        // Update BullMQ scheduler
+        const queue = getQueue();
+        const schedulerKey = `scheduled-${params.id}`;
+
+        // Remove existing scheduler first
+        await queue.removeJobScheduler(schedulerKey).catch(() => {
+          // Silently ignore — scheduler may not exist
+        });
+
+        // Re-add if enabled and has cron
+        if (newEnabled && newConfig.cronExpression) {
+          await queue
+            .add(
+              "execute",
+              {
+                ...newConfig,
+                taskId: params.id,
+                type: job.type,
+                modelId: newModelId,
+              },
+              {
+                jobId: schedulerKey,
+                repeat: {
+                  pattern: newConfig.cronExpression as string,
+                  tz: "UTC",
+                  key: schedulerKey,
+                },
+              },
+            )
+            .catch((err) => {
+              console.error(`Failed to re-schedule job ${params.id}: ${err.message}`);
+            });
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  updated: true,
+                  job: {
+                    id: params.id,
+                    type: job.type,
+                    enabled: newEnabled,
+                    modelId: newModelId,
+                    config: newConfig,
+                  },
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { id: params.id },
+        };
+      },
+    }),
+
+    // ─── job_delete ────────────────────────────────────────────────────────
+
+    defineTool({
+      name: "job_delete",
+      label: "Delete Job",
+      description: "Permanently delete a job and remove its schedule. This cannot be undone.",
+      parameters: Type.Object({
+        id: Type.String({
+          description: "Job ID to delete.",
+        }),
+      }),
+      execute: async (_toolCallId, params) => {
+        const job = await prisma.queueTask.findFirst({
+          where: { id: params.id, userId },
+        });
+
+        if (!job) {
+          throw new Error(`Job ${params.id} not found`);
+        }
+
+        // Remove BullMQ scheduler
+        const queue = getQueue();
+        await queue.removeJobScheduler(`scheduled-${params.id}`).catch((err) => {
+          console.error(`Failed to remove scheduler for job ${params.id}:`, err);
+        });
+
+        // Delete from database (cascades to TaskRun records)
+        await prisma.queueTask.delete({
+          where: { id: params.id },
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  deleted: true,
+                  id: params.id,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { id: params.id },
         };
       },
     }),

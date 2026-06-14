@@ -31,6 +31,9 @@ vi.mock("@/lib/pi/tools/job-tools", () => ({
   createJobTools: vi.fn((userId: string) => [
     { name: "job_list", userId },
     { name: "job_run", userId },
+    { name: "model_list", userId },
+    { name: "job_update", userId },
+    { name: "job_delete", userId },
   ]),
 }));
 
@@ -195,14 +198,17 @@ describe("resolveTools", () => {
     };
     const tools = resolveTools(userId, sessionId, config, options);
 
-    // email(3) + jobs(2) + calendar(2) + chatSearch(1) + web(2) + memory(2) = 12
-    expect(tools).toHaveLength(12);
+    // email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) = 15
+    expect(tools).toHaveLength(15);
     expect(tools.map((t) => t.name)).toEqual([
       "mail_accounts",
       "mail_list",
       "mail_read",
       "job_list",
       "job_run",
+      "model_list",
+      "job_update",
+      "job_delete",
       "calendar_list",
       "calendar_create",
       "chat_search",
@@ -227,8 +233,8 @@ describe("resolveTools", () => {
     };
     const tools = resolveTools(userId, sessionId, config, options);
 
-    // terminal(5) + email(3) + jobs(2) + calendar(2) + chatSearch(1) + web(2) + memory(2) = 17
-    expect(tools).toHaveLength(17);
+    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) = 20
+    expect(tools).toHaveLength(20);
   });
 
   it("passes userId to all user-scoped factories", () => {
