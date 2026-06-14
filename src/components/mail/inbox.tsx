@@ -280,12 +280,6 @@ export function Inbox() {
   const isMobile = useIsMobile();
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const lastAutoSelectedMsg = useRef<string | null>(null);
-  const messagesRef = useRef(messages);
-  const loadAndSelectRef = useRef<(msg: EmailMessage) => Promise<void> | null>(null);
-
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
 
   const activeAccountId = urlAccountId ?? null;
   const LIMIT = 25;
@@ -434,9 +428,12 @@ export function Inbox() {
     [],
   );
 
-  // Stable message loader (no URL dependency) — used by both click handler and URL auto-select
+  // Idempotent message loader — safe to call multiple times for the same message
   const loadAndSelectMessage = useCallback(
     async (msg: EmailMessage) => {
+      // Guard: skip if already selected or currently loading
+      if (selectedId === msg.id || loadingMessage) return;
+
       setSelectedId(msg.id);
       setLoadingMessage(true);
       if (isMobile) {
@@ -473,6 +470,8 @@ export function Inbox() {
     [
       fetchMessageDetail,
       isMobile,
+      selectedId,
+      loadingMessage,
       setSelectedId,
       setLoadingMessage,
       setMobileDetailOpen,
@@ -480,9 +479,6 @@ export function Inbox() {
       setSelectedMsg,
     ],
   );
-  useEffect(() => {
-    loadAndSelectRef.current = loadAndSelectMessage;
-  }, [loadAndSelectMessage]);
 
   const updateUrlParams = useCallback(
     (msgId: string | null) => {
@@ -505,14 +501,14 @@ export function Inbox() {
 
   // Auto-select message from URL on mount
   useEffect(() => {
-    if (urlMsgId && urlMsgId !== lastAutoSelectedMsg.current && messagesRef.current.length > 0) {
-      const msgInList = messagesRef.current.find((m) => m.id === urlMsgId);
-      if (msgInList && loadAndSelectRef.current) {
+    if (urlMsgId && urlMsgId !== lastAutoSelectedMsg.current && messages.length > 0) {
+      const msgInList = messages.find((m) => m.id === urlMsgId);
+      if (msgInList) {
         lastAutoSelectedMsg.current = urlMsgId;
-        loadAndSelectRef.current(msgInList);
+        loadAndSelectMessage(msgInList);
       }
     }
-  }, [urlMsgId]);
+  }, [urlMsgId, messages, loadAndSelectMessage]);
 
   const handleToggleStar = async (msg: EmailMessage, e: React.MouseEvent) => {
     e.stopPropagation();
