@@ -1,6 +1,8 @@
 import { ImapFlow } from "imapflow";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { simpleParser } from "mailparser";
+import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /**
  * IMAP flag constants mapped to our local fields.
@@ -234,6 +236,67 @@ export async function syncMessagesBatch(
     console.warn(`[imap] Failed batch flag sync for account ${accountId}`);
   } finally {
     try {
+      await mailbox.logout();
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+}
+
+/** Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects */
+function sanitize(str: unknown): string | null {
+  if (str == null || str === false) return null;
+  return String(str).replace(/\0/g, "");
+}
+
+/**
+ * Fetch the full message body from IMAP, parse it, and store it in the DB.
+ * Returns the updated message with body fields populated, or null on failure.
+ */
+export async function fetchMessageBody(messageId: string): Promise<{
+  bodyPreview: string | null;
+  bodyHtml: string | null;
+  bodyText: string | null;
+} | null> {
+  const message = await prisma.emailMessage.findUnique({
+    where: { id: messageId },
+  });
+  if (!message) return null;
+
+  const { mailbox } = await connectImap(message.accountId);
+
+  try {
+    await mailbox.mailboxOpen(message.folder);
+
+    const fetched = await mailbox.fetchOne(message.uid, { uid: true, source: true }, { uid: true });
+    if (!fetched || !fetched.source) {
+      console.warn(`[imap] No source returned for UID ${message.uid} in ${message.folder}`);
+      return null;
+    }
+
+    const parsed = await simpleParser(fetched.source);
+    const bodyHtml = sanitizeEmailHtml(sanitize(parsed.html));
+
+    const updated = await prisma.emailMessage.update({
+      where: { id: messageId },
+      data: {
+        bodyPreview: sanitize(parsed.text?.slice(0, 500)) ?? null,
+        bodyHtml,
+        bodyText: sanitize(parsed.text),
+      },
+    });
+
+    return {
+      bodyPreview: updated.bodyPreview,
+      bodyHtml: updated.bodyHtml,
+      bodyText: updated.bodyText,
+    };
+  } catch (err) {
+    console.error(`[imap] Failed to fetch body for message ${messageId}:`, err);
+    return null;
+  } finally {
+    try {
+      await mailbox.mailboxClose();
       await mailbox.logout();
     } catch {
       // Ignore cleanup errors
