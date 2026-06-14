@@ -28,9 +28,20 @@ interface MessageListProps {
   onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
 }
 
+const THRESHOLD = 80; // px from bottom to consider "at bottom"
+
 export function MessageList({ messages, isLoading, onEditMessage }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  // Track scroll position — unlock auto-scroll when user scrolls up
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setIsAtBottom(distFromBottom <= THRESHOLD);
+  }, []);
 
   // Group consecutive assistant messages that share a parentMessageId
   const groupedMessages = useMemo(() => {
@@ -67,9 +78,13 @@ export function MessageList({ messages, isLoading, onEditMessage }: MessageListP
     return groups;
   }, [messages]);
 
+  // Auto-scroll to bottom only when user is near the bottom (locked-in mode).
+  // When streaming, user can scroll up to "unlock" — scrolling back to bottom re-locks.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (isAtBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isAtBottom]);
 
   if (messages.length === 0) {
     return (
@@ -93,7 +108,7 @@ export function MessageList({ messages, isLoading, onEditMessage }: MessageListP
     (lastMsg.id === "streaming-current" || lastMsg.id.startsWith("streaming-turn-"));
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto">
+    <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
       <div className="space-y-4 px-3 py-4 md:space-y-6 md:px-6 md:py-6">
         {groupedMessages.map((group, groupIndex) =>
           group.type === "user" ? (
