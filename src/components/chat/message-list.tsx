@@ -78,13 +78,14 @@ export function MessageList({ messages, isLoading, onEditMessage }: MessageListP
     return groups;
   }, [messages]);
 
-  // Auto-scroll to bottom only when user is near the bottom (locked-in mode).
+  // Auto-scroll to bottom only while streaming and user is near the bottom (locked-in mode).
   // When streaming, user can scroll up to "unlock" — scrolling back to bottom re-locks.
+  // Non-streaming message changes (DB reloads, edits) do NOT auto-scroll.
   useEffect(() => {
-    if (isAtBottom) {
+    if (isLoading && isAtBottom) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, isAtBottom]);
+  }, [messages, isLoading, isAtBottom]);
 
   if (messages.length === 0) {
     return (
