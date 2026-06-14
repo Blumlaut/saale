@@ -11,7 +11,16 @@
  */
 
 import type { LucideIcon } from "lucide-react";
-import { Terminal, Mail, ListTodo, Calendar, History, Globe, Brain } from "lucide-react";
+import {
+  Terminal,
+  Mail,
+  ListTodo,
+  Calendar,
+  History,
+  Globe,
+  Brain,
+  CheckSquare,
+} from "lucide-react";
 
 export interface ToolCategory {
   /** Unique key — matches ToolConfig property name */
@@ -78,6 +87,13 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     label: "Memory",
     description: "Search persistent AI memories",
     icon: Brain,
+    defaultEnabled: true,
+  },
+  {
+    key: "tasks",
+    label: "Tasks",
+    description: "Create and manage tasks and to-dos",
+    icon: CheckSquare,
     defaultEnabled: true,
   },
 ];

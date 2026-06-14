@@ -8,6 +8,7 @@ import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
 import { createWebTools } from "./tools/web-tools";
 import { createMemoryTools } from "./tools/memory-tools";
+import { createTaskTools } from "./tools/task-tools";
 
 // ─── Tool Factory Registry ───────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   chatSearch: (userId) => createChatSearchTool(userId),
   web: () => createWebTools(),
   memory: (userId) => createMemoryTools(userId),
+  tasks: (userId) => createTaskTools(userId),
 };
 
 // ─── Tool Resolution ─────────────────────────────────────────────────────────

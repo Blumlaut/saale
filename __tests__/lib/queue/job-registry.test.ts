@@ -4,7 +4,7 @@ import { getJobSchema } from "@/lib/queue/job-schemas";
 
 describe("job handlers registry", () => {
   it("has 10 registered handlers", () => {
-    expect(handlers).toHaveLength(10);
+    expect(handlers).toHaveLength(12);
   });
 
   it("each handler has required exports", () => {
@@ -66,7 +66,7 @@ describe("handlerMap", () => {
   });
 
   it("has 10 entries", () => {
-    expect(handlerMap.size).toBe(10);
+    expect(handlerMap.size).toBe(12);
   });
 });
 

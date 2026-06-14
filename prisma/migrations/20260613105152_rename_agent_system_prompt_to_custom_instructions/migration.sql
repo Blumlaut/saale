@@ -28,4 +28,12 @@ END $$;
 -- Truncate titles > 50 chars before changing type (prevents "value too long" errors)
 UPDATE "ChatSession" SET "title" = LEFT("title", 50) WHERE CHAR_LENGTH("title") > 50;
 ALTER TABLE "ChatSession" ALTER COLUMN "title" TYPE VARCHAR(50);
+
+-- Add processingSince if missing (was never created by a prior migration)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ChatSession' AND column_name='processingSince') THEN
+    ALTER TABLE "ChatSession" ADD COLUMN "processingSince" TIMESTAMP(3);
+  END IF;
+END $$;
+
 ALTER TABLE "ChatSession" ALTER COLUMN "processingSince" TYPE TIMESTAMP(3);
