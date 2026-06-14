@@ -160,13 +160,18 @@ Guidelines:
         ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
         : "";
 
+    const bashInstruction =
+      resolvedToolConfig.bash === true
+        ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available."
+        : "";
+
     const memoryInstruction =
       resolvedToolConfig.memory !== false
         ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
         : "";
 
     result.session.agent.state.systemPrompt =
-      defaultSystemPrompt + customInstructions + memoryInstruction;
+      defaultSystemPrompt + customInstructions + bashInstruction + memoryInstruction;
 
     return { session: result.session, sessionDir };
   });
