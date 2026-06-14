@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -142,10 +142,26 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
     }
   }, []);
 
+  // Refs for polling — avoids re-creating the interval when callbacks change
+  const loadJobsRef = useRef(loadJobs);
+  const loadRunsRef = useRef(loadRuns);
+  const selectedJobRef = useRef(selectedJob);
+
+  useEffect(() => {
+    loadJobsRef.current = loadJobs;
+    loadRunsRef.current = loadRuns;
+    selectedJobRef.current = selectedJob;
+  });
+
   useEffect(() => {
     loadJobs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
+  }, []);
+
+  useEffect(() => {
     loadSchemas();
-  }, [loadJobs, loadSchemas]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
+  }, []);
 
   useEffect(() => {
     if (selectedJob) {
@@ -154,15 +170,16 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
   }, [selectedJob, loadRuns]);
 
   // Poll for job state updates every 5 seconds (silent — no loading states)
+  // Uses refs so the effect runs only once on mount
   useEffect(() => {
     const interval = setInterval(() => {
-      loadJobs(true);
-      if (selectedJob) {
-        loadRuns(selectedJob.id, true);
+      loadJobsRef.current(true);
+      if (selectedJobRef.current) {
+        loadRunsRef.current(selectedJobRef.current.id, true);
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [loadJobs, selectedJob, loadRuns]);
+  }, []);
 
   const handleRun = async (jobId: string) => {
     setRunningId(jobId);
