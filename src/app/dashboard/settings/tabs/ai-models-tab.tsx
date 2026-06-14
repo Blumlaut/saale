@@ -248,130 +248,185 @@ export function AiModelsTab({
 
         <div className="flex flex-col gap-6 lg:flex-row">
           {/* ─── Model Browser ─── */}
-          <div className="flex-1">
-            <div className="px-6 py-3">
-              <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                Models
-              </Label>
-            </div>
-
-            {/* Search */}
-            <div className="px-4 pb-2">
-              <div className="relative">
-                <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-                <Input
-                  type="text"
-                  placeholder="Search models…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-8 pl-9 text-sm"
-                />
+          <div className="min-h-0 flex-1">
+            <div className="flex flex-col">
+              <div className="px-6 py-3">
+                <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                  Models
+                </Label>
               </div>
-            </div>
 
-            <ScrollArea className="h-[300px] lg:h-[400px]">
-              <div className="px-3 pb-3">
-                {allModels.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <Sparkles className="text-muted-foreground/50 mb-3 h-8 w-8" />
-                    <p className="text-sm font-medium">No models available</p>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Add an API key above to get started.
-                    </p>
-                  </div>
-                ) : Object.keys(filteredAllProviders).length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <Search className="text-muted-foreground/50 mb-3 h-8 w-8" />
-                    <p className="text-sm font-medium">No models match</p>
-                    <p className="text-muted-foreground mt-1 text-xs">Try a different keyword</p>
-                  </div>
-                ) : (
-                  Object.entries(filteredAllProviders).map(([providerKey, providerModels]) => (
-                    <div key={providerKey} className="mb-1">
-                      <div className="px-3 py-2">
-                        <span className="text-muted-foreground text-xs font-medium">
-                          {providerModels[0]?.providerName ?? providerKey}
-                        </span>
+              {/* Search */}
+              <div className="px-4 pb-2">
+                <div className="relative">
+                  <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                  <Input
+                    type="text"
+                    placeholder="Search models…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="h-8 pl-9 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1">
+                <ScrollArea className="h-full">
+                  <div className="px-3 pb-3">
+                    {allModels.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Sparkles className="text-muted-foreground/50 mb-3 h-8 w-8" />
+                        <p className="text-sm font-medium">No models available</p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          Add an API key above to get started.
+                        </p>
                       </div>
-
-                      {providerModels.map((model) => {
-                        const isSelected =
-                          effectiveModel?.provider === providerKey &&
-                          effectiveModel?.model === model.id;
-                        const disabled = isDisabled(providerKey, model.id);
+                    ) : Object.keys(filteredAllProviders).length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Search className="text-muted-foreground/50 mb-3 h-8 w-8" />
+                        <p className="text-sm font-medium">No models match</p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          Try a different keyword
+                        </p>
+                      </div>
+                    ) : (
+                      Object.entries(filteredAllProviders).map(([providerKey, providerModels]) => {
+                        const enabledCount = providerModels.filter(
+                          (m) => !isDisabled(providerKey, m.id),
+                        ).length;
+                        const allEnabled =
+                          providerModels.length > 0 && enabledCount === providerModels.length;
 
                         return (
-                          <div
-                            key={model.id}
-                            className={cn(
-                              "group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
-                              !disabled && "cursor-pointer hover:bg-white/20 dark:hover:bg-white/5",
-                              disabled && "opacity-50",
-                              isSelected && !disabled && "bg-primary/10",
-                            )}
-                            onClick={() => {
-                              if (!disabled) handleSelectModel(providerKey, model.id);
-                            }}
-                          >
-                            <div
-                              className={cn(
-                                "h-2 w-2 shrink-0 rounded-full transition-colors",
-                                isSelected && !disabled ? "bg-primary" : "bg-muted-foreground/30",
-                              )}
-                            />
-
-                            <div className="min-w-0 flex-1 text-left">
+                          <div key={providerKey} className="mb-1">
+                            <div className="flex items-center justify-between px-3 py-2">
                               <div className="flex items-center gap-2">
-                                <span
-                                  className={cn(
-                                    "truncate text-sm",
-                                    isSelected ? "font-medium" : "font-normal",
-                                    disabled && "line-through",
-                                  )}
-                                >
-                                  {model.name}
+                                <span className="text-muted-foreground text-xs font-medium">
+                                  {providerModels[0]?.providerName ?? providerKey}
                                 </span>
-                                <Badge
-                                  variant="outline"
-                                  className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
-                                >
-                                  {model.providerName}
-                                </Badge>
-                                {model.reasoning && (
-                                  <Badge variant="secondary" className="shrink-0 rounded-full">
-                                    <Sparkles className="mr-0.5 h-3 w-3" />
-                                    Reasoning
-                                  </Badge>
-                                )}
-                                {disabled && (
-                                  <EyeOff className="text-muted-foreground h-3 w-3 shrink-0" />
-                                )}
+                                <span className="text-muted-foreground/60 text-[10px]">
+                                  {enabledCount}/{providerModels.length}
+                                </span>
                               </div>
-                              {model.contextWindow && model.contextWindow > 0 && (
-                                <span className="text-muted-foreground text-xs">
-                                  {formatContextWindow(model.contextWindow)} context
-                                </span>
-                              )}
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground text-[10px]">All</span>
+                                <Switch
+                                  checked={allEnabled}
+                                  onCheckedChange={(checked) => {
+                                    if (!settings) return;
+                                    const current = settings.disabledModels ?? [];
+                                    const providerModelKeys = providerModels.map(
+                                      (m) => `${providerKey}:${m.id}`,
+                                    );
+                                    let updated: string[];
+                                    if (checked) {
+                                      // Enable all: remove this provider's models from disabled list
+                                      updated = current.filter(
+                                        (k) => !providerModelKeys.includes(k),
+                                      );
+                                    } else {
+                                      // Disable all: add all provider models to disabled list
+                                      updated = [...new Set([...current, ...providerModelKeys])];
+                                    }
+                                    onSettingsChange({
+                                      ...settings,
+                                      disabledModels: updated.length > 0 ? updated : null,
+                                    });
+                                    setDisabledSet(new Set(updated));
+                                  }}
+                                  className="scale-75 data-[state=unchecked]:opacity-50"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
                             </div>
 
-                            {isSelected && !disabled && (
-                              <CheckCircle className="text-primary h-4 w-4 shrink-0" />
-                            )}
+                            {providerModels.map((model) => {
+                              const isSelected =
+                                effectiveModel?.provider === providerKey &&
+                                effectiveModel?.model === model.id;
+                              const disabled = isDisabled(providerKey, model.id);
 
-                            <Switch
-                              checked={!disabled}
-                              onCheckedChange={() => handleToggleModel(providerKey, model.id)}
-                              className="scale-75 data-[state=unchecked]:opacity-50"
-                              onClick={(e) => e.stopPropagation()}
-                            />
+                              return (
+                                <div
+                                  key={model.id}
+                                  className={cn(
+                                    "group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
+                                    !disabled &&
+                                      "cursor-pointer hover:bg-white/20 dark:hover:bg-white/5",
+                                    disabled && "opacity-50",
+                                    isSelected && !disabled && "bg-primary/10",
+                                  )}
+                                  onClick={() => {
+                                    if (!disabled) handleSelectModel(providerKey, model.id);
+                                  }}
+                                >
+                                  <div
+                                    className={cn(
+                                      "h-2 w-2 shrink-0 rounded-full transition-colors",
+                                      isSelected && !disabled
+                                        ? "bg-primary"
+                                        : "bg-muted-foreground/30",
+                                    )}
+                                  />
+
+                                  <div className="min-w-0 flex-1 text-left">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={cn(
+                                          "truncate text-sm",
+                                          isSelected ? "font-medium" : "font-normal",
+                                          disabled && "line-through",
+                                        )}
+                                      >
+                                        {model.name}
+                                      </span>
+                                      <Badge
+                                        variant="outline"
+                                        className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                      >
+                                        {model.providerName}
+                                      </Badge>
+                                      {model.reasoning && (
+                                        <Badge
+                                          variant="secondary"
+                                          className="shrink-0 rounded-full"
+                                        >
+                                          <Sparkles className="mr-0.5 h-3 w-3" />
+                                          Reasoning
+                                        </Badge>
+                                      )}
+                                      {disabled && (
+                                        <EyeOff className="text-muted-foreground h-3 w-3 shrink-0" />
+                                      )}
+                                    </div>
+                                    {model.contextWindow && model.contextWindow > 0 && (
+                                      <span className="text-muted-foreground text-xs">
+                                        {formatContextWindow(model.contextWindow)} context
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {isSelected && !disabled && (
+                                    <CheckCircle className="text-primary h-4 w-4 shrink-0" />
+                                  )}
+
+                                  <Switch
+                                    checked={!disabled}
+                                    onCheckedChange={() => handleToggleModel(providerKey, model.id)}
+                                    className="scale-75 data-[state=unchecked]:opacity-50"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                              );
+                            })}
                           </div>
                         );
-                      })}
-                    </div>
-                  ))
-                )}
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
               </div>
-            </ScrollArea>
+            </div>
           </div>
 
           {/* ─── Right Sidebar ─── */}
