@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,7 +256,9 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
 
 export function Inbox() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const urlAccountId = searchParams.get("accountId");
+  const urlMsgId = searchParams.get("msg");
 
   const [messages, setMessages] = useState<EmailMessage[]>([]);
   const [accounts, setAccounts] = useState<InboxEmailAccount[]>([]);
@@ -425,40 +427,72 @@ export function Inbox() {
     [],
   );
 
+  // Stable message loader (no URL dependency) — used by both click handler and URL auto-select
+  const loadAndSelectMessage = useCallback(
+    async (msg: EmailMessage) => {
+      setSelectedId(msg.id);
+      setLoadingMessage(true);
+      if (isMobile) {
+        setMobileDetailOpen(true);
+      }
+
+      // Mark as read in local state immediately
+      if (!msg.isRead) {
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
+      }
+
+      // Fetch full message detail (bodyHtml, bodyText)
+      const detail = await fetchMessageDetail(msg.id);
+      if (detail) {
+        setSelectedMsg(detail);
+        // Update list item with the fetched bodyPreview
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? { ...m, bodyPreview: detail.bodyPreview } : m)),
+        );
+      } else {
+        // Fallback: use list data (won't have body)
+        setSelectedMsg({ ...msg, bodyHtml: null, bodyText: null } as EmailMessageDetail);
+      }
+      setLoadingMessage(false);
+
+      // Persist read status to server (best-effort)
+      if (!msg.isRead) {
+        patchJson(`/api/email/messages/${msg.id}`, { isRead: true }).catch(() => {
+          // Revert local state on failure
+          setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: false } : m)));
+        });
+      }
+    },
+    [fetchMessageDetail, isMobile],
+  );
+
+  const updateUrlParams = useCallback(
+    (msgId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (msgId) {
+        params.set("msg", msgId);
+      } else {
+        params.delete("msg");
+      }
+      router.push(`/dashboard/mail?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
   const handleSelect = async (msg: EmailMessage) => {
-    setSelectedId(msg.id);
-    setLoadingMessage(true);
-    if (isMobile) {
-      setMobileDetailOpen(true);
-    }
-
-    // Mark as read in local state immediately
-    if (!msg.isRead) {
-      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
-    }
-
-    // Fetch full message detail (bodyHtml, bodyText)
-    const detail = await fetchMessageDetail(msg.id);
-    if (detail) {
-      setSelectedMsg(detail);
-      // Update list item with the fetched bodyPreview
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msg.id ? { ...m, bodyPreview: detail.bodyPreview } : m)),
-      );
-    } else {
-      // Fallback: use list data (won't have body)
-      setSelectedMsg({ ...msg, bodyHtml: null, bodyText: null } as EmailMessageDetail);
-    }
-    setLoadingMessage(false);
-
-    // Persist read status to server (best-effort)
-    if (!msg.isRead) {
-      patchJson(`/api/email/messages/${msg.id}`, { isRead: true }).catch(() => {
-        // Revert local state on failure
-        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: false } : m)));
-      });
-    }
+    loadAndSelectMessage(msg);
+    updateUrlParams(msg.id);
   };
+
+  // Auto-select message from URL on mount
+  useEffect(() => {
+    if (urlMsgId && messages.length > 0) {
+      const msgInList = messages.find((m) => m.id === urlMsgId);
+      if (msgInList) {
+        loadAndSelectMessage(msgInList);
+      }
+    }
+  }, [urlMsgId, messages, loadAndSelectMessage]);
 
   const handleToggleStar = async (msg: EmailMessage, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -699,6 +733,7 @@ export function Inbox() {
                 setFolder(null);
                 setSelectedId(null);
                 setSelectedMsg(null);
+                updateUrlParams(null);
               }}
               className={cn(
                 "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
@@ -714,6 +749,7 @@ export function Inbox() {
                   setFolder(f);
                   setSelectedId(null);
                   setSelectedMsg(null);
+                  updateUrlParams(null);
                 }}
                 className={cn(
                   "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
