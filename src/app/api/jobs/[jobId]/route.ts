@@ -20,7 +20,12 @@ export async function PATCH(
 
   if (body.type !== undefined) updateData.type = body.type;
   if (body.enabled !== undefined) updateData.enabled = body.enabled;
-  if (body.modelId !== undefined) updateData.modelId = body.modelId;
+  if (body.modelId !== undefined) {
+    // Normalize "/" to ":" so modelId is always stored in canonical format
+    updateData.modelId = body.modelId?.includes("/")
+      ? body.modelId.replace("/", ":")
+      : body.modelId;
+  }
   if (body.config !== undefined) updateData.config = JSON.stringify(body.config);
 
   const updated = await prisma.queueTask.update({

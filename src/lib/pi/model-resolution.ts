@@ -17,8 +17,12 @@ export async function resolveModelForPurpose(
   explicitModelId?: string | null,
 ): Promise<{ provider: string; name: string } | undefined> {
   // 1. Explicit override (e.g. per-job model selection)
-  if (explicitModelId && explicitModelId.includes(":")) {
-    const [provider, ...nameParts] = explicitModelId.split(":");
+  // Normalize "/" to ":" — LLMs and UI components may use either separator
+  const normalized = explicitModelId?.includes("/")
+    ? explicitModelId.replace("/", ":")
+    : explicitModelId;
+  if (normalized && normalized.includes(":")) {
+    const [provider, ...nameParts] = normalized.split(":");
     if (provider) {
       return { provider, name: nameParts.join(":") };
     }

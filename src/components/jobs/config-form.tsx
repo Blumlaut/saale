@@ -163,11 +163,13 @@ export function ConfigDisplay({
         } else if (field.type === "model") {
           // Format "provider:modelId" as "modelId (provider)"
           const rawValue = String(value);
-          if (rawValue.includes(":")) {
-            const [provider, ...nameParts] = rawValue.split(":");
+          // Normalize "/" to ":" for consistent display
+          const normalized = rawValue.includes("/") ? rawValue.replace("/", ":") : rawValue;
+          if (normalized.includes(":")) {
+            const [provider, ...nameParts] = normalized.split(":");
             display = `${nameParts.join(":")} (${provider})`;
           } else {
-            display = rawValue || "Default";
+            display = normalized || "Default";
           }
         } else if (field.type === "select" && field.options) {
           const opt = field.options.find((o) => o.value === String(value));
