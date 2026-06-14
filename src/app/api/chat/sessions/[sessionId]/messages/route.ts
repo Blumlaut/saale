@@ -178,8 +178,8 @@ export async function POST(
         processingSince: new Date(),
         title:
           chatSession.title === "New Chat"
-            ? (sanitizedContent || "Image").slice(0, 50) +
-              ((sanitizedContent || "Image").length > 50 ? "..." : "")
+            ? (sanitizedContent || "Image").slice(0, 47) +
+              ((sanitizedContent || "Image").length > 47 ? "..." : "")
             : chatSession.title,
       },
     });
