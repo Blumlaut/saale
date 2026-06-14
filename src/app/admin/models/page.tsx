@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchJson, patchJson, postJson, deleteJson } from "@/lib/http";
-import { Bot, Key, Loader2, CheckCircle, AlertCircle, Plus, Trash2 } from "lucide-react";
+import { Bot, Key, Loader2, CheckCircle, AlertCircle, Plus, Trash2, Search } from "lucide-react";
 import type { AvailableModel, AvailableProvider } from "@/app/dashboard/settings/types";
 
 interface ProviderModelConfig {
@@ -72,6 +72,7 @@ export default function AdminModelsPage() {
 
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const [modelSearch, setModelSearch] = useState("");
 
   // Per-model toggle state (Set of enabled model IDs per provider)
   const [modelEnabled, setModelEnabled] = useState<Record<string, Set<string>>>({});
@@ -384,6 +385,18 @@ export default function AdminModelsPage() {
 
           {/* ─── Models Tab ─── */}
           <TabsContent value="models" className="space-y-6">
+            {/* Search */}
+            <div className="relative">
+              <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+              <Input
+                type="text"
+                placeholder="Search models…"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                className="h-8 pl-9 text-sm"
+              />
+            </div>
+
             {modelProviders.length === 0 && (
               <GlassPanel>
                 <GlassPanelContent>
@@ -406,10 +419,46 @@ export default function AdminModelsPage() {
               </GlassPanel>
             )}
 
+            {modelSearch.trim() &&
+              modelProviders.every((p) => {
+                const models = availableModels[p.id] ?? [];
+                const q = modelSearch.toLowerCase();
+                return models.every(
+                  (m) =>
+                    !m.name.toLowerCase().includes(q) &&
+                    !m.id.toLowerCase().includes(q) &&
+                    !p.name.toLowerCase().includes(q),
+                );
+              }) && (
+                <GlassPanel>
+                  <GlassPanelContent>
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <Search className="text-muted-foreground/50 mb-3 h-8 w-8" />
+                      <p className="text-sm font-medium">No models match</p>
+                      <p className="text-muted-foreground mt-1 text-xs">Try a different keyword</p>
+                    </div>
+                  </GlassPanelContent>
+                </GlassPanel>
+              )}
+
             {modelProviders.map((provider) => {
-              const models = availableModels[provider.id] ?? [];
-              const enabledModels = modelEnabled[provider.id] ?? new Set(models.map((m) => m.id));
+              let models = availableModels[provider.id] ?? [];
+              const q = modelSearch.trim().toLowerCase();
+              if (q) {
+                models = models.filter(
+                  (m) =>
+                    m.name.toLowerCase().includes(q) ||
+                    m.id.toLowerCase().includes(q) ||
+                    provider.name.toLowerCase().includes(q),
+                );
+              }
+              const enabledModels =
+                modelEnabled[provider.id] ??
+                new Set((availableModels[provider.id] ?? []).map((m) => m.id));
               const allEnabled = models.length > 0 && enabledModels.size === models.length;
+
+              if (models.length === 0) return null;
+
               return (
                 <GlassPanel key={provider.id}>
                   <GlassPanelHeader
@@ -417,7 +466,7 @@ export default function AdminModelsPage() {
                     action={
                       <div className="flex items-center gap-3">
                         <Badge variant="secondary" className="rounded-full text-xs">
-                          {enabledModels.size}/{models.length} enabled
+                          {enabledModels.size}/{(availableModels[provider.id] ?? []).length} enabled
                         </Badge>
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground text-xs">All</span>
@@ -432,48 +481,42 @@ export default function AdminModelsPage() {
                     }
                   />
                   <GlassPanelContent className="p-0">
-                    {models.length === 0 ? (
-                      <div className="px-4 py-6 text-center">
-                        <p className="text-muted-foreground text-sm">No models discovered yet</p>
-                      </div>
-                    ) : (
-                      models.map((model, i) => {
-                        const isModelEnabled = enabledModels.has(model.id);
-                        return (
-                          <div key={model.id}>
-                            <div className="flex items-center justify-between px-4 py-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="truncate text-sm font-medium">{model.name}</span>
+                    {models.map((model, i) => {
+                      const isModelEnabled = enabledModels.has(model.id);
+                      return (
+                        <div key={model.id}>
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate text-sm font-medium">{model.name}</span>
+                                <Badge
+                                  variant="outline"
+                                  className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                >
+                                  {provider.name}
+                                </Badge>
+                                {model.reasoning && (
                                   <Badge
-                                    variant="outline"
-                                    className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                    variant="secondary"
+                                    className="rounded-full px-1.5 text-[10px]"
                                   >
-                                    {provider.name}
+                                    reasoning
                                   </Badge>
-                                  {model.reasoning && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="rounded-full px-1.5 text-[10px]"
-                                    >
-                                      reasoning
-                                    </Badge>
-                                  )}
-                                </div>
-                                <span className="text-muted-foreground text-xs">{model.id}</span>
+                                )}
                               </div>
-                              <Switch
-                                checked={isModelEnabled}
-                                onCheckedChange={(checked) =>
-                                  handleModelToggle(provider.id, model.id, checked)
-                                }
-                              />
+                              <span className="text-muted-foreground text-xs">{model.id}</span>
                             </div>
-                            {i < models.length - 1 && <Separator className="px-4" />}
+                            <Switch
+                              checked={isModelEnabled}
+                              onCheckedChange={(checked) =>
+                                handleModelToggle(provider.id, model.id, checked)
+                              }
+                            />
                           </div>
-                        );
-                      })
-                    )}
+                          {i < models.length - 1 && <Separator className="px-4" />}
+                        </div>
+                      );
+                    })}
                   </GlassPanelContent>
                 </GlassPanel>
               );
