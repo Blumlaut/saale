@@ -24,7 +24,7 @@ interface Task {
 interface TaskListProps {
   tasks: Task[];
   onToggle: (task: Task) => void;
-  onDelete: (taskId: string) => void;
+  onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
 }
 

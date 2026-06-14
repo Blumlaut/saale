@@ -3,9 +3,19 @@
 import { useState, useCallback, useEffect } from "react";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskForm } from "@/components/tasks/task-form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Task {
   id: string;
@@ -28,6 +38,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [deleteTask, setDeleteTask] = useState<Task | null>(null);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -64,13 +75,19 @@ export default function TasksPage() {
     }
   }, []);
 
-  const handleDelete = useCallback(async (taskId: string) => {
+  const handleDelete = useCallback(async () => {
+    if (!deleteTask) return;
     try {
-      await deleteJson(`/api/tasks/${taskId}`);
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      await deleteJson(`/api/tasks/${deleteTask.id}`);
+      setTasks((prev) => prev.filter((t) => t.id !== deleteTask.id));
+      setDeleteTask(null);
     } catch (err) {
       console.error("Failed to delete task:", err);
     }
+  }, [deleteTask]);
+
+  const handleDeleteRequest = useCallback((task: Task) => {
+    setDeleteTask(task);
   }, []);
 
   const handleFormSubmit = useCallback(
@@ -137,7 +154,7 @@ export default function TasksPage() {
         <TaskList
           tasks={tasks}
           onToggle={handleToggleComplete}
-          onDelete={handleDelete}
+          onDelete={handleDeleteRequest}
           onEdit={handleEdit}
         />
       )}
@@ -149,6 +166,25 @@ export default function TasksPage() {
         onSubmit={handleFormSubmit}
         task={editingTask}
       />
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTask} onOpenChange={(open) => !open && setDeleteTask(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete &quot;{deleteTask?.title}&quot;? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} variant="destructive">
+              <Trash2 className="mr-2 h-3.5 w-3.5" />
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

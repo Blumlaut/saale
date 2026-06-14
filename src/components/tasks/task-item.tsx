@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +33,7 @@ interface TaskItemProps {
   task: Task;
   isLast: boolean;
   onToggle: (task: Task) => void;
-  onDelete: (taskId: string) => void;
+  onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
   groupKey: string;
 }
@@ -51,17 +50,6 @@ const sourceConfig: Record<string, { icon: typeof Mail; label: string }> = {
 };
 
 export function TaskItem({ task, isLast, onToggle, onDelete, onEdit, groupKey }: TaskItemProps) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const handleDelete = () => {
-    if (confirmDelete) {
-      onDelete(task.id);
-    } else {
-      setConfirmDelete(true);
-      setTimeout(() => setConfirmDelete(false), 3000);
-    }
-  };
-
   const dueDateLabel = task.dueDate ? format(new Date(task.dueDate), "EEE MMM d") : null;
 
   const isCompleted = task.status === "completed";
@@ -147,11 +135,11 @@ export function TaskItem({ task, isLast, onToggle, onDelete, onEdit, groupKey }:
                 Edit
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={handleDelete}
+                onClick={() => onDelete(task)}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="mr-2 h-3.5 w-3.5" />
-                {confirmDelete ? "Confirm delete?" : "Delete"}
+                Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
