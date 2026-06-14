@@ -36,7 +36,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -175,6 +174,16 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
         <Forward className="h-3.5 w-3.5" />
         <span className="hidden sm:inline">Forward</span>
       </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 gap-1.5 rounded-full text-xs"
+        onClick={handleTrash}
+        title="Move to Trash"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Trash</span>
+      </Button>
 
       <DropdownMenu>
         <DropdownMenuTrigger>
@@ -190,11 +199,6 @@ function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefre
             <Archive className="mr-2 h-4 w-4" />
             Archive
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleTrash}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Move to Trash
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleToggleRead}>
             {message.isRead ? (
               <>
