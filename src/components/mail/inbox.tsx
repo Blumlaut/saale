@@ -279,6 +279,7 @@ export function Inbox() {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const isMobile = useIsMobile();
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const lastAutoSelectedMsg = useRef<string | null>(null);
 
   const activeAccountId = urlAccountId ?? null;
   const LIMIT = 25;
@@ -463,7 +464,15 @@ export function Inbox() {
         });
       }
     },
-    [fetchMessageDetail, isMobile],
+    [
+      fetchMessageDetail,
+      isMobile,
+      setSelectedId,
+      setLoadingMessage,
+      setMobileDetailOpen,
+      setMessages,
+      setSelectedMsg,
+    ],
   );
 
   const updateUrlParams = useCallback(
@@ -474,21 +483,23 @@ export function Inbox() {
       } else {
         params.delete("msg");
       }
-      router.push(`/dashboard/mail?${params.toString()}`, { scroll: false });
+      router.replace(`/dashboard/mail?${params.toString()}`, { scroll: false });
     },
     [router, searchParams],
   );
 
   const handleSelect = async (msg: EmailMessage) => {
+    lastAutoSelectedMsg.current = msg.id;
     loadAndSelectMessage(msg);
     updateUrlParams(msg.id);
   };
 
   // Auto-select message from URL on mount
   useEffect(() => {
-    if (urlMsgId && messages.length > 0) {
+    if (urlMsgId && urlMsgId !== lastAutoSelectedMsg.current && messages.length > 0) {
       const msgInList = messages.find((m) => m.id === urlMsgId);
       if (msgInList) {
+        lastAutoSelectedMsg.current = urlMsgId;
         loadAndSelectMessage(msgInList);
       }
     }
@@ -733,6 +744,7 @@ export function Inbox() {
                 setFolder(null);
                 setSelectedId(null);
                 setSelectedMsg(null);
+                lastAutoSelectedMsg.current = null;
                 updateUrlParams(null);
               }}
               className={cn(
@@ -749,6 +761,7 @@ export function Inbox() {
                   setFolder(f);
                   setSelectedId(null);
                   setSelectedMsg(null);
+                  lastAutoSelectedMsg.current = null;
                   updateUrlParams(null);
                 }}
                 className={cn(
