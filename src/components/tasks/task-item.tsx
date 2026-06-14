@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -138,13 +137,9 @@ export function TaskItem({ task, isLast, onToggle, onDelete, onEdit, groupKey }:
           {/* Actions menu */}
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
-              >
+              <span className="text-muted-foreground inline-flex h-6 w-6 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/10">
                 <MoreHorizontal className="h-3.5 w-3.5" />
-              </Button>
+              </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-36">
               <DropdownMenuItem onClick={() => onEdit(task)}>
