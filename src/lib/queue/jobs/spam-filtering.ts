@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { moveMessage } from "@/lib/email/imap";
+import { moveMessage, deleteMessage } from "@/lib/email/imap";
 import { dispatchAiJob } from "@/lib/queue/job-handler";
 import { resolveUserEmailAccountIds } from "@/lib/queue/user-isolation";
 
@@ -34,12 +34,23 @@ export const fields = [
   {
     key: "spamThreshold",
     label: "Spam threshold",
-    description: "Score above which emails are moved to Spam (0–1)",
+    description: "Score above which the action is applied (0–1)",
     type: "number" as const,
     default: 0.85,
     min: 0,
     max: 1,
     step: 0.05,
+  },
+  {
+    key: "spamAction",
+    label: "Action on spam",
+    description: "What to do with emails that exceed the spam threshold",
+    type: "select" as const,
+    default: "move_to_spam",
+    options: [
+      { value: "move_to_spam", label: "Move to Spam folder" },
+      { value: "delete", label: "Delete" },
+    ],
   },
   {
     key: "maxEmailAge",
@@ -126,37 +137,66 @@ export async function handler(params: {
     (r: { id: string; spamScore: number }) => r.id && typeof r.spamScore === "number",
   );
 
+  const spamAction = (config.spamAction as string) ?? "move_to_spam";
+
   // Guard: only update emails from the scanned batch (defense against AI hallucination)
   const scannedIds = new Set(emails.map((e) => e.id));
+  const movedToSpam: string[] = [];
+  const deleted: string[] = [];
+
   for (const result of spamResults) {
     if (!scannedIds.has(result.id)) continue;
-    const shouldMove = result.spamScore > spamThreshold;
-    const updated = await prisma.emailMessage.update({
-      where: { id: result.id },
-      data: {
-        spamScore: Math.min(Math.max(result.spamScore, 0), 1),
-        ...(shouldMove ? { folder: "Spam" } : {}),
-      },
-      select: {
-        accountId: true,
-        uid: true,
-        folder: true,
-      },
-    });
+    const isSpam = result.spamScore > spamThreshold;
 
-    // Sync move to IMAP server (best-effort, fire-and-forget)
-    if (shouldMove && updated.folder !== "Spam") {
-      moveMessage(updated.accountId, updated.folder, updated.uid, "Spam").catch(() => {
-        // Already logged inside moveMessage
+    if (isSpam && spamAction === "delete") {
+      // Delete: push to IMAP first, then remove from DB
+      const msg = await prisma.emailMessage.findFirst({
+        where: { id: result.id, accountId: { in: accountIds } },
+        select: { id: true, uid: true, folder: true, accountId: true },
       });
+      if (msg) {
+        deleteMessage(msg.accountId, msg.folder, msg.uid).catch((err) => {
+          console.error(`Failed to delete UID ${msg.uid} from IMAP:`, err);
+        });
+        await prisma.emailMessage.delete({
+          where: { id: result.id },
+        });
+        deleted.push(result.id);
+      }
+    } else {
+      const updated = await prisma.emailMessage.update({
+        where: { id: result.id },
+        data: {
+          spamScore: Math.min(Math.max(result.spamScore, 0), 1),
+          ...(isSpam
+            ? {
+                folder: "Spam",
+                tags: { push: "filtered" },
+              }
+            : {}),
+        },
+        select: {
+          accountId: true,
+          uid: true,
+          folder: true,
+        },
+      });
+
+      // Sync move to IMAP server (best-effort, fire-and-forget)
+      if (isSpam && updated.folder !== "Spam") {
+        movedToSpam.push(result.id);
+        moveMessage(updated.accountId, updated.folder, updated.uid, "Spam").catch((err) => {
+          console.error(`Failed to move UID ${updated.uid} to Spam on IMAP:`, err);
+        });
+      }
     }
   }
 
   return JSON.stringify({
     processed: emails.length,
     analyzed: spamResults.length,
-    movedToSpam: spamResults.filter((r: { spamScore: number }) => r.spamScore > spamThreshold)
-      .length,
+    movedToSpam: movedToSpam.length,
+    deleted: deleted.length,
     results: spamResults,
   });
 }
