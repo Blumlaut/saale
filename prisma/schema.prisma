@@ -209,7 +209,7 @@ model EmailMessage {
   to          String       @db.Text // JSON array
   subject     String
   date        DateTime
-  bodyPreview String      @db.Text
+  bodyPreview String?     @db.Text
   bodyHtml    String?     @db.Text
   bodyText    String?     @db.Text
   isRead      Boolean     @default(false)

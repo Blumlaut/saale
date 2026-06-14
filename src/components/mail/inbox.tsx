@@ -53,7 +53,7 @@ interface EmailMessage {
   to: unknown;
   subject: string;
   date: string;
-  bodyPreview: string;
+  bodyPreview: string | null;
   bodyHtml?: string | null;
   bodyText?: string | null;
   isRead: boolean;
@@ -832,7 +832,7 @@ export function Inbox() {
                           {msg.subject || "(no subject)"}
                         </div>
                         <div className="text-muted-foreground truncate text-xs">
-                          {msg.bodyPreview}
+                          {msg.bodyPreview || "(body not loaded)"}
                         </div>
                         {msg.tags.length > 0 && (
                           <div className="mt-1 flex gap-1">

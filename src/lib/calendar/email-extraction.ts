@@ -140,7 +140,7 @@ async function extractSingleEvent(
   email: {
     subject: string;
     bodyText: string | null;
-    bodyPreview: string;
+    bodyPreview: string | null;
     date: Date;
   },
   userId: string,
