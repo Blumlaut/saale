@@ -280,6 +280,12 @@ export function Inbox() {
   const isMobile = useIsMobile();
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const lastAutoSelectedMsg = useRef<string | null>(null);
+  const messagesRef = useRef(messages);
+  const loadAndSelectRef = useRef<(msg: EmailMessage) => Promise<void> | null>(null);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const activeAccountId = urlAccountId ?? null;
   const LIMIT = 25;
@@ -474,6 +480,9 @@ export function Inbox() {
       setSelectedMsg,
     ],
   );
+  useEffect(() => {
+    loadAndSelectRef.current = loadAndSelectMessage;
+  }, [loadAndSelectMessage]);
 
   const updateUrlParams = useCallback(
     (msgId: string | null) => {
@@ -496,14 +505,14 @@ export function Inbox() {
 
   // Auto-select message from URL on mount
   useEffect(() => {
-    if (urlMsgId && urlMsgId !== lastAutoSelectedMsg.current && messages.length > 0) {
-      const msgInList = messages.find((m) => m.id === urlMsgId);
-      if (msgInList) {
+    if (urlMsgId && urlMsgId !== lastAutoSelectedMsg.current && messagesRef.current.length > 0) {
+      const msgInList = messagesRef.current.find((m) => m.id === urlMsgId);
+      if (msgInList && loadAndSelectRef.current) {
         lastAutoSelectedMsg.current = urlMsgId;
-        loadAndSelectMessage(msgInList);
+        loadAndSelectRef.current(msgInList);
       }
     }
-  }, [urlMsgId, messages, loadAndSelectMessage]);
+  }, [urlMsgId]);
 
   const handleToggleStar = async (msg: EmailMessage, e: React.MouseEvent) => {
     e.stopPropagation();
