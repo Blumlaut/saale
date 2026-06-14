@@ -12,7 +12,7 @@ export async function GET() {
 
   const jobs = await prisma.queueTask.findMany({
     where: { userId: authResult.user.id },
-    orderBy: { createdAt: "asc" },
+    orderBy: { type: "asc" },
     select: {
       id: true,
       type: true,
@@ -28,6 +28,20 @@ export async function GET() {
       },
     },
   });
+
+  // Fetch the latest run for each job (to expose latestRunStatus)
+  const jobIds = jobs.map((j) => j.id);
+  const latestRuns = await prisma.taskRun.findMany({
+    where: { taskId: { in: jobIds } },
+    orderBy: { createdAt: "desc" },
+    select: { taskId: true, status: true },
+  });
+  const latestRunMap = new Map<string, string>();
+  for (const run of latestRuns) {
+    if (!latestRunMap.has(run.taskId)) {
+      latestRunMap.set(run.taskId, run.status);
+    }
+  }
 
   return NextResponse.json({
     jobs: jobs.map(
@@ -53,6 +67,7 @@ export async function GET() {
         createdAt: j.createdAt.toISOString(),
         updatedAt: j.updatedAt.toISOString(),
         runHistoryCount: j._count.runs,
+        latestRunStatus: latestRunMap.get(j.id) ?? null,
       }),
     ),
   });
