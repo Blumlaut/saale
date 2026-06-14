@@ -879,9 +879,16 @@ export function ChatInterface({
     };
   }, []);
 
-  // Persist model/thinking changes to the session
+  // Track previous values to avoid sending PATCH on every session switch
+  const prevModelIdRef = useRef(modelId);
+  const prevThinkingLevelRef = useRef(thinkingLevel);
+
+  // Persist model/thinking changes to the session (only when values actually change)
   useEffect(() => {
     if (!modelId && thinkingLevel === "off") return;
+    if (modelId === prevModelIdRef.current && thinkingLevel === prevThinkingLevelRef.current)
+      return;
+
     const saveTimer = setTimeout(async () => {
       const [provider, ...modelParts] = modelId.split("/");
       const modelName = modelParts.join("/");
@@ -897,6 +904,12 @@ export function ChatInterface({
     }, 300);
     return () => clearTimeout(saveTimer);
   }, [modelId, thinkingLevel, sessionId]);
+
+  // Keep refs in sync (runs after the persist effect)
+  useEffect(() => {
+    prevModelIdRef.current = modelId;
+    prevThinkingLevelRef.current = thinkingLevel;
+  });
 
   // Build display messages (including streaming turns)
   const displayMessages = [...messages];

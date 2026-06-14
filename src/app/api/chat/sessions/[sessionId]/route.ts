@@ -41,17 +41,26 @@ export async function PATCH(
   const body = await request.json();
   const { title, temporary, modelProvider, modelName, thinkingLevel, toolConfig } = body;
 
-  const updated = await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: {
-      ...(title && { title }),
-      ...(typeof temporary === "boolean" && { temporary }),
-      ...(modelProvider && { modelProvider }),
-      ...(modelName && { modelName }),
-      ...(thinkingLevel && { thinkingLevel }),
-      ...(toolConfig && { toolConfig }),
-    },
-  });
+  // Build data only for fields that actually differ from current values (skip unchanged to avoid touching updatedAt)
+  const data: Record<string, unknown> = {};
+  if (title && title !== authResult.session.title) data.title = title;
+  if (typeof temporary === "boolean" && temporary !== authResult.session.temporary)
+    data.temporary = temporary;
+  if (modelProvider && modelProvider !== authResult.session.modelProvider)
+    data.modelProvider = modelProvider;
+  if (modelName && modelName !== authResult.session.modelName) data.modelName = modelName;
+  if (thinkingLevel && thinkingLevel !== authResult.session.thinkingLevel)
+    data.thinkingLevel = thinkingLevel;
+  if (toolConfig && JSON.stringify(toolConfig) !== JSON.stringify(authResult.session.toolConfig))
+    data.toolConfig = toolConfig;
+
+  const updated =
+    Object.keys(data).length > 0
+      ? await prisma.chatSession.update({
+          where: { id: sessionId },
+          data,
+        })
+      : authResult.session;
 
   return NextResponse.json({
     session: {
