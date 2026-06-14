@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { get, getPoolKey } from "@/lib/pi/agent-pool";
 
 /**
  * PATCH /api/chat/sessions/:sessionId/messages/:messageId — Edit a user message.
@@ -81,6 +82,14 @@ export async function PATCH(
       data: { processingSince: new Date() },
     });
   });
+
+  // Clear lastPromptedMessageId so the stream re-prompts with the edited content.
+  // The message ID is the same but its content has changed.
+  const poolKey = getPoolKey(authResult.user.id, sessionId);
+  const pooled = get(poolKey);
+  if (pooled) {
+    pooled.lastPromptedMessageId = null;
+  }
 
   return NextResponse.json({
     ok: true,
