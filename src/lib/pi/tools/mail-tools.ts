@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email/smtp";
 import { syncEmailAccount } from "@/lib/email/sync";
-import { moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
+import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
@@ -422,6 +422,24 @@ export function createMailTools(userId: string): ToolDefinition[] {
             }).catch(() => {
               // Already logged inside syncMessageFlags
             });
+          }
+        }
+
+        // Fetch bodies on-demand for messages that don't have them yet
+        const emailsWithoutBody = emails.filter((e) => !e.bodyHtml && !e.bodyText);
+        if (emailsWithoutBody.length > 0) {
+          const bodyResults = await Promise.all(
+            emailsWithoutBody.map(async (e) => ({ id: e.id, body: await fetchMessageBody(e.id) })),
+          );
+          const bodyMap = new Map(bodyResults.map((r) => [r.id, r.body]));
+          // Merge fetched bodies into the emails array
+          for (const email of emails) {
+            const body = bodyMap.get(email.id);
+            if (body) {
+              email.bodyHtml = body.bodyHtml;
+              email.bodyText = body.bodyText;
+              email.bodyPreview = body.bodyPreview;
+            }
           }
         }
 

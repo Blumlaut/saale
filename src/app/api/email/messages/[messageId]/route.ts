@@ -1,58 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmailMessageOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { connectImap, syncMessageFlags, deleteMessage, moveMessage } from "@/lib/email/imap";
+import { fetchMessageBody, syncMessageFlags, deleteMessage, moveMessage } from "@/lib/email/imap";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
-import { simpleParser } from "mailparser";
-
-/** Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects */
-function sanitize(str: unknown): string | null {
-  if (str == null || str === false) return null;
-  return String(str).replace(/\0/g, "");
-}
-
-/**
- * Fetch the full message body from IMAP, parse it, and store it in the DB.
- * Returns the updated message with body fields populated.
- */
-async function fetchAndStoreBody(messageId: string) {
-  const message = await prisma.emailMessage.findUnique({
-    where: { id: messageId },
-  });
-  if (!message) {
-    throw new Error(`Message ${messageId} not found`);
-  }
-
-  const { mailbox } = await connectImap(message.accountId);
-
-  try {
-    await mailbox.mailboxOpen(message.folder);
-
-    const fetched = await mailbox.fetchOne(message.uid, { uid: true, source: true }, { uid: true });
-    if (!fetched || !fetched.source) {
-      throw new Error(`No source returned for UID ${message.uid} in ${message.folder}`);
-    }
-
-    const parsed = await simpleParser(fetched.source);
-    const bodyHtml = sanitizeEmailHtml(sanitize(parsed.html));
-
-    return await prisma.emailMessage.update({
-      where: { id: messageId },
-      data: {
-        bodyPreview: sanitize(parsed.text?.slice(0, 500)) ?? null,
-        bodyHtml,
-        bodyText: sanitize(parsed.text),
-      },
-    });
-  } finally {
-    try {
-      await mailbox.mailboxClose();
-      await mailbox.logout();
-    } catch {
-      // Ignore cleanup errors
-    }
-  }
-}
 
 /**
  * GET /api/email/messages/:messageId — Get a single email message (with body)
@@ -71,11 +21,9 @@ export async function GET(
 
   // Fetch body on-demand if not yet stored
   if (!message.bodyHtml && !message.bodyText) {
-    try {
-      message = await fetchAndStoreBody(messageId);
-    } catch (err) {
-      console.error(`Failed to fetch body for message ${messageId}:`, err);
-      // Fall through and return what we have (headers only)
+    const body = await fetchMessageBody(messageId);
+    if (body) {
+      message = { ...message, ...body };
     }
   }
 

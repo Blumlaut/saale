@@ -441,6 +441,10 @@ export function Inbox() {
     const detail = await fetchMessageDetail(msg.id);
     if (detail) {
       setSelectedMsg(detail);
+      // Update list item with the fetched bodyPreview
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, bodyPreview: detail.bodyPreview } : m)),
+      );
     } else {
       // Fallback: use list data (won't have body)
       setSelectedMsg({ ...msg, bodyHtml: null, bodyText: null } as EmailMessageDetail);
