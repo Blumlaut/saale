@@ -7,8 +7,8 @@ import {
 } from "@/lib/pi/tool-categories";
 
 describe("tool categories", () => {
-  it("has 8 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(8);
+  it("has 7 tool categories", () => {
+    expect(TOOL_CATEGORIES).toHaveLength(7);
   });
 
   it("has unique keys", () => {
@@ -19,8 +19,7 @@ describe("tool categories", () => {
 
   it("has expected category keys", () => {
     const keys = TOOL_CATEGORIES.map((c) => c.key);
-    expect(keys).toContain("bash");
-    expect(keys).toContain("files");
+    expect(keys).toContain("terminal");
     expect(keys).toContain("email");
     expect(keys).toContain("jobs");
     expect(keys).toContain("calendar");
@@ -42,15 +41,15 @@ describe("tool categories", () => {
     }
   });
 
-  it("bash is disabled by default", () => {
-    const bash = getToolCategory("bash");
-    expect(bash).toBeDefined();
-    expect(bash!.defaultEnabled).toBe(false);
+  it("terminal is disabled by default", () => {
+    const terminal = getToolCategory("terminal");
+    expect(terminal).toBeDefined();
+    expect(terminal!.defaultEnabled).toBe(false);
   });
 
-  it("all non-bash categories are enabled by default", () => {
+  it("all non-terminal categories are enabled by default", () => {
     for (const category of TOOL_CATEGORIES) {
-      if (category.key === "bash") continue;
+      if (category.key === "terminal") continue;
       expect(category.defaultEnabled).toBe(true);
     }
   });
@@ -69,9 +68,8 @@ describe("DEFAULT_TOOL_CONFIG", () => {
     }
   });
 
-  it("has bash false and everything else true", () => {
-    expect(DEFAULT_TOOL_CONFIG.bash).toBe(false);
-    expect(DEFAULT_TOOL_CONFIG.files).toBe(true);
+  it("has terminal false and everything else true", () => {
+    expect(DEFAULT_TOOL_CONFIG.terminal).toBe(false);
     expect(DEFAULT_TOOL_CONFIG.email).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.jobs).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.calendar).toBe(true);
@@ -102,9 +100,9 @@ describe("getToolCategory", () => {
 
 describe("ToolConfig type", () => {
   it("accepts partial config objects", () => {
-    const config: ToolConfig = { bash: true };
-    expect(config.bash).toBe(true);
-    expect(config.files).toBeUndefined();
+    const config: ToolConfig = { terminal: true };
+    expect(config.terminal).toBe(true);
+    expect(config.email).toBeUndefined();
   });
 
   it("accepts empty config", () => {
@@ -114,8 +112,7 @@ describe("ToolConfig type", () => {
 
   it("accepts full config", () => {
     const config: ToolConfig = {
-      bash: true,
-      files: true,
+      terminal: true,
       email: true,
       jobs: true,
       calendar: true,
@@ -123,6 +120,6 @@ describe("ToolConfig type", () => {
       web: true,
       memory: true,
     };
-    expect(Object.keys(config)).toHaveLength(8);
+    expect(Object.keys(config)).toHaveLength(7);
   });
 });

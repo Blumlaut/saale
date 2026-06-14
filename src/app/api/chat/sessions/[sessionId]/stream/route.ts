@@ -160,8 +160,8 @@ Guidelines:
         ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
         : "";
 
-    const bashInstruction =
-      resolvedToolConfig.bash === true
+    const terminalInstruction =
+      resolvedToolConfig.terminal === true
         ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available."
         : "";
 
@@ -171,7 +171,7 @@ Guidelines:
         : "";
 
     result.session.agent.state.systemPrompt =
-      defaultSystemPrompt + customInstructions + bashInstruction + memoryInstruction;
+      defaultSystemPrompt + customInstructions + terminalInstruction + memoryInstruction;
 
     return { session: result.session, sessionDir };
   });

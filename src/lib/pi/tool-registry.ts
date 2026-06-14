@@ -23,13 +23,8 @@ type ToolFactory = (userId: string) => ToolDefinition[] | ToolDefinition;
  * For custom categories, it delegates to the dedicated tool module.
  */
 const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
-  bash: (_userId) => {
-    // Bash tool is created alongside file tools (see files factory below)
-    // This placeholder is handled specially in resolveTools()
-    return [];
-  },
-  files: (_userId) => {
-    // File tools are created alongside bash (see bash handling in resolveTools)
+  terminal: (_userId) => {
+    // Terminal tools are created inline in resolveTools()
     return [];
   },
   email: (userId) => createMailTools(userId),
@@ -44,18 +39,15 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
 
 /**
  * Resolve the full set of active tools from a ToolConfig.
- * Handles the bash/files interdependency (they share the same backend).
+ *
+ * Backward compat: existing sessions may have { files: true } or { bash: true }.
+ * These are mapped to { terminal: true } for resolution.
  */
 export function resolveTools(
   userId: string,
   sessionId: string,
   config: Required<ToolConfig>,
   options: {
-    createLocalScopedTools: (userId: string) => {
-      read: ToolDefinition;
-      write: ToolDefinition;
-      edit: ToolDefinition;
-    };
     createTerminalScopedTools: (
       userId: string,
       sessionId: string,
@@ -69,29 +61,27 @@ export function resolveTools(
 ): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
 
-  // ── Pi built-in tools (bash + files share a backend) ──────────────────
-  if (config.bash && isTerminalConfigured()) {
+  // Backward compat: map legacy keys to terminal
+  const terminalEnabled =
+    config.terminal ||
+    (config as Record<string, boolean>).files ||
+    (config as Record<string, boolean>).bash;
+
+  // ── Terminal tools (shell + file ops via open-terminal) ───────────────
+  if (terminalEnabled && isTerminalConfigured()) {
     const terminal = options.createTerminalScopedTools(userId, sessionId);
-    if (config.files) {
-      tools.push(terminal.read, terminal.write, terminal.edit);
-    }
-    tools.push(terminal.bash);
+    tools.push(terminal.read, terminal.write, terminal.edit, terminal.bash);
     tools.push(createShowFileTool(userId, sessionId));
-  } else if (config.bash) {
-    console.warn("Bash tools enabled but OPEN_TERMINAL_API_KEY is not set. Bash tools disabled.");
-    if (config.files) {
-      const local = options.createLocalScopedTools(userId);
-      tools.push(local.read, local.write, local.edit);
-    }
-  } else if (config.files) {
-    const local = options.createLocalScopedTools(userId);
-    tools.push(local.read, local.write, local.edit);
+  } else if (terminalEnabled) {
+    console.warn(
+      "Terminal enabled but OPEN_TERMINAL_API_KEY is not set. Terminal tools unavailable.",
+    );
   }
 
   // ── Custom tools (dispatched via registry) ────────────────────────────
   for (const category of TOOL_CATEGORIES) {
-    // Skip bash/files — handled above
-    if (category.key === "bash" || category.key === "files") continue;
+    // Skip terminal — handled above
+    if (category.key === "terminal") continue;
 
     if (config[category.key]) {
       const factory = TOOL_FACTORIES[category.key];

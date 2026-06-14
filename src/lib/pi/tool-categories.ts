@@ -11,16 +11,7 @@
  */
 
 import type { LucideIcon } from "lucide-react";
-import {
-  Terminal,
-  FolderOpen,
-  Mail,
-  ListTodo,
-  Calendar,
-  History,
-  Globe,
-  Brain,
-} from "lucide-react";
+import { Terminal, Mail, ListTodo, Calendar, History, Globe, Brain } from "lucide-react";
 
 export interface ToolCategory {
   /** Unique key — matches ToolConfig property name */
@@ -41,18 +32,11 @@ export interface ToolCategory {
  */
 export const TOOL_CATEGORIES: ToolCategory[] = [
   {
-    key: "bash",
-    label: "Bash",
-    description: "Run shell commands in a sandboxed workspace",
+    key: "terminal",
+    label: "Terminal",
+    description: "Run commands and manage files in a sandboxed workspace",
     icon: Terminal,
     defaultEnabled: false,
-  },
-  {
-    key: "files",
-    label: "Files",
-    description: "Read, write, and edit files",
-    icon: FolderOpen,
-    defaultEnabled: true,
   },
   {
     key: "email",
