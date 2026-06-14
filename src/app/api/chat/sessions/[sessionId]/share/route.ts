@@ -5,8 +5,9 @@ import { prisma } from "@/lib/db";
 
 /**
  * Generate a random 32-character share token.
+ * Exported for testing.
  */
-function generateToken(): string {
+export function generateShareToken(): string {
   return crypto.randomBytes(16).toString("hex");
 }
 
@@ -33,7 +34,7 @@ export async function POST(
     });
   }
 
-  const token = generateToken();
+  const token = generateShareToken();
 
   await prisma.chatSession.update({
     where: { id: sessionId },
