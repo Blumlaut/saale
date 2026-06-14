@@ -26,14 +26,34 @@ interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
   onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
+  onSendMessage?: (content: string) => void;
 }
 
 const THRESHOLD = 80; // px from bottom to consider "at bottom"
 
-export function MessageList({ messages, isLoading, onEditMessage }: MessageListProps) {
+export function MessageList({
+  messages,
+  isLoading,
+  onEditMessage,
+  onSendMessage,
+}: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [hasJobs, setHasJobs] = useState<boolean | null>(null);
+
+  // Fetch job status to customize empty state suggestions
+  useEffect(() => {
+    if (messages.length === 0 && hasJobs === null) {
+      fetch("/api/jobs")
+        .then((res) => res.json())
+        .then((data) => setHasJobs(Array.isArray(data.jobs) && data.jobs.length > 0))
+        .catch((err) => {
+          console.error("Failed to fetch jobs for onboarding:", err);
+          setHasJobs(false);
+        });
+    }
+  }, [messages.length, hasJobs]);
 
   // Track scroll position — unlock auto-scroll when user scrolls up
   const handleScroll = useCallback(() => {
@@ -88,14 +108,49 @@ export function MessageList({ messages, isLoading, onEditMessage }: MessageListP
   }, [messages, isLoading, isAtBottom]);
 
   if (messages.length === 0) {
+    const suggestions = [
+      ...(hasJobs === false
+        ? [
+            {
+              label: "✨ Create some jobs",
+              prompt:
+                "Please create some jobs for my account, give them realistic execution times and if a model is required, try being efficient (i.e. prefer cheap/lightweight models for simple tasks, or non-thinking over thinking models)",
+            },
+          ]
+        : []),
+      {
+        label: "🔍 Search my emails",
+        prompt: "Search my emails for recent updates on my projects.",
+      },
+      {
+        label: "📂 List my files",
+        prompt: "Show me a list of my recently uploaded files.",
+      },
+    ];
+
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
+        <div className="max-w-md px-4 text-center">
           <Bot className="text-muted-foreground/50 mx-auto h-12 w-12" />
           <h3 className="mt-4 text-lg font-medium">Start a conversation</h3>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Ask anything — I can search emails, manage files, and run jobs
+          <p className="text-muted-foreground mt-1 mb-6 text-sm">
+            {hasJobs === false
+              ? "It looks like you don't have any jobs set up. Would you like me to create some for you?"
+              : "Ask anything — I can search emails, manage files, and run jobs."}
           </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {suggestions.map((s) => (
+              <Button
+                key={s.label}
+                variant="outline"
+                size="sm"
+                className="liquid-glass border-white/10 bg-white/5 hover:bg-white/10"
+                onClick={() => onSendMessage?.(s.prompt)}
+              >
+                {s.label}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
     );
