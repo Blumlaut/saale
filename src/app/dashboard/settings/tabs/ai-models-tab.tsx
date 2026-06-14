@@ -331,6 +331,12 @@ export function AiModelsTab({
                                 >
                                   {model.name}
                                 </span>
+                                <Badge
+                                  variant="outline"
+                                  className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                >
+                                  {model.providerName}
+                                </Badge>
                                 {model.reasoning && (
                                   <Badge variant="secondary" className="shrink-0 rounded-full">
                                     <Sparkles className="mr-0.5 h-3 w-3" />

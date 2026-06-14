@@ -1029,6 +1029,7 @@ export function ChatInterface({
           messages={displayMessages}
           isLoading={isLoading}
           onEditMessage={handleEditMessage}
+          onSendMessage={(content) => handleSend(content)}
         />
       </GlassPanel>
 

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Brain, Loader2, Search, Sparkles, ChevronDown, Check } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
 
@@ -270,6 +271,12 @@ export function ModelPicker({
                             >
                               {model.name}
                             </span>
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                            >
+                              {model.providerName}
+                            </Badge>
                             {model.reasoning && (
                               <Sparkles className="text-muted-foreground h-3 w-3 shrink-0" />
                             )}

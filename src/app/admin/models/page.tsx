@@ -445,6 +445,12 @@ export default function AdminModelsPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
                                   <span className="truncate text-sm font-medium">{model.name}</span>
+                                  <Badge
+                                    variant="outline"
+                                    className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                  >
+                                    {provider.name}
+                                  </Badge>
                                   {model.reasoning && (
                                     <Badge
                                       variant="secondary"

@@ -49,6 +49,22 @@ function isModelAllowed(
   return true; // no model list set = all allowed
 }
 
+// Providers that support OpenAI-compatible /models endpoint for dynamic discovery
+const DISCOVERABLE_PROVIDERS = new Set(["openrouter", "together", "fireworks", "huggingface"]);
+
+/**
+ * Get the base URL for a known provider's OpenAI-compatible API.
+ */
+function getProviderBaseUrl(provider: string): string | null {
+  const baseUrls: Record<string, string> = {
+    openrouter: "https://openrouter.ai/api/v1",
+    together: "https://api.together.xyz",
+    fireworks: "https://api.fireworks.ai/inference/v1",
+    huggingface: "https://api-inference.huggingface.com",
+  };
+  return baseUrls[provider] ?? null;
+}
+
 /**
  * Fetch model IDs from an OpenAI-compatible /models endpoint.
  */
@@ -63,13 +79,17 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
       signal: AbortSignal.timeout(8000),
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`Failed to fetch models from ${url}: HTTP ${res.status}`);
+      return [];
+    }
 
     const data = await res.json();
     if (!data?.data?.length) return [];
 
-    return data.data.map((m: { id: string }) => String(m.id)).slice(0, 200);
-  } catch {
+    return data.data.map((m: { id: string }) => String(m.id)).slice(0, 500);
+  } catch (err) {
+    console.error(`Error fetching models from ${url}:`, err);
     return [];
   }
 }
@@ -162,22 +182,54 @@ export async function buildModelRegistry(userId: string) {
             api: "openai-completions",
           });
         }
-      } catch {
-        // skip
+      } catch (err) {
+        console.error(`Failed to register custom provider ${key.baseUrl}:`, err);
+      }
+    }
+
+    // Dynamic model discovery for providers supporting OpenAI-compatible /models endpoint
+    if (DISCOVERABLE_PROVIDERS.has(key.provider) && key.provider !== "custom") {
+      const decryptedKey = decrypt(key.encryptedKey);
+      const providerBaseUrl = getProviderBaseUrl(key.provider);
+      if (providerBaseUrl) {
+        const modelIds = await fetchOpenAIModels(providerBaseUrl, decryptedKey);
+        if (modelIds.length > 0) {
+          // Register discovered models to override built-in list
+          modelRegistry.registerProvider(key.provider, {
+            baseUrl: providerBaseUrl,
+            apiKey: decryptedKey || "placeholder",
+            api: "openai-completions",
+            models: modelIds.map((m) => ({
+              id: m,
+              name: m,
+              api: "openai-completions" as const,
+              reasoning: false,
+              input: ["text", "image"] as const,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 131072,
+              maxTokens: 8192,
+            })),
+          });
+        }
       }
     }
   }
 
-  // Use discovered models if we have them, otherwise fall back to registry defaults
+  // Merge: start with built-in available models, then add discovered custom models
   const available = modelRegistry.getAvailable();
-  const allModels =
-    discoveredModels.length > 0
-      ? discoveredModels
-      : available.map((m) => ({
-          provider: m.provider,
-          id: m.id,
-          name: m.name,
-        }));
+  const allModels = available.map((m) => ({
+    provider: m.provider,
+    id: m.id,
+    name: m.name,
+  }));
+
+  // Add discovered custom models (not already in built-in list)
+  const knownIds = new Set(allModels.map((m) => `${m.provider}:${m.id}`));
+  for (const dm of discoveredModels) {
+    if (!knownIds.has(`${dm.provider}:${dm.id}`)) {
+      allModels.push(dm);
+    }
+  }
 
   // Apply global admin model filtering
   const filteredModels = allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
