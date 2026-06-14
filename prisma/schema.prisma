@@ -97,7 +97,7 @@ model ChatSession {
   modelProvider    String?
   modelName        String?
   thinkingLevel    String        @default("off")
-  toolConfig       Json?         // { files: true, email: true, jobs: true, chatSearch: true, memory: true }
+  toolConfig       Json?         // { terminal: true, email: true, jobs: true, chatSearch: true, memory: true, web: true }
   messageCount     Int           @default(0)
   lastSummarizedAt DateTime?     // cursor — only process messages after this for memory extraction
   memorySummary    String?       @db.Text // compressed running summary of the conversation

@@ -57,12 +57,6 @@ import { resolveTools } from "@/lib/pi/tool-registry";
 import * as terminalClient from "@/lib/terminal/client";
 
 describe("resolveTools", () => {
-  const mockLocalTools = {
-    read: { name: "read", scope: "local" } as unknown as ToolDefinition,
-    write: { name: "write", scope: "local" } as unknown as ToolDefinition,
-    edit: { name: "edit", scope: "local" } as unknown as ToolDefinition,
-  };
-
   const mockTerminalTools = {
     read: { name: "read", scope: "terminal" } as unknown as ToolDefinition,
     write: { name: "write", scope: "terminal" } as unknown as ToolDefinition,
@@ -71,7 +65,6 @@ describe("resolveTools", () => {
   };
 
   const options = {
-    createLocalScopedTools: vi.fn(() => mockLocalTools),
     createTerminalScopedTools: vi.fn(() => mockTerminalTools),
   };
 
@@ -85,8 +78,7 @@ describe("resolveTools", () => {
 
   it("returns empty array when all tools disabled", () => {
     const config: Required<ToolConfig> = {
-      bash: false,
-      files: false,
+      terminal: false,
       email: false,
       jobs: false,
       calendar: false,
@@ -98,31 +90,11 @@ describe("resolveTools", () => {
     expect(tools).toHaveLength(0);
   });
 
-  it("includes only file tools when only files enabled", () => {
-    const config: Required<ToolConfig> = {
-      bash: false,
-      files: true,
-      email: false,
-      jobs: false,
-      calendar: false,
-      chatSearch: false,
-      web: false,
-      memory: false,
-    };
-    const tools = resolveTools(userId, sessionId, config, options);
-
-    expect(tools).toHaveLength(3);
-    expect(tools.map((t) => t.name)).toEqual(["read", "write", "edit"]);
-    expect(options.createLocalScopedTools).toHaveBeenCalledWith(userId);
-    expect(options.createTerminalScopedTools).not.toHaveBeenCalled();
-  });
-
-  it("includes bash + file tools when both enabled and terminal configured", () => {
+  it("includes terminal tools when terminal enabled and configured", () => {
     vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
 
     const config: Required<ToolConfig> = {
-      bash: true,
-      files: true,
+      terminal: true,
       email: false,
       jobs: false,
       calendar: false,
@@ -135,15 +107,13 @@ describe("resolveTools", () => {
     expect(tools).toHaveLength(5); // read, write, edit, bash, show_file
     expect(tools.map((t) => t.name)).toEqual(["read", "write", "edit", "bash", "show_file"]);
     expect(options.createTerminalScopedTools).toHaveBeenCalledWith(userId, sessionId);
-    expect(options.createLocalScopedTools).not.toHaveBeenCalled();
   });
 
-  it("falls back to local tools when bash enabled but terminal not configured", () => {
+  it("includes no tools when terminal enabled but not configured", () => {
     vi.mocked(terminalClient.isConfigured).mockReturnValue(false);
 
     const config: Required<ToolConfig> = {
-      bash: true,
-      files: true,
+      terminal: true,
       email: false,
       jobs: false,
       calendar: false,
@@ -153,35 +123,53 @@ describe("resolveTools", () => {
     };
     const tools = resolveTools(userId, sessionId, config, options);
 
-    // Bash is skipped (terminal not configured), only local file tools
-    expect(tools).toHaveLength(3);
-    expect(tools.map((t) => t.name)).toEqual(["read", "write", "edit"]);
-    expect(options.createLocalScopedTools).toHaveBeenCalledWith(userId);
+    // Terminal is skipped (not configured), no local fallback
+    expect(tools).toHaveLength(0);
   });
 
-  it("includes bash-only tools when bash enabled but files disabled (terminal configured)", () => {
+  it("backward compat: legacy 'files' key enables terminal tools", () => {
     vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
 
-    const config: Required<ToolConfig> = {
-      bash: true,
-      files: false,
+    const config = {
+      terminal: false,
       email: false,
       jobs: false,
       calendar: false,
       chatSearch: false,
       web: false,
       memory: false,
-    };
+      files: true, // legacy key
+    } as Required<ToolConfig>;
+
     const tools = resolveTools(userId, sessionId, config, options);
 
-    expect(tools).toHaveLength(2); // bash, show_file
-    expect(tools.map((t) => t.name)).toEqual(["bash", "show_file"]);
+    expect(tools).toHaveLength(5);
+    expect(tools.map((t) => t.name)).toEqual(["read", "write", "edit", "bash", "show_file"]);
+  });
+
+  it("backward compat: legacy 'bash' key enables terminal tools", () => {
+    vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+
+    const config = {
+      terminal: false,
+      email: false,
+      jobs: false,
+      calendar: false,
+      chatSearch: false,
+      web: false,
+      memory: false,
+      bash: true, // legacy key
+    } as Required<ToolConfig>;
+
+    const tools = resolveTools(userId, sessionId, config, options);
+
+    expect(tools).toHaveLength(5);
+    expect(tools.map((t) => t.name)).toEqual(["read", "write", "edit", "bash", "show_file"]);
   });
 
   it("includes email tools when email enabled", () => {
     const config: Required<ToolConfig> = {
-      bash: false,
-      files: false,
+      terminal: false,
       email: true,
       jobs: false,
       calendar: false,
@@ -197,8 +185,7 @@ describe("resolveTools", () => {
 
   it("includes all custom tools when all enabled", () => {
     const config: Required<ToolConfig> = {
-      bash: false,
-      files: false,
+      terminal: false,
       email: true,
       jobs: true,
       calendar: true,
@@ -226,12 +213,11 @@ describe("resolveTools", () => {
     ]);
   });
 
-  it("includes all tools including bash/files when everything enabled", () => {
+  it("includes all tools including terminal when everything enabled", () => {
     vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
 
     const config: Required<ToolConfig> = {
-      bash: true,
-      files: true,
+      terminal: true,
       email: true,
       jobs: true,
       calendar: true,
@@ -241,14 +227,13 @@ describe("resolveTools", () => {
     };
     const tools = resolveTools(userId, sessionId, config, options);
 
-    // bash+files(5) + email(3) + jobs(2) + calendar(2) + chatSearch(1) + web(2) + memory(2) = 17
+    // terminal(5) + email(3) + jobs(2) + calendar(2) + chatSearch(1) + web(2) + memory(2) = 17
     expect(tools).toHaveLength(17);
   });
 
   it("passes userId to all user-scoped factories", () => {
     const config: Required<ToolConfig> = {
-      bash: false,
-      files: false,
+      terminal: false,
       email: true,
       jobs: true,
       calendar: true,
@@ -274,8 +259,7 @@ describe("resolveTools", () => {
 
   it("does not include web tools when disabled", () => {
     const config: Required<ToolConfig> = {
-      bash: false,
-      files: false,
+      terminal: false,
       email: false,
       jobs: false,
       calendar: false,
@@ -289,14 +273,13 @@ describe("resolveTools", () => {
     expect(tools.find((t) => t.name === "web_fetch")).toBeUndefined();
   });
 
-  it("skips bash/files categories in the registry loop", () => {
-    // This ensures bash/files are NOT dispatched through the generic registry loop
-    // (they have special handling in the bash/files block)
+  it("skips terminal category in the registry loop", () => {
+    // This ensures terminal is NOT dispatched through the generic registry loop
+    // (it has special handling in the terminal block)
     vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
 
     const config: Required<ToolConfig> = {
-      bash: true,
-      files: true,
+      terminal: true,
       email: false,
       jobs: false,
       calendar: false,
