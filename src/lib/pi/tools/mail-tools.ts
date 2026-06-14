@@ -6,7 +6,6 @@ import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email/smtp";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
-import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
@@ -472,7 +471,6 @@ export function createMailTools(userId: string): ToolDefinition[] {
                     subject: e.subject,
                     date: e.date.toISOString(),
                     bodyText: e.bodyText ?? e.bodyPreview,
-                    bodyHtml: sanitizeEmailHtml(e.bodyHtml),
                     read: e.isRead,
                     starred: e.isStarred,
                     folder: e.folder,
