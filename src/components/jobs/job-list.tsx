@@ -72,7 +72,9 @@ function getCronLabel(expr: string): string {
 
 function getModelLabel(modelId: string | null): string | null {
   if (!modelId) return null;
-  const [provider, ...nameParts] = modelId.split(":");
+  // Normalize "/" to ":" for consistent display
+  const normalized = modelId.includes("/") ? modelId.replace("/", ":") : modelId;
+  const [provider, ...nameParts] = normalized.split(":");
   return `${nameParts.join(":")} (${provider})`;
 }
 

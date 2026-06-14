@@ -74,7 +74,9 @@ export async function POST(request: NextRequest) {
 
   // Extract modelId from config if not provided at top level
   const jobConfig = config ?? {};
-  const resolvedModelId = modelId ?? jobConfig.modelId ?? null;
+  const rawModelId = modelId ?? jobConfig.modelId ?? null;
+  // Normalize "/" to ":" so modelId is always stored in canonical format
+  const resolvedModelId = rawModelId?.includes("/") ? rawModelId.replace("/", ":") : rawModelId;
   // Remove modelId from config (it's stored separately on the QueueTask model)
   const { modelId: _configModelId, ...cleanConfig } = jobConfig;
 

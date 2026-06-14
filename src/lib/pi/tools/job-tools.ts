@@ -387,7 +387,8 @@ export function createJobTools(userId: string): ToolDefinition[] {
         ),
         modelId: Type.Optional(
           Type.String({
-            description: "Override the default AI model for this job (for AI-powered job types).",
+            description:
+              "Override the default AI model for this job (format: 'provider:modelId'). Use 'model_list' to see available models and their modelId values.",
           }),
         ),
       }),
@@ -422,8 +423,11 @@ export function createJobTools(userId: string): ToolDefinition[] {
         }
 
         // Extract modelId (top-level param overrides config)
-        const resolvedModelId =
-          params.modelId ?? (mergedConfig.modelId as string | undefined) ?? null;
+        // Normalize "/" to ":" so modelId is always stored in canonical format
+        const rawModelId = params.modelId ?? (mergedConfig.modelId as string | undefined) ?? null;
+        const resolvedModelId = rawModelId?.includes("/")
+          ? rawModelId.replace("/", ":")
+          : rawModelId;
         delete mergedConfig.modelId;
 
         const job = await prisma.queueTask.create({
@@ -494,18 +498,20 @@ export function createJobTools(userId: string): ToolDefinition[] {
       name: "model_list",
       label: "List Models",
       description:
-        "List all available AI models for this user. Use this to find valid model IDs before creating or updating jobs. Returns models grouped by provider, filtered by admin config.",
+        "List all available AI models for this user. Use this to find valid model IDs before creating or updating jobs. Each model includes a 'modelId' field in 'provider:model' format that you can pass directly to job_create or job_update. Returns models grouped by provider, filtered by admin config.",
       parameters: Type.Object({}),
       execute: async (_toolCallId, _params) => {
         const { models } = await buildModelRegistry(userId);
 
         // Group by provider
-        const byProvider = new Map<string, Array<{ id: string; name: string }>>();
+        const byProvider = new Map<string, Array<{ id: string; name: string; modelId: string }>>();
         for (const m of models) {
           if (!byProvider.has(m.provider)) {
             byProvider.set(m.provider, []);
           }
-          byProvider.get(m.provider)!.push({ id: m.id, name: m.name });
+          byProvider
+            .get(m.provider)!
+            .push({ id: m.id, name: m.name, modelId: `${m.provider}:${m.id}` });
         }
 
         // Also fetch user default + job default for context
@@ -605,9 +611,10 @@ export function createJobTools(userId: string): ToolDefinition[] {
         let newModelId = job.modelId;
         let newEnabled = job.enabled;
 
-        // Update modelId
+        // Update modelId (normalize "/" to ":" for canonical format)
         if (params.modelId !== undefined) {
-          newModelId = params.modelId || null;
+          const raw = params.modelId || null;
+          newModelId = raw?.includes("/") ? raw.replace("/", ":") : raw;
         }
 
         // Update enabled
