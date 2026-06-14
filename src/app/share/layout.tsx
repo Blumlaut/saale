@@ -1,27 +1,17 @@
 import type { Metadata } from "next";
-import { DM_Sans, Geist_Mono } from "next/font/google";
-import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from "@/providers/theme-provider";
-import { ErrorBoundary } from "@/components/error-boundary";
-import "@/app/globals.css";
-
-const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-sans" });
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: "Shared Chat — Saale",
   description: "Viewing a shared conversation",
 };
 
+/**
+ * Minimal layout for /share/* pages.
+ *
+ * Nested inside the root layout (src/app/layout.tsx) which provides
+ * ThemeProvider, fonts, ErrorBoundary, and Toaster. No duplicate
+ * <html>/<body> or providers — those belong only in the root layout.
+ */
 export default function ShareLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${dmSans.variable} ${geistMono.variable} font-sans`}>
-        <ThemeProvider>
-          <ErrorBoundary>{children}</ErrorBoundary>
-          <Toaster />
-        </ThemeProvider>
-      </body>
-    </html>
-  );
+  return <div className="min-h-screen">{children}</div>;
 }
