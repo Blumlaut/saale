@@ -63,6 +63,9 @@ CREATE TABLE "AgentRunMessage" (
 CREATE INDEX "AgentDefinition_userId_enabled_idx" ON "AgentDefinition"("userId", "enabled");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "AgentDefinition_userId_name_key" ON "AgentDefinition"("userId", "name");
+
+-- CreateIndex
 CREATE INDEX "AgentRun_definitionId_createdAt_idx" ON "AgentRun"("definitionId", "createdAt");
 
 -- CreateIndex

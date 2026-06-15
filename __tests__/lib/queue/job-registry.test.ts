@@ -4,7 +4,7 @@ import { getJobSchema } from "@/lib/queue/job-schemas";
 
 describe("job handlers registry", () => {
   it("has 10 registered handlers", () => {
-    expect(handlers).toHaveLength(12);
+    expect(handlers).toHaveLength(13);
   });
 
   it("each handler has required exports", () => {
@@ -66,7 +66,7 @@ describe("handlerMap", () => {
   });
 
   it("has 10 entries", () => {
-    expect(handlerMap.size).toBe(12);
+    expect(handlerMap.size).toBe(13);
   });
 });
 
@@ -95,7 +95,7 @@ describe("jobTypeSchemas", () => {
       expect(schema!.icon).toBe(handler.metadata.icon);
       expect(schema!.defaultCron).toBe(handler.metadata.defaultCron);
       expect(schema!.usesAi).toBe(handler.metadata.usesAi);
-      expect(schema!.fields).toBe(handler.fields);
+      expect(schema!.fields).toStrictEqual(handler.fields);
     }
   });
 
