@@ -31,8 +31,9 @@ model User {
   queueTasks       QueueTask[]
   settings      AppSettings?
   providerApiKeys ProviderApiKey[] // user-scoped keys
-  tasks           Task[]
-  createdAt       DateTime  @default(now())
+  tasks              Task[]
+  agentDefinitions   AgentDefinition[]
+  createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@map("user")
@@ -466,4 +467,81 @@ model Task {
   @@index([userId, status, dueDate])
   @@index([userId, status, priority])
   @@map("Task")
+}
+
+// ─── Agent Jobs (Custom) ──────────────────────────────────────
+
+/// User-defined agent job templates — prompt + tools → agent does the work.
+model AgentDefinition {
+  id            String     @id @default(cuid())
+  userId        String
+  name          String     @db.VarChar(100)
+  description   String?    @db.Text
+  /// The user prompt sent to the agent on each run.
+  prompt        String     @db.Text
+  /// Optional system prompt override (defaults to a generic job-oriented prompt).
+  systemPrompt  String?    @db.Text
+  /// Which tool categories to expose: { email: true, calendar: true, jobs: true, ... }.
+  toolConfig    Json?
+  /// Per-definition model override ("provider:modelName").
+  modelId       String?
+  /// Thinking level for the model.
+  thinkingLevel String     @default("off")
+  enabled       Boolean    @default(true)
+  runs          AgentRun[]
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([userId, enabled])
+  @@map("AgentDefinition")
+}
+
+/// A single execution of an agent definition.
+model AgentRun {
+  id             String          @id @default(cuid())
+  definitionId   String
+  userId         String
+  status         String          @default("pending") // "pending" | "running" | "completed" | "error" | "cancelled"
+  /// The prompt sent to the agent (snapshot of definition.prompt at run time).
+  prompt         String          @db.Text
+  /// System prompt used (snapshot of definition.systemPrompt at run time).
+  systemPrompt   String?         @db.Text
+  /// Model used for this run.
+  modelId        String?
+  /// Token usage.
+  inputTokens    Int             @default(0)
+  outputTokens   Int             @default(0)
+  /// Estimated cost (from provider metadata).
+  cost           Float           @default(0)
+  /// Error message if the run failed.
+  error          String?         @db.Text
+  /// When the agent started processing.
+  startedAt      DateTime?
+  /// When the agent finished (success or error).
+  completedAt    DateTime?
+  messages       AgentRunMessage[]
+  definition     AgentDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+
+  @@index([definitionId, createdAt])
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("AgentRun")
+}
+
+/// Messages within an agent run — mirrors ChatMessage for observability.
+model AgentRunMessage {
+  id              String      @id @default(cuid())
+  runId           String
+  role            String      // "user" | "assistant"
+  content         String      @db.Text
+  thinking        String?     @db.Text // reasoning/thinking content
+  toolCalls       String?     @db.Text // JSON array of tool calls with results
+  parentMessageId String?     // links multi-turn responses to the root assistant message
+  run             AgentRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt       DateTime    @default(now())
+
+  @@index([runId, createdAt])
+  @@map("AgentRunMessage")
 }

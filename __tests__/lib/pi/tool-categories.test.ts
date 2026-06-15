@@ -7,8 +7,8 @@ import {
 } from "@/lib/pi/tool-categories";
 
 describe("tool categories", () => {
-  it("has 7 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(8);
+  it("has 8 tool categories", () => {
+    expect(TOOL_CATEGORIES).toHaveLength(9);
   });
 
   it("has unique keys", () => {
@@ -26,6 +26,8 @@ describe("tool categories", () => {
     expect(keys).toContain("chatSearch");
     expect(keys).toContain("web");
     expect(keys).toContain("memory");
+    expect(keys).toContain("tasks");
+    expect(keys).toContain("agentJobs");
   });
 
   it("each category has required fields", () => {
@@ -76,6 +78,8 @@ describe("DEFAULT_TOOL_CONFIG", () => {
     expect(DEFAULT_TOOL_CONFIG.chatSearch).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.web).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.memory).toBe(true);
+    expect(DEFAULT_TOOL_CONFIG.tasks).toBe(true);
+    expect(DEFAULT_TOOL_CONFIG.agentJobs).toBe(true);
   });
 });
 
@@ -119,7 +123,9 @@ describe("ToolConfig type", () => {
       chatSearch: true,
       web: true,
       memory: true,
+      tasks: true,
+      agentJobs: true,
     };
-    expect(Object.keys(config)).toHaveLength(7);
+    expect(Object.keys(config)).toHaveLength(9);
   });
 });

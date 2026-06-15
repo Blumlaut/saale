@@ -35,6 +35,56 @@ export interface JobSchema {
   fields: FieldDef[];
 }
 
+// --- Agent Jobs ---
+
+export interface AgentJobDefinition {
+  id: string;
+  name: string;
+  description: string | null;
+  prompt: string;
+  systemPrompt: string | null;
+  toolConfig: Record<string, boolean> | null;
+  modelId: string | null;
+  thinkingLevel: string;
+  enabled: boolean;
+  runCount: number;
+  latestRun: { status: string; completedAt: string | null } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentJobRun {
+  id: string;
+  status: string;
+  prompt: string;
+  modelId: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  messageCount: number;
+  duration: number | null;
+  createdAt: string;
+}
+
+export interface AgentJobMessage {
+  id: string;
+  role: string;
+  content: string;
+  thinking: string | null;
+  toolCalls: Array<{
+    id: string;
+    name: string;
+    args: Record<string, unknown>;
+    result: string | undefined;
+    isError: boolean | undefined;
+  }> | null;
+  parentMessageId: string | null;
+  createdAt: string;
+}
+
 // --- Calendar ---
 
 export interface CalendarEvent {
