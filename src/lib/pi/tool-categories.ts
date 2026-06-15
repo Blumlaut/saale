@@ -20,6 +20,7 @@ import {
   Globe,
   Brain,
   CheckSquare,
+  Bot,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -94,6 +95,13 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     label: "Tasks",
     description: "Create and manage tasks and to-dos",
     icon: CheckSquare,
+    defaultEnabled: true,
+  },
+  {
+    key: "agentJobs",
+    label: "Agent jobs",
+    description: "Manage custom agent job definitions and runs",
+    icon: Bot,
     defaultEnabled: true,
   },
 ];
