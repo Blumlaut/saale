@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import { Stats } from "fs";
+import type { Stats } from "fs";
 import path from "path";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";

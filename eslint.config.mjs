@@ -42,6 +42,14 @@ const eslintConfig = defineConfig([
       "react-hooks/exhaustive-deps": "error",
       // Catch the state cascade antipattern (setting state during render)
       "react-hooks/set-state-in-render": "error",
+      // Enforce import type for type-only imports
+      "@typescript-eslint/consistent-type-imports": [
+        "error",
+        {
+          // Allow `typeof import("module").Foo` syntax (can't use import type there)
+          disallowTypeAnnotations: false,
+        },
+      ],
       // Code quality
       "no-debugger": "error",
       "no-inner-declarations": "error",

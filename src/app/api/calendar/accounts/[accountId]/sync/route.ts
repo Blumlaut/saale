@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { requireCalendarAccountOwner } from "@/lib/auth";
 import { syncCalendarAccount } from "@/lib/calendar/sync";
 import { prisma } from "@/lib/db";

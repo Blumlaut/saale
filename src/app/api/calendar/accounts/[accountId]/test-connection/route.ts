@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { sanitizeError } from "@/lib/auth";
 import { connectCalDAV } from "@/lib/calendar/caldav";

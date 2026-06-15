@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { requireEmailMessageOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { fetchMessageBody, syncMessageFlags, deleteMessage, moveMessage } from "@/lib/email/imap";

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { requireAdmin } from "../settings/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";

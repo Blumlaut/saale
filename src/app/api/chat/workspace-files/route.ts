@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import fs from "fs/promises";
-import { Stats } from "fs";
+import type { Stats } from "fs";
 import path from "path";
 import { requireSession } from "@/lib/auth";
 import * as terminal from "@/lib/terminal/client";
