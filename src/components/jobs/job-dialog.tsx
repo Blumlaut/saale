@@ -29,6 +29,7 @@ const iconMap: Record<string, React.ElementType> = {
   FileText: FileText,
   Tags: Tags,
   Shield: Shield,
+  Brain: Brain,
 };
 
 interface JobDialogProps {
@@ -257,7 +258,10 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
                     )}
                   </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[300px] gap-0 p-1" align="start">
+                <PopoverContent
+                  className="max-h-72 w-[300px] gap-0 overflow-y-auto p-1"
+                  align="start"
+                >
                   {schemas.map((schema) => {
                     const Icon = schema.icon ? (iconMap[schema.icon] ?? RefreshCw) : RefreshCw;
                     const isSelected = schema.type === selectedType;

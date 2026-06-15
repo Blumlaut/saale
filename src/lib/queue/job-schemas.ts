@@ -7,7 +7,7 @@
  * This module re-exports them for backward compatibility.
  */
 
-export type FieldType = "text" | "number" | "select" | "boolean" | "model";
+export type FieldType = "text" | "number" | "select" | "boolean" | "model" | "multiSelect";
 
 export interface FieldDef {
   /** Key used in the config JSON */

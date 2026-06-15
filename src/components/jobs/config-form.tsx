@@ -1,5 +1,6 @@
 "use client";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -16,7 +17,7 @@ export interface FieldDef {
   key: string;
   label: string;
   description?: string;
-  type: "text" | "number" | "select" | "boolean" | "model";
+  type: "text" | "number" | "select" | "boolean" | "model" | "multiSelect";
   default?: unknown;
   options?: Array<{ value: string; label: string }>;
   min?: number;
@@ -28,6 +29,13 @@ interface ConfigFormProps {
   fields: FieldDef[];
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
+}
+
+/** Parse a comma-separated string or array into a string[] of values. */
+function parseMultiSelectValue(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") return value.split(",").filter(Boolean);
+  return [];
 }
 
 /**
@@ -129,6 +137,37 @@ export function ConfigForm({ fields, values, onChange }: ConfigFormProps) {
                   ))}
                 </SelectContent>
               </Select>
+            )}
+
+            {field.type === "multiSelect" && (
+              <div className="flex flex-wrap gap-3 pt-1">
+                {(field.options ?? []).map((opt) => {
+                  const selectedValues = parseMultiSelectValue(value);
+                  const isChecked = selectedValues.includes(opt.value);
+                  return (
+                    <div key={opt.value} className="flex items-center gap-1.5">
+                      <Checkbox
+                        id={`config-${field.key}-${opt.value}`}
+                        checked={isChecked}
+                        onCheckedChange={(checked) => {
+                          const values = parseMultiSelectValue(value);
+                          if (checked) {
+                            onChange(field.key, [...values, opt.value].join(","));
+                          } else {
+                            onChange(field.key, values.filter((v) => v !== opt.value).join(","));
+                          }
+                        }}
+                      />
+                      <Label
+                        htmlFor={`config-${field.key}-${opt.value}`}
+                        className="text-sm font-normal"
+                      >
+                        {opt.label}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         );

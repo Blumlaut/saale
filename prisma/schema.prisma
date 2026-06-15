@@ -476,6 +476,8 @@ model AgentDefinition {
   id            String     @id @default(cuid())
   userId        String
   name          String     @db.VarChar(100)
+
+  @@unique([userId, name])
   description   String?    @db.Text
   /// The user prompt sent to the agent on each run.
   prompt        String     @db.Text
