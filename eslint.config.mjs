@@ -38,6 +38,15 @@ const eslintConfig = defineConfig([
 
       // --- Strictness ---
 
+      // Enforce exhaustive deps (promote from warn to error)
+      "react-hooks/exhaustive-deps": "error",
+      // Catch the state cascade antipattern (setting state during render)
+      "react-hooks/set-state-in-render": "error",
+      // Code quality
+      "no-debugger": "error",
+      "no-inner-declarations": "error",
+      "no-var": "error",
+
       // Catch `ban-ts-comment` without explanations
       "@typescript-eslint/ban-ts-comment": [
         "error",
