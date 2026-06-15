@@ -1,11 +1,12 @@
-/*
-  Warnings:
-
-  - Made the column `shared` on table `ChatSession` required. This step will fail if there are existing NULL values in that column.
-
-*/
--- AlterTable
-ALTER TABLE "ChatSession" ALTER COLUMN "shared" SET NOT NULL;
+-- AlterTable (idempotent — only runs if column exists and is nullable)
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'ChatSession' AND column_name = 'shared' AND is_nullable = 'YES'
+  ) THEN
+    ALTER TABLE "ChatSession" ALTER COLUMN "shared" SET NOT NULL;
+  END IF;
+END $$;
 
 -- CreateTable
 CREATE TABLE "AgentDefinition" (
