@@ -1,4 +1,4 @@
-import { DAVClient } from "tsdav";
+import type { DAVClient } from "tsdav";
 import type { DAVCalendar, DAVCalendarObject } from "tsdav";
 import { prisma } from "@/lib/db";
 import { connectCalDAV } from "./caldav";

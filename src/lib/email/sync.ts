@@ -1,5 +1,10 @@
-import type { FetchMessageObject, MessageAddressObject, MessageEnvelopeObject } from "imapflow";
-import { ImapFlow, ListResponse } from "imapflow";
+import type {
+  FetchMessageObject,
+  MessageAddressObject,
+  MessageEnvelopeObject,
+  ListResponse,
+} from "imapflow";
+import { ImapFlow } from "imapflow";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 

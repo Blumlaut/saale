@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { requireAccountOwner, sanitizeError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { syncEmailAccount } from "@/lib/email/sync";

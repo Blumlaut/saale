@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { createRedisClient, getRedis } from "@/lib/redis";
 import { formatSseEvent } from "@/lib/pi/stream-logic";

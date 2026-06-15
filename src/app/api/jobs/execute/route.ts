@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import type { Job } from "bullmq";
 import { processJob } from "@/lib/queue/job-handler";
 
