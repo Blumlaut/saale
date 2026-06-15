@@ -8,8 +8,8 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- CreateTable
-CREATE TABLE "AgentDefinition" (
+-- CreateTable (idempotent)
+CREATE TABLE IF NOT EXISTS "AgentDefinition" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "name" VARCHAR(100) NOT NULL,
@@ -26,8 +26,8 @@ CREATE TABLE "AgentDefinition" (
     CONSTRAINT "AgentDefinition_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "AgentRun" (
+-- CreateTable (idempotent)
+CREATE TABLE IF NOT EXISTS "AgentRun" (
     "id" TEXT NOT NULL,
     "definitionId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -46,8 +46,8 @@ CREATE TABLE "AgentRun" (
     CONSTRAINT "AgentRun_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "AgentRunMessage" (
+-- CreateTable (idempotent)
+CREATE TABLE IF NOT EXISTS "AgentRunMessage" (
     "id" TEXT NOT NULL,
     "runId" TEXT NOT NULL,
     "role" TEXT NOT NULL,
@@ -60,29 +60,39 @@ CREATE TABLE "AgentRunMessage" (
     CONSTRAINT "AgentRunMessage_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "AgentDefinition_userId_enabled_idx" ON "AgentDefinition"("userId", "enabled");
+-- CreateIndex (idempotent)
+CREATE INDEX IF NOT EXISTS "AgentDefinition_userId_enabled_idx" ON "AgentDefinition"("userId", "enabled");
 
--- CreateIndex
-CREATE UNIQUE INDEX "AgentDefinition_userId_name_key" ON "AgentDefinition"("userId", "name");
+-- CreateIndex (idempotent)
+CREATE UNIQUE INDEX IF NOT EXISTS "AgentDefinition_userId_name_key" ON "AgentDefinition"("userId", "name");
 
--- CreateIndex
-CREATE INDEX "AgentRun_definitionId_createdAt_idx" ON "AgentRun"("definitionId", "createdAt");
+-- CreateIndex (idempotent)
+CREATE INDEX IF NOT EXISTS "AgentRun_definitionId_createdAt_idx" ON "AgentRun"("definitionId", "createdAt");
 
--- CreateIndex
-CREATE INDEX "AgentRun_userId_status_idx" ON "AgentRun"("userId", "status");
+-- CreateIndex (idempotent)
+CREATE INDEX IF NOT EXISTS "AgentRun_userId_status_idx" ON "AgentRun"("userId", "status");
 
--- CreateIndex
-CREATE INDEX "AgentRun_userId_createdAt_idx" ON "AgentRun"("userId", "createdAt");
+-- CreateIndex (idempotent)
+CREATE INDEX IF NOT EXISTS "AgentRun_userId_createdAt_idx" ON "AgentRun"("userId", "createdAt");
 
--- CreateIndex
-CREATE INDEX "AgentRunMessage_runId_createdAt_idx" ON "AgentRunMessage"("runId", "createdAt");
+-- CreateIndex (idempotent)
+CREATE INDEX IF NOT EXISTS "AgentRunMessage_runId_createdAt_idx" ON "AgentRunMessage"("runId", "createdAt");
 
--- AddForeignKey
-ALTER TABLE "AgentDefinition" ADD CONSTRAINT "AgentDefinition_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (idempotent — only adds if constraint doesn't exist)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'AgentDefinition_userId_fkey') THEN
+    ALTER TABLE "AgentDefinition" ADD CONSTRAINT "AgentDefinition_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "AgentRun" ADD CONSTRAINT "AgentRun_definitionId_fkey" FOREIGN KEY ("definitionId") REFERENCES "AgentDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'AgentRun_definitionId_fkey') THEN
+    ALTER TABLE "AgentRun" ADD CONSTRAINT "AgentRun_definitionId_fkey" FOREIGN KEY ("definitionId") REFERENCES "AgentDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "AgentRunMessage" ADD CONSTRAINT "AgentRunMessage_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'AgentRunMessage_runId_fkey') THEN
+    ALTER TABLE "AgentRunMessage" ADD CONSTRAINT "AgentRunMessage_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
