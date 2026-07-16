@@ -303,6 +303,13 @@ Guidelines:
   // Only the first to fire should save to DB and clear processingSince.
   let agentEndPersisted = false;
 
+  // Throttle SSE token/thinking events to prevent flooding the frontend.
+  // message_update fires ~20/sec; throttling to ~5/sec (200ms) keeps the UI responsive
+  // by avoiding excessive markdown re-parses on the client.
+  const TOKEN_THROTTLE_MS = 200;
+  let lastTokenSend = 0;
+  let lastThinkingSend = 0;
+
   const stream = new ReadableStream({
     start(controller) {
       // Subscribe to agent events for SSE forwarding (token, thinking, tool events).
@@ -328,7 +335,11 @@ Guidelines:
             );
             if (thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock) {
               currentTurnThinking = (thinkingBlock as Record<string, unknown>).thinking as string;
-              sendEvent(controller, "thinking", { thinking: currentTurnThinking });
+              const now = Date.now();
+              if (now - lastThinkingSend >= TOKEN_THROTTLE_MS) {
+                lastThinkingSend = now;
+                sendEvent(controller, "thinking", { thinking: currentTurnThinking });
+              }
             }
 
             // Extract cumulative text from all text blocks
@@ -342,7 +353,11 @@ Guidelines:
               .map((c) => ((c as Record<string, unknown>).text as string) || "")
               .join("");
             if (currentTurnText) {
-              sendEvent(controller, "token", { text: currentTurnText });
+              const now = Date.now();
+              if (now - lastTokenSend >= TOKEN_THROTTLE_MS) {
+                lastTokenSend = now;
+                sendEvent(controller, "token", { text: currentTurnText });
+              }
             }
 
             // Track tool call IDs appearing in this message
