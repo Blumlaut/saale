@@ -42,8 +42,8 @@ interface StreamingState {
   displayText: string;
   /** Animated thinking shown to the user — lags behind current.thinking */
   displayThinking: string;
-  /** Timestamp of the last token/thinking SSE update — used to pace the animation */
-  lastTargetUpdate: number;
+  /** Characters to reveal per frame — set on each SSE update based on chunk size */
+  charsPerFrame: number;
 }
 
 const emptyTurn = (): TurnData => ({
@@ -52,7 +52,7 @@ const emptyTurn = (): TurnData => ({
   toolCalls: [],
 });
 
-const EMPTY_DISPLAY = { displayText: "", displayThinking: "", lastTargetUpdate: 0 } as const;
+const EMPTY_DISPLAY = { displayText: "", displayThinking: "", charsPerFrame: 1 } as const;
 
 function convertToolCalls(turns: TurnData["toolCalls"]): ToolCallData[] {
   return turns.map((tc) => ({
@@ -186,13 +186,17 @@ function setupStreamListeners(
   streamingRef: React.RefObject<StreamingState>,
   callbacks: StreamCallbacks,
 ): () => void {
+  const FRAMES_PER_UPDATE = 12; // ~200ms at 60fps
+
   eventSource.addEventListener("token", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { text: string };
     setStreaming((prev) => {
+      const newChars = parsed.text.length - prev.displayText.length;
+      const charsPerFrame = Math.max(1, Math.ceil(Math.abs(newChars) / FRAMES_PER_UPDATE));
       const next = {
         ...prev,
         current: { ...prev.current, text: parsed.text },
-        lastTargetUpdate: Date.now(),
+        charsPerFrame,
       };
       streamingRef.current = next;
       return next;
@@ -202,10 +206,12 @@ function setupStreamListeners(
   eventSource.addEventListener("thinking", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { thinking: string };
     setStreaming((prev) => {
+      const newChars = parsed.thinking.length - prev.displayThinking.length;
+      const charsPerFrame = Math.max(1, Math.ceil(Math.abs(newChars) / FRAMES_PER_UPDATE));
       const next = {
         ...prev,
         current: { ...prev.current, thinking: parsed.thinking },
-        lastTargetUpdate: Date.now(),
+        charsPerFrame,
       };
       streamingRef.current = next;
       return next;
@@ -338,7 +344,7 @@ export function ChatInterface({
     current: emptyTurn(),
     displayText: "",
     displayThinking: "",
-    lastTargetUpdate: 0,
+    charsPerFrame: 1,
   });
 
   // Source of truth for streaming state — updated synchronously in event handlers.
@@ -349,10 +355,8 @@ export function ChatInterface({
   // Uses requestAnimationFrame to interpolate displayText/displayThinking toward targets.
   const animFrameRef = useRef<number | null>(null);
 
-  // Typing animation effect — runs continuously while loading.
-  // Paces character reveal so the display catches up right when the next
-  // SSE update arrives. When caught up, frames are no-ops (cheap).
-  // When new SSE data arrives, the next frame picks it up automatically.
+  // Typing animation — reveals charsPerFrame per frame.
+  // charsPerFrame is set on each SSE update based on chunk size / 12 frames.
   useEffect(() => {
     if (!isLoading) {
       if (animFrameRef.current) {
@@ -362,36 +366,21 @@ export function ChatInterface({
       return;
     }
 
-    const FRAMES_PER_UPDATE = 12; // ~200ms / 16ms ≈ 12 frames
-
     const step = () => {
       setStreaming((prev) => {
         const textPending = prev.current.text.length - prev.displayText.length;
         const thinkingPending = prev.current.thinking.length - prev.displayThinking.length;
 
         if (textPending <= 0 && thinkingPending <= 0) {
-          // Caught up — keep looping (next SSE update will add pending chars)
           animFrameRef.current = requestAnimationFrame(step);
           return prev;
         }
 
-        const timeSinceUpdate = Date.now() - prev.lastTargetUpdate;
-        const framesElapsed = Math.floor(timeSinceUpdate / 16);
-        const framesRemaining = Math.max(1, FRAMES_PER_UPDATE - framesElapsed);
-
-        const charsPerFrameText = textPending / framesRemaining;
-        const charsPerFrameThinking = thinkingPending / framesRemaining;
-
+        const n = prev.charsPerFrame;
         const next = {
           ...prev,
-          displayText: prev.current.text.slice(
-            0,
-            prev.displayText.length + Math.max(1, Math.ceil(charsPerFrameText)),
-          ),
-          displayThinking: prev.current.thinking.slice(
-            0,
-            prev.displayThinking.length + Math.max(0, Math.ceil(charsPerFrameThinking)),
-          ),
+          displayText: prev.current.text.slice(0, prev.displayText.length + n),
+          displayThinking: prev.current.thinking.slice(0, prev.displayThinking.length + n),
         };
         streamingRef.current = next;
         animFrameRef.current = requestAnimationFrame(step);
