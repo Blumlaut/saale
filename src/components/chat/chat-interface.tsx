@@ -38,6 +38,10 @@ interface TurnData {
 interface StreamingState {
   turns: TurnData[];
   current: TurnData;
+  /** Animated text shown to the user — lags behind current.text and catches up via rAF */
+  displayText: string;
+  /** Animated thinking shown to the user — lags behind current.thinking */
+  displayThinking: string;
 }
 
 const emptyTurn = (): TurnData => ({
@@ -45,6 +49,8 @@ const emptyTurn = (): TurnData => ({
   thinking: "",
   toolCalls: [],
 });
+
+const EMPTY_DISPLAY = { displayText: "", displayThinking: "" } as const;
 
 function convertToolCalls(turns: TurnData["toolCalls"]): ToolCallData[] {
   return turns.map((tc) => ({
@@ -326,11 +332,97 @@ export function ChatInterface({
   const [streaming, setStreaming] = useState<StreamingState>({
     turns: [],
     current: emptyTurn(),
+    displayText: "",
+    displayThinking: "",
   });
 
   // Source of truth for streaming state — updated synchronously in event handlers.
   // NEVER stale when done/error fires.
   const streamingRef = useRef<StreamingState>(streaming);
+
+  // Typing animation — smoothly reveals characters between throttled SSE updates.
+  // Uses requestAnimationFrame to interpolate displayText/displayThinking toward targets.
+  const animFrameRef = useRef<number | null>(null);
+  const animLastTimeRef = useRef(0);
+
+  // Typing animation effect — smoothly interpolates displayText/displayThinking
+  // toward current.text/current.thinking using requestAnimationFrame.
+  // This makes the throttled SSE updates (200ms) feel like smooth character-by-character
+  // streaming on the client side.
+  useEffect(() => {
+    if (!isLoading) {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      return;
+    }
+
+    const CHARS_PER_SEC = 150;
+
+    const step = (timestamp: number) => {
+      const delta = animLastTimeRef.current ? (timestamp - animLastTimeRef.current) / 1000 : 0;
+      animLastTimeRef.current = timestamp;
+
+      setStreaming((prev) => {
+        let changed = false;
+        let newDisplayText = prev.displayText;
+        let newDisplayThinking = prev.displayThinking;
+
+        // Animate text toward target
+        if (prev.displayText.length < prev.current.text.length) {
+          const charsToAdd = Math.min(
+            Math.ceil(CHARS_PER_SEC * delta),
+            prev.current.text.length - prev.displayText.length,
+          );
+          newDisplayText = prev.current.text.slice(0, prev.displayText.length + charsToAdd);
+          changed = true;
+        }
+
+        // Animate thinking toward target
+        if (prev.displayThinking.length < prev.current.thinking.length) {
+          const charsToAdd = Math.min(
+            Math.ceil(CHARS_PER_SEC * delta),
+            prev.current.thinking.length - prev.displayThinking.length,
+          );
+          newDisplayThinking = prev.current.thinking.slice(
+            0,
+            prev.displayThinking.length + charsToAdd,
+          );
+          changed = true;
+        }
+
+        if (!changed) {
+          // All caught up — stop animating
+          animFrameRef.current = null;
+          return prev;
+        }
+
+        const next = {
+          ...prev,
+          displayText: newDisplayText,
+          displayThinking: newDisplayThinking,
+        };
+        streamingRef.current = next;
+        return next;
+      });
+
+      // Continue animation
+      animFrameRef.current = requestAnimationFrame(step);
+    };
+
+    if (!animFrameRef.current) {
+      animLastTimeRef.current = 0;
+      animFrameRef.current = requestAnimationFrame(step);
+    }
+
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+  }, [isLoading]);
 
   const [sessionTitle, setSessionTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
@@ -414,7 +506,7 @@ export function ChatInterface({
 
     setIsLoading(true);
     markStreaming(sessionId);
-    const initState = { turns: [], current: emptyTurn() };
+    const initState = { turns: [], current: emptyTurn(), ...EMPTY_DISPLAY };
     setStreaming(initState);
     streamingRef.current = initState;
 
@@ -539,7 +631,7 @@ export function ChatInterface({
         const assistantCountBefore = countAssistantMessages();
 
         // Connect to stream for new AI response
-        const initState = { turns: [], current: emptyTurn() };
+        const initState = { turns: [], current: emptyTurn(), ...EMPTY_DISPLAY };
         setStreaming(initState);
         streamingRef.current = initState;
 
@@ -718,7 +810,7 @@ export function ChatInterface({
       const assistantCountBefore = countAssistantMessages();
 
       // Reset streaming state
-      const initState = { turns: [], current: emptyTurn() };
+      const initState = { turns: [], current: emptyTurn(), ...EMPTY_DISPLAY };
       setStreaming(initState);
       streamingRef.current = initState;
 
@@ -930,7 +1022,7 @@ export function ChatInterface({
         );
       }
 
-      // Add current in-progress turn
+      // Add current in-progress turn — use animated display values for smooth typing
       if (
         streaming.current.text ||
         streaming.current.thinking ||
@@ -938,7 +1030,11 @@ export function ChatInterface({
       ) {
         displayMessages.push(
           buildTurnMessage(
-            streaming.current,
+            {
+              ...streaming.current,
+              text: streaming.displayText,
+              thinking: streaming.displayThinking,
+            },
             "streaming-current",
             streaming.turns.length > 0 ? `streaming-turn-0` : undefined,
           ),
