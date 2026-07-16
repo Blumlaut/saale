@@ -87,7 +87,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
         </div>
         <div className="flex items-center gap-2">
           {/* Temporary toggle */}
-          <div className="flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+          <div className="flex items-center gap-1.5 rounded-full bg-white/5 px-2 py-1 transition-colors hover:bg-white/10">
             <Ghost
               className={
                 "h-3.5 w-3.5 transition-colors " +
@@ -102,7 +102,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
             />
           </div>
           <Button
-            className="liquid-glass-accent h-8 w-8 shrink-0 rounded-full md:h-9 md:w-auto md:px-3"
+            className="liquid-glass-accent flex h-8 w-8 shrink-0 items-center gap-1.5 rounded-full md:h-9 md:w-auto md:px-3"
             size="icon"
             onClick={async () => {
               const session = await createChatSession({ temporary: temporaryMode });
