@@ -42,7 +42,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <ImpersonationBanner />
             {/* Page wrapper — flex-1 fills remaining space */}
             <div className="min-h-0 flex-1">
-              <div className="page-wrapper">
+              <div className="page-wrapper h-full">
                 {/* Inner — h-full fills page-wrapper so child pages can flex-1 */}
                 <div className="flex h-full flex-col gap-4 overflow-hidden">{children}</div>
               </div>
