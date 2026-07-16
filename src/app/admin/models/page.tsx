@@ -455,7 +455,7 @@ export default function AdminModelsPage() {
               const enabledModels =
                 modelEnabled[provider.id] ??
                 new Set((availableModels[provider.id] ?? []).map((m) => m.id));
-              const allEnabled = models.length > 0 && enabledModels.size === models.length;
+              const allEnabled = models.length > 0 && models.every((m) => enabledModels.has(m.id));
 
               if (models.length === 0) return null;
 
