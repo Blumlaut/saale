@@ -42,6 +42,8 @@ interface StreamingState {
   displayText: string;
   /** Animated thinking shown to the user — lags behind current.thinking */
   displayThinking: string;
+  /** Timestamp of the last token/thinking SSE update — used to pace the animation */
+  lastTargetUpdate: number;
 }
 
 const emptyTurn = (): TurnData => ({
@@ -50,7 +52,7 @@ const emptyTurn = (): TurnData => ({
   toolCalls: [],
 });
 
-const EMPTY_DISPLAY = { displayText: "", displayThinking: "" } as const;
+const EMPTY_DISPLAY = { displayText: "", displayThinking: "", lastTargetUpdate: 0 } as const;
 
 function convertToolCalls(turns: TurnData["toolCalls"]): ToolCallData[] {
   return turns.map((tc) => ({
@@ -190,6 +192,7 @@ function setupStreamListeners(
       const next = {
         ...prev,
         current: { ...prev.current, text: parsed.text },
+        lastTargetUpdate: Date.now(),
       };
       streamingRef.current = next;
       return next;
@@ -202,6 +205,7 @@ function setupStreamListeners(
       const next = {
         ...prev,
         current: { ...prev.current, thinking: parsed.thinking },
+        lastTargetUpdate: Date.now(),
       };
       streamingRef.current = next;
       return next;
@@ -334,6 +338,7 @@ export function ChatInterface({
     current: emptyTurn(),
     displayText: "",
     displayThinking: "",
+    lastTargetUpdate: 0,
   });
 
   // Source of truth for streaming state — updated synchronously in event handlers.
@@ -343,12 +348,11 @@ export function ChatInterface({
   // Typing animation — smoothly reveals characters between throttled SSE updates.
   // Uses requestAnimationFrame to interpolate displayText/displayThinking toward targets.
   const animFrameRef = useRef<number | null>(null);
-  const animLastTimeRef = useRef(0);
 
-  // Typing animation effect — smoothly interpolates displayText/displayThinking
-  // toward current.text/current.thinking using requestAnimationFrame.
-  // This makes the throttled SSE updates (200ms) feel like smooth character-by-character
-  // streaming on the client side.
+  // Typing animation effect — runs continuously while loading.
+  // Paces character reveal so the display catches up right when the next
+  // SSE update arrives. When caught up, frames are no-ops (cheap).
+  // When new SSE data arrives, the next frame picks it up automatically.
   useEffect(() => {
     if (!isLoading) {
       if (animFrameRef.current) {
@@ -358,63 +362,44 @@ export function ChatInterface({
       return;
     }
 
-    const CHARS_PER_SEC = 150;
+    const FRAMES_PER_UPDATE = 12; // ~200ms / 16ms ≈ 12 frames
 
-    const step = (timestamp: number) => {
-      const delta = animLastTimeRef.current ? (timestamp - animLastTimeRef.current) / 1000 : 0;
-      animLastTimeRef.current = timestamp;
-
+    const step = () => {
       setStreaming((prev) => {
-        let changed = false;
-        let newDisplayText = prev.displayText;
-        let newDisplayThinking = prev.displayThinking;
+        const textPending = prev.current.text.length - prev.displayText.length;
+        const thinkingPending = prev.current.thinking.length - prev.displayThinking.length;
 
-        // Animate text toward target
-        if (prev.displayText.length < prev.current.text.length) {
-          const charsToAdd = Math.min(
-            Math.ceil(CHARS_PER_SEC * delta),
-            prev.current.text.length - prev.displayText.length,
-          );
-          newDisplayText = prev.current.text.slice(0, prev.displayText.length + charsToAdd);
-          changed = true;
-        }
-
-        // Animate thinking toward target
-        if (prev.displayThinking.length < prev.current.thinking.length) {
-          const charsToAdd = Math.min(
-            Math.ceil(CHARS_PER_SEC * delta),
-            prev.current.thinking.length - prev.displayThinking.length,
-          );
-          newDisplayThinking = prev.current.thinking.slice(
-            0,
-            prev.displayThinking.length + charsToAdd,
-          );
-          changed = true;
-        }
-
-        if (!changed) {
-          // All caught up — stop animating
-          animFrameRef.current = null;
+        if (textPending <= 0 && thinkingPending <= 0) {
+          // Caught up — keep looping (next SSE update will add pending chars)
+          animFrameRef.current = requestAnimationFrame(step);
           return prev;
         }
 
+        const timeSinceUpdate = Date.now() - prev.lastTargetUpdate;
+        const framesElapsed = Math.floor(timeSinceUpdate / 16);
+        const framesRemaining = Math.max(1, FRAMES_PER_UPDATE - framesElapsed);
+
+        const charsPerFrameText = textPending / framesRemaining;
+        const charsPerFrameThinking = thinkingPending / framesRemaining;
+
         const next = {
           ...prev,
-          displayText: newDisplayText,
-          displayThinking: newDisplayThinking,
+          displayText: prev.current.text.slice(
+            0,
+            prev.displayText.length + Math.max(1, Math.ceil(charsPerFrameText)),
+          ),
+          displayThinking: prev.current.thinking.slice(
+            0,
+            prev.displayThinking.length + Math.max(0, Math.ceil(charsPerFrameThinking)),
+          ),
         };
         streamingRef.current = next;
+        animFrameRef.current = requestAnimationFrame(step);
         return next;
       });
-
-      // Continue animation
-      animFrameRef.current = requestAnimationFrame(step);
     };
 
-    if (!animFrameRef.current) {
-      animLastTimeRef.current = 0;
-      animFrameRef.current = requestAnimationFrame(step);
-    }
+    animFrameRef.current = requestAnimationFrame(step);
 
     return () => {
       if (animFrameRef.current) {
