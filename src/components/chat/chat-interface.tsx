@@ -42,8 +42,11 @@ interface StreamingState {
   displayText: string;
   /** Animated thinking shown to the user — lags behind current.thinking */
   displayThinking: string;
-  /** Characters to reveal per frame — set on each SSE update based on chunk size */
-  charsPerFrame: number;
+  /** Total chars received so far (text + thinking) — for rate calculation */
+  totalTargetChars: number;
+  /** Timestamp of last SSE update — for rate calculation */
+  lastUpdateChars: number;
+  lastUpdateTime: number;
 }
 
 const emptyTurn = (): TurnData => ({
@@ -52,7 +55,13 @@ const emptyTurn = (): TurnData => ({
   toolCalls: [],
 });
 
-const EMPTY_DISPLAY = { displayText: "", displayThinking: "", charsPerFrame: 1 } as const;
+const EMPTY_DISPLAY = {
+  displayText: "",
+  displayThinking: "",
+  totalTargetChars: 0,
+  lastUpdateChars: 0,
+  lastUpdateTime: 0,
+} as const;
 
 function convertToolCalls(turns: TurnData["toolCalls"]): ToolCallData[] {
   return turns.map((tc) => ({
@@ -186,17 +195,16 @@ function setupStreamListeners(
   streamingRef: React.RefObject<StreamingState>,
   callbacks: StreamCallbacks,
 ): () => void {
-  const FRAMES_PER_UPDATE = 12; // ~200ms at 60fps
-
   eventSource.addEventListener("token", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { text: string };
     setStreaming((prev) => {
-      const newChars = parsed.text.length - prev.displayText.length;
-      const charsPerFrame = Math.max(1, Math.ceil(Math.abs(newChars) / FRAMES_PER_UPDATE));
+      const now = Date.now();
       const next = {
         ...prev,
         current: { ...prev.current, text: parsed.text },
-        charsPerFrame,
+        totalTargetChars: parsed.text.length + prev.current.thinking.length,
+        lastUpdateChars: parsed.text.length + prev.current.thinking.length,
+        lastUpdateTime: now,
       };
       streamingRef.current = next;
       return next;
@@ -206,12 +214,13 @@ function setupStreamListeners(
   eventSource.addEventListener("thinking", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { thinking: string };
     setStreaming((prev) => {
-      const newChars = parsed.thinking.length - prev.displayThinking.length;
-      const charsPerFrame = Math.max(1, Math.ceil(Math.abs(newChars) / FRAMES_PER_UPDATE));
+      const now = Date.now();
       const next = {
         ...prev,
         current: { ...prev.current, thinking: parsed.thinking },
-        charsPerFrame,
+        totalTargetChars: prev.current.text.length + parsed.thinking.length,
+        lastUpdateChars: prev.current.text.length + parsed.thinking.length,
+        lastUpdateTime: now,
       };
       streamingRef.current = next;
       return next;
@@ -344,19 +353,25 @@ export function ChatInterface({
     current: emptyTurn(),
     displayText: "",
     displayThinking: "",
-    charsPerFrame: 1,
+    totalTargetChars: 0,
+    lastUpdateChars: 0,
+    lastUpdateTime: 0,
   });
 
   // Source of truth for streaming state — updated synchronously in event handlers.
   // NEVER stale when done/error fires.
   const streamingRef = useRef<StreamingState>(streaming);
 
-  // Typing animation — smoothly reveals characters between throttled SSE updates.
-  // Uses requestAnimationFrame to interpolate displayText/displayThinking toward targets.
+  // Typing animation — matches the LLM's output rate.
+  // Computes chars/sec from cumulative output over time, converts to chars/frame.
+  // Slows to 1 char per 2 frames when caught up early to avoid stalling.
   const animFrameRef = useRef<number | null>(null);
+  // Track cumulative output for rate calculation (refs to avoid effect re-runs).
+  const rateStartCharsRef = useRef(0);
+  const rateStartTimeRef = useRef(0);
+  const rateLastCharsRef = useRef(0);
+  const rateLastTimeRef = useRef(0);
 
-  // Typing animation — reveals charsPerFrame per frame.
-  // charsPerFrame is set on each SSE update based on chunk size / 12 frames.
   useEffect(() => {
     if (!isLoading) {
       if (animFrameRef.current) {
@@ -366,21 +381,54 @@ export function ChatInterface({
       return;
     }
 
+    const TARGET_FPS = 60;
+    const SLOW_CHARS_PER_FRAME = 0.5; // 1 char per 2 frames
+
     const step = () => {
       setStreaming((prev) => {
         const textPending = prev.current.text.length - prev.displayText.length;
         const thinkingPending = prev.current.thinking.length - prev.displayThinking.length;
+        const totalPending = textPending + thinkingPending;
 
-        if (textPending <= 0 && thinkingPending <= 0) {
+        if (totalPending <= 0) {
           animFrameRef.current = requestAnimationFrame(step);
           return prev;
         }
 
-        const n = prev.charsPerFrame;
+        // Calculate LLM output rate from tracked history.
+        // Uses the last two SSE updates for a rolling rate.
+        let charsPerFrame: number;
+        if (rateLastTimeRef.current > 0 && rateStartTimeRef.current > 0) {
+          const charsDelta = rateLastCharsRef.current - rateStartCharsRef.current;
+          const timeDelta = rateLastTimeRef.current - rateStartTimeRef.current;
+          if (timeDelta > 0) {
+            const charsPerSec = charsDelta / (timeDelta / 1000);
+            charsPerFrame = Math.max(SLOW_CHARS_PER_FRAME, charsPerSec / TARGET_FPS);
+          } else {
+            charsPerFrame = 1;
+          }
+        } else {
+          charsPerFrame = 1;
+        }
+
+        // Clamp to pending
+        charsPerFrame = Math.min(charsPerFrame, totalPending);
+
+        // Split proportionally between text and thinking
+        const textRatio = totalPending > 0 ? textPending / totalPending : 0.5;
+        const textChars = Math.min(textPending, Math.max(1, Math.round(charsPerFrame * textRatio)));
+        const thinkingChars = Math.min(
+          thinkingPending,
+          Math.max(0, Math.ceil(charsPerFrame - textChars)),
+        );
+
         const next = {
           ...prev,
-          displayText: prev.current.text.slice(0, prev.displayText.length + n),
-          displayThinking: prev.current.thinking.slice(0, prev.displayThinking.length + n),
+          displayText: prev.current.text.slice(0, prev.displayText.length + textChars),
+          displayThinking: prev.current.thinking.slice(
+            0,
+            prev.displayThinking.length + thinkingChars,
+          ),
         };
         streamingRef.current = next;
         animFrameRef.current = requestAnimationFrame(step);
@@ -397,6 +445,17 @@ export function ChatInterface({
       }
     };
   }, [isLoading]);
+
+  // Track SSE updates for rate calculation.
+  // Shifts the window: last → start, current → last.
+  useEffect(() => {
+    if (streaming.lastUpdateTime > 0) {
+      rateStartCharsRef.current = rateLastCharsRef.current;
+      rateStartTimeRef.current = rateLastTimeRef.current;
+      rateLastCharsRef.current = streaming.lastUpdateChars;
+      rateLastTimeRef.current = streaming.lastUpdateTime;
+    }
+  });
 
   const [sessionTitle, setSessionTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
