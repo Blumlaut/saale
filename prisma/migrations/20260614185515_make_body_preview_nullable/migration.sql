@@ -1,4 +1,4 @@
--- Make ChatSession.shared NOT NULL (idempotent)
+-- Make ChatSession.shared NOT NULL (idempotent, only if column exists)
 DO $$ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
