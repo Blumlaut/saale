@@ -1,20 +1,9 @@
-/*
-  Warnings:
-
-  - You are about to drop the column `agentSystemPrompt` on the `AppSettings` table. All the data in the column will be lost.
-  - You are about to alter the column `title` on the `ChatSession` table. The data in that column could be lost. The data in that column will be cast from `Text` to `VarChar(50)`.
-
-*/
--- DropIndex
+-- DropIndex (idempotent)
 DROP INDEX IF EXISTS "idx_chat_session_title_trgm";
-
--- DropIndex
 DROP INDEX IF EXISTS "idx_email_body_preview_trgm";
-
--- DropIndex
 DROP INDEX IF EXISTS "idx_email_subject_trgm";
 
--- AlterTable
+-- AlterTable (idempotent)
 ALTER TABLE "AppSettings" DROP COLUMN IF EXISTS "agentSystemPrompt";
 
 -- Add column only if it doesn't exist (safe for re-runs)
@@ -24,16 +13,23 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- AlterTable
 -- Truncate titles > 50 chars before changing type (prevents "value too long" errors)
 UPDATE "ChatSession" SET "title" = LEFT("title", 50) WHERE CHAR_LENGTH("title") > 50;
 ALTER TABLE "ChatSession" ALTER COLUMN "title" TYPE VARCHAR(50);
 
--- Add processingSince if missing (was never created by a prior migration)
+-- Add processingSince if missing
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ChatSession' AND column_name='processingSince') THEN
     ALTER TABLE "ChatSession" ADD COLUMN "processingSince" TIMESTAMP(3);
   END IF;
 END $$;
 
-ALTER TABLE "ChatSession" ALTER COLUMN "processingSince" TYPE TIMESTAMP(3);
+-- Normalize type (safe no-op if already correct type)
+DO $$ BEGIN
+  PERFORM 1 FROM information_schema.columns
+  WHERE table_name='ChatSession' AND column_name='processingSince'
+  AND udt_name != 'timestamp without time zone';
+  IF FOUND THEN
+    ALTER TABLE "ChatSession" ALTER COLUMN "processingSince" TYPE TIMESTAMP(3);
+  END IF;
+END $$;
