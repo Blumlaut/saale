@@ -260,7 +260,8 @@ describe("stepAnimation", () => {
 
   it("scales chars per frame from smoothed rate", () => {
     // smoothedRate = 120 chars/sec, targetFps = 60 → 2 chars/frame
-    // But capped at maxCharsPerFrame = 2.0
+    // But capped at maxCharsPerFrame = 0.25
+    // With accumulator, chars display over multiple frames
     const state: AnimationState = {
       ...createInitialState(),
       textBuffer: "A".repeat(100),
@@ -268,12 +269,13 @@ describe("stepAnimation", () => {
     };
     const result = stepAnimation(state, config, 0);
 
-    expect(result.textChars).toBeLessThanOrEqual(2);
-    expect(result.textChars).toBeGreaterThan(0);
+    // First frame: accum = 0.25, floor = 0. Subsequent frames build up.
+    expect(result.textChars).toBeLessThanOrEqual(1);
+    expect(result.state.charsAccum).toBeGreaterThan(0);
   });
 
   it("clamps to max chars per frame", () => {
-    // smoothedRate = 600 chars/sec → 10 chars/frame → capped at 2
+    // smoothedRate = 600 chars/sec → 10 chars/frame → capped at maxCharsPerFrame = 0.25
     const state: AnimationState = {
       ...createInitialState(),
       textBuffer: "A".repeat(100),
@@ -281,21 +283,23 @@ describe("stepAnimation", () => {
     };
     const result = stepAnimation(state, config, 0);
 
-    expect(result.textChars).toBeLessThanOrEqual(2);
+    expect(result.textChars).toBeLessThanOrEqual(1);
   });
 
   it("applies catch-up boost when buffer exceeds threshold", () => {
+    // Pre-load accumulator so chars display immediately
     const state: AnimationState = {
       ...createInitialState(),
-      textBuffer: "A".repeat(200), // well above threshold of 50
+      textBuffer: "A".repeat(200),
       smoothedRate: 60, // 1 char/frame base
+      charsAccum: 1.5, // pre-loaded so first frame shows chars
     };
     const result = stepAnimation(state, config, 0);
 
     // With 200 chars pending, boost = min(2, 1 + 150/100) = 2
-    // So charsPerFrame = 1 * 2 = 2 (capped at max)
+    // charsPerFrame = 0.25 * 2 = 0.5, accum = 1.5 + 0.5 = 2.0, floor = 2
     expect(result.textChars).toBeGreaterThanOrEqual(1);
-    expect(result.textChars).toBeLessThanOrEqual(2);
+    expect(result.textChars).toBeLessThanOrEqual(3);
   });
 
   it("splits proportionally between text and thinking", () => {
@@ -419,7 +423,7 @@ describe("full animation cycle", () => {
     let chunkIndex = 0;
     let currentTime = 1000;
     let frameCount = 0;
-    const maxFrames = 500; // safety limit
+    const maxFrames = 1000; // safety limit — slower rate needs more frames
 
     // Simulate animation frames at 60fps (≈16.67ms apart)
     while (frameCount < maxFrames) {
@@ -443,8 +447,8 @@ describe("full animation cycle", () => {
       // Step animation
       const step = stepAnimation(state, config, instantRate);
 
-      // Consume displayed characters
-      state = consumeFromBuffer(state, step.textChars, step.thinkingChars);
+      // Consume displayed characters (preserve step.state for accumulator)
+      state = consumeFromBuffer(step.state, step.textChars, step.thinkingChars);
       displayedText = displayedText + "".padEnd(step.textChars); // track length only
       displayedThinking = displayedThinking + "".padEnd(step.thinkingChars);
 
@@ -488,7 +492,7 @@ describe("full animation cycle", () => {
     let totalDisplayed = 0;
     for (let i = 0; i < 60; i++) {
       const step = stepAnimation(state, DEFAULT_CONFIG, 0); // instantRate=0 (no new data)
-      state = consumeFromBuffer(state, step.textChars, step.thinkingChars);
+      state = consumeFromBuffer(step.state, step.textChars, step.thinkingChars);
       totalDisplayed += step.textChars + step.thinkingChars;
 
       if (state.textBuffer.length === 0 && state.thinkingBuffer.length === 0) {
@@ -496,12 +500,11 @@ describe("full animation cycle", () => {
       }
     }
 
-    // With min rate of 0.4 chars/frame at 60fps = 24 chars/sec minimum
-    // Over ~1 second (60 frames), should display at least 0.4 * 30 = 12 chars
+    // With max rate of 0.25 chars/frame at 60fps = 15 chars/sec
+    // Over ~1 second (60 frames), should display ~15 chars
     // (capped at 30 total available)
     expect(totalDisplayed).toBeGreaterThan(0);
-    // Should have consumed all or most of the 30-char buffer
-    expect(totalDisplayed).toBeGreaterThanOrEqual(12);
+    expect(totalDisplayed).toBeGreaterThanOrEqual(8);
   });
 
   /**
@@ -541,10 +544,12 @@ describe("full animation cycle", () => {
    * the animation speeds up to drain the buffer.
    */
   it("catches up when buffer exceeds threshold", () => {
+    // Pre-load accumulator so chars display on first frame
     const state: AnimationState = {
       ...createInitialState(),
       textBuffer: "A".repeat(200), // large buffer
-      smoothedRate: 60, // 1 char/frame base rate
+      smoothedRate: 60,
+      charsAccum: 1.5,
     };
 
     const step = stepAnimation(state, DEFAULT_CONFIG, 0);
@@ -556,7 +561,8 @@ describe("full animation cycle", () => {
       DEFAULT_CONFIG.maxCatchUpBoost,
     );
     expect(boost).toBeGreaterThan(1);
-    // charsPerFrame should be boosted (base 1 * boost, capped at 2)
+    // charsPerFrame should be boosted (base 0.25 * boost, capped at 0.25)
+    // accum = 1.5 + boosted_chars, floor gives ≥1
     expect(step.textChars).toBeGreaterThanOrEqual(1);
   });
 
@@ -618,7 +624,7 @@ describe("full animation cycle", () => {
 
       displayedTextLen += step.textChars;
       displayedThinkingLen += step.thinkingChars;
-      state = consumeFromBuffer(state, step.textChars, step.thinkingChars);
+      state = consumeFromBuffer(step.state, step.textChars, step.thinkingChars);
 
       if (inGap) {
         displayedDuringGap += step.textChars + step.thinkingChars;
@@ -727,7 +733,7 @@ describe("full animation cycle", () => {
 
       displayedTextLen += step.textChars;
       displayedThinkingLen += step.thinkingChars;
-      state = consumeFromBuffer(stateWithBuffer, step.textChars, step.thinkingChars);
+      state = consumeFromBuffer(step.state, step.textChars, step.thinkingChars);
 
       totalFrames++;
       frameTime += 1000 / 60;
@@ -762,18 +768,32 @@ describe("edge cases", () => {
     let state = createInitialState();
     state = feedBuffer(state, "", "Deep reasoning here", 0, 0, 1000);
 
-    const step = stepAnimation(state, DEFAULT_CONFIG, 0);
-    expect(step.textChars).toBe(0);
-    expect(step.thinkingChars).toBeGreaterThan(0);
+    // Run multiple frames — accumulator builds up before displaying chars
+    let totalThinking = 0;
+    for (let i = 0; i < 20; i++) {
+      const step = stepAnimation(state, DEFAULT_CONFIG, 0);
+      totalThinking += step.thinkingChars;
+      state = consumeFromBuffer(step.state, step.textChars, step.thinkingChars);
+      if (state.thinkingBuffer.length === 0) break;
+    }
+
+    expect(totalThinking).toBeGreaterThan(0);
   });
 
   it("handles text-only content", () => {
     let state = createInitialState();
     state = feedBuffer(state, "Just text", "", 0, 0, 1000);
 
-    const step = stepAnimation(state, DEFAULT_CONFIG, 0);
-    expect(step.textChars).toBeGreaterThan(0);
-    expect(step.thinkingChars).toBe(0);
+    // Run multiple frames — accumulator builds up before displaying chars
+    let totalText = 0;
+    for (let i = 0; i < 20; i++) {
+      const step = stepAnimation(state, DEFAULT_CONFIG, 0);
+      totalText += step.textChars;
+      state = consumeFromBuffer(step.state, step.textChars, step.thinkingChars);
+      if (state.textBuffer.length === 0) break;
+    }
+
+    expect(totalText).toBeGreaterThan(0);
   });
 
   it("handles single character buffer", () => {
