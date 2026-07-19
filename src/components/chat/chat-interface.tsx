@@ -18,6 +18,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
+import {
+  feedBuffer,
+  estimateInstantRate,
+  stepAnimation,
+  consumeFromBuffer,
+  DEFAULT_CONFIG,
+  type AnimationState,
+} from "@/lib/pi/stream-animation";
 import { ShareButton } from "./share-button";
 import type { Message, ToolCallData } from "./types";
 import type { Dispatch, SetStateAction } from "react";
@@ -42,11 +50,6 @@ interface StreamingState {
   displayText: string;
   /** Animated thinking shown to the user — lags behind current.thinking */
   displayThinking: string;
-  /** Total chars received so far (text + thinking) — for rate calculation */
-  totalTargetChars: number;
-  /** Timestamp of last SSE update — for rate calculation */
-  lastUpdateChars: number;
-  lastUpdateTime: number;
 }
 
 const emptyTurn = (): TurnData => ({
@@ -58,9 +61,6 @@ const emptyTurn = (): TurnData => ({
 const EMPTY_DISPLAY = {
   displayText: "",
   displayThinking: "",
-  totalTargetChars: 0,
-  lastUpdateChars: 0,
-  lastUpdateTime: 0,
 } as const;
 
 function convertToolCalls(turns: TurnData["toolCalls"]): ToolCallData[] {
@@ -198,13 +198,9 @@ function setupStreamListeners(
   eventSource.addEventListener("token", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { text: string };
     setStreaming((prev) => {
-      const now = Date.now();
       const next = {
         ...prev,
         current: { ...prev.current, text: parsed.text },
-        totalTargetChars: parsed.text.length + prev.current.thinking.length,
-        lastUpdateChars: parsed.text.length + prev.current.thinking.length,
-        lastUpdateTime: now,
       };
       streamingRef.current = next;
       return next;
@@ -214,13 +210,9 @@ function setupStreamListeners(
   eventSource.addEventListener("thinking", (event: MessageEvent) => {
     const parsed = JSON.parse(event.data) as { thinking: string };
     setStreaming((prev) => {
-      const now = Date.now();
       const next = {
         ...prev,
         current: { ...prev.current, thinking: parsed.thinking },
-        totalTargetChars: prev.current.text.length + parsed.thinking.length,
-        lastUpdateChars: prev.current.text.length + parsed.thinking.length,
-        lastUpdateTime: now,
       };
       streamingRef.current = next;
       return next;
@@ -353,25 +345,25 @@ export function ChatInterface({
     current: emptyTurn(),
     displayText: "",
     displayThinking: "",
-    totalTargetChars: 0,
-    lastUpdateChars: 0,
-    lastUpdateTime: 0,
   });
 
   // Source of truth for streaming state — updated synchronously in event handlers.
   // NEVER stale when done/error fires.
   const streamingRef = useRef<StreamingState>(streaming);
 
-  // Typing animation — matches the LLM's output rate.
-  // Computes chars/sec from cumulative output over time, converts to chars/frame.
-  // Slows to 1 char per 2 frames when caught up early to avoid stalling.
+  // Typing animation — buffer-based approach for smooth, non-jerky playback.
+  // SSE chunks feed into a buffer; the rAF loop consumes at a steady rate.
+  // Rate is estimated from SSE arrival patterns but preserved during gaps.
   const animFrameRef = useRef<number | null>(null);
-  const smoothedRateRef = useRef(0);
-  // Track cumulative output for rate calculation (refs to avoid effect re-runs).
-  const rateStartCharsRef = useRef(0);
-  const rateStartTimeRef = useRef(0);
-  const rateLastCharsRef = useRef(0);
-  const rateLastTimeRef = useRef(0);
+  const animStateRef = useRef<AnimationState>({
+    textBuffer: "",
+    thinkingBuffer: "",
+    smoothedRate: 0,
+    rateStartChars: 0,
+    rateStartTime: 0,
+    rateLastChars: 0,
+    rateLastTime: 0,
+  });
 
   useEffect(() => {
     if (!isLoading) {
@@ -379,70 +371,61 @@ export function ChatInterface({
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = null;
       }
-      smoothedRateRef.current = 0;
+      animStateRef.current = {
+        textBuffer: "",
+        thinkingBuffer: "",
+        smoothedRate: 0,
+        rateStartChars: 0,
+        rateStartTime: 0,
+        rateLastChars: 0,
+        rateLastTime: 0,
+      };
       return;
     }
 
-    const TARGET_FPS = 60;
-    const SLOW_CHARS_PER_FRAME = 0.4; // Slightly slower base rate
-    const MAX_CHARS_PER_FRAME = 2.0; // Cap to avoid "zipping"
+    const config = DEFAULT_CONFIG;
+    let lastInstantRate = 0;
 
     const step = () => {
       setStreaming((prev) => {
-        const textPending = prev.current.text.length - prev.displayText.length;
-        const thinkingPending = prev.current.thinking.length - prev.displayThinking.length;
-        const totalPending = textPending + thinkingPending;
+        // Feed new content into the animation buffer.
+        // This recomputes buffers from cumulative SSE text minus displayed length.
+        const now = Date.now();
+        const animState = feedBuffer(
+          animStateRef.current,
+          prev.current.text,
+          prev.current.thinking,
+          prev.displayText.length,
+          prev.displayThinking.length,
+          now,
+        );
 
-        if (totalPending <= 0) {
-          animFrameRef.current = requestAnimationFrame(step);
-          return prev;
-        }
-
-        // Calculate instantaneous rate from last two SSE updates.
-        let instantRate = 0;
-        if (rateLastTimeRef.current > 0 && rateStartTimeRef.current > 0) {
-          const charsDelta = rateLastCharsRef.current - rateStartCharsRef.current;
-          const timeDelta = rateLastTimeRef.current - rateStartTimeRef.current;
-          if (timeDelta > 0) {
-            instantRate = charsDelta / (timeDelta / 1000);
-          }
-        }
-
-        // Update smoothed rate using EMA (Exponential Moving Average).
-        // This prevents the "jerky" transitions when chunk sizes vary.
+        // Estimate instant rate from SSE arrival patterns.
+        const instantRate = estimateInstantRate(animState);
         if (instantRate > 0) {
-          smoothedRateRef.current = smoothedRateRef.current * 0.8 + instantRate * 0.2;
+          lastInstantRate = instantRate;
         }
 
-        // Base speed from smoothed rate.
-        let charsPerFrame = Math.max(SLOW_CHARS_PER_FRAME, smoothedRateRef.current / TARGET_FPS);
+        // Store updated animation state (rate tracking, buffers)
+        animStateRef.current = animState;
 
-        // Catch-up mechanism: if buffer is growing, speed up proportionally.
-        if (totalPending > 50) {
-          const boost = Math.min(2, 1 + (totalPending - 50) / 100);
-          charsPerFrame *= boost;
-        }
+        // Step the animation — compute chars to display this frame.
+        // Pass lastInstantRate (preserved during SSE gaps) for smooth playback.
+        const animStep = stepAnimation(animState, config, lastInstantRate);
 
-        // Clamp to a reasonable maximum to ensure it always feels like "typing".
-        charsPerFrame = Math.min(charsPerFrame, MAX_CHARS_PER_FRAME);
-
-        // Clamp to pending
-        charsPerFrame = Math.min(charsPerFrame, totalPending);
-
-        // Split proportionally between text and thinking
-        const textRatio = totalPending > 0 ? textPending / totalPending : 0.5;
-        const textChars = Math.min(textPending, Math.max(1, Math.round(charsPerFrame * textRatio)));
-        const thinkingChars = Math.min(
-          thinkingPending,
-          Math.max(0, Math.ceil(charsPerFrame - textChars)),
+        // Consume displayed characters from the buffer.
+        animStateRef.current = consumeFromBuffer(
+          animState,
+          animStep.textChars,
+          animStep.thinkingChars,
         );
 
         const next = {
           ...prev,
-          displayText: prev.current.text.slice(0, prev.displayText.length + textChars),
+          displayText: prev.current.text.slice(0, prev.displayText.length + animStep.textChars),
           displayThinking: prev.current.thinking.slice(
             0,
-            prev.displayThinking.length + thinkingChars,
+            prev.displayThinking.length + animStep.thinkingChars,
           ),
         };
         streamingRef.current = next;
@@ -460,24 +443,6 @@ export function ChatInterface({
       }
     };
   }, [isLoading]);
-
-  // Track SSE updates for rate calculation.
-  // Shifts the window: last → start, current → last.
-  useEffect(() => {
-    if (streaming.lastUpdateTime > 0 && streaming.lastUpdateTime !== rateLastTimeRef.current) {
-      // Reset rate window if cumulative character count has reset (new stream)
-      if (streaming.lastUpdateChars < rateLastCharsRef.current) {
-        rateStartCharsRef.current = 0;
-        rateStartTimeRef.current = 0;
-        rateLastCharsRef.current = 0;
-        rateLastTimeRef.current = 0;
-      }
-      rateStartCharsRef.current = rateLastCharsRef.current;
-      rateStartTimeRef.current = rateLastTimeRef.current;
-      rateLastCharsRef.current = streaming.lastUpdateChars;
-      rateLastTimeRef.current = streaming.lastUpdateTime;
-    }
-  }, [streaming.lastUpdateTime, streaming.lastUpdateChars]);
 
   const [sessionTitle, setSessionTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
