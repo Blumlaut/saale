@@ -806,14 +806,16 @@ describe("edge cases", () => {
     expect(step.textChars).toBeLessThanOrEqual(1);
   });
 
-  it("handles very long single chunk", () => {
+  it("handles very long single chunk with catch-up boost", () => {
     const longText = "A".repeat(1000);
     let state = createInitialState();
     state = feedBuffer(state, longText, "", 0, 0, 1000);
 
     const step = stepAnimation(state, DEFAULT_CONFIG, 0);
-    // Should be capped at maxCharsPerFrame
-    expect(step.textChars).toBeLessThanOrEqual(DEFAULT_CONFIG.maxCharsPerFrame);
+    // 1000 chars / 100 threshold = 10× boost → 0.25 * 10 = 2.5 chars/frame
+    // floor(2.5) = 2 chars displayed
+    expect(step.textChars).toBeGreaterThan(0);
+    expect(step.textChars).toBeLessThanOrEqual(5);
   });
 
   it("does not produce negative char counts", () => {

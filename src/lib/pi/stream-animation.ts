@@ -31,8 +31,8 @@ export const DEFAULT_CONFIG: AnimationConfig = {
   targetFps: 60,
   slowCharsPerFrame: 0.4,
   maxCharsPerFrame: 0.25, // ~15 chars/sec — comfortable typing pace
-  catchUpThreshold: 50,
-  maxCatchUpBoost: 2,
+  catchUpThreshold: 100,
+  maxCatchUpBoost: 20,
   emaFactor: 0.2,
 };
 
