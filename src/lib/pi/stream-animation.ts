@@ -30,7 +30,7 @@ export interface AnimationConfig {
 export const DEFAULT_CONFIG: AnimationConfig = {
   targetFps: 60,
   slowCharsPerFrame: 0.4,
-  maxCharsPerFrame: 2.0,
+  maxCharsPerFrame: 0.25, // ~15 chars/sec — comfortable typing pace
   catchUpThreshold: 50,
   maxCatchUpBoost: 2,
   emaFactor: 0.2,
@@ -50,6 +50,8 @@ export interface AnimationState {
   /** Last measurement point for rate calculation. */
   rateLastChars: number;
   rateLastTime: number;
+  /** Fractional accumulator for sub-char-per-frame display rates. */
+  charsAccum: number;
 }
 
 /** Result of one animation step. */
@@ -76,6 +78,7 @@ export function createInitialState(): AnimationState {
     rateStartTime: 0,
     rateLastChars: 0,
     rateLastTime: 0,
+    charsAccum: 0,
   };
 }
 
@@ -269,34 +272,16 @@ export function stepAnimation(
   // Clamp to available buffer
   charsPerFrame = Math.min(charsPerFrame, totalPending);
 
-  // Split proportionally between text and thinking.
-  // CRITICAL: use Math.ceil for the primary buffer to guarantee progress.
-  // Math.round(0.4) = 0 would stall the animation entirely during SSE gaps.
-  const textRatio = totalPending > 0 ? textPending / totalPending : 0.5;
-  const textChars = Math.min(textPending, Math.max(0, Math.ceil(charsPerFrame * textRatio)));
-  const thinkingChars = Math.min(
-    thinkingPending,
-    Math.max(0, Math.ceil(charsPerFrame - textChars)),
-  );
+  // Accumulate fractionally so sub-char-per-frame rates work correctly.
+  // e.g. 0.25 chars/frame → accum reaches 1.0 after 4 frames → display 1 char.
+  let charsAccum = state.charsAccum + charsPerFrame;
+  const totalChars = Math.min(Math.floor(charsAccum), totalPending);
+  charsAccum -= totalChars;
 
-  // Safety: ensure at least 1 char displayed when there's pending content.
-  // This prevents the animation from stalling due to rounding.
-  if (textChars + thinkingChars === 0 && totalPending > 0) {
-    if (textPending > 0) {
-      return {
-        textChars: 1,
-        thinkingChars: 0,
-        state: { ...state, smoothedRate },
-        hasPending: true,
-      };
-    }
-    return {
-      textChars: 0,
-      thinkingChars: 1,
-      state: { ...state, smoothedRate },
-      hasPending: true,
-    };
-  }
+  // Split proportionally between text and thinking.
+  const textRatio = totalPending > 0 ? textPending / totalPending : 0.5;
+  const textChars = Math.min(textPending, Math.max(0, Math.round(totalChars * textRatio)));
+  const thinkingChars = Math.min(thinkingPending, totalChars - textChars);
 
   return {
     textChars,
@@ -304,6 +289,7 @@ export function stepAnimation(
     state: {
       ...state,
       smoothedRate,
+      charsAccum,
     },
     hasPending: true,
   };
