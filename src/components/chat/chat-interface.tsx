@@ -449,13 +449,20 @@ export function ChatInterface({
   // Track SSE updates for rate calculation.
   // Shifts the window: last → start, current → last.
   useEffect(() => {
-    if (streaming.lastUpdateTime > 0) {
+    if (streaming.lastUpdateTime > 0 && streaming.lastUpdateTime !== rateLastTimeRef.current) {
+      // Reset rate window if cumulative character count has reset (new stream)
+      if (streaming.lastUpdateChars < rateLastCharsRef.current) {
+        rateStartCharsRef.current = 0;
+        rateStartTimeRef.current = 0;
+        rateLastCharsRef.current = 0;
+        rateLastTimeRef.current = 0;
+      }
       rateStartCharsRef.current = rateLastCharsRef.current;
       rateStartTimeRef.current = rateLastTimeRef.current;
       rateLastCharsRef.current = streaming.lastUpdateChars;
       rateLastTimeRef.current = streaming.lastUpdateTime;
     }
-  });
+  }, [streaming.lastUpdateTime, streaming.lastUpdateChars]);
 
   const [sessionTitle, setSessionTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
