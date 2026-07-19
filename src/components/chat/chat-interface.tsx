@@ -20,6 +20,7 @@ import {
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 import {
   feedBuffer,
+  computePending,
   estimateInstantRate,
   stepAnimation,
   consumeFromBuffer,
@@ -385,35 +386,57 @@ export function ChatInterface({
 
     const config = DEFAULT_CONFIG;
     let lastInstantRate = 0;
+    // Track cumulative chars to detect when new SSE data arrives.
+    // feedBuffer (rate tracking) is ONLY called when cumulative changes.
+    let lastCumulative = 0;
 
     const step = () => {
       setStreaming((prev) => {
-        // Feed new content into the animation buffer.
-        // This recomputes buffers from cumulative SSE text minus displayed length.
-        const now = Date.now();
-        const animState = feedBuffer(
-          animStateRef.current,
+        const cumulative = prev.current.text.length + prev.current.thinking.length;
+        const hasNewData = cumulative !== lastCumulative;
+        lastCumulative = cumulative;
+
+        let animState = animStateRef.current;
+
+        // Only update rate tracking when new SSE data arrives.
+        // Calling feedBuffer every frame poisons the rate window with
+        // zero-delta entries (same cumulative, advancing time).
+        if (hasNewData) {
+          const now = Date.now();
+          animState = feedBuffer(
+            animState,
+            prev.current.text,
+            prev.current.thinking,
+            prev.displayText.length,
+            prev.displayThinking.length,
+            now,
+          );
+
+          // Estimate instant rate from SSE arrival patterns.
+          const instantRate = estimateInstantRate(animState);
+          if (instantRate > 0) {
+            lastInstantRate = instantRate;
+          }
+        }
+
+        // Recompute buffers every frame (display cursor advances independently).
+        const pending = computePending(
           prev.current.text,
           prev.current.thinking,
           prev.displayText.length,
           prev.displayThinking.length,
-          now,
         );
-
-        // Estimate instant rate from SSE arrival patterns.
-        const instantRate = estimateInstantRate(animState);
-        if (instantRate > 0) {
-          lastInstantRate = instantRate;
-        }
-
-        // Store updated animation state (rate tracking, buffers)
-        animStateRef.current = animState;
+        animState = {
+          ...animState,
+          textBuffer: pending.textPending,
+          thinkingBuffer: pending.thinkingPending,
+        };
 
         // Step the animation — compute chars to display this frame.
         // Pass lastInstantRate (preserved during SSE gaps) for smooth playback.
         const animStep = stepAnimation(animState, config, lastInstantRate);
 
-        // Consume displayed characters from the buffer.
+        // Store updated state (rate tracking + consumed buffers)
         animStateRef.current = consumeFromBuffer(
           animState,
           animStep.textChars,

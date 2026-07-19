@@ -80,11 +80,36 @@ export function createInitialState(): AnimationState {
 }
 
 /**
+ * Compute the pending buffer lengths from cumulative text minus displayed.
+ *
+ * Pure buffer computation — does NOT touch rate tracking.
+ * Call this every animation frame to get current pending chars.
+ *
+ * @param newText - Full cumulative text from SSE (not a delta).
+ * @param newThinking - Full cumulative thinking from SSE (not a delta).
+ * @param displayedTextLength - Number of text characters already displayed.
+ * @param displayedThinkingLength - Number of thinking characters already displayed.
+ */
+export function computePending(
+  newText: string,
+  newThinking: string,
+  displayedTextLength: number,
+  displayedThinkingLength: number,
+): { textPending: string; thinkingPending: string } {
+  return {
+    textPending: newText.slice(displayedTextLength),
+    thinkingPending: newThinking.slice(displayedThinkingLength),
+  };
+}
+
+/**
  * Feed new characters into the buffer from an SSE update.
  *
- * This is called whenever a new SSE token/thinking event arrives.
- * It updates the rate tracking window and appends new characters
- * to the appropriate buffer.
+ * This is called ONLY when new SSE data arrives (cumulative chars changed).
+ * It updates the rate tracking window and sets the buffer.
+ *
+ * CRITICAL: Do NOT call this every animation frame — it shifts the rate
+ * tracking window and will poison the rate estimate with zero-delta frames.
  *
  * @param state - Current animation state.
  * @param newText - Full cumulative text from SSE (not a delta).

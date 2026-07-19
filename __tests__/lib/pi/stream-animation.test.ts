@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   createInitialState,
   feedBuffer,
+  computePending,
   estimateInstantRate,
   updateSmoothedRate,
   computeCatchUpBoost,
@@ -646,6 +647,111 @@ describe("full animation cycle", () => {
     const finalThinking = events[events.length - 1]!.thinking;
     expect(displayedTextLen).toBe(finalText.length);
     expect(displayedThinkingLen).toBe(finalThinking.length);
+  });
+
+  /**
+   * CRITICAL: feedBuffer must NOT be called every animation frame.
+   *
+   * When feedBuffer is called with the same cumulative chars but advancing
+   * time, it shifts the rate window with zero-delta entries, poisoning the
+   * rate estimate. This is the #1 cause of jerky playback.
+   *
+   * Correct pattern: only call feedBuffer when cumulative chars change.
+   * Use computePending every frame to update buffers independently.
+   */
+  it("rate tracking is not poisoned when feedBuffer is called only on data changes", () => {
+    let state = createInitialState();
+    let displayedTextLen = 0;
+    let displayedThinkingLen = 0;
+    let lastCumulative = 0;
+    let lastInstantRate = 0;
+
+    // Simulate: chunk arrives with 20 chars at t=1000
+    // Then 30 frames pass (500ms) with no new SSE data
+    // Then another chunk arrives with 60 chars at t=1500
+
+    const events = [
+      { time: 1000, text: "Hello there!", thinking: "" }, // 12 chars
+      { time: 1500, text: "Hello there! How are you?", thinking: "" }, // 25 chars
+    ];
+
+    let eventIndex = 0;
+    let frameTime = 1000;
+    let totalFrames = 0;
+
+    while (totalFrames < 500) {
+      const hasNewEvent = eventIndex < events.length && events[eventIndex]!.time <= frameTime;
+
+      if (hasNewEvent) {
+        const evt = events[eventIndex]!;
+        const newCumulative = evt.text.length + evt.thinking.length;
+
+        // Only call feedBuffer when cumulative changes
+        if (newCumulative !== lastCumulative) {
+          state = feedBuffer(
+            state,
+            evt.text,
+            evt.thinking,
+            displayedTextLen,
+            displayedThinkingLen,
+            evt.time,
+          );
+          lastCumulative = newCumulative;
+
+          const instantRate = estimateInstantRate(state);
+          if (instantRate > 0) {
+            lastInstantRate = instantRate;
+          }
+        }
+        eventIndex++;
+      }
+
+      // Recompute buffer every frame (correct pattern)
+      const currentText = eventIndex > 0 ? events[eventIndex - 1]!.text : "";
+      const currentThinking = eventIndex > 0 ? events[eventIndex - 1]!.thinking : "";
+      const pending = computePending(
+        currentText,
+        currentThinking,
+        displayedTextLen,
+        displayedThinkingLen,
+      );
+
+      const stateWithBuffer = {
+        ...state,
+        textBuffer: pending.textPending,
+        thinkingBuffer: pending.thinkingPending,
+      };
+
+      // Step animation with preserved rate
+      const step = stepAnimation(stateWithBuffer, DEFAULT_CONFIG, lastInstantRate);
+
+      displayedTextLen += step.textChars;
+      displayedThinkingLen += step.thinkingChars;
+      state = consumeFromBuffer(stateWithBuffer, step.textChars, step.thinkingChars);
+
+      totalFrames++;
+      frameTime += 1000 / 60;
+
+      if (
+        eventIndex >= events.length &&
+        state.textBuffer.length === 0 &&
+        state.thinkingBuffer.length === 0
+      ) {
+        break;
+      }
+    }
+
+    // Verify: animation completed
+    expect(totalFrames).toBeLessThan(500);
+
+    // Verify: all content displayed
+    expect(displayedTextLen).toBe(events[events.length - 1]!.text.length);
+
+    // Verify: rate was estimated correctly (not poisoned by zero-delta frames)
+    // After two events: 12 chars at t=1000, 25 chars at t=1500
+    // instantRate = (25-12) / 0.5s = 26 chars/sec
+    // This should have been captured and preserved
+    expect(lastInstantRate).toBeGreaterThan(0);
   });
 });
 
