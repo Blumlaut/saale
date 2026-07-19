@@ -262,12 +262,12 @@ export function stepAnimation(
   // Base speed from smoothed rate, with minimum fallback
   let charsPerFrame = Math.max(config.slowCharsPerFrame, smoothedRate / config.targetFps);
 
+  // Clamp to max to avoid "zipping" (before boost so catch-up can exceed it)
+  charsPerFrame = Math.min(charsPerFrame, config.maxCharsPerFrame);
+
   // Apply catch-up boost if buffer is growing
   const boost = computeCatchUpBoost(totalPending, config.catchUpThreshold, config.maxCatchUpBoost);
   charsPerFrame *= boost;
-
-  // Clamp to max to avoid "zipping"
-  charsPerFrame = Math.min(charsPerFrame, config.maxCharsPerFrame);
 
   // Clamp to available buffer
   charsPerFrame = Math.min(charsPerFrame, totalPending);
