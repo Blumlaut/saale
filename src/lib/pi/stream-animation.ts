@@ -29,11 +29,11 @@ export interface AnimationConfig {
 
 export const DEFAULT_CONFIG: AnimationConfig = {
   targetFps: 60,
-  slowCharsPerFrame: 1.5, // ~90 chars/sec — smooth minimum, no stalls
-  maxCharsPerFrame: 3.0, // higher cap for catch-up without zipping
-  catchUpThreshold: 30, // kick in sooner when buffer grows
+  slowCharsPerFrame: 0.4,
+  maxCharsPerFrame: 2.0,
+  catchUpThreshold: 50,
   maxCatchUpBoost: 2,
-  emaFactor: 0.3, // faster adaptation to rate changes
+  emaFactor: 0.2,
 };
 
 /** State tracked between animation frames. */
