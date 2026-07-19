@@ -224,9 +224,11 @@ describe("computeCatchUpBoost", () => {
     expect(computeCatchUpBoost(500, 50, 2)).toBe(2);
   });
 
-  it("scales smoothly between threshold and cap", () => {
-    // 100 pending, threshold 50 → excess 50 → boost = 1 + 50/100 = 1.5
-    expect(computeCatchUpBoost(100, 50, 2)).toBeCloseTo(1.5);
+  it("scales proportionally: buffer/threshold", () => {
+    // 100 pending, threshold 50 → 100/50 = 2.0 (capped at 2)
+    expect(computeCatchUpBoost(100, 50, 2)).toBeCloseTo(2);
+    // 75 pending, threshold 50 → 75/50 = 1.5
+    expect(computeCatchUpBoost(75, 50, 2)).toBeCloseTo(1.5);
   });
 });
 
