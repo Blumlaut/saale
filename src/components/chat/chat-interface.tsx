@@ -438,9 +438,10 @@ export function ChatInterface({
         // Pass lastInstantRate (preserved during SSE gaps) for smooth playback.
         const animStep = stepAnimation(animState, config, lastInstantRate);
 
-        // Store updated state (rate tracking + consumed buffers)
+        // Store updated state — use animStep.state to preserve charsAccum,
+        // then consume the displayed chars from the buffer.
         animStateRef.current = consumeFromBuffer(
-          animState,
+          animStep.state,
           animStep.textChars,
           animStep.thinkingChars,
         );
