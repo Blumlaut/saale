@@ -15,25 +15,25 @@
 export interface AnimationConfig {
   /** Target frames per second (default: 60). */
   targetFps: number;
-  /** Minimum chars displayed per frame when caught up (default: 0.4). */
-  slowCharsPerFrame: number;
-  /** Maximum chars displayed per frame to avoid "zipping" (default: 2.0). */
-  maxCharsPerFrame: number;
-  /** Buffer size threshold to trigger catch-up (default: 50). */
+  /** Minimum display rate in chars/sec when caught up (default: 8). */
+  slowCharsPerSec: number;
+  /** Maximum display rate in chars/sec to avoid "zipping" (default: 16). */
+  maxCharsPerSec: number;
+  /** Buffer size threshold to trigger catch-up (default: 80). */
   catchUpThreshold: number;
-  /** Maximum catch-up boost multiplier (default: 2). */
+  /** Maximum catch-up boost multiplier (default: 1.5). */
   maxCatchUpBoost: number;
-  /** EMA smoothing factor for rate estimation (default: 0.2). */
+  /** EMA smoothing factor for rate estimation (default: 0.15). */
   emaFactor: number;
 }
 
 export const DEFAULT_CONFIG: AnimationConfig = {
   targetFps: 60,
-  slowCharsPerFrame: 0.4,
-  maxCharsPerFrame: 2.0,
-  catchUpThreshold: 50,
-  maxCatchUpBoost: 2,
-  emaFactor: 0.2,
+  slowCharsPerSec: 8, // comfortable reading pace
+  maxCharsPerSec: 16, // upper bound — still feels like typing
+  catchUpThreshold: 80,
+  maxCatchUpBoost: 1.5,
+  emaFactor: 0.15,
 };
 
 /** State tracked between animation frames. */
@@ -50,6 +50,10 @@ export interface AnimationState {
   /** Last measurement point for rate calculation. */
   rateLastChars: number;
   rateLastTime: number;
+  /** Fractional accumulator for sub-frame char display (text). */
+  textAccum: number;
+  /** Fractional accumulator for sub-frame char display (thinking). */
+  thinkingAccum: number;
 }
 
 /** Result of one animation step. */
@@ -76,6 +80,8 @@ export function createInitialState(): AnimationState {
     rateStartTime: 0,
     rateLastChars: 0,
     rateLastTime: 0,
+    textAccum: 0,
+    thinkingAccum: 0,
   };
 }
 
@@ -222,14 +228,16 @@ export function computeCatchUpBoost(
 /**
  * Perform one step of the animation loop.
  *
- * Given the current buffer state and configuration, this computes
- * how many characters to display this frame and returns the updated state.
+ * Uses fractional accumulation to achieve smooth sub-char-per-frame rates.
+ * This avoids the "1 char/frame minimum" problem where Math.ceil forces
+ * a minimum of 60 chars/sec regardless of config.
  *
  * The algorithm:
- * 1. Calculate chars/frame from smoothed rate (or minimum rate)
+ * 1. Calculate target chars/sec from smoothed rate (or minimum rate)
  * 2. Apply catch-up boost if buffer is large
- * 3. Clamp to max chars/frame and available buffer
- * 4. Split proportionally between text and thinking buffers
+ * 3. Clamp to max chars/sec
+ * 4. Convert to chars/frame and accumulate fractionally
+ * 5. When accumulator >= 1, display a character and carry the remainder
  *
  * @param state - Current animation state.
  * @param config - Animation configuration.
@@ -248,7 +256,7 @@ export function stepAnimation(
     return {
       textChars: 0,
       thinkingChars: 0,
-      state,
+      state: { ...state, textAccum: 0, thinkingAccum: 0 },
       hasPending: false,
     };
   }
@@ -256,46 +264,44 @@ export function stepAnimation(
   // Update smoothed rate (preserves current rate when no new SSE data)
   const smoothedRate = updateSmoothedRate(state.smoothedRate, newInstantRate, config.emaFactor);
 
-  // Base speed from smoothed rate, with minimum fallback
-  let charsPerFrame = Math.max(config.slowCharsPerFrame, smoothedRate / config.targetFps);
+  // Base speed from smoothed rate, with minimum fallback (chars/sec)
+  let charsPerSec = Math.max(config.slowCharsPerSec, smoothedRate);
 
   // Apply catch-up boost if buffer is growing
   const boost = computeCatchUpBoost(totalPending, config.catchUpThreshold, config.maxCatchUpBoost);
-  charsPerFrame *= boost;
+  charsPerSec *= boost;
 
   // Clamp to max to avoid "zipping"
-  charsPerFrame = Math.min(charsPerFrame, config.maxCharsPerFrame);
+  charsPerSec = Math.min(charsPerSec, config.maxCharsPerSec);
 
-  // Clamp to available buffer
-  charsPerFrame = Math.min(charsPerFrame, totalPending);
+  // Convert to chars/frame
+  const charsPerFrame = charsPerSec / config.targetFps;
 
-  // Split proportionally between text and thinking.
-  // CRITICAL: use Math.ceil for the primary buffer to guarantee progress.
-  // Math.round(0.4) = 0 would stall the animation entirely during SSE gaps.
+  // Split proportionally between text and thinking
   const textRatio = totalPending > 0 ? textPending / totalPending : 0.5;
-  const textChars = Math.min(textPending, Math.max(0, Math.ceil(charsPerFrame * textRatio)));
-  const thinkingChars = Math.min(
-    thinkingPending,
-    Math.max(0, Math.ceil(charsPerFrame - textChars)),
-  );
+  const textCharsPerFrame = charsPerFrame * textRatio;
+  const thinkingCharsPerFrame = charsPerFrame - textCharsPerFrame;
 
-  // Safety: ensure at least 1 char displayed when there's pending content.
-  // This prevents the animation from stalling due to rounding.
-  if (textChars + thinkingChars === 0 && totalPending > 0) {
-    if (textPending > 0) {
-      return {
-        textChars: 1,
-        thinkingChars: 0,
-        state: { ...state, smoothedRate },
-        hasPending: true,
-      };
-    }
-    return {
-      textChars: 0,
-      thinkingChars: 1,
-      state: { ...state, smoothedRate },
-      hasPending: true,
-    };
+  // Accumulate fractionally — only display when accumulator >= 1
+  let textAccum = state.textAccum + textCharsPerFrame;
+  let thinkingAccum = state.thinkingAccum + thinkingCharsPerFrame;
+
+  let textChars = 0;
+  let thinkingChars = 0;
+
+  if (textAccum >= 1 && textPending > 0) {
+    textChars = Math.min(Math.floor(textAccum), textPending);
+    textAccum -= textChars;
+  } else {
+    // Reset accum if no text pending (avoid stale accumulation)
+    if (textPending === 0) textAccum = 0;
+  }
+
+  if (thinkingAccum >= 1 && thinkingPending > 0) {
+    thinkingChars = Math.min(Math.floor(thinkingAccum), thinkingPending);
+    thinkingAccum -= thinkingChars;
+  } else {
+    if (thinkingPending === 0) thinkingAccum = 0;
   }
 
   return {
@@ -304,6 +310,8 @@ export function stepAnimation(
     state: {
       ...state,
       smoothedRate,
+      textAccum,
+      thinkingAccum,
     },
     hasPending: true,
   };
