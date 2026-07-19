@@ -218,8 +218,10 @@ export function computeCatchUpBoost(
   maxBoost: number,
 ): number {
   if (totalPending <= threshold) return 1;
-  const excess = totalPending - threshold;
-  return Math.min(maxBoost, 1 + excess / 100);
+  // Scale proportionally: at 2× threshold → 2× speed, etc.
+  // This keeps the buffer bounded — if it grows beyond threshold,
+  // display speed increases to drain it.
+  return Math.min(maxBoost, totalPending / threshold);
 }
 
 /**
