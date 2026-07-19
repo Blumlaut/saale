@@ -364,6 +364,8 @@ export function ChatInterface({
     rateStartTime: 0,
     rateLastChars: 0,
     rateLastTime: 0,
+    textAccum: 0,
+    thinkingAccum: 0,
   });
 
   useEffect(() => {
@@ -380,6 +382,8 @@ export function ChatInterface({
         rateStartTime: 0,
         rateLastChars: 0,
         rateLastTime: 0,
+        textAccum: 0,
+        thinkingAccum: 0,
       };
       return;
     }
