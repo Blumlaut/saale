@@ -252,15 +252,15 @@ describe("stepAnimation", () => {
     };
     const result = stepAnimation(state, config, 0);
 
-    // Minimum: 1.5 chars/frame, ceil to 2
+    // Minimum: 0.4 chars/frame, rounded to at least 0
     expect(result.textChars).toBeGreaterThanOrEqual(0);
-    expect(result.textChars).toBeLessThanOrEqual(2);
+    expect(result.textChars).toBeLessThanOrEqual(1);
     expect(result.hasPending).toBe(true);
   });
 
   it("scales chars per frame from smoothed rate", () => {
     // smoothedRate = 120 chars/sec, targetFps = 60 → 2 chars/frame
-    // Capped at maxCharsPerFrame = 3.0
+    // But capped at maxCharsPerFrame = 2.0
     const state: AnimationState = {
       ...createInitialState(),
       textBuffer: "A".repeat(100),
@@ -268,12 +268,12 @@ describe("stepAnimation", () => {
     };
     const result = stepAnimation(state, config, 0);
 
-    expect(result.textChars).toBeLessThanOrEqual(3);
+    expect(result.textChars).toBeLessThanOrEqual(2);
     expect(result.textChars).toBeGreaterThan(0);
   });
 
   it("clamps to max chars per frame", () => {
-    // smoothedRate = 600 chars/sec → 10 chars/frame → capped at 3
+    // smoothedRate = 600 chars/sec → 10 chars/frame → capped at 2
     const state: AnimationState = {
       ...createInitialState(),
       textBuffer: "A".repeat(100),
@@ -281,21 +281,21 @@ describe("stepAnimation", () => {
     };
     const result = stepAnimation(state, config, 0);
 
-    expect(result.textChars).toBeLessThanOrEqual(3);
+    expect(result.textChars).toBeLessThanOrEqual(2);
   });
 
   it("applies catch-up boost when buffer exceeds threshold", () => {
     const state: AnimationState = {
       ...createInitialState(),
-      textBuffer: "A".repeat(200), // well above threshold of 30
+      textBuffer: "A".repeat(200), // well above threshold of 50
       smoothedRate: 60, // 1 char/frame base
     };
     const result = stepAnimation(state, config, 0);
 
-    // With 200 chars pending, boost = min(2, 1 + 170/100) = 2
-    // base = max(1.5, 60/60) = 1.5, ceil(1.5 * 2) = 3, capped at 3
+    // With 200 chars pending, boost = min(2, 1 + 150/100) = 2
+    // So charsPerFrame = 1 * 2 = 2 (capped at max)
     expect(result.textChars).toBeGreaterThanOrEqual(1);
-    expect(result.textChars).toBeLessThanOrEqual(3);
+    expect(result.textChars).toBeLessThanOrEqual(2);
   });
 
   it("splits proportionally between text and thinking", () => {
@@ -334,8 +334,8 @@ describe("stepAnimation", () => {
     };
     const result = stepAnimation(state, config, 100);
 
-    // EMA: 50 * 0.7 + 100 * 0.3 = 65
-    expect(result.state.smoothedRate).toBe(65);
+    // EMA: 50 * 0.8 + 100 * 0.2 = 60
+    expect(result.state.smoothedRate).toBe(60);
   });
 
   it("preserves smoothed rate when no new SSE data (instantRate=0)", () => {
@@ -496,8 +496,8 @@ describe("full animation cycle", () => {
       }
     }
 
-    // With min rate of 1.5 chars/frame at 60fps = ~90 chars/sec minimum
-    // Over ~1 second (60 frames), should display all 30 chars quickly
+    // With min rate of 0.4 chars/frame at 60fps = 24 chars/sec minimum
+    // Over ~1 second (60 frames), should display at least 0.4 * 30 = 12 chars
     // (capped at 30 total available)
     expect(totalDisplayed).toBeGreaterThan(0);
     // Should have consumed all or most of the 30-char buffer
