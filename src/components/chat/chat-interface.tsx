@@ -366,6 +366,7 @@ export function ChatInterface({
   // Computes chars/sec from cumulative output over time, converts to chars/frame.
   // Slows to 1 char per 2 frames when caught up early to avoid stalling.
   const animFrameRef = useRef<number | null>(null);
+  const smoothedRateRef = useRef(0);
   // Track cumulative output for rate calculation (refs to avoid effect re-runs).
   const rateStartCharsRef = useRef(0);
   const rateStartTimeRef = useRef(0);
@@ -378,11 +379,13 @@ export function ChatInterface({
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = null;
       }
+      smoothedRateRef.current = 0;
       return;
     }
 
     const TARGET_FPS = 60;
-    const SLOW_CHARS_PER_FRAME = 0.5; // 1 char per 2 frames
+    const SLOW_CHARS_PER_FRAME = 0.4; // Slightly slower base rate
+    const MAX_CHARS_PER_FRAME = 2.0; // Cap to avoid "zipping"
 
     const step = () => {
       setStreaming((prev) => {
@@ -395,21 +398,33 @@ export function ChatInterface({
           return prev;
         }
 
-        // Calculate LLM output rate from tracked history.
-        // Uses the last two SSE updates for a rolling rate.
-        let charsPerFrame: number;
+        // Calculate instantaneous rate from last two SSE updates.
+        let instantRate = 0;
         if (rateLastTimeRef.current > 0 && rateStartTimeRef.current > 0) {
           const charsDelta = rateLastCharsRef.current - rateStartCharsRef.current;
           const timeDelta = rateLastTimeRef.current - rateStartTimeRef.current;
           if (timeDelta > 0) {
-            const charsPerSec = charsDelta / (timeDelta / 1000);
-            charsPerFrame = Math.max(SLOW_CHARS_PER_FRAME, charsPerSec / TARGET_FPS);
-          } else {
-            charsPerFrame = 1;
+            instantRate = charsDelta / (timeDelta / 1000);
           }
-        } else {
-          charsPerFrame = 1;
         }
+
+        // Update smoothed rate using EMA (Exponential Moving Average).
+        // This prevents the "jerky" transitions when chunk sizes vary.
+        if (instantRate > 0) {
+          smoothedRateRef.current = smoothedRateRef.current * 0.8 + instantRate * 0.2;
+        }
+
+        // Base speed from smoothed rate.
+        let charsPerFrame = Math.max(SLOW_CHARS_PER_FRAME, smoothedRateRef.current / TARGET_FPS);
+
+        // Catch-up mechanism: if buffer is growing, speed up proportionally.
+        if (totalPending > 50) {
+          const boost = Math.min(2, 1 + (totalPending - 50) / 100);
+          charsPerFrame *= boost;
+        }
+
+        // Clamp to a reasonable maximum to ensure it always feels like "typing".
+        charsPerFrame = Math.min(charsPerFrame, MAX_CHARS_PER_FRAME);
 
         // Clamp to pending
         charsPerFrame = Math.min(charsPerFrame, totalPending);
