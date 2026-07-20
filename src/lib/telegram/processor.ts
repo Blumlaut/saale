@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { sendTelegramMessage, sendTypingIndicator } from "./client";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
+import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import path from "path";
 
 /** Uploads directory for session storage */
@@ -61,7 +62,14 @@ export async function processTelegramMessage(params: {
     return;
   }
 
-  // 5. Create or resume Pi session and process the message
+  // 5. Resolve tool config from user settings
+  const settings = await prisma.appSettings.findUnique({
+    where: { userId },
+    select: { defaultToolConfig: true },
+  });
+  const toolConfig = (settings?.defaultToolConfig ?? DEFAULT_TOOL_CONFIG) as ToolConfig;
+
+  // 6. Create or resume Pi session and process the message
   try {
     const sessionDir = getSessionDir(userId, sessionId);
     const { session } = await createPersistentSession({
@@ -69,13 +77,24 @@ export async function processTelegramMessage(params: {
       sessionId,
       sessionDir,
       customTools: [],
+      toolConfig,
       modelProvider: model.provider,
       modelName: model.name,
       thinkingLevel: "off",
     });
 
-    // Set Telegram-specific system prompt
-    session.agent.state.systemPrompt = TELEGRAM_SYSTEM_PROMPT;
+    // Build system prompt with tool awareness
+    const terminalInstruction =
+      toolConfig.terminal === true
+        ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available."
+        : "";
+    const memoryInstruction =
+      toolConfig.memory !== false
+        ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
+        : "";
+
+    session.agent.state.systemPrompt =
+      TELEGRAM_SYSTEM_PROMPT + terminalInstruction + memoryInstruction;
 
     // Collect the full response
     let fullResponse = "";
