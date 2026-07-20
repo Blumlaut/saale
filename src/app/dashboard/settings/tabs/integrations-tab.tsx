@@ -58,7 +58,7 @@ import {
 interface TelegramAccount {
   id: string;
   enabled: boolean;
-  botId: number | null;
+  botId: string | null;
   botUsername: string | null;
   whitelistCount: number;
   createdAt: string;

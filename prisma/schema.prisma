@@ -558,7 +558,7 @@ model TelegramAccount {
   userId          String
   encryptedToken  String              @db.Text // encrypted bot token
   enabled         Boolean             @default(true)
-  botId           Int?                // numeric bot ID from getMe
+  botId           BigInt?             // numeric bot ID from getMe
   botUsername     String?             // @username (without @)
   webhookSecret   String              // random secret for webhook verification
   whitelistedUsers TelegramWhitelist[]
