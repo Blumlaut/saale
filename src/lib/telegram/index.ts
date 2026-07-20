@@ -2,6 +2,7 @@ export {
   createBot,
   validateBotToken,
   registerWebhook,
+  registerAllWebhooks,
   deleteWebhook,
   findAccountByWebhookSecret,
   buildWebhookUrl,

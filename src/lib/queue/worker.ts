@@ -3,6 +3,7 @@ import "dotenv/config";
 import type { Job, Processor } from "bullmq";
 import { createWorker, getQueue, scheduleAllJobs } from "@/lib/queue";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
+import { registerAllWebhooks } from "@/lib/telegram";
 
 /** How often to scan for orphaned image files (30 min) */
 const ORPHAN_CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
@@ -115,6 +116,7 @@ async function main() {
 
   await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
   await retryUntilSuccess("Schedule orphan cleanup", scheduleOrphanCleanup);
+  await retryUntilSuccess("Register Telegram webhooks", registerAllWebhooks);
 
   process.on("SIGINT", async () => {
     console.log("[worker] Shutting down...");
