@@ -36,10 +36,11 @@ export function createBot(encryptedToken: string): Bot<Context> {
 
 /**
  * Validate a bot token by calling getMe().
+ * Accepts a plaintext token (called before encryption in the save flow).
  * Returns bot info if valid, throws if invalid.
  */
-export async function validateBotToken(encryptedToken: string) {
-  const bot = createBot(encryptedToken);
+export async function validateBotToken(botToken: string) {
+  const bot = new Bot(botToken);
   const me = await bot.api.getMe();
 
   if (!me.is_bot) {
