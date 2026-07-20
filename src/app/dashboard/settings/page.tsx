@@ -15,6 +15,7 @@ import {
   Wrench,
   Brain,
   Shield,
+  Plug,
 } from "lucide-react";
 import { AccountTab } from "./tabs/account-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
@@ -24,6 +25,7 @@ import { CalendarTab } from "./tabs/calendar-tab";
 import { AppearanceTab } from "./tabs/appearance-tab";
 import { ToolsTab } from "./tabs/tools-tab";
 import { MemoriesTab } from "./tabs/memories-tab";
+import { IntegrationsTab } from "./tabs/integrations-tab";
 import type { UserSettings } from "./types";
 
 export default function SettingsPage() {
@@ -81,7 +83,7 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight md:text-2xl">Settings</h1>
             <p className="text-muted-foreground text-xs md:text-sm">
-              Configure your AI models, email accounts, and preferences
+              Configure your AI models, integrations, email accounts, and preferences
             </p>
           </div>
         </div>
@@ -116,6 +118,10 @@ export default function SettingsPage() {
               <TabsTrigger value="account" className="gap-2">
                 <Shield className="h-4 w-4" />
                 Account
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="gap-2">
+                <Plug className="h-4 w-4" />
+                Integrations
               </TabsTrigger>
               <TabsTrigger value="tools" className="gap-2">
                 <Wrench className="h-4 w-4" />
@@ -162,6 +168,10 @@ export default function SettingsPage() {
 
           <TabsContent value="account" className="space-y-6">
             <AccountTab />
+          </TabsContent>
+
+          <TabsContent value="integrations" className="space-y-6">
+            <IntegrationsTab />
           </TabsContent>
 
           <TabsContent value="tools" className="space-y-6">
