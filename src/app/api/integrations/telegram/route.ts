@@ -36,7 +36,7 @@ export async function GET() {
     account: {
       id: account.id,
       enabled: account.enabled,
-      botId: account.botId,
+      botId: account.botId?.toString() ?? null,
       botUsername: account.botUsername,
       whitelistCount: account._count.whitelistedUsers,
       createdAt: account.createdAt.toISOString(),
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       account: {
         id: account.id,
         enabled: account.enabled,
-        botId: account.botId,
+        botId: account.botId?.toString() ?? null,
         botUsername: account.botUsername,
         createdAt: account.createdAt.toISOString(),
         updatedAt: account.updatedAt.toISOString(),
@@ -175,7 +175,7 @@ export async function PATCH(request: NextRequest) {
     account: {
       id: updated.id,
       enabled: updated.enabled,
-      botId: updated.botId,
+      botId: updated.botId?.toString() ?? null,
       botUsername: updated.botUsername,
       updatedAt: updated.updatedAt.toISOString(),
     },
