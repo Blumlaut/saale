@@ -9,7 +9,7 @@ services:
       - uploads_data:/app/uploads
     environment:
       - NODE_ENV=development
-    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && next dev --turbopack --port 3000"
+    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npx next dev --turbopack --port 3000"
 
   worker:
     build:
