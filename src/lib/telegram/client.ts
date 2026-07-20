@@ -84,6 +84,33 @@ export async function deleteWebhook(encryptedToken: string): Promise<boolean> {
 }
 
 /**
+ * Re-register webhooks for all enabled Telegram accounts.
+ * Called on server startup to ensure webhooks are active after restarts.
+ */
+export async function registerAllWebhooks(): Promise<void> {
+  const accounts = await prisma.telegramAccount.findMany({
+    where: { enabled: true },
+    select: {
+      id: true,
+      encryptedToken: true,
+      webhookSecret: true,
+    },
+  });
+
+  for (const account of accounts) {
+    try {
+      await registerWebhook(account.encryptedToken, account.id, account.webhookSecret);
+    } catch (err) {
+      console.error(`Failed to register webhook for account ${account.id}:`, err);
+    }
+  }
+
+  if (accounts.length > 0) {
+    // Logged by caller (worker startup)
+  }
+}
+
+/**
  * Look up a TelegramAccount by its webhook secret.
  * Used by the webhook handler to route incoming updates to the correct account.
  */
