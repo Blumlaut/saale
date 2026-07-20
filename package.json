@@ -63,6 +63,7 @@
     "dompurify": "^3.4.9",
     "dotenv": "^17.4.2",
     "eslint-config-next": "^16.2.9",
+    "grammy": "^1.45.1",
     "ical": "^0.8.0",
     "ical-generator": "^11.0.0",
     "imapflow": "^1.4.0",
