@@ -147,8 +147,15 @@ export async function processTelegramMessage(params: {
   }
 }
 
+/** Telegram chats expire after this many ms of inactivity (12 hours) */
+const TELEGRAM_CHAT_EXPIRY_MS = 12 * 60 * 60 * 1000;
+
 /**
  * Find or create the TelegramChat record and its linked ChatSession.
+ * Creates a new session if:
+ * - No TelegramChat exists yet
+ * - The linked ChatSession was deleted
+ * - The session has been inactive for 12+ hours
  */
 async function upsertTelegramChat(
   userId: string,
@@ -163,7 +170,7 @@ async function upsertTelegramChat(
     throw new Error("Telegram account not found");
   }
 
-  // Find or create the TelegramChat
+  // Find existing TelegramChat
   let tgChat = await prisma.telegramChat.findUnique({
     where: {
       telegramAccountId_telegramChatId: {
@@ -173,11 +180,19 @@ async function upsertTelegramChat(
     },
   });
 
-  if (!tgChat) {
-    // Create a new ChatSession for this Telegram conversation
+  let needsNewSession = !tgChat;
+
+  if (tgChat) {
+    const session = await prisma.chatSession.findUnique({ where: { id: tgChat.sessionId } });
+    // Session was deleted or expired (12h inactivity)
+    needsNewSession =
+      session == null || session.updatedAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
+  }
+
+  if (needsNewSession) {
     const sessionId = crypto.randomUUID();
 
-    const chatSession = await prisma.chatSession.create({
+    await prisma.chatSession.create({
       data: {
         id: sessionId,
         userId,
@@ -186,17 +201,27 @@ async function upsertTelegramChat(
       },
     });
 
-    tgChat = await prisma.telegramChat.create({
-      data: {
+    tgChat = await prisma.telegramChat.upsert({
+      where: {
+        telegramAccountId_telegramChatId: {
+          telegramAccountId: account.id,
+          telegramChatId,
+        },
+      },
+      create: {
         telegramAccountId: account.id,
         telegramChatId,
         chatType: "private",
-        sessionId: chatSession.id,
+        sessionId,
+      },
+      update: {
+        sessionId,
       },
     });
   }
 
-  return { sessionId: tgChat.sessionId };
+  // tgChat is non-null here: if it was null, needsNewSession would be true and upsert would have run
+  return { sessionId: tgChat!.sessionId };
 }
 
 /**
