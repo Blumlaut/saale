@@ -6,7 +6,7 @@
     "dev": "next dev --turbopack --port 3630",
     "dev:all": "sh -c 'npx prisma generate && npx prisma db push --accept-data-loss && HOSTNAME=0.0.0.0 npm run worker:dev & HOSTNAME=0.0.0.0 npm run dev'",
     "build": "next build",
-    "build:worker": "npx esbuild src/lib/queue/worker.ts --bundle --platform=node --packages=external --outdir=dist --format=cjs --target=node25",
+    "build:worker": "npx esbuild src/lib/queue/worker.ts --bundle --platform=node --packages=external --outfile=dist/worker.mjs --format=esm --target=node25",
     "worker:dev": "tsx --watch src/lib/queue/worker.ts",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
