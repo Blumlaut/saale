@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { requireAdmin } from "../../settings/auth";
 import { fetchOpenAIModels } from "@/lib/pi/models";
 
@@ -35,19 +35,21 @@ export async function GET() {
     select: { provider: true, encryptedKey: true, baseUrl: true },
   });
 
-  const authStorage = AuthStorage.inMemory();
+  // Create ModelRuntime (uses in-memory credential store by default)
+  const modelRuntime = await ModelRuntime.create();
+
+  // Set runtime API keys
   for (const key of globalKeys) {
     try {
       const decryptedKey = decrypt(key.encryptedKey);
       if (decryptedKey) {
-        authStorage.setRuntimeApiKey(key.provider, decryptedKey);
+        await modelRuntime.setRuntimeApiKey(key.provider, decryptedKey);
       }
     } catch (err) {
       console.error(`Failed to decrypt key for provider ${key.provider}:`, err);
     }
   }
 
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
   const discoveredModels: Array<{ provider: string; id: string; name: string }> = [];
 
   for (const key of globalKeys) {
@@ -60,7 +62,7 @@ export async function GET() {
       try {
         if (modelIds.length > 0) {
           const apiKey = decryptedKey || "placeholder";
-          modelRegistry.registerProvider("custom", {
+          modelRuntime.registerProvider("custom", {
             baseUrl,
             apiKey,
             api: "openai-completions",
@@ -80,7 +82,7 @@ export async function GET() {
             discoveredModels.push({ provider: "custom", id: m, name: m });
           }
         } else {
-          modelRegistry.registerProvider("custom", {
+          modelRuntime.registerProvider("custom", {
             baseUrl,
             apiKey: decryptedKey,
             api: "openai-completions",
@@ -98,7 +100,7 @@ export async function GET() {
       if (providerBaseUrl) {
         const modelIds = await fetchOpenAIModels(providerBaseUrl, decryptedKey);
         if (modelIds.length > 0) {
-          modelRegistry.registerProvider(key.provider, {
+          modelRuntime.registerProvider(key.provider, {
             baseUrl: providerBaseUrl,
             apiKey: decryptedKey || "placeholder",
             api: "openai-completions",
@@ -119,7 +121,7 @@ export async function GET() {
   }
 
   // Merge: start with built-in available models, then add discovered custom models
-  const available = modelRegistry.getAvailable();
+  const available = modelRuntime.getAvailableSnapshot();
   const allModels = available.map((m) => ({
     provider: m.provider,
     id: m.id,
@@ -151,25 +153,9 @@ export async function GET() {
     });
   }
 
-  const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-    anthropic: "Anthropic",
-    openai: "OpenAI",
-    google: "Google",
-    deepseek: "DeepSeek",
-    xai: "xAI (Grok)",
-    groq: "Groq",
-    cerebras: "Cerebras",
-    openrouter: "OpenRouter",
-    mistral: "Mistral",
-    together: "Together AI",
-    fireworks: "Fireworks",
-    huggingface: "Hugging Face",
-    custom: "Custom",
-  };
-
   const providers = Array.from(providerSet).map((id) => ({
     id,
-    name: PROVIDER_DISPLAY_NAMES[id] ?? id,
+    name: modelRuntime.getProvider(id)?.name ?? id,
     modelCount: (models[id] ?? []).length,
   }));
 

@@ -14,7 +14,7 @@ import {
 import { createTerminalOperations } from "@/lib/terminal/operations";
 import { getTerminalHomeDir } from "@/lib/terminal/client";
 import { getGitHubEnv } from "@/lib/github";
-import { buildModelRegistry } from "./models";
+import { buildModelRuntime } from "./models";
 import { resolveTools } from "./tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-categories";
 
@@ -76,7 +76,7 @@ export async function createTerminalScopedTools(
 }
 
 /**
- * Build the model registry and resolve tools for a user.
+ * Build the model runtime and resolve tools for a user.
  * Shared between createPiSession and createPersistentSession.
  */
 export async function buildSessionDeps(options: {
@@ -87,7 +87,7 @@ export async function buildSessionDeps(options: {
   modelProvider: string | undefined;
   modelName: string | undefined;
 }) {
-  const { modelRegistry, authStorage } = await buildModelRegistry(options.userId);
+  const { modelRuntime } = await buildModelRuntime(options.userId);
 
   const enabled = resolveToolConfig(options.toolConfig);
   const allCustomTools: ToolDefinition[] = [...options.customTools];
@@ -99,10 +99,10 @@ export async function buildSessionDeps(options: {
 
   let model;
   if (options.modelProvider && options.modelName) {
-    model = modelRegistry.find(options.modelProvider, options.modelName);
+    model = modelRuntime.getModel(options.modelProvider, options.modelName);
   }
 
-  return { modelRegistry, authStorage, allCustomTools, model };
+  return { modelRuntime, allCustomTools, model };
 }
 
 /**
@@ -123,8 +123,8 @@ export async function createPiSession(options: {
   // Generate a session ID for open-terminal cwd persistence
   const sessionId = crypto.randomUUID();
 
-  // Build shared dependencies (model registry, tools, model resolution)
-  const { modelRegistry, authStorage, allCustomTools, model } = await buildSessionDeps({
+  // Build shared dependencies (model runtime, tools, model resolution)
+  const { modelRuntime, allCustomTools, model } = await buildSessionDeps({
     userId: options.userId,
     sessionId,
     customTools: options.customTools,
@@ -135,13 +135,13 @@ export async function createPiSession(options: {
 
   const result = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
     thinkingLevel:
-      (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh") ?? "off",
+      (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ??
+      "off",
   });
 
   return result;

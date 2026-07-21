@@ -30,9 +30,9 @@ vi.mock("@/lib/queue", () => ({
   addJobRun: vi.fn(),
 }));
 
-// Mock buildModelRegistry
+// Mock buildModelRuntime
 vi.mock("@/lib/pi/models", () => ({
-  buildModelRegistry: vi.fn(),
+  buildModelRuntime: vi.fn(),
 }));
 
 // Import mocks for assertions
@@ -95,9 +95,8 @@ describe("createJobTools", () => {
 
   describe("model_list", () => {
     it("returns models grouped by provider", async () => {
-      vi.mocked(models.buildModelRegistry).mockResolvedValue({
-        modelRegistry: {} as never,
-        authStorage: {} as never,
+      vi.mocked(models.buildModelRuntime).mockResolvedValue({
+        modelRuntime: {} as never,
         models: [
           { provider: "anthropic", id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
           { provider: "anthropic", id: "claude-opus-4-20250514", name: "Claude Opus 4" },
@@ -133,9 +132,8 @@ describe("createJobTools", () => {
     });
 
     it("returns null defaults when no settings exist", async () => {
-      vi.mocked(models.buildModelRegistry).mockResolvedValue({
-        modelRegistry: {} as never,
-        authStorage: {} as never,
+      vi.mocked(models.buildModelRuntime).mockResolvedValue({
+        modelRuntime: {} as never,
         models: [],
       });
 
@@ -151,9 +149,8 @@ describe("createJobTools", () => {
     });
 
     it("returns null for jobs default when no purpose override", async () => {
-      vi.mocked(models.buildModelRegistry).mockResolvedValue({
-        modelRegistry: {} as never,
-        authStorage: {} as never,
+      vi.mocked(models.buildModelRuntime).mockResolvedValue({
+        modelRuntime: {} as never,
         models: [],
       });
 

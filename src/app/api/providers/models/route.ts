@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { buildModelRegistry } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
 
 /**
  * GET /api/providers/models — Returns available models based on user's configured providers.
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const searchParams = request.nextUrl.searchParams;
-  const { models, modelRegistry } = await buildModelRegistry(authResult.user.id);
+  const { models, modelRuntime } = await buildModelRuntime(authResult.user.id);
 
   // Load disabled models for this user
   const settings = await prisma.appSettings.findUnique({
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
   const providers = Object.keys(byProvider).map((p) => ({
     id: p,
-    name: modelRegistry.getProviderDisplayName(p),
+    name: modelRuntime.getProvider(p)?.name ?? p,
     modelCount: (byProvider[p] ?? []).length,
   }));
 

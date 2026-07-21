@@ -39,8 +39,8 @@ export async function createPersistentSession(options: {
   // Ensure session directory exists
   await fs.mkdir(options.sessionDir, { recursive: true });
 
-  // Build shared dependencies (model registry, tools, model resolution)
-  const { modelRegistry, authStorage, allCustomTools, model } = await buildSessionDeps({
+  // Build shared dependencies (model runtime, tools, model resolution)
+  const { modelRuntime, allCustomTools, model } = await buildSessionDeps({
     userId: options.userId,
     sessionId: options.sessionId,
     customTools: options.customTools,
@@ -67,13 +67,13 @@ export async function createPersistentSession(options: {
 
   const result = await createAgentSession({
     sessionManager, // File-based — entries persist to JSONL
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
     thinkingLevel:
-      (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh") ?? "off",
+      (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ??
+      "off",
   });
 
   return result;

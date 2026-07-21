@@ -7,7 +7,7 @@ import {
   SessionManager,
   type CreateAgentSessionResult,
 } from "@earendil-works/pi-coding-agent";
-import { buildModelRegistry } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 /**
@@ -57,15 +57,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
   }
 
-  // Build model registry with user's providers
-  const { modelRegistry, authStorage } = await buildModelRegistry(authResult.user.id);
+  // Build model runtime with user's providers
+  const { modelRuntime } = await buildModelRuntime(authResult.user.id);
 
   // Resolve model for email_draft purpose (purpose override → global default)
   const modelInfo = await resolveModelForPurpose(authResult.user.id, "email_draft");
 
   let model;
   if (modelInfo) {
-    model = modelRegistry.find(modelInfo.provider, modelInfo.name);
+    model = modelRuntime.getModel(modelInfo.provider, modelInfo.name);
   }
 
   if (!model) {
@@ -78,8 +78,7 @@ export async function POST(request: NextRequest) {
   // Create a lightweight agent session — no tools, no thinking, just text completion
   const result: CreateAgentSessionResult = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     noTools: "all",
     model,
     customTools: [],
