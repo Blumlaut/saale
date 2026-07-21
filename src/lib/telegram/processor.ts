@@ -64,8 +64,8 @@ export async function processTelegramMessage(params: {
     return;
   }
 
-  // 6. Load context from prior agent runs
-  const contextMessages = await loadRunContext(userId, telegramChatId);
+  // 6. Load context from prior chat messages
+  const contextMessages = await loadRunContext(sessionId);
 
   // 7. Build the effective prompt (context + current message)
   const effectivePrompt = buildPrompt(contextMessages, messageText);
@@ -221,42 +221,24 @@ async function ensureTelegramAgentDefinition(userId: string): Promise<{
 }
 
 /**
- * Load context messages from prior agent runs for this Telegram chat.
+ * Load context messages from the chat session for this Telegram chat.
+ *
+ * Loads from ChatMessage (which stores original user/assistant messages)
+ * instead of AgentRunMessage (which stores the assembled prompt with context
+ * already baked in — loading from there causes recursive duplication).
  */
 async function loadRunContext(
-  userId: string,
-  telegramChatId: bigint,
+  sessionId: string,
 ): Promise<Array<{ role: string; content: string }>> {
-  const runs = await prisma.agentRun.findMany({
-    where: { userId, telegramChatId },
+  const messages = await prisma.chatMessage.findMany({
+    where: { sessionId },
     orderBy: { createdAt: "desc" },
-    take: Math.ceil(CONTEXT_MESSAGE_COUNT / 2), // Roughly 2 messages per run
-    select: {
-      id: true,
-      prompt: true,
-    },
+    take: CONTEXT_MESSAGE_COUNT,
+    select: { role: true, content: true },
   });
 
-  const messages: Array<{ role: string; content: string }> = [];
-
-  // Load messages from runs in reverse chronological order
-  for (const run of runs) {
-    const runMessages = await prisma.agentRunMessage.findMany({
-      where: { runId: run.id },
-      orderBy: { createdAt: "desc" },
-      select: { role: true, content: true },
-    });
-
-    for (const msg of runMessages) {
-      messages.unshift({ role: msg.role, content: msg.content });
-    }
-
-    if (messages.length >= CONTEXT_MESSAGE_COUNT) {
-      break;
-    }
-  }
-
-  return messages.slice(-CONTEXT_MESSAGE_COUNT);
+  // Reverse to chronological order (oldest first) for natural conversation flow
+  return messages.reverse();
 }
 
 /**
