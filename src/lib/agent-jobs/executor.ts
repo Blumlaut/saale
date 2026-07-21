@@ -178,7 +178,7 @@ export async function executeAgentRun(
     terminal: false,
   } as Required<ToolConfig>;
 
-  const allCustomTools = resolveTools(userId, runId, resolvedToolConfig, {
+  const allCustomTools = await resolveTools(userId, runId, resolvedToolConfig, {
     createTerminalScopedTools: () => {
       throw new Error("Terminal tools are not available for agent jobs.");
     },
