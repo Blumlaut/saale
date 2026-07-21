@@ -1,14 +1,143 @@
+import fs from "fs/promises";
 import path from "path";
+import type { Bot, Context } from "grammy";
 import {
   createAgentSession,
   SessionManager,
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
+import type { ImageContent } from "@earendil-works/pi-ai/compat";
 import { prisma } from "@/lib/db";
-import { sendTelegramMessage, sendTypingIndicator } from "./client";
+import { createBot, sendTelegramMessage, sendTypingIndicator } from "./client";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
+
+/** Allowed MIME types that can be passed as images to the vision model */
+const IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+  "image/tiff",
+  "image/avif",
+]);
+
+/** Max file size for Telegram downloads (20MB per Telegram API limit) */
+const MAX_TELEGRAM_FILE_BYTES = 20 * 1024 * 1024;
+
+/** Uploads directory for storing downloaded Telegram files */
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
+
+/**
+ * File metadata extracted from a Telegram message (photo, document, etc.).
+ */
+export interface TelegramFileInfo {
+  /** File ID from Telegram (used to download) */
+  fileId: string;
+  /** Original file name (may be undefined for photos) */
+  fileName?: string | undefined;
+  /** MIME type (may be undefined for photos) */
+  mimeType?: string | undefined;
+  /** File size in bytes */
+  fileSize?: number | undefined;
+  /** Width of the media */
+  width?: number | undefined;
+  /** Height of the media */
+  height?: number | undefined;
+}
+
+/**
+ * Result of downloading and processing a Telegram file.
+ */
+interface ProcessedFile {
+  /** Base64-encoded image data (for image files) */
+  imageData?: ImageContent;
+  /** File path on disk (for document files) */
+  filePath?: string;
+  /** MIME type */
+  mimeType: string;
+  /** Original file name */
+  fileName: string;
+}
+
+/**
+ * Download a file from Telegram's CDN and process it.
+ *
+ * For image files: returns base64 data ready for the vision model.
+ * For document files: saves to disk and returns the file path.
+ */
+async function downloadAndProcessTelegramFile(
+  bot: Bot<Context>,
+  userId: string,
+  fileInfo: TelegramFileInfo,
+): Promise<ProcessedFile> {
+  // Get file info from Telegram API
+  const file = await bot.api.getFile(fileInfo.fileId);
+
+  // Download the file
+  const downloadUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
+  const response = await fetch(downloadUrl);
+
+  if (!response.ok) {
+    throw new Error(`Failed to download Telegram file: ${response.status} ${response.statusText}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  if (buffer.length > MAX_TELEGRAM_FILE_BYTES) {
+    throw new Error(`Telegram file too large: ${(buffer.length / 1024 / 1024).toFixed(1)}MB`);
+  }
+
+  const mimeType = fileInfo.mimeType ?? "application/octet-stream";
+  const fileName = fileInfo.fileName ?? `telegram_${file.file_id}.dat`;
+
+  // For image files, return as base64 for the vision model
+  if (IMAGE_MIME_TYPES.has(mimeType)) {
+    return {
+      imageData: {
+        type: "image",
+        data: buffer.toString("base64"),
+        mimeType,
+      },
+      mimeType,
+      fileName,
+    };
+  }
+
+  // For document files, save to disk
+  const userDir = path.join(UPLOADS_DIR, userId, "telegram_files");
+  await fs.mkdir(userDir, { recursive: true });
+
+  // Sanitize file name and ensure unique path
+  const safeName = path.basename(fileName.replace(/[^a-zA-Z0-9._-]/g, "_"));
+  const filePath = path.join(userDir, safeName);
+  await fs.writeFile(filePath, buffer);
+
+  return { filePath, mimeType, fileName };
+}
+
+/**
+ * Build a text description for a file attachment to include in the prompt.
+ */
+function buildFilePromptText(processedFile: ProcessedFile, caption: string | undefined): string {
+  const parts: string[] = [];
+
+  if (caption) {
+    parts.push(caption);
+  }
+
+  if (processedFile.imageData) {
+    parts.push(`[Image attached: ${processedFile.fileName} (${processedFile.mimeType})]`);
+  } else if (processedFile.filePath) {
+    parts.push(
+      `[File attached: ${processedFile.fileName} (${processedFile.mimeType}) at ${processedFile.filePath}]`,
+    );
+  }
+
+  return parts.join(" ");
+}
 
 /**
  * Default system prompt for Telegram-based interactions.
@@ -30,6 +159,10 @@ const TELEGRAM_AGENT_NAME = "Telegram Assistant";
  *
  * Uses a file-based persistent Pi session so the agent has full conversation
  * history across messages — no manual context assembly needed.
+ *
+ * Supports text messages, photos, and document files. Images are passed
+ * directly to the vision model; documents are saved to disk and referenced
+ * in the prompt.
  */
 export async function processTelegramMessage(params: {
   userId: string;
@@ -37,10 +170,20 @@ export async function processTelegramMessage(params: {
   telegramChatId: bigint;
   telegramUserId: bigint;
   messageText: string;
-  messageThreadId?: number;
-  replyToMessageId?: number;
+  messageCaption?: string | undefined;
+  fileInfo?: TelegramFileInfo | undefined;
+  messageThreadId?: number | undefined;
+  replyToMessageId?: number | undefined;
 }): Promise<void> {
-  const { userId, encryptedToken, telegramChatId, messageText, replyToMessageId } = params;
+  const {
+    userId,
+    encryptedToken,
+    telegramChatId,
+    messageText,
+    messageCaption,
+    fileInfo,
+    replyToMessageId,
+  } = params;
 
   // 1. Find or create the TelegramChat + ChatSession
   const { sessionId, telegramChatId: tgChatId } = await upsertTelegramChat(
@@ -49,16 +192,59 @@ export async function processTelegramMessage(params: {
     telegramChatId,
   );
 
-  // 2. Save the user message to the chat session (for WebUI visibility)
-  await saveUserMessage(sessionId, messageText);
+  // 2. Download and process any attached file
+  let processedFile: ProcessedFile | undefined;
+  let promptText = messageText || messageCaption || "";
 
-  // 3. Send typing indicator
+  if (fileInfo) {
+    const telegramBot = createBot(encryptedToken);
+
+    try {
+      processedFile = await downloadAndProcessTelegramFile(telegramBot, userId, fileInfo);
+    } catch (err) {
+      console.error(`Failed to download Telegram file:`, err);
+      // Continue without the file — the text/caption is still processed
+    }
+  }
+
+  // Build final prompt text (caption + file description for media messages)
+  if (processedFile) {
+    const filePromptText = buildFilePromptText(processedFile, messageCaption);
+    promptText = promptText ? `${promptText}\n${filePromptText}` : filePromptText;
+  }
+
+  // 3. Save the user message to the chat session (for WebUI visibility)
+  await saveUserMessage(sessionId, promptText);
+
+  // 4. Save attachment record if a file was processed
+  if (processedFile) {
+    const [userMessage] = await prisma.chatMessage.findMany({
+      where: { sessionId, role: "user" },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+    });
+
+    if (userMessage) {
+      await prisma.chatAttachment.create({
+        data: {
+          messageId: userMessage.id,
+          storageId: crypto.randomUUID(),
+          fileName: processedFile.fileName,
+          mimeType: processedFile.mimeType,
+          size: processedFile.imageData ? Math.ceil(processedFile.imageData.data.length * 0.75) : 0,
+          storagePath: processedFile.filePath ?? processedFile.fileName,
+        },
+      });
+    }
+  }
+
+  // 5. Send typing indicator
   sendTypingIndicator(encryptedToken, telegramChatId);
 
-  // 4. Ensure the Telegram agent definition exists
+  // 6. Ensure the Telegram agent definition exists
   const definition = await ensureTelegramAgentDefinition(userId);
 
-  // 5. Resolve model
+  // 7. Resolve model
   const model = await resolveUserModel(userId);
   if (!model) {
     await sendTelegramMessage(
@@ -72,13 +258,13 @@ export async function processTelegramMessage(params: {
 
   const modelId = definition.modelId ?? `${model.provider}:${model.name}`;
 
-  // 6. Create the AgentRun (for tracking in the dashboard)
+  // 8. Create the AgentRun (for tracking in the dashboard)
   const run = await prisma.agentRun.create({
     data: {
       definitionId: definition.id,
       userId,
       status: "pending",
-      prompt: messageText,
+      prompt: promptText,
       systemPrompt: definition.systemPrompt,
       modelId,
       outputChannel: "telegram",
@@ -87,7 +273,7 @@ export async function processTelegramMessage(params: {
     },
   });
 
-  // 7. Create or resume the persistent Pi session
+  // 9. Create or resume the persistent Pi session
   const sessionDir = path.join(
     process.env.UPLOADS_DIR ?? "./uploads",
     "pi_sessions",
@@ -133,7 +319,7 @@ export async function processTelegramMessage(params: {
 
   session.agent.state.systemPrompt = definition.systemPrompt ?? TELEGRAM_SYSTEM_PROMPT;
 
-  // 8. Subscribe to session events and send response via Telegram
+  // 10. Subscribe to session events and send response via Telegram
   let assistantText = "";
 
   try {
@@ -180,8 +366,9 @@ export async function processTelegramMessage(params: {
         }
       });
 
-      // Send the user message to the agent
-      session.agent.prompt(messageText).catch((err) => {
+      // Send the user message to the agent (with images if available)
+      const images = processedFile?.imageData ? [processedFile.imageData] : undefined;
+      session.agent.prompt(promptText, images).catch((err) => {
         clearTimeout(timer);
         unsubscribe();
         reject(err);
