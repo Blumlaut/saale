@@ -4,7 +4,7 @@ import {
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { buildModelRegistry } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 
@@ -166,9 +166,9 @@ export async function executeAgentRun(
     );
   }
 
-  // Build model registry and tools
-  const { modelRegistry, authStorage } = await buildModelRegistry(userId);
-  const model = modelRegistry.find(modelProvider, modelName);
+  // Build model runtime and tools
+  const { modelRuntime } = await buildModelRuntime(userId);
+  const model = modelRuntime.getModel(modelProvider, modelName);
 
   // Merge tool config with defaults — terminal is always disabled for agent jobs
   const rawToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
@@ -187,14 +187,19 @@ export async function executeAgentRun(
   // Create agent session
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
     thinkingLevel:
-      (definition.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh") ??
-      "off",
+      (definition.thinkingLevel as
+        | "off"
+        | "minimal"
+        | "low"
+        | "medium"
+        | "high"
+        | "xhigh"
+        | "max") ?? "off",
   });
 
   // Set system prompt

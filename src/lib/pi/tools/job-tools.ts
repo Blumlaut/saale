@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { getQueue, addJobRun } from "@/lib/queue";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
-import { buildModelRegistry } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
 
 /**
  * Create job tools with userId injection for user isolation.
@@ -501,7 +501,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
         "List all available AI models for this user. Use this to find valid model IDs before creating or updating jobs. Each model includes a 'modelId' field in 'provider:model' format that you can pass directly to job_create or job_update. Returns models grouped by provider, filtered by admin config.",
       parameters: Type.Object({}),
       execute: async (_toolCallId, _params) => {
-        const { models } = await buildModelRegistry(userId);
+        const { models } = await buildModelRuntime(userId);
 
         // Group by provider
         const byProvider = new Map<string, Array<{ id: string; name: string; modelId: string }>>();

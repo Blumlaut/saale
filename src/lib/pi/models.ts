@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { ModelRegistry, AuthStorage } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 interface ProviderModelConfig {
   enabled: boolean;
@@ -95,12 +95,12 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
 }
 
 /**
- * Build a fully-populated ModelRegistry for a user, with discovered models.
+ * Build a ModelRuntime for a user, with discovered models.
  * Merges global (admin) + user-scoped providers (user keys take priority).
- * Returns the registry, auth storage, and a flat list of models for UI select options.
+ * Returns the runtime and a flat list of models for UI select options.
  * Models are filtered by global admin config (if any).
  */
-export async function buildModelRegistry(userId: string) {
+export async function buildModelRuntime(userId: string) {
   const globalConfig = await getGlobalModelConfig();
 
   // Fetch global providers (userId = null)
@@ -128,19 +128,20 @@ export async function buildModelRegistry(userId: string) {
   }
   const storedKeys = Array.from(mergedMap.values());
 
-  const authStorage = AuthStorage.inMemory();
+  // Create ModelRuntime (uses in-memory credential store by default)
+  const modelRuntime = await ModelRuntime.create();
+
+  // Set runtime API keys on the model runtime
   for (const key of storedKeys) {
     try {
       const decryptedKey = decrypt(key.encryptedKey);
       if (decryptedKey) {
-        authStorage.setRuntimeApiKey(key.provider, decryptedKey);
+        await modelRuntime.setRuntimeApiKey(key.provider, decryptedKey);
       }
     } catch {
       // skip
     }
   }
-
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
 
   // Track discovered models for the flat list
   const discoveredModels: Array<{ provider: string; id: string; name: string }> = [];
@@ -156,7 +157,7 @@ export async function buildModelRegistry(userId: string) {
       try {
         if (modelIds.length > 0) {
           const apiKey = decryptedKey || "placeholder";
-          modelRegistry.registerProvider("custom", {
+          modelRuntime.registerProvider("custom", {
             baseUrl,
             apiKey,
             api: "openai-completions",
@@ -176,7 +177,7 @@ export async function buildModelRegistry(userId: string) {
             discoveredModels.push({ provider: "custom", id: m, name: m });
           }
         } else {
-          modelRegistry.registerProvider("custom", {
+          modelRuntime.registerProvider("custom", {
             baseUrl,
             apiKey: decryptedKey,
             api: "openai-completions",
@@ -195,7 +196,7 @@ export async function buildModelRegistry(userId: string) {
         const modelIds = await fetchOpenAIModels(providerBaseUrl, decryptedKey);
         if (modelIds.length > 0) {
           // Register discovered models to override built-in list
-          modelRegistry.registerProvider(key.provider, {
+          modelRuntime.registerProvider(key.provider, {
             baseUrl: providerBaseUrl,
             apiKey: decryptedKey || "placeholder",
             api: "openai-completions",
@@ -215,8 +216,8 @@ export async function buildModelRegistry(userId: string) {
     }
   }
 
-  // Merge: start with built-in available models, then add discovered custom models
-  const available = modelRegistry.getAvailable();
+  // Get available models from the runtime
+  const available = modelRuntime.getAvailableSnapshot();
   const allModels = available.map((m) => ({
     provider: m.provider,
     id: m.id,
@@ -234,5 +235,5 @@ export async function buildModelRegistry(userId: string) {
   // Apply global admin model filtering
   const filteredModels = allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
 
-  return { modelRegistry, authStorage, models: filteredModels };
+  return { modelRuntime, models: filteredModels };
 }

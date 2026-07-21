@@ -26,7 +26,7 @@ session.prompt(userMessage); // silently overwrites systemPrompt!
 ```
 
 This is the #1 gotcha. Every integration point in Saale uses `agent.prompt()`:
-- Queue jobs: `src/lib/queue/job-handler.ts` (`dispatchAiTask`)
+- Queue jobs: `src/lib/queue/job-handler.ts` (`dispatchAiJob`)
 - Email drafts: `src/app/api/email/draft/route.ts`
 - Chat stream: `src/app/api/chat/sessions/[sessionId]/stream/route.ts`
 
@@ -64,29 +64,25 @@ session.agent.state.systemPrompt =
 
 > **Future:** User-defined system prompt override will be stored in `ChatSession` or `AppSettings`. Until then, keep the hardcoded prompt minimal so it's easy to replace.
 
-## Model Resolution
+## Model Runtime
 
-**Always use the user's configured default model.** Never grab `modelRegistry.getAvailable()[0]`.
-
-Fetch from `AppSettings`:
+**Always use `buildModelRuntime(userId)` from `src/lib/pi/models`.** This creates a `ModelRuntime` with the user's configured providers and API keys.
 
 ```ts
-const settings = await prisma.appSettings.findUnique({
-  where: { userId },
-  select: { defaultModelProvider: true, defaultModelName: true },
-});
+import { buildModelRuntime } from "@/lib/pi/models";
 
-let model;
-if (settings?.defaultModelProvider && settings?.defaultModelName) {
-  model = modelRegistry.find(settings.defaultModelProvider, settings.defaultModelName);
-}
-
-if (!model) {
-  // Return error — no model configured
-}
+const { modelRuntime, models } = await buildModelRuntime(userId);
 ```
 
-References: `src/lib/queue/index.ts` (`resolveModel`), `src/app/api/email/draft/route.ts`
+### Resolving a specific model
+
+```ts
+const model = modelRuntime.getModel(provider, modelName);
+```
+
+### Available models (for UI lists)
+
+`buildModelRuntime()` returns a `models` array already filtered by admin config. Use this for dropdowns and selectors.
 
 ## Session Creation
 
@@ -103,17 +99,16 @@ const { session } = await createPiSession({
 });
 ```
 
-Use `createPiSession` from `src/lib/pi/session.ts` — it handles model registry, auth storage, and tool scoping.
+Use `createPiSession` from `src/lib/pi/session.ts` — it handles model runtime, auth, and tool scoping.
 
 ### Without tools (simple text generation like email drafts)
 
 ```ts
-const { modelRegistry, authStorage } = await buildModelRegistry(userId);
+const { modelRuntime } = await buildModelRuntime(userId);
 
 const { session } = await createAgentSession({
   sessionManager: SessionManager.inMemory(),
-  authStorage,
-  modelRegistry,
+  modelRuntime,
   noTools: "all",       // disable everything
   model,
   customTools: [],
@@ -122,6 +117,12 @@ const { session } = await createAgentSession({
 ```
 
 Use `noTools: "all"` when you don't need any tools. This is lighter than `noTools: "builtin"`.
+
+## Thinking Levels
+
+The SDK supports these thinking levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
+
+Not all models support all levels — the SDK clamps to what the model supports. Use the full range in UI selectors and let the runtime handle compatibility.
 
 ## Streaming Responses
 
@@ -164,14 +165,15 @@ return new Promise((resolve, reject) => {
 });
 ```
 
-Reference: `src/lib/queue/job-handler.ts` (`dispatchAiTask`)
+Reference: `src/lib/queue/job-handler.ts` (`dispatchAiJob`)
 
 ## Anti-Patterns
 
 | Anti-pattern | Why | Fix |
-|-------------|-----|-----|
+|-------------|-----|-----------|
 | `session.prompt()` | Resets systemPrompt to Pi base prompt | Use `session.agent.prompt()` |
 | `getAvailable()[0]` for model | Grabs first model (could be an embedding model) | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings |
 | No custom systemPrompt | Pi base prompt has coding-agent noise | Always set `session.agent.state.systemPrompt` |
 | `noTools: "builtin"` for text-only tasks | Heavier than needed | Use `noTools: "all"` |
 | No timeout on non-streaming calls | Can hang indefinitely | Always add a timeout (5min default) |
+| Passing `authStorage`/`modelRegistry` to `createAgentSession` | Deprecated API (pre-0.80.8) | Use `modelRuntime` instead |

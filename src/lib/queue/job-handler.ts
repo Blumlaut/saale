@@ -1,7 +1,7 @@
 import type { Job } from "bullmq";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { buildModelRegistry } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
 import { getQueue, addJobRun, updateJobRun } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { handlerMap } from "./jobs/registry";
@@ -28,18 +28,17 @@ export async function dispatchAiJob(
 ): Promise<string> {
   const modelInfo = await resolveModelForPurpose(userId, "jobs", options?.modelId);
 
-  // Build a minimal model registry (no tools, no extensions — just the model)
-  const { modelRegistry, authStorage } = await buildModelRegistry(userId);
+  // Build a minimal model runtime (no tools, no extensions — just the model)
+  const { modelRuntime } = await buildModelRuntime(userId);
 
   let model;
   if (modelInfo) {
-    model = modelRegistry.find(modelInfo.provider, modelInfo.name);
+    model = modelRuntime.getModel(modelInfo.provider, modelInfo.name);
   }
 
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     noTools: "all",
     ...(model ? { model } : {}),
     thinkingLevel: "off",

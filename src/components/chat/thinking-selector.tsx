@@ -16,6 +16,8 @@ const thinkingLevels = [
   { id: "low", label: "Low", description: "Basic reasoning" },
   { id: "medium", label: "Medium", description: "Balanced" },
   { id: "high", label: "High", description: "Deep reasoning" },
+  { id: "xhigh", label: "X-High", description: "Maximum depth" },
+  { id: "max", label: "Max", description: "Deepest reasoning" },
 ];
 
 export function ThinkingSelector({ value, onChange, className }: ThinkingSelectorProps) {

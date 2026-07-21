@@ -15,6 +15,7 @@ const thinkingLevels = [
   { id: "medium", label: "Medium", description: "Balanced depth", icon: Brain },
   { id: "high", label: "High", description: "Deep reasoning", icon: Brain },
   { id: "xhigh", label: "X-High", description: "Maximum depth", icon: Brain },
+  { id: "max", label: "Max", description: "Deepest reasoning", icon: Brain },
 ];
 
 interface ModelSidebarProps {
