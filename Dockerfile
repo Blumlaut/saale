@@ -60,7 +60,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Pre-compiled worker binary + prisma schema for client generation
-COPY --from=build /app/dist/worker.js ./worker.js
+COPY --from=build /app/dist/worker.mjs ./worker.mjs
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
 COPY --from=build /app/package.json ./package.json
@@ -74,4 +74,4 @@ ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 RUN npx prisma generate
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "worker.js"]
+CMD ["node", "worker.mjs"]
