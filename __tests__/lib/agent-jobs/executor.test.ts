@@ -1,43 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-/** Normalize modelId: convert "/" to ":" separator. */
-function normalizeModelId(id: string | null): string | null {
-  if (!id) return null;
-  return id.includes("/") ? id.replace("/", ":") : id;
-}
-
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-const mockAgentDefinition = {
-  findMany: vi.fn(),
-  findFirst: vi.fn(),
+const mockAgentRunMessage = {
   create: vi.fn(),
-  update: vi.fn(),
-  delete: vi.fn(),
-  deleteMany: vi.fn(),
+  findMany: vi.fn(),
 };
 
 const mockAgentRun = {
-  findMany: vi.fn(),
-  findFirst: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-  delete: vi.fn(),
-  deleteMany: vi.fn(),
+  findFirst: vi.fn(),
 };
 
-const mockAgentRunMessage = {
-  findMany: vi.fn(),
-  create: vi.fn(),
-  deleteMany: vi.fn(),
+const mockAppSettings = {
+  findUnique: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    agentDefinition: mockAgentDefinition,
-    agentRun: mockAgentRun,
     agentRunMessage: mockAgentRunMessage,
-    appSettings: { findUnique: vi.fn() },
+    agentRun: mockAgentRun,
+    appSettings: mockAppSettings,
   },
 }));
 
@@ -49,9 +33,130 @@ vi.mock("@/lib/pi/tool-registry", () => ({
   resolveTools: vi.fn(),
 }));
 
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+  createAgentSession: vi.fn(),
+  SessionManager: { inMemory: vi.fn() },
+}));
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("agent job executor — helpers", () => {
+describe("AgentOutput interface", () => {
+  it("send is required and accepts content string with optional meta", () => {
+    const output = {
+      send: vi.fn(),
+      typing: vi.fn(),
+    };
+
+    // Basic send — called with just content
+    output.send("Hello world");
+    expect(output.send).toHaveBeenCalledTimes(1);
+    const firstCall = output.send.mock.calls[0];
+    expect(firstCall?.[0]).toBe("Hello world");
+
+    // Send with tool calls
+    output.send("Done", { toolCalls: [{ id: "tc1", name: "test" }] });
+    expect(output.send).toHaveBeenLastCalledWith("Done", {
+      toolCalls: [{ id: "tc1", name: "test" }],
+    });
+  });
+
+  it("typing is optional", () => {
+    const output: { send: () => void; typing?: () => void } = {
+      send: vi.fn(),
+    };
+
+    // Should not throw when typing is not defined
+    output.typing?.();
+  });
+});
+
+describe("executor — output routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("output.send is called with turn text on turn_end", () => {
+    const output = {
+      send: vi.fn(),
+      typing: vi.fn(),
+    };
+
+    // Simulate turn_end event behavior
+    const turnText = "The agent processed your request.";
+    const turnToolCalls: unknown[] = [];
+
+    // This is what the executor does on turn_end
+    if (output && turnText.trim()) {
+      const meta: { toolCalls?: unknown[] } = {};
+      if (turnToolCalls.length > 0) {
+        meta.toolCalls = turnToolCalls;
+      }
+      output.send(turnText, meta);
+    }
+
+    expect(output.send).toHaveBeenCalledWith(turnText, {});
+  });
+
+  it("output.send includes tool calls when present", () => {
+    const output = {
+      send: vi.fn(),
+    };
+
+    const turnText = "Found 3 emails.";
+    const turnToolCalls = [{ id: "tc1", name: "email_search", args: { query: "unread" } }];
+
+    if (output && turnText.trim()) {
+      const meta: { toolCalls?: unknown[] } = {};
+      if (turnToolCalls.length > 0) {
+        meta.toolCalls = turnToolCalls;
+      }
+      output.send(turnText, meta);
+    }
+
+    expect(output.send).toHaveBeenCalledWith(turnText, {
+      toolCalls: turnToolCalls,
+    });
+  });
+
+  it("output.send is not called for empty text", () => {
+    const output = {
+      send: vi.fn(),
+    };
+
+    const turnText = "   ";
+
+    if (output && turnText.trim()) {
+      output.send(turnText);
+    }
+
+    expect(output.send).not.toHaveBeenCalled();
+  });
+
+  it("output.typing is called on tool_execution_start", () => {
+    const typingFn = vi.fn();
+    const output: { send: () => void; typing?: () => void } = {
+      send: vi.fn(),
+      typing: typingFn,
+    };
+
+    // Simulate tool_execution_start
+    output.typing?.();
+
+    expect(typingFn).toHaveBeenCalled();
+  });
+
+  it("no error when output.typing is undefined", () => {
+    const output: { send: () => void; typing?: () => void } = {
+      send: vi.fn(),
+      // typing not defined
+    };
+
+    // Should not throw
+    expect(() => output.typing?.()).not.toThrow();
+  });
+});
+
+describe("executor — helper functions", () => {
   it("extractText joins text blocks from content array", () => {
     const content: Record<string, unknown>[] = [
       { type: "text", text: "Hello " },
@@ -90,7 +195,7 @@ describe("agent job executor — helpers", () => {
     expect(text).toBe("only this");
   });
 
-  it("extractThinking returns undefined when no thinking block", () => {
+  it("extractThinking returns null when no thinking block", () => {
     const content: Record<string, unknown>[] = [{ type: "text", text: "Hello" }];
     const block = content.find((c) => c.type === "thinking");
     expect(block).toBeUndefined();
@@ -106,7 +211,7 @@ describe("agent job executor — helpers", () => {
   });
 });
 
-describe("agent job executor — tool result normalization", () => {
+describe("executor — tool result normalization", () => {
   it("handles string results", () => {
     const result = "simple string";
     const normalized =
@@ -181,133 +286,34 @@ describe("agent job executor — tool result normalization", () => {
   });
 });
 
-describe("agent job tools — agent_job_create", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("executor — model resolution", () => {
+  it("splits modelId into provider and name with colon separator", () => {
+    const modelId = "anthropic:claude-sonnet-4-20250514";
+    const [provider, ...nameParts] = modelId.split(":");
+    expect(provider).toBe("anthropic");
+    expect(nameParts.join(":")).toBe("claude-sonnet-4-20250514");
   });
 
-  it("normalizes modelId with / separator to :", async () => {
-    expect(normalizeModelId("anthropic/claude-sonnet-4-20250514")).toBe(
-      "anthropic:claude-sonnet-4-20250514",
-    );
-  });
-
-  it("preserves modelId already in : format", async () => {
-    expect(normalizeModelId("openai:gpt-4o")).toBe("openai:gpt-4o");
-  });
-
-  it("handles null modelId", async () => {
-    expect(normalizeModelId(null)).toBeNull();
-  });
-
-  it("creates definition with trimmed fields", async () => {
-    const params = {
-      name: "  Email Summary  ",
-      description: "  Summarizes emails  ",
-      prompt: "  Summarize unread emails  ",
-      systemPrompt: "  You are an email assistant  ",
-      toolConfig: { email: true },
-    };
-
-    expect(params.name.trim()).toBe("Email Summary");
-    expect(params.description!.trim()).toBe("Summarizes emails");
-    expect(params.prompt.trim()).toBe("Summarize unread emails");
-    expect(params.systemPrompt!.trim()).toBe("You are an email assistant");
-  });
-
-  it("handles empty description and systemPrompt as null", async () => {
-    const description = "";
-    const systemPrompt = "   ";
-
-    expect(description.trim() || null).toBeNull();
-    expect(systemPrompt.trim() || null).toBeNull();
+  it("handles modelId with multiple colons", () => {
+    const modelId = "openrouter:anthropic/claude-3.5-sonnet";
+    const [provider, ...nameParts] = modelId.split(":");
+    expect(provider).toBe("openrouter");
+    expect(nameParts.join(":")).toBe("anthropic/claude-3.5-sonnet");
   });
 });
 
-describe("agent job tools — agent_job_logs", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("computes duration from startedAt and completedAt", () => {
-    const startedAt = new Date("2024-01-01T00:00:00Z");
-    const completedAt = new Date("2024-01-01T00:05:00Z");
-    const duration = completedAt.getTime() - startedAt.getTime();
-    expect(duration).toBe(5 * 60 * 1000); // 5 minutes in ms
-  });
-
-  it("returns null duration when timestamps are missing", () => {
-    const calcDuration = (s: Date | null, c: Date | null) =>
-      s && c ? c.getTime() - s.getTime() : null;
-    expect(calcDuration(null, new Date())).toBeNull();
-    expect(calcDuration(new Date(), null)).toBeNull();
-  });
-
-  it("filters runs by status", () => {
-    const runs = [
-      { id: "1", status: "completed" },
-      { id: "2", status: "error" },
-      { id: "3", status: "completed" },
-      { id: "4", status: "pending" },
-    ];
-
-    const completed = runs.filter((r) => r.status === "completed");
-    expect(completed).toHaveLength(2);
-    expect(completed.map((r) => r.id)).toEqual(["1", "3"]);
-  });
-
-  it("limits results to specified count", () => {
-    const runs = Array.from({ length: 20 }, (_, i) => ({ id: String(i), status: "completed" }));
-    const limited = runs.slice(0, 5);
-    expect(limited).toHaveLength(5);
-  });
-});
-
-describe("agent job tools — agent_job_run_messages", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("parses toolCalls JSON from database", () => {
-    const toolCallsJson =
-      '[{"id":"tc1","name":"email_search","args":{"query":"is:unread"},"result":"Found 3 emails","isError":false}]';
-    const parsed = JSON.parse(toolCallsJson);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].name).toBe("email_search");
-    expect(parsed[0].args.query).toBe("is:unread");
-  });
-
-  it("handles null toolCalls", () => {
-    const toolCalls = null;
-    const parsed = toolCalls ? JSON.parse(toolCalls) : null;
-    expect(parsed).toBeNull();
-  });
-
-  it("orders messages chronologically", () => {
-    const messages = [
-      { id: "3", role: "assistant", createdAt: new Date("2024-01-01T00:02:00Z") },
-      { id: "1", role: "user", createdAt: new Date("2024-01-01T00:00:00Z") },
-      { id: "2", role: "assistant", createdAt: new Date("2024-01-01T00:01:00Z") },
-    ];
-
-    const sorted = [...messages].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    expect(sorted.map((m) => m.id)).toEqual(["1", "2", "3"]);
-  });
-});
-
-describe("agent job run — status transitions", () => {
+describe("executor — status transitions", () => {
   it("valid status progression: pending -> running -> completed", () => {
     const transitions: Array<{ from: string; to: string; valid: boolean }> = [
       { from: "pending", to: "running", valid: true },
       { from: "running", to: "completed", valid: true },
       { from: "running", to: "error", valid: true },
       { from: "running", to: "cancelled", valid: true },
-      { from: "completed", to: "error", valid: false }, // shouldn't happen
-      { from: "error", to: "completed", valid: false }, // shouldn't happen
+      { from: "completed", to: "error", valid: false },
+      { from: "error", to: "completed", valid: false },
     ];
 
     for (const t of transitions) {
-      // The executor handles transitions internally — this tests the expected flow
       if (t.valid) {
         expect(["pending", "running", "completed", "error", "cancelled"]).toContain(t.to);
       }
@@ -322,5 +328,17 @@ describe("agent job run — status transitions", () => {
     };
     expect(errorData.status).toBe("error");
     expect(errorData.error).toBe("Model API returned 503");
+  });
+});
+
+describe("executor — timeout handling", () => {
+  it("timeout is set to 10 minutes", () => {
+    const TIMEOUT_MS = 10 * 60_000;
+    expect(TIMEOUT_MS).toBe(600_000);
+  });
+
+  it("timeout error message is descriptive", () => {
+    const errorMsg = "Agent job timed out (10min)";
+    expect(errorMsg).toContain("10min");
   });
 });

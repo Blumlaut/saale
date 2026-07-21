@@ -5,7 +5,7 @@ import { executeAgentRun } from "@/lib/agent-jobs/executor";
 
 /**
  * Create agent job tools with userId injection for user isolation.
- * Allows the agent to create, list, run, and inspect custom agent job definitions.
+ * Allows the agent to create, list, run, update, and inspect agent job definitions.
  */
 export function createAgentJobTools(userId: string): ToolDefinition[] {
   return [
@@ -15,7 +15,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
       name: "agent_job_list",
       label: "List Agent Jobs",
       description:
-        "List all custom agent job definitions with their status, run count, and latest run.",
+        "List all agent job definitions with their status, run count, output channel, and schedule.",
       parameters: Type.Object({
         enabled: Type.Optional(
           Type.Boolean({
@@ -40,8 +40,12 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
             systemPrompt: true,
             toolConfig: true,
             modelId: true,
+            outputChannel: true,
+            outputChannelId: true,
+            cronExpression: true,
+            lastRunAt: true,
             enabled: true,
-            runCount: { select: { runs: true } },
+            _count: { select: { runs: true } },
             createdAt: true,
           },
         });
@@ -53,31 +57,22 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
               text: JSON.stringify(
                 {
                   count: definitions.length,
-                  jobs: definitions.map(
-                    (d: {
-                      id: string;
-                      name: string;
-                      description: string | null;
-                      prompt: string;
-                      systemPrompt: string | null;
-                      toolConfig: unknown;
-                      modelId: string | null;
-                      enabled: boolean;
-                      runCount: { runs: number };
-                      createdAt: Date;
-                    }) => ({
-                      id: d.id,
-                      name: d.name,
-                      description: d.description,
-                      prompt: d.prompt,
-                      systemPrompt: d.systemPrompt,
-                      toolConfig: d.toolConfig as Record<string, boolean> | null,
-                      modelId: d.modelId,
-                      enabled: d.enabled,
-                      runCount: d.runCount.runs,
-                      createdAt: d.createdAt.toISOString(),
-                    }),
-                  ),
+                  jobs: definitions.map((d) => ({
+                    id: d.id,
+                    name: d.name,
+                    description: d.description,
+                    prompt: d.prompt,
+                    systemPrompt: d.systemPrompt,
+                    toolConfig: d.toolConfig as Record<string, boolean> | null,
+                    modelId: d.modelId,
+                    outputChannel: d.outputChannel,
+                    outputChannelId: d.outputChannelId,
+                    cronExpression: d.cronExpression,
+                    lastRunAt: d.lastRunAt?.toISOString(),
+                    enabled: d.enabled,
+                    runCount: d._count.runs,
+                    createdAt: d.createdAt.toISOString(),
+                  })),
                 },
                 null,
                 2,
@@ -95,10 +90,10 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
       name: "agent_job_create",
       label: "Create Agent Job",
       description:
-        "Create a new custom agent job definition. Requires: name, prompt. Optional: description, systemPrompt, toolConfig, modelId.",
+        "Create a new agent job definition. Requires: name, prompt. Optional: description, systemPrompt, toolConfig, modelId, outputChannel, outputChannelId, cronExpression.",
       parameters: Type.Object({
         name: Type.String({
-          description: "Job name (max 100 chars).",
+          description: "Job name (max 100 chars, unique per user).",
           maxLength: 100,
         }),
         prompt: Type.String({
@@ -137,6 +132,24 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
             description: "Model override (format: 'provider:modelId').",
           }),
         ),
+        outputChannel: Type.Optional(
+          Type.String({
+            description:
+              "Output channel for agent responses (e.g., 'telegram'). If set, the agent's output is sent to this channel.",
+          }),
+        ),
+        outputChannelId: Type.Optional(
+          Type.String({
+            description:
+              "Target identifier for the output channel (e.g., Telegram chat ID for 'telegram' channel).",
+          }),
+        ),
+        cronExpression: Type.Optional(
+          Type.String({
+            description:
+              "Cron expression for scheduled runs (e.g., '0 9 * * *' for daily at 9am). Null for manual-only jobs.",
+          }),
+        ),
       }),
       execute: async (_toolCallId, params) => {
         // Normalize modelId
@@ -154,6 +167,9 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
             systemPrompt: params.systemPrompt?.trim() || null,
             toolConfig: (params.toolConfig as Record<string, boolean>) ?? null,
             modelId: resolvedModelId,
+            outputChannel: params.outputChannel || null,
+            outputChannelId: params.outputChannelId || null,
+            cronExpression: params.cronExpression || null,
           },
         });
 
@@ -172,6 +188,9 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
                     systemPrompt: definition.systemPrompt,
                     toolConfig: definition.toolConfig as Record<string, boolean> | null,
                     modelId: definition.modelId,
+                    outputChannel: definition.outputChannel,
+                    outputChannelId: definition.outputChannelId,
+                    cronExpression: definition.cronExpression,
                     enabled: definition.enabled,
                     createdAt: definition.createdAt.toISOString(),
                   },
@@ -186,12 +205,150 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
       },
     }),
 
-    // ─── agent_job_run ──────────────────────────────────────────────────────
+    // ─── agent_job_update ───────────────────────────────────────────────────
 
     defineTool({
-      name: "agent_job_run",
-      label: "Run Agent Job",
-      description: "Trigger an immediate run of a custom agent job by its ID.",
+      name: "agent_job_update",
+      label: "Update Agent Job",
+      description: "Update an existing agent job definition. Only provided fields are updated.",
+      parameters: Type.Object({
+        id: Type.String({
+          description: "Job definition ID.",
+        }),
+        name: Type.Optional(
+          Type.String({
+            description: "New job name.",
+            maxLength: 100,
+          }),
+        ),
+        prompt: Type.Optional(
+          Type.String({
+            description: "New prompt.",
+          }),
+        ),
+        description: Type.Optional(
+          Type.String({
+            description: "New description.",
+          }),
+        ),
+        systemPrompt: Type.Optional(
+          Type.String({
+            description: "New system prompt.",
+          }),
+        ),
+        toolConfig: Type.Optional(
+          Type.Object(
+            {
+              email: Type.Optional(Type.Boolean()),
+              calendar: Type.Optional(Type.Boolean()),
+              jobs: Type.Optional(Type.Boolean()),
+              chatSearch: Type.Optional(Type.Boolean()),
+              web: Type.Optional(Type.Boolean()),
+              memory: Type.Optional(Type.Boolean()),
+              tasks: Type.Optional(Type.Boolean()),
+            },
+            {
+              description: "Updated tool categories.",
+            },
+          ),
+        ),
+        modelId: Type.Optional(
+          Type.String({
+            description: "Model override. Pass empty string to clear.",
+          }),
+        ),
+        outputChannel: Type.Optional(
+          Type.String({
+            description: "Output channel. Pass empty string to clear.",
+          }),
+        ),
+        outputChannelId: Type.Optional(
+          Type.String({
+            description: "Output channel target ID. Pass empty string to clear.",
+          }),
+        ),
+        cronExpression: Type.Optional(
+          Type.String({
+            description: "Cron expression. Pass empty string to clear.",
+          }),
+        ),
+        enabled: Type.Optional(
+          Type.Boolean({
+            description: "Enable or disable the job.",
+          }),
+        ),
+      }),
+      execute: async (_toolCallId, params) => {
+        const definition = await prisma.agentDefinition.findFirst({
+          where: { id: params.id, userId },
+        });
+        if (!definition) {
+          throw new Error(`Agent job ${params.id} not found`);
+        }
+
+        const data: Record<string, unknown> = {};
+
+        if (params.name !== undefined) data.name = params.name.trim();
+        if (params.prompt !== undefined) data.prompt = params.prompt.trim();
+        if (params.description !== undefined) data.description = params.description?.trim() || null;
+        if (params.systemPrompt !== undefined)
+          data.systemPrompt = params.systemPrompt?.trim() || null;
+        if (params.toolConfig !== undefined)
+          data.toolConfig = params.toolConfig as Record<string, boolean>;
+        if (params.modelId !== undefined) {
+          const raw = params.modelId;
+          data.modelId = raw ? (raw.includes("/") ? raw.replace("/", ":") : raw) : null;
+        }
+        if (params.outputChannel !== undefined) data.outputChannel = params.outputChannel || null;
+        if (params.outputChannelId !== undefined)
+          data.outputChannelId = params.outputChannelId || null;
+        if (params.cronExpression !== undefined)
+          data.cronExpression = params.cronExpression || null;
+        if (params.enabled !== undefined) data.enabled = params.enabled;
+
+        const updated = await prisma.agentDefinition.update({
+          where: { id: params.id },
+          data,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  updated: true,
+                  job: {
+                    id: updated.id,
+                    name: updated.name,
+                    description: updated.description,
+                    prompt: updated.prompt,
+                    systemPrompt: updated.systemPrompt,
+                    toolConfig: updated.toolConfig as Record<string, boolean> | null,
+                    modelId: updated.modelId,
+                    outputChannel: updated.outputChannel,
+                    outputChannelId: updated.outputChannelId,
+                    cronExpression: updated.cronExpression,
+                    enabled: updated.enabled,
+                    updatedAt: updated.updatedAt.toISOString(),
+                  },
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { id: updated.id },
+        };
+      },
+    }),
+
+    // ─── agent_job_delete ───────────────────────────────────────────────────
+
+    defineTool({
+      name: "agent_job_delete",
+      label: "Delete Agent Job",
+      description: "Delete an agent job definition and all its runs.",
       parameters: Type.Object({
         id: Type.String({
           description: "Job definition ID.",
@@ -204,26 +361,77 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         if (!definition) {
           throw new Error(`Agent job ${params.id} not found`);
         }
+
+        await prisma.agentDefinition.delete({
+          where: { id: params.id },
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ deleted: true, id: params.id }, null, 2),
+            },
+          ],
+          details: { id: params.id },
+        };
+      },
+    }),
+
+    // ─── agent_job_run ──────────────────────────────────────────────────────
+
+    defineTool({
+      name: "agent_job_run",
+      label: "Run Agent Job",
+      description: "Trigger an immediate run of an agent job by its ID.",
+      parameters: Type.Object({
+        id: Type.String({
+          description: "Job definition ID.",
+        }),
+        prompt: Type.Optional(
+          Type.String({
+            description:
+              "Override the default prompt for this run. If not provided, uses the definition's prompt.",
+          }),
+        ),
+      }),
+      execute: async (_toolCallId, params) => {
+        const definition = await prisma.agentDefinition.findFirst({
+          where: { id: params.id, userId },
+        });
+        if (!definition) {
+          throw new Error(`Agent job ${params.id} not found`);
+        }
         if (!definition.enabled) {
           throw new Error(`Agent job ${params.id} is disabled`);
         }
+
+        const runPrompt = params.prompt || definition.prompt;
 
         const run = await prisma.agentRun.create({
           data: {
             definitionId: params.id,
             userId,
             status: "pending",
-            prompt: definition.prompt,
+            prompt: runPrompt,
             systemPrompt: definition.systemPrompt,
             modelId: definition.modelId,
+            outputChannel: definition.outputChannel,
+            outputChannelId: definition.outputChannelId,
           },
+        });
+
+        // Update lastRunAt
+        await prisma.agentDefinition.update({
+          where: { id: params.id },
+          data: { lastRunAt: new Date() },
         });
 
         // Execute asynchronously
         executeAgentRun(
           run.id,
           {
-            prompt: definition.prompt,
+            prompt: runPrompt,
             systemPrompt: definition.systemPrompt,
             toolConfig: definition.toolConfig as Record<string, boolean> | null,
             modelId: definition.modelId,

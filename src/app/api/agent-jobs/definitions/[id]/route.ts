@@ -29,6 +29,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       toolConfig: definition.toolConfig as Record<string, boolean> | null,
       modelId: definition.modelId,
       thinkingLevel: definition.thinkingLevel,
+      outputChannel: definition.outputChannel,
+      outputChannelId: definition.outputChannelId,
+      cronExpression: definition.cronExpression,
+      lastRunAt: definition.lastRunAt?.toISOString(),
       enabled: definition.enabled,
       createdAt: definition.createdAt.toISOString(),
       updatedAt: definition.updatedAt.toISOString(),
@@ -52,8 +56,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const body = await request.json();
-  const { name, description, prompt, systemPrompt, toolConfig, modelId, thinkingLevel, enabled } =
-    body;
+  const {
+    name,
+    description,
+    prompt,
+    systemPrompt,
+    toolConfig,
+    modelId,
+    thinkingLevel,
+    outputChannel,
+    outputChannelId,
+    cronExpression,
+    enabled,
+  } = body;
 
   // Normalize modelId format
   let resolvedModelId = existing.modelId;
@@ -72,6 +87,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...(toolConfig !== undefined ? { toolConfig } : {}),
       ...(modelId !== undefined ? { modelId: resolvedModelId } : {}),
       ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
+      ...(outputChannel !== undefined ? { outputChannel: outputChannel || null } : {}),
+      ...(outputChannelId !== undefined ? { outputChannelId: outputChannelId || null } : {}),
+      ...(cronExpression !== undefined ? { cronExpression: cronExpression || null } : {}),
       ...(enabled !== undefined ? { enabled } : {}),
     },
   });
@@ -86,6 +104,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       toolConfig: updated.toolConfig as Record<string, boolean> | null,
       modelId: updated.modelId,
       thinkingLevel: updated.thinkingLevel,
+      outputChannel: updated.outputChannel,
+      outputChannelId: updated.outputChannelId,
+      cronExpression: updated.cronExpression,
+      lastRunAt: updated.lastRunAt?.toISOString(),
       enabled: updated.enabled,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),

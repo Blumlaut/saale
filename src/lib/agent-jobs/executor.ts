@@ -10,6 +10,14 @@ import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+/** Optional output handler for routing agent responses to external channels. */
+export interface AgentOutput {
+  /** Send a message to the output channel. Called for each assistant turn. */
+  send(content: string, meta?: { toolCalls?: unknown[] }): void;
+  /** Optional: signal that the agent is thinking/working. */
+  typing?(): void;
+}
+
 interface ToolCallRecord {
   id: string;
   name: string;
@@ -66,7 +74,6 @@ function extractToolCalls(content: unknown[]): Record<string, unknown>[] {
 function normalizeToolResult(result: unknown): string {
   if (typeof result === "string") return result;
   if (typeof result === "object" && result !== null) {
-    // Try to extract text from content array (Pi agent format)
     const obj = result as Record<string, unknown>;
     if (Array.isArray(obj.content)) {
       return obj.content
@@ -115,6 +122,7 @@ async function saveAssistantMessage(
  * @param runId - The AgentRun.id to update
  * @param definition - The AgentDefinition record (prompt, systemPrompt, toolConfig, etc.)
  * @param userId - The user ID (for model registry and tool scoping)
+ * @param output - Optional output handler for routing responses to external channels
  * @returns Final stats (tokens, cost) for updating the run record
  */
 export async function executeAgentRun(
@@ -127,6 +135,7 @@ export async function executeAgentRun(
     thinkingLevel?: string;
   },
   userId: string,
+  output?: AgentOutput,
 ): Promise<{
   inputTokens: number;
   outputTokens: number;
@@ -141,7 +150,6 @@ export async function executeAgentRun(
     modelProvider = provider;
     modelName = nameParts.join(":");
   } else {
-    // Fall back to user's default model
     const settings = await prisma.appSettings.findUnique({
       where: { userId },
       select: { defaultModelProvider: true, defaultModelName: true },
@@ -167,12 +175,11 @@ export async function executeAgentRun(
   const resolvedToolConfig = {
     ...DEFAULT_TOOL_CONFIG,
     ...rawToolConfig,
-    terminal: false, // terminal tools require a live terminal session
+    terminal: false,
   } as Required<ToolConfig>;
 
   const allCustomTools = resolveTools(userId, runId, resolvedToolConfig, {
     createTerminalScopedTools: () => {
-      // Unreachable — terminal is always disabled for agent jobs
       throw new Error("Terminal tools are not available for agent jobs.");
     },
   });
@@ -219,7 +226,7 @@ export async function executeAgentRun(
   return new Promise((resolve, reject) => {
     const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
       try {
-        handleAgentEvent(event, runId, state);
+        handleAgentEvent(event, runId, state, output);
       } catch (err) {
         console.error(`[agent-job:${runId}] Event handler error:`, err);
       }
@@ -273,6 +280,7 @@ async function handleAgentEvent(
   event: AgentSessionEvent,
   runId: string,
   state: RunState,
+  output?: AgentOutput,
 ): Promise<void> {
   switch (event.type) {
     case "message_update": {
@@ -291,6 +299,9 @@ async function handleAgentEvent(
         name: event.toolName,
         args: event.args,
       });
+
+      // Signal typing when tools start executing
+      output?.typing?.();
       break;
     }
 
@@ -329,6 +340,15 @@ async function handleAgentEvent(
 
       if (!state.rootMessageId) {
         state.rootMessageId = msgId;
+      }
+
+      // Route output to external channel
+      if (output && state.currentText.trim()) {
+        const meta: { toolCalls?: unknown[] } = {};
+        if (turnToolCalls.length > 0) {
+          meta.toolCalls = turnToolCalls;
+        }
+        output.send(state.currentText, meta);
       }
 
       state.turnIndex++;
