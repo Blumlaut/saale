@@ -13,6 +13,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createTerminalOperations } from "@/lib/terminal/operations";
 import { getTerminalHomeDir } from "@/lib/terminal/client";
+import { getGitHubEnv } from "@/lib/github";
 import { buildModelRegistry } from "./models";
 import { resolveTools } from "./tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-categories";
@@ -40,10 +41,31 @@ function getUserDir(userId: string): string {
 /**
  * Create terminal-backed Pi built-in tools (sandboxed via open-terminal).
  * Used when bash is enabled — all file ops go through the container.
+ * Injects GH_TOKEN into every command when GitHub integration is enabled.
  */
-export function createTerminalScopedTools(userId: string, sessionId: string) {
+export async function createTerminalScopedTools(
+  userId: string,
+  sessionId: string,
+): Promise<{
+  read: ToolDefinition;
+  write: ToolDefinition;
+  edit: ToolDefinition;
+  bash: ToolDefinition;
+}> {
   const homeDir = getTerminalHomeDir(userId);
-  const ops = createTerminalOperations({ userId, sessionId, cwd: homeDir });
+
+  // Inject GH_TOKEN if GitHub integration is enabled for this user
+  const githubEnv = await getGitHubEnv(userId).catch((err) => {
+    console.error("Failed to load GitHub env for terminal:", err);
+    return null;
+  });
+
+  const ops = createTerminalOperations({
+    userId,
+    sessionId,
+    cwd: homeDir,
+    extraEnv: githubEnv ?? undefined,
+  });
 
   return {
     read: createReadTool(homeDir, { operations: ops.read }),
@@ -70,7 +92,7 @@ export async function buildSessionDeps(options: {
   const enabled = resolveToolConfig(options.toolConfig);
   const allCustomTools: ToolDefinition[] = [...options.customTools];
 
-  const resolvedTools = resolveTools(options.userId, options.sessionId, enabled, {
+  const resolvedTools = await resolveTools(options.userId, options.sessionId, enabled, {
     createTerminalScopedTools,
   });
   allCustomTools.push(...resolvedTools);

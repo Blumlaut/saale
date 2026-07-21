@@ -20,6 +20,7 @@ import {
   ExternalLink,
   MoreVertical,
   ShieldCheck,
+  GitFork,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -72,7 +73,16 @@ interface WhitelistEntry {
   createdAt: string;
 }
 
-type IntegrationType = "telegram";
+interface GitHubAccount {
+  id: string;
+  enabled: boolean;
+  username: string | null;
+  avatarUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type IntegrationType = "telegram" | "github";
 
 // ─── Integration definitions (extensible) ────────────────────────────────────
 
@@ -89,6 +99,13 @@ const INTEGRATIONS: {
     description: "Chat with Saale via your own Telegram bot",
     icon: MessageCircle,
     color: "text-sky-500",
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    description: "Let agents manage repos, PRs, and issues via gh CLI",
+    icon: GitFork,
+    color: "text-gray-500",
   },
 ];
 
@@ -118,6 +135,14 @@ export function IntegrationsTab() {
 
   // Delete confirmation
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
+  const [deleteIntegrationType, setDeleteIntegrationType] = useState<IntegrationType | null>(null);
+
+  // GitHub
+  const [githubAccount, setGitHubAccount] = useState<GitHubAccount | null>(null);
+  const [githubToken, setGithubToken] = useState("");
+  const [savingGitHub, setSavingGitHub] = useState(false);
+  const [githubTokenError, setGithubTokenError] = useState<string | null>(null);
+  const [githubTokenSuccess, setGithubTokenSuccess] = useState(false);
 
   const loadTelegramAccount = useCallback(async () => {
     try {
@@ -146,9 +171,19 @@ export function IntegrationsTab() {
     }
   }, []);
 
+  const loadGitHubAccount = useCallback(async () => {
+    try {
+      const data = await fetchJson<{ account: GitHubAccount | null }>("/api/integrations/github");
+      setGitHubAccount(data.account);
+    } catch {
+      setGitHubAccount(null);
+    }
+  }, []);
+
   useEffect(() => {
     loadTelegramAccount();
-  }, [loadTelegramAccount]);
+    loadGitHubAccount();
+  }, [loadTelegramAccount, loadGitHubAccount]);
 
   // Reset token form when dialog opens/closes
   useEffect(() => {
@@ -156,6 +191,9 @@ export function IntegrationsTab() {
       setToken("");
       setTokenError(null);
       setTokenSuccess(false);
+      setGithubToken("");
+      setGithubTokenError(null);
+      setGithubTokenSuccess(false);
       setSelectedIntegration(null);
     }
   }, [addDialogOpen]);
@@ -214,19 +252,6 @@ export function IntegrationsTab() {
     }
   };
 
-  const handleDeleteIntegration = async () => {
-    setActionLoading("delete");
-    try {
-      await deleteJson("/api/integrations/telegram");
-      await loadTelegramAccount();
-    } catch {
-      // Ignore
-    } finally {
-      setDeleteAlertOpen(false);
-      setActionLoading(null);
-    }
-  };
-
   const handleAddWhitelistUser = async () => {
     if (!newUserId.trim()) return;
 
@@ -250,6 +275,62 @@ export function IntegrationsTab() {
       await loadWhitelist();
     } catch {
       // Ignore
+    }
+  };
+
+  // ─── GitHub Handlers ────────────────────────────────────────────────────
+
+  const handleSaveGitHubToken = async () => {
+    if (!githubToken.trim()) {
+      setGithubTokenError("Personal Access Token is required");
+      return;
+    }
+
+    setSavingGitHub(true);
+    setGithubTokenError(null);
+    setGithubTokenSuccess(false);
+
+    try {
+      await postJson("/api/integrations/github", { token: githubToken.trim() });
+      setGithubTokenSuccess(true);
+      await loadGitHubAccount();
+      setTimeout(() => setAddDialogOpen(false), 800);
+    } catch (err) {
+      setGithubTokenError((err as Error).message || "Failed to connect GitHub");
+    } finally {
+      setSavingGitHub(false);
+    }
+  };
+
+  const handleToggleGitHubEnabled = async (enabled: boolean) => {
+    if (!githubAccount) return;
+    setActionLoading("toggle");
+    try {
+      await patchJson("/api/integrations/github", { enabled });
+      await loadGitHubAccount();
+    } catch {
+      // Ignore
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteIntegrationByType = async () => {
+    if (!deleteIntegrationType) return;
+    setActionLoading("delete");
+    try {
+      await deleteJson(`/api/integrations/${deleteIntegrationType}`);
+      if (deleteIntegrationType === "github") {
+        await loadGitHubAccount();
+      } else {
+        await loadTelegramAccount();
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setDeleteAlertOpen(false);
+      setDeleteIntegrationType(null);
+      setActionLoading(null);
     }
   };
 
@@ -288,18 +369,34 @@ export function IntegrationsTab() {
           </div>
 
           {/* Active integrations */}
-          {telegramAccount ? (
+          {telegramAccount || githubAccount ? (
             <div className="space-y-3">
-              <TelegramCard
-                account={telegramAccount}
-                actionLoading={actionLoading}
-                onToggleEnabled={handleToggleEnabled}
-                onOpenWhitelist={() => {
-                  setWhitelistOpen(true);
-                  loadWhitelist();
-                }}
-                onDelete={() => setDeleteAlertOpen(true)}
-              />
+              {telegramAccount && (
+                <TelegramCard
+                  account={telegramAccount}
+                  actionLoading={actionLoading}
+                  onToggleEnabled={handleToggleEnabled}
+                  onOpenWhitelist={() => {
+                    setWhitelistOpen(true);
+                    loadWhitelist();
+                  }}
+                  onDelete={() => {
+                    setDeleteIntegrationType("telegram");
+                    setDeleteAlertOpen(true);
+                  }}
+                />
+              )}
+              {githubAccount && (
+                <GitHubCard
+                  account={githubAccount}
+                  actionLoading={actionLoading}
+                  onToggleEnabled={handleToggleGitHubEnabled}
+                  onDelete={() => {
+                    setDeleteIntegrationType("github");
+                    setDeleteAlertOpen(true);
+                  }}
+                />
+              )}
             </div>
           ) : (
             <div className="liquid-glass-inner border-border/30 flex flex-col items-center rounded-2xl border border-dashed p-8 text-center">
@@ -389,16 +486,78 @@ export function IntegrationsTab() {
                 </div>
               )}
             </div>
+          ) : selectedIntegration === "github" ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label className="text-sm">Personal Access Token</Label>
+                <Input
+                  type="password"
+                  value={githubToken}
+                  onChange={(e) => {
+                    setGithubToken(e.target.value);
+                    setGithubTokenError(null);
+                  }}
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveGitHubToken();
+                  }}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Create a token at{" "}
+                  <a
+                    href="https://github.com/settings/tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    github.com/settings/tokens
+                    <ExternalLink className="ml-0.5 inline-block h-3 w-3" />
+                  </a>{" "}
+                  with <code className="bg-muted/50 rounded px-1 text-xs">repo</code> scope
+                </p>
+              </div>
+
+              {githubTokenError && (
+                <div className="text-destructive bg-destructive/10 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
+                  <AlertCircle className="h-4 w-4" />
+                  {githubTokenError}
+                </div>
+              )}
+
+              {githubTokenSuccess && (
+                <div className="flex items-center gap-2 rounded-xl bg-green-500/10 px-4 py-2.5 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle className="h-4 w-4" />
+                  GitHub connected successfully!
+                </div>
+              )}
+            </div>
           ) : null}
 
           <DialogFooter>
-            {selectedIntegration && (
+            {selectedIntegration === "telegram" && (
               <Button
                 className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
                 onClick={handleSaveTelegramToken}
                 disabled={savingToken || !token.trim()}
               >
                 {savingToken ? (
+                  <>
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  "Connect"
+                )}
+              </Button>
+            )}
+            {selectedIntegration === "github" && (
+              <Button
+                className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
+                onClick={handleSaveGitHubToken}
+                disabled={savingGitHub || !githubToken.trim()}
+              >
+                {savingGitHub ? (
                   <>
                     <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                     Connecting...
@@ -521,16 +680,19 @@ export function IntegrationsTab() {
       <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Telegram Integration</AlertDialogTitle>
+            <AlertDialogTitle>
+              Remove {deleteIntegrationType === "github" ? "GitHub" : "Telegram"} Integration
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will disconnect your Telegram bot, remove the webhook, and delete all whitelist
-              entries. This cannot be undone.
+              {deleteIntegrationType === "github"
+                ? "This will disconnect your GitHub account and remove the stored token. This cannot be undone."
+                : "This will disconnect your Telegram bot, remove the webhook, and delete all whitelist entries. This cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteIntegration}
+              onClick={handleDeleteIntegrationByType}
               variant="destructive"
               disabled={actionLoading === "delete"}
             >
@@ -620,6 +782,85 @@ function TelegramCard({
                 <ShieldCheck className="mr-2 h-4 w-4" />
                 Manage Whitelist
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={onDelete}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remove Integration
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── GitHub Card Component ───────────────────────────────────────────────────
+
+function GitHubCard({
+  account,
+  actionLoading,
+  onToggleEnabled,
+  onDelete,
+}: {
+  account: GitHubAccount;
+  actionLoading: string | null;
+  onToggleEnabled: (enabled: boolean) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="liquid-glass-inner rounded-2xl border-0 p-5">
+      <div className="flex items-start justify-between">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-gray-500/10 p-2.5">
+            <GitFork className="h-5 w-5 text-gray-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-medium">GitHub</h4>
+              {account.username && (
+                <Badge variant="secondary" className="rounded-full">
+                  {account.username}
+                </Badge>
+              )}
+              {!account.enabled && (
+                <Badge variant="outline" className="rounded-full">
+                  Disabled
+                </Badge>
+              )}
+            </div>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              Agents can use <code className="bg-muted/50 rounded px-1 text-[10px]">gh</code> CLI to
+              manage repos, PRs, and issues
+              {account.enabled ? " · Active" : " · Disabled"}
+            </p>
+            <p className="text-muted-foreground text-xs">
+              Added {new Date(account.createdAt).toLocaleDateString()}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">Enable</span>
+            <Switch
+              checked={account.enabled}
+              onCheckedChange={onToggleEnabled}
+              disabled={actionLoading === "toggle"}
+            />
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!!actionLoading}>
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onClick={onDelete}
                 className="text-destructive focus:text-destructive"

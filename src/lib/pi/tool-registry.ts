@@ -47,7 +47,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
  * Backward compat: existing sessions may have { files: true } or { bash: true }.
  * These are mapped to { terminal: true } for resolution.
  */
-export function resolveTools(
+export async function resolveTools(
   userId: string,
   sessionId: string,
   config: Required<ToolConfig>,
@@ -55,14 +55,14 @@ export function resolveTools(
     createTerminalScopedTools: (
       userId: string,
       sessionId: string,
-    ) => {
+    ) => Promise<{
       read: ToolDefinition;
       write: ToolDefinition;
       edit: ToolDefinition;
       bash: ToolDefinition;
-    };
+    }>;
   },
-): ToolDefinition[] {
+): Promise<ToolDefinition[]> {
   const tools: ToolDefinition[] = [];
 
   // Backward compat: map legacy keys to terminal
@@ -73,7 +73,7 @@ export function resolveTools(
 
   // ── Terminal tools (shell + file ops via open-terminal) ───────────────
   if (terminalEnabled && isTerminalConfigured()) {
-    const terminal = options.createTerminalScopedTools(userId, sessionId);
+    const terminal = await options.createTerminalScopedTools(userId, sessionId);
     tools.push(terminal.read, terminal.write, terminal.edit, terminal.bash);
     tools.push(createShowFileTool(userId, sessionId));
   } else if (terminalEnabled) {

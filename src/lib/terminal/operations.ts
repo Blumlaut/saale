@@ -158,6 +158,8 @@ interface TerminalOperationsOptions {
   sessionId: string;
   /** Base working directory (user's home in the container). */
   cwd: string;
+  /** Extra environment variables injected into every command (e.g. GH_TOKEN). */
+  extraEnv?: Record<string, string> | undefined;
 }
 
 type TerminalCommon = { userId: string; sessionId: string };
@@ -171,8 +173,14 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
   write: WriteOperations;
   edit: EditOperations;
 } {
-  const { userId, sessionId, cwd } = opts;
+  const { userId, sessionId, cwd, extraEnv } = opts;
   const common: TerminalCommon = { userId, sessionId };
+
+  /** Merge extra env vars with per-call env (per-call takes precedence). */
+  function mergeEnv(callEnv?: Record<string, string>): Record<string, string> | undefined {
+    if (!extraEnv && !callEnv) return undefined;
+    return { ...extraEnv, ...callEnv };
+  }
 
   // ── Shared helpers (used by both read and edit operations) ──
 
@@ -202,14 +210,15 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
     bash: {
       exec: async (command, _cwd, { onData, signal, timeout, env }) => {
         // Use the factory cwd (user home), not the per-call cwd
+        const mergedEnv = mergeEnv(env as Record<string, string> | undefined);
         const execBody: Record<string, unknown> = { command };
         if (cwd) execBody.cwd = cwd;
-        if (env) execBody.env = env as Record<string, string>;
+        if (mergedEnv) execBody.env = mergedEnv;
 
         const result = await terminal.executeCommand(command, {
           ...common,
           cwd,
-          ...(env ? { env: env as Record<string, string> } : {}),
+          ...(mergedEnv ? { env: mergedEnv } : {}),
           wait: 0, // Don't wait — we poll manually
         });
 

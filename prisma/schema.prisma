@@ -34,6 +34,7 @@ model User {
   tasks              Task[]
   agentDefinitions   AgentDefinition[]
   telegramAccounts   TelegramAccount[]
+  githubAccounts     GitHubAccount[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -622,4 +623,22 @@ model TelegramChat {
   @@unique([telegramAccountId, telegramChatId])
   @@index([sessionId])
   @@map("TelegramChat")
+}
+
+/// GitHub integration — stores a user's GitHub personal access token.
+model GitHubAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  encryptedToken  String   @db.Text // encrypted personal access token
+  enabled         Boolean  @default(true)
+  // Metadata from GitHub API (GET /user)
+  username        String?  // GitHub login
+  avatarUrl       String?  // avatar URL
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId]) // one account per user
+  @@index([userId])
+  @@map("GitHubAccount")
 }
