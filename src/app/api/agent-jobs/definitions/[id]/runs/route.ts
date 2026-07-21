@@ -45,6 +45,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       error: true,
       startedAt: true,
       completedAt: true,
+      outputChannel: true,
+      outputChannelId: true,
       createdAt: true,
       _count: { select: { messages: true } },
     },
@@ -63,6 +65,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         error: string | null;
         startedAt: Date | null;
         completedAt: Date | null;
+        outputChannel: string | null;
+        outputChannelId: string | null;
         createdAt: Date;
         _count: { messages: number };
       }) => ({
@@ -74,6 +78,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         outputTokens: r.outputTokens,
         cost: r.cost,
         error: r.error,
+        outputChannel: r.outputChannel,
+        outputChannelId: r.outputChannelId,
         startedAt: r.startedAt?.toISOString(),
         completedAt: r.completedAt?.toISOString(),
         messageCount: r._count.messages,
@@ -88,7 +94,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 /**
  * POST /api/agent-jobs/definitions/:id/runs — Trigger a new run
  */
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
@@ -104,23 +110,40 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Definition is disabled" }, { status: 400 });
   }
 
+  // Parse optional prompt override from request body
+  let body: Record<string, unknown> | undefined;
+  try {
+    body = await request.json();
+  } catch {
+    // No body — use definition's prompt
+  }
+  const runPrompt = (body?.prompt as string) || definition.prompt;
+
   // Create the run record
   const run = await prisma.agentRun.create({
     data: {
       definitionId: id,
       userId: authResult.user.id,
       status: "pending",
-      prompt: definition.prompt,
+      prompt: runPrompt,
       systemPrompt: definition.systemPrompt,
       modelId: definition.modelId,
+      outputChannel: definition.outputChannel,
+      outputChannelId: definition.outputChannelId,
     },
+  });
+
+  // Update lastRunAt on the definition
+  await prisma.agentDefinition.update({
+    where: { id },
+    data: { lastRunAt: new Date() },
   });
 
   // Execute asynchronously (fire-and-forget, but with error handling)
   executeAgentRun(
     run.id,
     {
-      prompt: definition.prompt,
+      prompt: runPrompt,
       systemPrompt: definition.systemPrompt,
       toolConfig: definition.toolConfig as Record<string, boolean> | null,
       modelId: definition.modelId,
@@ -158,6 +181,8 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     run: {
       id: run.id,
       status: run.status,
+      outputChannel: run.outputChannel,
+      outputChannelId: run.outputChannelId,
       createdAt: run.createdAt.toISOString(),
     },
   });

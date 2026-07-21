@@ -15,7 +15,6 @@ import * as memoryPruning from "./memory-pruning";
 import * as chatTitleGeneration from "./chat-title-generation";
 import * as taskExtraction from "./task-extraction";
 import * as taskReminders from "./task-reminders";
-import * as customAgent from "./custom-agent";
 
 /** All registered job handlers, keyed by type. */
 export const handlers = [
@@ -31,7 +30,6 @@ export const handlers = [
   chatTitleGeneration,
   taskExtraction,
   taskReminders,
-  customAgent,
 ] as const;
 
 /** Lookup map: type → handler module */

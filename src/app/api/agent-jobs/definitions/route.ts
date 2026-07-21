@@ -22,6 +22,10 @@ export async function GET() {
       toolConfig: true,
       modelId: true,
       thinkingLevel: true,
+      outputChannel: true,
+      outputChannelId: true,
+      cronExpression: true,
+      lastRunAt: true,
       enabled: true,
       createdAt: true,
       updatedAt: true,
@@ -54,6 +58,10 @@ export async function GET() {
         toolConfig: unknown;
         modelId: string | null;
         thinkingLevel: string;
+        outputChannel: string | null;
+        outputChannelId: string | null;
+        cronExpression: string | null;
+        lastRunAt: Date | null;
         enabled: boolean;
         createdAt: Date;
         updatedAt: Date;
@@ -67,6 +75,10 @@ export async function GET() {
         toolConfig: d.toolConfig as Record<string, boolean> | null,
         modelId: d.modelId,
         thinkingLevel: d.thinkingLevel,
+        outputChannel: d.outputChannel,
+        outputChannelId: d.outputChannelId,
+        cronExpression: d.cronExpression,
+        lastRunAt: d.lastRunAt?.toISOString(),
         enabled: d.enabled,
         runCount: d._count.runs,
         latestRun: latestRunMap.get(d.id) ?? null,
@@ -85,8 +97,19 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
-  const { name, description, prompt, systemPrompt, toolConfig, modelId, thinkingLevel, enabled } =
-    body;
+  const {
+    name,
+    description,
+    prompt,
+    systemPrompt,
+    toolConfig,
+    modelId,
+    thinkingLevel,
+    outputChannel,
+    outputChannelId,
+    cronExpression,
+    enabled,
+  } = body;
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -109,6 +132,9 @@ export async function POST(request: NextRequest) {
       toolConfig: toolConfig ?? null,
       modelId: resolvedModelId,
       thinkingLevel: thinkingLevel ?? "off",
+      outputChannel: outputChannel || null,
+      outputChannelId: outputChannelId || null,
+      cronExpression: cronExpression || null,
       enabled: enabled !== false,
     },
   });
@@ -123,6 +149,10 @@ export async function POST(request: NextRequest) {
       toolConfig: definition.toolConfig as Record<string, boolean> | null,
       modelId: definition.modelId,
       thinkingLevel: definition.thinkingLevel,
+      outputChannel: definition.outputChannel,
+      outputChannelId: definition.outputChannelId,
+      cronExpression: definition.cronExpression,
+      lastRunAt: definition.lastRunAt?.toISOString(),
       enabled: definition.enabled,
       createdAt: definition.createdAt.toISOString(),
       updatedAt: definition.updatedAt.toISOString(),

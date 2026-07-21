@@ -490,6 +490,17 @@ model AgentDefinition {
   modelId       String?
   /// Thinking level for the model.
   thinkingLevel String     @default("off")
+
+  /// Output channel for agent responses: "telegram", "discord", etc. (null = no external output)
+  outputChannel String?
+  /// Target identifier for the output channel (e.g., Telegram chat ID, Discord channel ID)
+  outputChannelId String?
+
+  /// Cron expression for scheduled runs (null = manual/LLM-triggered only)
+  cronExpression String?
+  /// When the definition was last executed (by schedule or manually)
+  lastRunAt      DateTime?
+
   enabled       Boolean    @default(true)
   runs          AgentRun[]
   user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -497,6 +508,7 @@ model AgentDefinition {
   updatedAt     DateTime   @updatedAt
 
   @@index([userId, enabled])
+  @@index([userId, cronExpression])
   @@map("AgentDefinition")
 }
 
@@ -523,6 +535,15 @@ model AgentRun {
   startedAt      DateTime?
   /// When the agent finished (success or error).
   completedAt    DateTime?
+
+  /// Output channel for this run (inherited from definition, can be overridden)
+  outputChannel   String?
+  /// Target identifier for the output channel
+  outputChannelId String?
+
+  /// Link to the TelegramChat that originated this run (for Telegram-sourced runs)
+  telegramChatId  BigInt?
+
   messages       AgentRunMessage[]
   definition     AgentDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
   createdAt      DateTime        @default(now())
