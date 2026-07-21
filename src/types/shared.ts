@@ -46,6 +46,10 @@ export interface AgentJobDefinition {
   toolConfig: Record<string, boolean> | null;
   modelId: string | null;
   thinkingLevel: string;
+  outputChannel: string | null;
+  outputChannelId: string | null;
+  cronExpression: string | null;
+  lastRunAt: string | null;
   enabled: boolean;
   runCount: number;
   latestRun: { status: string; completedAt: string | null } | null;
