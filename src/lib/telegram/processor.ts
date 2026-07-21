@@ -1,7 +1,14 @@
+import path from "path";
+import {
+	createAgentSession,
+	SessionManager,
+	type AgentSessionEvent,
+} from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { sendTelegramMessage, sendTypingIndicator } from "./client";
-import { executeAgentRun } from "@/lib/agent-jobs/executor";
-import type { AgentOutput } from "@/lib/agent-jobs/executor";
+import { buildModelRegistry } from "@/lib/pi/models";
+import { resolveTools } from "@/lib/pi/tool-registry";
+import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 
 /**
  * Default system prompt for Telegram-based interactions.
@@ -18,159 +25,234 @@ Guidelines:
 /** Name of the auto-created Telegram agent definition */
 const TELEGRAM_AGENT_NAME = "Telegram Assistant";
 
-/** How many prior messages to load as context for each Telegram run */
-const CONTEXT_MESSAGE_COUNT = 20;
-
 /**
  * Process an incoming Telegram message.
- * Creates an AgentRun and executes it with Telegram as the output channel.
+ *
+ * Uses a file-based persistent Pi session so the agent has full conversation
+ * history across messages — no manual context assembly needed.
  */
 export async function processTelegramMessage(params: {
-  userId: string;
-  encryptedToken: string;
-  telegramChatId: bigint;
-  telegramUserId: bigint;
-  messageText: string;
-  messageThreadId?: number;
-  replyToMessageId?: number;
+	userId: string;
+	encryptedToken: string;
+	telegramChatId: bigint;
+	telegramUserId: bigint;
+	messageText: string;
+	messageThreadId?: number;
+	replyToMessageId?: number;
 }): Promise<void> {
-  const { userId, encryptedToken, telegramChatId, messageText, replyToMessageId } = params;
+	const { userId, encryptedToken, telegramChatId, messageText, replyToMessageId } = params;
 
-  // 1. Find or create the TelegramChat + ChatSession
-  const { sessionId, telegramChatId: tgChatId } = await upsertTelegramChat(
-    userId,
-    encryptedToken,
-    telegramChatId,
-  );
+	// 1. Find or create the TelegramChat + ChatSession
+	const { sessionId, telegramChatId: tgChatId } = await upsertTelegramChat(
+		userId,
+		encryptedToken,
+		telegramChatId,
+	);
 
-  // 2. Save the user message to the chat session (for WebUI visibility)
-  await saveUserMessage(sessionId, messageText);
+	// 2. Save the user message to the chat session (for WebUI visibility)
+	await saveUserMessage(sessionId, messageText);
 
-  // 3. Send typing indicator
-  sendTypingIndicator(encryptedToken, telegramChatId);
+	// 3. Send typing indicator
+	sendTypingIndicator(encryptedToken, telegramChatId);
 
-  // 4. Ensure the Telegram agent definition exists
-  const definition = await ensureTelegramAgentDefinition(userId);
+	// 4. Ensure the Telegram agent definition exists
+	const definition = await ensureTelegramAgentDefinition(userId);
 
-  // 5. Resolve model
-  const model = await resolveUserModel(userId);
-  if (!model) {
-    await sendTelegramMessage(
-      encryptedToken,
-      telegramChatId,
-      "⚠️ No AI model configured. Please select a model in Settings → AI &amp; Models.",
-      replyToMessageId != null ? { replyToMessageId } : undefined,
-    );
-    return;
-  }
+	// 5. Resolve model
+	const model = await resolveUserModel(userId);
+	if (!model) {
+		await sendTelegramMessage(
+			encryptedToken,
+			telegramChatId,
+			"⚠️ No AI model configured. Please select a model in Settings → AI &amp; Models.",
+			replyToMessageId != null ? { replyToMessageId } : undefined,
+		);
+		return;
+	}
 
-  // 6. Load context from prior chat messages
-  const contextMessages = await loadRunContext(sessionId);
+	const modelId = definition.modelId ?? `${model.provider}:${model.name}`;
 
-  // 7. Build the effective prompt (context + current message)
-  const effectivePrompt = buildPrompt(contextMessages, messageText);
+	// 6. Create the AgentRun (for tracking in the dashboard)
+	const run = await prisma.agentRun.create({
+		data: {
+			definitionId: definition.id,
+			userId,
+			status: "pending",
+			prompt: messageText,
+			systemPrompt: definition.systemPrompt,
+			modelId,
+			outputChannel: "telegram",
+			outputChannelId: telegramChatId.toString(),
+			telegramChatId: tgChatId,
+		},
+	});
 
-  // 8. Create the AgentRun
-  const run = await prisma.agentRun.create({
-    data: {
-      definitionId: definition.id,
-      userId,
-      status: "pending",
-      prompt: effectivePrompt,
-      systemPrompt: definition.systemPrompt,
-      modelId: definition.modelId ?? `${model.provider}:${model.name}`,
-      outputChannel: "telegram",
-      outputChannelId: telegramChatId.toString(),
-      telegramChatId: tgChatId,
-    },
-  });
+	// 7. Create or resume the persistent Pi session
+	const sessionDir = path.join(
+		process.env.UPLOADS_DIR ?? "./uploads",
+		"pi_sessions",
+		userId,
+		sessionId,
+	);
 
-  // 10. Build Telegram output handler
-  const telegramOutput: AgentOutput = {
-    send: async (content: string) => {
-      if (content.trim()) {
-        // Send to Telegram
-        await sendTelegramMessage(
-          encryptedToken,
-          telegramChatId,
-          content,
-          replyToMessageId != null ? { replyToMessageId } : undefined,
-        );
-        // Also save to ChatSession for WebUI visibility
-        await prisma.chatMessage.create({
-          data: { sessionId, role: "assistant", content },
-        });
-      }
-    },
-    typing: () => {
-      sendTypingIndicator(encryptedToken, telegramChatId).catch((err) => {
-        console.error("Failed to send typing indicator:", err);
-      });
-    },
-  };
+	const { modelRegistry, authStorage } = await buildModelRegistry(userId);
+	const [provider, ...nameParts] = modelId.split(":");
+	const resolvedModel = modelRegistry.find(provider ?? "", nameParts.join(":"));
 
-  // 11. Execute the agent run
-  try {
-    const stats = await executeAgentRun(
-      run.id,
-      {
-        prompt: effectivePrompt,
-        systemPrompt: definition.systemPrompt,
-        toolConfig: definition.toolConfig as Record<string, boolean> | null,
-        modelId: definition.modelId ?? `${model.provider}:${model.name}`,
-        thinkingLevel: definition.thinkingLevel,
-      },
-      userId,
-      telegramOutput,
-    );
+	const rawToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
+	const resolvedToolConfig = {
+		...DEFAULT_TOOL_CONFIG,
+		...rawToolConfig,
+		terminal: false,
+	} as Required<ToolConfig>;
 
-    // Mark run as completed
-    await prisma.agentRun.update({
-      where: { id: run.id },
-      data: {
-        status: "completed",
-        inputTokens: stats.inputTokens,
-        outputTokens: stats.outputTokens,
-        cost: stats.cost,
-        startedAt: new Date(),
-        completedAt: new Date(),
-      },
-    });
+	const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
+		createTerminalScopedTools: () => {
+			throw new Error("Terminal tools are not available for agent jobs.");
+		},
+	});
 
-    // Update chat session metadata
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messageCount: { increment: 1 },
-        processingSince: null,
-      },
-    });
+	const sessionManager = SessionManager.continueRecent(sessionDir, sessionDir);
 
-    // Update definition lastRunAt
-    await prisma.agentDefinition.update({
-      where: { id: definition.id },
-      data: { lastRunAt: new Date() },
-    });
-  } catch (err) {
-    console.error(`Telegram agent run ${run.id} failed:`, err);
+	const { session } = await createAgentSession({
+		sessionManager,
+		authStorage,
+		modelRegistry,
+		noTools: "builtin",
+		...(resolvedModel ? { model: resolvedModel } : {}),
+		customTools: allCustomTools,
+		thinkingLevel: (definition.thinkingLevel as
+			| "off"
+			| "minimal"
+			| "low"
+			| "medium"
+			| "high"
+			| "xhigh") ?? "off",
+	});
 
-    await prisma.agentRun.update({
-      where: { id: run.id },
-      data: {
-        status: "error",
-        error: (err as Error).message,
-        startedAt: new Date(),
-        completedAt: new Date(),
-      },
-    });
+	session.agent.state.systemPrompt =
+		definition.systemPrompt ?? TELEGRAM_SYSTEM_PROMPT;
 
-    await sendTelegramMessage(
-      encryptedToken,
-      telegramChatId,
-      "⚠️ Sorry, I encountered an error processing your message. Please try again.",
-      replyToMessageId != null ? { replyToMessageId } : undefined,
-    );
-  }
+	// 8. Subscribe to session events and send response via Telegram
+	let assistantText = "";
+
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(() => {
+				unsubscribe();
+				session.abort().catch((err) => {
+					console.error(`Telegram session abort failed:`, err);
+				});
+				reject(new Error("Telegram agent timed out (10min)"));
+			}, 10 * 60_000);
+
+			const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+				switch (event.type) {
+					case "message_update": {
+						if (event.message.role !== "assistant") return;
+						const content = (event.message as { content: unknown[] }).content;
+						const textBlocks = content.filter(
+							(c): c is { type: string; text: string } =>
+								typeof c === "object" &&
+								c !== null &&
+								"type" in c &&
+								(c as Record<string, unknown>).type === "text",
+						);
+						assistantText = textBlocks.map((c) => (c.text as string) || "").join("");
+						break;
+					}
+
+					case "agent_end": {
+						clearTimeout(timer);
+						unsubscribe();
+						resolve();
+						break;
+					}
+
+					case "auto_retry_end": {
+						if (!event.success) {
+							clearTimeout(timer);
+							unsubscribe();
+							reject(new Error(event.finalError ?? "Agent retry failed"));
+						}
+						break;
+					}
+				}
+			});
+
+			// Send the user message to the agent
+			session.agent
+				.prompt(messageText)
+				.catch((err) => {
+					clearTimeout(timer);
+					unsubscribe();
+					reject(err);
+				});
+		});
+
+		// Send the assistant response to Telegram
+		if (assistantText.trim()) {
+			await sendTelegramMessage(
+				encryptedToken,
+				telegramChatId,
+				assistantText,
+				replyToMessageId != null ? { replyToMessageId } : undefined,
+			);
+
+			// Save to ChatSession for WebUI visibility
+			await prisma.chatMessage.create({
+				data: { sessionId, role: "assistant", content: assistantText },
+			});
+		}
+
+		// Get stats and mark run as completed
+		const stats = session.getSessionStats();
+		await prisma.agentRun.update({
+			where: { id: run.id },
+			data: {
+				status: "completed",
+				inputTokens: stats.tokens.input,
+				outputTokens: stats.tokens.output,
+				cost: stats.cost,
+				startedAt: new Date(),
+				completedAt: new Date(),
+			},
+		});
+
+		// Update chat session metadata
+		await prisma.chatSession.update({
+			where: { id: sessionId },
+			data: {
+				messageCount: { increment: 1 },
+				processingSince: null,
+			},
+		});
+
+		// Update definition lastRunAt
+		await prisma.agentDefinition.update({
+			where: { id: definition.id },
+			data: { lastRunAt: new Date() },
+		});
+	} catch (err) {
+		console.error(`Telegram agent run ${run.id} failed:`, err);
+
+		await prisma.agentRun.update({
+			where: { id: run.id },
+			data: {
+				status: "error",
+				error: (err as Error).message,
+				startedAt: new Date(),
+				completedAt: new Date(),
+			},
+		});
+
+		await sendTelegramMessage(
+			encryptedToken,
+			telegramChatId,
+			"⚠️ Sorry, I encountered an error processing your message. Please try again.",
+			replyToMessageId != null ? { replyToMessageId } : undefined,
+		);
+	}
 }
 
 /**
@@ -178,86 +260,46 @@ export async function processTelegramMessage(params: {
  * Creates it on first Telegram interaction if it doesn't exist.
  */
 async function ensureTelegramAgentDefinition(userId: string): Promise<{
-  id: string;
-  systemPrompt: string | null;
-  toolConfig: unknown;
-  modelId: string | null;
-  thinkingLevel: string;
+	id: string;
+	systemPrompt: string | null;
+	toolConfig: unknown;
+	modelId: string | null;
+	thinkingLevel: string;
 }> {
-  let definition = await prisma.agentDefinition.findFirst({
-    where: { userId, name: TELEGRAM_AGENT_NAME },
-  });
+	let definition = await prisma.agentDefinition.findFirst({
+		where: { userId, name: TELEGRAM_AGENT_NAME },
+	});
 
-  if (!definition) {
-    definition = await prisma.agentDefinition.create({
-      data: {
-        userId,
-        name: TELEGRAM_AGENT_NAME,
-        description: "Auto-created agent for Telegram conversations",
-        prompt: "", // Will be set per-run with user message
-        systemPrompt: TELEGRAM_SYSTEM_PROMPT,
-        toolConfig: {
-          email: true,
-          calendar: true,
-          chatSearch: true,
-          web: true,
-          memory: true,
-          tasks: true,
-        },
-        modelId: null, // Uses user default
-        thinkingLevel: "off",
-        enabled: true,
-      },
-    });
-  }
+	if (!definition) {
+		definition = await prisma.agentDefinition.create({
+			data: {
+				userId,
+				name: TELEGRAM_AGENT_NAME,
+				description: "Auto-created agent for Telegram conversations",
+				prompt: "",
+				systemPrompt: TELEGRAM_SYSTEM_PROMPT,
+				toolConfig: {
+					email: true,
+					calendar: true,
+					chatSearch: true,
+					web: true,
+					memory: true,
+					tasks: true,
+				},
+				modelId: null,
+				thinkingLevel: "off",
+				enabled: true,
+			},
+		});
+	}
 
-  return {
-    id: definition.id,
-    systemPrompt: definition.systemPrompt,
-    toolConfig: definition.toolConfig,
-    modelId: definition.modelId,
-    thinkingLevel: definition.thinkingLevel,
-  };
-}
-
-/**
- * Load context messages from the chat session for this Telegram chat.
- *
- * Loads from ChatMessage (which stores original user/assistant messages)
- * instead of AgentRunMessage (which stores the assembled prompt with context
- * already baked in — loading from there causes recursive duplication).
- */
-async function loadRunContext(
-  sessionId: string,
-): Promise<Array<{ role: string; content: string }>> {
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "desc" },
-    take: CONTEXT_MESSAGE_COUNT,
-    select: { role: true, content: true },
-  });
-
-  // Reverse to chronological order (oldest first) for natural conversation flow
-  return messages.reverse();
-}
-
-/**
- * Build the effective prompt from context and current message.
- */
-function buildPrompt(
-  context: Array<{ role: string; content: string }>,
-  currentMessage: string,
-): string {
-  if (context.length === 0) {
-    return currentMessage;
-  }
-
-  const contextLines = context.map((m) => {
-    const role = m.role === "user" ? "User" : "Assistant";
-    return `${role}: ${m.content}`;
-  });
-
-  return `Conversation context (most recent first):\n${contextLines.join("\n")}\n\n---\n\nUser: ${currentMessage}`;
+	return {
+		id: definition.id,
+		systemPrompt: definition.systemPrompt,
+		toolConfig: definition.toolConfig,
+		modelId: definition.modelId,
+		thinkingLevel: definition.thinkingLevel,
+	};
 }
 
 // ─── Chat Session Helpers ────────────────────────────────────────────────────
@@ -269,79 +311,79 @@ const TELEGRAM_CHAT_EXPIRY_MS = 12 * 60 * 60 * 1000;
  * Find or create the TelegramChat record and its linked ChatSession.
  */
 async function upsertTelegramChat(
-  userId: string,
-  _encryptedToken: string,
-  telegramChatId: bigint,
+	userId: string,
+	_encryptedToken: string,
+	telegramChatId: bigint,
 ): Promise<{ sessionId: string; telegramChatId: bigint }> {
-  const account = await prisma.telegramAccount.findUnique({
-    where: { userId },
-  });
-  if (!account) {
-    throw new Error("Telegram account not found");
-  }
+	const account = await prisma.telegramAccount.findUnique({
+		where: { userId },
+	});
+	if (!account) {
+		throw new Error("Telegram account not found");
+	}
 
-  let tgChat = await prisma.telegramChat.findUnique({
-    where: {
-      telegramAccountId_telegramChatId: {
-        telegramAccountId: account.id,
-        telegramChatId,
-      },
-    },
-  });
+	let tgChat = await prisma.telegramChat.findUnique({
+		where: {
+			telegramAccountId_telegramChatId: {
+				telegramAccountId: account.id,
+				telegramChatId,
+			},
+		},
+	});
 
-  let needsNewSession = !tgChat;
+	let needsNewSession = !tgChat;
 
-  if (tgChat) {
-    const session = await prisma.chatSession.findUnique({ where: { id: tgChat.sessionId } });
-    needsNewSession =
-      session == null || session.updatedAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
-  }
+	if (tgChat) {
+		const session = await prisma.chatSession.findUnique({ where: { id: tgChat.sessionId } });
+		needsNewSession =
+			session == null || session.updatedAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
+	}
 
-  if (needsNewSession) {
-    const sessionId = crypto.randomUUID();
+	if (needsNewSession) {
+		const sessionId = crypto.randomUUID();
 
-    await prisma.chatSession.create({
-      data: {
-        id: sessionId,
-        userId,
-        title: "Telegram Chat",
-        temporary: false,
-      },
-    });
+		await prisma.chatSession.create({
+			data: {
+				id: sessionId,
+				userId,
+				title: "Telegram Chat",
+				temporary: false,
+			},
+		});
 
-    tgChat = await prisma.telegramChat.upsert({
-      where: {
-        telegramAccountId_telegramChatId: {
-          telegramAccountId: account.id,
-          telegramChatId,
-        },
-      },
-      create: {
-        telegramAccountId: account.id,
-        telegramChatId,
-        chatType: "private",
-        sessionId,
-      },
-      update: {
-        sessionId,
-      },
-    });
-  }
+		tgChat = await prisma.telegramChat.upsert({
+			where: {
+				telegramAccountId_telegramChatId: {
+					telegramAccountId: account.id,
+					telegramChatId,
+				},
+			},
+			create: {
+				telegramAccountId: account.id,
+				telegramChatId,
+				chatType: "private",
+				sessionId,
+			},
+			update: {
+				sessionId,
+			},
+		});
+	}
 
-  return { sessionId: tgChat!.sessionId, telegramChatId: tgChat!.telegramChatId };
+	return { sessionId: tgChat!.sessionId, telegramChatId: tgChat!.telegramChatId };
 }
 
 /**
  * Save a user message to the chat session.
  */
 async function saveUserMessage(sessionId: string, content: string): Promise<void> {
-  await prisma.chatMessage.create({
-    data: {
-      sessionId,
-      role: "user",
-      content,
-    },
-  });
+	await prisma.chatMessage.create({
+		data: {
+			sessionId,
+			role: "user",
+			content,
+		},
+	});
 }
 
 // ─── Model Resolution ────────────────────────────────────────────────────────
@@ -350,42 +392,42 @@ async function saveUserMessage(sessionId: string, content: string): Promise<void
  * Resolve the default model for a user.
  */
 async function resolveUserModel(
-  userId: string,
+	userId: string,
 ): Promise<{ provider: string; name: string } | null> {
-  const settings = await prisma.appSettings.findUnique({
-    where: { userId },
-    select: { defaultModelProvider: true, defaultModelName: true },
-  });
+	const settings = await prisma.appSettings.findUnique({
+		where: { userId },
+		select: { defaultModelProvider: true, defaultModelName: true },
+	});
 
-  if (
-    settings?.defaultModelProvider &&
-    settings.defaultModelProvider.trim() &&
-    settings?.defaultModelName &&
-    settings.defaultModelName.trim()
-  ) {
-    return {
-      provider: settings.defaultModelProvider.trim(),
-      name: settings.defaultModelName.trim(),
-    };
-  }
+	if (
+		settings?.defaultModelProvider &&
+		settings.defaultModelProvider.trim() &&
+		settings?.defaultModelName &&
+		settings.defaultModelName.trim()
+	) {
+		return {
+			provider: settings.defaultModelProvider.trim(),
+			name: settings.defaultModelName.trim(),
+		};
+	}
 
-  const adminSettings = await prisma.adminSettings.findFirst({
-    select: { globalModelProvider: true, globalModelName: true },
-  });
+	const adminSettings = await prisma.adminSettings.findFirst({
+		select: { globalModelProvider: true, globalModelName: true },
+	});
 
-  if (
-    adminSettings?.globalModelProvider &&
-    adminSettings.globalModelProvider.trim() &&
-    adminSettings?.globalModelName &&
-    adminSettings.globalModelName.trim()
-  ) {
-    return {
-      provider: adminSettings.globalModelProvider.trim(),
-      name: adminSettings.globalModelName.trim(),
-    };
-  }
+	if (
+		adminSettings?.globalModelProvider &&
+		adminSettings.globalModelProvider.trim() &&
+		adminSettings?.globalModelName &&
+		adminSettings.globalModelName.trim()
+	) {
+		return {
+			provider: adminSettings.globalModelProvider.trim(),
+			name: adminSettings.globalModelName.trim(),
+		};
+	}
 
-  return null;
+	return null;
 }
 
 // ─── Whitelist Helpers ───────────────────────────────────────────────────────
@@ -394,42 +436,42 @@ async function resolveUserModel(
  * Check if a Telegram user is whitelisted for a given account.
  */
 export async function isWhitelisted(
-  telegramAccountId: string,
-  telegramUserId: bigint,
+	telegramAccountId: string,
+	telegramUserId: bigint,
 ): Promise<boolean> {
-  const entry = await prisma.telegramWhitelist.findUnique({
-    where: {
-      telegramAccountId_telegramUserId: {
-        telegramAccountId,
-        telegramUserId,
-      },
-    },
-  });
-  return !!entry;
+	const entry = await prisma.telegramWhitelist.findUnique({
+		where: {
+			telegramAccountId_telegramUserId: {
+				telegramAccountId,
+				telegramUserId,
+			},
+		},
+	});
+	return !!entry;
 }
 
 /**
  * Upsert a whitelist entry (called when user info changes).
  */
 export async function upsertWhitelistDisplayName(
-  telegramAccountId: string,
-  telegramUserId: bigint,
-  displayName: string | null,
+	telegramAccountId: string,
+	telegramUserId: bigint,
+	displayName: string | null,
 ): Promise<void> {
-  await prisma.telegramWhitelist.upsert({
-    where: {
-      telegramAccountId_telegramUserId: {
-        telegramAccountId,
-        telegramUserId,
-      },
-    },
-    update: {
-      displayName: displayName ?? null,
-    },
-    create: {
-      telegramAccountId,
-      telegramUserId,
-      displayName: displayName ?? null,
-    },
-  });
+	await prisma.telegramWhitelist.upsert({
+		where: {
+			telegramAccountId_telegramUserId: {
+				telegramAccountId,
+				telegramUserId,
+			},
+		},
+		update: {
+			displayName: displayName ?? null,
+		},
+		create: {
+			telegramAccountId,
+			telegramUserId,
+			displayName: displayName ?? null,
+		},
+	});
 }
