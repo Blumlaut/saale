@@ -1,14 +1,15 @@
 "use client";
 
-import { CheckCircle, Globe, RotateCcw, Brain, Zap } from "lucide-react";
+import { CheckCircle, Globe, RotateCcw, Brain, Zap, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getAllPurposes } from "@/lib/pi/purposes";
+import { useState, useEffect } from "react";
 import type { UserSettings } from "../types";
 
-const thinkingLevels = [
+const ALL_THINKING_LEVELS = [
   { id: "off", label: "Off", description: "Fastest", icon: Zap },
   { id: "minimal", label: "Minimal", description: "Light reasoning", icon: Brain },
   { id: "low", label: "Low", description: "Basic reasoning", icon: Brain },
@@ -40,6 +41,50 @@ export function ModelSidebar({
   onSettingsChange,
 }: ModelSidebarProps) {
   const purposes = getAllPurposes();
+
+  // Fetch available thinking levels for the current model
+  const [availableLevels, setAvailableLevels] = useState<string[]>([]);
+  const [supportsThinking, setSupportsThinking] = useState(true);
+
+  useEffect(() => {
+    if (!effectiveModel || activePurpose !== "__default__") {
+      setAvailableLevels([]);
+      setSupportsThinking(true);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(
+      `/api/models/thinking-levels?provider=${encodeURIComponent(effectiveModel.provider)}&model=${encodeURIComponent(effectiveModel.model)}`,
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setAvailableLevels(data.levels ?? []);
+        setSupportsThinking(data.reasoning ?? false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch thinking levels:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveModel, activePurpose]);
+
+  // Filter thinking levels based on what the model supports
+  const filteredLevels =
+    effectiveModel && activePurpose === "__default__"
+      ? ALL_THINKING_LEVELS.filter((l) => availableLevels.includes(l.id))
+      : ALL_THINKING_LEVELS;
+
+  // Check if current thinking level is unsupported
+  const currentLevel = settings?.defaultThinkingLevel || "off";
+  const isLevelUnsupported =
+    effectiveModel &&
+    activePurpose === "__default__" &&
+    availableLevels.length > 0 &&
+    !availableLevels.includes(currentLevel);
 
   return (
     <div className="w-full lg:w-[260px]">
@@ -162,12 +207,28 @@ export function ModelSidebar({
         {/* Thinking level */}
         {activePurpose === "__default__" && (
           <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-              Thinking
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                Thinking
+              </Label>
+              {!supportsThinking && (
+                <span className="text-muted-foreground text-[10px]">Not supported</span>
+              )}
+            </div>
+
+            {/* Warning if current level is unsupported */}
+            {isLevelUnsupported && (
+              <div className="flex items-start gap-2 rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />
+                <p className="text-xs text-yellow-500/90">
+                  &quot;{currentLevel}&quot; is not supported by this model. It will be clamped to
+                  the nearest available level.
+                </p>
+              </div>
+            )}
 
             <div className="liquid-glass-inner space-y-0.5 rounded-2xl border-0 p-1">
-              {thinkingLevels.map((level, index) => {
+              {filteredLevels.map((level, index) => {
                 const isActive = settings?.defaultThinkingLevel === level.id;
                 const Icon = level.icon;
 

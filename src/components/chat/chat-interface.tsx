@@ -1142,7 +1142,12 @@ export function ChatInterface({
             {/* Desktop: show selectors directly */}
             <div className="hidden items-center gap-1 md:flex">
               <ModelPicker value={modelId} onChange={setModelId} />
-              <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+              <ThinkingSelector
+                value={thinkingLevel}
+                onChange={setThinkingLevel}
+                modelProvider={modelId.split("/")[0] || undefined}
+                modelName={modelId.split("/").slice(1).join("/") || undefined}
+              />
             </div>
             {/* Mobile: compact dropdown */}
             <div className="md:hidden">
@@ -1158,7 +1163,12 @@ export function ChatInterface({
                     <ModelPicker value={modelId} onChange={setModelId} compact />
                   </div>
                   <div className="border-border/50 border-t px-2 pt-1.5 pb-1">
-                    <ThinkingSelector value={thinkingLevel} onChange={setThinkingLevel} />
+                    <ThinkingSelector
+                      value={thinkingLevel}
+                      onChange={setThinkingLevel}
+                      modelProvider={modelId.split("/")[0] || undefined}
+                      modelName={modelId.split("/").slice(1).join("/") || undefined}
+                    />
                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>
