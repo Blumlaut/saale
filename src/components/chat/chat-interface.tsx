@@ -609,6 +609,43 @@ export function ChatInterface({
       markDone(sessionId);
     });
 
+    // Tool resume: backend detected an in-progress tool (persisted to DB).
+    // Add it to the streaming state so the user sees what's running.
+    eventSource.addEventListener("tool_resume", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data) as {
+        toolCallId: string;
+        toolName: string;
+        args: Record<string, unknown>;
+        startedAt: string | null;
+      };
+      setStreaming((prev) => {
+        const next = {
+          ...prev,
+          current: {
+            ...prev.current,
+            toolCalls: [
+              ...prev.current.toolCalls,
+              {
+                toolCallId: parsed.toolCallId,
+                toolName: parsed.toolName,
+                args: parsed.args ?? {},
+                status: "running" as const,
+                result: undefined,
+                error: undefined,
+              },
+            ],
+          },
+        };
+        streamingRef.current = next;
+        return next;
+      });
+      // Reset safety timeout since we know the agent is still working
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    });
+
     // Safety timeout — if still loading after 15s, force-clear and reload from DB.
     // This catches cases where the SSE stream never emits done (backend bug, Redis failure).
     reconnectTimerRef.current = setTimeout(() => {
