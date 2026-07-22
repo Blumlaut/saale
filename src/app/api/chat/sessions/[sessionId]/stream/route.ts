@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
@@ -383,6 +384,20 @@ Guidelines:
               toolName: event.toolName,
               args: event.args,
             });
+            // Persist active tool to DB for SSE reconnection (survives page refresh mid-tool)
+            prisma.chatSession
+              .update({
+                where: { id: sessionId },
+                data: {
+                  activeToolCallId: event.toolCallId,
+                  activeToolName: event.toolName,
+                  activeToolArgs: event.args,
+                  activeToolStartedAt: new Date(),
+                },
+              })
+              .catch((err) => {
+                console.error("Failed to persist active tool state:", err);
+              });
             break;
           }
 
@@ -400,6 +415,20 @@ Guidelines:
               result: resultStr,
               isError: event.isError,
             });
+            // Clear active tool from DB
+            prisma.chatSession
+              .update({
+                where: { id: sessionId },
+                data: {
+                  activeToolCallId: null,
+                  activeToolName: null,
+                  activeToolArgs: Prisma.JsonNull,
+                  activeToolStartedAt: null,
+                },
+              })
+              .catch((err) => {
+                console.error("Failed to clear active tool state:", err);
+              });
             break;
           }
 

@@ -71,6 +71,29 @@ export function handleReconnectFromRedis(sessionId: string, request: NextRequest
     request.signal.addEventListener("abort", cleanup, { once: true });
 
     try {
+      // Check for in-progress tool (persisted to DB on tool_execution_start).
+      // Emit immediately so the reconnecting client knows what's running.
+      const sessionForTool = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          activeToolCallId: true,
+          activeToolName: true,
+          activeToolArgs: true,
+          activeToolStartedAt: true,
+        },
+      });
+      if (sessionForTool?.activeToolName) {
+        yield encoder.encode(
+          formatSseEvent("tool_resume", {
+            toolCallId:
+              sessionForTool.activeToolCallId ?? `resume-${sessionForTool.activeToolName}`,
+            toolName: sessionForTool.activeToolName,
+            args: sessionForTool.activeToolArgs,
+            startedAt: sessionForTool.activeToolStartedAt?.toISOString() ?? null,
+          }),
+        );
+      }
+
       const buffered = await getBufferedEvents(sessionId);
       for (const raw of buffered) {
         if (aborted) break;
