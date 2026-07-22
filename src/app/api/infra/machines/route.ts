@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
+import { generateSshKeyPair } from "@/lib/infra/client";
 
 /**
  * GET /api/infra/machines — List user's infrastructure machines
@@ -50,18 +51,11 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
-  const { name, host, port, username, authMethod, privateKey, password, passPhrase } = body;
+  const { name, host, port, username, authMethod, password } = body;
 
   if (!name || !host || !username || !authMethod) {
     return NextResponse.json(
       { error: "Missing required fields: name, host, username, authMethod" },
-      { status: 400 },
-    );
-  }
-
-  if (authMethod === "key" && !privateKey) {
-    return NextResponse.json(
-      { error: "privateKey is required when authMethod='key'" },
       { status: 400 },
     );
   }
@@ -74,6 +68,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    let authorizedKeysEntry: string | undefined;
+
     const machine = await prisma.infraMachine.create({
       data: {
         userId: authResult.user.id,
@@ -82,13 +78,18 @@ export async function POST(request: NextRequest) {
         port: port ?? 22,
         username,
         authMethod,
-        ...(authMethod === "key" ? { encryptedKey: encrypt(privateKey) } : {}),
-        ...(authMethod === "password" ? { encryptedPass: encrypt(password) } : {}),
-        ...(passPhrase ? { passPhrase: encrypt(passPhrase) } : {}),
+        ...(authMethod === "key"
+          ? (() => {
+              const { privateKey, publicKey } = generateSshKeyPair();
+              authorizedKeysEntry = publicKey;
+              return { encryptedKey: encrypt(privateKey) };
+            })()
+          : {}),
+        ...(authMethod === "password" && password ? { encryptedPass: encrypt(password) } : {}),
       },
     });
 
-    return NextResponse.json({
+    const response: Record<string, unknown> = {
       machine: {
         id: machine.id,
         name: machine.name,
@@ -98,7 +99,13 @@ export async function POST(request: NextRequest) {
         authMethod: machine.authMethod,
         createdAt: machine.createdAt.toISOString(),
       },
-    });
+    };
+
+    if (authMethod === "key" && authorizedKeysEntry) {
+      response.authorizedKeysEntry = authorizedKeysEntry;
+    }
+
+    return NextResponse.json(response);
   } catch (err) {
     if (err instanceof Error && err.message.includes("Unique constraint failed")) {
       return NextResponse.json(

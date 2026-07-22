@@ -5,6 +5,7 @@
  * Handles credential encryption/decryption, timeouts, and output limits.
  */
 
+import { generateKeyPairSync } from "crypto";
 import type { SFTPWrapper } from "ssh2";
 import { NodeSSH } from "node-ssh";
 import { prisma } from "@/lib/db";
@@ -17,6 +18,13 @@ const MAX_OUTPUT_BYTES = 50 * 1024; // 50 KB
 const CONNECT_TIMEOUT = 10000; // 10 seconds for SSH handshake
 
 // ─── Types ──────────────────────────────────────────────────────
+
+export interface GeneratedKeyPair {
+  /** PEM-encoded private key. */
+  privateKey: string;
+  /** SSH public key line for authorized_keys. */
+  publicKey: string;
+}
 
 export interface ExecOptions {
   /** Hard timeout in seconds. Default: 30. */
@@ -47,6 +55,65 @@ export interface SftpListEntry {
   type: "file" | "directory";
   size: number;
   modified: Date;
+}
+
+// ─── Key Generation ─────────────────────────────────────────────
+
+/**
+ * Generate an ED25519 SSH key pair.
+ * Uses Node.js built-in crypto module — no external dependencies.
+ */
+export function generateSshKeyPair(): GeneratedKeyPair {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519", {
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+    },
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+  });
+
+  // Convert PEM public key to OpenSSH format for authorized_keys
+  const sshPublicKey = toOpenSshPublicKey(publicKey);
+
+  return {
+    privateKey: privateKey as string,
+    publicKey: sshPublicKey,
+  };
+}
+
+/**
+ * Convert a PEM (SPKI) ED25519 public key to OpenSSH format.
+ * OpenSSH format: "ssh-ed25519 <base64-data>"
+ *
+ * SPKI DER structure for ED25519:
+ *   SEQUENCE (44 bytes)
+ *     SEQUENCE (5 bytes) { OID 1.3.101.112 }
+ *     BIT STRING (33 bytes) { 0x00 + 32-byte raw key }
+ * The raw 32-byte key is at offset 12.
+ */
+function toOpenSshPublicKey(pemPublicKey: string): string {
+  // Strip PEM headers/footers and decode base64
+  const pemContent = pemPublicKey
+    .replace("-----BEGIN PUBLIC KEY-----", "")
+    .replace("-----END PUBLIC KEY-----", "")
+    .replace(/\s/g, "");
+  const derBuffer = Buffer.from(pemContent, "base64");
+
+  // Extract raw 32-byte ED25519 public key from DER
+  const rawKey = derBuffer.slice(12, 44);
+
+  // Build OpenSSH key data: string("ssh-ed25519") + string(raw-key)
+  const keyType = Buffer.from("ssh-ed25519");
+  const sshKeyData = Buffer.alloc(4 + keyType.length + 4 + rawKey.length);
+  sshKeyData.writeUInt32BE(keyType.length, 0);
+  keyType.copy(sshKeyData, 4);
+  sshKeyData.writeUInt32BE(rawKey.length, 4 + keyType.length);
+  rawKey.copy(sshKeyData, 4 + keyType.length + 4);
+
+  return `ssh-ed25519 ${sshKeyData.toString("base64")}`;
 }
 
 // ─── Credential Resolution ──────────────────────────────────────

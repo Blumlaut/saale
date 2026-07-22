@@ -71,11 +71,9 @@ vi.mock("@/lib/pi/tools/infra-tools", () => ({
     { name: "infra_list_machines", userId },
     { name: "infra_add_machine", userId },
     { name: "infra_remove_machine", userId },
-    { name: "infra_test_connection", userId },
     { name: "infra_exec", userId },
     { name: "infra_read_file", userId },
     { name: "infra_write_file", userId },
-    { name: "infra_list_directory", userId },
     { name: "infra_notes_list", userId },
     { name: "infra_notes_get", userId },
     { name: "infra_notes_upsert", userId },
@@ -247,8 +245,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(12) = 30
-    expect(tools).toHaveLength(30);
+    // email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 28
+    expect(tools).toHaveLength(28);
     expect(tools.map((t) => t.name)).toEqual([
       "mail_accounts",
       "mail_list",
@@ -271,11 +269,9 @@ describe("resolveTools", () => {
       "infra_list_machines",
       "infra_add_machine",
       "infra_remove_machine",
-      "infra_test_connection",
       "infra_exec",
       "infra_read_file",
       "infra_write_file",
-      "infra_list_directory",
       "infra_notes_list",
       "infra_notes_get",
       "infra_notes_upsert",
@@ -300,8 +296,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(12) = 35
-    expect(tools).toHaveLength(35);
+    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 33
+    expect(tools).toHaveLength(33);
   });
 
   it("passes userId to all user-scoped factories", async () => {
