@@ -216,8 +216,11 @@ export async function processTelegramMessage(params: {
   // 3. Save the user message to the chat session (for WebUI visibility)
   await saveUserMessage(sessionId, promptText);
 
-  // 4. Save attachment record if a file was processed
-  if (processedFile) {
+  // 4. Save attachment record only if a file was saved to disk.
+  // Telegram images are base64-only (no file on disk) — their data is
+  // already embedded in the message content, so no attachment record needed.
+  // Telegram documents are saved to disk and need a record for cleanup.
+  if (processedFile && processedFile.filePath) {
     const [userMessage] = await prisma.chatMessage.findMany({
       where: { sessionId, role: "user" },
       orderBy: { createdAt: "desc" },
@@ -225,14 +228,18 @@ export async function processTelegramMessage(params: {
     });
 
     if (userMessage) {
+      // Use a path relative to the user workspace so resolveImagePath()
+      // and deleteAllImages() can locate it correctly
+      const relativePath = `telegram_files/${path.basename(processedFile.filePath)}`;
+
       await prisma.chatAttachment.create({
         data: {
           messageId: userMessage.id,
           storageId: crypto.randomUUID(),
           fileName: processedFile.fileName,
           mimeType: processedFile.mimeType,
-          size: processedFile.imageData ? Math.ceil(processedFile.imageData.data.length * 0.75) : 0,
-          storagePath: processedFile.filePath ?? processedFile.fileName,
+          size: 0,
+          storagePath: relativePath,
         },
       });
     }
