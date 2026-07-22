@@ -269,11 +269,11 @@ describe("generateSshKeyPair", () => {
   it("generates an ED25519 key pair", () => {
     const { privateKey, publicKey } = generateSshKeyPair();
 
-    // Private key is PEM format
-    expect(privateKey).toContain("-----BEGIN PRIVATE KEY-----");
-    expect(privateKey).toContain("-----END PRIVATE KEY-----");
+    // Private key is OpenSSH format (compatible with ssh2/node-ssh)
+    expect(privateKey).toContain("-----BEGIN OPENSSH PRIVATE KEY-----");
+    expect(privateKey).toContain("-----END OPENSSH PRIVATE KEY-----");
 
-    // Public key is OpenSSH format
+    // Public key is authorized_keys format
     expect(publicKey).toMatch(/^ssh-ed25519 [A-Za-z0-9+\/=]+$/);
   });
 
