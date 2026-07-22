@@ -185,7 +185,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         }
 
         await prisma.infraMachine.delete({
-          where: { id: params.id },
+          where: { id: params.id, userId },
         });
 
         return {
@@ -229,7 +229,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           throw new Error(`Machine ${params.id} not found`);
         }
 
-        const result = await testConnection(params.id);
+        const result = await testConnection(params.id, userId);
 
         return {
           content: [
@@ -288,12 +288,16 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           throw new Error(`Machine ${params.id} not found`);
         }
 
+        if (!params.command || !params.command.trim()) {
+          throw new Error("command must not be empty");
+        }
+
         const execOptions: { timeout: number; cwd?: string } = {
           timeout: params.timeout ?? 30,
         };
         if (params.cwd) execOptions.cwd = params.cwd;
 
-        const result = await executeCommand(params.id, params.command, execOptions);
+        const result = await executeCommand(params.id, userId, params.command, execOptions);
 
         return {
           content: [
@@ -341,7 +345,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           throw new Error(`Machine ${params.id} not found`);
         }
 
-        const result = await sftpReadFile(params.id, params.path);
+        const result = await sftpReadFile(params.id, userId, params.path);
 
         return {
           content: [
@@ -390,7 +394,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           throw new Error(`Machine ${params.id} not found`);
         }
 
-        const result = await sftpWriteFile(params.id, params.path, params.content);
+        const result = await sftpWriteFile(params.id, userId, params.path, params.content);
 
         return {
           content: [
@@ -434,7 +438,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           throw new Error(`Machine ${params.id} not found`);
         }
 
-        const entries = await sftpListDirectory(params.id, params.path);
+        const entries = await sftpListDirectory(params.id, userId, params.path);
 
         return {
           content: [
