@@ -153,7 +153,7 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
   if (generatedPublicKey) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               <KeyRound className="text-primary mb-2 h-8 w-8" />
@@ -175,7 +175,7 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
             <div className="space-y-2">
               <Label>Public key</Label>
               <div className="flex items-center gap-2">
-                <pre className="bg-muted/50 min-h-0 flex-1 overflow-x-auto rounded-lg border p-3 font-mono text-[10px] break-all">
+                <pre className="bg-muted/50 min-h-0 flex-1 overflow-x-auto rounded-lg border p-3 font-mono text-[10px] whitespace-nowrap">
                   {generatedPublicKey}
                 </pre>
                 <Button size="sm" variant="secondary" onClick={handleCopyKey} className="shrink-0">
