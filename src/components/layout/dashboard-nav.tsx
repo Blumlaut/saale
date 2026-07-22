@@ -29,6 +29,7 @@ import {
   X,
   Loader2,
   CheckSquare,
+  Server,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -37,6 +38,7 @@ const navItems = [
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
   { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/dashboard/jobs", label: "Jobs", icon: ListTodo },
+  { href: "/dashboard/infra", label: "Infrastructure", icon: Server },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

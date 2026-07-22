@@ -21,6 +21,7 @@ import {
   Brain,
   CheckSquare,
   Bot,
+  Server,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -103,6 +104,13 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Manage custom agent job definitions and runs",
     icon: Bot,
     defaultEnabled: true,
+  },
+  {
+    key: "infra",
+    label: "Infrastructure",
+    description: "Manage remote machines via SSH",
+    icon: Server,
+    defaultEnabled: false,
   },
 ];
 

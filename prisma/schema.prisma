@@ -35,6 +35,7 @@ model User {
   agentDefinitions   AgentDefinition[]
   telegramAccounts   TelegramAccount[]
   githubAccounts     GitHubAccount[]
+  infraMachines      InfraMachine[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -641,4 +642,43 @@ model GitHubAccount {
   @@unique([userId]) // one account per user
   @@index([userId])
   @@map("GitHubAccount")
+}
+
+// ─── Infrastructure Management ─────────────────────────────────
+
+/// Remote machines the agent can SSH into and manage.
+model InfraMachine {
+  id            String       @id @default(cuid())
+  userId        String
+  name          String       @db.VarChar(100) // User-friendly label
+  host          String       // hostname or IP
+  port          Int          @default(22)
+  username      String
+  authMethod    String       @default("key") // "key" | "password"
+  encryptedKey  String?      @db.Text         // SSH private key (PEM)
+  encryptedPass String?      @db.Text         // Password (if authMethod="password")
+  passPhrase    String?      @db.Text         // Key passphrase (encrypted)
+  notes         InfraNote[]
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("InfraMachine")
+}
+
+/// Agent-maintained notes about a machine.
+model InfraNote {
+  id        String       @id @default(cuid())
+  machineId String
+  title     String       @db.VarChar(200)
+  content   String       @db.Text
+  category  String       @default("general") // "general" | "services" | "paths" | "credentials" | "quirks" | "config"
+  machine   InfraMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([machineId, category])
+  @@map("InfraNote")
 }

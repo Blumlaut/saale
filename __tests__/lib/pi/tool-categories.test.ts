@@ -7,8 +7,8 @@ import {
 } from "@/lib/pi/tool-categories";
 
 describe("tool categories", () => {
-  it("has 8 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(9);
+  it("has 10 tool categories", () => {
+    expect(TOOL_CATEGORIES).toHaveLength(10);
   });
 
   it("has unique keys", () => {
@@ -28,6 +28,7 @@ describe("tool categories", () => {
     expect(keys).toContain("memory");
     expect(keys).toContain("tasks");
     expect(keys).toContain("agentJobs");
+    expect(keys).toContain("infra");
   });
 
   it("each category has required fields", () => {
@@ -49,10 +50,13 @@ describe("tool categories", () => {
     expect(terminal!.defaultEnabled).toBe(false);
   });
 
-  it("all non-terminal categories are enabled by default", () => {
+  it("terminal and infra are disabled by default, all others enabled", () => {
     for (const category of TOOL_CATEGORIES) {
-      if (category.key === "terminal") continue;
-      expect(category.defaultEnabled).toBe(true);
+      if (category.key === "terminal" || category.key === "infra") {
+        expect(category.defaultEnabled).toBe(false);
+      } else {
+        expect(category.defaultEnabled).toBe(true);
+      }
     }
   });
 });
@@ -80,6 +84,7 @@ describe("DEFAULT_TOOL_CONFIG", () => {
     expect(DEFAULT_TOOL_CONFIG.memory).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.tasks).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.agentJobs).toBe(true);
+    expect(DEFAULT_TOOL_CONFIG.infra).toBe(false);
   });
 });
 
@@ -125,7 +130,8 @@ describe("ToolConfig type", () => {
       memory: true,
       tasks: true,
       agentJobs: true,
+      infra: false,
     };
-    expect(Object.keys(config)).toHaveLength(9);
+    expect(Object.keys(config)).toHaveLength(10);
   });
 });
