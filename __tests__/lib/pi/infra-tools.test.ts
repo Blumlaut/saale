@@ -34,7 +34,8 @@ vi.mock("@/lib/infra/client", () => ({
   readFile: vi.fn(),
   writeFile: vi.fn(),
   generateSshKeyPair: vi.fn(() => ({
-    privateKey: "-----BEGIN PRIVATE KEY-----\nmock-private-key\n-----END PRIVATE KEY-----",
+    privateKey:
+      "-----BEGIN OPENSSH PRIVATE KEY-----\nmock-private-key\n-----END OPENSSH PRIVATE KEY-----",
     publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockPublicKeyData",
   })),
 }));
@@ -187,7 +188,7 @@ describe("createInfraTools", () => {
 
       // Private key was encrypted and stored
       expect(crypto.encrypt).toHaveBeenCalledWith(
-        "-----BEGIN PRIVATE KEY-----\nmock-private-key\n-----END PRIVATE KEY-----",
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nmock-private-key\n-----END OPENSSH PRIVATE KEY-----",
       );
 
       // Public key is returned for authorized_keys setup
