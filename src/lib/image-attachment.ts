@@ -140,7 +140,15 @@ export async function deleteAllImages(userId: string, storagePaths: string[]): P
   const results = await Promise.allSettled(
     storagePaths.map(async (storagePath) => {
       const fullPath = resolveImagePath(userId, storagePath);
-      await fs.unlink(fullPath);
+      try {
+        await fs.unlink(fullPath);
+      } catch (err) {
+        // File already gone — treat as success
+        if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+          return;
+        }
+        throw err;
+      }
     }),
   );
 
