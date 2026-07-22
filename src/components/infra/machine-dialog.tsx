@@ -153,8 +153,8 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
   if (generatedPublicKey) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[85dvh] max-w-lg flex-col gap-0">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
             <DialogTitle>
               <KeyRound className="text-primary mb-2 h-8 w-8" />
               <span>Setup SSH Access</span>
@@ -170,49 +170,16 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-            {/* Setup instructions */}
+          <div className="space-y-4">
+            {/* Public key */}
             <div className="space-y-2">
-              <Label>Run this on the remote server:</Label>
-              <div className="relative">
-                <pre className="bg-muted/50 overflow-x-auto rounded-lg border p-3 font-mono text-xs">
-                  {`mkdir -p ~/.ssh && chmod 700 ~/.ssh\necho '${generatedPublicKey}' >> ~/.ssh/authorized_keys\nchmod 600 ~/.ssh/authorized_keys`}
-                </pre>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="absolute top-2 right-2 h-7 text-[10px]"
-                  onClick={handleCopyKey}
-                >
-                  {copiedKey ? (
-                    <Check className="mr-1 h-3 w-3" />
-                  ) : (
-                    <Copy className="mr-1 h-3 w-3" />
-                  )}
-                  Copy
-                </Button>
-              </div>
-            </div>
-
-            {/* Public key for reference */}
-            <div className="space-y-2">
-              <Label>Public key (authorized_keys entry):</Label>
-              <div className="relative">
-                <pre className="bg-muted/50 overflow-x-auto rounded-lg border p-3 font-mono text-[10px] break-all">
+              <Label>Public key</Label>
+              <div className="flex items-center gap-2">
+                <pre className="bg-muted/50 min-h-0 flex-1 overflow-x-auto rounded-lg border p-3 font-mono text-[10px] break-all">
                   {generatedPublicKey}
                 </pre>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="absolute top-2 right-2 h-7 text-[10px]"
-                  onClick={handleCopyKey}
-                >
-                  {copiedKey ? (
-                    <Check className="mr-1 h-3 w-3" />
-                  ) : (
-                    <Copy className="mr-1 h-3 w-3" />
-                  )}
-                  Copy Key
+                <Button size="sm" variant="secondary" onClick={handleCopyKey} className="shrink-0">
+                  {copiedKey ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
@@ -223,7 +190,7 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
             </div>
           </div>
 
-          <DialogFooter className="shrink-0">
+          <DialogFooter>
             <Button type="button" onClick={handleDone} className="h-8">
               Done
             </Button>
