@@ -54,8 +54,12 @@ export interface SftpListEntry {
 /**
  * Resolve SSH connection config from a stored machine record.
  * Decrypts credentials and returns a node-ssh config.
+ * Requires userId for user isolation — always verify ownership before connecting.
  */
-async function resolveConnectionConfig(machineId: string): Promise<{
+export async function resolveConnectionConfig(
+  machineId: string,
+  userId: string,
+): Promise<{
   host: string;
   port: number;
   username: string;
@@ -63,8 +67,8 @@ async function resolveConnectionConfig(machineId: string): Promise<{
   privateKey?: string;
   passPhrase?: string;
 }> {
-  const machine = await prisma.infraMachine.findUnique({
-    where: { id: machineId },
+  const machine = await prisma.infraMachine.findFirst({
+    where: { id: machineId, userId },
   });
 
   if (!machine) {
@@ -107,11 +111,14 @@ async function resolveConnectionConfig(machineId: string): Promise<{
 /**
  * Create a fresh SSH client and connect. Returns a cleanup function.
  */
-async function connect(machineId: string): Promise<{
+async function connect(
+  machineId: string,
+  userId: string,
+): Promise<{
   ssh: NodeSSH;
   disconnect: () => void;
 }> {
-  const config = await resolveConnectionConfig(machineId);
+  const config = await resolveConnectionConfig(machineId, userId);
   const ssh = new NodeSSH();
 
   await ssh.connect({
@@ -135,7 +142,10 @@ async function connect(machineId: string): Promise<{
 /**
  * Truncate output to max bytes, preserving line boundaries.
  */
-function truncateOutput(text: string, maxBytes: number): { text: string; truncated: boolean } {
+export function truncateOutput(
+  text: string,
+  maxBytes: number,
+): { text: string; truncated: boolean } {
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes <= maxBytes) {
     return { text, truncated: false };
@@ -217,13 +227,14 @@ function sftpListDir(sftp: SFTPWrapper, path: string): Promise<SftpListEntry[]> 
  */
 export async function executeCommand(
   machineId: string,
+  userId: string,
   command: string,
   options: ExecOptions = {},
 ): Promise<ExecResult> {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
   const maxOutput = options.maxOutput ?? MAX_OUTPUT_BYTES;
 
-  const { ssh, disconnect } = await connect(machineId);
+  const { ssh, disconnect } = await connect(machineId, userId);
 
   let timedOut = false;
   let timerId: ReturnType<typeof setTimeout> | null = null;
@@ -282,12 +293,15 @@ export async function executeCommand(
 /**
  * Test SSH connectivity for a machine.
  */
-export async function testConnection(machineId: string): Promise<{
+export async function testConnection(
+  machineId: string,
+  userId: string,
+): Promise<{
   ok: boolean;
   message: string;
   hostname?: string;
 }> {
-  const { ssh, disconnect } = await connect(machineId);
+  const { ssh, disconnect } = await connect(machineId, userId);
 
   try {
     const result = await ssh.execCommand("hostname && echo 'OK'");
@@ -315,10 +329,11 @@ export async function testConnection(machineId: string): Promise<{
  */
 export async function readFile(
   machineId: string,
+  userId: string,
   filePath: string,
   maxBytes: number = MAX_OUTPUT_BYTES,
 ): Promise<SftpReadResult> {
-  const { ssh, disconnect } = await connect(machineId);
+  const { ssh, disconnect } = await connect(machineId, userId);
 
   try {
     const sftp = await getSftp(ssh);
@@ -337,10 +352,11 @@ export async function readFile(
  */
 export async function writeFile(
   machineId: string,
+  userId: string,
   filePath: string,
   content: string,
 ): Promise<{ ok: boolean }> {
-  const { ssh, disconnect } = await connect(machineId);
+  const { ssh, disconnect } = await connect(machineId, userId);
 
   try {
     const sftp = await getSftp(ssh);
@@ -354,8 +370,12 @@ export async function writeFile(
 /**
  * List directory contents on a remote machine via SFTP.
  */
-export async function listDirectory(machineId: string, dirPath: string): Promise<SftpListEntry[]> {
-  const { ssh, disconnect } = await connect(machineId);
+export async function listDirectory(
+  machineId: string,
+  userId: string,
+  dirPath: string,
+): Promise<SftpListEntry[]> {
+  const { ssh, disconnect } = await connect(machineId, userId);
 
   try {
     const sftp = await getSftp(ssh);

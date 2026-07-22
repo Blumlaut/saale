@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await testConnection(id);
+    const result = await testConnection(id, authResult.user.id);
 
     return NextResponse.json({
       ok: result.ok,

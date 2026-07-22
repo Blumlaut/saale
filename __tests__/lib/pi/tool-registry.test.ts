@@ -66,6 +66,23 @@ vi.mock("@/lib/pi/tools/agent-job-tools", () => ({
   createAgentJobTools: vi.fn((userId: string) => [{ name: "agent_job_list", userId }]),
 }));
 
+vi.mock("@/lib/pi/tools/infra-tools", () => ({
+  createInfraTools: vi.fn((userId: string) => [
+    { name: "infra_list_machines", userId },
+    { name: "infra_add_machine", userId },
+    { name: "infra_remove_machine", userId },
+    { name: "infra_test_connection", userId },
+    { name: "infra_exec", userId },
+    { name: "infra_read_file", userId },
+    { name: "infra_write_file", userId },
+    { name: "infra_list_directory", userId },
+    { name: "infra_notes_list", userId },
+    { name: "infra_notes_get", userId },
+    { name: "infra_notes_upsert", userId },
+    { name: "infra_notes_delete", userId },
+  ]),
+}));
+
 // Import after mocks
 import { resolveTools } from "@/lib/pi/tool-registry";
 import * as terminalClient from "@/lib/terminal/client";
@@ -101,6 +118,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
     expect(tools).toHaveLength(0);
@@ -119,6 +137,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
@@ -140,6 +159,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
@@ -160,6 +180,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
       files: true, // legacy key
     } as Required<ToolConfig>;
 
@@ -182,6 +203,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
       bash: true, // legacy key
     } as Required<ToolConfig>;
 
@@ -202,6 +224,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
@@ -220,11 +243,12 @@ describe("resolveTools", () => {
       memory: true,
       tasks: true,
       agentJobs: true,
+      infra: true,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) = 18
-    expect(tools).toHaveLength(18);
+    // email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(12) = 30
+    expect(tools).toHaveLength(30);
     expect(tools.map((t) => t.name)).toEqual([
       "mail_accounts",
       "mail_list",
@@ -244,6 +268,18 @@ describe("resolveTools", () => {
       "task_list",
       "task_create",
       "agent_job_list",
+      "infra_list_machines",
+      "infra_add_machine",
+      "infra_remove_machine",
+      "infra_test_connection",
+      "infra_exec",
+      "infra_read_file",
+      "infra_write_file",
+      "infra_list_directory",
+      "infra_notes_list",
+      "infra_notes_get",
+      "infra_notes_upsert",
+      "infra_notes_delete",
     ]);
   });
 
@@ -260,11 +296,12 @@ describe("resolveTools", () => {
       memory: true,
       tasks: true,
       agentJobs: true,
+      infra: true,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) = 23
-    expect(tools).toHaveLength(23);
+    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(12) = 35
+    expect(tools).toHaveLength(35);
   });
 
   it("passes userId to all user-scoped factories", async () => {
@@ -278,6 +315,7 @@ describe("resolveTools", () => {
       memory: true,
       tasks: false,
       agentJobs: false,
+      infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
@@ -306,6 +344,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
@@ -328,6 +367,7 @@ describe("resolveTools", () => {
       memory: false,
       tasks: false,
       agentJobs: false,
+      infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
