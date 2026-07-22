@@ -153,8 +153,8 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
   if (generatedPublicKey) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85dvh] max-w-lg flex-col gap-0">
+          <DialogHeader className="shrink-0">
             <DialogTitle>
               <KeyRound className="text-primary mb-2 h-8 w-8" />
               <span>Setup SSH Access</span>
@@ -170,7 +170,7 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
             {/* Setup instructions */}
             <div className="space-y-2">
               <Label>Run this on the remote server:</Label>
@@ -223,7 +223,7 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button type="button" onClick={handleDone} className="h-8">
               Done
             </Button>
