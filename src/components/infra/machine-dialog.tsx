@@ -12,8 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plug, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, Plug, CheckCircle, AlertCircle, KeyRound, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { postJson, patchJson } from "@/lib/http";
 import type { InfraMachine } from "@/app/dashboard/infra/page";
@@ -34,15 +33,17 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
   const [port, setPort] = useState("22");
   const [username, setUsername] = useState("");
   const [authMethod, setAuthMethod] = useState<"key" | "password">("key");
-  const [privateKey, setPrivateKey] = useState("");
   const [password, setPassword] = useState("");
-  const [passPhrase, setPassPhrase] = useState("");
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // After successful creation with key auth, show the public key
+  const [generatedPublicKey, setGeneratedPublicKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
 
   // Load existing machine data
   useEffect(() => {
@@ -52,11 +53,11 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
       setPort(String(machine.port));
       setUsername(machine.username);
       setAuthMethod(machine.authMethod as "key" | "password");
-      setPrivateKey("");
       setPassword("");
-      setPassPhrase("");
       setTestResult(null);
       setError(null);
+      setGeneratedPublicKey(null);
+      setCopiedKey(false);
     } else if (!machine && open) {
       // Reset for new machine
       setName("");
@@ -64,11 +65,11 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
       setPort("22");
       setUsername("");
       setAuthMethod("key");
-      setPrivateKey("");
       setPassword("");
-      setPassPhrase("");
       setTestResult(null);
       setError(null);
+      setGeneratedPublicKey(null);
+      setCopiedKey(false);
     }
   }, [machine, open]);
 
@@ -86,45 +87,36 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
         authMethod,
       };
 
-      if (authMethod === "key") {
-        body.privateKey = privateKey;
-      } else {
+      if (authMethod === "password") {
         body.password = password;
       }
 
-      if (passPhrase) {
-        body.passPhrase = passPhrase;
-      }
-
       try {
-        if (isEditing && machine) {
-          await patchJson(`/api/infra/machines/${machine.id}`, body);
+        const response: { machine: InfraMachine; authorizedKeysEntry?: string } =
+          isEditing && machine
+            ? await patchJson(`/api/infra/machines/${machine.id}`, body)
+            : await postJson("/api/infra/machines", body);
+
+        // If key auth and we got a public key, show it
+        if (authMethod === "key" && response.authorizedKeysEntry) {
+          setGeneratedPublicKey(response.authorizedKeysEntry);
         } else {
-          await postJson("/api/infra/machines", body);
+          onOpenChange(false);
+          onSuccess();
         }
-        onOpenChange(false);
-        onSuccess();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save machine");
       } finally {
         setSubmitting(false);
       }
     },
-    [
-      name,
-      host,
-      port,
-      username,
-      authMethod,
-      privateKey,
-      password,
-      passPhrase,
-      isEditing,
-      machine,
-      onOpenChange,
-      onSuccess,
-    ],
+    [name, host, port, username, authMethod, password, isEditing, machine, onOpenChange, onSuccess],
   );
+
+  const handleDone = useCallback(() => {
+    onOpenChange(false);
+    onSuccess();
+  }, [onOpenChange, onSuccess]);
 
   const handleTest = useCallback(async () => {
     if (!machine?.id) return;
@@ -149,6 +141,97 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
       setTesting(false);
     }
   }, [machine]);
+
+  const handleCopyKey = useCallback(async () => {
+    if (!generatedPublicKey) return;
+    await navigator.clipboard.writeText(generatedPublicKey);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  }, [generatedPublicKey]);
+
+  // Show public key setup screen after creation
+  if (generatedPublicKey) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              <KeyRound className="text-primary mb-2 h-8 w-8" />
+              <span>Setup SSH Access</span>
+            </DialogTitle>
+            <DialogDescription>
+              Saale generated an ED25519 key pair for{" "}
+              <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
+                {username}@{host}:{port || 22}
+              </code>
+              . Add the public key below to the server&apos;s{" "}
+              <code className="bg-muted rounded px-1.5 py-0.5 text-xs">~/.ssh/authorized_keys</code>{" "}
+              file.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Setup instructions */}
+            <div className="space-y-2">
+              <Label>Run this on the remote server:</Label>
+              <div className="relative">
+                <pre className="bg-muted/50 overflow-x-auto rounded-lg border p-3 font-mono text-xs">
+                  {`mkdir -p ~/.ssh && chmod 700 ~/.ssh\necho '${generatedPublicKey}' >> ~/.ssh/authorized_keys\nchmod 600 ~/.ssh/authorized_keys`}
+                </pre>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="absolute top-2 right-2 h-7 text-[10px]"
+                  onClick={handleCopyKey}
+                >
+                  {copiedKey ? (
+                    <Check className="mr-1 h-3 w-3" />
+                  ) : (
+                    <Copy className="mr-1 h-3 w-3" />
+                  )}
+                  Copy
+                </Button>
+              </div>
+            </div>
+
+            {/* Public key for reference */}
+            <div className="space-y-2">
+              <Label>Public key (authorized_keys entry):</Label>
+              <div className="relative">
+                <pre className="bg-muted/50 overflow-x-auto rounded-lg border p-3 font-mono text-[10px] break-all">
+                  {generatedPublicKey}
+                </pre>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="absolute top-2 right-2 h-7 text-[10px]"
+                  onClick={handleCopyKey}
+                >
+                  {copiedKey ? (
+                    <Check className="mr-1 h-3 w-3" />
+                  ) : (
+                    <Copy className="mr-1 h-3 w-3" />
+                  )}
+                  Copy Key
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-600 dark:text-amber-400">
+              After adding the key to the server, click &quot;Done&quot; and then use &quot;Test
+              Connection&quot; to verify everything works.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" onClick={handleDone} className="h-8">
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -235,6 +318,7 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
                     : "border-border hover:bg-muted/50 bg-transparent",
                 )}
               >
+                <KeyRound className="mr-1.5 inline h-3.5 w-3.5" />
                 SSH Key
               </button>
               <button
@@ -254,20 +338,14 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
 
           {/* Credential */}
           {authMethod === "key" ? (
-            <div className="space-y-2">
-              <Label htmlFor="infra-key">Private Key</Label>
-              <Textarea
-                id="infra-key"
-                value={privateKey}
-                onChange={(e) => setPrivateKey(e.target.value)}
-                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."
-                required={!isEditing}
-                className="min-h-[120px] font-mono text-xs"
-              />
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-600 dark:text-emerald-400">
+              Saale will generate an ED25519 key pair automatically. After saving, you&apos;ll see
+              the public key to add to the server&apos;s{" "}
+              <code className="bg-muted rounded px-1 py-0.5">~/.ssh/authorized_keys</code>.
               {isEditing && (
-                <p className="text-muted-foreground text-[10px]">
-                  Leave empty to keep the existing key.
-                </p>
+                <span className="text-muted-foreground mt-1 block">
+                  Leave as-is to keep the existing key.
+                </span>
               )}
             </div>
           ) : (
@@ -288,19 +366,6 @@ export function MachineDialog({ open, onOpenChange, onSuccess, machine }: Machin
               )}
             </div>
           )}
-
-          {/* Passphrase */}
-          <div className="space-y-2">
-            <Label htmlFor="infra-passphrase">Key Passphrase (optional)</Label>
-            <Input
-              id="infra-passphrase"
-              type="password"
-              value={passPhrase}
-              onChange={(e) => setPassPhrase(e.target.value)}
-              placeholder="Encrypted key passphrase"
-              className="h-9"
-            />
-          </div>
 
           {/* Test connection (edit mode only) */}
           {isEditing && (

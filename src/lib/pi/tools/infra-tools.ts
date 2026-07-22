@@ -4,10 +4,9 @@ import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import {
   executeCommand,
-  testConnection,
   readFile as sftpReadFile,
   writeFile as sftpWriteFile,
-  listDirectory as sftpListDirectory,
+  generateSshKeyPair,
 } from "@/lib/infra/client";
 
 /**
@@ -74,7 +73,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_add_machine",
       label: "Add Machine",
       description:
-        "Register a new remote machine for SSH access. Requires either an SSH private key (authMethod='key') or a password (authMethod='password'). Keys are stored encrypted at rest. Use 'infra_test_connection' after adding to verify credentials work.",
+        "Register a new remote machine for SSH access. Supports key-based auth (Saale generates an ED25519 key pair automatically) or password auth. For key auth, the returned 'authorizedKeysEntry' must be added to the remote user's ~/.ssh/authorized_keys file before the machine can be used. Use 'infra_test_connection' after adding to verify credentials work.",
       parameters: Type.Object({
         name: Type.String({
           description:
@@ -94,32 +93,20 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         }),
         authMethod: Type.Union([Type.Literal("key"), Type.Literal("password")], {
           description:
-            "Authentication method. 'key' uses SSH private key, 'password' uses password.",
+            "Authentication method. 'key' generates an ED25519 key pair (Saale stores the private key, you add the public key to the server). 'password' uses password auth.",
         }),
-        privateKey: Type.Optional(
-          Type.String({
-            description: "SSH private key in PEM format. Required when authMethod='key'.",
-          }),
-        ),
         password: Type.Optional(
           Type.String({
             description: "SSH password. Required when authMethod='password'.",
           }),
         ),
-        passPhrase: Type.Optional(
-          Type.String({
-            description: "Passphrase for the private key (if encrypted).",
-          }),
-        ),
       }),
       execute: async (_toolCallId, params) => {
-        // Validate auth method matches provided credentials
-        if (params.authMethod === "key" && !params.privateKey) {
-          throw new Error("privateKey is required when authMethod='key'");
-        }
         if (params.authMethod === "password" && !params.password) {
           throw new Error("password is required when authMethod='password'");
         }
+
+        let authorizedKeysEntry: string | undefined;
 
         const machine = await prisma.infraMachine.create({
           data: {
@@ -129,13 +116,16 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             port: params.port ?? 22,
             username: params.username,
             authMethod: params.authMethod,
-            ...(params.authMethod === "key" && params.privateKey
-              ? { encryptedKey: encrypt(params.privateKey) }
+            ...(params.authMethod === "key"
+              ? (() => {
+                  const { privateKey, publicKey } = generateSshKeyPair();
+                  authorizedKeysEntry = publicKey;
+                  return { encryptedKey: encrypt(privateKey) };
+                })()
               : {}),
             ...(params.authMethod === "password" && params.password
               ? { encryptedPass: encrypt(params.password) }
               : {}),
-            ...(params.passPhrase ? { passPhrase: encrypt(params.passPhrase) } : {}),
           },
         });
 
@@ -154,7 +144,18 @@ export function createInfraTools(userId: string): ToolDefinition[] {
                     username: machine.username,
                     authMethod: machine.authMethod,
                   },
-                  note: "Use 'infra_test_connection' to verify credentials, then 'infra_exec' to run commands.",
+                  ...(params.authMethod === "key"
+                    ? {
+                        authorizedKeysEntry,
+                        setupInstructions: [
+                          `Add this line to ${params.username}@${params.host}:${params.port ?? 22}'s ~/.ssh/authorized_keys:`,
+                          `  ${authorizedKeysEntry}`,
+                          `Then run 'infra_test_connection' to verify the connection works.`,
+                        ].join("\n"),
+                      }
+                    : {
+                        note: "Use 'infra_test_connection' to verify credentials, then 'infra_exec' to run commands.",
+                      }),
                 },
                 null,
                 2,
@@ -204,50 +205,6 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             },
           ],
           details: { id: params.id },
-        };
-      },
-    }),
-
-    // ─── infra_test_connection ───────────────────────────────────────────
-
-    defineTool({
-      name: "infra_test_connection",
-      label: "Test Connection",
-      description:
-        "Test SSH connectivity to a machine. Verifies credentials and returns the remote hostname.",
-      parameters: Type.Object({
-        id: Type.String({ description: "Machine ID." }),
-      }),
-      execute: async (_toolCallId, params) => {
-        // Verify ownership
-        const machine = await prisma.infraMachine.findFirst({
-          where: { id: params.id, userId },
-          select: { id: true, name: true },
-        });
-
-        if (!machine) {
-          throw new Error(`Machine ${params.id} not found`);
-        }
-
-        const result = await testConnection(params.id, userId);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  machine: machine.name,
-                  ok: result.ok,
-                  message: result.message,
-                  hostname: result.hostname ?? null,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          details: { ok: result.ok },
         };
       },
     }),
@@ -412,51 +369,6 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             },
           ],
           details: { ok: result.ok },
-        };
-      },
-    }),
-
-    // ─── infra_list_directory ────────────────────────────────────────────
-
-    defineTool({
-      name: "infra_list_directory",
-      label: "List Remote Directory",
-      description: "List directory contents on a remote machine via SFTP.",
-      parameters: Type.Object({
-        id: Type.String({ description: "Machine ID." }),
-        path: Type.String({
-          description: "Absolute path to the directory on the remote machine.",
-        }),
-      }),
-      execute: async (_toolCallId, params) => {
-        const machine = await prisma.infraMachine.findFirst({
-          where: { id: params.id, userId },
-          select: { id: true, name: true },
-        });
-
-        if (!machine) {
-          throw new Error(`Machine ${params.id} not found`);
-        }
-
-        const entries = await sftpListDirectory(params.id, userId, params.path);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  machine: machine.name,
-                  path: params.path,
-                  count: entries.length,
-                  entries,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          details: { count: entries.length },
         };
       },
     }),

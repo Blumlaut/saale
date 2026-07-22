@@ -31,10 +31,12 @@ vi.mock("@/lib/crypto", () => ({
 // Mock infra client
 vi.mock("@/lib/infra/client", () => ({
   executeCommand: vi.fn(),
-  testConnection: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
-  listDirectory: vi.fn(),
+  generateSshKeyPair: vi.fn(() => ({
+    privateKey: "-----BEGIN PRIVATE KEY-----\nmock-private-key\n-----END PRIVATE KEY-----",
+    publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockPublicKeyData",
+  })),
 }));
 
 // Import mocks for assertions
@@ -70,32 +72,28 @@ describe("createInfraTools", () => {
     ctx.listMachines = tools.find((t: { name: string }) => t.name === "infra_list_machines")!;
     ctx.addMachine = tools.find((t: { name: string }) => t.name === "infra_add_machine")!;
     ctx.removeMachine = tools.find((t: { name: string }) => t.name === "infra_remove_machine")!;
-    ctx.testConnection = tools.find((t: { name: string }) => t.name === "infra_test_connection")!;
     ctx.exec = tools.find((t: { name: string }) => t.name === "infra_exec")!;
     ctx.readFile = tools.find((t: { name: string }) => t.name === "infra_read_file")!;
     ctx.writeFile = tools.find((t: { name: string }) => t.name === "infra_write_file")!;
-    ctx.listDirectory = tools.find((t: { name: string }) => t.name === "infra_list_directory")!;
     ctx.notesList = tools.find((t: { name: string }) => t.name === "infra_notes_list")!;
     ctx.notesGet = tools.find((t: { name: string }) => t.name === "infra_notes_get")!;
     ctx.notesUpsert = tools.find((t: { name: string }) => t.name === "infra_notes_upsert")!;
     ctx.notesDelete = tools.find((t: { name: string }) => t.name === "infra_notes_delete")!;
   });
 
-  it("returns all 12 expected tools", () => {
+  it("returns all 10 expected tools", () => {
     const names = ctx.tools.map((t: { name: string }) => t.name);
     expect(names).toContain("infra_list_machines");
     expect(names).toContain("infra_add_machine");
     expect(names).toContain("infra_remove_machine");
-    expect(names).toContain("infra_test_connection");
     expect(names).toContain("infra_exec");
     expect(names).toContain("infra_read_file");
     expect(names).toContain("infra_write_file");
-    expect(names).toContain("infra_list_directory");
     expect(names).toContain("infra_notes_list");
     expect(names).toContain("infra_notes_get");
     expect(names).toContain("infra_notes_upsert");
     expect(names).toContain("infra_notes_delete");
-    expect(names).toHaveLength(12);
+    expect(names).toHaveLength(10);
   });
 
   describe("infra_list_machines", () => {
@@ -161,8 +159,7 @@ describe("createInfraTools", () => {
   });
 
   describe("infra_add_machine", () => {
-    it("creates machine with key auth", async () => {
-      const now = new Date("2025-06-01");
+    it("creates machine with key auth and returns public key", async () => {
       vi.mocked(mockInfraMachine.create).mockResolvedValue({
         id: "new-machine",
         name: "prod-web",
@@ -170,7 +167,7 @@ describe("createInfraTools", () => {
         port: 22,
         username: "deploy",
         authMethod: "key",
-        createdAt: now,
+        createdAt: new Date(),
       });
 
       const result = await callExecute(ctx.addMachine.execute, {
@@ -179,15 +176,28 @@ describe("createInfraTools", () => {
         port: 22,
         username: "deploy",
         authMethod: "key",
-        privateKey: "-----BEGIN RSA PRIVATE KEY-----\nabc",
       });
 
       const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
       expect(text.added).toBe(true);
       expect(text.machine.id).toBe("new-machine");
 
-      // Verify encryption was called
-      expect(crypto.encrypt).toHaveBeenCalledWith("-----BEGIN RSA PRIVATE KEY-----\nabc");
+      // Key pair was generated
+      expect(client.generateSshKeyPair).toHaveBeenCalled();
+
+      // Private key was encrypted and stored
+      expect(crypto.encrypt).toHaveBeenCalledWith(
+        "-----BEGIN PRIVATE KEY-----\nmock-private-key\n-----END PRIVATE KEY-----",
+      );
+
+      // Public key is returned for authorized_keys setup
+      expect(text.authorizedKeysEntry).toBe(
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockPublicKeyData",
+      );
+
+      // Setup instructions included
+      expect(text.setupInstructions).toContain("authorized_keys");
+      expect(text.setupInstructions).toContain("10.0.0.1");
 
       // Verify userId was passed
       expect(mockInfraMachine.create).toHaveBeenCalledWith(
@@ -219,30 +229,7 @@ describe("createInfraTools", () => {
       const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
       expect(text.added).toBe(true);
       expect(crypto.encrypt).toHaveBeenCalledWith("mypassword");
-    });
-
-    it("creates machine with key and passphrase", async () => {
-      vi.mocked(mockInfraMachine.create).mockResolvedValue({
-        id: "new-machine",
-        name: "secure-server",
-        host: "10.0.0.1",
-        port: 22,
-        username: "deploy",
-        authMethod: "key",
-        createdAt: new Date(),
-      });
-
-      await callExecute(ctx.addMachine.execute, {
-        name: "secure-server",
-        host: "10.0.0.1",
-        username: "deploy",
-        authMethod: "key",
-        privateKey: "key-data",
-        passPhrase: "key-passphrase",
-      });
-
-      expect(crypto.encrypt).toHaveBeenCalledWith("key-data");
-      expect(crypto.encrypt).toHaveBeenCalledWith("key-passphrase");
+      expect(text.authorizedKeysEntry).toBeUndefined();
     });
 
     it("uses default port 22 when not specified", async () => {
@@ -261,7 +248,6 @@ describe("createInfraTools", () => {
         host: "10.0.0.1",
         username: "deploy",
         authMethod: "key",
-        privateKey: "key-data",
       });
 
       expect(mockInfraMachine.create).toHaveBeenCalledWith(
@@ -271,15 +257,30 @@ describe("createInfraTools", () => {
       );
     });
 
-    it("throws when key auth missing private key", async () => {
-      await expect(
-        callExecute(ctx.addMachine.execute, {
-          name: "test",
-          host: "10.0.0.1",
-          username: "deploy",
-          authMethod: "key",
+    it("uses custom port when specified", async () => {
+      vi.mocked(mockInfraMachine.create).mockResolvedValue({
+        id: "new-machine",
+        name: "test",
+        host: "10.0.0.1",
+        port: 2222,
+        username: "deploy",
+        authMethod: "key",
+        createdAt: new Date(),
+      });
+
+      await callExecute(ctx.addMachine.execute, {
+        name: "test",
+        host: "10.0.0.1",
+        port: 2222,
+        username: "deploy",
+        authMethod: "key",
+      });
+
+      expect(mockInfraMachine.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ port: 2222 }),
         }),
-      ).rejects.toThrow("privateKey is required when authMethod='key'");
+      );
     });
 
     it("throws when password auth missing password", async () => {
@@ -330,53 +331,6 @@ describe("createInfraTools", () => {
       await expect(
         callExecute(ctx.removeMachine.execute, { id: "other-user-machine" }),
       ).rejects.toThrow("Machine other-user-machine not found");
-    });
-  });
-
-  describe("infra_test_connection", () => {
-    it("verifies ownership and tests connection", async () => {
-      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
-        id: "m1",
-        name: "prod-web",
-      });
-      vi.mocked(client.testConnection).mockResolvedValue({
-        ok: true,
-        message: "Connected successfully",
-        hostname: "prod-web-01",
-      });
-
-      const result = await callExecute(ctx.testConnection.execute, { id: "m1" });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
-
-      expect(text.ok).toBe(true);
-      expect(text.hostname).toBe("prod-web-01");
-      expect(client.testConnection).toHaveBeenCalledWith("m1", "user-123");
-    });
-
-    it("returns failure when connection fails", async () => {
-      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
-        id: "m1",
-        name: "prod-web",
-      });
-      vi.mocked(client.testConnection).mockResolvedValue({
-        ok: false,
-        message: "Connection refused",
-      });
-
-      const result = await callExecute(ctx.testConnection.execute, { id: "m1" });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
-
-      expect(text.ok).toBe(false);
-      expect(text.message).toBe("Connection refused");
-      expect(text.hostname).toBeNull();
-    });
-
-    it("throws when machine not found", async () => {
-      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
-
-      await expect(callExecute(ctx.testConnection.execute, { id: "nonexistent" })).rejects.toThrow(
-        "Machine nonexistent not found",
-      );
     });
   });
 
@@ -607,42 +561,6 @@ describe("createInfraTools", () => {
           id: "nonexistent",
           path: "/tmp/test.txt",
           content: "hello",
-        }),
-      ).rejects.toThrow("Machine nonexistent not found");
-    });
-  });
-
-  describe("infra_list_directory", () => {
-    it("lists directory via SFTP", async () => {
-      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
-        id: "m1",
-        name: "prod-web",
-      });
-      vi.mocked(client.listDirectory).mockResolvedValue([
-        { name: "file1.txt", type: "file", size: 1024, modified: new Date() },
-        { name: "subdir", type: "directory", size: 0, modified: new Date() },
-      ]);
-
-      const result = await callExecute(ctx.listDirectory.execute, {
-        id: "m1",
-        path: "/var/www",
-      });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
-
-      expect(text.count).toBe(2);
-      expect(text.entries[0].name).toBe("file1.txt");
-      expect(text.entries[0].type).toBe("file");
-      expect(text.entries[1].type).toBe("directory");
-      expect(client.listDirectory).toHaveBeenCalledWith("m1", "user-123", "/var/www");
-    });
-
-    it("throws when machine not found", async () => {
-      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
-
-      await expect(
-        callExecute(ctx.listDirectory.execute, {
-          id: "nonexistent",
-          path: "/var/www",
         }),
       ).rejects.toThrow("Machine nonexistent not found");
     });

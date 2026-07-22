@@ -27,7 +27,7 @@ vi.mock("node-ssh", () => ({
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import { NodeSSH } from "node-ssh";
-import { truncateOutput, resolveConnectionConfig } from "@/lib/infra/client";
+import { truncateOutput, resolveConnectionConfig, generateSshKeyPair } from "@/lib/infra/client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockInfraMachine = db.prisma.infraMachine as any;
@@ -262,5 +262,58 @@ describe("crypto round-trip", () => {
     expect(encrypted).toBe("encrypted:my-secret-key");
     const decrypted = crypto.decrypt(encrypted);
     expect(decrypted).toBe("my-secret-key");
+  });
+});
+
+describe("generateSshKeyPair", () => {
+  it("generates an ED25519 key pair", () => {
+    const { privateKey, publicKey } = generateSshKeyPair();
+
+    // Private key is PEM format
+    expect(privateKey).toContain("-----BEGIN PRIVATE KEY-----");
+    expect(privateKey).toContain("-----END PRIVATE KEY-----");
+
+    // Public key is OpenSSH format
+    expect(publicKey).toMatch(/^ssh-ed25519 [A-Za-z0-9+\/=]+$/);
+  });
+
+  it("generates unique keys each time", () => {
+    const key1 = generateSshKeyPair();
+    const key2 = generateSshKeyPair();
+
+    expect(key1.privateKey).not.toBe(key2.privateKey);
+    expect(key1.publicKey).not.toBe(key2.publicKey);
+  });
+
+  it("public key has correct format for authorized_keys", () => {
+    const { publicKey } = generateSshKeyPair();
+    const parts = publicKey.split(" ");
+
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toBe("ssh-ed25519");
+
+    // Base64 data decodes to OpenSSH binary format:
+    // 4 bytes (length) + 11 bytes ("ssh-ed25519") + 4 bytes (length) + 32 bytes (key) = 51
+    const base64Data = parts[1]!;
+    const sshKeyData = Buffer.from(base64Data, "base64");
+    expect(sshKeyData.length).toBe(51);
+
+    // Verify the key type string is embedded correctly
+    const keyTypeLen = sshKeyData.readUInt32BE(0);
+    expect(keyTypeLen).toBe(11);
+    expect(sshKeyData.slice(4, 15).toString()).toBe("ssh-ed25519");
+
+    // Verify the raw key length
+    const rawKeyLen = sshKeyData.readUInt32BE(15);
+    expect(rawKeyLen).toBe(32);
+  });
+
+  it("public key base64 is valid", () => {
+    const { publicKey } = generateSshKeyPair();
+    const base64Data = publicKey.split(" ")[1]!;
+
+    // Should be valid base64
+    const decoded = Buffer.from(base64Data, "base64");
+    expect(decoded.length).toBeGreaterThan(0);
   });
 });
