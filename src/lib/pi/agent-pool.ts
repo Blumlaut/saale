@@ -9,6 +9,34 @@ interface PooledSession {
 }
 
 const pool = new Map<string, PooledSession>();
+
+/**
+ * Per-session SSE dispatcher for emitting stream events.
+ *
+ * Lives alongside the pool so it survives across requests for the same session.
+ * The approval wrapper (baked into pooled agents) captures this dispatcher by
+ * session key — not by closure — so it always emits to the current active
+ * connection, not a stale one from a previous request.
+ *
+ * Access via getDispatcher(sessionId) / wireDispatcher(sessionId, controller, encoder).
+ */
+import { StreamDispatcher } from "@/lib/pi/stream-helpers";
+const dispatchers = new Map<string, StreamDispatcher>();
+
+/** Get or create the dispatcher for a session. */
+export function getDispatcher(sessionId: string): StreamDispatcher {
+  let dispatcher = dispatchers.get(sessionId);
+  if (!dispatcher) {
+    dispatcher = new StreamDispatcher(sessionId);
+    dispatchers.set(sessionId, dispatcher);
+  }
+  return dispatcher;
+}
+
+/** Clear the dispatcher when the session is removed from the pool. */
+export function clearDispatcher(sessionId: string): void {
+  dispatchers.delete(sessionId);
+}
 const MAX_IDLE_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_POOL_SIZE = 100;
 
@@ -79,6 +107,7 @@ export function remove(key: string): void {
     entry.session.dispose();
     pool.delete(key);
   }
+  clearDispatcher(key);
 }
 
 /**
