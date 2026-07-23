@@ -8,14 +8,16 @@ import { type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { normalizeToolResult, type ImageContent } from "@/lib/pi/message-replay";
 import { readImageAsBase64 } from "@/lib/image-attachment";
-import { getPoolKey, getSessionDir, createAndPool, get as getPoolEntry } from "@/lib/pi/agent-pool";
+import {
+  getPoolKey,
+  getSessionDir,
+  createAndPool,
+  get as getPoolEntry,
+  getDispatcher,
+} from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
-import {
-  StreamDispatcher,
-  handleReconnectFromRedis,
-  saveAssistantMessage,
-} from "@/lib/pi/stream-helpers";
+import { handleReconnectFromRedis, saveAssistantMessage } from "@/lib/pi/stream-helpers";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
@@ -47,11 +49,10 @@ export async function GET(
   const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
-  // Centralized event dispatcher — created before the approval wrapper so it
-  // can be captured in closures. Wired to the SSE controller inside start().
-  // All events go through this single path (Redis + controller), preventing
-  // bugs where an event is sent to one but not the other.
-  const dispatcher = new StreamDispatcher(sessionId);
+  // Per-session dispatcher from the pool — survives across requests so the
+  // approval wrapper (baked into pooled agents) always emits to the current
+  // active connection, not a stale one from a previous request.
+  const dispatcher = getDispatcher(sessionId);
 
   // Build the approval wrapper function
   const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
