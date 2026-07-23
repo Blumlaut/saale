@@ -130,15 +130,26 @@ export async function POST(
     | {
         id: string;
         data?: string;
-        message: { chat: { id: number; type: string } };
+        message: { chat: { id: number; type: string }; message_id: number };
       }
     | undefined;
 
   if (callbackQuery && callbackQuery.data) {
     const bot = createBot(account.encryptedToken);
 
+    // Build a delete callback bound to the approval message's chat and message IDs
+    const approvalChatId = callbackQuery.message?.chat?.id;
+    const approvalMessageId = callbackQuery.message?.message_id;
+    const deleteApprovalMessage = async () => {
+      if (approvalChatId != null && approvalMessageId != null) {
+        await bot.api.deleteMessage(approvalChatId, approvalMessageId);
+      }
+    };
+
     // Handle approval callbacks (with accountId for user isolation)
-    const result = await handleApprovalCallback(accountId, callbackQuery.data);
+    const result = await handleApprovalCallback(accountId, callbackQuery.data, {
+      deleteMessage: deleteApprovalMessage,
+    });
     if (result.handled && result.message) {
       try {
         await bot.api.answerCallbackQuery(callbackQuery.id, {
