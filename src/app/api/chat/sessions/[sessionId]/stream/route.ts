@@ -10,13 +10,9 @@ import { normalizeToolResult, type ImageContent } from "@/lib/pi/message-replay"
 import { readImageAsBase64 } from "@/lib/image-attachment";
 import { getPoolKey, getSessionDir, createAndPool, get as getPoolEntry } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
+import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
 import {
-  evaluatePromptGuard,
-  evaluateReconnectAction,
-  formatSseEvent,
-} from "@/lib/pi/stream-logic";
-import {
-  publishStreamEvent,
+  StreamDispatcher,
   handleReconnectFromRedis,
   saveAssistantMessage,
 } from "@/lib/pi/stream-helpers";
@@ -51,11 +47,11 @@ export async function GET(
   const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
-  // Mutable reference set inside start() so the approval callback can enqueue
-  // directly to the SSE controller. Without this, tool_approval_request only
-  // goes to Redis (for reconnecting clients) and the primary connection never
-  // receives it — the tool just shows as "running" forever.
-  let emitApprovalEvent: ((data: unknown) => void) | null = null;
+  // Centralized event dispatcher — created before the approval wrapper so it
+  // can be captured in closures. Wired to the SSE controller inside start().
+  // All events go through this single path (Redis + controller), preventing
+  // bugs where an event is sent to one but not the other.
+  const dispatcher = new StreamDispatcher(sessionId);
 
   // Build the approval wrapper function
   const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
@@ -65,18 +61,12 @@ export async function GET(
       sessionId,
       getPolicy,
       (request: ApprovalRequest) => {
-        const eventData = {
+        dispatcher.emit("tool_approval_request", {
           toolCallId: request.toolCallId,
           toolName: request.toolName,
           args: request.args,
           expiresAt: new Date(request.expiresAt).toISOString(),
-        };
-
-        // Send to primary SSE connection (if active)
-        emitApprovalEvent?.(eventData);
-
-        // Also publish to Redis for reconnecting clients
-        publishStreamEvent(sessionId, "tool_approval_request", eventData).catch(console.error);
+        });
       },
     );
 
@@ -281,39 +271,12 @@ Guidelines:
 
   // Create SSE stream
   const encoder = new TextEncoder();
-  let clientDisconnected = false;
-  let controllerClosed = false;
-
-  /**
-   * Send an SSE event with proper escaping and publish to Redis for reconnection.
-   * SSE spec: a line containing only "\n" terminates the event block.
-   * JSON.stringify can produce \n inside strings (from tool results, etc.),
-   * which would prematurely terminate the event and inject a new one.
-   * We escape literal newlines in the JSON payload to prevent this.
-   */
-  function sendEvent(
-    controller: ReadableStreamDefaultController,
-    event: string,
-    data: unknown,
-  ): void {
-    if (clientDisconnected || controllerClosed) return;
-    try {
-      controller.enqueue(encoder.encode(formatSseEvent(event, data)));
-    } catch (err) {
-      // Controller may have been closed by another handler (race condition)
-      console.error("Failed to enqueue SSE event (controller may be closed):", err);
-    }
-
-    // Publish to Redis for reconnecting clients (fire-and-forget)
-    publishStreamEvent(sessionId, event, data).catch(console.error);
-  }
 
   /**
    * Safely close the controller (idempotent — won't throw if already closed).
    */
   function closeController(controller: ReadableStreamDefaultController): void {
-    if (controllerClosed) return;
-    controllerClosed = true;
+    dispatcher.close();
     try {
       controller.close();
     } catch (err) {
@@ -351,16 +314,9 @@ Guidelines:
 
   const stream = new ReadableStream({
     start(controller) {
-      // Wire up the approval event emitter so the approval wrapper (created
-      // outside start()) can enqueue directly to this SSE controller.
-      emitApprovalEvent = (data) => {
-        if (clientDisconnected || controllerClosed) return;
-        try {
-          controller.enqueue(encoder.encode(formatSseEvent("tool_approval_request", data)));
-        } catch (err) {
-          console.error("Failed to enqueue approval event:", err);
-        }
-      };
+      // Wire the dispatcher to this controller — all events (including approval
+      // requests from tool wrappers created outside start()) now go through one path.
+      dispatcher.wire(controller, encoder);
 
       // Subscribe to agent events for SSE forwarding (token, thinking, tool events).
       // This is unsubscribed on client disconnect.
@@ -388,7 +344,7 @@ Guidelines:
               const now = Date.now();
               if (now - lastThinkingSend >= TOKEN_THROTTLE_MS) {
                 lastThinkingSend = now;
-                sendEvent(controller, "thinking", { thinking: currentTurnThinking });
+                dispatcher.emit("thinking", { thinking: currentTurnThinking });
               }
             }
 
@@ -406,7 +362,7 @@ Guidelines:
               const now = Date.now();
               if (now - lastTokenSend >= TOKEN_THROTTLE_MS) {
                 lastTokenSend = now;
-                sendEvent(controller, "token", { text: currentTurnText });
+                dispatcher.emit("token", { text: currentTurnText });
               }
             }
 
@@ -428,7 +384,7 @@ Guidelines:
               name: event.toolName,
               args: event.args,
             });
-            sendEvent(controller, "tool_start", {
+            dispatcher.emit("tool_start", {
               toolCallId: event.toolCallId,
               toolName: event.toolName,
               args: event.args,
@@ -458,7 +414,7 @@ Guidelines:
               existing.result = resultStr;
               existing.isError = event.isError;
             }
-            sendEvent(controller, "tool_end", {
+            dispatcher.emit("tool_end", {
               toolCallId: event.toolCallId,
               toolName: event.toolName,
               result: resultStr,
@@ -528,7 +484,7 @@ Guidelines:
             });
 
             // Emit turn_end event to frontend
-            sendEvent(controller, "turn_end", {
+            dispatcher.emit("turn_end", {
               turnIndex,
               text: currentTurnText,
               thinking: currentTurnThinking || null,
@@ -543,12 +499,12 @@ Guidelines:
           }
 
           case "compaction_start": {
-            sendEvent(controller, "compaction_start", { reason: event.reason });
+            dispatcher.emit("compaction_start", { reason: event.reason });
             break;
           }
 
           case "compaction_end": {
-            sendEvent(controller, "compaction_end", {
+            dispatcher.emit("compaction_end", {
               reason: event.reason,
               tokensBefore: event.result?.tokensBefore,
               aborted: event.aborted,
@@ -648,7 +604,7 @@ Guidelines:
         }
 
         // Always send done to this SSE client (safe — sendEvent catches closed controller)
-        sendEvent(controller, "done", {});
+        dispatcher.emit("done", {});
         closeController(controller);
 
         // Clean up this listener
@@ -689,8 +645,8 @@ Guidelines:
                 console.error("Failed to clear processingSince on error:", updateErr);
               });
             unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
-            sendEvent(controller, "error", { message: err.message });
-            sendEvent(controller, "done", {});
+            dispatcher.emit("error", { message: err.message });
+            dispatcher.emit("done", {});
             closeController(controller);
           });
       } else if (!shouldPrompt && pooled.lastPromptedMessageId) {
@@ -707,7 +663,7 @@ Guidelines:
           // Agent already finished — unsubscribe both and emit done
           unsubscribeSse();
           unsubscribeAgentEnd();
-          sendEvent(controller, "done", {});
+          dispatcher.emit("done", {});
           closeController(controller);
         } else {
           log("prompt_guard", `reconnect: ${reconnectAction.reason}, waiting for events`);
@@ -718,7 +674,6 @@ Guidelines:
       // listener alive so the final message is still saved to the database.
       request.signal.addEventListener("abort", () => {
         log("client", "disconnect detected, stopping SSE forwarding (agent continues)");
-        clientDisconnected = true;
         unsubscribeSse();
         closeController(controller);
       });
