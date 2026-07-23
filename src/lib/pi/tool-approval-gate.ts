@@ -4,7 +4,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Per-tool approval policy. */
-export type ToolPolicy = "off" | "ask" | "yolo";
+export type ToolPolicy = "off" | "ask" | "allow";
 
 /** How long an approval request waits before auto-denying (ms). */
 export const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -137,7 +137,7 @@ export async function getPendingApprovals(sessionId: string): Promise<ApprovalRe
  * Before every tool execution, the wrapper checks:
  * 1. Policy: "off" → reject immediately
  * 2. Policy: "ask" → emit approval request, wait for user decision
- * 3. Policy: "yolo" → proceed
+ * 3. Policy: "allow" → proceed
  *
  * The original tool code is never modified.
  */
@@ -194,7 +194,7 @@ export function wrapWithApprovalGate(
         }
       }
 
-      // "yolo" or approved — proceed
+      // "allow" or approved — proceed
       return originalExecute(toolCallId, params, signal, onUpdate, ctx);
     },
   };

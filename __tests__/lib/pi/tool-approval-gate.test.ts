@@ -160,7 +160,7 @@ describe("tool-approval-gate", () => {
       expect(result.content[0].text).toContain("disabled");
     });
 
-    it("allows tools with 'yolo' policy", async () => {
+    it("allows tools with 'allow' policy", async () => {
       let executed = false;
       const tool = wrapWithApprovalGate(
         makeMockTool("bash", async () => {
@@ -172,7 +172,7 @@ describe("tool-approval-gate", () => {
         }),
         "user-1",
         "session-test",
-        async () => "yolo",
+        async () => "allow",
         () => {},
       );
 
