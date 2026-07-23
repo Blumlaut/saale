@@ -8,7 +8,7 @@
 import { generateKeyPairSync } from "crypto";
 import type { SFTPWrapper } from "ssh2";
 import { NodeSSH } from "node-ssh";
-import { parsePrivateKey } from "sshpk";
+import sshpk from "sshpk";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 
@@ -72,7 +72,7 @@ export function generateSshKeyPair(): GeneratedKeyPair {
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
 
-  const key = parsePrivateKey(pkcs8Pem);
+  const key = sshpk.parsePrivateKey(pkcs8Pem);
 
   return {
     privateKey: key.toString("ssh-private"),
