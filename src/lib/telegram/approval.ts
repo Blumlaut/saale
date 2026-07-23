@@ -95,7 +95,8 @@ export async function sendTelegramApprovalRequest(
 export async function handleApprovalCallback(
   accountId: string,
   callbackData: string,
-): Promise<{ handled: boolean; message?: string }> {
+  opts?: { deleteMessage?: () => Promise<void> },
+): Promise<{ handled: boolean; message?: string; approved?: boolean }> {
   if (!callbackData.startsWith("a:") && !callbackData.startsWith("d:")) {
     return { handled: false };
   }
@@ -150,13 +151,23 @@ export async function handleApprovalCallback(
   const { resolveApproval } = await import("@/lib/pi/tool-approval-gate");
   const resolved = await resolveApproval(sessionId, toolCallId, approved);
 
+  const message = resolved
+    ? approved
+      ? "✅ Tool call approved."
+      : "❌ Tool call denied."
+    : "⚠️ Approval request not found (may have expired).";
+
+  // Delete the approval message on approve so it doesn't clutter the chat
+  if (approved && resolved && opts?.deleteMessage) {
+    opts.deleteMessage().catch((err) => {
+      console.error("Failed to delete approval message:", err);
+    });
+  }
+
   return {
     handled: true,
-    message: resolved
-      ? approved
-        ? "✅ Tool call approved."
-        : "❌ Tool call denied."
-      : "⚠️ Approval request not found (may have expired).",
+    message,
+    approved: approved && resolved,
   };
 }
 
