@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import type { Bot, Context } from "grammy";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   createAgentSession,
   SessionManager,
@@ -12,6 +13,9 @@ import { createBot, sendTelegramMessage, sendTypingIndicator } from "./client";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
+import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
+import { getDefaultPolicy } from "@/lib/pi/tool-infos";
+import { sendTelegramApprovalRequest } from "./approval";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
@@ -307,7 +311,7 @@ export async function processTelegramMessage(params: {
   // Resolve tool config: user settings → agent definition overrides → defaults → no terminal
   const userSettings = await prisma.appSettings.findUnique({
     where: { userId },
-    select: { defaultToolConfig: true, agentCustomInstructions: true },
+    select: { defaultToolConfig: true, agentCustomInstructions: true, toolPolicies: true },
   });
   const userToolConfig = (userSettings?.defaultToolConfig as Record<string, boolean>) ?? {};
   const defToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
@@ -318,10 +322,26 @@ export async function processTelegramMessage(params: {
     terminal: false,
   } as Required<ToolConfig>;
 
+  // Build policy lookup from user settings (default: per-tool sane default)
+  const toolPolicies = userSettings?.toolPolicies as
+    | Record<string, "off" | "ask" | "allow">
+    | null;
+  const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
+    toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
+
+  // Build the approval wrapper — every tool goes through the gate
+  const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
+    wrapWithApprovalGate(tool, userId, sessionId, getPolicy, (request: ApprovalRequest) => {
+      sendTelegramApprovalRequest(userId, request).catch((err) => {
+        console.error("Failed to send Telegram approval request:", err);
+      });
+    });
+
   const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
     createTerminalScopedTools: () => {
       throw new Error("Terminal tools are not available for agent jobs.");
     },
+    wrapWithApproval: approvalWrapper,
   });
 
   const sessionManager = SessionManager.continueRecent(sessionDir, sessionDir);
