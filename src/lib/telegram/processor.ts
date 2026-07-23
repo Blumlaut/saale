@@ -143,16 +143,25 @@ function buildFilePromptText(processedFile: ProcessedFile, caption: string | und
 }
 
 /**
- * Default system prompt for Telegram-based interactions.
+ * Shared Saale system prompt (matches the web chat stream endpoint).
+ * Telegram-specific formatting guidance is appended below.
  */
-const TELEGRAM_SYSTEM_PROMPT = `You are Saale, a personal AI assistant accessible via Telegram. You help with questions, tasks, email drafting, calendar, and general productivity.
+const SAALE_SYSTEM_PROMPT = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
 
 Guidelines:
-- Be concise and direct — Telegram messages should be readable at a glance.
-- Use HTML formatting: <b>bold</b>, <i>italic</i>, <code>code</code>, <pre>preformatted</pre>.
-- Avoid excessive formatting — keep it clean and readable on mobile.
+- Be concise and direct — get to the point without unnecessary preamble.
+- Write naturally, like a capable colleague, not a generic AI.
+- Use bullet points or short paragraphs when listing things.
 - When uncertain, say so briefly rather than guessing.
 - Match the user's tone and language preference.`;
+
+/** Telegram-specific formatting addendum */
+const TELEGRAM_FORMATTING_GUIDE = `
+
+Telegram-specific guidelines:
+- Keep messages readable at a glance — avoid long blocks of text.
+- Use HTML formatting: <b>bold</b>, <i>italic</i>, <code>code</code>, <pre>preformatted</pre>.
+- Avoid excessive formatting — keep it clean and readable on mobile.`;
 
 /** Name of the auto-created Telegram agent definition */
 const TELEGRAM_AGENT_NAME = "Telegram Assistant";
@@ -327,7 +336,25 @@ export async function processTelegramMessage(params: {
         | "max") ?? "off",
   });
 
-  session.agent.state.systemPrompt = definition.systemPrompt ?? TELEGRAM_SYSTEM_PROMPT;
+  // Build system prompt: Saale default + user custom instructions + tool hints + Telegram formatting
+  // Matches the web chat stream endpoint's prompt construction
+  const userSettings = await prisma.appSettings.findUnique({
+    where: { userId },
+    select: { agentCustomInstructions: true },
+  });
+
+  const customInstructions =
+    userSettings?.agentCustomInstructions && userSettings.agentCustomInstructions.trim()
+      ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
+      : "";
+
+  const memoryInstruction =
+    resolvedToolConfig.memory !== false
+      ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
+      : "";
+
+  session.agent.state.systemPrompt =
+    SAALE_SYSTEM_PROMPT + customInstructions + memoryInstruction + TELEGRAM_FORMATTING_GUIDE;
 
   // 10. Subscribe to session events — handle turn_end for intermediate messages
   //     and agent_end for final cleanup.
@@ -577,7 +604,7 @@ async function ensureTelegramAgentDefinition(userId: string): Promise<{
         name: TELEGRAM_AGENT_NAME,
         description: "Auto-created agent for Telegram conversations",
         prompt: "",
-        systemPrompt: TELEGRAM_SYSTEM_PROMPT,
+        systemPrompt: SAALE_SYSTEM_PROMPT + TELEGRAM_FORMATTING_GUIDE,
         toolConfig: {
           email: true,
           calendar: true,
