@@ -2,12 +2,7 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-import {
-  executeCommand,
-  readFile as sftpReadFile,
-  writeFile as sftpWriteFile,
-  generateSshKeyPair,
-} from "@/lib/infra/client";
+import { executeCommand, writeFile as sftpWriteFile, generateSshKeyPair } from "@/lib/infra/client";
 
 /**
  * Create infrastructure tools with userId injection for user isolation.
@@ -276,51 +271,6 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             },
           ],
           details: { exitCode: result.exitCode, timedOut: result.timedOut },
-        };
-      },
-    }),
-
-    // ─── infra_read_file ─────────────────────────────────────────────────
-
-    defineTool({
-      name: "infra_read_file",
-      label: "Read Remote File",
-      description: "Read a file from a remote machine via SFTP. Output is truncated at 50KB.",
-      parameters: Type.Object({
-        id: Type.String({ description: "Machine ID." }),
-        path: Type.String({
-          description: "Absolute path to the file on the remote machine.",
-        }),
-      }),
-      execute: async (_toolCallId, params) => {
-        const machine = await prisma.infraMachine.findFirst({
-          where: { id: params.id, userId },
-          select: { id: true, name: true },
-        });
-
-        if (!machine) {
-          throw new Error(`Machine ${params.id} not found`);
-        }
-
-        const result = await sftpReadFile(params.id, userId, params.path);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  machine: machine.name,
-                  path: params.path,
-                  truncated: result.truncated,
-                  content: result.content,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          details: { truncated: result.truncated },
         };
       },
     }),
