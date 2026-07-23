@@ -12,6 +12,9 @@ import { createBot, sendTelegramMessage, sendTypingIndicator } from "./client";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
+import { normalizeToolResult } from "@/lib/pi/message-replay";
+import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
+import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
 
 /** Allowed MIME types that can be passed as images to the vision model */
 const IMAGE_MIME_TYPES = new Set([
@@ -326,8 +329,20 @@ export async function processTelegramMessage(params: {
 
   session.agent.state.systemPrompt = definition.systemPrompt ?? TELEGRAM_SYSTEM_PROMPT;
 
-  // 10. Subscribe to session events and send response via Telegram
-  let assistantText = "";
+  // 10. Subscribe to session events — handle turn_end for intermediate messages
+  //     and agent_end for final cleanup.
+  //     This mirrors the regular chat stream endpoint's event handling.
+  let turnIndex = 0;
+  let currentTurnText = "";
+  let currentTurnThinking = "";
+  const currentTurnToolCallIds = new Set<string>();
+  let rootMessageId: string | null = null;
+
+  // Track tool call results across turns
+  const toolCallResults: Map<
+    string,
+    { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
+  > = new Map();
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -343,15 +358,110 @@ export async function processTelegramMessage(params: {
         switch (event.type) {
           case "message_update": {
             if (event.message.role !== "assistant") return;
-            const content = (event.message as { content: unknown[] }).content;
-            const textBlocks = content.filter(
-              (c): c is { type: string; text: string } =>
-                typeof c === "object" &&
-                c !== null &&
-                "type" in c &&
-                (c as Record<string, unknown>).type === "text",
-            );
-            assistantText = textBlocks.map((c) => (c.text as string) || "").join("");
+            const msg = event.message as { content: unknown[] };
+            currentTurnText = extractCumulativeText(msg.content);
+            currentTurnThinking = extractThinking(msg.content) || "";
+
+            // Track tool call IDs appearing in this message
+            for (const content of msg.content) {
+              if (
+                typeof content === "object" &&
+                content !== null &&
+                (content as Record<string, unknown>).type === "toolCall"
+              ) {
+                currentTurnToolCallIds.add((content as Record<string, unknown>).id as string);
+              }
+            }
+            break;
+          }
+
+          case "tool_execution_start": {
+            toolCallResults.set(event.toolCallId, {
+              name: event.toolName,
+              args: event.args,
+            });
+            break;
+          }
+
+          case "tool_execution_end": {
+            const resultStr = normalizeToolResult(event.result);
+            const existing = toolCallResults.get(event.toolCallId);
+            if (existing) {
+              existing.result = resultStr;
+              existing.isError = event.isError;
+            }
+            break;
+          }
+
+          case "turn_end": {
+            // Extract turn data from the assistant message
+            const assistantMsg =
+              event.message.role === "assistant" ? (event.message as { content: unknown[] }) : null;
+
+            const text = assistantMsg
+              ? extractCumulativeText(assistantMsg.content)
+              : currentTurnText;
+            const thinking = assistantMsg
+              ? extractThinking(assistantMsg.content)
+              : currentTurnThinking || null;
+
+            // Collect tool calls for this turn
+            const toolCallBlocks = assistantMsg
+              ? (assistantMsg.content.filter(
+                  (c) =>
+                    typeof c === "object" &&
+                    c !== null &&
+                    (c as Record<string, unknown>).type === "toolCall",
+                ) as Record<string, unknown>[])
+              : [];
+            const turnToolCalls = toolCallBlocks.map((tc) => {
+              const result = toolCallResults.get(tc.id as string);
+              return {
+                id: tc.id as string,
+                name: tc.name as string,
+                args: tc.arguments as unknown as Record<string, unknown>,
+                result: result?.result,
+                isError: result?.isError,
+              };
+            });
+
+            // Send non-empty text to Telegram immediately (intermediate message)
+            if (text.trim()) {
+              sendTelegramMessage(
+                encryptedToken,
+                telegramChatId,
+                text,
+                turnIndex === 0
+                  ? replyToMessageId != null
+                    ? { replyToMessageId }
+                    : undefined
+                  : undefined,
+              ).catch((err) => {
+                console.error("Failed to send Telegram message for turn:", err);
+              });
+            }
+
+            // Save this turn to DB with full metadata (thinking, tool calls, parent link)
+            saveAssistantMessage(
+              sessionId,
+              text,
+              thinking || undefined,
+              turnToolCalls.length > 0 ? turnToolCalls : undefined,
+              rootMessageId,
+            )
+              .then((msg) => {
+                if (!rootMessageId) {
+                  rootMessageId = msg.id;
+                }
+              })
+              .catch((err) => {
+                console.error("Failed to save turn message to DB:", err);
+              });
+
+            turnIndex++;
+            currentTurnText = "";
+            currentTurnThinking = "";
+            currentTurnToolCallIds.clear();
             break;
           }
 
@@ -382,19 +492,16 @@ export async function processTelegramMessage(params: {
       });
     });
 
-    // Send the assistant response to Telegram
-    if (assistantText.trim()) {
+    // For single-turn responses (no turn_end fired), save the final message
+    if (turnIndex === 0 && currentTurnText.trim()) {
       await sendTelegramMessage(
         encryptedToken,
         telegramChatId,
-        assistantText,
+        currentTurnText,
         replyToMessageId != null ? { replyToMessageId } : undefined,
       );
 
-      // Save to ChatSession for WebUI visibility
-      await prisma.chatMessage.create({
-        data: { sessionId, role: "assistant", content: assistantText },
-      });
+      await saveAssistantMessage(sessionId, currentTurnText, currentTurnThinking || undefined);
     }
 
     // Get stats and mark run as completed
@@ -412,10 +519,11 @@ export async function processTelegramMessage(params: {
     });
 
     // Update chat session metadata
+    const incrementCount = turnIndex > 0 ? turnIndex : 1;
     await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
-        messageCount: { increment: 1 },
+        messageCount: { increment: incrementCount },
         processingSince: null,
       },
     });
