@@ -1,12 +1,18 @@
+import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
+import { getRedis } from "@/lib/redis";
 import { createBot } from "./client";
 import type { ApprovalRequest } from "@/lib/pi/tool-approval-gate";
+
+/** Redis key prefix for short approval tokens. */
+const TOKEN_KEY_PREFIX = "saale:approval-token:";
 
 /**
  * Send a tool approval request via Telegram with inline buttons.
  *
  * Only sends if the user has an enabled Telegram bot configured.
- * The callback data encodes: approve:{sessionId}:{toolCallId} or deny:{sessionId}:{toolCallId}
+ * Uses a short random token (stored in Redis) for callback_data
+ * to stay within Telegram's 64-byte limit.
  */
 export async function sendTelegramApprovalRequest(
   userId: string,
@@ -40,6 +46,22 @@ export async function sendTelegramApprovalRequest(
     (argsPreview ? `<code>${escapeHtml(argsPreview)}</code>\n\n` : "") +
     `<i>Approve or deny this tool call. It will auto-deny in 5 minutes.</i>`;
 
+  // Generate a short token for callback_data (Telegram limit: 64 bytes)
+  const token = randomBytes(8).toString("hex"); // 16 hex chars
+  const ttlSeconds = Math.ceil((request.expiresAt - Date.now()) / 1000);
+
+  // Store the mapping: token → { sessionId, toolCallId }
+  const redis = getRedis();
+  redis
+    .setex(
+      `${TOKEN_KEY_PREFIX}${token}`,
+      Math.max(ttlSeconds + 60, 60),
+      JSON.stringify({ sessionId: request.sessionId, toolCallId: request.toolCallId }),
+    )
+    .catch((err) => {
+      console.error("Failed to store approval token in Redis:", err);
+    });
+
   await bot.api.sendMessage(Number(chat.telegramChatId), text, {
     parse_mode: "HTML",
     reply_markup: {
@@ -47,11 +69,11 @@ export async function sendTelegramApprovalRequest(
         [
           {
             text: "✅ Approve",
-            callback_data: `approve:${request.sessionId}:${request.toolCallId}`,
+            callback_data: `a:${token}`,
           },
           {
             text: "❌ Deny",
-            callback_data: `deny:${request.sessionId}:${request.toolCallId}`,
+            callback_data: `d:${token}`,
           },
         ],
       ],
@@ -63,6 +85,9 @@ export async function sendTelegramApprovalRequest(
  * Handle a Telegram callback query (inline button press).
  * Resolves the pending approval.
  *
+ * Callback data format: `a:{token}` or `d:{token}` (approve/deny).
+ * The token is looked up in Redis to get the actual sessionId and toolCallId.
+ *
  * Verifies user isolation: the session must belong to the Telegram account's user.
  *
  * @returns true if the callback was handled, false if it was not an approval callback.
@@ -71,14 +96,36 @@ export async function handleApprovalCallback(
   accountId: string,
   callbackData: string,
 ): Promise<{ handled: boolean; message?: string }> {
-  if (!callbackData.startsWith("approve:") && !callbackData.startsWith("deny:")) {
+  if (!callbackData.startsWith("a:") && !callbackData.startsWith("d:")) {
     return { handled: false };
   }
 
-  const [action, sessionId, toolCallId] = callbackData.split(":");
-  if (!sessionId || !toolCallId) {
+  const [action, token] = callbackData.split(":");
+  if (!token || token.length !== 16) {
     return { handled: false };
   }
+
+  const approved = action === "a";
+
+  // Look up the token in Redis
+  const redis = getRedis();
+  const tokenData = await redis.get(`${TOKEN_KEY_PREFIX}${token}`);
+  if (!tokenData) {
+    return {
+      handled: true,
+      message: "⚠️ Approval request expired or not found.",
+    };
+  }
+
+  // Clean up the token
+  await redis.del(`${TOKEN_KEY_PREFIX}${token}`).catch((err) => {
+    console.error("Failed to clean up approval token:", err);
+  });
+
+  const { sessionId, toolCallId } = JSON.parse(tokenData) as {
+    sessionId: string;
+    toolCallId: string;
+  };
 
   // User isolation: verify the session belongs to the Telegram account's user
   const account = await prisma.telegramAccount.findUnique({
@@ -98,8 +145,6 @@ export async function handleApprovalCallback(
   if (!session || session.userId !== account.userId) {
     return { handled: false };
   }
-
-  const approved = action === "approve";
 
   // Import dynamically to avoid circular deps
   const { resolveApproval } = await import("@/lib/pi/tool-approval-gate");
