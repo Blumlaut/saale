@@ -304,10 +304,17 @@ export async function processTelegramMessage(params: {
   const [provider, ...nameParts] = modelId.split(":");
   const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
 
-  const rawToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
+  // Resolve tool config: user settings → agent definition overrides → defaults → no terminal
+  const userSettings = await prisma.appSettings.findUnique({
+    where: { userId },
+    select: { defaultToolConfig: true, agentCustomInstructions: true },
+  });
+  const userToolConfig = (userSettings?.defaultToolConfig as Record<string, boolean>) ?? {};
+  const defToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
   const resolvedToolConfig = {
     ...DEFAULT_TOOL_CONFIG,
-    ...rawToolConfig,
+    ...userToolConfig,
+    ...defToolConfig,
     terminal: false,
   } as Required<ToolConfig>;
 
@@ -338,11 +345,6 @@ export async function processTelegramMessage(params: {
 
   // Build system prompt: Saale default + user custom instructions + tool hints + Telegram formatting
   // Matches the web chat stream endpoint's prompt construction
-  const userSettings = await prisma.appSettings.findUnique({
-    where: { userId },
-    select: { agentCustomInstructions: true },
-  });
-
   const customInstructions =
     userSettings?.agentCustomInstructions && userSettings.agentCustomInstructions.trim()
       ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
