@@ -86,6 +86,8 @@ export async function buildSessionDeps(options: {
   toolConfig: ToolConfig | null | undefined;
   modelProvider: string | undefined;
   modelName: string | undefined;
+  /** Optional wrapper applied to every resolved tool (e.g. approval gate). */
+  wrapTool?: (tool: ToolDefinition) => ToolDefinition;
 }) {
   const { modelRuntime } = await buildModelRuntime(options.userId);
 
@@ -94,6 +96,7 @@ export async function buildSessionDeps(options: {
 
   const resolvedTools = await resolveTools(options.userId, options.sessionId, enabled, {
     createTerminalScopedTools,
+    ...(options.wrapTool ? { wrapWithApproval: options.wrapTool } : {}),
   });
   allCustomTools.push(...resolvedTools);
 
