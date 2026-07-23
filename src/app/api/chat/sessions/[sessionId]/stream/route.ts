@@ -22,7 +22,6 @@ import {
 } from "@/lib/pi/stream-helpers";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
-import { sendTelegramApprovalRequest } from "@/lib/telegram/approval";
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -52,6 +51,12 @@ export async function GET(
   const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
+  // Mutable reference set inside start() so the approval callback can enqueue
+  // directly to the SSE controller. Without this, tool_approval_request only
+  // goes to Redis (for reconnecting clients) and the primary connection never
+  // receives it — the tool just shows as "running" forever.
+  let emitApprovalEvent: ((data: unknown) => void) | null = null;
+
   // Build the approval wrapper function
   const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
     wrapWithApprovalGate(
@@ -60,18 +65,18 @@ export async function GET(
       sessionId,
       getPolicy,
       (request: ApprovalRequest) => {
-        // Emit SSE event to connected clients
-        publishStreamEvent(sessionId, "tool_approval_request", {
+        const eventData = {
           toolCallId: request.toolCallId,
           toolName: request.toolName,
           args: request.args,
           expiresAt: new Date(request.expiresAt).toISOString(),
-        });
+        };
 
-        // Send Telegram notification if the user has a bot configured
-        sendTelegramApprovalRequest(authResult.userId, request).catch((err) => {
-          console.error("Failed to send Telegram approval request:", err);
-        });
+        // Send to primary SSE connection (if active)
+        emitApprovalEvent?.(eventData);
+
+        // Also publish to Redis for reconnecting clients
+        publishStreamEvent(sessionId, "tool_approval_request", eventData).catch(console.error);
       },
     );
 
@@ -346,6 +351,17 @@ Guidelines:
 
   const stream = new ReadableStream({
     start(controller) {
+      // Wire up the approval event emitter so the approval wrapper (created
+      // outside start()) can enqueue directly to this SSE controller.
+      emitApprovalEvent = (data) => {
+        if (clientDisconnected || controllerClosed) return;
+        try {
+          controller.enqueue(encoder.encode(formatSseEvent("tool_approval_request", data)));
+        } catch (err) {
+          console.error("Failed to enqueue approval event:", err);
+        }
+      };
+
       // Subscribe to agent events for SSE forwarding (token, thinking, tool events).
       // This is unsubscribed on client disconnect.
       const unsubscribeSse = pooled.session.subscribe((event) => {

@@ -94,7 +94,7 @@ describe("Telegram tool approval gate — critical security", () => {
   describe("approval gate must block 'ask' tools without consent", () => {
     it("infra_exec with 'ask' policy emits approval request before executing", async () => {
       let executed = false;
-      let emittedRequests: ApprovalRequest[] = [];
+      const emittedRequests: ApprovalRequest[] = [];
 
       const tool = wrapWithApprovalGate(
         makeMockTool("infra_exec", async () => {
@@ -138,7 +138,7 @@ describe("Telegram tool approval gate — critical security", () => {
 
     it("infra_exec without approval gate executes immediately (the bug)", async () => {
       let executed = false;
-      let emittedRequests: ApprovalRequest[] = [];
+      const emittedRequests: ApprovalRequest[] = [];
 
       // Simulate the BUGGY behavior: tool is NOT wrapped
       const unwrappedTool = makeMockTool("infra_exec", async () => {
@@ -318,7 +318,7 @@ describe("Telegram tool approval gate — critical security", () => {
 
     it("user can override 'allow' default to 'ask'", async () => {
       let executed = false;
-      let emittedRequests: ApprovalRequest[] = [];
+      const emittedRequests: ApprovalRequest[] = [];
       const userPolicies: Record<string, string> = { infra_list_machines: "ask" };
       const getPolicy = async (name: string): Promise<"off" | "ask" | "allow"> =>
         (userPolicies[name] ?? getDefaultPolicy(name)) as "off" | "ask" | "allow";
@@ -371,11 +371,8 @@ describe("Telegram tool approval gate — critical security", () => {
       "infra_remove_machine",
     ];
 
-    it.each(askByDefault)(
-      "'%s' defaults to 'ask' policy",
-      (toolName) => {
-        expect(getDefaultPolicy(toolName)).toBe("ask");
-      },
-    );
+    it.each(askByDefault)("'%s' defaults to 'ask' policy", (toolName) => {
+      expect(getDefaultPolicy(toolName)).toBe("ask");
+    });
   });
 });

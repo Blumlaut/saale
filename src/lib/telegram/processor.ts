@@ -323,9 +323,7 @@ export async function processTelegramMessage(params: {
   } as Required<ToolConfig>;
 
   // Build policy lookup from user settings (default: per-tool sane default)
-  const toolPolicies = userSettings?.toolPolicies as
-    | Record<string, "off" | "ask" | "allow">
-    | null;
+  const toolPolicies = userSettings?.toolPolicies as Record<string, "off" | "ask" | "allow"> | null;
   const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
@@ -387,6 +385,33 @@ export async function processTelegramMessage(params: {
   const currentTurnToolCallIds = new Set<string>();
   let rootMessageId: string | null = null;
 
+  // Track which turns have already had their text flushed to Telegram
+  // (happens in message_update when a tool call appears, so text arrives
+  // before the approval request — not after at turn_end).
+  const flushedTurnTexts = new Set<number>();
+
+  /**
+   * Flush accumulated text to Telegram immediately.
+   *
+   * Called from message_update when a tool call is detected so the agent's
+   * response text arrives BEFORE the approval request (which fires inside
+   * tool.execute(), before tool_execution_start).
+   */
+  function flushTurnText(turnIndex: number): void {
+    if (!currentTurnText.trim()) return;
+    if (flushedTurnTexts.has(turnIndex)) return;
+    flushedTurnTexts.add(turnIndex);
+
+    sendTelegramMessage(
+      encryptedToken,
+      telegramChatId,
+      currentTurnText,
+      turnIndex === 0 ? (replyToMessageId != null ? { replyToMessageId } : undefined) : undefined,
+    ).catch((err) => {
+      console.error("Failed to send Telegram message for turn:", err);
+    });
+  }
+
   // Track tool call results across turns
   const toolCallResults: Map<
     string,
@@ -412,6 +437,7 @@ export async function processTelegramMessage(params: {
             currentTurnThinking = extractThinking(msg.content) || "";
 
             // Track tool call IDs appearing in this message
+            let hasToolCall = false;
             for (const content of msg.content) {
               if (
                 typeof content === "object" &&
@@ -419,7 +445,15 @@ export async function processTelegramMessage(params: {
                 (content as Record<string, unknown>).type === "toolCall"
               ) {
                 currentTurnToolCallIds.add((content as Record<string, unknown>).id as string);
+                hasToolCall = true;
               }
+            }
+
+            // Flush text NOW when a tool call appears — the approval request
+            // fires inside tool.execute() (before tool_execution_start), so we
+            // need the agent's response text to arrive BEFORE the approval.
+            if (hasToolCall) {
+              flushTurnText(turnIndex);
             }
             break;
           }
@@ -474,8 +508,9 @@ export async function processTelegramMessage(params: {
               };
             });
 
-            // Send non-empty text to Telegram immediately (intermediate message)
-            if (text.trim()) {
+            // Send non-empty text to Telegram (skip if already flushed in message_update
+            // when a tool call was detected — that ensures text arrives before approval).
+            if (text.trim() && !flushedTurnTexts.has(turnIndex)) {
               sendTelegramMessage(
                 encryptedToken,
                 telegramChatId,
