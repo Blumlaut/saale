@@ -25,6 +25,7 @@ import { buildSessionDeps, type ToolConfig } from "./session";
  * @param options.modelProvider - Model provider (e.g., "anthropic")
  * @param options.modelName - Model name (e.g., "claude-sonnet-4-5")
  * @param options.thinkingLevel - Thinking level for the model
+ * @param options.wrapTool - Optional wrapper applied to every resolved tool (e.g. approval gate)
  */
 export async function createPersistentSession(options: {
   userId: string;
@@ -35,6 +36,8 @@ export async function createPersistentSession(options: {
   modelProvider?: string;
   modelName?: string;
   thinkingLevel?: string;
+  /** Optional wrapper applied to every resolved tool (e.g. approval gate). */
+  wrapTool?: (tool: ToolDefinition) => ToolDefinition;
 }): Promise<CreateAgentSessionResult> {
   // Ensure session directory exists
   await fs.mkdir(options.sessionDir, { recursive: true });
@@ -47,6 +50,7 @@ export async function createPersistentSession(options: {
     toolConfig: options.toolConfig,
     modelProvider: options.modelProvider,
     modelName: options.modelName,
+    ...(options.wrapTool ? { wrapTool: options.wrapTool } : {}),
   });
 
   // Create or resume file-based SessionManager.

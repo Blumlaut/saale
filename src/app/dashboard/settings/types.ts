@@ -8,6 +8,8 @@ export interface PurposeModelSelection {
   model: string;
 }
 
+export type ToolPolicy = "off" | "ask" | "yolo";
+
 export interface UserSettings {
   defaultModelProvider: string;
   defaultModelName: string;
@@ -18,6 +20,7 @@ export interface UserSettings {
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
   disabledModels: string[] | null; // Array of "provider:modelId" strings
   defaultToolConfig: ToolConfig | null;
+  toolPolicies: Record<string, ToolPolicy> | null;
 }
 
 export interface ConfiguredProvider {

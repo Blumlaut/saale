@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
@@ -19,6 +20,12 @@ import {
   handleReconnectFromRedis,
   saveAssistantMessage,
 } from "@/lib/pi/stream-helpers";
+import {
+  wrapWithApprovalGate,
+  type ToolPolicy,
+  type ApprovalRequest,
+} from "@/lib/pi/tool-approval-gate";
+import { sendTelegramApprovalRequest } from "@/lib/telegram/approval";
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -37,11 +44,39 @@ export async function GET(
   if (!authResult.ok) return new Response("Unauthorized", { status: 401 });
   const chatSession = authResult.session;
 
-  // Fetch user's custom agent system prompt
+  // Fetch user's custom agent system prompt + tool policies
   const userSettings = await prisma.appSettings.findUnique({
     where: { userId: authResult.userId },
-    select: { agentCustomInstructions: true },
+    select: { agentCustomInstructions: true, toolPolicies: true },
   });
+
+  // Build policy lookup from user settings (default: "yolo" = always allowed)
+  const toolPolicies = (userSettings?.toolPolicies as Record<string, ToolPolicy>) ?? {};
+  const getPolicy = async (toolName: string): Promise<ToolPolicy> =>
+    toolPolicies[toolName] ?? "yolo";
+
+  // Build the approval wrapper function
+  const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
+    wrapWithApprovalGate(
+      tool,
+      authResult.userId,
+      sessionId,
+      getPolicy,
+      (request: ApprovalRequest) => {
+        // Emit SSE event to connected clients
+        publishStreamEvent(sessionId, "tool_approval_request", {
+          toolCallId: request.toolCallId,
+          toolName: request.toolName,
+          args: request.args,
+          expiresAt: new Date(request.expiresAt).toISOString(),
+        });
+
+        // Send Telegram notification if the user has a bot configured
+        sendTelegramApprovalRequest(authResult.userId, request).catch((err) => {
+          console.error("Failed to send Telegram approval request:", err);
+        });
+      },
+    );
 
   if (!chatSession) {
     return new Response("Not found", { status: 404 });
@@ -144,6 +179,7 @@ export async function GET(
       modelProvider,
       modelName,
       thinkingLevel: chatSession.thinkingLevel || "off",
+      wrapTool: approvalWrapper,
     });
 
     // Set system prompt on the agent

@@ -15,6 +15,7 @@ const ALLOWED_FIELDS = new Set([
   "purposeModelOverrides",
   "disabledModels",
   "defaultToolConfig",
+  "toolPolicies",
 ]);
 
 /** Serialize AppSettings to the shape sent to the frontend. */
@@ -29,6 +30,7 @@ function serializeSettings(settings: AppSettings) {
     purposeModelOverrides: settings.purposeModelOverrides,
     disabledModels: settings.disabledModels,
     defaultToolConfig: settings.defaultToolConfig,
+    toolPolicies: settings.toolPolicies,
   };
 }
 

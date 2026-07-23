@@ -305,6 +305,7 @@ model AppSettings {
   purposeModelOverrides  Json?                  // Per-purpose model overrides: { "email_draft": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } }
   disabledModels       Json?                  // Array of "provider:modelId" strings for models the user has disabled
   defaultToolConfig    Json?                  // Default tool config for new chat sessions: { "files": true, "email": true, ... }
+  toolPolicies         Json?                  // Per-tool approval policies: { "bash": "ask", "mail_send": "off", ... }
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   updatedAt            DateTime @updatedAt

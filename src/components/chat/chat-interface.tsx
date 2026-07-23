@@ -28,8 +28,16 @@ import {
   type AnimationState,
 } from "@/lib/pi/stream-animation";
 import { ShareButton } from "./share-button";
+import { ToolApprovalCard } from "./tool-approval-card";
 import type { Message, ToolCallData } from "./types";
 import type { Dispatch, SetStateAction } from "react";
+
+interface ApprovalRequest {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  expiresAt: string;
+}
 
 interface TurnData {
   text: string;
@@ -188,6 +196,7 @@ interface StreamCallbacks {
   onDone: (eventSource: EventSource, event: MessageEvent) => void;
   onError: (eventSource: EventSource, event: MessageEvent) => void;
   onConnectionError: (eventSource: EventSource) => void;
+  onApprovalRequest?: (request: ApprovalRequest) => void;
 }
 
 function setupStreamListeners(
@@ -311,6 +320,13 @@ function setupStreamListeners(
       return next;
     });
   });
+
+  if (callbacks.onApprovalRequest) {
+    eventSource.addEventListener("tool_approval_request", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data) as ApprovalRequest;
+      callbacks.onApprovalRequest!(parsed);
+    });
+  }
 
   eventSource.addEventListener("done", (event: MessageEvent) => {
     callbacks.onDone(eventSource, event);
@@ -476,6 +492,7 @@ export function ChatInterface({
   const [modelId, setModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
   const { streamingIds, markStreaming, markDone } = useStreamingSessions();
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
@@ -598,6 +615,12 @@ export function ChatInterface({
         finalizeStreaming(streamingRef.current, setMessages);
         setIsLoading(false);
         markDone(sessionId);
+      },
+      onApprovalRequest: (request) => {
+        setPendingApprovals((prev) => {
+          if (prev.some((a) => a.toolCallId === request.toolCallId)) return prev;
+          return [...prev, request];
+        });
       },
     });
 
@@ -746,6 +769,12 @@ export function ChatInterface({
             // Safety net: finalize streamed content
             finalizeStreaming(streamingRef.current, setMessages);
             setIsLoading(false);
+          },
+          onApprovalRequest: (request) => {
+            setPendingApprovals((prev) => {
+              if (prev.some((a) => a.toolCallId === request.toolCallId)) return prev;
+              return [...prev, request];
+            });
           },
         });
       } catch (err) {
@@ -1019,6 +1048,12 @@ export function ChatInterface({
             finalizeStreaming(streamingRef.current, setMessages);
             setIsLoading(false);
           },
+          onApprovalRequest: (request) => {
+            setPendingApprovals((prev) => {
+              if (prev.some((a) => a.toolCallId === request.toolCallId)) return prev;
+              return [...prev, request];
+            });
+          },
         });
       } catch (err) {
         setIsLoading(false);
@@ -1214,12 +1249,34 @@ export function ChatInterface({
         </div>
 
         {/* Messages — flex-1 fills panel, scrolls internally */}
-        <MessageList
-          messages={displayMessages}
-          isLoading={isLoading}
-          onEditMessage={handleEditMessage}
-          onSendMessage={(content) => handleSend(content)}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <MessageList
+            messages={displayMessages}
+            isLoading={isLoading}
+            onEditMessage={handleEditMessage}
+            onSendMessage={(content) => handleSend(content)}
+          />
+
+          {/* Pending tool approval cards */}
+          {pendingApprovals.length > 0 && (
+            <div className="border-border/30 shrink-0 border-t px-4 py-3 md:px-5">
+              <div className="mx-auto flex max-w-2xl flex-col gap-3">
+                {pendingApprovals.map((req) => (
+                  <ToolApprovalCard
+                    key={req.toolCallId}
+                    sessionId={sessionId}
+                    request={req}
+                    onResolved={(toolCallId) => {
+                      setPendingApprovals((prev) =>
+                        prev.filter((a) => a.toolCallId !== toolCallId),
+                      );
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </GlassPanel>
 
       {/* Input bar — outside the panel, always visible */}

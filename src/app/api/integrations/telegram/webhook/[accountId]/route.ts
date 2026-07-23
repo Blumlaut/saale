@@ -8,6 +8,7 @@ import {
   type TelegramFileInfo,
 } from "@/lib/telegram/processor";
 import { createBot } from "@/lib/telegram/client";
+import { handleApprovalCallback } from "@/lib/telegram/approval";
 
 /**
  * Extract processable content from a Telegram message.
@@ -124,7 +125,35 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // 5. Extract message from update (private chats only)
+  // 5. Handle callback queries (inline button presses — e.g. tool approval)
+  const callbackQuery = update.callback_query as
+    | {
+        id: string;
+        data?: string;
+        message: { chat: { id: number; type: string } };
+      }
+    | undefined;
+
+  if (callbackQuery && callbackQuery.data) {
+    const bot = createBot(account.encryptedToken);
+
+    // Handle approval callbacks (with accountId for user isolation)
+    const result = await handleApprovalCallback(accountId, callbackQuery.data);
+    if (result.handled && result.message) {
+      try {
+        await bot.api.answerCallbackQuery(callbackQuery.id, {
+          text: result.message,
+          show_alert: false,
+        });
+      } catch (err) {
+        console.error("Failed to answer callback query:", err);
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // 6. Extract message from update (private chats only)
   const message = update.message as
     | {
         text?: string;
@@ -144,17 +173,15 @@ export async function POST(
   // Extract content (text, photo, or document)
   const content = extractMessageContent(message);
   if (!content) {
-    // Unsupported message type (voice, video, sticker, etc.) — ignore for now
     return NextResponse.json({ ok: true });
   }
 
   const telegramChatId = BigInt(message.chat.id);
   const telegramUserId = BigInt(message.from.id);
 
-  // 6. Check whitelist
+  // 7. Check whitelist
   const whitelisted = await isWhitelisted(account.id, telegramUserId);
   if (!whitelisted) {
-    // Send rejection message via direct API call
     const bot = createBot(account.encryptedToken);
     try {
       await bot.api.sendMessage(
@@ -170,13 +197,13 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  // 7. Update display name cache (fire-and-forget)
+  // 8. Update display name cache (fire-and-forget)
   const displayName = [message.from.first_name, message.from.last_name].filter(Boolean).join(" ");
   upsertWhitelistDisplayName(account.id, telegramUserId, displayName || null).catch((err) => {
     console.error("Failed to update whitelist display name:", err);
   });
 
-  // 8. Update last processed message ID (fire-and-forget)
+  // 9. Update last processed message ID (fire-and-forget)
   prisma.telegramChat
     .updateMany({
       where: {
@@ -189,9 +216,7 @@ export async function POST(
       console.error("Failed to update lastMessageId:", err);
     });
 
-  // 9. Process the message asynchronously
-  // Telegram expects a response within 5 seconds, but AI processing takes longer.
-  // We return immediately and process in the background.
+  // 10. Process the message asynchronously
   processTelegramMessage({
     userId: account.userId,
     encryptedToken: account.encryptedToken,
@@ -205,6 +230,6 @@ export async function POST(
     console.error("Telegram message processing failed:", err);
   });
 
-  // 10. Acknowledge receipt immediately
+  // 11. Acknowledge receipt immediately
   return NextResponse.json({ ok: true });
 }
