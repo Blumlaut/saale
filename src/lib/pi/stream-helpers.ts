@@ -8,12 +8,66 @@ const BUFFER_KEY_PREFIX = "chat:stream:buf:";
 const BUFFER_TTL_SECONDS = 60;
 const BUFFER_MAX_SIZE = 200;
 
-/** Publish an SSE-formatted event to Redis for other clients to receive. */
-export async function publishStreamEvent(
-  sessionId: string,
-  event: string,
-  data: unknown,
-): Promise<void> {
+/**
+ * Centralized SSE event dispatcher.
+ *
+ * Always publishes to Redis (for reconnecting clients) and enqueues to the
+ * primary SSE controller (for the active connection). The controller is wired
+ * lazily via .wire() so the dispatcher can be created before the stream starts
+ * (e.g., for approval callbacks captured in tool wrappers).
+ *
+ * This is the single path for emitting stream events — there is no separate
+ * "publish to Redis" or "enqueue to controller" API. This prevents bugs where
+ * an event is sent to one path but not the other.
+ */
+export class StreamDispatcher {
+  private controller: ReadableStreamDefaultController | null = null;
+  private encoder: TextEncoder | null = null;
+  private closed = false;
+
+  constructor(private readonly sessionId: string) {}
+
+  /**
+   * Wire the SSE controller and encoder.
+   * Called once inside ReadableStream's start() callback.
+   */
+  wire(controller: ReadableStreamDefaultController, encoder: TextEncoder): void {
+    this.controller = controller;
+    this.encoder = encoder;
+    this.closed = false;
+  }
+
+  /**
+   * Emit an SSE event. Always publishes to Redis AND enqueues to the controller
+   * (if wired and not closed). This is the only public method for sending events.
+   */
+  emit(event: string, data: unknown): void {
+    const payload = this.encoder ? this.encoder.encode(formatSseEvent(event, data)) : null;
+
+    // Enqueue to primary SSE connection (if wired and alive)
+    if (payload && this.controller && !this.closed) {
+      try {
+        this.controller.enqueue(payload);
+      } catch (err) {
+        console.error("Failed to enqueue SSE event:", err);
+      }
+    }
+
+    // Publish to Redis for reconnecting clients (fire-and-forget)
+    publishToRedis(this.sessionId, event, data).catch(console.error);
+  }
+
+  /** Mark the dispatcher as closed (client disconnected or stream ended). */
+  close(): void {
+    this.closed = true;
+  }
+}
+
+/**
+ * Publish an SSE-formatted event to Redis for reconnecting clients.
+ * Internal — use StreamDispatcher.emit() instead of calling this directly.
+ */
+async function publishToRedis(sessionId: string, event: string, data: unknown): Promise<void> {
   try {
     const redis = getRedis();
     const payload = JSON.stringify({ event, data });
@@ -27,6 +81,18 @@ export async function publishStreamEvent(
   } catch (err) {
     console.error("Redis publish error:", err);
   }
+}
+
+/**
+ * @deprecated Use StreamDispatcher.emit() instead.
+ * Kept only for the reconnect path which has no controller to wire.
+ */
+export async function publishStreamEvent(
+  sessionId: string,
+  event: string,
+  data: unknown,
+): Promise<void> {
+  await publishToRedis(sessionId, event, data);
 }
 
 /** Get buffered events for a session (oldest first). */
