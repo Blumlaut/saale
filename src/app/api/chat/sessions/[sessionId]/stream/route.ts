@@ -20,11 +20,8 @@ import {
   handleReconnectFromRedis,
   saveAssistantMessage,
 } from "@/lib/pi/stream-helpers";
-import {
-  wrapWithApprovalGate,
-  type ToolPolicy,
-  type ApprovalRequest,
-} from "@/lib/pi/tool-approval-gate";
+import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
+import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { sendTelegramApprovalRequest } from "@/lib/telegram/approval";
 
 /**
@@ -50,10 +47,10 @@ export async function GET(
     select: { agentCustomInstructions: true, toolPolicies: true },
   });
 
-  // Build policy lookup from user settings (default: "yolo" = always allowed)
-  const toolPolicies = (userSettings?.toolPolicies as Record<string, ToolPolicy>) ?? {};
-  const getPolicy = async (toolName: string): Promise<ToolPolicy> =>
-    toolPolicies[toolName] ?? "yolo";
+  // Build policy lookup from user settings (default: per-tool sane default)
+  const toolPolicies = userSettings?.toolPolicies as Record<string, "off" | "ask" | "allow"> | null;
+  const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
+    toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
   // Build the approval wrapper function
   const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>

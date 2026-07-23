@@ -2,13 +2,13 @@
 export type { EmailAccount } from "@/types/shared";
 import type { ToolConfig } from "@/lib/pi/tool-categories";
 export type { ToolConfig };
+import type { ToolPolicy } from "@/lib/pi/tool-infos";
+export type { ToolPolicy };
 
 export interface PurposeModelSelection {
   provider: string;
   model: string;
 }
-
-export type ToolPolicy = "off" | "ask" | "yolo";
 
 export interface UserSettings {
   defaultModelProvider: string;
