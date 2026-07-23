@@ -31,7 +31,6 @@ vi.mock("@/lib/crypto", () => ({
 // Mock infra client
 vi.mock("@/lib/infra/client", () => ({
   executeCommand: vi.fn(),
-  readFile: vi.fn(),
   writeFile: vi.fn(),
   generateSshKeyPair: vi.fn(() => ({
     privateKey:
@@ -74,7 +73,6 @@ describe("createInfraTools", () => {
     ctx.addMachine = tools.find((t: { name: string }) => t.name === "infra_add_machine")!;
     ctx.removeMachine = tools.find((t: { name: string }) => t.name === "infra_remove_machine")!;
     ctx.exec = tools.find((t: { name: string }) => t.name === "infra_exec")!;
-    ctx.readFile = tools.find((t: { name: string }) => t.name === "infra_read_file")!;
     ctx.writeFile = tools.find((t: { name: string }) => t.name === "infra_write_file")!;
     ctx.notesList = tools.find((t: { name: string }) => t.name === "infra_notes_list")!;
     ctx.notesGet = tools.find((t: { name: string }) => t.name === "infra_notes_get")!;
@@ -82,19 +80,18 @@ describe("createInfraTools", () => {
     ctx.notesDelete = tools.find((t: { name: string }) => t.name === "infra_notes_delete")!;
   });
 
-  it("returns all 10 expected tools", () => {
+  it("returns all 9 expected tools", () => {
     const names = ctx.tools.map((t: { name: string }) => t.name);
     expect(names).toContain("infra_list_machines");
     expect(names).toContain("infra_add_machine");
     expect(names).toContain("infra_remove_machine");
     expect(names).toContain("infra_exec");
-    expect(names).toContain("infra_read_file");
     expect(names).toContain("infra_write_file");
     expect(names).toContain("infra_notes_list");
     expect(names).toContain("infra_notes_get");
     expect(names).toContain("infra_notes_upsert");
     expect(names).toContain("infra_notes_delete");
-    expect(names).toHaveLength(10);
+    expect(names).toHaveLength(9);
   });
 
   describe("infra_list_machines", () => {
@@ -491,40 +488,6 @@ describe("createInfraTools", () => {
         callExecute(ctx.exec.execute, {
           id: "nonexistent",
           command: "echo hello",
-        }),
-      ).rejects.toThrow("Machine nonexistent not found");
-    });
-  });
-
-  describe("infra_read_file", () => {
-    it("reads file via SFTP", async () => {
-      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
-        id: "m1",
-        name: "prod-web",
-      });
-      vi.mocked(client.readFile).mockResolvedValue({
-        content: "file content here",
-        truncated: false,
-      });
-
-      const result = await callExecute(ctx.readFile.execute, {
-        id: "m1",
-        path: "/etc/nginx/nginx.conf",
-      });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
-
-      expect(text.content).toBe("file content here");
-      expect(text.truncated).toBe(false);
-      expect(client.readFile).toHaveBeenCalledWith("m1", "user-123", "/etc/nginx/nginx.conf");
-    });
-
-    it("throws when machine not found", async () => {
-      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
-
-      await expect(
-        callExecute(ctx.readFile.execute, {
-          id: "nonexistent",
-          path: "/etc/passwd",
         }),
       ).rejects.toThrow("Machine nonexistent not found");
     });
