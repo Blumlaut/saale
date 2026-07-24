@@ -52,20 +52,29 @@ for (const entry of fs.readdirSync(nm)) {
 
 // Nested packages (inside pi-coding-agent/node_modules, etc.)
 function walk(dir, depth = 0) {
-  if (depth > 3) return;
-  for (const entry of fs.readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    const stat = fs.statSync(full);
-    if (stat.isDirectory() && entry === "node_modules") {
-      for (const sub of fs.readdirSync(full)) {
-        if (sub.startsWith("@earendil-works")) {
-          for (const pkg of fs.readdirSync(path.join(full, sub))) {
-            fixExports(path.join(full, sub, pkg));
+  if (depth > 4) return;
+  try {
+    const entries = fs.readdirSync(dir);
+    for (const entry of entries) {
+      const full = path.join(dir, entry);
+      const stat = fs.statSync(full);
+      if (!stat.isDirectory()) continue;
+      if (entry === "node_modules") {
+        for (const sub of fs.readdirSync(full)) {
+          if (sub.startsWith("@earendil-works")) {
+            for (const pkg of fs.readdirSync(path.join(full, sub))) {
+              fixExports(path.join(full, sub, pkg));
+            }
           }
         }
+        walk(full, depth + 1);
+      } else if (entry.startsWith("pi-") || entry.startsWith("@")) {
+        // Also recurse into package directories (e.g., pi-coding-agent/)
+        walk(full, depth + 1);
       }
-      walk(full, depth + 1);
     }
+  } catch {
+    // Skip unreadable directories
   }
 }
 
