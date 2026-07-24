@@ -145,7 +145,7 @@ export async function sendTelegramMessage(
   text: string,
   options?: {
     replyToMessageId: number | undefined;
-    parseMode?: "HTML" | "Markdown";
+    parseMode?: "HTML" | "Markdown" | "MarkdownV2";
   },
 ): Promise<number[]> {
   const bot = createBot(encryptedToken);
@@ -163,14 +163,19 @@ export async function sendTelegramMessage(
         ? { message_id: options.replyToMessageId }
         : undefined;
 
-    const parseMode: "HTML" | "Markdown" = options?.parseMode ?? "HTML";
+    const parseMode: "HTML" | "Markdown" | "MarkdownV2" = options?.parseMode ?? "MarkdownV2";
     const sendMessageParams: Record<string, unknown> = { parse_mode: parseMode };
     if (replyParams) {
       sendMessageParams.reply_parameters = replyParams;
     }
+
+    // Escape special characters for MarkdownV2 (AI-generated messages are Markdown,
+    // so we preserve formatting syntax but escape chars that would break parsing)
+    const processedChunk = parseMode === "MarkdownV2" ? escapeMarkdownV2(chunk) : chunk;
+
     const result = await bot.api.sendMessage(
       Number(chatId),
-      chunk,
+      processedChunk,
       sendMessageParams as Record<string, never>,
     );
     messageIds.push(result.message_id);
@@ -188,6 +193,51 @@ export async function sendTypingIndicator(encryptedToken: string, chatId: bigint
   bot.api.sendChatAction(Number(chatId), "typing").catch((err) => {
     console.error("Failed to send typing indicator:", err);
   });
+}
+
+/**
+ * Escape special characters for Telegram's MarkdownV2 parse mode.
+ * Preserves intentional formatting (bold, italic, code, links) while escaping
+ * other occurrences of special characters that would break parsing.
+ *
+ * MarkdownV2 requires escaping: _ * [ ] ( ) ~ ` > # + - = | { } . !
+ */
+function escapeMarkdownV2(text: string): string {
+  // Character classes for formatting syntax
+  const backtick = /`+/g;
+  const boldItalic = /\*\*\*|___/g;
+  const bold = /\*\*/g;
+  const italic = /\*|_/g;
+  const strikethrough = /~~/g;
+  const link = /\[([^\]]*?)\]\(([^)]*?)\)/g;
+  const escapeChars = /[_*\[\]()~`>#+\-=|{}.!]/g;
+
+  const parts: string[] = [];
+  let lastIndex = 0;
+
+  // Build a unified regex to match all formatting tokens in order
+  const tokenPattern = new RegExp(
+    `(?:${link.source}|${backtick.source}|${boldItalic.source}|${bold.source}|${italic.source}|${strikethrough.source})`,
+    "g",
+  );
+
+  let match: RegExpExecArray | null;
+  while ((match = tokenPattern.exec(text)) !== null) {
+    // Escape the text between last match and this one
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index).replace(escapeChars, "\\$&"));
+    }
+    // Keep formatting tokens as-is
+    parts.push(match[0]);
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Escape any remaining text after the last match
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex).replace(escapeChars, "\\$&"));
+  }
+
+  return parts.join("");
 }
 
 /**

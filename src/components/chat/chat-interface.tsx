@@ -14,6 +14,7 @@ import { ChatHeader } from "./chat-header";
 import { useTypingAnimation } from "./use-typing-animation";
 import { useChatStream } from "./use-chat-stream";
 import { buildTurnMessage, finalizeStreaming, type StreamingState } from "./chat-streaming-state";
+import type { TokenUsage } from "./input-bar";
 
 export function ChatInterface({
   sessionId,
@@ -38,6 +39,8 @@ export function ChatInterface({
 
   // Session state (declared before useChatStream so setters are available)
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
+  const [isCompacting, setIsCompacting] = useState(false);
   const { streamingIds, markStreaming, markDone } = useStreamingSessions();
 
   // Shared stream orchestration (SSE setup, reconnection, approval handling)
@@ -50,6 +53,9 @@ export function ChatInterface({
     setIsLoading,
     setPendingApprovals,
     markDone,
+    setTokenUsage,
+    () => setIsCompacting(true),
+    () => setIsCompacting(false),
   );
 
   // Typing animation — smooth, buffer-based text playback
@@ -519,6 +525,8 @@ export function ChatInterface({
         onStop={handleStop}
         toolConfig={toolConfig}
         onToggleTool={handleToggleTool}
+        tokenUsage={tokenUsage}
+        isCompacting={isCompacting}
       />
     </>
   );

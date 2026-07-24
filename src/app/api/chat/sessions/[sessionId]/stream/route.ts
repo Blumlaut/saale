@@ -291,6 +291,13 @@ Guidelines:
     { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
   > = new Map();
 
+  // Track cumulative token usage across all turns
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalCacheReadTokens = 0;
+  let totalCacheWriteTokens = 0;
+  let contextWindow = 0;
+
   // Track turn state
   let turnIndex = 0;
   let currentTurnText = "";
@@ -328,6 +335,58 @@ Guidelines:
           "message" in event && event.message ? { role: event.message.role } : undefined,
         );
         switch (event.type) {
+          case "message_end": {
+            // Track token usage from assistant messages
+            if (event.message.role === "assistant") {
+              const msg = event.message as unknown as Record<string, unknown>;
+              const usage = msg.usage as Record<string, number> | undefined;
+              if (usage) {
+                totalInputTokens += usage.input ?? 0;
+                totalOutputTokens += usage.output ?? 0;
+                totalCacheReadTokens += usage.cacheRead ?? 0;
+                totalCacheWriteTokens += usage.cacheWrite ?? 0;
+
+                // Get context window from the model (set on first usage)
+                if (!contextWindow) {
+                  contextWindow = pooled.session.model?.contextWindow ?? 0;
+                }
+
+                // Emit token usage to frontend
+                dispatcher.emit("token_usage", {
+                  input: totalInputTokens,
+                  output: totalOutputTokens,
+                  cacheRead: totalCacheReadTokens,
+                  cacheWrite: totalCacheWriteTokens,
+                  total: totalInputTokens + totalOutputTokens,
+                  contextWindow,
+                });
+
+                // Check if we need to compact (auto-compaction doesn't fire for direct agent.prompt())
+                // Trigger at 85% of context window to leave room for the compaction summary
+                const compactionThreshold = contextWindow * 0.85;
+                if (totalInputTokens + totalOutputTokens > compactionThreshold) {
+                  log(
+                    "compaction",
+                    `auto-triggering compaction (${totalInputTokens + totalOutputTokens}/${contextWindow})`,
+                  );
+                  // Compact in the background — don't block the stream
+                  pooled.session
+                    .compact()
+                    .then((result) => {
+                      log(
+                        "compaction",
+                        `completed: ${result?.tokensBefore ?? "unknown"} tokens before compaction`,
+                      );
+                    })
+                    .catch((err) => {
+                      console.error("Auto-compaction failed:", err);
+                    });
+                }
+              }
+            }
+            break;
+          }
+
           case "message_update": {
             if (event.message.role !== "assistant") return;
             // Narrow to assistant message with content array

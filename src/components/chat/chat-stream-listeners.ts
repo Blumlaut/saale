@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { StreamingState } from "./chat-streaming-state";
 import type { ToolCallData, ApprovalData } from "./types";
+import type { TokenUsage } from "./input-bar";
 import { emptyTurn } from "./chat-streaming-state";
 
 /** Callbacks for SSE stream events */
@@ -9,6 +10,9 @@ export interface StreamCallbacks {
   onError: (eventSource: EventSource, event: MessageEvent) => void;
   onConnectionError: (eventSource: EventSource) => void;
   onApprovalRequest?: (request: ApprovalData) => void;
+  onTokenUsage?: (usage: TokenUsage) => void;
+  onCompactionStart?: () => void;
+  onCompactionEnd?: () => void;
 }
 
 /**
@@ -147,6 +151,25 @@ export function setupStreamListeners(
     eventSource.addEventListener("tool_approval_request", (event: MessageEvent) => {
       const parsed = JSON.parse(event.data) as ApprovalData;
       callbacks.onApprovalRequest!(parsed);
+    });
+  }
+
+  if (callbacks.onTokenUsage) {
+    eventSource.addEventListener("token_usage", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data) as TokenUsage;
+      callbacks.onTokenUsage!(parsed);
+    });
+  }
+
+  if (callbacks.onCompactionStart) {
+    eventSource.addEventListener("compaction_start", () => {
+      callbacks.onCompactionStart!();
+    });
+  }
+
+  if (callbacks.onCompactionEnd) {
+    eventSource.addEventListener("compaction_end", () => {
+      callbacks.onCompactionEnd!();
     });
   }
 
