@@ -193,13 +193,7 @@ export async function executeAgentRun(
     customTools: allCustomTools,
     thinkingLevel:
       (definition.thinkingLevel as
-        | "off"
-        | "minimal"
-        | "low"
-        | "medium"
-        | "high"
-        | "xhigh"
-        | "max") ?? "off",
+        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ?? "off",
   });
 
   // Set system prompt

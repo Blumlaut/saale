@@ -74,8 +74,7 @@ function extractEvent(vevent: Record<string, unknown>): ParsedEvent {
   // 2. The raw dtstart has VALUE=DATE param
   const isDateObject = dtStart && typeof dtStart === "object" && !("getTime" in dtStart);
   const rawDtStart = vevent.dtstart as
-    | { params?: Record<string, unknown>; val?: unknown }
-    | undefined;
+    { params?: Record<string, unknown>; val?: unknown } | undefined;
   const hasValueDate =
     typeof rawDtStart?.params === "object" &&
     (rawDtStart.params.VALUE === "DATE" || rawDtStart.params.value === "DATE");
@@ -132,8 +131,7 @@ function parseAlerts(
     if (a?.type !== "VALARM") continue;
 
     const trigger = a.trigger as
-      | { value: { days?: number; hours?: number; minutes?: number; seconds?: number } }
-      | undefined;
+      { value: { days?: number; hours?: number; minutes?: number; seconds?: number } } | undefined;
     let triggerMinutes = 0;
 
     if (trigger && "value" in trigger && typeof trigger.value === "object") {

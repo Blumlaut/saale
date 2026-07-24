@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     "@better-auth/kysely-adapter",
     // Native bindings — Turbopack cannot bundle non-ESM assets
     "wreq-js",
+    "ssh2",
     // Exclude Pi packages from bundling — they use dynamic import() for node:
     // builtins (fs, os, path) which the bundler cannot statically analyze.
     "@earendil-works/pi-ai",
