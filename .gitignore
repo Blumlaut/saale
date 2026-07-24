@@ -48,3 +48,8 @@ uploads/
 *.tsbuildinfo
 .cache/
 .pi-subagents/artifacts/
+
+# Generated reports
+jscpd-report.html/
+jscpd-report.json/
+test-results/
