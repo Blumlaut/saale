@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { FileCard } from "./file-card";
+import { ApprovalMessage } from "./approval-message";
+import type { ApprovalData, Message } from "./types";
 import {
   Loader2,
   Bot,
@@ -20,13 +22,15 @@ import {
   Pencil,
   X,
 } from "lucide-react";
-import type { Message } from "./types";
 
 interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
   onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
   onSendMessage?: (content: string) => void;
+  pendingApprovals?: ApprovalData[];
+  onApprovalResolved?: (toolCallId: string) => void;
+  sessionId?: string;
 }
 
 const THRESHOLD = 80; // px from bottom to consider "at bottom"
@@ -36,6 +40,9 @@ export function MessageList({
   isLoading,
   onEditMessage,
   onSendMessage,
+  pendingApprovals = [],
+  onApprovalResolved,
+  sessionId,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -183,6 +190,21 @@ export function MessageList({
             />
           ),
         )}
+
+        {/* Inline tool approval requests */}
+        {pendingApprovals.length > 0 && sessionId && (
+          <div className="space-y-2">
+            {pendingApprovals.map((approval) => (
+              <ApprovalMessage
+                key={approval.toolCallId}
+                sessionId={sessionId}
+                approval={approval}
+                onResolved={onApprovalResolved ?? (() => {})}
+              />
+            ))}
+          </div>
+        )}
+
         {isLoading && !isStreaming && (
           <div className="text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />

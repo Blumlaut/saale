@@ -17,13 +17,23 @@ export interface AttachmentData {
   height?: number;
 }
 
+export interface ApprovalData {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  expiresAt: string;
+  resolved?: boolean;
+  approved?: boolean;
+}
+
 export interface Message {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "approval";
   content: string;
   thinking: string | undefined;
   toolCalls: ToolCallData[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;
   attachments: AttachmentData[] | undefined;
+  approval?: ApprovalData;
 }

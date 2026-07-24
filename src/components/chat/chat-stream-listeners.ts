@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { StreamingState, ApprovalRequest } from "./chat-streaming-state";
-import type { ToolCallData } from "./types";
+import type { StreamingState } from "./chat-streaming-state";
+import type { ToolCallData, ApprovalData } from "./types";
 import { emptyTurn } from "./chat-streaming-state";
 
 /** Callbacks for SSE stream events */
@@ -8,7 +8,7 @@ export interface StreamCallbacks {
   onDone: (eventSource: EventSource, event: MessageEvent) => void;
   onError: (eventSource: EventSource, event: MessageEvent) => void;
   onConnectionError: (eventSource: EventSource) => void;
-  onApprovalRequest?: (request: ApprovalRequest) => void;
+  onApprovalRequest?: (request: ApprovalData) => void;
 }
 
 /**
@@ -145,7 +145,7 @@ export function setupStreamListeners(
 
   if (callbacks.onApprovalRequest) {
     eventSource.addEventListener("tool_approval_request", (event: MessageEvent) => {
-      const parsed = JSON.parse(event.data) as ApprovalRequest;
+      const parsed = JSON.parse(event.data) as ApprovalData;
       callbacks.onApprovalRequest!(parsed);
     });
   }
