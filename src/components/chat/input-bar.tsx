@@ -14,8 +14,18 @@ import {
 import { Paperclip, Send, Loader2, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
+import { TokenUsageDisplay, CompactionProgress } from "./token-usage-display";
 
 export type { ToolConfig };
+
+export interface TokenUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+  contextWindow: number;
+}
 
 interface PendingImage {
   file: File;
@@ -28,6 +38,8 @@ interface InputBarProps {
   onStop: () => void;
   toolConfig?: ToolConfig;
   onToggleTool?: (category: string) => void;
+  tokenUsage?: TokenUsage | null;
+  isCompacting?: boolean;
 }
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -40,7 +52,15 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/avif",
 ]);
 
-export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }: InputBarProps) {
+export function InputBar({
+  onSend,
+  isLoading,
+  onStop,
+  toolConfig,
+  onToggleTool,
+  tokenUsage,
+  isCompacting,
+}: InputBarProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -262,6 +282,14 @@ export function InputBar({ onSend, isLoading, onStop, toolConfig, onToggleTool }
           </Button>
         )}
       </div>
+
+      {/* Token usage & compaction progress */}
+      {(tokenUsage || isCompacting) && (
+        <div className="flex flex-col gap-1.5 px-4 pt-1.5">
+          {isCompacting && <CompactionProgress isActive={isCompacting} />}
+          {tokenUsage && <TokenUsageDisplay usage={tokenUsage} />}
+        </div>
+      )}
     </div>
   );
 }

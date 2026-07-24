@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Message, ApprovalData } from "./types";
+import type { TokenUsage } from "./input-bar";
 import type { StreamingState } from "./chat-streaming-state";
 import { emptyTurn, EMPTY_DISPLAY, finalizeStreaming, tryLoadFromDb } from "./chat-streaming-state";
 import { setupStreamListeners } from "./chat-stream-listeners";
@@ -25,6 +26,9 @@ export function useChatStream(
   setIsLoading: Dispatch<SetStateAction<boolean>>,
   setPendingApprovals: Dispatch<SetStateAction<ApprovalData[]>>,
   markDone: (id: string) => void,
+  onTokenUsage?: (usage: TokenUsage) => void,
+  onCompactionStart?: () => void,
+  onCompactionEnd?: () => void,
 ) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -115,6 +119,9 @@ export function useChatStream(
           markDone(sessionId);
         },
         onApprovalRequest: handleApprovalRequest,
+        ...(onTokenUsage ? { onTokenUsage } : {}),
+        ...(onCompactionStart ? { onCompactionStart } : {}),
+        ...(onCompactionEnd ? { onCompactionEnd } : {}),
       });
 
       // Resume event: backend DB polling detected generation is done.
@@ -216,6 +223,9 @@ export function useChatStream(
       setMessages,
       markDone,
       handleApprovalRequest,
+      onTokenUsage,
+      onCompactionStart,
+      onCompactionEnd,
     ],
   );
 
@@ -253,6 +263,9 @@ export function useChatStream(
           setIsLoading(false);
         },
         onApprovalRequest: handleApprovalRequest,
+        ...(onTokenUsage ? { onTokenUsage } : {}),
+        ...(onCompactionStart ? { onCompactionStart } : {}),
+        ...(onCompactionEnd ? { onCompactionEnd } : {}),
       });
 
       return eventSource;
@@ -266,6 +279,9 @@ export function useChatStream(
       setMessages,
       setIsLoading,
       handleApprovalRequest,
+      onTokenUsage,
+      onCompactionStart,
+      onCompactionEnd,
     ],
   );
 
