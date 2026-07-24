@@ -302,6 +302,21 @@ export function ChatInterface({
     setIsLoading(false);
   }, [sessionId, closeEventSource, streamingRef, setMessages]);
 
+  const handleCompact = useCallback(() => {
+    setIsCompacting(true);
+    fetch(`/api/chat/sessions/${sessionId}/compact`, { method: "POST" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Compact failed: ${res.status}`);
+        return res.json();
+      })
+      .catch((err) => {
+        console.error("Failed to compact:", err);
+      })
+      .finally(() => {
+        setIsCompacting(false);
+      });
+  }, [sessionId]);
+
   // ─── Effects ─────────────────────────────────────────────────────────────
 
   /* eslint-disable react-hooks/exhaustive-deps */
@@ -527,6 +542,7 @@ export function ChatInterface({
         onToggleTool={handleToggleTool}
         tokenUsage={tokenUsage}
         isCompacting={isCompacting}
+        onCompact={handleCompact}
       />
     </>
   );

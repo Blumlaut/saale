@@ -14,7 +14,7 @@ import {
 import { Paperclip, Send, Loader2, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
-import { TokenUsageDisplay, CompactionProgress } from "./token-usage-display";
+import { ContextCircle } from "./token-usage-display";
 
 export type { ToolConfig };
 
@@ -40,6 +40,7 @@ interface InputBarProps {
   onToggleTool?: (category: string) => void;
   tokenUsage?: TokenUsage | null;
   isCompacting?: boolean;
+  onCompact?: () => void;
 }
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -60,6 +61,7 @@ export function InputBar({
   onToggleTool,
   tokenUsage,
   isCompacting,
+  onCompact,
 }: InputBarProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -261,6 +263,13 @@ export function InputBar({
           disabled={isLoading}
         />
 
+        {/* Context usage indicator */}
+        <ContextCircle
+          usage={tokenUsage ?? null}
+          isCompacting={!!isCompacting}
+          onCompact={onCompact ?? (() => {})}
+        />
+
         {/* Send / Stop button */}
         {isLoading ? (
           <Button
@@ -282,14 +291,6 @@ export function InputBar({
           </Button>
         )}
       </div>
-
-      {/* Token usage & compaction progress */}
-      {(tokenUsage || isCompacting) && (
-        <div className="flex flex-col gap-1.5 px-4 pt-1.5">
-          {isCompacting && <CompactionProgress isActive={isCompacting} />}
-          {tokenUsage && <TokenUsageDisplay usage={tokenUsage} />}
-        </div>
-      )}
     </div>
   );
 }
