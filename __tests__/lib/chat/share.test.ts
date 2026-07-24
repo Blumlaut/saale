@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateShareToken } from "@/app/api/chat/sessions/[sessionId]/share/route";
+import { generateShareToken } from "@/lib/chat/share";
 
 describe("generateShareToken", () => {
   it("generates a 32-character hex string", () => {

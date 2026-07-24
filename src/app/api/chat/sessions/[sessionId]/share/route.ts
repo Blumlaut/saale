@@ -1,16 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-
-/**
- * Generate a random 32-character share token.
- * Exported for testing.
- */
-export function generateShareToken(): string {
-  return crypto.randomBytes(16).toString("hex");
-}
+import { generateShareToken } from "@/lib/chat/share";
 
 /**
  * POST /api/chat/sessions/:sessionId/share — Enable sharing for a chat session.
