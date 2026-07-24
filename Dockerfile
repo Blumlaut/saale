@@ -42,8 +42,9 @@ ENV NODE_ENV=production
 COPY --from=build /app/public ./public
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
-# Prisma schema + migrations + generated client (not bundled by Next.js standalone)
+# Prisma schema + migrations + config + generated client (not bundled by Next.js standalone)
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 
 ENTRYPOINT ["dumb-init", "--"]
