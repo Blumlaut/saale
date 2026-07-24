@@ -2,257 +2,13 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
-import { getTagColor, collectTags } from "@/lib/email/tags";
-import { fetchJson, patchJson } from "@/lib/http";
-import { parseAddresses } from "@/lib/email/utils";
-import type { EmailAccount } from "@/types/shared";
-import {
-  Mail,
-  Search,
-  Star,
-  RefreshCw,
-  Loader2,
-  Archive,
-  Trash2,
-  Plus,
-  X,
-  ChevronLeft,
-  Reply,
-  ReplyAll,
-  Forward,
-  MoreHorizontal,
-  Eye,
-  EyeOff,
-  CheckCheck,
-  ChevronDown,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { format } from "date-fns";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { ReplyForwardSheet } from "@/components/mail/reply-forward-sheet";
 import { toast } from "sonner";
-
-interface EmailMessage {
-  id: string;
-  uid: string;
-  fromName: string | null;
-  fromEmail: string;
-  to: unknown;
-  subject: string;
-  date: string;
-  bodyPreview: string | null;
-  bodyHtml?: string | null;
-  bodyText?: string | null;
-  isRead: boolean;
-  isStarred: boolean;
-  folder: string;
-  tags: string[];
-  accountId: string;
-}
-
-interface EmailMessageDetail extends EmailMessage {
-  bodyHtml: string | null;
-  bodyText: string | null;
-}
-
-interface InboxEmailAccount extends EmailAccount {
-  remoteFolders: string[];
-}
-
-function getSender(msg: EmailMessage): string {
-  if (msg.fromName) return msg.fromName;
-  if (msg.fromEmail) return msg.fromEmail;
-  return "Unknown Sender";
-}
-
-/** Bucket date to nearest minute so the result is memoization-stable */
-function formatRelativeDate(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diff = now - then;
-
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "just now";
-
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-
-  return `${Math.floor(months / 12)}y ago`;
-}
-
-/** Shared toolbar for desktop detail and mobile sheet */
-function MessageToolbar({ message, onRefresh }: { message: EmailMessage; onRefresh: () => void }) {
-  const [replyOpen, setReplyOpen] = useState(false);
-  const [replyMode, setReplyMode] = useState<"reply" | "reply_all" | "forward">("reply");
-
-  const openReply = (mode: "reply" | "reply_all" | "forward") => {
-    setReplyMode(mode);
-    setReplyOpen(true);
-  };
-
-  const handleTrash = async () => {
-    try {
-      await patchJson(`/api/email/messages/${message.id}`, { action: "trash" });
-      toast.success("Email moved to trash");
-      onRefresh();
-    } catch {
-      toast.error("Failed to trash email");
-    }
-  };
-
-  const handleArchive = async () => {
-    try {
-      await patchJson(`/api/email/messages/${message.id}`, { action: "archive" });
-      toast.success("Email archived");
-      onRefresh();
-    } catch {
-      toast.error("Failed to archive email");
-    }
-  };
-
-  const handleToggleRead = async () => {
-    try {
-      await patchJson(`/api/email/messages/${message.id}`, { isRead: !message.isRead });
-      toast.success(message.isRead ? "Marked as unread" : "Marked as read");
-      onRefresh();
-    } catch {
-      toast.error("Failed to update read status");
-    }
-  };
-
-  const toolbarButtons = (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
-        onClick={() => openReply("reply")}
-        title="Reply"
-      >
-        <Reply className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Reply</span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
-        onClick={() => openReply("reply_all")}
-        title="Reply All"
-      >
-        <ReplyAll className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">All</span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
-        onClick={() => openReply("forward")}
-        title="Forward"
-      >
-        <Forward className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Forward</span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
-        onClick={handleTrash}
-        title="Move to Trash"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Trash</span>
-      </Button>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger>
-          <span
-            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors hover:bg-white/10 dark:hover:bg-white/5"
-            title="More actions"
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onClick={handleArchive}>
-            <Archive className="mr-2 h-4 w-4" />
-            Archive
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleToggleRead}>
-            {message.isRead ? (
-              <>
-                <EyeOff className="mr-2 h-4 w-4" />
-                Mark Unread
-              </>
-            ) : (
-              <>
-                <Eye className="mr-2 h-4 w-4" />
-                Mark Read
-              </>
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={async () => {
-              const newStarred = !message.isStarred;
-              try {
-                await patchJson(`/api/email/messages/${message.id}`, { isStarred: newStarred });
-                onRefresh();
-              } catch {
-                toast.error("Failed to update star");
-              }
-            }}
-          >
-            <Star className="mr-2 h-4 w-4" />
-            {message.isStarred ? "Unstar" : "Star"}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
-  );
-
-  return (
-    <>
-      <div className="flex items-center gap-1">{toolbarButtons}</div>
-      <ReplyForwardSheet
-        open={replyOpen}
-        onOpenChange={setReplyOpen}
-        mode={replyMode}
-        originalMessage={{
-          id: message.id,
-          fromName: message.fromName,
-          fromEmail: message.fromEmail,
-          to: message.to,
-          subject: message.subject,
-          bodyText: message.bodyText ?? null,
-          bodyPreview: message.bodyPreview,
-          accountId: message.accountId,
-        }}
-        onSuccess={onRefresh}
-      />
-    </>
-  );
-}
+import { collectTags } from "@/lib/email/tags";
+import { fetchJson, patchJson } from "@/lib/http";
+import { EmailListPanel } from "./email-list-panel";
+import { EmailDetailPanel } from "./email-detail-panel";
+import { EmailDetailSheet } from "./email-detail-sheet";
+import type { EmailMessage, EmailMessageDetail, InboxEmailAccount } from "./types";
 
 export function Inbox() {
   const searchParams = useSearchParams();
@@ -276,28 +32,27 @@ export function Inbox() {
   const [hasMore, setHasMore] = useState(false);
   const [togglingStar, setTogglingStar] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
-  const [showAccountMenu, setShowAccountMenu] = useState(false);
-  const isMobile = useIsMobile();
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTagInput, setNewTagInput] = useState("");
+
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const lastAutoSelectedMsg = useRef<string | null>(null);
+  const loadMessagesRef = useRef<((append?: boolean) => Promise<void>) | null>(null);
+  const isAppending = useRef(false);
 
   const activeAccountId = urlAccountId ?? null;
   const LIMIT = 25;
 
-  // Debounce search input
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
+  // ─── Data loading ────────────────────────────────────────────────────────
 
   const loadAccounts = useCallback(async () => {
     try {
-      const data = await fetchJson<{ accounts: InboxEmailAccount[] }>("/api/email/accounts");
+      const data = await fetchJson<{ accounts: InboxEmailAccount[] }>(
+        "/api/email/accounts?includeFolders=true",
+      );
       setAccounts(data.accounts);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load email accounts:", err);
     }
   }, []);
 
@@ -309,33 +64,27 @@ export function Inbox() {
         setLoading(true);
         setOffset(0);
       }
+
       try {
-        const currentOffset = append ? offset : 0;
         const params = new URLSearchParams({
           limit: String(LIMIT),
-          offset: String(currentOffset),
+          offset: String(append ? offset : 0),
         });
         if (activeAccountId) params.set("accountId", activeAccountId);
         if (folder) params.set("folder", folder);
-        if (debouncedSearch) params.set("search", debouncedSearch);
+        if (debouncedSearch) params.set("q", debouncedSearch);
         if (tagFilter) params.set("tag", tagFilter);
 
         const data = await fetchJson<{
           messages: EmailMessage[];
-          total: number;
           hasMore: boolean;
         }>(`/api/email/messages?${params}`);
 
-        if (append) {
-          setMessages((prev) => [...prev, ...data.messages]);
-          setOffset(currentOffset + data.messages.length);
-        } else {
-          setMessages(data.messages);
-          setOffset(data.messages.length);
-        }
-        setHasMore(data.hasMore ?? false);
-      } catch {
-        // Ignore
+        setMessages(append ? (prev) => [...prev, ...data.messages] : data.messages);
+        setHasMore(data.hasMore);
+        if (append) setOffset((prev) => prev + data.messages.length);
+      } catch (err) {
+        console.error("Failed to load messages:", err);
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -344,836 +93,290 @@ export function Inbox() {
     [activeAccountId, folder, debouncedSearch, tagFilter, offset],
   );
 
-  // Ref to always have the latest loadMessages without triggering re-renders
-  const loadMessagesRef = useRef(loadMessages);
+  // Keep a ref for scroll-triggered loads (avoids stale closure)
   useEffect(() => {
     loadMessagesRef.current = loadMessages;
   }, [loadMessages]);
 
-  // Guard against concurrent load more requests
-  const isAppending = useRef(false);
-
-  // Stable refresh function
   const refreshAll = useCallback(async () => {
-    await loadAccounts();
-    await loadMessagesRef.current(false);
-  }, [loadAccounts]);
-
-  // Initial load + filter changes
-  useEffect(() => {
-    loadAccounts();
-    loadMessagesRef.current(false);
-  }, [activeAccountId, folder, tagFilter, debouncedSearch, loadAccounts]);
-
-  // mail:refresh event listener
-  useEffect(() => {
-    const handler = () => {
-      loadAccounts();
-      loadMessagesRef.current(false);
-    };
-    window.addEventListener("mail:refresh", handler);
-    return () => window.removeEventListener("mail:refresh", handler);
-  }, [loadAccounts]);
-
-  // Infinite scroll observer
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !isAppending.current) {
-          isAppending.current = true;
-          loadMessagesRef.current(true).finally(() => {
-            isAppending.current = false;
-          });
-        }
-      },
-      { rootMargin: "100px" },
-    );
-
-    const el = loadMoreRef.current;
-    if (el && hasMore) {
-      observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, [hasMore]);
+    await Promise.all([loadAccounts(), loadMessages()]);
+  }, [loadAccounts, loadMessages]);
 
   const handleSyncAll = async () => {
     setSyncing(true);
     try {
-      const enabledAccounts = accounts.filter((a) => a.enabled);
-      await Promise.all(
-        enabledAccounts.map((acc) =>
-          fetch(`/api/email/accounts/${acc.id}/sync`, { method: "POST" }),
-        ),
-      );
-      await refreshAll();
-      toast.success("Sync complete");
-    } catch {
-      toast.error("Sync failed");
+      await fetchJson("/api/email/sync", { method: "POST" });
+      toast.success("Sync started");
+      await loadAccounts();
+    } catch (err) {
+      console.error("Failed to sync accounts:", err);
+      toast.error("Failed to sync");
     } finally {
       setSyncing(false);
     }
   };
 
+  // ─── Message detail ──────────────────────────────────────────────────────
+
   const fetchMessageDetail = useCallback(
-    async (msgId: string): Promise<EmailMessageDetail | null> => {
+    async (msg: EmailMessage): Promise<EmailMessageDetail | null> => {
       try {
         const data = await fetchJson<{ message: EmailMessageDetail }>(
-          `/api/email/messages/${msgId}`,
+          `/api/email/messages/${msg.id}`,
         );
         return data.message;
-      } catch {
+      } catch (err) {
+        console.error("Failed to load message detail:", err);
         return null;
       }
     },
     [],
   );
 
-  // Idempotent message loader — safe to call multiple times for the same message
   const loadAndSelectMessage = useCallback(
     async (msg: EmailMessage) => {
-      // Guard: skip if already selected or currently loading
-      if (selectedId === msg.id || loadingMessage) return;
-
       setSelectedId(msg.id);
       setLoadingMessage(true);
-      if (isMobile) {
-        setMobileDetailOpen(true);
-      }
-
-      // Mark as read in local state immediately
-      if (!msg.isRead) {
-        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
-      }
-
-      // Fetch full message detail (bodyHtml, bodyText)
-      const detail = await fetchMessageDetail(msg.id);
+      const detail = await fetchMessageDetail(msg);
       if (detail) {
         setSelectedMsg(detail);
-        // Update list item with the fetched bodyPreview
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msg.id ? { ...m, bodyPreview: detail.bodyPreview } : m)),
-        );
-      } else {
-        // Fallback: use list data (won't have body)
-        setSelectedMsg({ ...msg, bodyHtml: null, bodyText: null } as EmailMessageDetail);
       }
       setLoadingMessage(false);
-
-      // Persist read status to server (best-effort)
-      if (!msg.isRead) {
-        patchJson(`/api/email/messages/${msg.id}`, { isRead: true }).catch(() => {
-          // Revert local state on failure
-          setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: false } : m)));
-        });
-      }
     },
-    [
-      fetchMessageDetail,
-      isMobile,
-      selectedId,
-      loadingMessage,
-      setSelectedId,
-      setLoadingMessage,
-      setMobileDetailOpen,
-      setMessages,
-      setSelectedMsg,
-    ],
+    [fetchMessageDetail],
   );
+
+  // ─── URL params ──────────────────────────────────────────────────────────
 
   const updateUrlParams = useCallback(
     (msgId: string | null) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (msgId) {
-        params.set("msg", msgId);
-      } else {
-        params.delete("msg");
-      }
-      router.replace(`/dashboard/mail?${params.toString()}`, { scroll: false });
+      const params = new URLSearchParams();
+      if (activeAccountId) params.set("accountId", activeAccountId);
+      if (msgId) params.set("msg", msgId);
+      router.replace(`/dashboard/mail?${params.toString()}`);
     },
-    [router, searchParams],
+    [activeAccountId, router],
   );
 
-  const handleSelect = async (msg: EmailMessage) => {
-    lastAutoSelectedMsg.current = msg.id;
-    loadAndSelectMessage(msg);
-    updateUrlParams(msg.id);
-  };
+  // ─── Message handlers ────────────────────────────────────────────────────
 
-  // Auto-select message from URL on mount
-  useEffect(() => {
-    if (urlMsgId && urlMsgId !== lastAutoSelectedMsg.current && messages.length > 0) {
-      const msgInList = messages.find((m) => m.id === urlMsgId);
-      if (msgInList) {
-        lastAutoSelectedMsg.current = urlMsgId;
-        loadAndSelectMessage(msgInList);
-      }
+  const handleSelect = async (msg: EmailMessage) => {
+    setSelectedId(msg.id);
+    updateUrlParams(msg.id);
+
+    // Mark as read (fire-and-forget)
+    if (!msg.isRead) {
+      patchJson(`/api/email/messages/${msg.id}`, { isRead: true }).catch((err) => {
+        console.error("Failed to mark as read:", err);
+      });
     }
-  }, [urlMsgId, messages, loadAndSelectMessage]);
+
+    if (msg.bodyHtml || msg.bodyText) {
+      setSelectedMsg(msg as EmailMessageDetail);
+    } else {
+      await loadAndSelectMessage(msg);
+    }
+
+    if (window.innerWidth < 768) {
+      setMobileDetailOpen(true);
+    }
+  };
 
   const handleToggleStar = async (msg: EmailMessage, e: React.MouseEvent) => {
     e.stopPropagation();
-    const newStarred = !msg.isStarred;
-    const msgId = msg.id;
-    setTogglingStar(msgId);
-
-    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, isStarred: newStarred } : m)));
-    if (selectedMsg?.id === msgId) {
-      setSelectedMsg((prev) => (prev ? { ...prev, isStarred: newStarred } : prev));
-    }
-
+    setTogglingStar(msg.id);
     try {
-      await patchJson(`/api/email/messages/${msgId}`, { isStarred: newStarred });
-    } catch {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msgId ? { ...m, isStarred: !newStarred } : m)),
-      );
-      if (selectedMsg?.id === msgId) {
-        setSelectedMsg((prev) => (prev ? { ...prev, isStarred: !newStarred } : prev));
-      }
+      await patchJson(`/api/email/messages/${msg.id}`, {
+        isStarred: !msg.isStarred,
+      });
+    } catch (err) {
+      console.error("Failed to toggle star:", err);
     } finally {
       setTogglingStar(null);
     }
   };
 
   const handleMarkAllRead = async () => {
-    const unreadIds = messages.filter((m) => !m.isRead).map((m) => m.id);
-    if (unreadIds.length === 0) return;
-
     try {
-      await Promise.all(
-        unreadIds.map((id) => patchJson(`/api/email/messages/${id}`, { isRead: true })),
-      );
-      setMessages((prev) => prev.map((m) => ({ ...m, isRead: true })));
-      toast.success(`Marked ${unreadIds.length} as read`);
-    } catch {
-      toast.error("Failed to mark all as read");
+      const params = new URLSearchParams();
+      if (activeAccountId) params.set("accountId", activeAccountId);
+      if (folder) params.set("folder", folder);
+      await patchJson(`/api/email/messages/mark-all-read?${params}`, {});
+      await loadMessages();
+    } catch (err) {
+      console.error("Failed to mark all as read:", err);
     }
   };
 
-  const selectedMessage = selectedMsg;
-
-  const allTags = useMemo(() => collectTags(messages), [messages]);
-
-  // Tag management
-  const [addingTag, setAddingTag] = useState(false);
-  const [newTagInput, setNewTagInput] = useState("");
+  // ─── Tag handlers ────────────────────────────────────────────────────────
 
   const handleAddTag = async (msgId: string, tag: string) => {
-    const trimmed = tag.trim();
+    const trimmed = tag
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, "");
     if (!trimmed) return;
-    const msg = messages.find((m) => m.id === msgId);
-    if (!msg || msg.tags.includes(trimmed)) return;
-
-    const newTags = [...msg.tags, trimmed];
     try {
-      await patchJson(`/api/email/messages/${msgId}`, { tags: newTags });
-      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
-      if (selectedMsg?.id === msgId) {
-        setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
-      }
-    } catch {
-      // Ignore
+      await patchJson(`/api/email/messages/${msgId}/tags`, { tag: trimmed });
+      setAddingTag(false);
+      setNewTagInput("");
+      await loadMessages();
+    } catch (err) {
+      console.error("Failed to add tag:", err);
+      toast.error("Failed to add tag");
     }
-    setAddingTag(false);
-    setNewTagInput("");
   };
 
   const handleRemoveTag = async (msgId: string, tag: string) => {
-    const msg = messages.find((m) => m.id === msgId);
-    if (!msg) return;
-
-    const newTags = msg.tags.filter((t) => t !== tag);
     try {
-      await patchJson(`/api/email/messages/${msgId}`, { tags: newTags });
-      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, tags: newTags } : m)));
-      if (selectedMsg?.id === msgId) {
-        setSelectedMsg((prev) => (prev ? { ...prev, tags: newTags } : prev));
-      }
-    } catch {
-      // Ignore
+      await patchJson(`/api/email/messages/${msgId}/tags`, { tag, remove: true });
+      await loadMessages();
+    } catch (err) {
+      console.error("Failed to remove tag:", err);
     }
   };
 
+  // ─── Computed ────────────────────────────────────────────────────────────
+
+  const allTags = useMemo(() => collectTags(messages), [messages]);
+  const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
+
   const activeAccount = activeAccountId ? accounts.find((a) => a.id === activeAccountId) : null;
-
   const availableFolders = useMemo(() => {
-    if (activeAccount) {
-      const remote = activeAccount.remoteFolders.filter((f) => f.length > 0);
-      if (remote.length > 0) {
-        const inboxLike = remote.filter((f) => f.toUpperCase() === "INBOX");
-        const rest = remote.filter((f) => f.toUpperCase() !== "INBOX").sort();
-        return [...inboxLike, ...rest];
-      }
-      return (activeAccount.folders ?? []).sort();
-    }
+    if (!activeAccount || !activeAccount.remoteFolders) return [];
 
-    const folderSet = new Set<string>();
-    for (const acc of accounts.filter((a) => a.enabled)) {
-      for (const f of acc.folders ?? []) {
-        folderSet.add(f);
-      }
-    }
-    if (folderSet.size === 0) return [];
-    const folders = Array.from(folderSet);
+    const folders = [...activeAccount.remoteFolders];
     const inboxIdx = folders.findIndex((f) => f === "INBOX");
     if (inboxIdx > 0) {
-      const inboxFolder = folders.splice(inboxIdx, 1)[0];
-      if (inboxFolder) folders.unshift(inboxFolder);
+      folders.splice(inboxIdx, 1);
+      folders.unshift("INBOX");
     }
     return folders;
-  }, [activeAccount, accounts]);
+  }, [activeAccount]);
 
-  const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
-  const enabledAccounts = useMemo(() => accounts.filter((a) => a.enabled), [accounts]);
+  // ─── Effects ─────────────────────────────────────────────────────────────
 
-  const isSearching = debouncedSearch.length > 0;
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Reload when filters change
+  useEffect(() => {
+    setOffset(0);
+    setHasMore(false);
+    loadMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAccountId, folder, tagFilter]);
+
+  // Initial load
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  // Auto-select from URL
+  useEffect(() => {
+    if (!urlMsgId) return;
+    const msg = messages.find((m) => m.id === urlMsgId);
+    if (msg && msg.id !== lastAutoSelectedMsg.current) {
+      lastAutoSelectedMsg.current = msg.id;
+      void handleSelect(msg);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlMsgId, messages]);
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isAppending.current) {
+          isAppending.current = true;
+          loadMessagesRef.current?.(true).finally(() => {
+            isAppending.current = false;
+          });
+        }
+      },
+      { rootMargin: "200px" },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore]);
+
+  // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4 md:h-[calc(100vh-7rem)]">
-      {/* Mail list */}
-      <GlassPanel className="flex h-full w-full flex-col overflow-hidden border-0 md:w-96">
-        {/* Header */}
-        <div className="border-border/30 flex items-center justify-between border-b px-4 py-3">
-          <div className="min-w-0 flex-1">
-            {/* Account switcher */}
-            {enabledAccounts.length > 1 ? (
-              <DropdownMenu open={showAccountMenu} onOpenChange={setShowAccountMenu}>
-                <DropdownMenuTrigger
-                  render={
-                    <button className="flex items-center gap-1 text-left">
-                      <h2 className="truncate text-sm font-semibold">
-                        {activeAccount ? activeAccount.email : "All Mail"}
-                      </h2>
-                      <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setShowAccountMenu(false);
-                      window.location.href = "/dashboard/mail";
-                    }}
-                    className={cn(!activeAccountId && "bg-white/10 dark:bg-white/5")}
-                  >
-                    <Mail className="mr-2 h-4 w-4" />
-                    All Mail
-                  </DropdownMenuItem>
-                  {enabledAccounts.map((acc) => (
-                    <DropdownMenuItem
-                      key={acc.id}
-                      onClick={() => {
-                        setShowAccountMenu(false);
-                        window.location.href = `/dashboard/mail?accountId=${acc.id}`;
-                      }}
-                      className={cn(activeAccountId === acc.id && "bg-white/10 dark:bg-white/5")}
-                    >
-                      <Mail className="mr-2 h-4 w-4" />
-                      <span className="truncate">{acc.email}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <h2 className="text-sm font-semibold">
-                {activeAccount ? activeAccount.email : "All Mail"}
-              </h2>
-            )}
-            {activeAccount && (
-              <p className="text-muted-foreground text-[10px]">
-                {activeAccount.messageCount} messages
-                {activeAccount.lastSyncedAt
-                  ? ` · ${new Date(activeAccount.lastSyncedAt).toLocaleDateString()}`
-                  : ""}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {unreadCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 rounded-full px-2 text-[10px]"
-                onClick={handleMarkAllRead}
-                title="Mark all as read"
-              >
-                <CheckCheck className="h-3 w-3" />
-                <span className="hidden sm:inline">Read</span>
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 rounded-full"
-              onClick={handleSyncAll}
-              disabled={syncing}
-              title="Sync all accounts"
-            >
-              {syncing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
-        </div>
+      <EmailListPanel
+        messages={messages}
+        accounts={accounts}
+        activeAccountId={activeAccountId}
+        folders={availableFolders}
+        folder={folder}
+        tagFilter={tagFilter}
+        search={search}
+        debouncedSearch={debouncedSearch}
+        loading={loading}
+        loadingMore={loadingMore}
+        hasMore={hasMore}
+        selectedId={selectedId}
+        togglingStar={togglingStar}
+        unreadCount={unreadCount}
+        syncing={syncing}
+        onSearchChange={setSearch}
+        onFolderChange={(f) => {
+          setFolder(f);
+          setSelectedId(null);
+          setSelectedMsg(null);
+          lastAutoSelectedMsg.current = null;
+          updateUrlParams(null);
+        }}
+        onTagFilterChange={(t) => {
+          setTagFilter(t);
+          setSelectedId(null);
+          setSelectedMsg(null);
+          lastAutoSelectedMsg.current = null;
+          updateUrlParams(null);
+        }}
+        onSelectMessage={handleSelect}
+        onToggleStar={handleToggleStar}
+        onLoadMore={() => {
+          if (!isAppending.current) {
+            isAppending.current = true;
+            loadMessagesRef.current?.(true).finally(() => {
+              isAppending.current = false;
+            });
+          }
+        }}
+        onSyncAll={handleSyncAll}
+        onMarkAllRead={handleMarkAllRead}
+      />
 
-        {/* Search */}
-        <div className="border-border/30 border-b px-3 py-2">
-          <div className="relative">
-            <Search className="text-muted-foreground absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search emails..."
-              className="liquid-glass-inner h-8 rounded-full border-0 bg-transparent pl-9 shadow-none"
-            />
-            {search && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSearch("")}
-                className="absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 rounded-full p-0 opacity-60 hover:opacity-100"
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
-        </div>
+      <EmailDetailPanel
+        message={selectedMsg}
+        loadingMessage={loadingMessage}
+        allTags={allTags}
+        addingTag={addingTag}
+        newTagInput={newTagInput}
+        onToggleAddingTag={setAddingTag}
+        onNewTagInputChange={setNewTagInput}
+        onAddTag={handleAddTag}
+        onRemoveTag={handleRemoveTag}
+        onRefresh={refreshAll}
+      />
 
-        {/* Folder tabs */}
-        {availableFolders.length > 0 && (
-          <div className="border-border/30 flex overflow-x-auto border-b px-2 py-1">
-            <button
-              onClick={() => {
-                setFolder(null);
-                setSelectedId(null);
-                setSelectedMsg(null);
-                lastAutoSelectedMsg.current = null;
-                updateUrlParams(null);
-              }}
-              className={cn(
-                "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                !folder ? "liquid-glass-pill" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              All
-            </button>
-            {availableFolders.map((f) => (
-              <button
-                key={f}
-                onClick={() => {
-                  setFolder(f);
-                  setSelectedId(null);
-                  setSelectedMsg(null);
-                  lastAutoSelectedMsg.current = null;
-                  updateUrlParams(null);
-                }}
-                className={cn(
-                  "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                  folder === f
-                    ? "liquid-glass-pill"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f === "INBOX" ? "Inbox" : f}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Tag filter bar */}
-        {allTags.length > 0 && (
-          <div className="border-border/30 flex gap-1.5 overflow-x-auto border-b px-3 py-1.5">
-            {tagFilter && (
-              <button
-                onClick={() => setTagFilter(null)}
-                className="shrink-0 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium transition-colors dark:bg-white/5"
-              >
-                <X className="mr-0.5 inline h-3 w-3" />
-                {tagFilter}
-              </button>
-            )}
-            {allTags.map(({ name, count }) => (
-              <button
-                key={name}
-                onClick={() => setTagFilter(tagFilter === name ? null : name)}
-                className={cn(
-                  "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
-                  tagFilter === name
-                    ? getTagColor(name)
-                    : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
-                )}
-              >
-                {name}
-                <span className="ml-1 opacity-60">{count}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Message list */}
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex flex-col gap-px py-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="animate-pulse px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full bg-white/10" />
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="h-3 w-24 rounded bg-white/10" />
-                        <div className="h-3 w-12 rounded bg-white/10" />
-                      </div>
-                      <div className="h-3 w-3/4 rounded bg-white/10" />
-                      <div className="h-2.5 w-1/2 rounded bg-white/5" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Mail className="text-muted-foreground/50 mb-2 h-8 w-8" />
-              <p className="text-muted-foreground text-sm">
-                {accounts.length === 0
-                  ? "Connect an email account to get started"
-                  : isSearching
-                    ? "No emails match your search"
-                    : "No emails here"}
-              </p>
-            </div>
-          ) : (
-            <>
-              {messages.map((msg, i) => {
-                const msgAccount = accounts.find((a) => a.id === msg.accountId);
-
-                return (
-                  <div key={msg.id}>
-                    <button
-                      className={cn(
-                        "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5",
-                        selectedId === msg.id && "bg-white/15 dark:bg-white/5",
-                      )}
-                      onClick={() => handleSelect(msg)}
-                    >
-                      <div onClick={(e) => handleToggleStar(msg, e)} className="cursor-pointer">
-                        <Star
-                          className={cn(
-                            "mt-0.5 h-3.5 w-3.5 shrink-0 transition-colors",
-                            msg.isStarred
-                              ? "fill-yellow-400 text-yellow-400"
-                              : "text-muted-foreground/30 hover:text-foreground/60",
-                            togglingStar === msg.id && "opacity-50",
-                          )}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cn("truncate text-sm", !msg.isRead && "font-semibold")}
-                            >
-                              {getSender(msg)}
-                            </span>
-                            {!activeAccountId && msgAccount && (
-                              <span className="text-muted-foreground shrink-0 text-[10px]">
-                                {msgAccount.email}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-muted-foreground ml-2 shrink-0 text-xs">
-                            {formatRelativeDate(msg.date)}
-                          </span>
-                        </div>
-                        <div className={cn("truncate text-sm", !msg.isRead && "font-medium")}>
-                          {msg.subject || "(no subject)"}
-                        </div>
-                        <div className="text-muted-foreground truncate text-xs">
-                          {msg.bodyPreview || "(body not loaded)"}
-                        </div>
-                        {msg.tags.length > 0 && (
-                          <div className="mt-1 flex gap-1">
-                            {msg.tags.slice(0, 3).map((tag) => (
-                              <Badge
-                                key={tag}
-                                className={cn(
-                                  "rounded-full px-1.5 py-0 text-[10px]",
-                                  getTagColor(tag),
-                                )}
-                              >
-                                {tag}
-                              </Badge>
-                            ))}
-                            {msg.tags.length > 3 && (
-                              <Badge
-                                variant="secondary"
-                                className="rounded-full px-1.5 py-0 text-[10px]"
-                              >
-                                +{msg.tags.length - 3}
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                    {i < messages.length - 1 && <Separator className="px-4" />}
-                  </div>
-                );
-              })}
-
-              {/* Load more trigger */}
-              {hasMore && (
-                <div ref={loadMoreRef} className="flex items-center justify-center py-4">
-                  {loadingMore ? (
-                    <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (!isAppending.current) {
-                          isAppending.current = true;
-                          loadMessagesRef.current(true).finally(() => {
-                            isAppending.current = false;
-                          });
-                        }
-                      }}
-                      className="rounded-full px-3 py-1 text-xs"
-                    >
-                      Load more
-                    </Button>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </GlassPanel>
-
-      {/* Message detail — desktop only */}
-      <GlassPanel className="hidden flex-1 flex-col overflow-hidden border-0 md:flex">
-        {loadingMessage ? (
-          <GlassPanelContent className="flex flex-1 items-center justify-center">
-            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-          </GlassPanelContent>
-        ) : selectedMessage ? (
-          <>
-            {/* Detail header with toolbar */}
-            <div className="border-border/30 flex flex-col gap-3 border-b px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-lg font-semibold">
-                    {selectedMessage.subject || "(no subject)"}
-                  </h2>
-                  <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
-                    <span className="truncate font-medium">{getSender(selectedMessage)}</span>
-                    <span className="text-muted-foreground/60">
-                      &lt;{selectedMessage.fromEmail}&gt;
-                    </span>
-                  </div>
-                  <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
-                    <span>To: {parseAddresses(selectedMessage.to).join(", ")}</span>
-                  </div>
-                  <p className="text-muted-foreground mt-0.5 text-xs">
-                    {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
-                  </p>
-                </div>
-                <div className="shrink-0">
-                  <MessageToolbar message={selectedMessage} onRefresh={refreshAll} />
-                </div>
-              </div>
-            </div>
-
-            {/* Message tags */}
-            <div className="border-border/30 flex items-center gap-1.5 border-b px-6 py-2">
-              {selectedMessage.tags.map((tag) => (
-                <Badge
-                  key={tag}
-                  className={cn(
-                    "cursor-pointer rounded-full px-2 py-0.5 text-xs",
-                    getTagColor(tag),
-                  )}
-                  onClick={() => handleRemoveTag(selectedMessage.id, tag)}
-                  title={`Remove "${tag}"`}
-                >
-                  {tag}
-                  <X className="ml-0.5 h-2.5 w-2.5 opacity-50 hover:opacity-100" />
-                </Badge>
-              ))}
-              <Popover open={addingTag} onOpenChange={setAddingTag}>
-                <PopoverTrigger>
-                  <span
-                    className="inline-flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5"
-                    title="Add tag"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </span>
-                </PopoverTrigger>
-                <PopoverContent className="w-56" align="start">
-                  <div className="flex flex-col gap-2">
-                    <p className="text-sm font-medium">Add tag</p>
-                    <div className="flex gap-1.5">
-                      <Input
-                        autoFocus
-                        value={newTagInput}
-                        onChange={(e) => setNewTagInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleAddTag(selectedMessage.id, newTagInput);
-                          }
-                          if (e.key === "Escape") {
-                            setAddingTag(false);
-                            setNewTagInput("");
-                          }
-                        }}
-                        placeholder="Tag name"
-                        className="h-8"
-                      />
-                      <Button
-                        size="sm"
-                        className="h-8"
-                        onClick={() => handleAddTag(selectedMessage.id, newTagInput)}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    {allTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {allTags
-                          .filter(({ name }) => !selectedMessage.tags.includes(name))
-                          .slice(0, 6)
-                          .map(({ name }) => (
-                            <button
-                              key={name}
-                              onClick={() => handleAddTag(selectedMessage.id, name)}
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-xs transition-colors",
-                                getTagColor(name),
-                                "hover:opacity-80",
-                              )}
-                            >
-                              + {name}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Message body — use .email-content styles, not prose */}
-            <GlassPanelContent className="flex-1 overflow-y-auto">
-              {selectedMessage.bodyHtml ? (
-                <div
-                  className="max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
-                />
-              ) : (
-                <pre className="text-sm whitespace-pre-wrap">
-                  {selectedMessage.bodyText || selectedMessage.bodyPreview}
-                </pre>
-              )}
-            </GlassPanelContent>
-          </>
-        ) : (
-          <GlassPanelContent className="flex flex-1 items-center justify-center">
-            <div className="text-center">
-              <Mail className="text-muted-foreground/30 mx-auto mb-3 h-12 w-12" />
-              <p className="text-muted-foreground text-sm">Select an email to read</p>
-            </div>
-          </GlassPanelContent>
-        )}
-      </GlassPanel>
-
-      {/* Message detail — mobile sheet */}
-      <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
-        <SheetContent className="flex w-full flex-col overflow-hidden p-0">
-          <div className="flex h-full flex-col">
-            {/* Header */}
-            <SheetHeader className="border-border/30 flex items-center justify-between border-b px-4 pt-5 pb-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="-ml-2 h-7 w-7"
-                onClick={() => setMobileDetailOpen(false)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <SheetTitle className="truncate text-sm font-medium">
-                {selectedMessage?.subject || "Email"}
-              </SheetTitle>
-              <div className="w-7" />
-            </SheetHeader>
-
-            {loadingMessage ? (
-              <div className="flex flex-1 items-center justify-center">
-                <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-              </div>
-            ) : (
-              selectedMessage && (
-                <>
-                  {/* Toolbar row — scrollable on small screens */}
-                  <div className="border-border/30 flex items-center gap-1 overflow-x-auto border-b px-4 py-2">
-                    <MessageToolbar message={selectedMessage} onRefresh={refreshAll} />
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto px-4">
-                    {/* Sender info */}
-                    <div className="py-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-medium">{getSender(selectedMessage)}</span>
-                        <span className="text-muted-foreground text-xs">
-                          &lt;{selectedMessage.fromEmail}&gt;
-                        </span>
-                      </div>
-                      <div className="text-muted-foreground mt-0.5 text-xs">
-                        To: {parseAddresses(selectedMessage.to).join(", ")}
-                      </div>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        {format(new Date(selectedMessage.date), "MMM d, yyyy 'at' h:mm a")}
-                      </p>
-                    </div>
-
-                    {/* Tags */}
-                    {selectedMessage.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 py-2">
-                        {selectedMessage.tags.map((tag) => (
-                          <Badge
-                            key={tag}
-                            className={cn(
-                              "cursor-pointer rounded-full px-2 py-0.5 text-xs",
-                              getTagColor(tag),
-                            )}
-                            onClick={() => handleRemoveTag(selectedMessage.id, tag)}
-                          >
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Message body — use .email-content styles, not prose */}
-                    <div className="pb-4">
-                      {selectedMessage.bodyHtml ? (
-                        <div
-                          className="max-w-none"
-                          dangerouslySetInnerHTML={{ __html: selectedMessage.bodyHtml }}
-                        />
-                      ) : (
-                        <pre className="text-sm whitespace-pre-wrap">
-                          {selectedMessage.bodyText || selectedMessage.bodyPreview}
-                        </pre>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <EmailDetailSheet
+        open={mobileDetailOpen}
+        onClose={() => setMobileDetailOpen(false)}
+        message={selectedMsg}
+        loadingMessage={loadingMessage}
+        onRemoveTag={handleRemoveTag}
+        onRefresh={refreshAll}
+      />
     </div>
   );
 }
