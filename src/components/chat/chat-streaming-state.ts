@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { Message, ToolCallData } from "./types";
+import type { Message, ToolCallData, ApprovalData } from "./types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,12 +25,8 @@ export interface StreamingState {
   displayThinking: string;
 }
 
-export interface ApprovalRequest {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  expiresAt: string;
-}
+// Kept as alias for SSE event handler compatibility
+export type ApprovalRequest = Omit<ApprovalData, "resolved" | "approved">;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -9,17 +9,11 @@ import { InputBar } from "./input-bar";
 import { fetchJson, patchJson } from "@/lib/http";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
-import { ToolApprovalCard } from "./tool-approval-card";
-import type { Message } from "./types";
+import type { Message, ApprovalData } from "./types";
 import { ChatHeader } from "./chat-header";
 import { useTypingAnimation } from "./use-typing-animation";
 import { useChatStream } from "./use-chat-stream";
-import {
-  buildTurnMessage,
-  finalizeStreaming,
-  type StreamingState,
-  type ApprovalRequest,
-} from "./chat-streaming-state";
+import { buildTurnMessage, finalizeStreaming, type StreamingState } from "./chat-streaming-state";
 
 export function ChatInterface({
   sessionId,
@@ -43,7 +37,7 @@ export function ChatInterface({
   const eventSourceRef = useRef<EventSource | null>(null);
 
   // Session state (declared before useChatStream so setters are available)
-  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
   const { streamingIds, markStreaming, markDone } = useStreamingSessions();
 
   // Shared stream orchestration (SSE setup, reconnection, approval handling)
@@ -510,26 +504,12 @@ export function ChatInterface({
             isLoading={isLoading}
             onEditMessage={handleEditMessage}
             onSendMessage={(content) => handleSend(content)}
+            pendingApprovals={pendingApprovals}
+            onApprovalResolved={(toolCallId) => {
+              setPendingApprovals((prev) => prev.filter((a) => a.toolCallId !== toolCallId));
+            }}
+            sessionId={sessionId}
           />
-
-          {pendingApprovals.length > 0 && (
-            <div className="border-border/30 shrink-0 border-t px-4 py-3 md:px-5">
-              <div className="mx-auto flex max-w-2xl flex-col gap-3">
-                {pendingApprovals.map((req) => (
-                  <ToolApprovalCard
-                    key={req.toolCallId}
-                    sessionId={sessionId}
-                    request={req}
-                    onResolved={(toolCallId) => {
-                      setPendingApprovals((prev) =>
-                        prev.filter((a) => a.toolCallId !== toolCallId),
-                      );
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </GlassPanel>
 

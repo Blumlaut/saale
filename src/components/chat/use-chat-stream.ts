@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { Message } from "./types";
-import type { StreamingState, ApprovalRequest } from "./chat-streaming-state";
+import type { Message, ApprovalData } from "./types";
+import type { StreamingState } from "./chat-streaming-state";
 import { emptyTurn, EMPTY_DISPLAY, finalizeStreaming, tryLoadFromDb } from "./chat-streaming-state";
 import { setupStreamListeners } from "./chat-stream-listeners";
 
@@ -23,7 +23,7 @@ export function useChatStream(
   setStreaming: Dispatch<SetStateAction<StreamingState>>,
   setMessages: Dispatch<SetStateAction<Message[]>>,
   setIsLoading: Dispatch<SetStateAction<boolean>>,
-  setPendingApprovals: Dispatch<SetStateAction<ApprovalRequest[]>>,
+  setPendingApprovals: Dispatch<SetStateAction<ApprovalData[]>>,
   markDone: (id: string) => void,
 ) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,7 +51,7 @@ export function useChatStream(
    * Wire up approval request handler (shared across all stream paths).
    */
   const handleApprovalRequest = useCallback(
-    (request: ApprovalRequest) => {
+    (request: ApprovalData) => {
       setPendingApprovals((prev) => {
         if (prev.some((a) => a.toolCallId === request.toolCallId)) return prev;
         return [...prev, request];
