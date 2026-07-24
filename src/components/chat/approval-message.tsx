@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Shield, Check, X, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Shield, Check, X, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDistanceToNow } from "date-fns";
 import type { ApprovalData } from "./types";
 
 interface ApprovalMessageProps {
@@ -14,23 +14,7 @@ interface ApprovalMessageProps {
 
 export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMessageProps) {
   const [status, setStatus] = useState<"pending" | "approving" | "denying" | "done">("pending");
-  const [timeLeft, setTimeLeft] = useState("");
-
-  const updateTimer = useCallback(() => {
-    const expires = new Date(approval.expiresAt);
-    const diff = expires.getTime() - Date.now();
-    if (diff <= 0) {
-      setTimeLeft("expired");
-      return;
-    }
-    setTimeLeft(formatDistanceToNow(expires, { addSuffix: true }));
-  }, [approval.expiresAt]);
-
-  useEffect(() => {
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [updateTimer]);
+  const [expanded, setExpanded] = useState(true);
 
   // Sync with external resolved state (e.g., after DB reload)
   useEffect(() => {
@@ -67,85 +51,104 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
   };
 
   const argsPreview = Object.entries(approval.args)
-    .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+    .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
     .slice(0, 3)
     .join("\n");
 
-  // Resolved state
+  // Resolved state — compact single line
   if (status === "done") {
     return (
-      <div className="text-muted-foreground flex items-center gap-2 text-xs">
-        {approval.approved ? (
-          <>
-            <Check className="h-3.5 w-3.5 text-green-400" />
-            <span>
-              Approved <code className="text-foreground/80 font-medium">{approval.toolName}</code>
-            </span>
-          </>
-        ) : (
-          <>
-            <X className="h-3.5 w-3.5 text-red-400" />
-            <span>
-              Denied <code className="text-foreground/80 font-medium">{approval.toolName}</code>
-            </span>
-          </>
-        )}
+      <div className="liquid-glass-inner rounded-xl px-3 py-2">
+        <div className="flex items-center gap-2 text-xs">
+          <Shield className="text-muted-foreground h-3 w-3" />
+          <span className="font-medium">{approval.toolName}</span>
+          <Badge
+            variant="secondary"
+            className={
+              approval.approved
+                ? "ml-auto rounded-full bg-green-500/10 px-1.5 py-0 text-[10px] text-green-600"
+                : "ml-auto rounded-full bg-red-500/10 px-1.5 py-0 text-[10px] text-red-600"
+            }
+          >
+            {approval.approved ? (
+              <Check className="mr-1 h-2.5 w-2.5" />
+            ) : (
+              <X className="mr-1 h-2.5 w-2.5" />
+            )}
+            {approval.approved ? "Approved" : "Denied"}
+          </Badge>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="liquid-glass-inner rounded-xl border border-yellow-500/20">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        <Shield className="h-4 w-4 text-yellow-400" />
-        <span className="text-sm font-medium text-yellow-200">Tool Approval Required</span>
-        <span className="ml-auto text-xs text-yellow-200/50">Expires {timeLeft}</span>
-      </div>
-
-      {/* Tool details */}
-      <div className="border-border/30 border-t px-3 py-2">
-        <div className="mb-2 font-mono text-sm font-semibold text-yellow-100">
-          {approval.toolName}
-        </div>
-        {argsPreview && (
-          <pre className="overflow-x-auto text-xs whitespace-pre-wrap text-yellow-200/70">
-            {argsPreview}
-          </pre>
+    <div className="liquid-glass-inner rounded-xl">
+      {/* Header — toggle expand/collapse */}
+      <button
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? (
+          <ChevronDown className="text-muted-foreground h-3 w-3" />
+        ) : (
+          <ChevronRight className="text-muted-foreground h-3 w-3" />
         )}
-      </div>
+        <Shield className="text-muted-foreground h-3 w-3" />
+        <span className="text-xs font-medium">{approval.toolName}</span>
+        <Badge
+          variant="secondary"
+          className="ml-auto rounded-full bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-600"
+        >
+          <Loader2 className="mr-1 h-2.5 w-2.5 animate-spin" />
+          Awaiting approval
+        </Badge>
+      </button>
 
-      {/* Actions */}
-      <div className="border-border/30 border-t px-3 py-2">
-        <div className="flex gap-2">
-          {status === "pending" ? (
-            <>
+      {/* Expanded: args + actions */}
+      {expanded && (
+        <div className="border-border/30 border-t">
+          {argsPreview && (
+            <div className="px-3 py-2">
+              <pre className="rounded-lg bg-white/10 p-2 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
+                {argsPreview}
+              </pre>
+            </div>
+          )}
+
+          <div className="border-border/30 border-t px-3 py-2">
+            <div className="flex gap-2">
               <Button
                 size="sm"
-                className="flex-1 gap-1.5 bg-green-600 text-green-50 hover:bg-green-500"
+                className="liquid-glass-accent flex-1 gap-1.5"
                 onClick={() => handleAction(true)}
+                disabled={status !== "pending"}
               >
-                <Check className="h-3.5 w-3.5" />
+                {status === "approving" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5" />
+                )}
                 Approve
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1 gap-1.5 border-red-500/30 text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive flex-1 gap-1.5"
                 onClick={() => handleAction(false)}
+                disabled={status !== "pending"}
               >
-                <X className="h-3.5 w-3.5" />
+                {status === "denying" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <X className="h-3.5 w-3.5" />
+                )}
                 Deny
               </Button>
-            </>
-          ) : (
-            <div className="flex w-full items-center justify-center gap-2 text-sm text-yellow-200/70">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {status === "approving" ? "Approving..." : "Denying..."}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
