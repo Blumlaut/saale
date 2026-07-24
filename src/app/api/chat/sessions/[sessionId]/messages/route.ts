@@ -52,6 +52,13 @@ export async function GET(
         width: a.width,
         height: a.height,
       })),
+      ...(m.role === "compaction"
+        ? {
+            compaction: {
+              tokensBefore: m.thinking ? parseInt(m.thinking, 10) : 0,
+            },
+          }
+        : {}),
     })),
   });
 }

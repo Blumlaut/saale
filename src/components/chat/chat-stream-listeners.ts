@@ -12,7 +12,7 @@ export interface StreamCallbacks {
   onApprovalRequest?: (request: ApprovalData) => void;
   onTokenUsage?: (usage: TokenUsage) => void;
   onCompactionStart?: () => void;
-  onCompactionEnd?: () => void;
+  onCompactionEnd?: (summary?: string, tokensBefore?: number) => void;
 }
 
 /**
@@ -168,8 +168,18 @@ export function setupStreamListeners(
   }
 
   if (callbacks.onCompactionEnd) {
-    eventSource.addEventListener("compaction_end", () => {
-      callbacks.onCompactionEnd!();
+    eventSource.addEventListener("compaction_end", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data) as {
+        summary?: string;
+        tokensBefore?: number;
+        aborted?: boolean;
+        errorMessage?: string;
+      };
+      if (!parsed.aborted) {
+        callbacks.onCompactionEnd!(parsed.summary, parsed.tokensBefore);
+      } else {
+        callbacks.onCompactionEnd!();
+      }
     });
   }
 
