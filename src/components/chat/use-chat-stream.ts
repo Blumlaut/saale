@@ -28,7 +28,7 @@ export function useChatStream(
   markDone: (id: string) => void,
   onTokenUsage?: (usage: TokenUsage) => void,
   onCompactionStart?: () => void,
-  onCompactionEnd?: () => void,
+  onCompactionEnd?: (summary?: string, tokensBefore?: number) => void,
 ) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

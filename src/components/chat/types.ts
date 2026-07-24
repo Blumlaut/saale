@@ -26,9 +26,13 @@ export interface ApprovalData {
   approved?: boolean;
 }
 
+export interface CompactionData {
+  tokensBefore: number;
+}
+
 export interface Message {
   id: string;
-  role: "user" | "assistant" | "system" | "approval";
+  role: "user" | "assistant" | "system" | "approval" | "compaction";
   content: string;
   thinking: string | undefined;
   toolCalls: ToolCallData[] | undefined;
@@ -36,4 +40,5 @@ export interface Message {
   createdAt: string;
   attachments: AttachmentData[] | undefined;
   approval?: ApprovalData;
+  compaction?: CompactionData;
 }

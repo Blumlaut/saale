@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { FileCard } from "./file-card";
 import { ApprovalMessage } from "./approval-message";
+import { CompactionMessage } from "./compaction-message";
 import type { ApprovalData, Message } from "./types";
 import {
   Loader2,
@@ -26,6 +27,7 @@ import {
 interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
+  isCompacting?: boolean;
   onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
   onSendMessage?: (content: string) => void;
   pendingApprovals?: ApprovalData[];
@@ -38,6 +40,7 @@ const THRESHOLD = 80; // px from bottom to consider "at bottom"
 export function MessageList({
   messages,
   isLoading,
+  isCompacting,
   onEditMessage,
   onSendMessage,
   pendingApprovals = [],
@@ -73,7 +76,9 @@ export function MessageList({
   // Group consecutive assistant messages that share a parentMessageId
   const groupedMessages = useMemo(() => {
     const groups: Array<
-      { type: "user"; message: Message } | { type: "assistant-group"; messages: Message[] }
+      | { type: "user"; message: Message }
+      | { type: "assistant-group"; messages: Message[] }
+      | { type: "compaction"; message: Message }
     > = [];
     let i = 0;
 
@@ -81,6 +86,9 @@ export function MessageList({
       const msg = messages[i]!;
       if (msg.role === "user" || msg.role === "system") {
         groups.push({ type: "user", message: msg });
+        i++;
+      } else if (msg.role === "compaction") {
+        groups.push({ type: "compaction", message: msg });
         i++;
       } else if (msg.role === "assistant") {
         // Collect this message and all consecutive child turns
@@ -174,7 +182,13 @@ export function MessageList({
     <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
       <div className="space-y-4 px-3 py-4 md:space-y-6 md:px-6 md:py-6">
         {groupedMessages.map((group, groupIndex) =>
-          group.type === "user" ? (
+          group.type === "compaction" ? (
+            <CompactionMessage
+              key={group.message.id}
+              message={group.message}
+              isCompacting={isCompacting ?? false}
+            />
+          ) : group.type === "user" ? (
             <UserMessageItem
               key={group.message.id}
               message={group.message}

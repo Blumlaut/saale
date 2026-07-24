@@ -55,7 +55,26 @@ export function ChatInterface({
     markDone,
     setTokenUsage,
     () => setIsCompacting(true),
-    () => setIsCompacting(false),
+    (summary?: string, tokensBefore?: number) => {
+      setIsCompacting(false);
+      // Add compaction message to the chat
+      if (summary) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `compaction-${Date.now()}`,
+            role: "compaction" as const,
+            content: summary,
+            thinking: undefined,
+            toolCalls: undefined,
+            parentMessageId: undefined,
+            createdAt: new Date().toISOString(),
+            attachments: undefined,
+            compaction: { tokensBefore: tokensBefore ?? 0 },
+          },
+        ]);
+      }
+    },
   );
 
   // Typing animation — smooth, buffer-based text playback
@@ -74,7 +93,7 @@ export function ChatInterface({
 
   const abortRef = useRef<AbortController | null>(null);
 
-  const loadMessages = async (): Promise<{ processingSince?: string } | null> => {
+  const loadMessages = useCallback(async (): Promise<{ processingSince?: string } | null> => {
     try {
       const data = await fetchJson<{
         messages: Message[];
@@ -106,7 +125,7 @@ export function ChatInterface({
       }
       return null;
     }
-  };
+  }, [sessionId, router]);
 
   const loadSessionTitle = async () => {
     try {
@@ -304,10 +323,15 @@ export function ChatInterface({
 
   const handleCompact = useCallback(() => {
     setIsCompacting(true);
+    setTokenUsage(null);
     fetch(`/api/chat/sessions/${sessionId}/compact`, { method: "POST" })
       .then((res) => {
         if (!res.ok) throw new Error(`Compact failed: ${res.status}`);
         return res.json();
+      })
+      .then(() => {
+        // Reload messages to get the compaction entry from DB
+        void loadMessages();
       })
       .catch((err) => {
         console.error("Failed to compact:", err);
@@ -315,7 +339,7 @@ export function ChatInterface({
       .finally(() => {
         setIsCompacting(false);
       });
-  }, [sessionId]);
+  }, [sessionId, loadMessages]);
 
   // ─── Effects ─────────────────────────────────────────────────────────────
 
@@ -523,6 +547,7 @@ export function ChatInterface({
           <MessageList
             messages={displayMessages}
             isLoading={isLoading}
+            isCompacting={isCompacting}
             onEditMessage={handleEditMessage}
             onSendMessage={(content) => handleSend(content)}
             pendingApprovals={pendingApprovals}
