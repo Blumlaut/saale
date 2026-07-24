@@ -6,7 +6,7 @@
  */
 
 import { generateKeyPairSync } from "crypto";
-import type { SFTPWrapper } from "ssh2";
+import type { Client as SSH2Client, SFTPWrapper } from "ssh2";
 import { NodeSSH } from "node-ssh";
 import sshpk from "sshpk";
 import { prisma } from "@/lib/db";
@@ -284,6 +284,18 @@ export async function executeCommand(
     const timeoutPromise = new Promise<never>((_, reject) => {
       timerId = setTimeout(() => {
         timedOut = true;
+        // Force-destroy the underlying ssh2 connection so the pending exec
+        // channel emits 'close' and the exec promise settles. dispose() only
+        // calls end() (graceful shutdown) which may not close the socket
+        // immediately, leaving the exec promise pending forever.
+        const rawConnection = (ssh as { connection?: SSH2Client }).connection;
+        if (rawConnection) {
+          try {
+            rawConnection.destroy();
+          } catch (destroyErr) {
+            console.error("Failed to destroy SSH connection on timeout:", destroyErr);
+          }
+        }
         reject(new Error(`Command timed out after ${timeout}s`));
       }, timeout * 1000);
     });
