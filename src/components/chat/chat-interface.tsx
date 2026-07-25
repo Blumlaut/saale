@@ -324,17 +324,37 @@ export function ChatInterface({
   const handleCompact = useCallback(() => {
     setIsCompacting(true);
     setTokenUsage(null);
+
+    // Add optimistic compaction message so the user sees feedback immediately
+    const optimisticId = `temp-compaction-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: optimisticId,
+        role: "compaction" as const,
+        content: "",
+        thinking: undefined,
+        toolCalls: undefined,
+        parentMessageId: undefined,
+        createdAt: new Date().toISOString(),
+        attachments: undefined,
+        compaction: { tokensBefore: 0 },
+      },
+    ]);
+
     fetch(`/api/chat/sessions/${sessionId}/compact`, { method: "POST" })
       .then((res) => {
         if (!res.ok) throw new Error(`Compact failed: ${res.status}`);
         return res.json();
       })
       .then(() => {
-        // Reload messages to get the compaction entry from DB
+        // Reload messages — replaces the optimistic entry with the real one from DB
         void loadMessages();
       })
       .catch((err) => {
         console.error("Failed to compact:", err);
+        // Remove optimistic message on failure
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       })
       .finally(() => {
         setIsCompacting(false);

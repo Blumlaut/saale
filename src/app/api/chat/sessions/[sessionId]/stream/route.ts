@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { Prisma } from "@prisma/client";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { type ToolConfig } from "@/lib/pi/session";
@@ -565,22 +566,11 @@ Guidelines:
 
           case "compaction_end": {
             if (event.result && !event.aborted) {
-              // Save compaction summary to DB as a message
-              // tokensBefore is stored in thinking field (repurposed for compaction metadata)
-              prisma.chatMessage
-                .create({
-                  data: {
-                    sessionId,
-                    role: "compaction",
-                    content: event.result.summary,
-                    thinking: String(event.result.tokensBefore),
-                    toolCalls: null,
-                    parentMessageId: null,
-                  },
-                })
-                .catch((err) => {
-                  console.error("Failed to save compaction message:", err);
-                });
+              void saveCompactionMessage({
+                sessionId,
+                summary: event.result.summary,
+                tokensBefore: event.result.tokensBefore,
+              });
 
               dispatcher.emit("compaction_end", {
                 reason: event.reason,

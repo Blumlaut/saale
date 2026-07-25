@@ -219,6 +219,39 @@ prisma.$queryRaw`
 - Don't embed conditional logic behind magic strings or numbers. Extract into named constants, enums, or config objects.
 - When a value could vary by environment or user preference, parameterize it.
 
+## Extract Reusable Helpers
+
+- **Keep API routes thin.** Routes should orchestrate — authenticate, validate input, delegate to helpers, return a response. Business logic belongs in `src/lib/`, not inside route handlers.
+- **Never duplicate logic across routes.** If two routes (or a route and a background job) do the same thing (DB writes, email sends, state updates), extract it into a shared helper in `src/lib/`.
+- **Prefer named helper functions over inline logic.** A `saveCompactionMessage()` in `src/lib/chat/` is better than the same Prisma call copy-pasted into three different files.
+- **When adding logic to a route, ask: "will this be needed elsewhere?"** If yes (or if it's more than a trivial one-liner), extract it first.
+
+### Examples
+
+```ts
+// ❌ BAD — DB logic duplicated inline in a route
+export async function POST(request: NextRequest) {
+  // ... auth, validation ...
+  await prisma.chatMessage.create({
+    data: { sessionId, role: "compaction", content: summary, /* ... */ },
+  });
+  return NextResponse.json({ ok: true });
+}
+
+// ✅ GOOD — extracted helper used by any caller
+// src/lib/chat/compaction.ts
+export async function saveCompactionMessage({ sessionId, summary, tokensBefore }) {
+  await prisma.chatMessage.create({ data: { sessionId, role: "compaction", /* ... */ } });
+}
+
+// src/app/api/chat/sessions/[id]/compact/route.ts
+export async function POST(request: NextRequest) {
+  // ... auth, validation ...
+  await saveCompactionMessage({ sessionId, summary, tokensBefore });
+  return NextResponse.json({ ok: true });
+}
+```
+
 ## Architecture
 
 - `src/app/` — Next.js routes and layouts
