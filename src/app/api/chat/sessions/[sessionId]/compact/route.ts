@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { type ToolConfig } from "@/lib/pi/session";
 import { getPoolKey, getSessionDir, createAndPool } from "@/lib/pi/agent-pool";
@@ -89,6 +90,16 @@ Guidelines:
 
   try {
     const result = await pooled.session.compact();
+
+    // Save compaction summary to DB so it appears in the chat
+    if (result?.summary) {
+      await saveCompactionMessage({
+        sessionId,
+        summary: result.summary,
+        tokensBefore: result.tokensBefore,
+      });
+    }
+
     return NextResponse.json({
       compacted: true,
       tokensBefore: result?.tokensBefore,
