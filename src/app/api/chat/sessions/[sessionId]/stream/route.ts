@@ -18,7 +18,11 @@ import {
 } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
-import { handleReconnectFromRedis, saveAssistantMessage } from "@/lib/pi/stream-helpers";
+import {
+  clearProcessingSince,
+  handleReconnectFromRedis,
+  saveAssistantMessage,
+} from "@/lib/pi/stream-helpers";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
@@ -96,9 +100,7 @@ export async function GET(
   // No model available — return an error stream
   if (!modelProvider || !modelName) {
     // Clear in-progress flag so the user can try again
-    prisma.chatSession
-      .update({ where: { id: sessionId }, data: { processingSince: null } })
-      .catch(console.error);
+    clearProcessingSince(sessionId).catch(console.error);
 
     const encoder = new TextEncoder();
     const errorEvent = encoder.encode(
@@ -139,20 +141,11 @@ export async function GET(
     // The reconnected client subscribes to Redis pub/sub for catch-up.
     // This works whether the agent is in the pool (same process) or not (restart).
     //
-    // However, if the agent is in the pool and already finished (isStreaming=false),
-    // processingSince may be stale (DB update hasn't flushed yet). In that case,
-    // skip the Redis path and fall through to the primary path which will emit done.
-    const poolKey = getPoolKey(authResult.userId, sessionId);
-    const pooledForCheck = getPoolEntry(poolKey);
-    if (pooledForCheck && !pooledForCheck.session.isStreaming) {
-      log(
-        "reconnect",
-        "processingSince is set but agent in pool is finished (isStreaming=false) — using primary path",
-      );
-      // Fall through to primary path below
-    } else {
-      return handleReconnectFromRedis(sessionId, request);
-    }
+    // Always use Redis when processingSince is set — isStreaming from the pooled
+    // agent is unreliable during tool-heavy workloads (it can be false between
+    // agent_end and the next tool call while the agent is still actively working).
+    // The Redis path has DB polling as a fallback for the stale-processingSince edge case.
+    return handleReconnectFromRedis(sessionId, request);
   }
 
   // ── Primary stream path ──────────────────────────────────────────────
@@ -574,11 +567,9 @@ Guidelines:
 
               // Clear processingSince so the user can send a follow-up message
               // (compaction interrupts the agent, so agent_end may never fire)
-              prisma.chatSession
-                .update({ where: { id: sessionId }, data: { processingSince: null } })
-                .catch((err) => {
-                  console.error("Failed to clear processingSince after compaction:", err);
-                });
+              clearProcessingSince(sessionId).catch((err) => {
+                console.error("Failed to clear processingSince after compaction:", err);
+              });
 
               dispatcher.emit("compaction_end", {
                 reason: event.reason,
@@ -675,15 +666,14 @@ Guidelines:
               ).catch(console.error);
             }
 
-            prisma.chatSession
-              .update({
+            // Clear processingSince and increment message count
+            Promise.all([
+              clearProcessingSince(sessionId),
+              prisma.chatSession.update({
                 where: { id: sessionId },
-                data: {
-                  messageCount: { increment: turnIndex || 1 },
-                  processingSince: null,
-                },
-              })
-              .catch(console.error);
+                data: { messageCount: { increment: turnIndex || 1 } },
+              }),
+            ]).catch(console.error);
           }
 
           unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
@@ -725,11 +715,9 @@ Guidelines:
             unsubscribeSse();
             unsubscribeAgentEnd();
             // Clear in-progress flag so the user can retry
-            prisma.chatSession
-              .update({ where: { id: sessionId }, data: { processingSince: null } })
-              .catch((updateErr) => {
-                console.error("Failed to clear processingSince on error:", updateErr);
-              });
+            clearProcessingSince(sessionId).catch((updateErr) => {
+              console.error("Failed to clear processingSince on error:", updateErr);
+            });
             unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
             dispatcher.emit("error", { message: err.message });
             dispatcher.emit("done", {});

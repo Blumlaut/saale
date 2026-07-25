@@ -282,6 +282,19 @@ export function handleReconnectFromRedis(sessionId: string, request: NextRequest
   });
 }
 
+/**
+ * Clear the processingSince flag on a chat session.
+ *
+ * Centralized so all callers (agent_end, compaction, errors) use the same
+ * path — prevents bugs where one caller forgets to clear the flag.
+ */
+export async function clearProcessingSince(sessionId: string): Promise<void> {
+  await prisma.chatSession.update({
+    where: { id: sessionId },
+    data: { processingSince: null },
+  });
+}
+
 export async function saveAssistantMessage(
   sessionId: string,
   content: string,
