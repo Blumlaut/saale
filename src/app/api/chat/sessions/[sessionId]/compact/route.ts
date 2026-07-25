@@ -6,6 +6,7 @@ import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { type ToolConfig } from "@/lib/pi/session";
 import { getPoolKey, getSessionDir, createAndPool } from "@/lib/pi/agent-pool";
+import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 
 /**
@@ -69,21 +70,10 @@ export async function POST(
       select: { agentCustomInstructions: true },
     });
 
-    const defaultSystemPrompt = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
-
-Guidelines:
-- Be concise and direct — get to the point without unnecessary preamble.
-- Write naturally, like a capable colleague, not a generic AI.
-- Use bullet points or short paragraphs when listing things.
-- When uncertain, say so briefly rather than guessing.
-- Match the user's tone and language preference.`;
-
-    const customInstructions =
-      userSettings?.agentCustomInstructions && userSettings.agentCustomInstructions.trim()
-        ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
-        : "";
-
-    result.session.agent.state.systemPrompt = defaultSystemPrompt + customInstructions;
+    result.session.agent.state.systemPrompt = buildAgentSystemPrompt({
+      customInstructions: userSettings?.agentCustomInstructions,
+      toolConfig: resolvedToolConfig,
+    });
 
     return { session: result.session, sessionDir };
   });
