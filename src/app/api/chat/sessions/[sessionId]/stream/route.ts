@@ -572,6 +572,14 @@ Guidelines:
                 tokensBefore: event.result.tokensBefore,
               });
 
+              // Clear processingSince so the user can send a follow-up message
+              // (compaction interrupts the agent, so agent_end may never fire)
+              prisma.chatSession
+                .update({ where: { id: sessionId }, data: { processingSince: null } })
+                .catch((err) => {
+                  console.error("Failed to clear processingSince after compaction:", err);
+                });
+
               dispatcher.emit("compaction_end", {
                 reason: event.reason,
                 tokensBefore: event.result.tokensBefore,
