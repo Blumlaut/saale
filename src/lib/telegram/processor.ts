@@ -18,6 +18,7 @@ import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { sendTelegramApprovalRequest } from "./approval";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
+import { clearProcessingSince } from "@/lib/pi/stream-helpers";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
 
 /** Allowed MIME types that can be passed as images to the vision model */
@@ -598,13 +599,13 @@ export async function processTelegramMessage(params: {
 
     // Update chat session metadata
     const incrementCount = turnIndex > 0 ? turnIndex : 1;
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messageCount: { increment: incrementCount },
-        processingSince: null,
-      },
-    });
+    await Promise.all([
+      clearProcessingSince(sessionId),
+      prisma.chatSession.update({
+        where: { id: sessionId },
+        data: { messageCount: { increment: incrementCount } },
+      }),
+    ]);
 
     // Update definition lastRunAt
     await prisma.agentDefinition.update({

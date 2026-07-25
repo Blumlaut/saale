@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { unregisterActiveSession } from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
+import { clearProcessingSince } from "@/lib/pi/stream-helpers";
 
 /**
  * Explicitly cancel an in-progress generation.
@@ -37,14 +37,9 @@ export async function POST(
   await unregisterActiveSession(authResult.userId, sessionId);
 
   // Clear processing flag so the user can send a new message
-  await prisma.chatSession
-    .update({
-      where: { id: sessionId },
-      data: { processingSince: null },
-    })
-    .catch((err) => {
-      console.error("Failed to clear processingSince on stop:", err);
-    });
+  await clearProcessingSince(sessionId).catch((err) => {
+    console.error("Failed to clear processingSince on stop:", err);
+  });
 
   return NextResponse.json({ stopped: true });
 }
