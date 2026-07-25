@@ -18,11 +18,8 @@ import {
 } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
-import {
-  clearProcessingSince,
-  handleReconnectFromRedis,
-  saveAssistantMessage,
-} from "@/lib/pi/stream-helpers";
+import { handleReconnectFromRedis, saveAssistantMessage } from "@/lib/pi/stream-helpers";
+import { buildAgentSystemPrompt, clearProcessingSince } from "@/lib/pi/processing-state";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
@@ -170,32 +167,10 @@ export async function GET(
     });
 
     // Set system prompt on the agent
-    const defaultSystemPrompt = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
-
-Guidelines:
-- Be concise and direct — get to the point without unnecessary preamble.
-- Write naturally, like a capable colleague, not a generic AI.
-- Use bullet points or short paragraphs when listing things.
-- When uncertain, say so briefly rather than guessing.
-- Match the user's tone and language preference.`;
-
-    const customInstructions =
-      userSettings?.agentCustomInstructions && userSettings.agentCustomInstructions.trim()
-        ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
-        : "";
-
-    const terminalInstruction =
-      resolvedToolConfig.terminal === true
-        ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available."
-        : "";
-
-    const memoryInstruction =
-      resolvedToolConfig.memory !== false
-        ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
-        : "";
-
-    result.session.agent.state.systemPrompt =
-      defaultSystemPrompt + customInstructions + terminalInstruction + memoryInstruction;
+    result.session.agent.state.systemPrompt = buildAgentSystemPrompt({
+      customInstructions: userSettings?.agentCustomInstructions,
+      toolConfig: resolvedToolConfig,
+    });
 
     return { session: result.session, sessionDir };
   });
@@ -565,12 +540,6 @@ Guidelines:
                 tokensBefore: event.result.tokensBefore,
               });
 
-              // Clear processingSince so the user can send a follow-up message
-              // (compaction interrupts the agent, so agent_end may never fire)
-              clearProcessingSince(sessionId).catch((err) => {
-                console.error("Failed to clear processingSince after compaction:", err);
-              });
-
               dispatcher.emit("compaction_end", {
                 reason: event.reason,
                 tokensBefore: event.result.tokensBefore,
@@ -587,6 +556,14 @@ Guidelines:
                 errorMessage: event.errorMessage,
               });
             }
+
+            // Always clear processingSince — compaction interrupts the agent,
+            // so agent_end may never fire. This applies whether compaction
+            // succeeded, was aborted, or failed.
+            clearProcessingSince(sessionId).catch((err) => {
+              console.error("Failed to clear processingSince after compaction:", err);
+            });
+
             break;
           }
 
@@ -665,16 +642,18 @@ Guidelines:
                 null,
               ).catch(console.error);
             }
-
-            // Clear processingSince and increment message count
-            Promise.all([
-              clearProcessingSince(sessionId),
-              prisma.chatSession.update({
-                where: { id: sessionId },
-                data: { messageCount: { increment: turnIndex || 1 } },
-              }),
-            ]).catch(console.error);
           }
+
+          // Always clear processingSince and increment message count — regardless
+          // of whether there were assistant messages. If agent_end fires, the
+          // generation is done and the flag MUST be cleared.
+          Promise.all([
+            clearProcessingSince(sessionId),
+            prisma.chatSession.update({
+              where: { id: sessionId },
+              data: { messageCount: { increment: turnIndex || 1 } },
+            }),
+          ]).catch(console.error);
 
           unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
         }

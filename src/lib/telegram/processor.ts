@@ -18,8 +18,8 @@ import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { sendTelegramApprovalRequest } from "./approval";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
-import { clearProcessingSince } from "@/lib/pi/stream-helpers";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
+import { clearProcessingSince } from "@/lib/pi/processing-state";
 
 /** Allowed MIME types that can be passed as images to the vision model */
 const IMAGE_MIME_TYPES = new Set([
