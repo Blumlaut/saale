@@ -274,6 +274,21 @@ export async function GET(
     }
   }
 
+  // ── Seed saved turns from DB for reconnect ─────────────────────────────
+  // When reconnecting, the buffer may contain turn_end events for turns
+  // already saved to DB. Tell the client which turns are persisted so it
+  // doesn't create duplicate streaming messages during buffer replay.
+  let savedTurnsFromDb: number[] = [];
+  if (!shouldPrompt && pooled.lastPromptedMessageId && !streamAlreadyFinished) {
+    const assistantCount = await prisma.chatMessage.count({
+      where: { sessionId, role: "assistant" },
+    });
+    if (assistantCount > 0) {
+      savedTurnsFromDb = Array.from({ length: assistantCount }, (_, i) => i);
+      log("reconnect", `seeded savedTurns from DB: [0..${assistantCount - 1}]`);
+    }
+  }
+
   // ── SSE stream state ──────────────────────────────────────────────────
   const encoder = new TextEncoder();
 
@@ -332,6 +347,11 @@ export async function GET(
 
       // ── Replay buffered events (reconnect path) ──────────────────────
       if (bufferedEvents.length > 0) {
+        // Tell the client which turns are already persisted BEFORE replaying
+        // buffer events, so turn_end handlers don't create duplicate messages.
+        if (savedTurnsFromDb.length > 0) {
+          dispatcher.emitSync("saved_turns", { turns: savedTurnsFromDb }, -1);
+        }
         for (const evt of bufferedEvents) {
           dispatcher.emitSync(evt.event, evt.data, evt.id);
         }
@@ -529,6 +549,16 @@ export async function GET(
           // ── Turn boundary ───────────────────────────────────────────────
           case "turn_end": {
             log("turn_end", `turnIndex=${turnIndex}, textLen=${currentTurnText.length}`);
+
+            // Flush final token/thinking before turn_end so the client
+            // receives the complete text (throttle may have prevented the
+            // last message_update tick from emitting).
+            if (currentTurnText) {
+              dispatcher.emit("token", { text: currentTurnText });
+            }
+            if (currentTurnThinking) {
+              dispatcher.emit("thinking", { thinking: currentTurnThinking });
+            }
 
             const assistantMsg =
               event.message.role === "assistant" ? (event.message as { content: unknown[] }) : null;
