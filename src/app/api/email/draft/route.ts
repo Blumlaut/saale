@@ -8,6 +8,7 @@ import {
   type CreateAgentSessionResult,
 } from "@earendil-works/pi-coding-agent";
 import { buildModelRuntime } from "@/lib/pi/models";
+import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 /**
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
 ${emailSettings.emailWritingStyle}`
       : "";
 
-  piSession.agent.state.systemPrompt = `You are an email drafting assistant. Your only job is to write clear, concise email responses.
+  const emailSystemPrompt = `You are an email drafting assistant. Your only job is to write clear, concise email responses.
 
 ${modeInstruction}
 ${userStyleInstructions}
@@ -119,6 +120,7 @@ Rules:
 - If the original message asks questions, answer them directly
 - If the original message makes a request, acknowledge it clearly
 - Output plain text only — no markdown formatting`;
+  lockSystemPrompt(piSession, emailSystemPrompt);
 
   // Build the user prompt from the original email
   const originalBody = message.bodyText || message.bodyPreview || "";

@@ -2,6 +2,7 @@ import type { Job } from "bullmq";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
+import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { getQueue, addJobRun, updateJobRun } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { handlerMap } from "./jobs/registry";
@@ -44,9 +45,10 @@ export async function dispatchAiJob(
     thinkingLevel: "off",
   });
 
-  session.agent.state.systemPrompt =
+  const systemPrompt =
     options?.systemPrompt ??
     `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
+  lockSystemPrompt(session, systemPrompt);
 
   let timerId: ReturnType<typeof setTimeout>;
 

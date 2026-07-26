@@ -5,6 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
+import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 
@@ -196,10 +197,11 @@ export async function executeAgentRun(
         "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ?? "off",
   });
 
-  // Set system prompt
-  session.agent.state.systemPrompt =
+  // Set system prompt (locked to prevent SDK from overwriting)
+  const systemPrompt =
     definition.systemPrompt ??
     `You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.`;
+  lockSystemPrompt(session, systemPrompt);
 
   // Run state
   const state: RunState = {
