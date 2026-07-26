@@ -2,32 +2,25 @@ import { useCallback, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Message, ApprovalData } from "./types";
 import type { TokenUsage } from "./input-bar";
-import type { StreamingState } from "./chat-streaming-state";
-import { emptyTurn, EMPTY_DISPLAY, finalizeStreaming, tryLoadFromDb } from "./chat-streaming-state";
-import { setupStreamListeners } from "./chat-stream-listeners";
 
 /**
  * Shared SSE stream orchestration for chat.
  *
- * All stream paths (send, edit, reconnect) share the same pattern:
- *  1. Reset streaming state
- *  2. Open EventSource
- *  3. Wire up common listeners via setupStreamListeners
- *  4. On done/error: finalize streaming + cleanup
+ * Single source of truth: the `messages` array.
+ * Streaming messages are added with `streaming-{turnIndex}` IDs and
+ * updated in-place as tokens arrive. No separate streaming state.
  *
- * Reconnection uses the SSE spec's Last-Event-ID mechanism:
- * - Server buffers all events with monotonic IDs in Redis
- * - On reconnect, server replays buffered events from the last known ID
- * - If no lastEventId is available (page refresh), server replays the full buffer
- *   when the agent is already processing
- *
- * This hook centralizes that pattern so the main component stays lean.
+ * Server events:
+ * - `token` / `thinking` — update the current streaming message in-place
+ * - `tool_start` / `tool_end` — update tool calls on the streaming message
+ * - `turn_end` — finalize current turn, create next streaming message
+ * - `message_saved` — swap temp ID with real DB ID
+ * - `done` — close connection, remove any remaining streaming messages
+ * - `error` — close connection, show error
  */
 export function useChatStream(
   sessionId: string,
-  streamingRef: React.RefObject<StreamingState>,
   eventSourceRef: React.RefObject<EventSource | null>,
-  setStreaming: Dispatch<SetStateAction<StreamingState>>,
   setMessages: Dispatch<SetStateAction<Message[]>>,
   setIsLoading: Dispatch<SetStateAction<boolean>>,
   setPendingApprovals: Dispatch<SetStateAction<ApprovalData[]>>,
@@ -38,22 +31,11 @@ export function useChatStream(
 ) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track the last SSE event ID for reconnection.
-  // We extract this from MessageEvent.lastEventId since the server sends
-  // `id:` fields with every event.
   const lastEventIdRef = useRef("");
+  // Track the root (first turn) message ID for parentMessageId of subsequent turns.
+  const rootMessageIdRef = useRef<string | null>(null);
 
-  /**
-   * Reset streaming state to empty. Called before opening a new stream.
-   */
-  const resetStreaming = useCallback(() => {
-    const initState = { turns: [], current: emptyTurn(), ...EMPTY_DISPLAY };
-    setStreaming(initState);
-    streamingRef.current = initState;
-  }, [setStreaming, streamingRef]);
-
-  /**
-   * Close the current EventSource and clear refs.
-   */
+  /** Close the current EventSource and clear refs. */
   const closeEventSource = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -61,9 +43,7 @@ export function useChatStream(
     }
   }, [eventSourceRef]);
 
-  /**
-   * Wire up approval request handler (shared across all stream paths).
-   */
+  /** Wire up approval request handler. */
   const handleApprovalRequest = useCallback(
     (request: ApprovalData) => {
       setPendingApprovals((prev) => {
@@ -75,11 +55,30 @@ export function useChatStream(
   );
 
   /**
+   * Common cleanup: close EventSource, clear timers.
+   */
+  const cleanup = useCallback(
+    (es: EventSource) => {
+      es.close();
+      eventSourceRef.current = null;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    },
+    [eventSourceRef],
+  );
+
+  /**
+   * Remove any remaining streaming messages from the array.
+   */
+  const removeStreamingMessages = useCallback(() => {
+    setMessages((prev) => prev.filter((m) => !m.id.startsWith("streaming-")));
+  }, [setMessages]);
+
+  /**
    * Start reconnection via SSE. Used when user refreshes during generation
    * or gets a 409 (already processing).
-   *
-   * The server replays buffered events from Redis and subscribes to live
-   * agent events. No separate Redis pub/sub path needed.
    */
   const startReconnection = useCallback(
     (onLoadMessages: () => Promise<unknown>, _onLoadSessionTitle: () => Promise<unknown>) => {
@@ -89,11 +88,7 @@ export function useChatStream(
       }
 
       setIsLoading(true);
-      resetStreaming();
 
-      // Pass lastEventId if we have one (from a previous connection in this session).
-      // On page refresh, this will be empty — the server handles this by replaying
-      // the full buffer when the agent is already processing.
       const reconnectUrl = lastEventIdRef.current
         ? `/api/chat/sessions/${sessionId}/stream?lastEventId=${lastEventIdRef.current}`
         : `/api/chat/sessions/${sessionId}/stream`;
@@ -101,47 +96,33 @@ export function useChatStream(
       const eventSource = new EventSource(reconnectUrl);
       eventSourceRef.current = eventSource;
 
-      const cleanup = () => {
-        eventSource.close();
-        eventSourceRef.current = null;
-        if (reconnectTimerRef.current) {
-          clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
+      const onDone = () => {
+        cleanup(eventSource);
+        setIsLoading(false);
+        removeStreamingMessages();
+        void onLoadMessages();
+        markDone(sessionId);
       };
 
-      setupStreamListeners(eventSource, setStreaming, streamingRef, {
-        onDone: () => {
-          cleanup();
-          finalizeStreaming(streamingRef.current, setMessages);
-          setIsLoading(false);
-          void onLoadMessages();
-          markDone(sessionId);
-        },
-        onError: () => {
-          cleanup();
-          finalizeStreaming(streamingRef.current, setMessages);
-          setIsLoading(false);
-          markDone(sessionId);
-        },
-        onConnectionError: () => {
-          cleanup();
-          finalizeStreaming(streamingRef.current, setMessages);
-          setIsLoading(false);
-          markDone(sessionId);
-        },
-        onApprovalRequest: handleApprovalRequest,
-        ...(onTokenUsage ? { onTokenUsage } : {}),
-        ...(onCompactionStart ? { onCompactionStart } : {}),
-        ...(onCompactionEnd ? { onCompactionEnd } : {}),
+      wireStreamListeners({
+        eventSource,
+        sessionId,
+        setMessages,
+        setPendingApprovals,
+        lastEventIdRef,
+        rootMessageIdRef,
+        onDone,
+        onTokenUsage,
+        onCompactionStart,
+        onCompactionEnd,
+        handleApprovalRequest,
       });
 
       // Safety timeout — if still loading after 30s, force-clear and reload from DB.
-      // This handles edge cases where the buffer is stale or the agent crashed.
       reconnectTimerRef.current = setTimeout(() => {
-        cleanup();
-        finalizeStreaming(streamingRef.current, setMessages);
+        cleanup(eventSource);
         setIsLoading(false);
+        removeStreamingMessages();
         void onLoadMessages();
         markDone(sessionId);
       }, 30_000);
@@ -149,17 +130,18 @@ export function useChatStream(
     [
       sessionId,
       closeEventSource,
-      resetStreaming,
       setIsLoading,
-      setStreaming,
-      streamingRef,
-      eventSourceRef,
       setMessages,
+      setPendingApprovals,
       markDone,
-      handleApprovalRequest,
+      eventSourceRef,
+      lastEventIdRef,
+      cleanup,
+      removeStreamingMessages,
       onTokenUsage,
       onCompactionStart,
       onCompactionEnd,
+      handleApprovalRequest,
     ],
   );
 
@@ -168,74 +150,60 @@ export function useChatStream(
    * Returns the EventSource so the caller can close it on error.
    */
   const connectStream = useCallback(
-    (streamUrl: string, assistantCountBefore: number): EventSource => {
-      resetStreaming();
+    (streamUrl: string) => {
+      // Add initial streaming message (turn 0)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: "streaming-0",
+          role: "assistant",
+          content: "",
+          thinking: undefined,
+          toolCalls: undefined,
+          parentMessageId: undefined,
+          createdAt: new Date().toISOString(),
+          attachments: undefined,
+        },
+      ]);
 
       const eventSource = new EventSource(streamUrl);
       eventSourceRef.current = eventSource;
 
-      // Track last event ID for potential reconnection.
-      // Extract from MessageEvent.lastEventId — the server sends `id:` fields.
-      const trackEventId = (e: MessageEvent) => {
-        if (e.lastEventId) {
-          lastEventIdRef.current = e.lastEventId;
-        }
-      };
-      eventSource.addEventListener("message", trackEventId);
-      for (const type of [
-        "token",
-        "thinking",
-        "tool_start",
-        "tool_end",
-        "turn_end",
-        "done",
-        "error",
-      ] as const) {
-        eventSource.addEventListener(type, trackEventId);
-      }
-
-      const cleanup = () => {
-        eventSource.close();
-        eventSourceRef.current = null;
+      const onDone = () => {
+        cleanup(eventSource);
+        setIsLoading(false);
+        removeStreamingMessages();
       };
 
-      setupStreamListeners(eventSource, setStreaming, streamingRef, {
-        onDone: () => {
-          cleanup();
-          finalizeStreaming(streamingRef.current, setMessages);
-          setIsLoading(false);
-          void tryLoadFromDb(sessionId, assistantCountBefore, setMessages);
-        },
-        onError: () => {
-          cleanup();
-          finalizeStreaming(streamingRef.current, setMessages);
-          setIsLoading(false);
-        },
-        onConnectionError: () => {
-          cleanup();
-          finalizeStreaming(streamingRef.current, setMessages);
-          setIsLoading(false);
-        },
-        onApprovalRequest: handleApprovalRequest,
-        ...(onTokenUsage ? { onTokenUsage } : {}),
-        ...(onCompactionStart ? { onCompactionStart } : {}),
-        ...(onCompactionEnd ? { onCompactionEnd } : {}),
+      wireStreamListeners({
+        eventSource,
+        sessionId,
+        setMessages,
+        setPendingApprovals,
+        lastEventIdRef,
+        rootMessageIdRef,
+        onDone,
+        onTokenUsage,
+        onCompactionStart,
+        onCompactionEnd,
+        handleApprovalRequest,
       });
 
       return eventSource;
     },
     [
       sessionId,
-      resetStreaming,
-      setStreaming,
-      streamingRef,
-      eventSourceRef,
       setMessages,
+      setPendingApprovals,
       setIsLoading,
-      handleApprovalRequest,
+      eventSourceRef,
+      lastEventIdRef,
+      cleanup,
+      removeStreamingMessages,
       onTokenUsage,
       onCompactionStart,
       onCompactionEnd,
+      handleApprovalRequest,
     ],
   );
 
@@ -243,7 +211,305 @@ export function useChatStream(
     startReconnection,
     connectStream,
     closeEventSource,
-    resetStreaming,
     reconnectTimerRef,
   };
+}
+
+// ── SSE event wiring ───────────────────────────────────────────────────────────
+
+interface StreamListenerOpts {
+  eventSource: EventSource;
+  sessionId: string;
+  setMessages: Dispatch<SetStateAction<Message[]>>;
+  setPendingApprovals: Dispatch<SetStateAction<ApprovalData[]>>;
+  lastEventIdRef: React.MutableRefObject<string>;
+  rootMessageIdRef: React.MutableRefObject<string | null>;
+  onDone: () => void;
+  onTokenUsage: ((usage: TokenUsage) => void) | undefined;
+  onCompactionStart: (() => void) | undefined;
+  onCompactionEnd: ((summary?: string, tokensBefore?: number) => void) | undefined;
+  handleApprovalRequest: (request: ApprovalData) => void;
+}
+
+function wireStreamListeners(opts: StreamListenerOpts) {
+  const { eventSource, setMessages, lastEventIdRef, rootMessageIdRef } = opts;
+
+  // Track last event ID for potential reconnection.
+  const trackEventId = (e: MessageEvent) => {
+    if (e.lastEventId) {
+      lastEventIdRef.current = e.lastEventId;
+    }
+  };
+  eventSource.addEventListener("message", trackEventId);
+  for (const type of [
+    "token",
+    "thinking",
+    "tool_start",
+    "tool_end",
+    "turn_end",
+    "message_saved",
+    "done",
+    "error",
+  ] as const) {
+    eventSource.addEventListener(type, trackEventId);
+  }
+
+  // ── Token: update streaming message content ───────────────────────────
+  eventSource.addEventListener("token", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as { text: string };
+    setMessages((prev) => {
+      const currentId = getCurrentStreamingId(prev);
+      // If no streaming message exists (e.g. reconnect mid-turn), create one
+      if (currentId === "streaming-0" && !prev.some((m) => m.id.startsWith("streaming-"))) {
+        const nextTurn = getNextStreamingTurn(prev);
+        return [
+          ...prev,
+          {
+            id: `streaming-${nextTurn}`,
+            role: "assistant",
+            content: parsed.text,
+            thinking: undefined,
+            toolCalls: undefined,
+            parentMessageId: rootMessageIdRef.current || undefined,
+            createdAt: new Date().toISOString(),
+            attachments: undefined,
+          },
+        ];
+      }
+      return prev.map((m) => (m.id === currentId ? { ...m, content: parsed.text } : m));
+    });
+  });
+
+  // ── Thinking: update streaming message thinking ───────────────────────
+  eventSource.addEventListener("thinking", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as { thinking: string };
+    setMessages((prev) => {
+      const currentId = getCurrentStreamingId(prev);
+      // If no streaming message exists (e.g. reconnect mid-turn), create one
+      if (currentId === "streaming-0" && !prev.some((m) => m.id.startsWith("streaming-"))) {
+        const nextTurn = getNextStreamingTurn(prev);
+        return [
+          ...prev,
+          {
+            id: `streaming-${nextTurn}`,
+            role: "assistant",
+            content: "",
+            thinking: parsed.thinking || undefined,
+            toolCalls: undefined,
+            parentMessageId: rootMessageIdRef.current || undefined,
+            createdAt: new Date().toISOString(),
+            attachments: undefined,
+          },
+        ];
+      }
+      return prev.map((m) =>
+        m.id === currentId ? { ...m, thinking: parsed.thinking || undefined } : m,
+      );
+    });
+  });
+
+  // ── Tool start: add running tool call to streaming message ────────────
+  eventSource.addEventListener("tool_start", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as {
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    };
+    setMessages((prev) => {
+      const currentId = getCurrentStreamingId(prev);
+      // If no streaming message exists (e.g. reconnect mid-tool), create one
+      if (currentId === "streaming-0" && !prev.some((m) => m.id.startsWith("streaming-"))) {
+        const nextTurn = getNextStreamingTurn(prev);
+        return [
+          ...prev,
+          {
+            id: `streaming-${nextTurn}`,
+            role: "assistant",
+            content: "",
+            thinking: undefined,
+            toolCalls: [
+              {
+                id: parsed.toolCallId,
+                name: parsed.toolName,
+                args: parsed.args,
+                status: "running" as const,
+                result: undefined,
+                error: undefined,
+              },
+            ],
+            parentMessageId: rootMessageIdRef.current || undefined,
+            createdAt: new Date().toISOString(),
+            attachments: undefined,
+          },
+        ];
+      }
+      return prev.map((m) => {
+        if (m.id !== currentId) return m;
+        return {
+          ...m,
+          toolCalls: [
+            ...(m.toolCalls || []),
+            {
+              id: parsed.toolCallId,
+              name: parsed.toolName,
+              args: parsed.args,
+              status: "running" as const,
+              result: undefined,
+              error: undefined,
+            },
+          ],
+        };
+      });
+    });
+  });
+
+  // ── Tool end: update tool call status ─────────────────────────────────
+  eventSource.addEventListener("tool_end", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as {
+      toolCallId: string;
+      result?: string;
+      isError?: boolean;
+    };
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== getCurrentStreamingId(prev) || !m.toolCalls) return m;
+        return {
+          ...m,
+          toolCalls: m.toolCalls.map((tc) =>
+            tc.id === parsed.toolCallId
+              ? {
+                  ...tc,
+                  status: parsed.isError ? ("error" as const) : ("completed" as const),
+                  result: parsed.result ?? undefined,
+                  error: parsed.isError ? (parsed.result ?? undefined) : undefined,
+                }
+              : tc,
+          ),
+        };
+      }),
+    );
+  });
+
+  // ── Turn end: finalize current turn, add next streaming message ───────
+  eventSource.addEventListener("turn_end", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as {
+      turnIndex: number;
+      text?: string;
+      thinking?: string;
+    };
+    setMessages((prev) => {
+      // The current streaming message for this turn will be replaced by message_saved
+      // Add a new streaming message for the next turn, using the tracked root ID
+      const nextTurn = parsed.turnIndex + 1;
+      const rootId = rootMessageIdRef.current;
+      return [
+        ...prev,
+        {
+          id: `streaming-${nextTurn}`,
+          role: "assistant",
+          content: "",
+          thinking: undefined,
+          toolCalls: undefined,
+          parentMessageId: rootId || undefined,
+          createdAt: new Date().toISOString(),
+          attachments: undefined,
+        },
+      ];
+    });
+  });
+
+  // ── Message saved: swap temp ID with real DB ID ───────────────────────
+  eventSource.addEventListener("message_saved", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as { messageId: string; turnIndex: number };
+    // Track the root (first turn) message ID for parentMessageId of subsequent turns
+    if (parsed.turnIndex === 0) {
+      rootMessageIdRef.current = parsed.messageId;
+    }
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === `streaming-${parsed.turnIndex}` ? { ...m, id: parsed.messageId } : m,
+      ),
+    );
+  });
+
+  // ── Approval request ──────────────────────────────────────────────────
+  eventSource.addEventListener("tool_approval_request", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as ApprovalData;
+    opts.handleApprovalRequest(parsed);
+  });
+
+  // ── Token usage ───────────────────────────────────────────────────────
+  if (opts.onTokenUsage) {
+    eventSource.addEventListener("token_usage", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data) as TokenUsage;
+      opts.onTokenUsage!(parsed);
+    });
+  }
+
+  // ── Compaction ────────────────────────────────────────────────────────
+  if (opts.onCompactionStart) {
+    eventSource.addEventListener("compaction_start", () => {
+      opts.onCompactionStart!();
+    });
+  }
+
+  if (opts.onCompactionEnd) {
+    eventSource.addEventListener("compaction_end", (event: MessageEvent) => {
+      const parsed = JSON.parse(event.data) as {
+        summary?: string;
+        tokensBefore?: number;
+        aborted?: boolean;
+      };
+      if (!parsed.aborted) {
+        opts.onCompactionEnd!(parsed.summary, parsed.tokensBefore);
+      } else {
+        opts.onCompactionEnd!();
+      }
+    });
+  }
+
+  // ── Done ──────────────────────────────────────────────────────────────
+  eventSource.addEventListener("done", () => {
+    opts.onDone();
+  });
+
+  // ── Error ─────────────────────────────────────────────────────────────
+  eventSource.addEventListener("error", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data);
+    console.error("Stream error:", parsed);
+    opts.onDone();
+  });
+
+  // ── Connection error — EventSource auto-reconnects, don't trigger done ─
+  eventSource.onerror = () => {
+    // Auto-reconnect handled by browser
+  };
+}
+
+/** Get the ID of the current streaming message (highest turn index). */
+function getCurrentStreamingId(messages: Message[]): string {
+  let maxTurn = -1;
+  for (const m of messages) {
+    if (m.id.startsWith("streaming-")) {
+      const turn = parseInt(m.id.slice("streaming-".length), 10);
+      if (!isNaN(turn) && turn > maxTurn) {
+        maxTurn = turn;
+      }
+    }
+  }
+  return maxTurn >= 0 ? `streaming-${maxTurn}` : "streaming-0";
+}
+
+/** Get the next streaming turn index (one higher than the current max). */
+function getNextStreamingTurn(messages: Message[]): number {
+  let maxTurn = -1;
+  for (const m of messages) {
+    if (m.id.startsWith("streaming-")) {
+      const turn = parseInt(m.id.slice("streaming-".length), 10);
+      if (!isNaN(turn) && turn > maxTurn) {
+        maxTurn = turn;
+      }
+    }
+  }
+  return maxTurn + 1;
 }

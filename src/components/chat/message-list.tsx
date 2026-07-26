@@ -171,12 +171,10 @@ export function MessageList({
     );
   }
 
-  // Check if the last message is streaming
+  // Check if the last message is a streaming message (streaming-* IDs)
   const lastMsg = messages[messages.length - 1];
   const isStreaming =
-    isLoading &&
-    lastMsg?.role === "assistant" &&
-    (lastMsg.id === "streaming-current" || lastMsg.id.startsWith("streaming-turn-"));
+    isLoading && lastMsg?.role === "assistant" && lastMsg.id.startsWith("streaming-");
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
