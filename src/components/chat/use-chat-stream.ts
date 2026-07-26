@@ -519,18 +519,23 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     opts.onDone();
   });
 
-  // ── Error ─────────────────────────────────────────────────────────────
+  // ── Error (named SSE event only) ──────────────────────────────────────
+  // addEventListener catches both named "error" SSE events (with JSON data)
+  // AND transport-level errors (empty data). Only treat events with data
+  // as real errors — transport errors are handled by onerror below.
   eventSource.addEventListener("error", (event: MessageEvent) => {
+    if (!event.data) return; // Transport error — handled by onerror
+
     try {
-      const parsed = event.data ? JSON.parse(event.data) : { message: "Stream error" };
+      const parsed = JSON.parse(event.data);
       console.error("Stream error:", parsed);
     } catch {
-      console.error("Stream error:", event.data ?? "unknown");
+      console.error("Stream error (invalid JSON):", event.data);
     }
     opts.onDone();
   });
 
-  // ── Connection error — EventSource auto-reconnects, don't trigger done ─
+  // ── Transport error — EventSource auto-reconnects, don't trigger done ─
   eventSource.onerror = () => {
     // Auto-reconnect handled by browser
   };
