@@ -312,6 +312,13 @@ export async function GET(
   // Track all pending DB saves so we can await them before emitting "done"
   const pendingSaves: Promise<void>[] = [];
 
+  // Promise that resolves when agent_end persistence completes.
+  // Used by reconnect paths to wait for DB save before emitting "done".
+  let agentEndResolve: (() => void) | null = null;
+  const agentEndPromise = new Promise<void>((resolve) => {
+    agentEndResolve = resolve;
+  });
+
   // Throttle: ~5/sec to keep UI responsive
   const TOKEN_THROTTLE_MS = 200;
   let lastTokenSend = 0;
@@ -333,14 +340,20 @@ export async function GET(
       // ── Terminal: stream already finished in buffer ───────────────────
       if (streamAlreadyFinished) {
         log("reconnect", "stream already finished in buffer, closing");
-        closeController(controller);
+        // Wait for agent_end persistence before closing
+        void agentEndPromise.then(() => {
+          closeController(controller);
+        });
         return;
       }
 
       // ── Terminal: agent already finished ──────────────────────────────
       if (emitDoneImmediately) {
-        dispatcher.emit("done", {});
-        closeController(controller);
+        // Wait for agent_end persistence before emitting done
+        void agentEndPromise.then(() => {
+          dispatcher.emit("done", {});
+          closeController(controller);
+        });
         return;
       }
 
@@ -724,6 +737,8 @@ export async function GET(
         // Wait for all DB saves to complete before emitting "done"
         // This ensures message_saved events arrive before the client cleans up
         void Promise.allSettled(pendingSaves).then(() => {
+          // Signal that agent_end persistence is complete
+          agentEndResolve?.();
           dispatcher.emit("done", {});
           closeController(controller);
           unsubscribeAgentEnd();
