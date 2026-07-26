@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { createBot, sendTelegramMessage, sendTypingIndicator } from "./client";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
+import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
@@ -19,7 +20,12 @@ import { sendTelegramApprovalRequest } from "./approval";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
-import { clearProcessingSince } from "@/lib/pi/processing-state";
+import {
+  buildAgentSystemPrompt,
+  clearProcessingSince,
+  startProcessingSince,
+} from "@/lib/pi/processing-state";
+import { unregisterTelegramSession } from "./session-registry";
 
 /** Allowed MIME types that can be passed as images to the vision model */
 const IMAGE_MIME_TYPES = new Set([
@@ -181,17 +187,25 @@ const TELEGRAM_AGENT_NAME = "Telegram Assistant";
  * directly to the vision model; documents are saved to disk and referenced
  * in the prompt.
  */
-export async function processTelegramMessage(params: {
-  userId: string;
-  encryptedToken: string;
-  telegramChatId: bigint;
-  telegramUserId: bigint;
-  messageText: string;
-  messageCaption?: string | undefined;
-  fileInfo?: TelegramFileInfo | undefined;
-  messageThreadId?: number | undefined;
-  replyToMessageId?: number | undefined;
-}): Promise<void> {
+export async function processTelegramMessage(
+  params: {
+    onSessionCreated?: (
+      session: import("@earendil-works/pi-coding-agent").AgentSession,
+      telegramChatId: bigint,
+    ) => void;
+    processingDone?: { resolve: () => void };
+  } & {
+    userId: string;
+    encryptedToken: string;
+    telegramChatId: bigint;
+    telegramUserId: bigint;
+    messageText: string;
+    messageCaption?: string | undefined;
+    fileInfo?: TelegramFileInfo | undefined;
+    messageThreadId?: number | undefined;
+    replyToMessageId?: number | undefined;
+  },
+): Promise<void> {
   const {
     userId,
     encryptedToken,
@@ -200,6 +214,8 @@ export async function processTelegramMessage(params: {
     messageCaption,
     fileInfo,
     replyToMessageId,
+    onSessionCreated,
+    processingDone,
   } = params;
 
   // 1. Find or create the TelegramChat + ChatSession
@@ -262,15 +278,18 @@ export async function processTelegramMessage(params: {
     }
   }
 
-  // 5. Send typing indicator
+  // 5. Mark session as processing and send typing indicator
+  await startProcessingSince(sessionId);
   sendTypingIndicator(encryptedToken, telegramChatId);
 
   // 6. Ensure the Telegram agent definition exists
   const definition = await ensureTelegramAgentDefinition(userId);
 
-  // 7. Resolve model
-  const model = await resolveUserModel(userId);
-  if (!model) {
+  // 7. Build model runtime and resolve model (shared with web chat)
+  const { modelRuntime } = await buildModelRuntime(userId);
+  const explicitModelId = definition.modelId ?? null;
+  const resolvedModelConfig = await resolveModelForPurpose(userId, "telegram", explicitModelId);
+  if (!resolvedModelConfig) {
     await sendTelegramMessage(
       encryptedToken,
       telegramChatId,
@@ -280,7 +299,9 @@ export async function processTelegramMessage(params: {
     return;
   }
 
-  const modelId = definition.modelId ?? `${model.provider}:${model.name}`;
+  const modelId = explicitModelId ?? `${resolvedModelConfig.provider}:${resolvedModelConfig.name}`;
+  const [provider, ...nameParts] = modelId.split(":");
+  const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
 
   // 8. Create the AgentRun (for tracking in the dashboard)
   const run = await prisma.agentRun.create({
@@ -304,10 +325,6 @@ export async function processTelegramMessage(params: {
     userId,
     sessionId,
   );
-
-  const { modelRuntime } = await buildModelRuntime(userId);
-  const [provider, ...nameParts] = modelId.split(":");
-  const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
 
   // Resolve tool config: user settings → agent definition overrides → defaults → no terminal
   const userSettings = await prisma.appSettings.findUnique({
@@ -356,20 +373,12 @@ export async function processTelegramMessage(params: {
         "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ?? "off",
   });
 
-  // Build system prompt: Saale default + user custom instructions + tool hints + Telegram formatting
-  // Matches the web chat stream endpoint's prompt construction
-  const customInstructions =
-    userSettings?.agentCustomInstructions && userSettings.agentCustomInstructions.trim()
-      ? "\n\nCustom instructions:\n" + userSettings.agentCustomInstructions
-      : "";
-
-  const memoryInstruction =
-    resolvedToolConfig.memory !== false
-      ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
-      : "";
-
-  session.agent.state.systemPrompt =
-    SAALE_SYSTEM_PROMPT + customInstructions + memoryInstruction + TELEGRAM_FORMATTING_GUIDE;
+  // Build system prompt using shared utility (aligned with web chat)
+  const baseSystemPrompt = buildAgentSystemPrompt({
+    customInstructions: userSettings?.agentCustomInstructions,
+    toolConfig: resolvedToolConfig,
+  });
+  session.agent.state.systemPrompt = baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE;
 
   // 10. Subscribe to session events — handle turn_end for intermediate messages
   //     and agent_end for final cleanup.
@@ -413,10 +422,15 @@ export async function processTelegramMessage(params: {
     { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
   > = new Map();
 
+  // Track if this session was registered in the session registry (for interruption).
+  // If so, we must unregister on completion.
+  let wasRegistered = false;
+
   try {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         unsubscribe();
+        processingDone?.resolve();
         session.abort().catch((err) => {
           console.error(`Telegram session abort failed:`, err);
         });
@@ -547,6 +561,7 @@ export async function processTelegramMessage(params: {
           case "agent_end": {
             clearTimeout(timer);
             unsubscribe();
+            processingDone?.resolve();
             resolve();
             break;
           }
@@ -555,6 +570,7 @@ export async function processTelegramMessage(params: {
             if (!event.success) {
               clearTimeout(timer);
               unsubscribe();
+              processingDone?.resolve();
               reject(new Error(event.finalError ?? "Agent retry failed"));
             }
             break;
@@ -562,11 +578,18 @@ export async function processTelegramMessage(params: {
         }
       });
 
+      // Notify caller about the created session (for registry tracking)
+      if (onSessionCreated) {
+        onSessionCreated(session, telegramChatId);
+        wasRegistered = true;
+      }
+
       // Send the user message to the agent (with images if available)
       const images = processedFile?.imageData ? [processedFile.imageData] : undefined;
       session.agent.prompt(promptText, images).catch((err) => {
         clearTimeout(timer);
         unsubscribe();
+        processingDone?.resolve();
         reject(err);
       });
     });
@@ -631,6 +654,11 @@ export async function processTelegramMessage(params: {
       "⚠️ Sorry, I encountered an error processing your message. Please try again.",
       replyToMessageId != null ? { replyToMessageId } : undefined,
     );
+  } finally {
+    // Always unregister from the session registry (for interruption tracking)
+    if (wasRegistered) {
+      unregisterTelegramSession(userId, telegramChatId);
+    }
   }
 }
 
@@ -763,50 +791,6 @@ async function saveUserMessage(sessionId: string, content: string): Promise<void
       content,
     },
   });
-}
-
-// ─── Model Resolution ────────────────────────────────────────────────────────
-
-/**
- * Resolve the default model for a user.
- */
-async function resolveUserModel(
-  userId: string,
-): Promise<{ provider: string; name: string } | null> {
-  const settings = await prisma.appSettings.findUnique({
-    where: { userId },
-    select: { defaultModelProvider: true, defaultModelName: true },
-  });
-
-  if (
-    settings?.defaultModelProvider &&
-    settings.defaultModelProvider.trim() &&
-    settings?.defaultModelName &&
-    settings.defaultModelName.trim()
-  ) {
-    return {
-      provider: settings.defaultModelProvider.trim(),
-      name: settings.defaultModelName.trim(),
-    };
-  }
-
-  const adminSettings = await prisma.adminSettings.findFirst({
-    select: { globalModelProvider: true, globalModelName: true },
-  });
-
-  if (
-    adminSettings?.globalModelProvider &&
-    adminSettings.globalModelProvider.trim() &&
-    adminSettings?.globalModelName &&
-    adminSettings.globalModelName.trim()
-  ) {
-    return {
-      provider: adminSettings.globalModelProvider.trim(),
-      name: adminSettings.globalModelName.trim(),
-    };
-  }
-
-  return null;
 }
 
 // ─── Whitelist Helpers ───────────────────────────────────────────────────────

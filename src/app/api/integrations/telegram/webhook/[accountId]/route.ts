@@ -9,6 +9,11 @@ import {
 } from "@/lib/telegram/processor";
 import { createBot } from "@/lib/telegram/client";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
+import {
+  isTelegramSessionActive,
+  registerTelegramSession,
+  abortTelegramSession,
+} from "@/lib/telegram/session-registry";
 
 /**
  * Extract processable content from a Telegram message.
@@ -227,7 +232,20 @@ export async function POST(
       console.error("Failed to update lastMessageId:", err);
     });
 
-  // 10. Process the message asynchronously
+  // 10. If there's an ongoing generation, abort it before processing the new message.
+  //     This ensures the user's latest message is processed immediately.
+  if (isTelegramSessionActive(account.userId, telegramChatId)) {
+    await abortTelegramSession(account.userId, telegramChatId);
+  }
+
+  // 11. Process the message asynchronously with session tracking for interruption.
+  //     The processingDone promise resolves when generation completes (success, error, or abort),
+  //     so abortAndAwait() knows when to stop waiting.
+  const processingDone = { resolve: () => {} } as { resolve: () => void };
+  const processingPromise = new Promise<void>((resolve) => {
+    processingDone.resolve = resolve;
+  });
+
   processTelegramMessage({
     userId: account.userId,
     encryptedToken: account.encryptedToken,
@@ -237,10 +255,14 @@ export async function POST(
     messageCaption: content.caption,
     fileInfo: content.fileInfo,
     replyToMessageId: message.message_id,
+    onSessionCreated: (session, tgChatId) => {
+      registerTelegramSession(account.userId, tgChatId, session, processingPromise);
+    },
+    processingDone,
   }).catch((err) => {
     console.error("Telegram message processing failed:", err);
   });
 
-  // 11. Acknowledge receipt immediately
+  // 12. Acknowledge receipt immediately
   return NextResponse.json({ ok: true });
 }
