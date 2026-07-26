@@ -58,6 +58,10 @@ export function wireSessionPersistence(
   let currentTurnText = "";
   let currentTurnThinking = "";
   let rootMessageId: string | null = null;
+  // Track the pending save promise from turn_end so agent_end can await it.
+  // Without this, agent_end runs synchronously before the .then() microtask
+  // sets rootMessageId, causing a duplicate message create.
+  let lastTurnSavePromise: Promise<{ id: string }> | null = null;
 
   // Tool call results tracking
   const toolCallResults: Map<
@@ -256,16 +260,22 @@ export function wireSessionPersistence(
           };
         });
 
-        // Save to DB, then notify clients with the real ID
+        // Save to DB, then notify clients with the real ID.
+        // Store the save promise so agent_end can await it — without this,
+        // agent_end runs synchronously before the .then() microtask sets
+        // rootMessageId, causing a duplicate message create.
         const turnIndexForSave = turnIndex;
+        const turnSavePromise = saveAssistantMessage(
+          sessionId,
+          currentTurnText,
+          currentTurnThinking || undefined,
+          turnToolCalls.length > 0 ? turnToolCalls : undefined,
+          rootMessageId,
+        );
+        lastTurnSavePromise = turnSavePromise;
+
         pendingSaves.push(
-          saveAssistantMessage(
-            sessionId,
-            currentTurnText,
-            currentTurnThinking || undefined,
-            turnToolCalls.length > 0 ? turnToolCalls : undefined,
-            rootMessageId,
-          )
+          turnSavePromise
             .then((msg) => {
               log("db_save", `turnIndex=${turnIndexForSave}, msgId=${msg.id}`);
               if (!rootMessageId) {
@@ -384,18 +394,27 @@ export function wireSessionPersistence(
               };
             });
 
-            // Always finalize: update existing message (multi-turn) or create new (single-turn).
-            const existingMessageId = rootMessageId ?? undefined;
+            // Finalize: update existing message (multi-turn) or create new (single-turn).
+            // Chain after turn_end save if it's still pending — without this,
+            // agent_end runs synchronously before the .then() microtask sets
+            // rootMessageId, causing a duplicate message create.
+            const basePromise = lastTurnSavePromise ?? Promise.resolve(null);
+            lastTurnSavePromise = null;
+
             pendingSaves.push(
-              saveAssistantMessage(
-                sessionId,
-                finalText,
-                finalThinking || undefined,
-                toolCalls.length > 0 ? toolCalls : undefined,
-                null,
-                existingMessageId,
-              )
-                .then((msg) => {
+              basePromise
+                .then((turnResult) => {
+                  const existingMessageId = turnResult?.id ?? rootMessageId ?? undefined;
+                  return saveAssistantMessage(
+                    sessionId,
+                    finalText,
+                    finalThinking || undefined,
+                    toolCalls.length > 0 ? toolCalls : undefined,
+                    null,
+                    existingMessageId,
+                  ).then((msg) => ({ msg, existingMessageId }));
+                })
+                .then(({ msg, existingMessageId }) => {
                   log(
                     "db_save",
                     `agent_end ${existingMessageId ? "updated" : "created"} msgId=${msg.id}`,
