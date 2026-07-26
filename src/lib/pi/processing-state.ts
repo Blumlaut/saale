@@ -1,3 +1,4 @@
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
@@ -123,6 +124,29 @@ Guidelines:
       : "";
 
   return defaultPrompt + customInstructions + terminalInstruction + memoryInstruction;
+}
+
+/**
+ * Lock the system prompt on an agent session so the Pi SDK cannot overwrite it.
+ *
+ * The Pi SDK's `emitBeforeAgentStart` resets `agent.state.systemPrompt` to the
+ * default Pi prompt when no extensions return an override. This function uses
+ * `Object.defineProperty` to make `systemPrompt` a read-only getter that always
+ * returns the Saale prompt, preventing the SDK from silently replacing it.
+ *
+ * Must be called after `createAgentSession` returns and before `session.agent.prompt()`.
+ */
+export function lockSystemPrompt(session: AgentSession, prompt: string): void {
+  Object.defineProperty(session.agent.state, "systemPrompt", {
+    get() {
+      return prompt;
+    },
+    set() {
+      // Silently ignore — the Saale system prompt is authoritative
+    },
+    configurable: false,
+    enumerable: true,
+  });
 }
 
 // ─── Background stale-state cleanup ─────────────────────────────────────

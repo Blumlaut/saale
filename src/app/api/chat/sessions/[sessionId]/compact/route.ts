@@ -6,7 +6,7 @@ import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { type ToolConfig } from "@/lib/pi/session";
 import { getPoolKey, getSessionDir, createAndPool } from "@/lib/pi/agent-pool";
-import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 
 /**
@@ -70,10 +70,11 @@ export async function POST(
       select: { agentCustomInstructions: true },
     });
 
-    result.session.agent.state.systemPrompt = buildAgentSystemPrompt({
+    const systemPrompt = buildAgentSystemPrompt({
       customInstructions: userSettings?.agentCustomInstructions,
       toolConfig: resolvedToolConfig,
     });
+    lockSystemPrompt(result.session, systemPrompt);
 
     return { session: result.session, sessionDir };
   });

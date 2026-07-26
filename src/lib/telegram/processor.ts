@@ -23,6 +23,7 @@ import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
 import {
   buildAgentSystemPrompt,
   clearProcessingSince,
+  lockSystemPrompt,
   startProcessingSince,
 } from "@/lib/pi/processing-state";
 import { unregisterTelegramSession } from "./session-registry";
@@ -378,7 +379,7 @@ export async function processTelegramMessage(
     customInstructions: userSettings?.agentCustomInstructions,
     toolConfig: resolvedToolConfig,
   });
-  session.agent.state.systemPrompt = baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE;
+  lockSystemPrompt(session, baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE);
 
   // 10. Subscribe to session events — handle turn_end for intermediate messages
   //     and agent_end for final cleanup.

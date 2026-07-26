@@ -212,6 +212,14 @@ function escapeMarkdownV2(text: string): string {
   const link = /\[([^\]]*?)\]\(([^)]*?)\)/g;
   const escapeChars = /[_*\[\]()~`>#+\-=|{}.!]/g;
 
+  /**
+   * Escape special characters inside a link URL while preserving the
+   * `[text](url)` syntax characters themselves.
+   */
+  function escapeLinkUrl(_fullMatch: string, linkText: string, url: string): string {
+    return `[${linkText}](${url.replace(escapeChars, "\\$&")})`;
+  }
+
   const parts: string[] = [];
   let lastIndex = 0;
 
@@ -227,8 +235,14 @@ function escapeMarkdownV2(text: string): string {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index).replace(escapeChars, "\\$&"));
     }
-    // Keep formatting tokens as-is
-    parts.push(match[0]);
+
+    // Handle links specially — escape characters inside the URL
+    if (match[0].startsWith("[")) {
+      parts.push(escapeLinkUrl(match[0], match[1] ?? "", match[2] ?? ""));
+    } else {
+      // Keep other formatting tokens as-is
+      parts.push(match[0]);
+    }
     lastIndex = match.index + match[0].length;
   }
 

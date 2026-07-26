@@ -18,7 +18,11 @@ import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
-import { buildAgentSystemPrompt, clearProcessingSince } from "@/lib/pi/processing-state";
+import {
+  buildAgentSystemPrompt,
+  clearProcessingSince,
+  lockSystemPrompt,
+} from "@/lib/pi/processing-state";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
@@ -147,10 +151,11 @@ export async function GET(
       wrapTool: approvalWrapper,
     });
 
-    result.session.agent.state.systemPrompt = buildAgentSystemPrompt({
+    const systemPrompt = buildAgentSystemPrompt({
       customInstructions: userSettings?.agentCustomInstructions,
       toolConfig: resolvedToolConfig,
     });
+    lockSystemPrompt(result.session, systemPrompt);
 
     return { session: result.session, sessionDir };
   });
