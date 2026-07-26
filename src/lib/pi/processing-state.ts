@@ -129,14 +129,25 @@ Guidelines:
 /**
  * Lock the system prompt on an agent session so the Pi SDK cannot overwrite it.
  *
- * The Pi SDK's `emitBeforeAgentStart` resets `agent.state.systemPrompt` to the
- * default Pi prompt when no extensions return an override. This function uses
- * `Object.defineProperty` to make `systemPrompt` a read-only getter that always
- * returns the Saale prompt, preventing the SDK from silently replacing it.
+ * The Pi SDK's `prepareNextTurnWithContext` uses
+ * `this._systemPromptOverride ?? this._baseSystemPrompt` to determine the
+ * system prompt sent to the model — NOT `agent.state.systemPrompt` (which is
+ * just a reflection property). `emitBeforeAgentStart` resets
+ * `_systemPromptOverride` to undefined when no extensions return an override,
+ * causing the default Pi prompt (`_baseSystemPrompt`) to be used.
+ *
+ * This function overwrites `_baseSystemPrompt` with the Saale prompt and locks
+ * both the internal and external properties to prevent the SDK from replacing it.
  *
  * Must be called after `createAgentSession` returns and before `session.agent.prompt()`.
  */
 export function lockSystemPrompt(session: AgentSession, prompt: string): void {
+  // @ts-expect-error — _baseSystemPrompt is internal to the Pi SDK
+  session._baseSystemPrompt = prompt;
+  // @ts-expect-error — _systemPromptOverride is internal to the Pi SDK
+  session._systemPromptOverride = prompt;
+
+  // Lock agent.state.systemPrompt (reflection property used by getSystemPrompt)
   Object.defineProperty(session.agent.state, "systemPrompt", {
     get() {
       return prompt;
