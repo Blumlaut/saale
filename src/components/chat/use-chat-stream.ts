@@ -413,9 +413,12 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     setMessages((prev) => {
       const nextTurn = parsed.turnIndex + 1;
       const nextId = `streaming-${nextTurn}`;
-      // Don't create a duplicate if the streaming message already exists
-      // (e.g. content events created it before turn_end on buffer replay)
+      // Don't create if the streaming message already exists
       if (prev.some((m) => m.id === nextId)) {
+        return prev;
+      }
+      // Don't create if the next turn is already saved (buffer replay of completed turns)
+      if (savedTurnsRef.current.has(nextTurn)) {
         return prev;
       }
       const rootId = rootMessageIdRef.current;
