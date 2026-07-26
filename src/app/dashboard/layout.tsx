@@ -6,6 +6,10 @@ import { MobileNav } from "@/components/layout/mobile-nav";
 import { ImpersonationBanner } from "@/components/layout/impersonation-banner";
 import { KeyboardShortcutsProvider } from "@/components/providers/keyboard-shortcuts-provider";
 
+// All dashboard pages require auth and redirect if unauthenticated —
+// no point prerendering them as static content.
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({
     headers: await headers(),
