@@ -679,25 +679,34 @@ export async function GET(
               };
             });
 
-            // Save if no turn_end events fired (single-turn response)
-            if (turnIndex === 0) {
-              pendingSaves.push(
-                saveAssistantMessage(
-                  sessionId,
-                  finalText,
-                  finalThinking || undefined,
-                  toolCalls.length > 0 ? toolCalls : undefined,
-                  null,
-                )
-                  .then((msg) => {
-                    log("db_save", `single-turn msgId=${msg.id}`);
-                    dispatcher.emit("message_saved", { messageId: msg.id, turnIndex: 0 });
-                  })
-                  .catch((err) => {
-                    console.error("Failed to save single-turn assistant message:", err);
-                  }),
-              );
-            }
+            // Always finalize: update existing message (multi-turn) or create new (single-turn).
+            // turn_end saves with turn-level content (may be empty text + tool calls).
+            // agent_end has the final accumulated content from all turns.
+            const existingMessageId = rootMessageId ?? undefined;
+            pendingSaves.push(
+              saveAssistantMessage(
+                sessionId,
+                finalText,
+                finalThinking || undefined,
+                toolCalls.length > 0 ? toolCalls : undefined,
+                null,
+                existingMessageId,
+              )
+                .then((msg) => {
+                  log(
+                    "db_save",
+                    `agent_end ${existingMessageId ? "updated" : "created"} msgId=${msg.id}`,
+                  );
+                  const turnIndexForSave = existingMessageId ? turnIndex - 1 : 0;
+                  dispatcher.emit("message_saved", {
+                    messageId: msg.id,
+                    turnIndex: Math.max(0, turnIndexForSave),
+                  });
+                })
+                .catch((err) => {
+                  console.error("Failed to save agent_end assistant message:", err);
+                }),
+            );
           }
 
           // Always clear processingSince and increment message count
