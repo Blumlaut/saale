@@ -278,7 +278,13 @@ function wireStreamListeners(opts: StreamListenerOpts) {
 
   // ── Token: update streaming message content ───────────────────────────
   eventSource.addEventListener("token", (event: MessageEvent) => {
-    const parsed = JSON.parse(event.data) as { text: string };
+    let parsed: { text: string };
+    try {
+      parsed = JSON.parse(event.data) as { text: string };
+    } catch {
+      console.error("Malformed token event:", event.data?.slice(0, 200));
+      return;
+    }
     setMessages((prev) => {
       const currentId = getCurrentStreamingId(prev);
       // If no streaming message exists (e.g. reconnect mid-turn), create one
@@ -304,7 +310,13 @@ function wireStreamListeners(opts: StreamListenerOpts) {
 
   // ── Thinking: update streaming message thinking ───────────────────────
   eventSource.addEventListener("thinking", (event: MessageEvent) => {
-    const parsed = JSON.parse(event.data) as { thinking: string };
+    let parsed: { thinking: string };
+    try {
+      parsed = JSON.parse(event.data) as { thinking: string };
+    } catch {
+      console.error("Malformed thinking event:", event.data?.slice(0, 200));
+      return;
+    }
     setMessages((prev) => {
       const currentId = getCurrentStreamingId(prev);
       // If no streaming message exists (e.g. reconnect mid-turn), create one
