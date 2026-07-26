@@ -34,6 +34,8 @@ export function useChatStream(
   const lastEventIdRef = useRef("");
   // Track the root (first turn) message ID for parentMessageId of subsequent turns.
   const rootMessageIdRef = useRef<string | null>(null);
+  // Track which turns have been saved to DB (for correct turn index on reconnect).
+  const savedTurnsRef = useRef(new Set<number>());
 
   /** Close the current EventSource and clear refs. */
   const closeEventSource = useCallback(() => {
@@ -87,6 +89,10 @@ export function useChatStream(
         clearTimeout(reconnectTimerRef.current);
       }
 
+      // Reset refs for reconnection
+      savedTurnsRef.current = new Set();
+      rootMessageIdRef.current = null;
+
       setIsLoading(true);
 
       const reconnectUrl = lastEventIdRef.current
@@ -111,6 +117,7 @@ export function useChatStream(
         setPendingApprovals,
         lastEventIdRef,
         rootMessageIdRef,
+        savedTurnsRef,
         onDone,
         onTokenUsage,
         onCompactionStart,
@@ -151,6 +158,10 @@ export function useChatStream(
    */
   const connectStream = useCallback(
     (streamUrl: string) => {
+      // Reset refs for new connection
+      savedTurnsRef.current = new Set();
+      rootMessageIdRef.current = null;
+
       // Add initial streaming message (turn 0)
       setMessages((prev) => [
         ...prev,
@@ -182,6 +193,7 @@ export function useChatStream(
         setPendingApprovals,
         lastEventIdRef,
         rootMessageIdRef,
+        savedTurnsRef,
         onDone,
         onTokenUsage,
         onCompactionStart,
@@ -224,6 +236,7 @@ interface StreamListenerOpts {
   setPendingApprovals: Dispatch<SetStateAction<ApprovalData[]>>;
   lastEventIdRef: React.MutableRefObject<string>;
   rootMessageIdRef: React.MutableRefObject<string | null>;
+  savedTurnsRef: React.MutableRefObject<Set<number>>;
   onDone: () => void;
   onTokenUsage: ((usage: TokenUsage) => void) | undefined;
   onCompactionStart: (() => void) | undefined;
@@ -232,7 +245,7 @@ interface StreamListenerOpts {
 }
 
 function wireStreamListeners(opts: StreamListenerOpts) {
-  const { eventSource, setMessages, lastEventIdRef, rootMessageIdRef } = opts;
+  const { eventSource, setMessages, lastEventIdRef, rootMessageIdRef, savedTurnsRef } = opts;
 
   // Track last event ID for potential reconnection.
   const trackEventId = (e: MessageEvent) => {
@@ -261,7 +274,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       const currentId = getCurrentStreamingId(prev);
       // If no streaming message exists (e.g. reconnect mid-turn), create one
       if (currentId === "streaming-0" && !prev.some((m) => m.id.startsWith("streaming-"))) {
-        const nextTurn = getNextStreamingTurn(prev);
+        const nextTurn = getNextStreamingTurn(prev, savedTurnsRef.current);
         return [
           ...prev,
           {
@@ -287,7 +300,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       const currentId = getCurrentStreamingId(prev);
       // If no streaming message exists (e.g. reconnect mid-turn), create one
       if (currentId === "streaming-0" && !prev.some((m) => m.id.startsWith("streaming-"))) {
-        const nextTurn = getNextStreamingTurn(prev);
+        const nextTurn = getNextStreamingTurn(prev, savedTurnsRef.current);
         return [
           ...prev,
           {
@@ -319,7 +332,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       const currentId = getCurrentStreamingId(prev);
       // If no streaming message exists (e.g. reconnect mid-tool), create one
       if (currentId === "streaming-0" && !prev.some((m) => m.id.startsWith("streaming-"))) {
-        const nextTurn = getNextStreamingTurn(prev);
+        const nextTurn = getNextStreamingTurn(prev, savedTurnsRef.current);
         return [
           ...prev,
           {
@@ -398,14 +411,18 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       thinking?: string;
     };
     setMessages((prev) => {
-      // The current streaming message for this turn will be replaced by message_saved
-      // Add a new streaming message for the next turn, using the tracked root ID
       const nextTurn = parsed.turnIndex + 1;
+      const nextId = `streaming-${nextTurn}`;
+      // Don't create a duplicate if the streaming message already exists
+      // (e.g. content events created it before turn_end on buffer replay)
+      if (prev.some((m) => m.id === nextId)) {
+        return prev;
+      }
       const rootId = rootMessageIdRef.current;
       return [
         ...prev,
         {
-          id: `streaming-${nextTurn}`,
+          id: nextId,
           role: "assistant",
           content: "",
           thinking: undefined,
@@ -425,6 +442,8 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     if (parsed.turnIndex === 0) {
       rootMessageIdRef.current = parsed.messageId;
     }
+    // Track saved turns for correct turn index on reconnect
+    savedTurnsRef.current.add(parsed.turnIndex);
     setMessages((prev) =>
       prev.map((m) =>
         m.id === `streaming-${parsed.turnIndex}` ? { ...m, id: parsed.messageId } : m,
@@ -501,14 +520,21 @@ function getCurrentStreamingId(messages: Message[]): string {
 }
 
 /** Get the next streaming turn index (one higher than the current max). */
-function getNextStreamingTurn(messages: Message[]): number {
+function getNextStreamingTurn(messages: Message[], savedTurns: Set<number>): number {
   let maxTurn = -1;
+  // Check existing streaming messages
   for (const m of messages) {
     if (m.id.startsWith("streaming-")) {
       const turn = parseInt(m.id.slice("streaming-".length), 10);
       if (!isNaN(turn) && turn > maxTurn) {
         maxTurn = turn;
       }
+    }
+  }
+  // Also check saved turns (turns that have been persisted to DB)
+  for (const turn of savedTurns) {
+    if (turn > maxTurn) {
+      maxTurn = turn;
     }
   }
   return maxTurn + 1;
