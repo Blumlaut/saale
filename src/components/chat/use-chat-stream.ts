@@ -261,11 +261,20 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     "tool_end",
     "turn_end",
     "message_saved",
+    "saved_turns",
     "done",
     "error",
   ] as const) {
     eventSource.addEventListener(type, trackEventId);
   }
+
+  // ── Saved turns: seed savedTurnsRef from DB (reconnect path) ──────────
+  eventSource.addEventListener("saved_turns", (event: MessageEvent) => {
+    const parsed = JSON.parse(event.data) as { turns: number[] };
+    for (const turn of parsed.turns) {
+      savedTurnsRef.current.add(turn);
+    }
+  });
 
   // ── Token: update streaming message content ───────────────────────────
   eventSource.addEventListener("token", (event: MessageEvent) => {
@@ -411,19 +420,34 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       thinking?: string;
     };
     setMessages((prev) => {
+      // Apply final text/thinking to the current streaming message.
+      // The server flushes the final token before turn_end, but this is
+      // a safety net in case the token event is missed or arrives late.
+      const currentId = getCurrentStreamingId(prev);
+      const updated = prev.map((m) => {
+        if (m.id === currentId) {
+          return {
+            ...m,
+            content: parsed.text ?? m.content,
+            thinking: parsed.thinking ?? m.thinking,
+          };
+        }
+        return m;
+      });
+
       const nextTurn = parsed.turnIndex + 1;
       const nextId = `streaming-${nextTurn}`;
       // Don't create if the streaming message already exists
-      if (prev.some((m) => m.id === nextId)) {
-        return prev;
+      if (updated.some((m) => m.id === nextId)) {
+        return updated;
       }
       // Don't create if the next turn is already saved (buffer replay of completed turns)
       if (savedTurnsRef.current.has(nextTurn)) {
-        return prev;
+        return updated;
       }
       const rootId = rootMessageIdRef.current;
       return [
-        ...prev,
+        ...updated,
         {
           id: nextId,
           role: "assistant",
