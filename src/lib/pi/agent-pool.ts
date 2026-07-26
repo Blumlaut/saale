@@ -1,5 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import path from "path";
+import { unwireSessionPersistence } from "@/lib/pi/session-persistence";
 
 interface PooledSession {
   session: AgentSession;
@@ -40,6 +41,12 @@ export async function clearDispatcher(sessionId: string): Promise<void> {
     await dispatcher.cleanup();
   }
   dispatchers.delete(sessionId);
+}
+
+/** Clear both dispatcher and persistence for a session. */
+async function clearSessionResources(sessionId: string): Promise<void> {
+  unwireSessionPersistence(sessionId);
+  await clearDispatcher(sessionId);
 }
 const MAX_IDLE_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_POOL_SIZE = 100;
@@ -114,9 +121,9 @@ export async function remove(key: string): Promise<void> {
     entry.session.dispose();
     pool.delete(key);
   }
-  // Dispatchers are keyed by sessionId, not pool key
+  // Dispatchers and persistence are keyed by sessionId, not pool key
   const sessionId = key.split(":").slice(1).join(":");
-  await clearDispatcher(sessionId);
+  await clearSessionResources(sessionId);
 }
 
 /**
@@ -141,9 +148,9 @@ export async function evictIdle(): Promise<void> {
       entry.session.dispose();
       pool.delete(key);
     }
-    // Dispatchers are keyed by sessionId, not pool key
+    // Persistence and dispatchers are keyed by sessionId, not pool key
     const sessionId = key.split(":").slice(1).join(":");
-    await clearDispatcher(sessionId);
+    await clearSessionResources(sessionId);
   }
 
   // Hard cap — evict oldest idle sessions if over limit
@@ -156,9 +163,9 @@ export async function evictIdle(): Promise<void> {
       oldestEntry.session.dispose();
       pool.delete(oldestKey);
     }
-    // Dispatchers are keyed by sessionId, not pool key
+    // Persistence and dispatchers are keyed by sessionId, not pool key
     const sessionId = oldestKey.split(":").slice(1).join(":");
-    await clearDispatcher(sessionId);
+    await clearSessionResources(sessionId);
   }
 }
 
@@ -185,9 +192,9 @@ export async function clearPool(): Promise<void> {
     entry.session.dispose();
   }
   pool.clear();
-  // Clean up all dispatchers
-  for (const [key] of dispatchers) {
-    await clearDispatcher(key);
+  // Clean up all dispatchers and persistence
+  for (const [sessionId] of dispatchers) {
+    await clearSessionResources(sessionId);
   }
 }
 
@@ -201,9 +208,9 @@ export async function shutdown(): Promise<void> {
     entry.session.dispose();
   }
   pool.clear();
-  // Clean up all dispatchers
-  for (const [key] of dispatchers) {
-    await clearDispatcher(key);
+  // Clean up all dispatchers and persistence
+  for (const [sessionId] of dispatchers) {
+    await clearSessionResources(sessionId);
   }
 }
 
