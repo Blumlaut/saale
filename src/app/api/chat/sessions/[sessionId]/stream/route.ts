@@ -18,7 +18,8 @@ import {
 } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
-import { handleReconnectFromRedis, saveAssistantMessage } from "@/lib/pi/stream-helpers";
+import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
+import { getBufferedEvents } from "@/lib/pi/sse-buffer";
 import { buildAgentSystemPrompt, clearProcessingSince } from "@/lib/pi/processing-state";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
@@ -26,9 +27,17 @@ import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
  *
- * Streams Pi agent responses as Server-Sent Events.
- * Uses long-lived agents backed by Pi's file-based SessionManager.
- * Emits: token, thinking, tool_start, tool_end, turn_end, done, compaction_start, compaction_end
+ * Single unified path for both initial connections and reconnection.
+ * Uses Last-Event-ID header for SSE-spec-compliant reconnection:
+ * - Browser's EventSource automatically sends Last-Event-ID on reconnect
+ * - Server replays buffered events from Redis sorted set
+ * - Then subscribes to live agent events via the pooled dispatcher
+ *
+ * No separate Redis pub/sub reconnect path — the agent pool + SSE buffer
+ * provide a single reliable source of truth.
+ *
+ * Emits: token, thinking, tool_start, tool_end, turn_end, done,
+ *         compaction_start, compaction_end, error, tool_approval_request
  */
 export async function GET(
   request: NextRequest,
@@ -36,53 +45,45 @@ export async function GET(
 ) {
   const { sessionId } = await params;
 
+  // ── Auth ──────────────────────────────────────────────────────────────
   const authResult = await requireChatSessionOwner(sessionId);
   if (!authResult.ok) return new Response("Unauthorized", { status: 401 });
   const chatSession = authResult.session;
 
-  // Fetch user's custom agent system prompt + tool policies
+  // ── User settings (system prompt + tool policies) ─────────────────────
   const userSettings = await prisma.appSettings.findUnique({
     where: { userId: authResult.userId },
     select: { agentCustomInstructions: true, toolPolicies: true },
   });
 
-  // Build policy lookup from user settings (default: per-tool sane default)
   const toolPolicies = userSettings?.toolPolicies as Record<string, "off" | "ask" | "allow"> | null;
   const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
-  // Per-session dispatcher from the pool — survives across requests so the
-  // approval wrapper (baked into pooled agents) always emits to the current
-  // active connection, not a stale one from a previous request.
+  // ── Dispatcher (per-session, survives across requests) ────────────────
   const dispatcher = getDispatcher(sessionId);
 
-  // Build the approval wrapper function
+  // Approval wrapper — emits approval requests through the dispatcher
   const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
-    wrapWithApprovalGate(
-      tool,
-      authResult.userId,
-      sessionId,
-      getPolicy,
-      (request: ApprovalRequest) => {
-        dispatcher.emit("tool_approval_request", {
-          toolCallId: request.toolCallId,
-          toolName: request.toolName,
-          args: request.args,
-          expiresAt: new Date(request.expiresAt).toISOString(),
-        });
-      },
-    );
+    wrapWithApprovalGate(tool, authResult.userId, sessionId, getPolicy, (req: ApprovalRequest) => {
+      dispatcher.emit("tool_approval_request", {
+        toolCallId: req.toolCallId,
+        toolName: req.toolName,
+        args: req.args,
+        expiresAt: new Date(req.expiresAt).toISOString(),
+      });
+    });
 
   if (!chatSession) {
     return new Response("Not found", { status: 404 });
   }
 
-  // Resolve tool config
+  // ── Tool config ───────────────────────────────────────────────────────
   const resolvedToolConfig: ToolConfig = chatSession.toolConfig
     ? { ...(chatSession.toolConfig as ToolConfig) }
     : {};
 
-  // Resolve model: session-level first, then fall back to user/admin defaults
+  // ── Model resolution ──────────────────────────────────────────────────
   let modelProvider = chatSession.modelProvider || undefined;
   let modelName = chatSession.modelName || undefined;
 
@@ -96,7 +97,6 @@ export async function GET(
 
   // No model available — return an error stream
   if (!modelProvider || !modelName) {
-    // Clear in-progress flag so the user can try again
     clearProcessingSince(sessionId).catch(console.error);
 
     const encoder = new TextEncoder();
@@ -124,33 +124,15 @@ export async function GET(
     );
   }
 
-  // Debug log prefix
+  // ── Debug log prefix ──────────────────────────────────────────────────
   const log = (tag: string, ...args: unknown[]) =>
     // eslint-disable-next-line no-console
     console.log(`[chat:${sessionId}] ${tag}`, ...args);
 
-  // Check for reconnect request
-  const url = new URL(request.url);
-  const isReconnect = url.searchParams.get("reconnect") === "1";
-
-  if (isReconnect && chatSession.processingSince) {
-    // Reconnect: the primary stream handler publishes events to Redis.
-    // The reconnected client subscribes to Redis pub/sub for catch-up.
-    // This works whether the agent is in the pool (same process) or not (restart).
-    //
-    // Always use Redis when processingSince is set — isStreaming from the pooled
-    // agent is unreliable during tool-heavy workloads (it can be false between
-    // agent_end and the next tool call while the agent is still actively working).
-    // The Redis path has DB polling as a fallback for the stale-processingSince edge case.
-    return handleReconnectFromRedis(sessionId, request);
-  }
-
-  // ── Primary stream path ──────────────────────────────────────────────
-
+  // ── Agent pool ────────────────────────────────────────────────────────
   const poolKey = getPoolKey(authResult.userId, sessionId);
   const sessionDir = getSessionDir(authResult.userId, sessionId);
 
-  // Get or create pooled agent
   const existingPoolEntry = getPoolEntry(poolKey);
   const pooled = await createAndPool(poolKey, async () => {
     log("pool", "miss — creating new agent");
@@ -166,7 +148,6 @@ export async function GET(
       wrapTool: approvalWrapper,
     });
 
-    // Set system prompt on the agent
     result.session.agent.state.systemPrompt = buildAgentSystemPrompt({
       customInstructions: userSettings?.agentCustomInstructions,
       toolConfig: resolvedToolConfig,
@@ -181,12 +162,11 @@ export async function GET(
       `hit — isStreaming=${pooled.session.isStreaming}, lastPromptedMessageId=${pooled.lastPromptedMessageId}`,
     );
   }
-  log("pool", "lastPromptedMessageId=", pooled.lastPromptedMessageId);
 
-  // Register session for explicit cancellation (stop endpoint)
+  // ── Register session for cancellation ─────────────────────────────────
   await registerActiveSession(authResult.userId, sessionId);
 
-  // Get the latest user message from DB (the one to prompt with)
+  // ── Messages + prompt guard ───────────────────────────────────────────
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
@@ -202,7 +182,6 @@ export async function GET(
 
   const lastMessage = messages[messages.length - 1];
 
-  // Double-prompting guard: only prompt if this message hasn't been processed
   const promptGuard = evaluatePromptGuard(
     lastMessage
       ? {
@@ -217,11 +196,10 @@ export async function GET(
 
   log(
     "prompt_guard",
-    `shouldPrompt=${shouldPrompt} (${promptGuard.reason}), lastMessage.id=${lastMessage?.id}, role=${lastMessage?.role}, lastPromptedMessageId=${pooled.lastPromptedMessageId}, dbMessages=${messages.length}`,
+    `shouldPrompt=${shouldPrompt} (${promptGuard.reason}), lastMessage.id=${lastMessage?.id}, role=${lastMessage?.role}, lastPromptedMessageId=${pooled.lastPromptedMessageId}`,
   );
 
-  // Pre-load images for the current (last) user message.
-  // Must be done outside the stream's start() callback (which is not async).
+  // ── Pre-load images for the current user message ──────────────────────
   const lastMessageImages: ImageContent[] = [];
   if (
     shouldPrompt &&
@@ -239,12 +217,66 @@ export async function GET(
     }
   }
 
-  // Create SSE stream
+  // ── Reconnect: fetch buffered events (before creating the stream) ─────
+  // ReadableStream's start() callback is synchronous, so we must fetch
+  // buffered events here and replay them inside start() via emitSync().
+  //
+  // Last-Event-ID can come from:
+  // 1. `Last-Event-ID` header (browser's EventSource sends this on auto-reconnect)
+  // 2. `?lastEventId=N` query param (for manual reconnect from client-side logic)
+  //    EventSource cannot send custom headers, so we use query params for manual reconnect.
+  const lastEventIdHeader = request.headers.get("last-event-id");
+  const url = new URL(request.url);
+  const lastEventIdQuery = url.searchParams.get("lastEventId");
+  const lastEventId = lastEventIdHeader
+    ? parseInt(lastEventIdHeader, 10)
+    : lastEventIdQuery
+      ? parseInt(lastEventIdQuery, 10)
+      : -1;
+  const isReconnect = lastEventId >= 0;
+
+  let bufferedEvents: { id: number; event: string; data: unknown }[] = [];
+  let streamAlreadyFinished = false;
+
+  // Replay buffered events in two scenarios:
+  // 1. Explicit reconnect with lastEventId (browser auto-reconnect or manual ?lastEventId=N)
+  // 2. Agent already processing but no lastEventId (page refresh, no auto-reconnect)
+  //    In this case, replay ALL buffered events from the start.
+  const needsBufferReplay = isReconnect || (!shouldPrompt && pooled.lastPromptedMessageId);
+
+  if (needsBufferReplay) {
+    const fromId = isReconnect ? lastEventId : -1;
+    log("reconnect", `replaying buffer from id ${fromId} (isReconnect=${isReconnect})`);
+    bufferedEvents = (await getBufferedEvents(sessionId, fromId)) || [];
+    log("reconnect", `fetched ${bufferedEvents.length} buffered events`);
+
+    // If the buffer contains a terminal event, the stream already ended
+    for (const evt of bufferedEvents) {
+      if (evt.event === "done" || evt.event === "error") {
+        streamAlreadyFinished = true;
+        break;
+      }
+    }
+  }
+
+  // ── Determine reconnect action (when not prompting) ───────────────────
+  let emitDoneImmediately = false;
+  if (!shouldPrompt && pooled.lastPromptedMessageId && !streamAlreadyFinished) {
+    const reconnectAction = evaluateReconnectAction(
+      pooled.session.isStreaming,
+      pooled.lastPromptedMessageId,
+    );
+    if (reconnectAction.type === "emit-done") {
+      emitDoneImmediately = true;
+      log("prompt_guard", `reconnect: ${reconnectAction.reason}, emitting done`);
+    } else {
+      log("prompt_guard", `reconnect: ${reconnectAction.reason}, waiting for events`);
+    }
+  }
+
+  // ── SSE stream state ──────────────────────────────────────────────────
   const encoder = new TextEncoder();
 
-  /**
-   * Safely close the controller (idempotent — won't throw if already closed).
-   */
   function closeController(controller: ReadableStreamDefaultController): void {
     dispatcher.close();
     try {
@@ -254,114 +286,124 @@ export async function GET(
     }
   }
 
-  // Track tool call results for the final message
+  // Tool call results tracking
   const toolCallResults: Map<
     string,
     { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
   > = new Map();
 
-  // Track cumulative token usage across all turns
+  // Token usage tracking
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let totalCacheReadTokens = 0;
   let totalCacheWriteTokens = 0;
   let contextWindow = 0;
 
-  // Track turn state
+  // Turn state
   let turnIndex = 0;
   let currentTurnText = "";
   let currentTurnThinking = "";
-  // Track tool calls that belong to the current turn (by toolCallId)
   const currentTurnToolCallIds = new Set<string>();
-
-  // Root assistant message ID (first turn's DB message id, used as parentMessageId for subsequent turns)
   let rootMessageId: string | null = null;
 
-  // Guard to ensure agent_end DB persistence runs exactly once across all SSE connections.
-  // Multiple connections can exist (original + reconnects); each has its own agent_end listener.
-  // Only the first to fire should save to DB and clear processingSince.
+  // Guard: agent_end DB persistence runs exactly once across all SSE connections
   let agentEndPersisted = false;
 
-  // Throttle SSE token/thinking events to prevent flooding the frontend.
-  // message_update fires ~20/sec; throttling to ~5/sec (200ms) keeps the UI responsive
-  // by avoiding excessive markdown re-parses on the client.
+  // Throttle: ~5/sec to keep UI responsive
   const TOKEN_THROTTLE_MS = 200;
   let lastTokenSend = 0;
   let lastThinkingSend = 0;
 
+  // ── Create SSE stream ─────────────────────────────────────────────────
   const stream = new ReadableStream({
     start(controller) {
-      // Wire the dispatcher to this controller — all events (including approval
-      // requests from tool wrappers created outside start()) now go through one path.
+      // Wire dispatcher to this controller — replaces any old connection
       dispatcher.wire(controller, encoder);
 
-      // Subscribe to agent events for SSE forwarding (token, thinking, tool events).
-      // This is unsubscribed on client disconnect.
+      // ── Replay buffered events (reconnect path) ──────────────────────
+      if (bufferedEvents.length > 0) {
+        for (const evt of bufferedEvents) {
+          dispatcher.emitSync(evt.event, evt.data, evt.id);
+        }
+      }
+
+      // ── Terminal: stream already finished in buffer ───────────────────
+      if (streamAlreadyFinished) {
+        log("reconnect", "stream already finished in buffer, closing");
+        closeController(controller);
+        return;
+      }
+
+      // ── Terminal: agent already finished ──────────────────────────────
+      if (emitDoneImmediately) {
+        dispatcher.emit("done", {});
+        closeController(controller);
+        return;
+      }
+
+      // ── Subscribe to agent events ─────────────────────────────────────
       const unsubscribeSse = pooled.session.subscribe((event) => {
         log(
           "event",
           event.type,
           "message" in event && event.message ? { role: event.message.role } : undefined,
         );
+
         switch (event.type) {
+          // ── Token usage tracking ────────────────────────────────────────
           case "message_end": {
-            // Track token usage from assistant messages
-            if (event.message.role === "assistant") {
-              const msg = event.message as unknown as Record<string, unknown>;
-              const usage = msg.usage as Record<string, number> | undefined;
-              if (usage) {
-                totalInputTokens += usage.input ?? 0;
-                totalOutputTokens += usage.output ?? 0;
-                totalCacheReadTokens += usage.cacheRead ?? 0;
-                totalCacheWriteTokens += usage.cacheWrite ?? 0;
+            if (event.message.role !== "assistant") break;
 
-                // Get context window from the model (set on first usage)
-                if (!contextWindow) {
-                  contextWindow = pooled.session.model?.contextWindow ?? 0;
-                }
+            const msg = event.message as unknown as Record<string, unknown>;
+            const usage = msg.usage as Record<string, number> | undefined;
+            if (!usage) break;
 
-                // Emit token usage to frontend
-                dispatcher.emit("token_usage", {
-                  input: totalInputTokens,
-                  output: totalOutputTokens,
-                  cacheRead: totalCacheReadTokens,
-                  cacheWrite: totalCacheWriteTokens,
-                  total: totalInputTokens + totalOutputTokens,
-                  contextWindow,
-                });
+            totalInputTokens += usage.input ?? 0;
+            totalOutputTokens += usage.output ?? 0;
+            totalCacheReadTokens += usage.cacheRead ?? 0;
+            totalCacheWriteTokens += usage.cacheWrite ?? 0;
 
-                // Check if we need to compact (auto-compaction doesn't fire for direct agent.prompt())
-                // Trigger at 85% of context window to leave room for the compaction summary
-                const compactionThreshold = contextWindow * 0.85;
-                if (totalInputTokens + totalOutputTokens > compactionThreshold) {
+            if (!contextWindow) {
+              contextWindow = pooled.session.model?.contextWindow ?? 0;
+            }
+
+            dispatcher.emit("token_usage", {
+              input: totalInputTokens,
+              output: totalOutputTokens,
+              cacheRead: totalCacheReadTokens,
+              cacheWrite: totalCacheWriteTokens,
+              total: totalInputTokens + totalOutputTokens,
+              contextWindow,
+            });
+
+            // Auto-compaction at 85% context window
+            const compactionThreshold = contextWindow * 0.85;
+            if (totalInputTokens + totalOutputTokens > compactionThreshold) {
+              log(
+                "compaction",
+                `auto-triggering (${totalInputTokens + totalOutputTokens}/${contextWindow})`,
+              );
+              pooled.session
+                .compact()
+                .then((result) => {
                   log(
                     "compaction",
-                    `auto-triggering compaction (${totalInputTokens + totalOutputTokens}/${contextWindow})`,
+                    `completed: ${result?.tokensBefore ?? "unknown"} tokens before`,
                   );
-                  // Compact in the background — don't block the stream
-                  pooled.session
-                    .compact()
-                    .then((result) => {
-                      log(
-                        "compaction",
-                        `completed: ${result?.tokensBefore ?? "unknown"} tokens before compaction`,
-                      );
-                    })
-                    .catch((err) => {
-                      console.error("Auto-compaction failed:", err);
-                    });
-                }
-              }
+                })
+                .catch((err) => {
+                  console.error("Auto-compaction failed:", err);
+                });
             }
             break;
           }
 
+          // ── Streaming text + thinking ───────────────────────────────────
           case "message_update": {
             if (event.message.role !== "assistant") return;
-            // Narrow to assistant message with content array
             const msg = event.message as { content: unknown[] };
 
-            // Extract thinking content
+            // Thinking
             const thinkingBlock = msg.content.find(
               (c) =>
                 typeof c === "object" &&
@@ -377,7 +419,7 @@ export async function GET(
               }
             }
 
-            // Extract cumulative text from all text blocks
+            // Cumulative text
             const textBlocks = msg.content.filter(
               (c) =>
                 typeof c === "object" &&
@@ -395,7 +437,7 @@ export async function GET(
               }
             }
 
-            // Track tool call IDs appearing in this message
+            // Track tool call IDs
             for (const content of msg.content) {
               if (
                 typeof content === "object" &&
@@ -408,6 +450,7 @@ export async function GET(
             break;
           }
 
+          // ── Tool execution ──────────────────────────────────────────────
           case "tool_execution_start": {
             toolCallResults.set(event.toolCallId, {
               name: event.toolName,
@@ -418,7 +461,8 @@ export async function GET(
               toolName: event.toolName,
               args: event.args,
             });
-            // Persist active tool to DB for SSE reconnection (survives page refresh mid-tool)
+
+            // Persist active tool to DB (for page refresh mid-tool)
             prisma.chatSession
               .update({
                 where: { id: sessionId },
@@ -436,7 +480,6 @@ export async function GET(
           }
 
           case "tool_execution_end": {
-            // Normalize result to string for consistent frontend typing.
             const resultStr = normalizeToolResult(event.result);
             const existing = toolCallResults.get(event.toolCallId);
             if (existing) {
@@ -449,6 +492,7 @@ export async function GET(
               result: resultStr,
               isError: event.isError,
             });
+
             // Clear active tool from DB
             prisma.chatSession
               .update({
@@ -466,12 +510,10 @@ export async function GET(
             break;
           }
 
+          // ── Turn boundary ───────────────────────────────────────────────
           case "turn_end": {
-            log(
-              "turn_end",
-              `turnIndex=${turnIndex}, textLen=${currentTurnText.length}, thinkingLen=${(currentTurnThinking || "").length}`,
-            );
-            // Collect tool calls for this turn from the message content
+            log("turn_end", `turnIndex=${turnIndex}, textLen=${currentTurnText.length}`);
+
             const assistantMsg =
               event.message.role === "assistant" ? (event.message as { content: unknown[] }) : null;
             const toolCallBlocks = assistantMsg
@@ -493,26 +535,22 @@ export async function GET(
               };
             });
 
-            // Save this turn's message to DB
+            // Save to DB
             const savedMessage = saveAssistantMessage(
               sessionId,
               currentTurnText,
               currentTurnThinking || undefined,
               turnToolCalls.length > 0 ? turnToolCalls : undefined,
-              rootMessageId, // parentMessageId (null for first turn)
+              rootMessageId,
             );
 
             savedMessage.then((msg) => {
-              log(
-                "db_save",
-                `turnIndex=${turnIndex}, msgId=${msg.id}, textPreview=${currentTurnText.slice(0, 50)}`,
-              );
+              log("db_save", `turnIndex=${turnIndex}, msgId=${msg.id}`);
               if (!rootMessageId) {
                 rootMessageId = msg.id;
               }
             });
 
-            // Emit turn_end event to frontend
             dispatcher.emit("turn_end", {
               turnIndex,
               text: currentTurnText,
@@ -527,6 +565,7 @@ export async function GET(
             break;
           }
 
+          // ── Compaction ──────────────────────────────────────────────────
           case "compaction_start": {
             dispatcher.emit("compaction_start", { reason: event.reason });
             break;
@@ -557,33 +596,25 @@ export async function GET(
               });
             }
 
-            // Always clear processingSince — compaction interrupts the agent,
-            // so agent_end may never fire. This applies whether compaction
-            // succeeded, was aborted, or failed.
             clearProcessingSince(sessionId).catch((err) => {
               console.error("Failed to clear processingSince after compaction:", err);
             });
-
             break;
           }
 
+          // ── Agent finished (SSE forwarding — just log) ─────────────────
           case "agent_end": {
-            // DB persistence is handled by the separate agent_end listener below.
-            // This SSE forwarding handler just logs — the separate listener emits done.
             log("agent_end", `totalMessages=${event.messages.length}, turnIndex=${turnIndex}`);
             break;
           }
         }
       });
 
-      // Separate subscription for agent_end DB persistence.
-      // This survives client disconnects — ensures the final message is ALWAYS saved
-      // even if the SSE client refreshes/navigates away mid-stream.
+      // ── Agent-end persistence (survives client disconnect) ─────────────
       const unsubscribeAgentEnd = pooled.session.subscribe((event) => {
         if (event.type !== "agent_end") return;
 
-        // Atomic guard: only the first agent_end handler (across all SSE connections)
-        // persists to DB. This prevents duplicate saves when old + new listeners both fire.
+        // Atomic guard: only the first agent_end handler persists to DB
         if (!agentEndPersisted) {
           agentEndPersisted = true;
           log("agent_end", `persisting to DB (totalMessages=${event.messages.length})`);
@@ -644,9 +675,7 @@ export async function GET(
             }
           }
 
-          // Always clear processingSince and increment message count — regardless
-          // of whether there were assistant messages. If agent_end fires, the
-          // generation is done and the flag MUST be cleared.
+          // Always clear processingSince and increment message count
           Promise.all([
             clearProcessingSince(sessionId),
             prisma.chatSession.update({
@@ -658,27 +687,18 @@ export async function GET(
           unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
         }
 
-        // Always send done to this SSE client (safe — sendEvent catches closed controller)
+        // Always send done to this SSE client
         dispatcher.emit("done", {});
         closeController(controller);
-
-        // Clean up this listener
         unsubscribeAgentEnd();
-        // Also clean up SSE forwarding if still active
         unsubscribeSse();
       });
 
-      // Send the user message to the agent (only if this is a new message)
+      // ── Send prompt or wait for events ─────────────────────────────────
       if (shouldPrompt && lastMessage && lastMessage.role === "user") {
-        // Track that we've prompted this message
         pooled.lastPromptedMessageId = lastMessage.id;
-        log(
-          "prompt",
-          `sending prompt, message.id=${lastMessage.id}, content=${lastMessage.content?.slice(0, 60)}`,
-        );
+        log("prompt", `sending prompt, message.id=${lastMessage.id}`);
 
-        // Use agent.prompt() directly to bypass AgentSession's preflight logic
-        // which resets systemPrompt back to the Pi base prompt on every turn.
         const promptPromise =
           lastMessageImages.length > 0
             ? pooled.session.agent.prompt(lastMessage.content, lastMessageImages)
@@ -690,10 +710,8 @@ export async function GET(
           })
           .catch((err) => {
             console.error("agent.prompt() failed:", err);
-            // Unsubscribe both listeners to prevent leak
             unsubscribeSse();
             unsubscribeAgentEnd();
-            // Clear in-progress flag so the user can retry
             clearProcessingSince(sessionId).catch((updateErr) => {
               console.error("Failed to clear processingSince on error:", updateErr);
             });
@@ -702,29 +720,9 @@ export async function GET(
             dispatcher.emit("done", {});
             closeController(controller);
           });
-      } else if (!shouldPrompt && pooled.lastPromptedMessageId) {
-        // Reconnect case — agent already processed this message.
-        // Subscribe to events is already active above (catches in-progress turns).
-        const reconnectAction = evaluateReconnectAction(
-          pooled.session.isStreaming,
-          pooled.lastPromptedMessageId,
-        );
-        if (reconnectAction.type === "emit-done") {
-          // agent_end was emitted to the previous client — this new subscription
-          // won't see it, so emit done immediately.
-          log("prompt_guard", `reconnect: ${reconnectAction.reason}, emitting done`);
-          // Agent already finished — unsubscribe both and emit done
-          unsubscribeSse();
-          unsubscribeAgentEnd();
-          dispatcher.emit("done", {});
-          closeController(controller);
-        } else {
-          log("prompt_guard", `reconnect: ${reconnectAction.reason}, waiting for events`);
-        }
       }
 
-      // Handle client disconnect — stop SSE forwarding but keep the agent_end
-      // listener alive so the final message is still saved to the database.
+      // ── Client disconnect ──────────────────────────────────────────────
       request.signal.addEventListener("abort", () => {
         log("client", "disconnect detected, stopping SSE forwarding (agent continues)");
         unsubscribeSse();

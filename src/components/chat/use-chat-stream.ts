@@ -9,11 +9,17 @@ import { setupStreamListeners } from "./chat-stream-listeners";
 /**
  * Shared SSE stream orchestration for chat.
  *
- * All three stream paths (send, edit, reconnect) share the same pattern:
+ * All stream paths (send, edit, reconnect) share the same pattern:
  *  1. Reset streaming state
  *  2. Open EventSource
  *  3. Wire up common listeners via setupStreamListeners
  *  4. On done/error: finalize streaming + cleanup
+ *
+ * Reconnection uses the SSE spec's Last-Event-ID mechanism:
+ * - Server buffers all events with monotonic IDs in Redis
+ * - On reconnect, server replays buffered events from the last known ID
+ * - If no lastEventId is available (page refresh), server replays the full buffer
+ *   when the agent is already processing
  *
  * This hook centralizes that pattern so the main component stays lean.
  */
@@ -31,6 +37,10 @@ export function useChatStream(
   onCompactionEnd?: (summary?: string, tokensBefore?: number) => void,
 ) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track the last SSE event ID for reconnection.
+  // We extract this from MessageEvent.lastEventId since the server sends
+  // `id:` fields with every event.
+  const lastEventIdRef = useRef("");
 
   /**
    * Reset streaming state to empty. Called before opening a new stream.
@@ -68,7 +78,8 @@ export function useChatStream(
    * Start reconnection via SSE. Used when user refreshes during generation
    * or gets a 409 (already processing).
    *
-   * The stream endpoint subscribes to Redis pub/sub and forwards live events.
+   * The server replays buffered events from Redis and subscribes to live
+   * agent events. No separate Redis pub/sub path needed.
    */
   const startReconnection = useCallback(
     (onLoadMessages: () => Promise<unknown>, _onLoadSessionTitle: () => Promise<unknown>) => {
@@ -80,10 +91,15 @@ export function useChatStream(
       setIsLoading(true);
       resetStreaming();
 
-      const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream?reconnect=1`);
-      eventSourceRef.current = eventSource;
+      // Pass lastEventId if we have one (from a previous connection in this session).
+      // On page refresh, this will be empty — the server handles this by replaying
+      // the full buffer when the agent is already processing.
+      const reconnectUrl = lastEventIdRef.current
+        ? `/api/chat/sessions/${sessionId}/stream?lastEventId=${lastEventIdRef.current}`
+        : `/api/chat/sessions/${sessionId}/stream`;
 
-      let dbPollInterval: ReturnType<typeof setInterval> | null = null;
+      const eventSource = new EventSource(reconnectUrl);
+      eventSourceRef.current = eventSource;
 
       const cleanup = () => {
         eventSource.close();
@@ -91,10 +107,6 @@ export function useChatStream(
         if (reconnectTimerRef.current) {
           clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = null;
-        }
-        if (dbPollInterval) {
-          clearInterval(dbPollInterval);
-          dbPollInterval = null;
         }
       };
 
@@ -124,93 +136,15 @@ export function useChatStream(
         ...(onCompactionEnd ? { onCompactionEnd } : {}),
       });
 
-      // Resume event: backend DB polling detected generation is done.
-      eventSource.addEventListener("resume", () => {
-        cleanup();
-        setIsLoading(false);
-        void onLoadMessages();
-        markDone(sessionId);
-      });
-
-      // Tool resume: backend detected an in-progress tool (persisted to DB).
-      eventSource.addEventListener("tool_resume", (event: MessageEvent) => {
-        const parsed = JSON.parse(event.data) as {
-          toolCallId: string;
-          toolName: string;
-          args: Record<string, unknown>;
-          startedAt: string | null;
-        };
-        setStreaming((prev) => {
-          const next = {
-            ...prev,
-            current: {
-              ...prev.current,
-              toolCalls: [
-                ...prev.current.toolCalls,
-                {
-                  toolCallId: parsed.toolCallId,
-                  toolName: parsed.toolName,
-                  args: parsed.args ?? {},
-                  status: "running" as const,
-                  result: undefined,
-                  error: undefined,
-                },
-              ],
-            },
-          };
-          streamingRef.current = next;
-          return next;
-        });
-        // Reset safety timeout since we know the agent is still working
-        if (reconnectTimerRef.current) {
-          clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
-      });
-
-      // Safety timeout — if still loading after 15s, force-clear and reload from DB.
+      // Safety timeout — if still loading after 30s, force-clear and reload from DB.
+      // This handles edge cases where the buffer is stale or the agent crashed.
       reconnectTimerRef.current = setTimeout(() => {
         cleanup();
         finalizeStreaming(streamingRef.current, setMessages);
         setIsLoading(false);
         void onLoadMessages();
         markDone(sessionId);
-      }, 15_000);
-
-      // Fallback: poll the DB during reconnection.
-      let dbPollDone = false;
-      const markDbPollDone = () => {
-        dbPollDone = true;
-      };
-      for (const type of ["done", "error", "resume"] as const) {
-        eventSource.addEventListener(type, markDbPollDone);
-      }
-
-      dbPollInterval = setInterval(async () => {
-        if (dbPollDone) {
-          clearInterval(dbPollInterval!);
-          dbPollInterval = null;
-          return;
-        }
-        try {
-          const res = await fetch(`/api/chat/sessions/${sessionId}/messages`);
-          if (!res.ok) return;
-          const data = await res.json();
-          if (!data.session?.processingSince) {
-            const assistantMessages = data.messages?.filter(
-              (m: { role: string }) => m.role === "assistant",
-            );
-            if (assistantMessages && assistantMessages.length > 0) {
-              cleanup();
-              setIsLoading(false);
-              await onLoadMessages();
-              markDone(sessionId);
-            }
-          }
-        } catch (err) {
-          console.error("Reconnection DB poll error:", err);
-        }
-      }, 3000);
+      }, 30_000);
     },
     [
       sessionId,
@@ -239,6 +173,26 @@ export function useChatStream(
 
       const eventSource = new EventSource(streamUrl);
       eventSourceRef.current = eventSource;
+
+      // Track last event ID for potential reconnection.
+      // Extract from MessageEvent.lastEventId — the server sends `id:` fields.
+      const trackEventId = (e: MessageEvent) => {
+        if (e.lastEventId) {
+          lastEventIdRef.current = e.lastEventId;
+        }
+      };
+      eventSource.addEventListener("message", trackEventId);
+      for (const type of [
+        "token",
+        "thinking",
+        "tool_start",
+        "tool_end",
+        "turn_end",
+        "done",
+        "error",
+      ] as const) {
+        eventSource.addEventListener(type, trackEventId);
+      }
 
       const cleanup = () => {
         eventSource.close();
