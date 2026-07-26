@@ -11,9 +11,7 @@ import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 import type { Message, ApprovalData } from "./types";
 import { ChatHeader } from "./chat-header";
-import { useTypingAnimation } from "./use-typing-animation";
 import { useChatStream } from "./use-chat-stream";
-import { buildTurnMessage, finalizeStreaming, type StreamingState } from "./chat-streaming-state";
 import type { TokenUsage } from "./input-bar";
 
 export function ChatInterface({
@@ -26,29 +24,18 @@ export function ChatInterface({
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [streaming, setStreaming] = useState<StreamingState>({
-    turns: [],
-    current: { text: "", thinking: "", toolCalls: [] },
-    displayText: "",
-    displayThinking: "",
-  });
-
-  // Source of truth for streaming state — updated synchronously in event handlers.
-  const streamingRef = useRef<StreamingState>(streaming);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Session state (declared before useChatStream so setters are available)
+  // Session state
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
   const { streamingIds, markStreaming, markDone } = useStreamingSessions();
 
-  // Shared stream orchestration (SSE setup, reconnection, approval handling)
-  const { startReconnection, connectStream, closeEventSource, resetStreaming } = useChatStream(
+  // Shared stream orchestration
+  const { startReconnection, connectStream, closeEventSource } = useChatStream(
     sessionId,
-    streamingRef,
     eventSourceRef,
-    setStreaming,
     setMessages,
     setIsLoading,
     setPendingApprovals,
@@ -57,7 +44,6 @@ export function ChatInterface({
     () => setIsCompacting(true),
     (summary?: string, tokensBefore?: number) => {
       setIsCompacting(false);
-      // Add compaction message to the chat
       if (summary) {
         setMessages((prev) => [
           ...prev,
@@ -76,9 +62,6 @@ export function ChatInterface({
       }
     },
   );
-
-  // Typing animation — smooth, buffer-based text playback
-  useTypingAnimation(isLoading, setStreaming, streamingRef);
 
   // ─── Session state ───────────────────────────────────────────────────────
 
@@ -140,10 +123,6 @@ export function ChatInterface({
     }
   };
 
-  const countAssistantMessages = useCallback(() => {
-    return messages.filter((m) => m.role === "assistant").length;
-  }, [messages]);
-
   // ─── Message handlers ────────────────────────────────────────────────────
 
   const handleSend = useCallback(
@@ -167,9 +146,6 @@ export function ChatInterface({
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
-
-      const assistantCountBefore = countAssistantMessages();
-      resetStreaming();
 
       const abortController = new AbortController();
       abortRef.current = abortController;
@@ -215,6 +191,7 @@ export function ChatInterface({
 
         const data = await res.json();
 
+        // Update temp user message with real ID
         if (data.message) {
           setMessages((prev) =>
             prev.map((m) =>
@@ -232,49 +209,32 @@ export function ChatInterface({
           );
         }
 
-        const eventSource = connectStream(data.streamUrl, assistantCountBefore);
+        // Connect to SSE stream — adds streaming-0 message automatically
+        connectStream(data.streamUrl);
 
-        // Override the default onDone to also clear loading (connectStream sets it,
-        // but we need the DB reload after streaming completes for send flow)
-        eventSource.addEventListener("done", () => {
-          // finalizeStreaming is already called by connectStream
-          // We just need to make sure loading is cleared
-          // (connectStream's onDone already handles this)
-        });
-
-        eventSource.addEventListener("error", (event: MessageEvent) => {
-          const parsed = JSON.parse(event.data);
-          if (parsed.message?.includes("No AI model configured")) {
-            toast.error("No AI model configured", {
-              description: "Select a default model in Settings > AI & Models to start chatting.",
-              action: {
-                label: "Open Settings",
-                onClick: () => router.push("/dashboard/settings"),
-              },
-            });
-          }
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `error-${Date.now()}`,
-              role: "assistant" as const,
-              content: `Error: ${parsed.message || "Something went wrong"}`,
-              thinking: undefined,
-              toolCalls: undefined,
-              parentMessageId: undefined,
-              createdAt: new Date().toISOString(),
-              attachments: undefined,
-            },
-          ]);
-        });
+        // Handle server errors during streaming
+        const eventSource = eventSourceRef.current;
+        if (eventSource) {
+          eventSource.addEventListener("error", (event: MessageEvent) => {
+            const parsed = JSON.parse(event.data);
+            if (parsed.message?.includes("No AI model configured")) {
+              toast.error("No AI model configured", {
+                description: "Select a default model in Settings > AI & Models to start chatting.",
+                action: {
+                  label: "Open Settings",
+                  onClick: () => router.push("/dashboard/settings"),
+                },
+              });
+            }
+          });
+        }
       } catch (err) {
         setIsLoading(false);
         console.error("Send error:", err);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, router, countAssistantMessages, resetStreaming, connectStream, startReconnection],
+    [sessionId, router, connectStream, startReconnection, loadMessages, eventSourceRef],
   );
 
   const handleEditMessage = useCallback(
@@ -290,9 +250,7 @@ export function ChatInterface({
         });
 
         void loadMessages();
-        const assistantCountBefore = countAssistantMessages();
-
-        connectStream(data.streamUrl, assistantCountBefore);
+        connectStream(data.streamUrl);
       } catch (err) {
         setIsLoading(false);
         if (
@@ -309,7 +267,7 @@ export function ChatInterface({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, countAssistantMessages, connectStream, startReconnection],
+    [sessionId, connectStream, startReconnection, loadMessages],
   );
 
   const handleStop = useCallback(() => {
@@ -317,9 +275,8 @@ export function ChatInterface({
     fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" }).catch((err) => {
       console.error("Failed to call stop endpoint:", err);
     });
-    finalizeStreaming(streamingRef.current, setMessages);
-    setIsLoading(false);
-  }, [sessionId, closeEventSource, streamingRef, setMessages]);
+    // The server will emit "done" which cleans up streaming messages
+  }, [sessionId, closeEventSource]);
 
   const handleCompact = useCallback(() => {
     setIsCompacting(true);
@@ -348,12 +305,10 @@ export function ChatInterface({
         return res.json();
       })
       .then(() => {
-        // Reload messages — replaces the optimistic entry with the real one from DB
         void loadMessages();
       })
       .catch((err) => {
         console.error("Failed to compact:", err);
-        // Remove optimistic message on failure
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       })
       .finally(() => {
@@ -497,44 +452,6 @@ export function ChatInterface({
     prevThinkingLevelRef.current = thinkingLevel;
   });
 
-  // ─── Display messages (streaming turns + DB messages) ────────────────────
-
-  const displayMessages = [...messages];
-  if (isLoading) {
-    const hasContent =
-      streaming.turns.length > 0 ||
-      streaming.current.text ||
-      streaming.current.thinking ||
-      streaming.current.toolCalls.length > 0;
-
-    if (hasContent) {
-      for (let i = 0; i < streaming.turns.length; i++) {
-        const turn = streaming.turns[i]!;
-        displayMessages.push(
-          buildTurnMessage(turn, `streaming-turn-${i}`, i > 0 ? `streaming-turn-0` : undefined),
-        );
-      }
-
-      if (
-        streaming.current.text ||
-        streaming.current.thinking ||
-        streaming.current.toolCalls.length > 0
-      ) {
-        displayMessages.push(
-          buildTurnMessage(
-            {
-              ...streaming.current,
-              text: streaming.displayText,
-              thinking: streaming.displayThinking,
-            },
-            "streaming-current",
-            streaming.turns.length > 0 ? `streaming-turn-0` : undefined,
-          ),
-        );
-      }
-    }
-  }
-
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
@@ -565,7 +482,7 @@ export function ChatInterface({
 
         <div className="flex min-h-0 flex-1 flex-col">
           <MessageList
-            messages={displayMessages}
+            messages={messages}
             isLoading={isLoading}
             isCompacting={isCompacting}
             onEditMessage={handleEditMessage}
