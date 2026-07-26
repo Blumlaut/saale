@@ -125,7 +125,7 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
 
   // Clean up agent pool entry (disposes agent, removes from pool)
   const poolKey = getPoolKey(authResult.userId, sessionId);
-  remove(poolKey);
+  await remove(poolKey);
 
   // Clean up session files on disk (Pi's JSONL session files)
   const sessionDir = getSessionDir(authResult.userId, sessionId);

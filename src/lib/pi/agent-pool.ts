@@ -20,21 +20,25 @@ const pool = new Map<string, PooledSession>();
  *
  * Access via getDispatcher(sessionId) / wireDispatcher(sessionId, controller, encoder).
  */
-import { StreamDispatcher } from "@/lib/pi/stream-helpers";
-const dispatchers = new Map<string, StreamDispatcher>();
+import { SseDispatcher } from "@/lib/pi/sse-dispatcher";
+const dispatchers = new Map<string, SseDispatcher>();
 
 /** Get or create the dispatcher for a session. */
-export function getDispatcher(sessionId: string): StreamDispatcher {
+export function getDispatcher(sessionId: string): SseDispatcher {
   let dispatcher = dispatchers.get(sessionId);
   if (!dispatcher) {
-    dispatcher = new StreamDispatcher(sessionId);
+    dispatcher = new SseDispatcher(sessionId);
     dispatchers.set(sessionId, dispatcher);
   }
   return dispatcher;
 }
 
 /** Clear the dispatcher when the session is removed from the pool. */
-export function clearDispatcher(sessionId: string): void {
+export async function clearDispatcher(sessionId: string): Promise<void> {
+  const dispatcher = dispatchers.get(sessionId);
+  if (dispatcher) {
+    await dispatcher.cleanup();
+  }
   dispatchers.delete(sessionId);
 }
 const MAX_IDLE_MS = 30 * 60 * 1000; // 30 minutes
@@ -100,29 +104,46 @@ export async function createAndPool(
 /**
  * Remove a session from the pool and dispose its agent.
  * The session file on disk is preserved — the agent can be recreated later.
+ *
+ * The pool key is "userId:sessionId" but dispatchers are keyed by sessionId,
+ * so we extract the sessionId from the pool key for cleanup.
  */
-export function remove(key: string): void {
+export async function remove(key: string): Promise<void> {
   const entry = pool.get(key);
   if (entry) {
     entry.session.dispose();
     pool.delete(key);
   }
-  clearDispatcher(key);
+  // Dispatchers are keyed by sessionId, not pool key
+  const sessionId = key.split(":").slice(1).join(":");
+  await clearDispatcher(sessionId);
 }
 
 /**
  * Evict idle sessions (not accessed within MAX_IDLE_MS and not streaming).
  * Also enforces the hard pool size cap by evicting the oldest idle sessions.
  */
-export function evictIdle(): void {
+export async function evictIdle(): Promise<void> {
   const now = Date.now();
+  const toEvict: string[] = [];
 
-  // Evict idle sessions
+  // Collect idle sessions for eviction
   for (const [key, entry] of pool) {
     if (now - entry.lastActive > MAX_IDLE_MS && !entry.session.isStreaming) {
+      toEvict.push(key);
+    }
+  }
+
+  // Evict collected sessions
+  for (const key of toEvict) {
+    const entry = pool.get(key);
+    if (entry) {
       entry.session.dispose();
       pool.delete(key);
     }
+    // Dispatchers are keyed by sessionId, not pool key
+    const sessionId = key.split(":").slice(1).join(":");
+    await clearDispatcher(sessionId);
   }
 
   // Hard cap — evict oldest idle sessions if over limit
@@ -135,6 +156,9 @@ export function evictIdle(): void {
       oldestEntry.session.dispose();
       pool.delete(oldestKey);
     }
+    // Dispatchers are keyed by sessionId, not pool key
+    const sessionId = oldestKey.split(":").slice(1).join(":");
+    await clearDispatcher(sessionId);
   }
 }
 
@@ -155,26 +179,41 @@ export function getPoolKeys(): string[] {
 /**
  * Clear the entire pool and dispose all agents (exported for testing).
  */
-export function clearPool(): void {
+export async function clearPool(): Promise<void> {
   clearInterval(timer);
   for (const [, entry] of pool) {
     entry.session.dispose();
   }
   pool.clear();
+  // Clean up all dispatchers
+  for (const [key] of dispatchers) {
+    await clearDispatcher(key);
+  }
 }
 
 /**
  * Graceful shutdown — dispose all agents and clear the pool.
  * Call this during process shutdown to ensure clean resource release.
  */
-export function shutdown(): void {
+export async function shutdown(): Promise<void> {
   clearInterval(timer);
   for (const [, entry] of pool) {
     entry.session.dispose();
   }
   pool.clear();
+  // Clean up all dispatchers
+  for (const [key] of dispatchers) {
+    await clearDispatcher(key);
+  }
 }
 
 // Periodic eviction — runs every 5 minutes
-const timer = setInterval(evictIdle, 5 * 60 * 1000);
+const timer = setInterval(
+  () => {
+    evictIdle().catch((err) => {
+      console.error("[agent-pool] Eviction failed:", err);
+    });
+  },
+  5 * 60 * 1000,
+);
 timer.unref(); // Don't keep process alive

@@ -6,11 +6,28 @@ import {
   get,
   remove,
   evictIdle,
+  getDispatcher,
   getPoolSize,
   getPoolKeys,
-  clearPool,
   shutdown,
 } from "@/lib/pi/agent-pool";
+
+// Mock Redis (used by SseDispatcher via sse-buffer)
+const mockRedisIncr = vi.fn().mockResolvedValue(1);
+const mockRedisExpire = vi.fn().mockResolvedValue(1);
+const mockRedisZadd = vi.fn().mockResolvedValue(true);
+const mockRedisZremrangebyrank = vi.fn().mockResolvedValue(0);
+const mockRedisDel = vi.fn().mockResolvedValue(1);
+
+vi.mock("@/lib/redis", () => ({
+  getRedis: () => ({
+    incr: mockRedisIncr,
+    expire: mockRedisExpire,
+    zadd: mockRedisZadd,
+    zremrangebyrank: mockRedisZremrangebyrank,
+    del: mockRedisDel,
+  }),
+}));
 
 // Minimal mock matching only the properties the agent pool accesses
 interface MockAgentSession {
@@ -40,12 +57,13 @@ function createMockAgentSession(isStreaming = false): MockAgentSession {
 const asAgentSession = (mock: MockAgentSession) => mock as any;
 
 describe("agent-pool", () => {
-  beforeEach(() => {
-    clearPool();
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await shutdown();
   });
 
-  afterEach(() => {
-    clearPool();
+  afterEach(async () => {
+    await shutdown();
   });
 
   describe("getPoolKey", () => {
@@ -191,20 +209,27 @@ describe("agent-pool", () => {
   describe("remove", () => {
     it("removes session and disposes agent", async () => {
       const mockSession = createMockAgentSession();
-      await createAndPool("test-key", async () => ({
+      // Pool key format: userId:sessionId
+      const poolKey = "user-1:session-abc";
+      const sessionId = "session-abc";
+      await createAndPool(poolKey, async () => ({
         session: asAgentSession(mockSession),
         sessionDir: "/tmp/test",
       }));
+      // Create dispatcher (as the stream route would)
+      getDispatcher(sessionId);
 
-      remove("test-key");
+      await remove(poolKey);
 
       expect(getPoolSize()).toBe(0);
-      expect(get("test-key")).toBeUndefined();
+      expect(get(poolKey)).toBeUndefined();
       expect(mockSession.dispose).toHaveBeenCalled();
+      // Dispatcher cleanup should have been called (Redis del for buffer + counter)
+      expect(mockRedisDel).toHaveBeenCalledTimes(2); // buf key + counter key
     });
 
-    it("is no-op for missing key", () => {
-      expect(() => remove("nonexistent")).not.toThrow();
+    it("is no-op for missing key", async () => {
+      await expect(remove("nonexistent")).resolves.toBeUndefined();
       expect(getPoolSize()).toBe(0);
     });
   });
@@ -212,12 +237,12 @@ describe("agent-pool", () => {
   describe("evictIdle", () => {
     it("does not evict recently active sessions", async () => {
       const mockSession = createMockAgentSession();
-      await createAndPool("test-key", async () => ({
+      await createAndPool("user-1:session-abc", async () => ({
         session: asAgentSession(mockSession),
         sessionDir: "/tmp/test",
       }));
 
-      evictIdle();
+      await evictIdle();
 
       expect(getPoolSize()).toBe(1);
       expect(mockSession.dispose).not.toHaveBeenCalled();
@@ -225,7 +250,7 @@ describe("agent-pool", () => {
 
     it("does not evict streaming sessions even if idle", async () => {
       const mockSession = createMockAgentSession(true); // isStreaming = true
-      const entry = await createAndPool("test-key", async () => ({
+      const entry = await createAndPool("user-1:session-abc", async () => ({
         session: asAgentSession(mockSession),
         sessionDir: "/tmp/test",
       }));
@@ -233,7 +258,7 @@ describe("agent-pool", () => {
       // Manually set lastActive to 1 hour ago (beyond MAX_IDLE_MS of 30min)
       entry.lastActive = Date.now() - 60 * 60 * 1000;
 
-      evictIdle();
+      await evictIdle();
 
       expect(getPoolSize()).toBe(1);
       expect(mockSession.dispose).not.toHaveBeenCalled();
@@ -241,18 +266,24 @@ describe("agent-pool", () => {
 
     it("evicts idle non-streaming sessions", async () => {
       const mockSession = createMockAgentSession(false); // isStreaming = false
-      const entry = await createAndPool("test-key", async () => ({
+      const poolKey = "user-1:session-abc";
+      const sessionId = "session-abc";
+      const entry = await createAndPool(poolKey, async () => ({
         session: asAgentSession(mockSession),
         sessionDir: "/tmp/test",
       }));
+      // Create dispatcher (as the stream route would)
+      getDispatcher(sessionId);
 
       // Manually set lastActive to 1 hour ago (beyond MAX_IDLE_MS of 30min)
       entry.lastActive = Date.now() - 60 * 60 * 1000;
 
-      evictIdle();
+      await evictIdle();
 
       expect(getPoolSize()).toBe(0);
       expect(mockSession.dispose).toHaveBeenCalled();
+      // Dispatcher cleanup should have been called (Redis del for buffer + counter)
+      expect(mockRedisDel).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -283,16 +314,16 @@ describe("agent-pool", () => {
       const session1 = createMockAgentSession();
       const session2 = createMockAgentSession();
 
-      await createAndPool("key-1", async () => ({
+      await createAndPool("user-1:session-1", async () => ({
         session: asAgentSession(session1),
         sessionDir: "/tmp/1",
       }));
-      await createAndPool("key-2", async () => ({
+      await createAndPool("user-2:session-2", async () => ({
         session: asAgentSession(session2),
         sessionDir: "/tmp/2",
       }));
 
-      shutdown();
+      await shutdown();
 
       expect(getPoolSize()).toBe(0);
       expect(session1.dispose).toHaveBeenCalled();
