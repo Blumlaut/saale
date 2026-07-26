@@ -521,8 +521,12 @@ function wireStreamListeners(opts: StreamListenerOpts) {
 
   // ── Error ─────────────────────────────────────────────────────────────
   eventSource.addEventListener("error", (event: MessageEvent) => {
-    const parsed = JSON.parse(event.data);
-    console.error("Stream error:", parsed);
+    try {
+      const parsed = event.data ? JSON.parse(event.data) : { message: "Stream error" };
+      console.error("Stream error:", parsed);
+    } catch {
+      console.error("Stream error:", event.data ?? "unknown");
+    }
     opts.onDone();
   });
 

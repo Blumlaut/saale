@@ -201,6 +201,14 @@ export async function GET(
     `shouldPrompt=${shouldPrompt} (${promptGuard.reason}), lastMessage.id=${lastMessage?.id}, role=${lastMessage?.role}, lastPromptedMessageId=${pooled.lastPromptedMessageId}`,
   );
 
+  // ── Claim the prompt immediately to prevent races ──────────────────────
+  // Set lastPromptedMessageId NOW (before any awaits below) so that a
+  // second concurrent SSE connection sees shouldPrompt=false. The actual
+  // prompt() call happens later inside the stream's start() callback.
+  if (shouldPrompt && lastMessage && lastMessage.role === "user") {
+    pooled.lastPromptedMessageId = lastMessage.id;
+  }
+
   // ── Pre-load images for the current user message ──────────────────────
   const lastMessageImages: ImageContent[] = [];
   if (
@@ -332,7 +340,6 @@ export async function GET(
 
       // ── Send prompt if needed ─────────────────────────────────────────
       if (shouldPrompt && lastMessage && lastMessage.role === "user") {
-        pooled.lastPromptedMessageId = lastMessage.id;
         log("prompt", `sending prompt, message.id=${lastMessage.id}`);
 
         const promptPromise =
