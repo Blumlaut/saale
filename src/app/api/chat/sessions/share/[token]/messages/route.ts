@@ -46,7 +46,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       id: m.id,
       role: m.role,
       content: m.content,
-      toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
+      toolCalls: m.toolCalls
+        ? JSON.parse(m.toolCalls).map((tc: { isError?: boolean }) => ({
+            ...tc,
+            status: tc.isError ? ("error" as const) : ("completed" as const),
+          }))
+        : undefined,
       parentMessageId: m.parentMessageId || undefined,
       createdAt: m.createdAt.toISOString(),
     })),
