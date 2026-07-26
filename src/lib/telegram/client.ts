@@ -203,29 +203,42 @@ export async function sendTypingIndicator(encryptedToken: string, chatId: bigint
  * MarkdownV2 requires escaping: _ * [ ] ( ) ~ ` > # + - = | { } . !
  */
 function escapeMarkdownV2(text: string): string {
-  // Character classes for formatting syntax
   const backtick = /`+/g;
-  const boldItalic = /\*\*\*|___/g;
-  const bold = /\*\*/g;
-  const italic = /\*|_/g;
   const strikethrough = /~~/g;
-  const link = /\[([^\]]*?)\]\(([^)]*?)\)/g;
   const escapeChars = /[_*\[\]()~`>#+\-=|{}.!]/g;
 
+  // Escape chars for link text (exclude [] which are link syntax)
+  const escapeLinkTextChars = /[_*\]()~`>#+\-=|{}.!]/g;
+  // Escape chars for URL (exclude () which are link syntax)
+  const escapeUrlChars = /[_*\[\]~`>#+\-=|{}.!]/g;
+
+  // Combined patterns: bold/italic wrapping links — must come BEFORE
+  // standalone bold/italic patterns so the link inside is captured together
+  // and its URL/link-text get escaped properly.
+  const boldLink = /\*\*(\[([^\]]*?)\]\(([^)]*?)\))\*\*/g;
+  const italicLink = /_(\[([^\]]*?)\]\(([^)]*?)\))_/g;
+  const boldItalicLink = /\*\*\*(\[([^\]]*?)\]\(([^)]*?)\))\*\*\*/g;
+
+  // Standalone patterns
+  const boldItalic = /\*\*\*|___/g;
+  const bold = /\*\*/g;
+  const italic = /(?<!\*)\*(?!\*)|(?<!_)_(?!_)/g;
+  const link = /\[([^\]]*?)\]\(([^)]*?)\)/g;
+
   /**
-   * Escape special characters inside a link URL while preserving the
-   * `[text](url)` syntax characters themselves.
+   * Escape special characters inside a link's text and URL while preserving
+   * the `[text](url)` syntax and any surrounding formatting markers.
    */
-  function escapeLinkUrl(_fullMatch: string, linkText: string, url: string): string {
-    return `[${linkText}](${url.replace(escapeChars, "\\$&")})`;
+  function buildEscapedLink(prefix: string, linkText: string, url: string, suffix: string): string {
+    return `${prefix}[${linkText.replace(escapeLinkTextChars, "\\$&")}](${url.replace(escapeUrlChars, "\\$&")})${suffix}`;
   }
 
   const parts: string[] = [];
   let lastIndex = 0;
 
-  // Build a unified regex to match all formatting tokens in order
+  // Build unified pattern: combined link patterns FIRST, then standalone
   const tokenPattern = new RegExp(
-    `(?:${link.source}|${backtick.source}|${boldItalic.source}|${bold.source}|${italic.source}|${strikethrough.source})`,
+    `(?:${boldItalicLink.source}|${boldLink.source}|${italicLink.source}|${backtick.source}|${boldItalic.source}|${bold.source}|${italic.source}|${strikethrough.source}|${link.source})`,
     "g",
   );
 
@@ -236,14 +249,53 @@ function escapeMarkdownV2(text: string): string {
       parts.push(text.slice(lastIndex, match.index).replace(escapeChars, "\\$&"));
     }
 
-    // Handle links specially — escape characters inside the URL
-    if (match[0].startsWith("[")) {
-      parts.push(escapeLinkUrl(match[0], match[1] ?? "", match[2] ?? ""));
-    } else {
-      // Keep other formatting tokens as-is
-      parts.push(match[0]);
+    const fullMatch = match[0];
+
+    // Handle combined bold-italic-link: ***[text](url)***
+    if (fullMatch.startsWith("***") && fullMatch.endsWith("***")) {
+      const inner = fullMatch.slice(3, -3);
+      const m = inner.match(/^\[([^\]]*?)\]\(([^)]*?)\)$/);
+      if (m) {
+        parts.push(buildEscapedLink("***", m[1] ?? "", m[2] ?? "", "***"));
+      } else {
+        parts.push(fullMatch);
+      }
     }
-    lastIndex = match.index + match[0].length;
+    // Handle combined bold-link: **[text](url)**
+    else if (fullMatch.startsWith("**") && fullMatch.endsWith("**")) {
+      const inner = fullMatch.slice(2, -2);
+      const m = inner.match(/^\[([^\]]*?)\]\(([^)]*?)\)$/);
+      if (m) {
+        parts.push(buildEscapedLink("**", m[1] ?? "", m[2] ?? "", "**"));
+      } else {
+        parts.push(fullMatch);
+      }
+    }
+    // Handle combined italic-link: _[text](url)_
+    else if (fullMatch.startsWith("_") && fullMatch.endsWith("_")) {
+      const inner = fullMatch.slice(1, -1);
+      const m = inner.match(/^\[([^\]]*?)\]\(([^)]*?)\)$/);
+      if (m) {
+        parts.push(buildEscapedLink("_", m[1] ?? "", m[2] ?? "", "_"));
+      } else {
+        parts.push(fullMatch);
+      }
+    }
+    // Handle standalone link: [text](url)
+    else if (fullMatch.startsWith("[")) {
+      const m = fullMatch.match(/^\[([^\]]*?)\]\(([^)]*?)\)$/);
+      if (m) {
+        parts.push(buildEscapedLink("", m[1] ?? "", m[2] ?? "", ""));
+      } else {
+        parts.push(fullMatch);
+      }
+    }
+    // All other formatting tokens: keep as-is
+    else {
+      parts.push(fullMatch);
+    }
+
+    lastIndex = match.index + fullMatch.length;
   }
 
   // Escape any remaining text after the last match
