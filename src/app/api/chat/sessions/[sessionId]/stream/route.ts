@@ -309,6 +309,9 @@ export async function GET(
   // Guard: agent_end DB persistence runs exactly once across all SSE connections
   let agentEndPersisted = false;
 
+  // Track all pending DB saves so we can await them before emitting "done"
+  const pendingSaves: Promise<void>[] = [];
+
   // Throttle: ~5/sec to keep UI responsive
   const TOKEN_THROTTLE_MS = 200;
   let lastTokenSend = 0;
@@ -537,30 +540,32 @@ export async function GET(
 
             // Save to DB, then notify client with the real ID
             const turnIndexForSave = turnIndex;
-            void saveAssistantMessage(
-              sessionId,
-              currentTurnText,
-              currentTurnThinking || undefined,
-              turnToolCalls.length > 0 ? turnToolCalls : undefined,
-              rootMessageId,
-            )
-              .then((msg) => {
-                log("db_save", `turnIndex=${turnIndexForSave}, msgId=${msg.id}`);
-                if (!rootMessageId) {
-                  rootMessageId = msg.id;
-                }
-                // Notify client that this turn's message is persisted
-                dispatcher.emit("message_saved", {
-                  messageId: msg.id,
-                  turnIndex: turnIndexForSave,
-                });
-              })
-              .catch((err) => {
-                console.error(
-                  `Failed to save assistant message for turn ${turnIndexForSave}:`,
-                  err,
-                );
-              });
+            pendingSaves.push(
+              saveAssistantMessage(
+                sessionId,
+                currentTurnText,
+                currentTurnThinking || undefined,
+                turnToolCalls.length > 0 ? turnToolCalls : undefined,
+                rootMessageId,
+              )
+                .then((msg) => {
+                  log("db_save", `turnIndex=${turnIndexForSave}, msgId=${msg.id}`);
+                  if (!rootMessageId) {
+                    rootMessageId = msg.id;
+                  }
+                  // Notify client that this turn's message is persisted
+                  dispatcher.emit("message_saved", {
+                    messageId: msg.id,
+                    turnIndex: turnIndexForSave,
+                  });
+                })
+                .catch((err) => {
+                  console.error(
+                    `Failed to save assistant message for turn ${turnIndexForSave}:`,
+                    err,
+                  );
+                }),
+            );
 
             dispatcher.emit("turn_end", {
               turnIndex,
@@ -676,20 +681,22 @@ export async function GET(
 
             // Save if no turn_end events fired (single-turn response)
             if (turnIndex === 0) {
-              void saveAssistantMessage(
-                sessionId,
-                finalText,
-                finalThinking || undefined,
-                toolCalls.length > 0 ? toolCalls : undefined,
-                null,
-              )
-                .then((msg) => {
-                  log("db_save", `single-turn msgId=${msg.id}`);
-                  dispatcher.emit("message_saved", { messageId: msg.id, turnIndex: 0 });
-                })
-                .catch((err) => {
-                  console.error("Failed to save single-turn assistant message:", err);
-                });
+              pendingSaves.push(
+                saveAssistantMessage(
+                  sessionId,
+                  finalText,
+                  finalThinking || undefined,
+                  toolCalls.length > 0 ? toolCalls : undefined,
+                  null,
+                )
+                  .then((msg) => {
+                    log("db_save", `single-turn msgId=${msg.id}`);
+                    dispatcher.emit("message_saved", { messageId: msg.id, turnIndex: 0 });
+                  })
+                  .catch((err) => {
+                    console.error("Failed to save single-turn assistant message:", err);
+                  }),
+              );
             }
           }
 
@@ -705,11 +712,14 @@ export async function GET(
           unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
         }
 
-        // Always send done to this SSE client
-        dispatcher.emit("done", {});
-        closeController(controller);
-        unsubscribeAgentEnd();
-        unsubscribeSse();
+        // Wait for all DB saves to complete before emitting "done"
+        // This ensures message_saved events arrive before the client cleans up
+        void Promise.allSettled(pendingSaves).then(() => {
+          dispatcher.emit("done", {});
+          closeController(controller);
+          unsubscribeAgentEnd();
+          unsubscribeSse();
+        });
       });
 
       // ── Send prompt or wait for events ─────────────────────────────────
