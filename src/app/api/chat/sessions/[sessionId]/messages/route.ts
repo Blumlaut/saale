@@ -40,7 +40,12 @@ export async function GET(
       role: m.role,
       content: m.content,
       thinking: m.thinking || undefined,
-      toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
+      toolCalls: m.toolCalls
+        ? JSON.parse(m.toolCalls).map((tc: { isError?: boolean }) => ({
+            ...tc,
+            status: tc.isError ? ("error" as const) : ("completed" as const),
+          }))
+        : undefined,
       parentMessageId: m.parentMessageId || undefined,
       createdAt: m.createdAt.toISOString(),
       attachments: m.attachments.map((a) => ({
