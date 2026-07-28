@@ -9,7 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai/compat";
 import { prisma } from "@/lib/db";
-import { createBot, sendTelegramMessage, sendTypingIndicator } from "./client";
+import { createBot, sendTelegramMessage, startTypingIndicator } from "./client";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
@@ -276,9 +276,9 @@ export async function processTelegramMessage(
     }
   }
 
-  // 5. Register active session and send typing indicator
+  // 5. Register active session and start recurring typing indicator
   await registerActiveSession(userId, sessionId);
-  sendTypingIndicator(encryptedToken, telegramChatId);
+  const stopTyping = startTypingIndicator(encryptedToken, telegramChatId);
 
   // 6. Ensure the Telegram agent definition exists
   const definition = await ensureTelegramAgentDefinition(userId);
@@ -430,6 +430,7 @@ export async function processTelegramMessage(
   try {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
+        stopTyping();
         unsubscribe();
         processingDone?.resolve();
         session.abort().catch((err) => {
@@ -596,6 +597,7 @@ export async function processTelegramMessage(
           }
 
           case "agent_end": {
+            stopTyping();
             clearTimeout(timer);
             unsubscribe();
             processingDone?.resolve();
@@ -605,6 +607,7 @@ export async function processTelegramMessage(
 
           case "auto_retry_end": {
             if (!event.success) {
+              stopTyping();
               clearTimeout(timer);
               unsubscribe();
               processingDone?.resolve();
@@ -624,6 +627,7 @@ export async function processTelegramMessage(
       // Send the user message to the agent (with images if available)
       const images = processedFile?.imageData ? [processedFile.imageData] : undefined;
       session.agent.prompt(promptText, images).catch((err) => {
+        stopTyping();
         clearTimeout(timer);
         unsubscribe();
         processingDone?.resolve();

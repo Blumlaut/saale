@@ -189,7 +189,9 @@ export async function sendTelegramMessage(
 }
 
 /**
- * Send a typing indicator to a Telegram chat.
+ * Send a single typing indicator to a Telegram chat.
+ * Telegram only shows the indicator for ~5 seconds, so this must be
+ * called repeatedly to keep it visible during long operations.
  */
 export async function sendTypingIndicator(encryptedToken: string, chatId: bigint): Promise<void> {
   const bot = createBot(encryptedToken);
@@ -197,6 +199,27 @@ export async function sendTypingIndicator(encryptedToken: string, chatId: bigint
   bot.api.sendChatAction(Number(chatId), "typing").catch((err) => {
     console.error("Failed to send typing indicator:", err);
   });
+}
+
+/**
+ * Interval (ms) between typing indicator refreshes.
+ * Telegram shows the indicator for ~5 seconds; 4s keeps it visible with headroom.
+ */
+const TYPING_REFRESH_INTERVAL_MS = 4_000;
+
+/**
+ * Start a recurring typing indicator that refreshes until stopped.
+ * Returns a cleanup function to stop the interval.
+ */
+export function startTypingIndicator(encryptedToken: string, chatId: bigint): () => void {
+  const interval = setInterval(() => {
+    sendTypingIndicator(encryptedToken, chatId);
+  }, TYPING_REFRESH_INTERVAL_MS);
+
+  // Send the first one immediately
+  sendTypingIndicator(encryptedToken, chatId);
+
+  return () => clearInterval(interval);
 }
 
 /**
