@@ -7,7 +7,13 @@
  */
 import type { ToolCategoryKey } from "@/lib/pi/tool-categories";
 
-export type ToolPolicy = "allow" | "ask" | "off";
+export type ToolPolicy = "allow" | "auto" | "ask" | "off";
+
+/**
+ * The "auto" policy is command-aware:
+ * - For infra_exec: auto-approves safe commands (ls, cat, grep…), requires approval for risky ones (rm, echo >>, sudo…)
+ * - For all other tools: behaves like "allow"
+ */
 
 export interface ToolInfo {
   name: string;
@@ -422,7 +428,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Execute Command",
     description: "Run a shell command on a remote machine",
     category: "infra",
-    defaultPolicy: "ask",
+    defaultPolicy: "auto",
   },
   {
     name: "infra_write_file",

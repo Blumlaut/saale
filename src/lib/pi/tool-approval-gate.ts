@@ -1,10 +1,17 @@
 import { getRedis } from "@/lib/redis";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { classifyCommand } from "./command-classifier";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Per-tool approval policy. */
-export type ToolPolicy = "off" | "ask" | "allow";
+export type ToolPolicy = "off" | "ask" | "allow" | "auto";
+
+/**
+ * The "auto" policy is command-aware:
+ * - For infra_exec: auto-approves safe commands (ls, cat, grep…), requires approval for risky ones (rm, echo >>, sudo…)
+ * - For all other tools: behaves like "allow"
+ */
 
 /** How long an approval request waits before auto-denying (ms). */
 export const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -132,12 +139,46 @@ export async function getPendingApprovals(sessionId: string): Promise<ApprovalRe
 // ─── Tool Wrapper ────────────────────────────────────────────────────────────
 
 /**
+ * Wait for user approval and return the result.
+ * Shared helper to avoid code duplication.
+ */
+async function doWaitForApproval(
+  toolCallId: string,
+  toolName: string,
+  userId: string,
+  sessionId: string,
+  args: Record<string, unknown>,
+  emitApprovalRequest: (request: ApprovalRequest) => void,
+): Promise<boolean> {
+  const request: ApprovalRequest = {
+    toolCallId,
+    toolName,
+    sessionId,
+    userId,
+    args,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
+  };
+
+  emitApprovalRequest(request);
+
+  const approved = await waitForApproval(request);
+
+  if (!approved) {
+    console.error(`Tool call "${toolName}" was denied (timeout or rejection).`);
+  }
+
+  return approved;
+}
+
+/**
  * Wrap a tool definition with an approval gate.
  *
  * Before every tool execution, the wrapper checks:
  * 1. Policy: "off" → reject immediately
  * 2. Policy: "ask" → emit approval request, wait for user decision
  * 3. Policy: "allow" → proceed
+ * 4. Policy: "auto" → command-aware (infra_exec only): auto-approve safe commands, ask for risky ones
  *
  * The original tool code is never modified.
  */
@@ -164,21 +205,49 @@ export function wrapWithApprovalGate(
         };
       }
 
+      // Policy: "auto" — command-aware approval (infra_exec)
+      if (policy === "auto" && tool.name === "infra_exec") {
+        const command = (params as { command?: string }).command;
+        const classification = command
+          ? classifyCommand(command)
+          : { safety: "risky", reason: "no command provided" };
+
+        if (classification.safety === "risky") {
+          const approved = await doWaitForApproval(
+            toolCallId,
+            tool.name,
+            userId,
+            sessionId,
+            params as Record<string, unknown>,
+            emitApprovalRequest,
+          );
+
+          if (!approved) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Tool call "${tool.name}" was denied by the user (approval timed out or explicitly rejected).`,
+                },
+              ],
+              isError: true,
+              details: {},
+            };
+          }
+        }
+        // Safe command — proceed without approval
+      }
+
       // Policy: "ask" — wait for user approval
       if (policy === "ask") {
-        const request: ApprovalRequest = {
+        const approved = await doWaitForApproval(
           toolCallId,
-          toolName: tool.name,
-          sessionId,
+          tool.name,
           userId,
-          args: params as Record<string, unknown>,
-          createdAt: Date.now(),
-          expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
-        };
-
-        emitApprovalRequest(request);
-
-        const approved = await waitForApproval(request);
+          sessionId,
+          params as Record<string, unknown>,
+          emitApprovalRequest,
+        );
 
         if (!approved) {
           return {
@@ -194,7 +263,7 @@ export function wrapWithApprovalGate(
         }
       }
 
-      // "allow" or approved — proceed
+      // "allow", "auto" (safe), or approved — proceed
       return originalExecute(toolCallId, params, signal, onUpdate, ctx);
     },
   };

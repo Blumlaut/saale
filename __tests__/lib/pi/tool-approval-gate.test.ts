@@ -226,5 +226,118 @@ describe("tool-approval-gate", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("denied");
     });
+
+    it("auto policy: infra_exec with safe command executes without approval", async () => {
+      let executed = false;
+      const emittedRequests: ApprovalRequest[] = [];
+
+      const tool = wrapWithApprovalGate(
+        makeMockTool("infra_exec", async () => {
+          executed = true;
+          return {
+            content: [{ type: "text", text: "Command executed" }],
+            details: {},
+          };
+        }),
+        "user-1",
+        "session-test",
+        async () => "auto",
+        (request) => {
+          emittedRequests.push(request);
+        },
+      );
+
+      const result = (await tool.execute(
+        "tc-1",
+        { id: "machine-1", command: "ls -la" },
+        undefined,
+        undefined,
+        {} as never,
+      )) as ToolResult;
+
+      expect(executed).toBe(true);
+      expect(emittedRequests).toHaveLength(0);
+      expect(result.content[0].text).toBe("Command executed");
+    });
+
+    it("auto policy: infra_exec with risky command requires approval", async () => {
+      let executed = false;
+      const emittedRequests: ApprovalRequest[] = [];
+
+      const tool = wrapWithApprovalGate(
+        makeMockTool("infra_exec", async () => {
+          executed = true;
+          return {
+            content: [{ type: "text", text: "Command executed" }],
+            details: {},
+          };
+        }),
+        "user-1",
+        "session-test",
+        async () => "auto",
+        (request) => {
+          emittedRequests.push(request);
+        },
+      );
+
+      const promise = tool.execute(
+        "tc-1",
+        { id: "machine-1", command: "rm -rf /tmp/data" },
+        undefined,
+        undefined,
+        {} as never,
+      );
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Should have emitted an approval request
+      expect(emittedRequests).toHaveLength(1);
+      const request = emittedRequests[0]!;
+      expect(request.toolName).toBe("infra_exec");
+      expect(request.args.command).toBe("rm -rf /tmp/data");
+
+      // Tool should not have executed yet
+      expect(executed).toBe(false);
+
+      // Approve
+      await resolveApproval("session-test", "tc-1", true);
+      const result = (await promise) as ToolResult;
+
+      expect(executed).toBe(true);
+      expect(result.content[0].text).toBe("Command executed");
+    });
+
+    it("auto policy: non-infra tools behave like 'allow'", async () => {
+      let executed = false;
+      const emittedRequests: ApprovalRequest[] = [];
+
+      const tool = wrapWithApprovalGate(
+        makeMockTool("mail_send", async () => {
+          executed = true;
+          return {
+            content: [{ type: "text", text: "Email sent" }],
+            details: {},
+          };
+        }),
+        "user-1",
+        "session-test",
+        async () => "auto",
+        (request) => {
+          emittedRequests.push(request);
+        },
+      );
+
+      const result = (await tool.execute(
+        "tc-1",
+        { to: "test@example.com", body: "Hello" },
+        undefined,
+        undefined,
+        {} as never,
+      )) as ToolResult;
+
+      expect(executed).toBe(true);
+      expect(emittedRequests).toHaveLength(0);
+      expect(result.content[0].text).toBe("Email sent");
+    });
   });
 });

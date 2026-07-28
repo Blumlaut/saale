@@ -46,8 +46,8 @@ describe("Telegram tool approval gate — critical security", () => {
   });
 
   describe("default policy lookup", () => {
-    it("infra_exec defaults to 'ask'", () => {
-      expect(getDefaultPolicy("infra_exec")).toBe("ask");
+    it("infra_exec defaults to 'auto'", () => {
+      expect(getDefaultPolicy("infra_exec")).toBe("auto");
     });
 
     it("infra_write_file defaults to 'ask'", () => {
@@ -366,13 +366,16 @@ describe("Telegram tool approval gate — critical security", () => {
       "agent_job_run",
       "agent_job_delete",
       "infra_add_machine",
-      "infra_exec",
       "infra_write_file",
       "infra_remove_machine",
     ];
 
     it.each(askByDefault)("'%s' defaults to 'ask' policy", (toolName) => {
       expect(getDefaultPolicy(toolName)).toBe("ask");
+    });
+
+    it("'infra_exec' defaults to 'auto' policy", () => {
+      expect(getDefaultPolicy("infra_exec")).toBe("auto");
     });
   });
 });
