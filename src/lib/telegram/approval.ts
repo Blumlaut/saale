@@ -157,8 +157,8 @@ export async function handleApprovalCallback(
       : "❌ Tool call denied."
     : "⚠️ Approval request not found (may have expired).";
 
-  // Delete the approval message on approve so it doesn't clutter the chat
-  if (approved && resolved && opts?.deleteMessage) {
+  // Delete the approval message so it doesn't clutter the chat
+  if (resolved && opts?.deleteMessage) {
     opts.deleteMessage().catch((err) => {
       console.error("Failed to delete approval message:", err);
     });
