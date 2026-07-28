@@ -20,12 +20,8 @@ import { sendTelegramApprovalRequest } from "./approval";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
-import {
-  buildAgentSystemPrompt,
-  clearProcessingSince,
-  lockSystemPrompt,
-  startProcessingSince,
-} from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { unregisterTelegramSession } from "./session-registry";
 
 /** Allowed MIME types that can be passed as images to the vision model */
@@ -279,8 +275,8 @@ export async function processTelegramMessage(
     }
   }
 
-  // 5. Mark session as processing and send typing indicator
-  await startProcessingSince(sessionId);
+  // 5. Register active session and send typing indicator
+  await registerActiveSession(userId, sessionId);
   sendTypingIndicator(encryptedToken, telegramChatId);
 
   // 6. Ensure the Telegram agent definition exists
@@ -624,7 +620,7 @@ export async function processTelegramMessage(
     // Update chat session metadata
     const incrementCount = turnIndex > 0 ? turnIndex : 1;
     await Promise.all([
-      clearProcessingSince(sessionId),
+      unregisterActiveSession(userId, sessionId),
       prisma.chatSession.update({
         where: { id: sessionId },
         data: { messageCount: { increment: incrementCount } },

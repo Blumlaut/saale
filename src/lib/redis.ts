@@ -108,3 +108,16 @@ export async function unregisterActiveSession(userId: string, sessionId: string)
     console.error("Failed to unregister active session:", err);
   }
 }
+
+/** Get all active session IDs for a user. */
+export async function getActiveSessions(userId: string): Promise<Set<string>> {
+  try {
+    const redis = getRedis();
+    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
+    const members = await redis.smembers(key);
+    return new Set(members);
+  } catch (err) {
+    console.error("Failed to get active sessions:", err);
+    return new Set();
+  }
+}

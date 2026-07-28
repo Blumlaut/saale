@@ -76,7 +76,7 @@ export function ChatInterface({
 
   const abortRef = useRef<AbortController | null>(null);
 
-  const loadMessages = useCallback(async (): Promise<{ processingSince?: string } | null> => {
+  const loadMessages = useCallback(async (): Promise<{ isGenerating?: boolean } | null> => {
     try {
       const data = await fetchJson<{
         messages: Message[];
@@ -85,7 +85,7 @@ export function ChatInterface({
           modelName?: string;
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
-          processingSince?: string;
+          isGenerating?: boolean;
         };
       }>(`/api/chat/sessions/${sessionId}/messages`);
       setMessages(data.messages);
@@ -324,10 +324,12 @@ export function ChatInterface({
       const sessionInfo = await loadMessages();
       loadSessionTitle();
 
+      // Source of truth: isGenerating from Redis (ephemeral — cleared on crash).
+      // wasStreaming from localStorage (current tab only — cleared on browser restart).
       const wasStreaming = streamingIds.has(sessionId);
-      const isProcessing = sessionInfo?.processingSince != null;
+      const isGenerating = sessionInfo?.isGenerating === true;
 
-      if (!wasStreaming && !isProcessing) return;
+      if (!wasStreaming && !isGenerating) return;
 
       startReconnection(
         () => loadMessages(),
