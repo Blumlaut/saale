@@ -300,9 +300,28 @@ export function ChatInterface({
     ]);
 
     fetch(`/api/chat/sessions/${sessionId}/compact`, { method: "POST" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Compact failed: ${res.status}`);
-        return res.json();
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          // Known conditions — show user-friendly toast
+          if (data.error === "already_compacted") {
+            toast.info("Already compacted", {
+              description: "This conversation was already compacted.",
+            });
+          } else if (data.error === "nothing_to_compact") {
+            toast.info("Nothing to compact", {
+              description: "The conversation is too short to compact.",
+            });
+          } else {
+            toast.error("Compaction failed", {
+              description: data.message || "Something went wrong.",
+            });
+          }
+          throw new Error(data.message || "Compact failed");
+        }
+
+        return data;
       })
       .then(() => {
         void loadMessages();

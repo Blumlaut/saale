@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
   processTelegramMessage,
+  compactTelegramSession,
   isWhitelisted,
   upsertWhitelistDisplayName,
   type TelegramFileInfo,
@@ -210,6 +211,19 @@ export async function POST(
     } catch (err) {
       console.error("Failed to send rejection message:", err);
     }
+    return NextResponse.json({ ok: true });
+  }
+
+  // 7.5. Handle /compact command
+  if (content.text === "/compact") {
+    compactTelegramSession({
+      userId: account.userId,
+      encryptedToken: account.encryptedToken,
+      telegramChatId,
+      replyToMessageId: message.message_id,
+    }).catch((err) => {
+      console.error("Telegram /compact command failed:", err);
+    });
     return NextResponse.json({ ok: true });
   }
 
