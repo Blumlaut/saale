@@ -219,7 +219,12 @@ export function startTypingIndicator(encryptedToken: string, chatId: bigint): ()
   // Send the first one immediately
   sendTypingIndicator(encryptedToken, chatId);
 
-  return () => clearInterval(interval);
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(interval);
+  };
 }
 
 /**
