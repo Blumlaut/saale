@@ -8,6 +8,7 @@ export {
   buildWebhookUrl,
   sendTelegramMessage,
   sendTypingIndicator,
+  startTypingIndicator,
 } from "./client";
 
 export { processTelegramMessage, isWhitelisted, upsertWhitelistDisplayName } from "./processor";
