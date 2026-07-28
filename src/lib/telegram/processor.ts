@@ -556,6 +556,42 @@ export async function processTelegramMessage(
             break;
           }
 
+          case "compaction_start": {
+            sendTelegramMessage(
+              encryptedToken,
+              telegramChatId,
+              "\U0001f504 Compacting conversation...",
+            ).catch((err) => {
+              console.error("Failed to send Telegram compaction start message:", err);
+            });
+            break;
+          }
+
+          case "compaction_end": {
+            if (event.result && !event.aborted) {
+              // Save compaction to DB (for web UI visibility)
+              saveCompactionMessage({
+                sessionId,
+                summary: event.result.summary,
+                tokensBefore: event.result.tokensBefore,
+              });
+
+              // Report token stats to Telegram (no summary)
+              const tokensAfter = event.result.estimatedTokensAfter;
+              const tokensInfo = tokensAfter
+                ? ` (was ${event.result.tokensBefore.toLocaleString()} tokens, now ~${tokensAfter.toLocaleString()})`
+                : ` (was ${event.result.tokensBefore.toLocaleString()} tokens)`;
+              sendTelegramMessage(
+                encryptedToken,
+                telegramChatId,
+                `\u2705 Compaction complete${tokensInfo}.`,
+              ).catch((err) => {
+                console.error("Failed to send Telegram compaction end message:", err);
+              });
+            }
+            break;
+          }
+
           case "agent_end": {
             clearTimeout(timer);
             unsubscribe();
