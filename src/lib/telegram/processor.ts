@@ -280,6 +280,10 @@ export async function processTelegramMessage(
   await registerActiveSession(userId, sessionId);
   const stopTyping = startTypingIndicator(encryptedToken, telegramChatId);
 
+  // Track if this session was registered in the session registry (for interruption).
+  // If so, we must unregister on completion.
+  let wasRegistered = false;
+
   // 6. Ensure the Telegram agent definition exists
   const definition = await ensureTelegramAgentDefinition(userId);
 
@@ -423,217 +427,215 @@ export async function processTelegramMessage(
     { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
   > = new Map();
 
-  // Track if this session was registered in the session registry (for interruption).
-  // If so, we must unregister on completion.
-  let wasRegistered = false;
-
   try {
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        stopTyping();
-        unsubscribe();
-        processingDone?.resolve();
-        session.abort().catch((err) => {
-          console.error(`Telegram session abort failed:`, err);
-        });
-        reject(new Error("Telegram agent timed out (10min)"));
-      }, 10 * 60_000);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          unsubscribe();
+          processingDone?.resolve();
+          session.abort().catch((err) => {
+            console.error(`Telegram session abort failed:`, err);
+          });
+          reject(new Error("Telegram agent timed out (10min)"));
+        }, 10 * 60_000);
 
-      const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-        switch (event.type) {
-          case "message_update": {
-            if (event.message.role !== "assistant") return;
-            const msg = event.message as { content: unknown[] };
-            currentTurnText = extractCumulativeText(msg.content);
-            currentTurnThinking = extractThinking(msg.content) || "";
+        const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+          switch (event.type) {
+            case "message_update": {
+              if (event.message.role !== "assistant") return;
+              const msg = event.message as { content: unknown[] };
+              currentTurnText = extractCumulativeText(msg.content);
+              currentTurnThinking = extractThinking(msg.content) || "";
 
-            // Track tool call IDs appearing in this message
-            let hasToolCall = false;
-            for (const content of msg.content) {
-              if (
-                typeof content === "object" &&
-                content !== null &&
-                (content as Record<string, unknown>).type === "toolCall"
-              ) {
-                currentTurnToolCallIds.add((content as Record<string, unknown>).id as string);
-                hasToolCall = true;
-              }
-            }
-
-            // Flush text NOW when a tool call appears — the approval request
-            // fires inside tool.execute() (before tool_execution_start), so we
-            // need the agent's response text to arrive BEFORE the approval.
-            if (hasToolCall) {
-              flushTurnText(turnIndex);
-            }
-            break;
-          }
-
-          case "tool_execution_start": {
-            toolCallResults.set(event.toolCallId, {
-              name: event.toolName,
-              args: event.args,
-            });
-            break;
-          }
-
-          case "tool_execution_end": {
-            const resultStr = normalizeToolResult(event.result);
-            const existing = toolCallResults.get(event.toolCallId);
-            if (existing) {
-              existing.result = resultStr;
-              existing.isError = event.isError;
-            }
-            break;
-          }
-
-          case "turn_end": {
-            // Extract turn data from the assistant message
-            const assistantMsg =
-              event.message.role === "assistant" ? (event.message as { content: unknown[] }) : null;
-
-            const text = assistantMsg
-              ? extractCumulativeText(assistantMsg.content)
-              : currentTurnText;
-            const thinking = assistantMsg
-              ? extractThinking(assistantMsg.content)
-              : currentTurnThinking || null;
-
-            // Collect tool calls for this turn
-            const toolCallBlocks = assistantMsg
-              ? (assistantMsg.content.filter(
-                  (c) =>
-                    typeof c === "object" &&
-                    c !== null &&
-                    (c as Record<string, unknown>).type === "toolCall",
-                ) as Record<string, unknown>[])
-              : [];
-            const turnToolCalls = toolCallBlocks.map((tc) => {
-              const result = toolCallResults.get(tc.id as string);
-              return {
-                id: tc.id as string,
-                name: tc.name as string,
-                args: tc.arguments as unknown as Record<string, unknown>,
-                result: result?.result,
-                isError: result?.isError,
-              };
-            });
-
-            // Send non-empty text to Telegram (skip if already flushed in message_update
-            // when a tool call was detected — that ensures text arrives before approval).
-            if (text.trim() && !flushedTurnTexts.has(turnIndex)) {
-              sendTelegramMessage(
-                encryptedToken,
-                telegramChatId,
-                text,
-                turnIndex === 0
-                  ? replyToMessageId != null
-                    ? { replyToMessageId }
-                    : undefined
-                  : undefined,
-              ).catch((err) => {
-                console.error("Failed to send Telegram message for turn:", err);
-              });
-            }
-
-            // Save this turn to DB with full metadata (thinking, tool calls, parent link)
-            saveAssistantMessage(
-              sessionId,
-              text,
-              thinking || undefined,
-              turnToolCalls.length > 0 ? turnToolCalls : undefined,
-              rootMessageId,
-            )
-              .then((msg) => {
-                if (!rootMessageId) {
-                  rootMessageId = msg.id;
+              // Track tool call IDs appearing in this message
+              let hasToolCall = false;
+              for (const content of msg.content) {
+                if (
+                  typeof content === "object" &&
+                  content !== null &&
+                  (content as Record<string, unknown>).type === "toolCall"
+                ) {
+                  currentTurnToolCallIds.add((content as Record<string, unknown>).id as string);
+                  hasToolCall = true;
                 }
-              })
-              .catch((err) => {
-                console.error("Failed to save turn message to DB:", err);
+              }
+
+              // Flush text NOW when a tool call appears — the approval request
+              // fires inside tool.execute() (before tool_execution_start), so we
+              // need the agent's response text to arrive BEFORE the approval.
+              if (hasToolCall) {
+                flushTurnText(turnIndex);
+              }
+              break;
+            }
+
+            case "tool_execution_start": {
+              toolCallResults.set(event.toolCallId, {
+                name: event.toolName,
+                args: event.args,
+              });
+              break;
+            }
+
+            case "tool_execution_end": {
+              const resultStr = normalizeToolResult(event.result);
+              const existing = toolCallResults.get(event.toolCallId);
+              if (existing) {
+                existing.result = resultStr;
+                existing.isError = event.isError;
+              }
+              break;
+            }
+
+            case "turn_end": {
+              // Extract turn data from the assistant message
+              const assistantMsg =
+                event.message.role === "assistant"
+                  ? (event.message as { content: unknown[] })
+                  : null;
+
+              const text = assistantMsg
+                ? extractCumulativeText(assistantMsg.content)
+                : currentTurnText;
+              const thinking = assistantMsg
+                ? extractThinking(assistantMsg.content)
+                : currentTurnThinking || null;
+
+              // Collect tool calls for this turn
+              const toolCallBlocks = assistantMsg
+                ? (assistantMsg.content.filter(
+                    (c) =>
+                      typeof c === "object" &&
+                      c !== null &&
+                      (c as Record<string, unknown>).type === "toolCall",
+                  ) as Record<string, unknown>[])
+                : [];
+              const turnToolCalls = toolCallBlocks.map((tc) => {
+                const result = toolCallResults.get(tc.id as string);
+                return {
+                  id: tc.id as string,
+                  name: tc.name as string,
+                  args: tc.arguments as unknown as Record<string, unknown>,
+                  result: result?.result,
+                  isError: result?.isError,
+                };
               });
 
-            turnIndex++;
-            currentTurnText = "";
-            currentTurnThinking = "";
-            currentTurnToolCallIds.clear();
-            break;
-          }
+              // Send non-empty text to Telegram (skip if already flushed in message_update
+              // when a tool call was detected — that ensures text arrives before approval).
+              if (text.trim() && !flushedTurnTexts.has(turnIndex)) {
+                sendTelegramMessage(
+                  encryptedToken,
+                  telegramChatId,
+                  text,
+                  turnIndex === 0
+                    ? replyToMessageId != null
+                      ? { replyToMessageId }
+                      : undefined
+                    : undefined,
+                ).catch((err) => {
+                  console.error("Failed to send Telegram message for turn:", err);
+                });
+              }
 
-          case "compaction_start": {
-            sendTelegramMessage(
-              encryptedToken,
-              telegramChatId,
-              "\U0001f504 Compacting conversation...",
-            ).catch((err) => {
-              console.error("Failed to send Telegram compaction start message:", err);
-            });
-            break;
-          }
-
-          case "compaction_end": {
-            if (event.result && !event.aborted) {
-              // Save compaction to DB (for web UI visibility)
-              saveCompactionMessage({
+              // Save this turn to DB with full metadata (thinking, tool calls, parent link)
+              saveAssistantMessage(
                 sessionId,
-                summary: event.result.summary,
-                tokensBefore: event.result.tokensBefore,
-              });
+                text,
+                thinking || undefined,
+                turnToolCalls.length > 0 ? turnToolCalls : undefined,
+                rootMessageId,
+              )
+                .then((msg) => {
+                  if (!rootMessageId) {
+                    rootMessageId = msg.id;
+                  }
+                })
+                .catch((err) => {
+                  console.error("Failed to save turn message to DB:", err);
+                });
 
-              // Report token stats to Telegram (no summary)
-              const tokensAfter = event.result.estimatedTokensAfter;
-              const tokensInfo = tokensAfter
-                ? ` (was ${event.result.tokensBefore.toLocaleString()} tokens, now ~${tokensAfter.toLocaleString()})`
-                : ` (was ${event.result.tokensBefore.toLocaleString()} tokens)`;
+              turnIndex++;
+              currentTurnText = "";
+              currentTurnThinking = "";
+              currentTurnToolCallIds.clear();
+              break;
+            }
+
+            case "compaction_start": {
               sendTelegramMessage(
                 encryptedToken,
                 telegramChatId,
-                `\u2705 Compaction complete${tokensInfo}.`,
+                "\U0001f504 Compacting conversation...",
               ).catch((err) => {
-                console.error("Failed to send Telegram compaction end message:", err);
+                console.error("Failed to send Telegram compaction start message:", err);
               });
+              break;
             }
-            break;
-          }
 
-          case "agent_end": {
-            stopTyping();
-            clearTimeout(timer);
-            unsubscribe();
-            processingDone?.resolve();
-            resolve();
-            break;
-          }
+            case "compaction_end": {
+              if (event.result && !event.aborted) {
+                // Save compaction to DB (for web UI visibility)
+                saveCompactionMessage({
+                  sessionId,
+                  summary: event.result.summary,
+                  tokensBefore: event.result.tokensBefore,
+                });
 
-          case "auto_retry_end": {
-            if (!event.success) {
-              stopTyping();
+                // Report token stats to Telegram (no summary)
+                const tokensAfter = event.result.estimatedTokensAfter;
+                const tokensInfo = tokensAfter
+                  ? ` (was ${event.result.tokensBefore.toLocaleString()} tokens, now ~${tokensAfter.toLocaleString()})`
+                  : ` (was ${event.result.tokensBefore.toLocaleString()} tokens)`;
+                sendTelegramMessage(
+                  encryptedToken,
+                  telegramChatId,
+                  `\u2705 Compaction complete${tokensInfo}.`,
+                ).catch((err) => {
+                  console.error("Failed to send Telegram compaction end message:", err);
+                });
+              }
+              break;
+            }
+
+            case "agent_end": {
               clearTimeout(timer);
               unsubscribe();
               processingDone?.resolve();
-              reject(new Error(event.finalError ?? "Agent retry failed"));
+              resolve();
+              break;
             }
-            break;
+
+            case "auto_retry_end": {
+              if (!event.success) {
+                clearTimeout(timer);
+                unsubscribe();
+                processingDone?.resolve();
+                reject(new Error(event.finalError ?? "Agent retry failed"));
+              }
+              break;
+            }
           }
+        });
+
+        // Notify caller about the created session (for registry tracking)
+        if (onSessionCreated) {
+          onSessionCreated(session, telegramChatId);
+          wasRegistered = true;
         }
-      });
 
-      // Notify caller about the created session (for registry tracking)
-      if (onSessionCreated) {
-        onSessionCreated(session, telegramChatId);
-        wasRegistered = true;
-      }
-
-      // Send the user message to the agent (with images if available)
-      const images = processedFile?.imageData ? [processedFile.imageData] : undefined;
-      session.agent.prompt(promptText, images).catch((err) => {
-        stopTyping();
-        clearTimeout(timer);
-        unsubscribe();
-        processingDone?.resolve();
-        reject(err);
+        // Send the user message to the agent (with images if available)
+        const images = processedFile?.imageData ? [processedFile.imageData] : undefined;
+        session.agent.prompt(promptText, images).catch((err) => {
+          clearTimeout(timer);
+          unsubscribe();
+          processingDone?.resolve();
+          reject(err);
+        });
       });
-    });
+    } finally {
+      stopTyping();
+    }
 
     // For single-turn responses (no turn_end fired), save the final message
     if (turnIndex === 0 && currentTurnText.trim()) {
