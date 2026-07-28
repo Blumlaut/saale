@@ -339,8 +339,11 @@ export async function processTelegramMessage(
   } as Required<ToolConfig>;
 
   // Build policy lookup from user settings (default: per-tool sane default)
-  const toolPolicies = userSettings?.toolPolicies as Record<string, "off" | "ask" | "allow"> | null;
-  const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow"> =>
+  const toolPolicies = userSettings?.toolPolicies as Record<
+    string,
+    "off" | "ask" | "allow" | "auto"
+  > | null;
+  const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow" | "auto"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
   // Build the approval wrapper — every tool goes through the gate

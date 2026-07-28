@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/select";
 import { Wrench, Info, ChevronDown, ChevronRight } from "lucide-react";
 import { SaveFooter } from "../components/save-footer";
-import type { UserSettings, ToolConfig, ToolPolicy } from "../types";
+import type { UserSettings, ToolConfig } from "../types";
+import type { ToolPolicy } from "@/lib/pi/tool-infos";
 import { DEFAULT_TOOL_CONFIG, TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
 import { getToolsByCategory, getDefaultPolicy } from "@/lib/pi/tool-infos";
 
@@ -76,8 +77,9 @@ export function ToolsTab({
               <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
               <p className="text-muted-foreground text-xs">
                 Toggle a category on/off to enable or disable it by default. Expand a category to
-                configure per-tool approval policies. <b>Allow</b> — runs automatically. <b>Ask</b>{" "}
-                — requires your approval. <b>Block</b> — never runs.
+                configure per-tool approval policies. <b>Allow</b> — runs automatically. <b>Auto</b>{" "}
+                — auto-approves safe commands, asks for risky ones (infra exec only). <b>Ask</b> —
+                requires your approval. <b>Block</b> — never runs.
               </p>
             </div>
           </div>
@@ -173,6 +175,9 @@ export function ToolsTab({
                                   </SelectTrigger>
                                   <SelectContent align="end">
                                     <SelectItem value="allow">Allow</SelectItem>
+                                    {tool.name === "infra_exec" && (
+                                      <SelectItem value="auto">Auto</SelectItem>
+                                    )}
                                     <SelectItem value="ask">Ask</SelectItem>
                                     <SelectItem value="off">Block</SelectItem>
                                   </SelectContent>
