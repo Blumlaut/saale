@@ -66,8 +66,8 @@ describe("Telegram tool approval gate — critical security", () => {
       expect(getDefaultPolicy("mail_send")).toBe("ask");
     });
 
-    it("bash defaults to 'ask'", () => {
-      expect(getDefaultPolicy("bash")).toBe("ask");
+    it("bash defaults to 'auto'", () => {
+      expect(getDefaultPolicy("bash")).toBe("auto");
     });
 
     it("job_run defaults to 'ask'", () => {
@@ -355,7 +355,6 @@ describe("Telegram tool approval gate — critical security", () => {
     const askByDefault = [
       "write",
       "edit",
-      "bash",
       "mail_send",
       "mail_delete",
       "job_run",
@@ -374,8 +373,8 @@ describe("Telegram tool approval gate — critical security", () => {
       expect(getDefaultPolicy(toolName)).toBe("ask");
     });
 
-    it("'infra_exec' defaults to 'auto' policy", () => {
-      expect(getDefaultPolicy("infra_exec")).toBe("auto");
+    it.each(["infra_exec", "bash"])("'%s' defaults to 'auto' policy", (toolName) => {
+      expect(getDefaultPolicy(toolName)).toBe("auto");
     });
   });
 });

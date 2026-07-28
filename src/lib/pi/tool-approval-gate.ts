@@ -9,9 +9,12 @@ export type ToolPolicy = "off" | "ask" | "allow" | "auto";
 
 /**
  * The "auto" policy is command-aware:
- * - For infra_exec: auto-approves safe commands (ls, cat, grep…), requires approval for risky ones (rm, echo >>, sudo…)
+ * - For infra_exec and bash: auto-approves safe commands (ls, cat, grep…), requires approval for risky ones (rm, echo >>, sudo…)
  * - For all other tools: behaves like "allow"
  */
+
+/** Tools that support command-aware "auto" approval. */
+const COMMAND_AWARE_TOOLS = new Set(["infra_exec", "bash"]);
 
 /** How long an approval request waits before auto-denying (ms). */
 export const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -205,8 +208,8 @@ export function wrapWithApprovalGate(
         };
       }
 
-      // Policy: "auto" — command-aware approval (infra_exec)
-      if (policy === "auto" && tool.name === "infra_exec") {
+      // Policy: "auto" — command-aware approval (infra_exec, bash)
+      if (policy === "auto" && COMMAND_AWARE_TOOLS.has(tool.name)) {
         const command = (params as { command?: string }).command;
         const classification = command
           ? classifyCommand(command)

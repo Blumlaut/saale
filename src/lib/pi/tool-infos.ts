@@ -53,7 +53,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Bash",
     description: "Execute shell commands",
     category: "terminal",
-    defaultPolicy: "ask",
+    defaultPolicy: "auto",
   },
 
   // ── Chat ──────────────────────────────────────────────────────────
