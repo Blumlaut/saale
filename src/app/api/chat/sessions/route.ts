@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getActiveSessions } from "@/lib/redis";
 
 /**
  * GET /api/chat/sessions — List user's chat sessions
@@ -19,14 +20,13 @@ export async function GET() {
       title: true,
       temporary: true,
       messageCount: true,
-      modelProvider: true,
-      modelName: true,
-      thinkingLevel: true,
-      processingSince: true,
       createdAt: true,
       updatedAt: true,
     },
   });
+
+  // Source of truth: Redis tracks active generations (ephemeral — cleared on crash).
+  const activeSessionIds = await getActiveSessions(authResult.user.id);
 
   return NextResponse.json({
     sessions: sessions.map((s) => ({
@@ -34,10 +34,7 @@ export async function GET() {
       title: s.title,
       temporary: s.temporary,
       messageCount: s.messageCount,
-      modelProvider: s.modelProvider,
-      modelName: s.modelName,
-      thinkingLevel: s.thinkingLevel,
-      processingSince: s.processingSince?.toISOString(),
+      isGenerating: activeSessionIds.has(s.id),
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),
     })),

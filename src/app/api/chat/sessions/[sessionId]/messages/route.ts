@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { isSessionActive, registerActiveSession } from "@/lib/redis";
 import { validateImageUpload, processAndStoreImage, deleteAllImages } from "@/lib/image-attachment";
 
 /**
@@ -25,6 +26,10 @@ export async function GET(
     },
   });
 
+  // Source of truth: Redis tracks active generations (ephemeral — cleared on crash).
+  // processingSince is a DB timestamp that survives crashes and must not be trusted.
+  const isGenerating = await isSessionActive(authResult.userId, sessionId);
+
   return NextResponse.json({
     session: {
       id: chatSession.id,
@@ -33,7 +38,7 @@ export async function GET(
       modelName: chatSession.modelName,
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
-      processingSince: chatSession.processingSince,
+      isGenerating,
     },
     messages: messages.map((m) => ({
       id: m.id,
@@ -86,7 +91,7 @@ export async function POST(
   const chatSession = authResult.session;
 
   // Prevent sending another message while one is being processed
-  if (chatSession.processingSince) {
+  if (await isSessionActive(authResult.userId, sessionId)) {
     return NextResponse.json(
       { error: "A response is already being generated. Please wait." },
       { status: 409 },
@@ -183,12 +188,11 @@ export async function POST(
       include: { attachments: true },
     });
 
-    // Update session metadata and mark response as in-progress
+    // Update session metadata
     await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
         messageCount: { increment: 1 },
-        processingSince: new Date(),
         title:
           chatSession.title === "New Chat"
             ? (sanitizedContent || "Image").slice(0, 47) +
@@ -196,6 +200,10 @@ export async function POST(
             : chatSession.title,
       },
     });
+
+    // Register in Redis so the 409 guard works before the SSE connection is made.
+    // Cleared by unregisterActiveSession on agent_end or stop.
+    await registerActiveSession(authResult.userId, sessionId);
 
     // Return stream URL and the saved message for client-side replacement
     return NextResponse.json({

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { isSessionActive, registerActiveSession } from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
 
 /**
@@ -19,17 +20,18 @@ export async function PATCH(
 
   const { sessionId, messageId } = await params;
 
-  // Verify session ownership and check if a response is already in progress
+  // Verify session ownership
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId: authResult.user.id },
-    select: { id: true, processingSince: true },
+    select: { id: true },
   });
 
   if (!chatSession) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (chatSession.processingSince) {
+  // Check if a response is already being generated
+  if (await isSessionActive(authResult.user.id, sessionId)) {
     return NextResponse.json(
       { error: "A response is already being generated. Please wait." },
       { status: 409 },
@@ -58,7 +60,7 @@ export async function PATCH(
   // Sanitize content
   const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
-  // Update the message in place, delete messages after it, and mark response in progress
+  // Update the message in place and delete messages after it
   await prisma.$transaction(async (tx) => {
     // Update the message content
     await tx.chatMessage.update({
@@ -76,13 +78,10 @@ export async function PATCH(
         createdAt: { gt: message.createdAt },
       },
     });
-
-    // Mark response as in progress
-    await tx.chatSession.update({
-      where: { id: sessionId },
-      data: { processingSince: new Date() },
-    });
   });
+
+  // Register in Redis so the 409 guard works before the SSE connection is made.
+  await registerActiveSession(authResult.user.id, sessionId);
 
   // Clear lastPromptedMessageId so the stream re-prompts with the edited content.
   // The message ID is the same but its content has changed.

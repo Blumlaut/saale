@@ -14,7 +14,7 @@ interface ChatSession {
   temporary: boolean;
   messageCount: number;
   updatedAt: string;
-  processingSince?: string;
+  isGenerating?: boolean;
   forkedFromSessionId?: string;
 }
 
@@ -109,7 +109,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
                     <div className="truncate font-medium">
                       {session.title.length > 25 ? `${session.title.slice(0, 25)}…` : session.title}
                     </div>
-                    {session.processingSince && (
+                    {session.isGenerating && (
                       <span className="text-muted-foreground animate-pulse-dot -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current" />
                     )}
                     {session.forkedFromSessionId && (

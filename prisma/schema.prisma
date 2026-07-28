@@ -106,7 +106,6 @@ model ChatSession {
   messageCount     Int           @default(0)
   lastSummarizedAt DateTime?     // cursor — only process messages after this for memory extraction
   memorySummary    String?       @db.Text // compressed running summary of the conversation
-  processingSince  DateTime?     // set when AI starts processing, cleared when done (auto-detects stale state)
   // In-progress tool state (for SSE reconnection — shows what's running when user refreshes mid-tool)
   activeToolCallId String?       @db.VarChar(100)
   activeToolName   String?       @db.VarChar(200)

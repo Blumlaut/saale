@@ -18,11 +18,7 @@ import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
-import {
-  buildAgentSystemPrompt,
-  clearProcessingSince,
-  lockSystemPrompt,
-} from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
@@ -100,7 +96,7 @@ export async function GET(
 
   // No model available — return an error stream
   if (!modelProvider || !modelName) {
-    clearProcessingSince(sessionId).catch(console.error);
+    unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
 
     const encoder = new TextEncoder();
     const errorEvent = encoder.encode(
@@ -359,9 +355,6 @@ export async function GET(
           .catch((err) => {
             console.error("agent.prompt() failed:", err);
             unsubscribeForward();
-            clearProcessingSince(sessionId).catch((updateErr) => {
-              console.error("Failed to clear processingSince on error:", updateErr);
-            });
             unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
             dispatcher.emit("error", { message: err.message });
             dispatcher.emit("done", {});

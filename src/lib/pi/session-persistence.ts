@@ -16,7 +16,6 @@ import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { saveAssistantMessage } from "./stream-helpers";
 import { normalizeToolResult } from "./message-replay";
-import { clearProcessingSince } from "./processing-state";
 import { unregisterActiveSession } from "@/lib/redis";
 import { getDispatcher } from "./agent-pool";
 
@@ -335,8 +334,8 @@ export function wireSessionPersistence(
           });
         }
 
-        clearProcessingSince(sessionId).catch((err) => {
-          console.error("Failed to clear processingSince after compaction:", err);
+        unregisterActiveSession(userId, sessionId).catch((err) => {
+          console.error("Failed to unregister active session after compaction:", err);
         });
         break;
       }
@@ -431,9 +430,9 @@ export function wireSessionPersistence(
             );
           }
 
-          // Always clear processingSince and increment message count
+          // Always unregister and increment message count
           Promise.all([
-            clearProcessingSince(sessionId),
+            unregisterActiveSession(userId, sessionId),
             prisma.chatSession.update({
               where: { id: sessionId },
               data: { messageCount: { increment: turnIndex || 1 } },
