@@ -339,5 +339,78 @@ describe("tool-approval-gate", () => {
       expect(emittedRequests).toHaveLength(0);
       expect(result.content[0].text).toBe("Email sent");
     });
+
+    it("auto policy: bash with safe command executes without approval", async () => {
+      let executed = false;
+      const emittedRequests: ApprovalRequest[] = [];
+
+      const tool = wrapWithApprovalGate(
+        makeMockTool("bash", async () => {
+          executed = true;
+          return {
+            content: [{ type: "text", text: "ok" }],
+            details: {},
+          };
+        }),
+        "user-1",
+        "session-test",
+        async () => "auto",
+        (request) => {
+          emittedRequests.push(request);
+        },
+      );
+
+      const result = (await tool.execute(
+        "tc-1",
+        { command: "ls -la /home" },
+        undefined,
+        undefined,
+        {} as never,
+      )) as ToolResult;
+
+      expect(executed).toBe(true);
+      expect(emittedRequests).toHaveLength(0);
+      expect(result.content[0].text).toBe("ok");
+    });
+
+    it("auto policy: bash with risky command requires approval", async () => {
+      let executed = false;
+      const emittedRequests: ApprovalRequest[] = [];
+
+      const tool = wrapWithApprovalGate(
+        makeMockTool("bash", async () => {
+          executed = true;
+          return {
+            content: [{ type: "text", text: "ok" }],
+            details: {},
+          };
+        }),
+        "user-1",
+        "session-test",
+        async () => "auto",
+        (request) => {
+          emittedRequests.push(request);
+        },
+      );
+
+      const promise = tool.execute(
+        "tc-1",
+        { command: "rm -rf /tmp/data" },
+        undefined,
+        undefined,
+        {} as never,
+      );
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(emittedRequests).toHaveLength(1);
+      expect(executed).toBe(false);
+
+      await resolveApproval("session-test", "tc-1", true);
+      const result = (await promise) as ToolResult;
+
+      expect(executed).toBe(true);
+      expect(result.content[0].text).toBe("ok");
+    });
   });
 });

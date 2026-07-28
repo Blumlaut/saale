@@ -175,7 +175,7 @@ export function ToolsTab({
                                   </SelectTrigger>
                                   <SelectContent align="end">
                                     <SelectItem value="allow">Allow</SelectItem>
-                                    {tool.name === "infra_exec" && (
+                                    {(tool.name === "infra_exec" || tool.name === "bash") && (
                                       <SelectItem value="auto">Auto</SelectItem>
                                     )}
                                     <SelectItem value="ask">Ask</SelectItem>
