@@ -222,7 +222,7 @@ prisma.$queryRaw`
 ## Extract Reusable Helpers
 
 - **Keep API routes thin.** Routes should orchestrate — authenticate, validate input, delegate to helpers, return a response. Business logic belongs in `src/lib/`, not inside route handlers.
-- **Never duplicate logic across routes.** If two routes (or a route and a background job) do the same thing (DB writes, email sends, state updates), extract it into a shared helper in `src/lib/`.
+- **Never duplicate logic.** If two routes (or a route and a background job) do the same thing (DB writes, email sends, state updates), extract it into a shared helper in `src/lib/`.
 - **Prefer named helper functions over inline logic.** A `saveCompactionMessage()` in `src/lib/chat/` is better than the same Prisma call copy-pasted into three different files.
 - **When adding logic to a route, ask: "will this be needed elsewhere?"** If yes (or if it's more than a trivial one-liner), extract it first.
 

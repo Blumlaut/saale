@@ -20,6 +20,7 @@ import { sendTelegramApprovalRequest } from "./approval";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
+import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { unregisterTelegramSession } from "./session-registry";
@@ -704,6 +705,171 @@ async function ensureTelegramAgentDefinition(userId: string): Promise<{
     modelId: definition.modelId,
     thinkingLevel: definition.thinkingLevel,
   };
+}
+
+/**
+ * Compact a Telegram chat session.
+ *
+ * Recreates the Pi session from persistent JSONL files, runs compaction,
+ * and sends the result back to Telegram.
+ */
+export async function compactTelegramSession(params: {
+  userId: string;
+  encryptedToken: string;
+  telegramChatId: bigint;
+  replyToMessageId?: number | undefined;
+}): Promise<void> {
+  const { userId, encryptedToken, telegramChatId, replyToMessageId } = params;
+
+  // 1. Find the chat session linked to this Telegram chat
+  const account = await prisma.telegramAccount.findUnique({
+    where: { userId },
+  });
+  if (!account) {
+    await sendTelegramMessage(
+      encryptedToken,
+      telegramChatId,
+      "⚠️ Telegram integration not configured.",
+      replyToMessageId != null ? { replyToMessageId } : undefined,
+    );
+    return;
+  }
+
+  const tgChat = await prisma.telegramChat.findUnique({
+    where: {
+      telegramAccountId_telegramChatId: {
+        telegramAccountId: account.id,
+        telegramChatId,
+      },
+    },
+  });
+  if (!tgChat) {
+    await sendTelegramMessage(
+      encryptedToken,
+      telegramChatId,
+      "⚠️ No active chat session found. Send a message first.",
+      replyToMessageId != null ? { replyToMessageId } : undefined,
+    );
+    return;
+  }
+
+  const sessionId = tgChat.sessionId;
+
+  // 2. Get model config from the agent definition or user settings
+  const definition = await prisma.agentDefinition.findFirst({
+    where: { userId, name: TELEGRAM_AGENT_NAME },
+  });
+
+  const { modelRuntime } = await buildModelRuntime(userId);
+  const explicitModelId = definition?.modelId ?? null;
+  const resolvedModelConfig = await resolveModelForPurpose(userId, "telegram", explicitModelId);
+  if (!resolvedModelConfig) {
+    await sendTelegramMessage(
+      encryptedToken,
+      telegramChatId,
+      "⚠️ No AI model configured. Please select a model in Settings → AI &amp; Models.",
+      replyToMessageId != null ? { replyToMessageId } : undefined,
+    );
+    return;
+  }
+
+  const modelId = explicitModelId ?? `${resolvedModelConfig.provider}:${resolvedModelConfig.name}`;
+  const [provider, ...nameParts] = modelId.split(":");
+  const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
+
+  // 3. Build tool config
+  const userSettings = await prisma.appSettings.findUnique({
+    where: { userId },
+    select: { defaultToolConfig: true, agentCustomInstructions: true },
+  });
+  const userToolConfig = (userSettings?.defaultToolConfig as Record<string, boolean>) ?? {};
+  const defToolConfig = (definition?.toolConfig as Record<string, boolean>) ?? {};
+  const resolvedToolConfig = {
+    ...DEFAULT_TOOL_CONFIG,
+    ...userToolConfig,
+    ...defToolConfig,
+    terminal: false,
+  } as Required<ToolConfig>;
+
+  // 4. Create persistent session from JSONL files
+  const sessionDir = path.join(
+    process.env.UPLOADS_DIR ?? "./uploads",
+    "pi_sessions",
+    userId,
+    sessionId,
+  );
+
+  const allCustomTools = await resolveTools(userId, "compact", resolvedToolConfig, {
+    createTerminalScopedTools: () => {
+      throw new Error("Terminal tools are not available for agent jobs.");
+    },
+  });
+
+  const { session } = await createAgentSession({
+    sessionManager: SessionManager.continueRecent(sessionDir, sessionDir),
+    modelRuntime,
+    noTools: "builtin",
+    ...(resolvedModel ? { model: resolvedModel } : {}),
+    customTools: allCustomTools,
+    thinkingLevel: (definition?.thinkingLevel as "off") ?? "off",
+  });
+
+  // Build system prompt
+  const baseSystemPrompt = buildAgentSystemPrompt({
+    customInstructions: userSettings?.agentCustomInstructions,
+    toolConfig: resolvedToolConfig,
+  });
+  lockSystemPrompt(session, baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE);
+
+  try {
+    const result = await session.compact();
+
+    if (result?.summary) {
+      await saveCompactionMessage({
+        sessionId,
+        summary: result.summary,
+        tokensBefore: result.tokensBefore,
+      });
+    }
+
+    const tokensInfo = result?.tokensBefore
+      ? ` (was ${result.tokensBefore.toLocaleString()} tokens)`
+      : "";
+    await sendTelegramMessage(
+      encryptedToken,
+      telegramChatId,
+      `✅ Conversation compacted${tokensInfo}.`,
+      replyToMessageId != null ? { replyToMessageId } : undefined,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+
+    if (message === "Already compacted") {
+      await sendTelegramMessage(
+        encryptedToken,
+        telegramChatId,
+        "ℹ️ This conversation is already compacted.",
+        replyToMessageId != null ? { replyToMessageId } : undefined,
+      );
+    } else if (message === "Nothing to compact (session too small)") {
+      await sendTelegramMessage(
+        encryptedToken,
+        telegramChatId,
+        "ℹ️ The conversation is too short to compact.",
+        replyToMessageId != null ? { replyToMessageId } : undefined,
+      );
+    } else {
+      console.error("Telegram compaction failed:", err);
+      await sendTelegramMessage(
+        encryptedToken,
+        telegramChatId,
+        "⚠️ Compaction failed. Please try again.",
+        replyToMessageId != null ? { replyToMessageId } : undefined,
+      );
+    }
+  } finally {
+    session.dispose();
+  }
 }
 
 // ─── Chat Session Helpers ────────────────────────────────────────────────────

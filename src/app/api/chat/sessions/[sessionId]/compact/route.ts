@@ -96,6 +96,22 @@ export async function POST(
       tokensBefore: result?.tokensBefore,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+
+    // Known non-error conditions — return 409 with actionable info
+    if (message === "Already compacted") {
+      return NextResponse.json(
+        { error: "already_compacted", message: "This conversation is already compacted" },
+        { status: 409 },
+      );
+    }
+    if (message === "Nothing to compact (session too small)") {
+      return NextResponse.json(
+        { error: "nothing_to_compact", message: "The conversation is too short to compact" },
+        { status: 409 },
+      );
+    }
+
     console.error("Manual compaction failed:", err);
     return NextResponse.json({ error: "Compaction failed" }, { status: 500 });
   }
