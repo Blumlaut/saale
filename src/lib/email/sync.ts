@@ -43,30 +43,32 @@ async function discoverFolders(
   try {
     const mailboxes: ListResponse[] = await mailbox.list();
 
-    // Collect all folder names (skip INBOX and \Noselect parent folders)
+    // Collect all folder paths (skip INBOX and \Noselect parent folders).
+    // Use mb.path (full selectable path like "INBOX/Zapx") instead of mb.name
+    // (last segment only like "Zapx") — mailboxOpen() needs the full path.
     for (const mb of mailboxes) {
       if (mb.name.toUpperCase() === "INBOX") continue;
       const attrs = mb.flags ?? new Set<string>();
       if (attrs.has("\\Noselect")) continue; // parent container, not selectable
-      allFolders.push(mb.name);
+      allFolders.push(mb.path);
     }
 
     for (const mb of mailboxes) {
       const attrs = mb.flags ?? new Set<string>();
-      const name = mb.name;
 
-      // Match special-use attributes (check both flags set and specialUse field)
+      // Match special-use attributes (check both flags set and specialUse field).
+      // Store mb.path (selectable path) instead of mb.name.
       if ((attrs.has("\\Sent") || mb.specialUse === "\\Sent") && !special["\\Sent"]) {
-        special["\\Sent"] = name;
+        special["\\Sent"] = mb.path;
       }
       if ((attrs.has("\\Drafts") || mb.specialUse === "\\Drafts") && !special["\\Drafts"]) {
-        special["\\Drafts"] = name;
+        special["\\Drafts"] = mb.path;
       }
       if ((attrs.has("\\Trash") || mb.specialUse === "\\Trash") && !special["\\Trash"]) {
-        special["\\Trash"] = name;
+        special["\\Trash"] = mb.path;
       }
       if ((attrs.has("\\Archive") || mb.specialUse === "\\Archive") && !special["\\Archive"]) {
-        special["\\Archive"] = name;
+        special["\\Archive"] = mb.path;
       }
     }
 
@@ -78,7 +80,7 @@ async function discoverFolders(
       for (const fallback of fallbacks) {
         const match = mailboxes.find((mb) => mb.name.toLowerCase() === fallback.toLowerCase());
         if (match) {
-          special[attr as keyof typeof special] = match.name;
+          special[attr as keyof typeof special] = match.path;
           break;
         }
       }
