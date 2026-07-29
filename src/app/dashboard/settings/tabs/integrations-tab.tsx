@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,31 +63,30 @@ export function IntegrationsTab() {
   const [deleting, setDeleting] = useState(false);
 
   // Reset forms when dialog closes
-  useEffect(() => {
-    if (!addDialogOpen) {
-      telegram.resetTokenForm();
-      github.resetTokenForm();
-      setSelectedIntegration(null);
-    }
-  }, [addDialogOpen, telegram, github]);
+  const closeAddDialog = useCallback(() => {
+    setAddDialogOpen(false);
+    telegram.resetTokenForm();
+    github.resetTokenForm();
+    setSelectedIntegration(null);
+  }, [telegram, github]);
 
   // ─── Handlers ─────────────────────────────────────────────────────
 
   const handleSaveTelegram = useCallback(() => {
     telegram.saveToken(() => {
       setTimeout(() => {
-        setAddDialogOpen(false);
+        closeAddDialog();
       }, 800);
     });
-  }, [telegram]);
+  }, [telegram, closeAddDialog]);
 
   const handleSaveGitHub = useCallback(() => {
     github.saveToken(() => {
       setTimeout(() => {
-        setAddDialogOpen(false);
+        closeAddDialog();
       }, 800);
     });
-  }, [github]);
+  }, [github, closeAddDialog]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteIntegrationId) return;
@@ -99,8 +98,8 @@ export function IntegrationsTab() {
       } else {
         await github.loadAccount();
       }
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error(`Failed to delete ${deleteIntegrationId} integration:`, err);
     } finally {
       setDeleting(false);
       setDeleteAlertOpen(false);
@@ -144,21 +143,38 @@ export function IntegrationsTab() {
             </Button>
           </div>
 
-          {/* Active integrations */}
+          {/* Active integrations — data passed as props, no duplicate hooks */}
           {hasAnyIntegration ? (
             <div className="space-y-3">
-              <TelegramCard
-                onDelete={() => {
-                  setDeleteIntegrationId("telegram");
-                  setDeleteAlertOpen(true);
-                }}
-              />
-              <GitHubCard
-                onDelete={() => {
-                  setDeleteIntegrationId("github");
-                  setDeleteAlertOpen(true);
-                }}
-              />
+              {telegram.account && (
+                <TelegramCard
+                  account={telegram.account}
+                  actionLoading={telegram.actionLoading}
+                  onToggleEnabled={telegram.toggleEnabled}
+                  onDelete={() => {
+                    setDeleteIntegrationId("telegram");
+                    setDeleteAlertOpen(true);
+                  }}
+                  whitelistEntries={telegram.whitelistEntries}
+                  whitelistLoading={telegram.whitelistLoading}
+                  newUserId={telegram.newUserId}
+                  onNewUserIdChange={telegram.setNewUserId}
+                  addingUser={telegram.addingUser}
+                  onAddUser={telegram.addWhitelistUser}
+                  onRemoveUser={telegram.removeWhitelistUser}
+                />
+              )}
+              {github.account && (
+                <GitHubCard
+                  account={github.account}
+                  actionLoading={github.actionLoading}
+                  onToggleEnabled={github.toggleEnabled}
+                  onDelete={() => {
+                    setDeleteIntegrationId("github");
+                    setDeleteAlertOpen(true);
+                  }}
+                />
+              )}
             </div>
           ) : (
             <div className="liquid-glass-inner border-border/30 flex flex-col items-center rounded-2xl border border-dashed p-8 text-center">
@@ -174,7 +190,7 @@ export function IntegrationsTab() {
       {/* Add Integration Dialog — driven by registry */}
       <AddIntegrationDialog
         open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
+        onOpenChange={closeAddDialog}
         selectedIntegration={selectedIntegration}
         onSelectIntegration={setSelectedIntegration}
         telegram={telegram}

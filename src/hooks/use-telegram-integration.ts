@@ -26,11 +26,14 @@ export interface WhitelistEntry {
  * Encapsulates: account loading, token save, enable/disable,
  * whitelist CRUD. The calling component doesn't need to know about
  * Telegram's internal state.
+ *
+ * @param initialAccount - Optional initial account data to avoid a redundant fetch
+ *                         when the parent has already loaded it.
  */
-export function useTelegramIntegration() {
+export function useTelegramIntegration(initialAccount?: TelegramAccount | null) {
   // Account state
-  const [account, setAccount] = useState<TelegramAccount | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [account, setAccount] = useState<TelegramAccount | null>(initialAccount ?? null);
+  const [loading, setLoading] = useState(!initialAccount);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Token form
@@ -51,7 +54,8 @@ export function useTelegramIntegration() {
         "/api/integrations/telegram",
       );
       setAccount(data.account);
-    } catch {
+    } catch (err) {
+      console.error("Failed to load Telegram account:", err);
       setAccount(null);
     } finally {
       setLoading(false);
@@ -65,16 +69,20 @@ export function useTelegramIntegration() {
         "/api/integrations/telegram/whitelist",
       );
       setWhitelistEntries(data.entries);
-    } catch {
+    } catch (err) {
+      console.error("Failed to load Telegram whitelist:", err);
       setWhitelistEntries([]);
     } finally {
       setWhitelistLoading(false);
     }
   }, []);
 
+  // Only fetch if no initial data was provided
   useEffect(() => {
-    loadAccount();
-  }, [loadAccount]);
+    if (!initialAccount) {
+      loadAccount();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset token form
   const resetTokenForm = useCallback(() => {
@@ -107,7 +115,9 @@ export function useTelegramIntegration() {
         await loadAccount();
         onSuccess?.();
       } catch (err) {
-        setTokenError((err as Error).message || "Failed to save Telegram bot");
+        const message = (err as Error).message || "Failed to save Telegram bot";
+        console.error("Failed to save Telegram token:", err);
+        setTokenError(message);
       } finally {
         setSavingToken(false);
       }
@@ -122,8 +132,8 @@ export function useTelegramIntegration() {
       try {
         await patchJson("/api/integrations/telegram", { enabled });
         await loadAccount();
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to toggle Telegram integration:", err);
       } finally {
         setActionLoading(null);
       }
@@ -141,8 +151,8 @@ export function useTelegramIntegration() {
       });
       setNewUserId("");
       await loadWhitelist();
-    } catch {
-      // Ignore — duplicate or error
+    } catch (err) {
+      console.error("Failed to add Telegram whitelist user:", err);
     } finally {
       setAddingUser(false);
     }
@@ -153,8 +163,8 @@ export function useTelegramIntegration() {
       try {
         await fetchJson(`/api/integrations/telegram/whitelist/${id}`, { method: "DELETE" });
         await loadWhitelist();
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to remove Telegram whitelist user:", err);
       }
     },
     [loadWhitelist],

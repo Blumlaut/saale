@@ -14,11 +14,14 @@ export interface GitHubAccount {
 
 /**
  * Self-contained hook for GitHub integration state and actions.
+ *
+ * @param initialAccount - Optional initial account data to avoid a redundant fetch
+ *                         when the parent has already loaded it.
  */
-export function useGitHubIntegration() {
+export function useGitHubIntegration(initialAccount?: GitHubAccount | null) {
   // Account state
-  const [account, setAccount] = useState<GitHubAccount | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [account, setAccount] = useState<GitHubAccount | null>(initialAccount ?? null);
+  const [loading, setLoading] = useState(!initialAccount);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Token form
@@ -31,16 +34,20 @@ export function useGitHubIntegration() {
     try {
       const data = await fetchJson<{ account: GitHubAccount | null }>("/api/integrations/github");
       setAccount(data.account);
-    } catch {
+    } catch (err) {
+      console.error("Failed to load GitHub account:", err);
       setAccount(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Only fetch if no initial data was provided
   useEffect(() => {
-    loadAccount();
-  }, [loadAccount]);
+    if (!initialAccount) {
+      loadAccount();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset token form
   const resetTokenForm = useCallback(() => {
@@ -68,7 +75,9 @@ export function useGitHubIntegration() {
         await loadAccount();
         onSuccess?.();
       } catch (err) {
-        setTokenError((err as Error).message || "Failed to connect GitHub");
+        const message = (err as Error).message || "Failed to connect GitHub";
+        console.error("Failed to save GitHub token:", err);
+        setTokenError(message);
       } finally {
         setSavingToken(false);
       }
@@ -83,8 +92,8 @@ export function useGitHubIntegration() {
       try {
         await patchJson("/api/integrations/github", { enabled });
         await loadAccount();
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to toggle GitHub integration:", err);
       } finally {
         setActionLoading(null);
       }

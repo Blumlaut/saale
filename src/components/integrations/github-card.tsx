@@ -10,19 +10,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useGitHubIntegration } from "@/hooks/use-github-integration";
+import type { GitHubAccount } from "@/hooks/use-github-integration";
 
 /**
  * GitHub integration card.
  *
- * Self-contained: uses useGitHubIntegration for all data/actions.
- * Delegates delete to the parent via `onDelete`.
+ * Receives all data and actions as props from the parent to avoid
+ * duplicate API calls.
  */
-export function GitHubCard({ onDelete }: { onDelete: () => void }) {
-  const { account, actionLoading, toggleEnabled } = useGitHubIntegration();
-
-  if (!account) return null;
-
+export function GitHubCard({
+  account,
+  onToggleEnabled,
+  onDelete,
+  actionLoading,
+}: {
+  account: GitHubAccount;
+  onToggleEnabled: (enabled: boolean) => void;
+  onDelete: () => void;
+  actionLoading: string | null;
+}) {
   return (
     <div className="liquid-glass-inner rounded-2xl border-0 p-5">
       <div className="flex items-start justify-between">
@@ -60,7 +66,7 @@ export function GitHubCard({ onDelete }: { onDelete: () => void }) {
             <span className="text-muted-foreground text-xs">Enable</span>
             <Switch
               checked={account.enabled}
-              onCheckedChange={toggleEnabled}
+              onCheckedChange={onToggleEnabled}
               disabled={actionLoading === "toggle"}
             />
           </div>

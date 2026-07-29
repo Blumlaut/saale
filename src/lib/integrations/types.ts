@@ -18,17 +18,3 @@ export interface IntegrationManifest {
 
 /** Union of registered integration IDs */
 export type IntegrationId = "telegram" | "github";
-
-/** Shape returned by GET /api/integrations/{type} */
-export interface IntegrationAccount {
-  id: string;
-  enabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** Props shared by all integration card components */
-export interface IntegrationCardProps {
-  /** Called when the user confirms deletion */
-  onDeleted: () => void;
-}

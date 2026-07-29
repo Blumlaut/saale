@@ -29,33 +29,40 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useTelegramIntegration } from "@/hooks/use-telegram-integration";
+import type { TelegramAccount, WhitelistEntry } from "@/hooks/use-telegram-integration";
 
 /**
  * Telegram integration card with embedded whitelist management.
  *
- * Self-contained: manages its own whitelist dialog. Delegates delete
- * to the parent via `onDelete`.
+ * Receives all data and actions as props from the parent to avoid
+ * duplicate API calls. Manages only its own local UI state (dialogs).
  */
-export function TelegramCard({ onDelete }: { onDelete: () => void }) {
-  const {
-    account,
-    actionLoading,
-    toggleEnabled,
-    // Whitelist
-    whitelistEntries,
-    whitelistLoading,
-    newUserId,
-    setNewUserId,
-    addingUser,
-    loadWhitelist,
-    addWhitelistUser,
-    removeWhitelistUser,
-  } = useTelegramIntegration();
-
+export function TelegramCard({
+  account,
+  onToggleEnabled,
+  onDelete,
+  actionLoading,
+  whitelistEntries,
+  whitelistLoading,
+  newUserId,
+  onNewUserIdChange,
+  addingUser,
+  onAddUser,
+  onRemoveUser,
+}: {
+  account: TelegramAccount;
+  onToggleEnabled: (enabled: boolean) => void;
+  onDelete: () => void;
+  actionLoading: string | null;
+  whitelistEntries: WhitelistEntry[];
+  whitelistLoading: boolean;
+  newUserId: string;
+  onNewUserIdChange: (value: string) => void;
+  addingUser: boolean;
+  onAddUser: () => void;
+  onRemoveUser: (id: string) => void;
+}) {
   const [whitelistOpen, setWhitelistOpen] = useState(false);
-
-  if (!account) return null;
 
   return (
     <>
@@ -95,7 +102,7 @@ export function TelegramCard({ onDelete }: { onDelete: () => void }) {
               <span className="text-muted-foreground text-xs">Enable</span>
               <Switch
                 checked={account.enabled}
-                onCheckedChange={toggleEnabled}
+                onCheckedChange={onToggleEnabled}
                 disabled={actionLoading === "toggle"}
               />
             </div>
@@ -114,12 +121,7 @@ export function TelegramCard({ onDelete }: { onDelete: () => void }) {
                 }
               />
               <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => {
-                    setWhitelistOpen(true);
-                    loadWhitelist();
-                  }}
-                >
+                <DropdownMenuItem onClick={() => setWhitelistOpen(true)}>
                   <ShieldCheck className="mr-2 h-4 w-4" />
                   Manage Whitelist
                 </DropdownMenuItem>
@@ -136,17 +138,17 @@ export function TelegramCard({ onDelete }: { onDelete: () => void }) {
         </div>
       </div>
 
-      {/* Whitelist Dialog — owned by this card */}
+      {/* Whitelist Dialog — owned by this card, data from parent */}
       <WhitelistDialog
         open={whitelistOpen}
         onOpenChange={setWhitelistOpen}
         entries={whitelistEntries}
         loading={whitelistLoading}
         newUserId={newUserId}
-        onNewUserIdChange={setNewUserId}
+        onNewUserIdChange={onNewUserIdChange}
         addingUser={addingUser}
-        onAddUser={addWhitelistUser}
-        onRemoveUser={removeWhitelistUser}
+        onAddUser={onAddUser}
+        onRemoveUser={onRemoveUser}
       />
     </>
   );
@@ -167,12 +169,7 @@ function WhitelistDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  entries: Array<{
-    id: string;
-    telegramUserId: string;
-    displayName: string | null;
-    createdAt: string;
-  }>;
+  entries: WhitelistEntry[];
   loading: boolean;
   newUserId: string;
   onNewUserIdChange: (value: string) => void;
