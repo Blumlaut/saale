@@ -919,8 +919,8 @@ export async function compactTelegramSession(params: {
 
 // ─── Chat Session Helpers ────────────────────────────────────────────────────
 
-/** Telegram chats expire after this many ms of inactivity (12 hours) */
-const TELEGRAM_CHAT_EXPIRY_MS = 12 * 60 * 60 * 1000;
+/** Telegram chats expire after this many ms of inactivity (6 hours) */
+const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Find or create the TelegramChat record and its linked ChatSession.
@@ -949,39 +949,50 @@ async function upsertTelegramChat(
   let needsNewSession = !tgChat;
 
   if (tgChat) {
-    const session = await prisma.chatSession.findUnique({ where: { id: tgChat.sessionId } });
+    // Use the latest message's createdAt to determine activity — this is more
+    // reliable than ChatSession.updatedAt which is only set when the session
+    // record itself is modified (at the end of processing). If processing
+    // errors before that update, updatedAt stays stale and the chat appears
+    // "active" when it isn't.
+    const [lastMessage] = await prisma.chatMessage.findMany({
+      where: { sessionId: tgChat.sessionId },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+    });
     needsNewSession =
-      session == null || session.updatedAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
+      lastMessage == null || lastMessage.createdAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
   }
 
   if (needsNewSession) {
     const sessionId = crypto.randomUUID();
 
-    await prisma.chatSession.create({
-      data: {
-        id: sessionId,
-        userId,
-        title: "Telegram Chat",
-        temporary: false,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.chatSession.create({
+        data: {
+          id: sessionId,
+          userId,
+          title: "Telegram Chat",
+          temporary: false,
+        },
+      });
 
-    tgChat = await prisma.telegramChat.upsert({
-      where: {
-        telegramAccountId_telegramChatId: {
+      tgChat = await tx.telegramChat.upsert({
+        where: {
+          telegramAccountId_telegramChatId: {
+            telegramAccountId: account.id,
+            telegramChatId,
+          },
+        },
+        create: {
           telegramAccountId: account.id,
           telegramChatId,
+          chatType: "private",
+          sessionId,
         },
-      },
-      create: {
-        telegramAccountId: account.id,
-        telegramChatId,
-        chatType: "private",
-        sessionId,
-      },
-      update: {
-        sessionId,
-      },
+        update: {
+          sessionId,
+        },
+      });
     });
   }
 
