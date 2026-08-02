@@ -118,23 +118,30 @@ describe("Telegram processor — context loading", () => {
 });
 
 describe("Telegram processor — chat session expiry", () => {
-  it("12 hour expiry is correct in milliseconds", () => {
-    const TELEGRAM_CHAT_EXPIRY_MS = 12 * 60 * 60 * 1000;
-    expect(TELEGRAM_CHAT_EXPIRY_MS).toBe(43_200_000);
+  it("6 hour expiry is correct in milliseconds", () => {
+    const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
+    expect(TELEGRAM_CHAT_EXPIRY_MS).toBe(21_600_000);
   });
 
-  it("session is expired when last update + expiry < now", () => {
-    const TELEGRAM_CHAT_EXPIRY_MS = 12 * 60 * 60 * 1000;
-    const updatedAt = new Date(Date.now() - 13 * 60 * 60 * 1000); // 13 hours ago
-    const needsNewSession = updatedAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
+  it("session is expired when last message + expiry < now", () => {
+    const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
+    const lastMessageAt = new Date(Date.now() - 7 * 60 * 60 * 1000); // 7 hours ago
+    const needsNewSession = lastMessageAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
     expect(needsNewSession).toBe(true);
   });
 
-  it("session is not expired when within 12 hours", () => {
-    const TELEGRAM_CHAT_EXPIRY_MS = 12 * 60 * 60 * 1000;
-    const updatedAt = new Date(Date.now() - 6 * 60 * 60 * 1000); // 6 hours ago
-    const needsNewSession = updatedAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
+  it("session is not expired when within 6 hours", () => {
+    const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
+    const lastMessageAt = new Date(Date.now() - 3 * 60 * 60 * 1000); // 3 hours ago
+    const needsNewSession = lastMessageAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
     expect(needsNewSession).toBe(false);
+  });
+
+  it("session is expired when there are no messages", () => {
+    // A session with no messages (edge case) should be treated as expired
+    const lastMessage = null;
+    const needsNewSession = lastMessage == null;
+    expect(needsNewSession).toBe(true);
   });
 });
 
