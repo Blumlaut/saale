@@ -221,6 +221,11 @@ export function ChatInterface({
         }
 
         // Connect to the SSE stream — the server prompts and streams events.
+        // A keep-alive observer connection is already open, but it was
+        // decided when the chat was idle, so it never claims the pending
+        // prompt. Reconnect to force the server to re-decide (prompt) and
+        // dispatch the message to the LLM immediately.
+        disconnect();
         connect();
       } catch (err) {
         setIsLoading(false);
@@ -228,7 +233,7 @@ export function ChatInterface({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, router, connect, loadMessages, eventSourceRef],
+    [sessionId, router, connect, disconnect, loadMessages, eventSourceRef],
   );
 
   const handleEditMessage = useCallback(
@@ -244,6 +249,10 @@ export function ChatInterface({
         });
 
         void loadMessages();
+        // Force a fresh connection (same rationale as handleSend): the open
+        // keep-alive observer was decided when idle and would never claim
+        // the pending prompt set by the PATCH.
+        disconnect();
         connect();
       } catch (err) {
         setIsLoading(false);
@@ -257,7 +266,7 @@ export function ChatInterface({
         }
       }
     },
-    [sessionId, connect, loadMessages],
+    [sessionId, connect, disconnect, loadMessages],
   );
 
   const handleStop = useCallback(() => {
