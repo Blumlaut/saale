@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { isSessionActive, registerActiveSession } from "@/lib/redis";
+import { isSessionActive, registerActiveSession, setPendingPrompt } from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
 
 /**
@@ -82,6 +82,10 @@ export async function PATCH(
 
   // Register in Redis so the 409 guard works before the SSE connection is made.
   await registerActiveSession(authResult.user.id, sessionId);
+
+  // Claim the prompt: the SSE connection for the edited message is the
+  // expected prompter (see stream route).
+  await setPendingPrompt(sessionId, messageId);
 
   // Clear lastPromptedMessageId so the stream re-prompts with the edited content.
   // The message ID is the same but its content has changed.

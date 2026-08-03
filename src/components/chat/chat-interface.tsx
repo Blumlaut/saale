@@ -30,38 +30,7 @@ export function ChatInterface({
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
-  const { streamingIds, markStreaming, markDone } = useStreamingSessions();
-
-  // Shared stream orchestration
-  const { startReconnection, connectStream, closeEventSource } = useChatStream(
-    sessionId,
-    eventSourceRef,
-    setMessages,
-    setIsLoading,
-    setPendingApprovals,
-    markDone,
-    setTokenUsage,
-    () => setIsCompacting(true),
-    (summary?: string, tokensBefore?: number) => {
-      setIsCompacting(false);
-      if (summary) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `compaction-${Date.now()}`,
-            role: "compaction" as const,
-            content: summary,
-            thinking: undefined,
-            toolCalls: undefined,
-            parentMessageId: undefined,
-            createdAt: new Date().toISOString(),
-            attachments: undefined,
-            compaction: { tokensBefore: tokensBefore ?? 0 },
-          },
-        ]);
-      }
-    },
-  );
+  const { markStreaming, markDone } = useStreamingSessions();
 
   // ─── Session state ───────────────────────────────────────────────────────
 
@@ -123,6 +92,49 @@ export function ChatInterface({
     }
   };
 
+  // Shared stream orchestration (declared after the loaders it references).
+  const { connect, disconnect } = useChatStream({
+    sessionId,
+    eventSourceRef,
+    setMessages,
+    setIsLoading,
+    setPendingApprovals,
+    markDone,
+    onTokenUsage: setTokenUsage,
+    onCompactionStart: () => setIsCompacting(true),
+    onCompactionEnd: (summary?: string, tokensBefore?: number) => {
+      setIsCompacting(false);
+      if (summary) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `compaction-${Date.now()}`,
+            role: "compaction" as const,
+            content: summary,
+            thinking: undefined,
+            toolCalls: undefined,
+            parentMessageId: undefined,
+            createdAt: new Date().toISOString(),
+            attachments: undefined,
+            compaction: { tokensBefore: tokensBefore ?? 0 },
+          },
+        ]);
+      }
+    },
+    onStreamError: (message) => {
+      if (message.includes("No AI model configured")) {
+        toast.error("No AI model configured", {
+          description: "Select a default model in Settings > AI & Models to start chatting.",
+          action: {
+            label: "Open Settings",
+            onClick: () => router.push("/dashboard/settings"),
+          },
+        });
+      }
+    },
+    onReload: () => void loadMessages(),
+  });
+
   // ─── Message handlers ────────────────────────────────────────────────────
 
   const handleSend = useCallback(
@@ -178,12 +190,11 @@ export function ChatInterface({
             return;
           }
           if (res.status === 409) {
+            // A generation is already running (another tab/session) — drop
+            // the optimistic message and observe the live stream instead.
             setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
             void loadMessages();
-            startReconnection(
-              () => loadMessages(),
-              () => loadSessionTitle(),
-            );
+            connect();
             return;
           }
           throw new Error(`Failed to send message: ${body.error || res.statusText}`);
@@ -209,39 +220,22 @@ export function ChatInterface({
           );
         }
 
-        // Connect to SSE stream — adds streaming-0 message automatically
-        connectStream(data.streamUrl);
-
-        // Handle server errors during streaming
-        const eventSource = eventSourceRef.current;
-        if (eventSource) {
-          eventSource.addEventListener("error", (event: MessageEvent) => {
-            const parsed = JSON.parse(event.data);
-            if (parsed.message?.includes("No AI model configured")) {
-              toast.error("No AI model configured", {
-                description: "Select a default model in Settings > AI & Models to start chatting.",
-                action: {
-                  label: "Open Settings",
-                  onClick: () => router.push("/dashboard/settings"),
-                },
-              });
-            }
-          });
-        }
+        // Connect to the SSE stream — the server prompts and streams events.
+        connect();
       } catch (err) {
         setIsLoading(false);
         console.error("Send error:", err);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, router, connectStream, startReconnection, loadMessages, eventSourceRef],
+    [sessionId, router, connect, loadMessages, eventSourceRef],
   );
 
   const handleEditMessage = useCallback(
     async (messageId: string, newContent: string) => {
       setIsLoading(true);
       try {
-        const data = await patchJson<{
+        await patchJson<{
           ok: boolean;
           messageId: string;
           streamUrl: string;
@@ -250,7 +244,7 @@ export function ChatInterface({
         });
 
         void loadMessages();
-        connectStream(data.streamUrl);
+        connect();
       } catch (err) {
         setIsLoading(false);
         if (
@@ -259,24 +253,21 @@ export function ChatInterface({
           (err as { status?: number }).status === 409
         ) {
           void loadMessages();
-          startReconnection(
-            () => loadMessages(),
-            () => loadSessionTitle(),
-          );
+          connect();
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, connectStream, startReconnection, loadMessages],
+    [sessionId, connect, loadMessages],
   );
 
   const handleStop = useCallback(() => {
-    closeEventSource();
     fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" }).catch((err) => {
       console.error("Failed to call stop endpoint:", err);
     });
-    // The server will emit "done" which cleans up streaming messages
-  }, [sessionId, closeEventSource]);
+    // Keep the SSE connection open — the server aborts the agent, the
+    // tracker publishes `done`, and this tab (plus every other observer)
+    // reloads the final DB state.
+  }, [sessionId]);
 
   const handleCompact = useCallback(() => {
     setIsCompacting(true);
@@ -340,26 +331,19 @@ export function ChatInterface({
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     const init = async () => {
-      const sessionInfo = await loadMessages();
+      await loadMessages();
       loadSessionTitle();
-
-      // Source of truth: isGenerating from Redis (ephemeral — cleared on crash).
-      // wasStreaming from localStorage (current tab only — cleared on browser restart).
-      const wasStreaming = streamingIds.has(sessionId);
-      const isGenerating = sessionInfo?.isGenerating === true;
-
-      if (!wasStreaming && !isGenerating) return;
-
-      startReconnection(
-        () => loadMessages(),
-        () => loadSessionTitle(),
-      );
+      // Always connect — the server decides what to do: prompt an unanswered
+      // message, observe a live generation (any process), or report done for
+      // an idle chat. The connection stays open to pick up future
+      // generations live.
+      connect();
     };
 
     init();
 
     return () => {
-      closeEventSource();
+      disconnect();
     };
   }, [sessionId]);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -389,6 +373,20 @@ export function ChatInterface({
     }
   }, [isLoading, sessionId, markStreaming, markDone]);
 
+  // Re-sync from the DB when the tab becomes visible again. The SSE keep-alive
+  // connection self-heals on its own, but a server restart mid-generation can
+  // leave it silently stalled — a visibility refresh snaps the UI back to the
+  // true DB state without a full page reload.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void loadMessages();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [loadMessages]);
+
   useEffect(() => {
     const mountedAt = mountTimeRef.current;
     return () => {
@@ -408,10 +406,10 @@ export function ChatInterface({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      closeEventSource();
+      disconnect();
       abortRef.current?.abort();
     };
-  }, [closeEventSource]);
+  }, [disconnect]);
 
   // ─── Title & settings ────────────────────────────────────────────────────
 

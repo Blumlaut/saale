@@ -2,41 +2,61 @@ import type { NextRequest } from "next/server";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
+import {
+  claimPendingPrompt,
+  getGenerationStartedAt,
+  getPendingPrompt,
+  isSessionActive,
+  markGenerationStart,
+  registerActiveSession,
+  unregisterActiveSession,
+} from "@/lib/redis";
 import { type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { readImageAsBase64 } from "@/lib/image-attachment";
 import type { ImageContent } from "@/lib/pi/message-replay";
 import {
-  getPoolKey,
-  getSessionDir,
   createAndPool,
   get as getPoolEntry,
   getDispatcher,
+  getPoolKey,
+  getSessionDir,
 } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { wireSessionPersistence } from "@/lib/pi/session-persistence";
-import { evaluatePromptGuard, evaluateReconnectAction } from "@/lib/pi/stream-logic";
+import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/stream-logic";
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
+import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+  "X-Accel-Buffering": "no",
+};
+
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
  *
- * Pure observer: wires the dispatcher to the HTTP response and forwards
- * events emitted by the session-scoped persistence handler. No DB writes
- * happen here — all persistence is handled by wireSessionPersistence()
- * which subscribes exactly once per pooled session.
+ * Pure observer: wires the HTTP response to the session's event stream
+ * (Redis buffer replay + live pub/sub fan-out) and, when the last user
+ * message is unanswered, claims and dispatches the prompt.
  *
- * Uses Last-Event-ID header for SSE-spec-compliant reconnection:
+ * No DB writes happen here — all persistence is handled by the session
+ * event tracker (wired once per pooled session). Multiple clients may
+ * connect concurrently (multiple tabs, reconnects, other processes); every
+ * connection sees the same live stream.
+ *
+ * Uses Last-Event-ID for SSE-spec-compliant reconnection:
  * - Browser's EventSource automatically sends Last-Event-ID on reconnect
- * - Server replays buffered events from Redis sorted set
- * - Then subscribes to live agent events via the pooled dispatcher
+ * - The dispatcher replays buffered events after that ID, then forwards live
  *
- * Emits: token, thinking, tool_start, tool_end, turn_end, message_saved, done,
- *         compaction_start, compaction_end, error, tool_approval_request
+ * Emits: turn_start, token, thinking, tool_start, tool_end, turn_end,
+ * message_saved, token_usage, compaction_start, compaction_end, done, error,
+ * tool_approval_request
  */
 export async function GET(
   request: NextRequest,
@@ -48,6 +68,10 @@ export async function GET(
   const authResult = await requireChatSessionOwner(sessionId);
   if (!authResult.ok) return new Response("Unauthorized", { status: 401 });
   const chatSession = authResult.session;
+
+  if (!chatSession) {
+    return new Response("Not found", { status: 404 });
+  }
 
   // ── User settings (system prompt + tool policies) ─────────────────────
   const userSettings = await prisma.appSettings.findUnique({
@@ -62,30 +86,90 @@ export async function GET(
   const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow" | "auto"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
-  // ── Dispatcher (per-session, survives across requests) ────────────────
-  const dispatcher = getDispatcher(sessionId);
-
-  // Approval wrapper — emits approval requests through the dispatcher
+  // Approval wrapper — publishes approval requests on the session event bus
+  // so every connected client (in any process) sees them.
   const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
     wrapWithApprovalGate(tool, authResult.userId, sessionId, getPolicy, (req: ApprovalRequest) => {
-      dispatcher.emit("tool_approval_request", {
+      publishSessionEvent(sessionId, "tool_approval_request", {
         toolCallId: req.toolCallId,
         toolName: req.toolName,
         args: req.args,
         expiresAt: new Date(req.expiresAt).toISOString(),
+      }).catch((err) => {
+        console.error("Failed to publish approval request:", err);
       });
     });
 
-  if (!chatSession) {
-    return new Response("Not found", { status: 404 });
+  const log = (tag: string, ...args: unknown[]) =>
+    // eslint-disable-next-line no-console
+    console.log(`[chat:${sessionId}] ${tag}`, ...args);
+
+  // ── Reconnect position (SSE Last-Event-ID) ────────────────────────────
+  const lastEventIdHeader = request.headers.get("last-event-id");
+  const url = new URL(request.url);
+  const lastEventIdQuery = url.searchParams.get("lastEventId");
+  const lastEventId = lastEventIdHeader
+    ? parseInt(lastEventIdHeader, 10)
+    : lastEventIdQuery
+      ? parseInt(lastEventIdQuery, 10)
+      : -1;
+
+  // ── Decision inputs ───────────────────────────────────────────────────
+  const messages = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "asc" },
+    include: {
+      attachments: {
+        select: { storagePath: true, mimeType: true },
+      },
+    },
+  });
+  const lastMessage = messages[messages.length - 1];
+
+  const [isGenerating, generationStartedAt, pendingPromptMessageId, bufferedEvents] =
+    await Promise.all([
+      isSessionActive(authResult.userId, sessionId),
+      getGenerationStartedAt(sessionId),
+      getPendingPrompt(sessionId),
+      getBufferedEvents(sessionId, lastEventId),
+    ]);
+  const bufferHasDone = bufferedEvents.some((e) => e.event === "done" || e.event === "error");
+  const bufferHasEvents = bufferedEvents.length > 0;
+
+  // Did the last user message already receive a response?
+  let hasAssistantAfterLastUser = false;
+  if (lastMessage && lastMessage.role === "user") {
+    const response = await prisma.chatMessage.findFirst({
+      where: { sessionId, role: "assistant", createdAt: { gt: lastMessage.createdAt } },
+      select: { id: true },
+    });
+    hasAssistantAfterLastUser = !!response;
   }
 
-  // ── Tool config ───────────────────────────────────────────────────────
-  const resolvedToolConfig: ToolConfig = chatSession.toolConfig
-    ? { ...(chatSession.toolConfig as ToolConfig) }
-    : {};
+  const poolKey = getPoolKey(authResult.userId, sessionId);
+  const pooled = getPoolEntry(poolKey);
 
-  // ── Model resolution ──────────────────────────────────────────────────
+  const lastMessageForDecision: DbMessage | undefined = lastMessage
+    ? {
+        id: lastMessage.id,
+        role: lastMessage.role as DbMessage["role"],
+        content: lastMessage.content,
+      }
+    : undefined;
+
+  let action: StreamAction = decideStreamAction({
+    lastMessage: lastMessageForDecision,
+    hasAssistantAfterLastUser,
+    isGenerating,
+    generationStartedAt,
+    poolLastPromptedMessageId: pooled?.lastPromptedMessageId ?? null,
+    pendingPromptMessageId,
+    bufferHasDone,
+    bufferHasEvents,
+  });
+  log("decision", `${action.type} (${action.reason}), lastEventId=${lastEventId}`);
+
+  // ── Model resolution (prompt path only) ───────────────────────────────
   let modelProvider = chatSession.modelProvider || undefined;
   let modelName = chatSession.modelName || undefined;
 
@@ -97,16 +181,14 @@ export async function GET(
     }
   }
 
-  // No model available — return an error stream
-  if (!modelProvider || !modelName) {
+  if (action.type === "prompt" && (!modelProvider || !modelName)) {
     unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
-
+    log("decision", "no model configured — returning error stream");
     const encoder = new TextEncoder();
     const errorEvent = encoder.encode(
       `event: error\ndata: ${JSON.stringify({ message: "No AI model configured. Please select a model in Settings > AI & Models." })}\n\n`,
     );
     const doneEvent = encoder.encode(`event: done\ndata: {}\n\n`);
-
     return new Response(
       new ReadableStream({
         start(controller) {
@@ -115,271 +197,176 @@ export async function GET(
           controller.close();
         },
       }),
-      {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "X-Accel-Buffering": "no",
-        },
-      },
+      { headers: SSE_HEADERS },
     );
   }
 
-  // ── Debug log prefix ──────────────────────────────────────────────────
-  const log = (tag: string, ...args: unknown[]) =>
-    // eslint-disable-next-line no-console
-    console.log(`[chat:${sessionId}] ${tag}`, ...args);
-
-  // ── Agent pool ────────────────────────────────────────────────────────
-  const poolKey = getPoolKey(authResult.userId, sessionId);
-  const sessionDir = getSessionDir(authResult.userId, sessionId);
-
-  const existingPoolEntry = getPoolEntry(poolKey);
-  const pooled = await createAndPool(poolKey, async () => {
-    log("pool", "miss — creating new agent");
-    const result = await createPersistentSession({
-      userId: authResult.userId,
-      sessionId,
-      sessionDir,
-      customTools: [],
-      toolConfig: resolvedToolConfig,
-      modelProvider,
-      modelName,
-      thinkingLevel: chatSession.thinkingLevel || "off",
-      wrapTool: approvalWrapper,
-    });
-
-    const systemPrompt = buildAgentSystemPrompt({
-      customInstructions: userSettings?.agentCustomInstructions,
-      toolConfig: resolvedToolConfig,
-    });
-    lockSystemPrompt(result.session, systemPrompt);
-
-    return { session: result.session, sessionDir };
-  });
-
-  if (existingPoolEntry) {
-    log(
-      "pool",
-      `hit — isStreaming=${pooled.session.isStreaming}, lastPromptedMessageId=${pooled.lastPromptedMessageId}`,
-    );
-  }
-
-  // ── Wire session persistence (idempotent — runs once per pooled session) ─
-  wireSessionPersistence(sessionId, authResult.userId, pooled.session);
-
-  // ── Register session for cancellation ─────────────────────────────────
-  await registerActiveSession(authResult.userId, sessionId);
-
-  // ── Messages + prompt guard ───────────────────────────────────────────
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "asc" },
-    include: {
-      attachments: {
-        select: {
-          storagePath: true,
-          mimeType: true,
-        },
-      },
-    },
-  });
-
-  const lastMessage = messages[messages.length - 1];
-
-  const promptGuard = evaluatePromptGuard(
-    lastMessage
-      ? {
-          id: lastMessage.id,
-          role: lastMessage.role as "user" | "assistant" | "toolResult" | "custom",
-          content: lastMessage.content,
-        }
-      : undefined,
-    pooled.lastPromptedMessageId,
-  );
-  const shouldPrompt = promptGuard.shouldPrompt;
-
-  log(
-    "prompt_guard",
-    `shouldPrompt=${shouldPrompt} (${promptGuard.reason}), lastMessage.id=${lastMessage?.id}, role=${lastMessage?.role}, lastPromptedMessageId=${pooled.lastPromptedMessageId}`,
-  );
-
-  // ── Claim the prompt immediately to prevent races ──────────────────────
-  // Set lastPromptedMessageId NOW (before any awaits below) so that a
-  // second concurrent SSE connection sees shouldPrompt=false. The actual
-  // prompt() call happens later inside the stream's start() callback.
-  if (shouldPrompt && lastMessage && lastMessage.role === "user") {
-    pooled.lastPromptedMessageId = lastMessage.id;
-  }
-
-  // ── Pre-load images for the current user message ──────────────────────
+  // ── Prompt path: claim, pool, wire persistence ────────────────────────
+  // The prompt is claimed atomically (GETDEL of the pending-prompt key) so
+  // concurrent connections never double-prompt. `promptInFlight` on the pool
+  // entry guards the recovery path (no pending key) within this process.
+  let promptSession: Awaited<ReturnType<typeof createAndPool>> | null = null;
   const lastMessageImages: ImageContent[] = [];
-  if (
-    shouldPrompt &&
-    lastMessage &&
-    lastMessage.role === "user" &&
-    lastMessage.attachments.length > 0
-  ) {
-    for (const att of lastMessage.attachments) {
-      try {
-        const { data, mimeType } = await readImageAsBase64(authResult.userId, att.storagePath);
-        lastMessageImages.push({ type: "image" as const, data, mimeType });
-      } catch (err) {
-        console.error("Failed to load image for current message:", err);
-      }
-    }
-  }
 
-  // ── Reconnect: fetch buffered events (before creating the stream) ─────
-  const lastEventIdHeader = request.headers.get("last-event-id");
-  const url = new URL(request.url);
-  const lastEventIdQuery = url.searchParams.get("lastEventId");
-  const lastEventId = lastEventIdHeader
-    ? parseInt(lastEventIdHeader, 10)
-    : lastEventIdQuery
-      ? parseInt(lastEventIdQuery, 10)
-      : -1;
-  const isReconnect = lastEventId >= 0;
-
-  let bufferedEvents: { id: number; event: string; data: unknown }[] = [];
-  let streamAlreadyFinished = false;
-
-  const needsBufferReplay = isReconnect || (!shouldPrompt && pooled.lastPromptedMessageId);
-
-  if (needsBufferReplay) {
-    const fromId = isReconnect ? lastEventId : -1;
-    log("reconnect", `replaying buffer from id ${fromId} (isReconnect=${isReconnect})`);
-    bufferedEvents = (await getBufferedEvents(sessionId, fromId)) || [];
-    log("reconnect", `fetched ${bufferedEvents.length} buffered events`);
-
-    for (const evt of bufferedEvents) {
-      if (evt.event === "done" || evt.event === "error") {
-        streamAlreadyFinished = true;
-        break;
-      }
-    }
-  }
-
-  // ── Determine reconnect action (when not prompting) ───────────────────
-  let emitDoneImmediately = false;
-  if (!shouldPrompt && pooled.lastPromptedMessageId && !streamAlreadyFinished) {
-    const reconnectAction = evaluateReconnectAction(
-      pooled.session.isStreaming,
-      pooled.lastPromptedMessageId,
-    );
-    if (reconnectAction.type === "emit-done") {
-      emitDoneImmediately = true;
-      log("prompt_guard", `reconnect: ${reconnectAction.reason}, emitting done`);
+  if (action.type === "prompt" && lastMessage && lastMessage.role === "user") {
+    const claim = await claimPendingPrompt(sessionId);
+    if (pendingPromptMessageId === lastMessage.id && claim !== lastMessage.id) {
+      // We raced another connection for the POST's pending prompt and lost.
+      action = { type: "observe", reason: "prompt claim lost to another connection" };
+      log("decision", `revised to observe (lost prompt claim)`);
     } else {
-      log("prompt_guard", `reconnect: ${reconnectAction.reason}, waiting for events`);
-    }
-  }
+      const resolvedToolConfig: ToolConfig = chatSession.toolConfig
+        ? { ...(chatSession.toolConfig as ToolConfig) }
+        : {};
+      const sessionDir = getSessionDir(authResult.userId, sessionId);
 
-  // ── Seed saved turns from DB for reconnect ─────────────────────────────
-  let savedTurnsFromDb: number[] = [];
-  if (!shouldPrompt && pooled.lastPromptedMessageId && !streamAlreadyFinished) {
-    const assistantCount = await prisma.chatMessage.count({
-      where: { sessionId, role: "assistant" },
-    });
-    if (assistantCount > 0) {
-      savedTurnsFromDb = Array.from({ length: assistantCount }, (_, i) => i);
-      log("reconnect", `seeded savedTurns from DB: [0..${assistantCount - 1}]`);
+      const existingPoolEntry = getPoolEntry(poolKey);
+      promptSession = await createAndPool(poolKey, async () => {
+        log("pool", "miss — creating new agent");
+        const result = await createPersistentSession({
+          userId: authResult.userId,
+          sessionId,
+          sessionDir,
+          customTools: [],
+          toolConfig: resolvedToolConfig,
+          ...(modelProvider ? { modelProvider } : {}),
+          ...(modelName ? { modelName } : {}),
+          thinkingLevel: chatSession.thinkingLevel || "off",
+          wrapTool: approvalWrapper,
+        });
+
+        const systemPrompt = buildAgentSystemPrompt({
+          customInstructions: userSettings?.agentCustomInstructions,
+          toolConfig: resolvedToolConfig,
+        });
+        lockSystemPrompt(result.session, systemPrompt);
+
+        return { session: result.session, sessionDir };
+      });
+
+      if (existingPoolEntry) {
+        log("pool", `hit — lastPromptedMessageId=${promptSession.lastPromptedMessageId}`);
+      }
+
+      // Same-process double-prompt guard (recovery path race).
+      if (promptSession.promptInFlight) {
+        action = { type: "observe", reason: "prompt already in flight" };
+        log("decision", "revised to observe (prompt already in flight)");
+      } else {
+        // Claim synchronously before any further awaits.
+        promptSession.promptInFlight = true;
+        promptSession.lastPromptedMessageId = lastMessage.id;
+
+        // Signal the generation to other connections, then clear stale
+        // buffered events from previous runs.
+        await registerActiveSession(authResult.userId, sessionId);
+        await markGenerationStart(sessionId);
+        await resetSessionEvents(sessionId);
+
+        // Wire persistence exactly once per pooled session.
+        wireSessionPersistence(sessionId, authResult.userId, promptSession.session);
+
+        // Pre-load images for the current user message.
+        if (lastMessage.attachments.length > 0) {
+          for (const att of lastMessage.attachments) {
+            try {
+              const { data, mimeType } = await readImageAsBase64(
+                authResult.userId,
+                att.storagePath,
+              );
+              lastMessageImages.push({ type: "image" as const, data, mimeType });
+            } catch (err) {
+              console.error("Failed to load image for current message:", err);
+            }
+          }
+        }
+
+        log("prompt", `claimed prompt for message ${lastMessage.id}`);
+      }
     }
   }
 
   // ── SSE stream ────────────────────────────────────────────────────────
-  const encoder = new TextEncoder();
-
-  function closeController(controller: ReadableStreamDefaultController): void {
-    dispatcher.close();
-    try {
-      controller.close();
-    } catch (err) {
-      console.error("Failed to close controller (may already be closed):", err);
-    }
-  }
+  const dispatcher = getDispatcher(sessionId);
 
   const stream = new ReadableStream({
     start(controller) {
-      // Wire dispatcher to this controller — replaces any old connection
-      dispatcher.wire(controller, encoder);
+      let closed = false;
+      let aborted = false;
 
-      // ── Replay buffered events (reconnect path) ──────────────────────
-      if (bufferedEvents.length > 0) {
-        if (savedTurnsFromDb.length > 0) {
-          dispatcher.emitSync("saved_turns", { turns: savedTurnsFromDb }, -1);
+      const closeController = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch (err) {
+          console.error("Failed to close controller (may already be closed):", err);
         }
-        for (const evt of bufferedEvents) {
-          dispatcher.emitSync(evt.event, evt.data, evt.id);
-        }
-      }
+      };
 
-      // ── Terminal: stream already finished in buffer ───────────────────
-      if (streamAlreadyFinished) {
-        log("reconnect", "stream already finished in buffer, closing");
-        closeController(controller);
-        return;
-      }
+      dispatcher
+        .subscribe(controller, new TextEncoder(), lastEventId)
+        .then(() => {
+          if (aborted) {
+            dispatcher.unsubscribe(controller);
+            return;
+          }
 
-      // ── Terminal: agent already finished ──────────────────────────────
-      if (emitDoneImmediately) {
-        dispatcher.emit("done", {});
-        closeController(controller);
-        return;
-      }
+          // ── Idle: nothing to stream right now — emit done so the client
+          //    settles its loading state, but KEEP the connection open: a
+          //    generation started later (another tab, Telegram worker) will
+          //    stream on this same connection.
+          if (action.type === "done") {
+            log("stream", "idle — emitting done, staying open as observer");
+            dispatcher.emitLocal(controller, "done", {});
+            return;
+          }
 
-      // ── Subscribe to agent events (forwarding only — no DB writes) ────
-      // The persistence handler (wireSessionPersistence) already subscribes
-      // and emits through the dispatcher. We subscribe here only to send
-      // the initial prompt and handle errors.
-      const unsubscribeForward = pooled.session.subscribe((event) => {
-        // All event forwarding is handled by the persistence handler emitting
-        // through the dispatcher. This subscription is only for prompt/error handling.
-        if (event.type === "agent_end") {
-          // Persistence handler will emit "done" — we just need to clean up
-          // when the client disconnects.
-        }
-      });
+          // ── Prompt: dispatch the agent, forward events via the bus ────
+          if (action.type === "prompt" && promptSession && lastMessage?.role === "user") {
+            log("prompt", `sending prompt, message.id=${lastMessage.id}`);
 
-      // ── Send prompt if needed ─────────────────────────────────────────
-      if (shouldPrompt && lastMessage && lastMessage.role === "user") {
-        log("prompt", `sending prompt, message.id=${lastMessage.id}`);
+            const promptPromise =
+              lastMessageImages.length > 0
+                ? promptSession.session.agent.prompt(lastMessage.content, lastMessageImages)
+                : promptSession.session.agent.prompt(lastMessage.content);
 
-        const promptPromise =
-          lastMessageImages.length > 0
-            ? pooled.session.agent.prompt(lastMessage.content, lastMessageImages)
-            : pooled.session.agent.prompt(lastMessage.content);
+            promptPromise
+              .then(() => {
+                promptSession!.promptInFlight = false;
+                log("prompt", "agent.prompt() resolved");
+              })
+              .catch((err) => {
+                promptSession!.promptInFlight = false;
+                promptSession!.lastPromptedMessageId = null;
+                console.error("agent.prompt() failed:", err);
+                unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
+                // Notify connected clients, then clear the buffer so a later
+                // connect can retry the prompt instead of replaying the error.
+                publishSessionEvent(sessionId, "error", { message: err.message }).catch(
+                  console.error,
+                );
+                publishSessionEvent(sessionId, "done", {}).catch(console.error);
+                resetSessionEvents(sessionId).catch(console.error);
+                closeController();
+              });
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to subscribe stream:", err);
+          closeController();
+        });
 
-        promptPromise
-          .then(() => {
-            log("prompt", "agent.prompt() resolved");
-          })
-          .catch((err) => {
-            console.error("agent.prompt() failed:", err);
-            unsubscribeForward();
-            unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
-            dispatcher.emit("error", { message: err.message });
-            dispatcher.emit("done", {});
-            closeController(controller);
-          });
-      }
-
-      // ── Client disconnect ──────────────────────────────────────────────
+      // ── Client disconnect: stop forwarding; the agent keeps running and
+      //    other clients (and the buffer) keep receiving events. ─────────
       request.signal.addEventListener("abort", () => {
+        aborted = true;
         log("client", "disconnect detected, stopping SSE forwarding (agent continues)");
-        unsubscribeForward();
-        closeController(controller);
+        dispatcher.unsubscribe(controller);
+        closeController();
       });
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 }

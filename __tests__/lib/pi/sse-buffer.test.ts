@@ -259,11 +259,14 @@ describe("clearBuffer", () => {
     mockRedisDel.mockResolvedValue(1);
   });
 
-  it("deletes both buffer and counter keys", async () => {
+  it("deletes the buffer key but NOT the counter key", async () => {
     await clearBuffer("session-1");
 
     expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:session-1");
-    expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
+    // The counter is intentionally preserved so event IDs stay monotonic
+    // across generations — clients reconnecting with a Last-Event-ID from a
+    // previous generation must keep receiving newer events.
+    expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
   });
 
   it("handles Redis errors gracefully", async () => {
@@ -359,10 +362,10 @@ describe("SSE buffer lifecycle", () => {
     const hasEvents = await hasBufferedEvents("session-1");
     expect(hasEvents).toBe(true);
 
-    // Clear buffer
+    // Clear buffer (events only — counter survives)
     await clearBuffer("session-1");
     expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:session-1");
-    expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
+    expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
   });
 
   it("reconnect scenario: client reconnects with lastEventId", async () => {

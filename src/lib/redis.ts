@@ -121,3 +121,100 @@ export async function getActiveSessions(userId: string): Promise<Set<string>> {
     return new Set();
   }
 }
+
+// ─── Generation Start Tracking ───────────────────────────────────────────────
+
+/**
+ * Redis-backed "when did the current generation start" tracking.
+ *
+ * Used to detect stale generations: if a session is registered as active but
+ * has produced no buffered events for a long time (e.g. the client died right
+ * after POST /messages), a new SSE connection takes over and prompts instead
+ * of waiting forever.
+ */
+
+const GEN_START_PREFIX = "chat:gen_start:";
+
+/** Record when a generation started for a session. */
+export async function markGenerationStart(sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.set(
+      `${GEN_START_PREFIX}${sessionId}`,
+      Date.now().toString(),
+      "EX",
+      ACTIVE_SESSION_TTL_SECONDS,
+    );
+  } catch (err) {
+    console.error("Failed to mark generation start:", err);
+  }
+}
+
+/** Get the epoch-ms timestamp when the current generation started (or null). */
+export async function getGenerationStartedAt(sessionId: string): Promise<number | null> {
+  try {
+    const redis = getRedis();
+    const value = await redis.get(`${GEN_START_PREFIX}${sessionId}`);
+    return value ? parseInt(value, 10) : null;
+  } catch (err) {
+    console.error("Failed to read generation start:", err);
+    return null;
+  }
+}
+
+// ─── Pending Prompt Claim ────────────────────────────────────────────────────
+
+/**
+ * Redis-backed pending-prompt claim.
+ *
+ * POST /api/chat/sessions/:id/messages (and the edit route) save the user
+ * message, register the session as active, and store the message ID here. The
+ * SSE stream connection for that message is the expected prompter — this key
+ * tells it so, and tells every other connection to just observe.
+ */
+
+const PENDING_PROMPT_PREFIX = "chat:pending_prompt:";
+const PENDING_PROMPT_TTL_SECONDS = 600;
+
+/** Mark a message as awaiting its SSE connection to prompt it. */
+export async function setPendingPrompt(sessionId: string, messageId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.set(
+      `${PENDING_PROMPT_PREFIX}${sessionId}`,
+      messageId,
+      "EX",
+      PENDING_PROMPT_TTL_SECONDS,
+    );
+  } catch (err) {
+    console.error("Failed to set pending prompt:", err);
+  }
+}
+
+/** Read the pending-prompt message ID for a session (or null). */
+export async function getPendingPrompt(sessionId: string): Promise<string | null> {
+  try {
+    const redis = getRedis();
+    return await redis.get(`${PENDING_PROMPT_PREFIX}${sessionId}`);
+  } catch (err) {
+    console.error("Failed to read pending prompt:", err);
+    return null;
+  }
+}
+
+/**
+ * Atomically claim the pending prompt (GETDEL).
+ *
+ * Returns the claimed message ID, or null if there was nothing to claim.
+ * Used by the stream route to arbitrate between concurrent connections that
+ * both decided to prompt — exactly one wins the GETDEL.
+ */
+export async function claimPendingPrompt(sessionId: string): Promise<string | null> {
+  try {
+    const redis = getRedis();
+    return await redis.getdel(`${PENDING_PROMPT_PREFIX}${sessionId}`);
+  } catch (err) {
+    console.error("Failed to claim pending prompt:", err);
+    return null;
+  }
+}
