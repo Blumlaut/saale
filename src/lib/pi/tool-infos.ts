@@ -23,6 +23,14 @@ export interface ToolInfo {
   category: ToolCategoryKey;
   /** Default approval policy for new users. */
   defaultPolicy: ToolPolicy;
+  /**
+   * Human-readable summary template for tool call notifications.
+   * Uses {argName} placeholders resolved from the tool's arguments.
+   * Omit if the tool doesn't need a summary (e.g. no-op list tools).
+   * @example "{command} on {id}"
+   * @example "reading {filePath}"
+   */
+  summaryTemplate?: string;
 }
 
 export const ALL_TOOL_INFOS: ToolInfo[] = [
@@ -93,6 +101,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Sync an email account to fetch new messages",
     category: "email",
     defaultPolicy: "allow",
+    summaryTemplate: "syncing mailbox",
   },
   {
     name: "mail_list",
@@ -114,6 +123,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search emails by query",
     category: "email",
     defaultPolicy: "allow",
+    summaryTemplate: 'searching emails for "{query}"',
   },
   {
     name: "mail_draft",
@@ -237,6 +247,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search calendar events by query",
     category: "calendar",
     defaultPolicy: "allow",
+    summaryTemplate: 'searching calendar for "{query}"',
   },
   {
     name: "calendar_create",
@@ -267,6 +278,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search the web",
     category: "web",
     defaultPolicy: "allow",
+    summaryTemplate: 'searching web for "{query}"',
   },
   {
     name: "web_fetch",
@@ -274,6 +286,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Fetch a web page",
     category: "web",
     defaultPolicy: "allow",
+    summaryTemplate: "fetching {url}",
   },
 
   // ── Memory ────────────────────────────────────────────────────────
@@ -290,6 +303,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search saved memories",
     category: "memory",
     defaultPolicy: "allow",
+    summaryTemplate: 'searching memory for "{query}"',
   },
   {
     name: "memory_delete",
@@ -461,4 +475,24 @@ export function getToolsByCategory(categoryKey: string): typeof ALL_TOOL_INFOS {
 /** Look up the default policy for a tool by name. */
 export function getDefaultPolicy(toolName: string): ToolPolicy {
   return ALL_TOOL_INFOS.find((t) => t.name === toolName)?.defaultPolicy ?? "ask";
+}
+
+/**
+ * Resolve a tool's summary template against its arguments.
+ *
+ * Replaces `{argName}` placeholders with the corresponding arg value.
+ * Returns `null` if the tool has no summary template defined.
+ *
+ * @example formatToolSummary("web_search", { query: "latest news" })
+ *   → 'searching web for "latest news"'
+ */
+export function formatToolSummary(toolName: string, args: Record<string, unknown>): string | null {
+  const info = ALL_TOOL_INFOS.find((t) => t.name === toolName);
+  if (!info?.summaryTemplate) return null;
+
+  return info.summaryTemplate.replace(/\{(\w+)\}/g, (_match, key) => {
+    const value = args[key];
+    if (value === undefined || value === null) return `{${key}}`;
+    return typeof value === "string" ? value : String(value);
+  });
 }

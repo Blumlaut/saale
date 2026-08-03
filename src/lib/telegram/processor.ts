@@ -16,6 +16,7 @@ import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
+import { resolveToolSummary } from "@/lib/pi/tool-summary-resolver";
 import { sendTelegramApprovalRequest } from "./approval";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
@@ -399,6 +400,9 @@ export async function processTelegramMessage(
   // before the approval request — not after at turn_end).
   const flushedTurnTexts = new Set<number>();
 
+  // Track which tool calls have already had a summary sent to Telegram
+  const sentToolSummaries = new Set<string>();
+
   /**
    * Flush accumulated text to Telegram immediately.
    *
@@ -474,6 +478,27 @@ export async function processTelegramMessage(
                 name: event.toolName,
                 args: event.args,
               });
+
+              // Send a human-readable summary for tools that define one
+              if (!sentToolSummaries.has(event.toolCallId)) {
+                sentToolSummaries.add(event.toolCallId);
+
+                resolveToolSummary(event.toolName, event.args)
+                  .then((summary) => {
+                    if (summary) {
+                      sendTelegramMessage(
+                        encryptedToken,
+                        telegramChatId,
+                        `<code>${summary}</code>`,
+                      ).catch((err) => {
+                        console.error("Failed to send Telegram tool summary:", err);
+                      });
+                    }
+                  })
+                  .catch((err) => {
+                    console.error("Failed to resolve tool summary:", err);
+                  });
+              }
               break;
             }
 
