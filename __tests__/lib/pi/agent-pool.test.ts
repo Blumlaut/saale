@@ -224,8 +224,10 @@ describe("agent-pool", () => {
       expect(getPoolSize()).toBe(0);
       expect(get(poolKey)).toBeUndefined();
       expect(mockSession.dispose).toHaveBeenCalled();
-      // Dispatcher cleanup should have been called (Redis del for buffer + counter)
-      expect(mockRedisDel).toHaveBeenCalledTimes(2); // buf key + counter key
+      // The dispatcher is disposed WITHOUT touching Redis — the event buffer
+      // is cleared per-generation (see resetSessionEvents), not on pool
+      // removal, so Last-Event-ID reconnects keep working.
+      expect(mockRedisDel).not.toHaveBeenCalled();
     });
 
     it("is no-op for missing key", async () => {
@@ -282,8 +284,8 @@ describe("agent-pool", () => {
 
       expect(getPoolSize()).toBe(0);
       expect(mockSession.dispose).toHaveBeenCalled();
-      // Dispatcher cleanup should have been called (Redis del for buffer + counter)
-      expect(mockRedisDel).toHaveBeenCalledTimes(2);
+      // No Redis buffer cleanup on eviction (buffer is generation-scoped).
+      expect(mockRedisDel).not.toHaveBeenCalled();
     });
   });
 

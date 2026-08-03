@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { isSessionActive, registerActiveSession } from "@/lib/redis";
+import { isSessionActive, registerActiveSession, setPendingPrompt } from "@/lib/redis";
 import { validateImageUpload, processAndStoreImage, deleteAllImages } from "@/lib/image-attachment";
 
 /**
@@ -204,6 +204,11 @@ export async function POST(
     // Register in Redis so the 409 guard works before the SSE connection is made.
     // Cleared by unregisterActiveSession on agent_end or stop.
     await registerActiveSession(authResult.userId, sessionId);
+
+    // Claim the prompt: the SSE connection for this message is the expected
+    // prompter. The stream route atomically claims this key — exactly one
+    // connection prompts, all others observe.
+    await setPendingPrompt(sessionId, userMessage.id);
 
     // Return stream URL and the saved message for client-side replacement
     return NextResponse.json({

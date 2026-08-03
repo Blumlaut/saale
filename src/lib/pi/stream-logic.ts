@@ -2,7 +2,8 @@
  * Pure decision logic for the chat SSE stream endpoint.
  *
  * Extracted from the route handler for testability — the route imports and
- * calls these functions with runtime values (DB messages, pool state, etc.).
+ * calls these functions with runtime values (DB messages, pool state, Redis
+ * signals, etc.).
  */
 
 /** Shape of a chat message from the DB (minimal fields needed for decisions). */
@@ -12,60 +13,86 @@ export interface DbMessage {
   content?: string;
 }
 
-/** Result of evaluating whether a new prompt should be sent. */
-export interface PromptGuardResult {
-  /** True if the last user message has not been processed yet. */
-  shouldPrompt: boolean;
-  /** Reason for the decision (for logging). */
-  reason: string;
-}
-
-/** Result of evaluating a reconnect scenario. */
-export type ReconnectAction =
-  | { type: "emit-done"; reason: "agent-finished" }
-  | { type: "wait-events"; reason: "agent-streaming" }
-  | { type: "wait-events"; reason: "no-previous-prompt" };
+/** What a new SSE connection should do. */
+export type StreamAction =
+  | { type: "prompt"; reason: string }
+  | { type: "observe"; reason: string }
+  | { type: "done"; reason: string };
 
 /**
- * Evaluate whether a new prompt should be sent to the agent.
+ * Decide what a new SSE connection should do.
  *
- * Prevents double-prompting when multiple SSE connections race (e.g. page
- * reload during processing) or when a reconnect hits the primary stream path.
+ * Signals:
+ * - `lastMessage` — latest DB message (or undefined for an empty chat)
+ * - `hasAssistantAfterLastUser` — an assistant message was saved after the
+ *   last user message (the response already exists)
+ * - `isGenerating` — a generation is registered in Redis (any process)
+ * - `generationStartedAt` — epoch ms when the current generation started
+ * - `poolLastPromptedMessageId` — the message this process already prompted
+ *   (in-process in-flight guard)
+ * - `pendingPromptMessageId` — the message the POST /messages route wants the
+ *   SSE connection to prompt (the "claim")
+ * - `bufferHasDone` / `bufferHasEvents` — state of the Redis event buffer
  *
- * @param lastMessage - The latest message from the DB (or undefined if empty chat).
- * @param lastPromptedMessageId - The DB message ID the agent last processed (null if none).
+ * A generation is considered "stale" when it has been registered for longer
+ * than the grace period without producing a single buffered event — e.g. the
+ * client died right after POST /messages, or a worker crashed mid-run. In
+ * that case we take over and prompt, so sessions don't hang forever.
  */
-export function evaluatePromptGuard(
-  lastMessage: DbMessage | undefined,
-  lastPromptedMessageId: string | null,
-): PromptGuardResult {
-  if (!lastMessage || lastMessage.role !== "user") {
-    return { shouldPrompt: false, reason: "no user message" };
-  }
-  if (lastPromptedMessageId === lastMessage.id) {
-    return { shouldPrompt: false, reason: "already prompted" };
-  }
-  return { shouldPrompt: true, reason: "new user message" };
-}
+export function decideStreamAction(params: {
+  lastMessage: DbMessage | undefined;
+  hasAssistantAfterLastUser: boolean;
+  isGenerating: boolean;
+  generationStartedAt: number | null;
+  poolLastPromptedMessageId: string | null;
+  pendingPromptMessageId: string | null;
+  bufferHasDone: boolean;
+  bufferHasEvents: boolean;
+  staleGraceMs?: number;
+}): StreamAction {
+  const grace = params.staleGraceMs ?? 90_000;
+  const generationActive =
+    params.isGenerating &&
+    !(
+      params.generationStartedAt != null &&
+      Date.now() - params.generationStartedAt > grace &&
+      !params.bufferHasEvents
+    );
 
-/**
- * Evaluate what to do when a new SSE connection arrives but the message was
- * already processed (shouldPrompt=false, lastPromptedMessageId is set).
- *
- * @param isStreaming - Whether the agent is currently streaming a response.
- * @param lastPromptedMessageId - The DB message ID the agent last processed.
- */
-export function evaluateReconnectAction(
-  isStreaming: boolean,
-  lastPromptedMessageId: string | null,
-): ReconnectAction {
-  if (!lastPromptedMessageId) {
-    return { type: "wait-events", reason: "no-previous-prompt" };
+  const last = params.lastMessage;
+
+  if (last && last.role === "user") {
+    // Already prompting this exact message in this process — just observe.
+    if (params.poolLastPromptedMessageId === last.id) {
+      return { type: "observe", reason: "already prompted in this process" };
+    }
+    // The POST route claimed this message — we are the expected prompter.
+    if (params.pendingPromptMessageId === last.id) {
+      return { type: "prompt", reason: "prompt claimed by message POST" };
+    }
+    // Some process is actively generating (worker or another connection).
+    if (generationActive) {
+      return { type: "observe", reason: "generation in progress" };
+    }
+    // The response already exists — nothing to stream.
+    if (params.hasAssistantAfterLastUser) {
+      return { type: "done", reason: "last user message already answered" };
+    }
+    // A finished run's events are buffered — replay delivers `done`.
+    if (params.bufferHasDone) {
+      return { type: "observe", reason: "done event already buffered" };
+    }
+    // Unanswered user message and nothing running: we own the prompt
+    // (covers recovery from a crashed POST, and stale generations).
+    return { type: "prompt", reason: "unanswered user message" };
   }
-  if (!isStreaming) {
-    return { type: "emit-done", reason: "agent-finished" };
+
+  // Last message is not a user message (assistant, compaction, or empty).
+  // A multi-turn run can be mid-generation with an assistant message saved.
+  if (generationActive) {
+    return { type: "observe", reason: "generation in progress" };
   }
-  return { type: "wait-events", reason: "agent-streaming" };
+  return { type: "done", reason: "idle conversation" };
 }
 
 /**

@@ -18,12 +18,12 @@ import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approv
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { resolveToolSummary } from "@/lib/pi/tool-summary-resolver";
 import { sendTelegramApprovalRequest } from "./approval";
-import { normalizeToolResult } from "@/lib/pi/message-replay";
-import { extractCumulativeText, extractThinking } from "@/lib/pi/stream-logic";
-import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
+import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
-import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
+import { registerActiveSession, markGenerationStart } from "@/lib/redis";
+import { resetSessionEvents } from "@/lib/pi/session-events";
+import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { unregisterTelegramSession } from "./session-registry";
 
 /** Allowed MIME types that can be passed as images to the vision model */
@@ -277,8 +277,13 @@ export async function processTelegramMessage(
     }
   }
 
-  // 5. Register active session and start recurring typing indicator
+  // 5. Register active session and start recurring typing indicator.
+  //    Also record when the generation started (used to detect stale
+  //    generations) and clear the session event buffer so no stale events
+  //    from previous runs are replayed to web observers.
   await registerActiveSession(userId, sessionId);
+  await markGenerationStart(sessionId);
+  await resetSessionEvents(sessionId);
   const stopTyping = startTypingIndicator(encryptedToken, telegramChatId);
 
   // Track if this session was registered in the session registry (for interruption).
@@ -386,14 +391,21 @@ export async function processTelegramMessage(
   });
   lockSystemPrompt(session, baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE);
 
-  // 10. Subscribe to session events — handle turn_end for intermediate messages
-  //     and agent_end for final cleanup.
-  //     This mirrors the regular chat stream endpoint's event handling.
+  // 10. Wire the shared session event tracker — it persists assistant
+  //     messages to the DB and publishes live stream events (turn_start,
+  //     token, thinking, tool_start/end, turn_end, message_saved, done) on
+  //     the session event bus so web observers see this generation live.
+  const tracker = createSessionEventTracker({
+    sessionId,
+    userId,
+    session,
+    autoCompact: false,
+  });
+
+  // Telegram-specific send state. DB persistence + stream events are handled
+  // by the tracker above — this subscription only sends messages to Telegram.
   let turnIndex = 0;
   let currentTurnText = "";
-  let currentTurnThinking = "";
-  const currentTurnToolCallIds = new Set<string>();
-  let rootMessageId: string | null = null;
 
   // Track which turns have already had their text flushed to Telegram
   // (happens in message_update when a tool call appears, so text arrives
@@ -425,12 +437,6 @@ export async function processTelegramMessage(
     });
   }
 
-  // Track tool call results across turns
-  const toolCallResults: Map<
-    string,
-    { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
-  > = new Map();
-
   try {
     try {
       await new Promise<void>((resolve, reject) => {
@@ -449,24 +455,16 @@ export async function processTelegramMessage(
               if (event.message.role !== "assistant") return;
               const msg = event.message as { content: unknown[] };
               currentTurnText = extractCumulativeText(msg.content);
-              currentTurnThinking = extractThinking(msg.content) || "";
-
-              // Track tool call IDs appearing in this message
-              let hasToolCall = false;
-              for (const content of msg.content) {
-                if (
-                  typeof content === "object" &&
-                  content !== null &&
-                  (content as Record<string, unknown>).type === "toolCall"
-                ) {
-                  currentTurnToolCallIds.add((content as Record<string, unknown>).id as string);
-                  hasToolCall = true;
-                }
-              }
 
               // Flush text NOW when a tool call appears — the approval request
               // fires inside tool.execute() (before tool_execution_start), so we
               // need the agent's response text to arrive BEFORE the approval.
+              const hasToolCall = msg.content.some(
+                (c) =>
+                  typeof c === "object" &&
+                  c !== null &&
+                  (c as Record<string, unknown>).type === "toolCall",
+              );
               if (hasToolCall) {
                 flushTurnText(turnIndex);
               }
@@ -474,11 +472,6 @@ export async function processTelegramMessage(
             }
 
             case "tool_execution_start": {
-              toolCallResults.set(event.toolCallId, {
-                name: event.toolName,
-                args: event.args,
-              });
-
               // Send a human-readable summary for tools that define one
               if (!sentToolSummaries.has(event.toolCallId)) {
                 sentToolSummaries.add(event.toolCallId);
@@ -503,17 +496,11 @@ export async function processTelegramMessage(
             }
 
             case "tool_execution_end": {
-              const resultStr = normalizeToolResult(event.result);
-              const existing = toolCallResults.get(event.toolCallId);
-              if (existing) {
-                existing.result = resultStr;
-                existing.isError = event.isError;
-              }
+              // Results are tracked by the session event tracker for DB saves.
               break;
             }
 
             case "turn_end": {
-              // Extract turn data from the assistant message
               const assistantMsg =
                 event.message.role === "assistant"
                   ? (event.message as { content: unknown[] })
@@ -522,29 +509,6 @@ export async function processTelegramMessage(
               const text = assistantMsg
                 ? extractCumulativeText(assistantMsg.content)
                 : currentTurnText;
-              const thinking = assistantMsg
-                ? extractThinking(assistantMsg.content)
-                : currentTurnThinking || null;
-
-              // Collect tool calls for this turn
-              const toolCallBlocks = assistantMsg
-                ? (assistantMsg.content.filter(
-                    (c) =>
-                      typeof c === "object" &&
-                      c !== null &&
-                      (c as Record<string, unknown>).type === "toolCall",
-                  ) as Record<string, unknown>[])
-                : [];
-              const turnToolCalls = toolCallBlocks.map((tc) => {
-                const result = toolCallResults.get(tc.id as string);
-                return {
-                  id: tc.id as string,
-                  name: tc.name as string,
-                  args: tc.arguments as unknown as Record<string, unknown>,
-                  result: result?.result,
-                  isError: result?.isError,
-                };
-              });
 
               // Send non-empty text to Telegram (skip if already flushed in message_update
               // when a tool call was detected — that ensures text arrives before approval).
@@ -563,27 +527,8 @@ export async function processTelegramMessage(
                 });
               }
 
-              // Save this turn to DB with full metadata (thinking, tool calls, parent link)
-              saveAssistantMessage(
-                sessionId,
-                text,
-                thinking || undefined,
-                turnToolCalls.length > 0 ? turnToolCalls : undefined,
-                rootMessageId,
-              )
-                .then((msg) => {
-                  if (!rootMessageId) {
-                    rootMessageId = msg.id;
-                  }
-                })
-                .catch((err) => {
-                  console.error("Failed to save turn message to DB:", err);
-                });
-
               turnIndex++;
               currentTurnText = "";
-              currentTurnThinking = "";
-              currentTurnToolCallIds.clear();
               break;
             }
 
@@ -599,14 +544,8 @@ export async function processTelegramMessage(
             }
 
             case "compaction_end": {
+              // Compaction summary is persisted by the session event tracker.
               if (event.result && !event.aborted) {
-                // Save compaction to DB (for web UI visibility)
-                saveCompactionMessage({
-                  sessionId,
-                  summary: event.result.summary,
-                  tokensBefore: event.result.tokensBefore,
-                });
-
                 // Report token stats to Telegram (no summary)
                 const tokensAfter = event.result.estimatedTokensAfter;
                 const tokensInfo = tokensAfter
@@ -662,16 +601,15 @@ export async function processTelegramMessage(
       stopTyping();
     }
 
-    // For single-turn responses (no turn_end fired), save the final message
-    if (turnIndex === 0 && currentTurnText.trim()) {
+    // For single-turn responses (no turn_end fired), make sure the text is
+    // still delivered to Telegram. The tracker handles the DB save.
+    if (turnIndex === 0 && currentTurnText.trim() && !flushedTurnTexts.has(0)) {
       await sendTelegramMessage(
         encryptedToken,
         telegramChatId,
         currentTurnText,
         replyToMessageId != null ? { replyToMessageId } : undefined,
       );
-
-      await saveAssistantMessage(sessionId, currentTurnText, currentTurnThinking || undefined);
     }
 
     // Get stats and mark run as completed
@@ -687,16 +625,6 @@ export async function processTelegramMessage(
         completedAt: new Date(),
       },
     });
-
-    // Update chat session metadata
-    const incrementCount = turnIndex > 0 ? turnIndex : 1;
-    await Promise.all([
-      unregisterActiveSession(userId, sessionId),
-      prisma.chatSession.update({
-        where: { id: sessionId },
-        data: { messageCount: { increment: incrementCount } },
-      }),
-    ]);
 
     // Update definition lastRunAt
     await prisma.agentDefinition.update({
@@ -723,6 +651,10 @@ export async function processTelegramMessage(
       replyToMessageId != null ? { replyToMessageId } : undefined,
     );
   } finally {
+    // The tracker unsubscribes itself on agent_end; dispose() is a no-op then.
+    // It also unregisters the active session + updates the message count.
+    tracker.dispose();
+
     // Always unregister from the session registry (for interruption tracking)
     if (wasRegistered) {
       unregisterTelegramSession(userId, telegramChatId);

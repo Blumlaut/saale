@@ -6,6 +6,8 @@ interface PooledSession {
   session: AgentSession;
   sessionDir: string;
   lastPromptedMessageId: string | null; // ChatMessage.id from DB — prevents double-prompting
+  /** True while a prompt() call for this session is in flight (same-process race guard). */
+  promptInFlight: boolean;
   lastActive: number; // Date.now() — for idle eviction
 }
 
@@ -38,7 +40,7 @@ export function getDispatcher(sessionId: string): SseDispatcher {
 export async function clearDispatcher(sessionId: string): Promise<void> {
   const dispatcher = dispatchers.get(sessionId);
   if (dispatcher) {
-    await dispatcher.cleanup();
+    await dispatcher.dispose();
   }
   dispatchers.delete(sessionId);
 }
@@ -102,6 +104,7 @@ export async function createAndPool(
     session,
     sessionDir,
     lastPromptedMessageId: null,
+    promptInFlight: false,
     lastActive: Date.now(),
   };
   pool.set(key, entry);

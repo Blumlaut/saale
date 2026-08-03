@@ -117,14 +117,18 @@ export async function getLatestEventId(sessionId: string): Promise<number> {
 }
 
 /**
- * Clear the buffer for a session (called when stream ends).
+ * Clear the buffered events for a session (called when a new generation starts).
+ *
+ * The event-ID counter is deliberately NOT reset. Event IDs must stay
+ * monotonically increasing across generations so that clients reconnecting
+ * with a `Last-Event-ID` from a previous generation keep receiving new events
+ * (new events always have higher IDs than anything the client has seen).
  */
 export async function clearBuffer(sessionId: string): Promise<void> {
   try {
     const redis = getRedis();
     const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
-    const counterKey = `${BUFFER_KEY_PREFIX}${sessionId}${COUNTER_KEY_SUFFIX}`;
-    await Promise.all([redis.del(bufKey), redis.del(counterKey)]);
+    await redis.del(bufKey);
   } catch (err) {
     console.error("Failed to clear SSE buffer:", err);
   }
