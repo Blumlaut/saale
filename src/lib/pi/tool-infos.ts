@@ -101,7 +101,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Sync an email account to fetch new messages",
     category: "email",
     defaultPolicy: "allow",
-    summaryTemplate: "syncing mailbox",
+    summaryTemplate: "Syncing mailbox",
   },
   {
     name: "mail_list",
@@ -123,7 +123,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search emails by query",
     category: "email",
     defaultPolicy: "allow",
-    summaryTemplate: 'searching emails for "{query}"',
+    summaryTemplate: 'Searching emails for "{query}"',
   },
   {
     name: "mail_draft",
@@ -247,7 +247,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search calendar events by query",
     category: "calendar",
     defaultPolicy: "allow",
-    summaryTemplate: 'searching calendar for "{query}"',
+    summaryTemplate: 'Searching calendar for "{query}"',
   },
   {
     name: "calendar_create",
@@ -278,7 +278,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search the web",
     category: "web",
     defaultPolicy: "allow",
-    summaryTemplate: 'searching web for "{query}"',
+    summaryTemplate: 'Searching web for "{query}"',
   },
   {
     name: "web_fetch",
@@ -286,7 +286,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Fetch a web page",
     category: "web",
     defaultPolicy: "allow",
-    summaryTemplate: "fetching {url}",
+    summaryTemplate: "Fetching {url}",
   },
 
   // ── Memory ────────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search saved memories",
     category: "memory",
     defaultPolicy: "allow",
-    summaryTemplate: 'searching memory for "{query}"',
+    summaryTemplate: 'Searching memory for "{query}"',
   },
   {
     name: "memory_delete",

@@ -47,12 +47,12 @@ async function resolveInfraSummary(
 
   // Use tool-specific templates that reference {machineName}
   const infraTemplates: Record<string, string> = {
-    infra_exec: "running {command} on {machineName}",
-    infra_write_file: "writing to {path} on {machineName}",
-    infra_notes_list: "listing notes for {machineName}",
-    infra_notes_get: "reading note on {machineName}",
-    infra_notes_upsert: "saving note on {machineName}",
-    infra_notes_delete: "deleting note on {machineName}",
+    infra_exec: "Running {command} on {machineName}",
+    infra_write_file: "Writing to {path} on {machineName}",
+    infra_notes_list: "Listing notes for {machineName}",
+    infra_notes_get: "Reading note on {machineName}",
+    infra_notes_upsert: "Saving note on {machineName}",
+    infra_notes_delete: "Deleting note on {machineName}",
   };
 
   const template = infraTemplates[toolName];
