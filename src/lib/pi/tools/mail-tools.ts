@@ -306,47 +306,60 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
         const total = await prisma.emailMessage.count({ where });
 
+        const emailData = emails.map(
+          (e: {
+            id: string;
+            uid: string;
+            fromName: string | null;
+            fromEmail: string;
+            to: string;
+            subject: string;
+            date: Date;
+            bodyPreview: string | null;
+            isRead: boolean;
+            isStarred: boolean;
+            folder: string;
+            tags: string[];
+          }) => ({
+            id: e.id,
+            uid: e.uid,
+            from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+            to: e.to,
+            subject: e.subject,
+            date: e.date.toISOString(),
+            preview: (e.bodyPreview ?? "").slice(0, 200),
+            read: e.isRead,
+            starred: e.isStarred,
+            folder: e.folder,
+            tags: e.tags,
+          }),
+        );
+
+        // Structured metadata for UI rendering (email cards)
+        const mailMeta = {
+          _saaleMailMeta: {
+            type: "mail_list" as const,
+            count: emails.length,
+            total,
+            emails: emailData,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  count: emails.length,
-                  total,
-                  hasMore: emails.length < total - (params.offset ?? 0),
-                  emails: emails.map(
-                    (e: {
-                      id: string;
-                      uid: string;
-                      fromName: string | null;
-                      fromEmail: string;
-                      to: string;
-                      subject: string;
-                      date: Date;
-                      bodyPreview: string | null;
-                      isRead: boolean;
-                      isStarred: boolean;
-                      folder: string;
-                      tags: string[];
-                    }) => ({
-                      id: e.id,
-                      uid: e.uid,
-                      from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
-                      to: e.to,
-                      subject: e.subject,
-                      date: e.date.toISOString(),
-                      preview: (e.bodyPreview ?? "").slice(0, 200),
-                      read: e.isRead,
-                      starred: e.isStarred,
-                      folder: e.folder,
-                      tags: e.tags,
-                    }),
-                  ),
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    count: emails.length,
+                    total,
+                    hasMore: emails.length < total - (params.offset ?? 0),
+                    emails: emailData,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(mailMeta)}`,
             },
           ],
           details: { count: emails.length, total },
@@ -442,46 +455,53 @@ export function createMailTools(userId: string): ToolDefinition[] {
           }
         }
 
+        const emailData = emails.map(
+          (e: {
+            id: string;
+            fromName: string | null;
+            fromEmail: string;
+            to: string;
+            subject: string;
+            date: Date;
+            bodyText: string | null;
+            bodyHtml: string | null;
+            bodyPreview: string | null;
+            isRead: boolean;
+            isStarred: boolean;
+            folder: string;
+            tags: string[];
+            aiSummary: string | null;
+            spamScore: number | null;
+          }) => ({
+            id: e.id,
+            from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+            to: e.to,
+            subject: e.subject,
+            date: e.date.toISOString(),
+            bodyText: e.bodyText ?? e.bodyPreview,
+            read: e.isRead,
+            starred: e.isStarred,
+            folder: e.folder,
+            tags: e.tags,
+            aiSummary: e.aiSummary,
+            spamScore: e.spamScore,
+          }),
+        );
+
+        // Structured metadata for UI rendering (email read card)
+        const mailMeta = {
+          _saaleMailMeta: {
+            type: "mail_read" as const,
+            count: emails.length,
+            emails: emailData,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                emails.map(
-                  (e: {
-                    id: string;
-                    fromName: string | null;
-                    fromEmail: string;
-                    to: string;
-                    subject: string;
-                    date: Date;
-                    bodyText: string | null;
-                    bodyHtml: string | null;
-                    bodyPreview: string | null;
-                    isRead: boolean;
-                    isStarred: boolean;
-                    folder: string;
-                    tags: string[];
-                    aiSummary: string | null;
-                    spamScore: number | null;
-                  }) => ({
-                    id: e.id,
-                    from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
-                    to: e.to,
-                    subject: e.subject,
-                    date: e.date.toISOString(),
-                    bodyText: e.bodyText ?? e.bodyPreview,
-                    read: e.isRead,
-                    starred: e.isStarred,
-                    folder: e.folder,
-                    tags: e.tags,
-                    aiSummary: e.aiSummary,
-                    spamScore: e.spamScore,
-                  }),
-                ),
-                null,
-                2,
-              ),
+              text: JSON.stringify(emailData, null, 2) + `\n${JSON.stringify(mailMeta)}`,
             },
           ],
           details: { count: emails.length },
@@ -562,38 +582,51 @@ export function createMailTools(userId: string): ToolDefinition[] {
           },
         });
 
+        const emailData = emails.map(
+          (e: {
+            id: string;
+            fromName: string | null;
+            fromEmail: string;
+            subject: string;
+            date: Date;
+            bodyPreview: string | null;
+            isRead: boolean;
+            folder: string;
+          }) => ({
+            id: e.id,
+            from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+            subject: e.subject,
+            date: e.date.toISOString(),
+            preview: (e.bodyPreview ?? "").slice(0, 200),
+            read: e.isRead,
+            folder: e.folder,
+          }),
+        );
+
+        // Structured metadata for UI rendering (email cards)
+        const mailMeta = {
+          _saaleMailMeta: {
+            type: "mail_search" as const,
+            query: params.query,
+            count: emails.length,
+            emails: emailData,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  query: params.query,
-                  count: emails.length,
-                  emails: emails.map(
-                    (e: {
-                      id: string;
-                      fromName: string | null;
-                      fromEmail: string;
-                      subject: string;
-                      date: Date;
-                      bodyPreview: string | null;
-                      isRead: boolean;
-                      folder: string;
-                    }) => ({
-                      id: e.id,
-                      from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
-                      subject: e.subject,
-                      date: e.date.toISOString(),
-                      preview: (e.bodyPreview ?? "").slice(0, 200),
-                      read: e.isRead,
-                      folder: e.folder,
-                    }),
-                  ),
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    query: params.query,
+                    count: emails.length,
+                    emails: emailData,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(mailMeta)}`,
             },
           ],
           details: { count: emails.length },

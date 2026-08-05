@@ -10,6 +10,8 @@ import { FileCard } from "./file-card";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
 import { WebSearchCard, WebFetchCard } from "./web-tool-cards";
+import { MailToolCard } from "./mail-tool-cards";
+import { CalendarToolCard } from "./calendar-tool-cards";
 import type { ApprovalData, Message } from "./types";
 import {
   Loader2,
@@ -554,6 +556,13 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                     <WebSearchCard key={toolCall.id} toolCall={toolCall} />
                   ) : toolCall.name === "web_fetch" ? (
                     <WebFetchCard key={toolCall.id} toolCall={toolCall} />
+                  ) : toolCall.name === "mail_list" ||
+                    toolCall.name === "mail_search" ||
+                    toolCall.name === "mail_read" ? (
+                    <MailToolCard key={toolCall.id} toolCall={toolCall} />
+                  ) : toolCall.name === "calendar_upcoming" ||
+                    toolCall.name === "calendar_search" ? (
+                    <CalendarToolCard key={toolCall.id} toolCall={toolCall} />
                   ) : (
                     <GenericToolCall
                       key={toolCall.id}

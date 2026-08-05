@@ -138,20 +138,32 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           dtStart: { gte: now, lte: end },
         });
 
+        // Structured metadata for UI rendering (calendar cards)
+        const calMeta = {
+          _saaleCalMeta: {
+            type: "calendar_upcoming" as const,
+            from: now.toISOString(),
+            to: end.toISOString(),
+            count: events.length,
+            events,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  from: now.toISOString(),
-                  to: end.toISOString(),
-                  count: events.length,
-                  events,
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    from: now.toISOString(),
+                    to: end.toISOString(),
+                    count: events.length,
+                    events,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(calMeta)}`,
             },
           ],
           details: { count: events.length },
@@ -187,19 +199,30 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           ],
         });
 
+        // Structured metadata for UI rendering (calendar cards)
+        const calMeta = {
+          _saaleCalMeta: {
+            type: "calendar_search" as const,
+            query: params.query,
+            count: events.length,
+            events,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  query: params.query,
-                  count: events.length,
-                  events,
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    query: params.query,
+                    count: events.length,
+                    events,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(calMeta)}`,
             },
           ],
           details: { count: events.length },
