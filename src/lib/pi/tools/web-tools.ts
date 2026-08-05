@@ -68,11 +68,25 @@ export function createWebTools(): ToolDefinition[] {
           )
           .join("\n\n");
 
+        // Structured metadata for UI rendering (search result cards)
+        const webMeta = {
+          _saaleWebMeta: {
+            type: "web_search" as const,
+            query: params.query,
+            count: result.results.length,
+            results: result.results.map((r) => ({
+              title: r.title,
+              url: r.url,
+              engine: Array.isArray(r.engine) ? r.engine.join(", ") : (r.engine ?? ""),
+            })),
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: `Search results for "${params.query}" (${result.results.length} results):\n\n${formatted || "No results found."}`,
+              text: `Search results for "${params.query}" (${result.results.length} results):\n\n${formatted || "No results found."}\n\n${JSON.stringify(webMeta)}`,
             },
           ],
           details: { count: result.results.length },
@@ -147,11 +161,21 @@ export function createWebTools(): ToolDefinition[] {
         });
 
         if ("error" in result) {
+          const webMeta = {
+            _saaleWebMeta: {
+              type: "web_fetch" as const,
+              url: params.url,
+              title: null,
+              siteName: null,
+              error: true,
+              errorMessage: result.error,
+            },
+          };
           return {
             content: [
               {
                 type: "text",
-                text: `Error fetching ${params.url}: ${result.error}`,
+                text: `Error fetching ${params.url}: ${result.error}\n${JSON.stringify(webMeta)}`,
               },
             ],
             details: { url: params.url, format: "text" as const, error: true, code: result.code },
@@ -170,11 +194,23 @@ export function createWebTools(): ToolDefinition[] {
         const metadataHeader =
           metadataLines.length > 0 ? `> ${metadataLines.join("\n> ")}\n\n` : `> ${result.url}\n\n`;
 
+        // Structured metadata for UI rendering (fetch card)
+        const webMeta = {
+          _saaleWebMeta: {
+            type: "web_fetch" as const,
+            url: result.url,
+            finalUrl: result.finalUrl,
+            title: result.title || null,
+            siteName: result.siteName || null,
+            error: false,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: metadataHeader + result.content,
+              text: metadataHeader + result.content + `\n${JSON.stringify(webMeta)}`,
             },
           ],
           details: { url: result.url, format: result.format, error: false, code: "ok" },
