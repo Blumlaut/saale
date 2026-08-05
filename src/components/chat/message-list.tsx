@@ -9,6 +9,7 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { FileCard } from "./file-card";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
+import { WebSearchCard, WebFetchCard } from "./web-tool-cards";
 import type { ApprovalData, Message } from "./types";
 import {
   Loader2,
@@ -549,6 +550,10 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                 {message.toolCalls.map((toolCall) =>
                   toolCall.name === "show_file" ? (
                     <ShowFileCard key={toolCall.id} toolCall={toolCall} />
+                  ) : toolCall.name === "web_search" ? (
+                    <WebSearchCard key={toolCall.id} toolCall={toolCall} />
+                  ) : toolCall.name === "web_fetch" ? (
+                    <WebFetchCard key={toolCall.id} toolCall={toolCall} />
                   ) : (
                     <GenericToolCall
                       key={toolCall.id}
