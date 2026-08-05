@@ -12,8 +12,16 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { ToolCallData } from "./types";
+
+/** Max characters before truncation. */
+const MAX_TITLE = 100;
+const MAX_DOMAIN = 40;
+const MAX_QUERY = 60;
+const MAX_ENGINE = 16;
+const MAX_ERROR = 200;
+const MAX_URL_DISPLAY = 50;
 
 /**
  * Structured metadata embedded in web_search / web_fetch tool results.
@@ -104,47 +112,121 @@ function extractWebMeta(result: string | undefined): WebMeta | null {
 }
 
 /**
- * Get a favicon-like icon for a domain.
+ * Truncate a string with ellipsis if it exceeds max length.
+ * Preserves leading content and cuts from the end.
+ */
+function truncate(str: string, max: number): string {
+  if (!str) return "";
+  return str.length > max ? str.slice(0, max - 1) + "…" : str;
+}
+
+/**
+ * Parse a URL safely, returning null on failure.
+ */
+function parseUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get a favicon URL for a given URL.
+ * Returns empty string if the URL is invalid.
  */
 function getFaviconUrl(url: string): string {
-  try {
-    const { hostname } = new URL(url);
-    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
-  } catch {
-    return "";
-  }
+  const parsed = parseUrl(url);
+  if (!parsed) return "";
+  return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=32`;
 }
 
 /**
- * Shorten a URL for display (remove protocol, truncate if long).
- */
-function shortenUrl(url: string): string {
-  try {
-    const { hostname, pathname } = new URL(url);
-    const display = hostname + (pathname.length > 30 ? pathname.slice(0, 27) + "…" : pathname);
-    return display.length > 50 ? display.slice(0, 48) + "…" : display;
-  } catch {
-    return url.length > 50 ? url.slice(0, 48) + "…" : url;
-  }
-}
-
-/**
- * Get domain from URL for display.
+ * Get domain from URL for display (strip www., truncate).
  */
 function getDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace("www.", "");
-  } catch {
-    return url;
+  const parsed = parseUrl(url);
+  if (!parsed) return truncate(url, MAX_DOMAIN);
+  const domain = parsed.hostname.replace("www.", "");
+  return truncate(domain, MAX_DOMAIN);
+}
+
+/**
+ * Shorten a URL for display (hostname + path, truncated).
+ */
+function shortenUrl(url: string): string {
+  const parsed = parseUrl(url);
+  if (!parsed) return truncate(url, MAX_URL_DISPLAY);
+  const pathname =
+    parsed.pathname.length > 25 ? parsed.pathname.slice(0, 23) + "…" : parsed.pathname;
+  const display = parsed.hostname + pathname;
+  return truncate(display, MAX_URL_DISPLAY);
+}
+
+/**
+ * Sanitize a title — trim whitespace, collapse internal spaces, truncate.
+ */
+function sanitizeTitle(title: string): string {
+  if (!title) return "";
+  return truncate(title.trim().replace(/\s+/g, " "), MAX_TITLE);
+}
+
+/**
+ * Sanitize an engine name — trim, truncate.
+ */
+function sanitizeEngine(engine: string): string {
+  if (!engine) return "";
+  return truncate(engine.trim(), MAX_ENGINE);
+}
+
+/**
+ * Sanitize a query string — trim, truncate.
+ */
+function sanitizeQuery(query: string): string {
+  if (!query) return "";
+  return truncate(query.trim(), MAX_QUERY);
+}
+
+/**
+ * Sanitize an error message — trim, truncate.
+ */
+function sanitizeError(error: string): string {
+  if (!error) return "";
+  return truncate(error.trim(), MAX_ERROR);
+}
+
+/**
+ * Favicon with fallback to globe icon on load failure.
+ */
+function FaviconIcon({ url, className }: { url: string; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  const faviconUrl = useMemo(() => getFaviconUrl(url), [url]);
+
+  if (!faviconUrl || failed) {
+    return <Globe className={cn("text-muted-foreground h-4 w-4", className)} />;
   }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- external favicon from Google CDN
+    <img
+      src={faviconUrl}
+      alt=""
+      className={cn("h-4 w-4 rounded-sm object-contain", className)}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 /**
  * Card for a single search result.
  */
 function SearchResultCard({ title, url, engine }: { title: string; url: string; engine: string }) {
-  const favicon = getFaviconUrl(url);
+  const displayTitle = sanitizeTitle(title);
   const domain = getDomain(url);
+  const displayEngine = sanitizeEngine(engine);
+
+  // Skip rendering if both title and URL are empty/invalid
+  if (!displayTitle && !url) return null;
 
   return (
     <a
@@ -155,31 +237,19 @@ function SearchResultCard({ title, url, engine }: { title: string; url: string; 
     >
       {/* Favicon */}
       <div className="shrink-0 pt-0.5">
-        {favicon ? (
-          // eslint-disable-next-line @next/next/no-img-element -- external favicon from Google CDN
-          <img
-            src={favicon}
-            alt=""
-            className="h-4 w-4 rounded-sm object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <Globe className="text-muted-foreground h-4 w-4" />
-        )}
+        <FaviconIcon url={url} />
       </div>
 
       {/* Content */}
       <div className="min-w-0 flex-1">
-        <p className="text-foreground/90 group-hover:text-foreground truncate text-xs leading-snug font-medium">
-          {title}
+        <p className="text-foreground/90 group-hover:text-foreground line-clamp-2 text-xs leading-snug font-medium">
+          {displayTitle || shortenUrl(url)}
         </p>
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground/80 text-[11px]">{domain}</span>
-          {engine && (
+          {displayEngine && (
             <Badge variant="secondary" className="rounded px-1 py-0 text-[10px] font-normal">
-              {engine}
+              {displayEngine}
             </Badge>
           )}
         </div>
@@ -201,9 +271,11 @@ export function WebSearchCard({ toolCall }: { toolCall: ToolCallData }) {
     return null;
   }
 
+  const displayQuery = sanitizeQuery(meta.query);
+  const results = meta.results ?? [];
   const maxVisible = 3;
-  const visibleResults = meta.results.slice(0, expanded ? meta.results.length : maxVisible);
-  const hasMore = meta.results.length > maxVisible;
+  const visibleResults = results.slice(0, expanded ? results.length : maxVisible);
+  const hasMore = results.length > maxVisible;
 
   return (
     <div className="liquid-glass-inner rounded-xl">
@@ -211,7 +283,11 @@ export function WebSearchCard({ toolCall }: { toolCall: ToolCallData }) {
       <div className="flex items-center gap-2 px-3 py-2">
         <Search className="text-muted-foreground h-3 w-3" />
         <span className="text-xs font-medium">Searched</span>
-        <span className="text-muted-foreground truncate text-xs">&ldquo;{meta.query}&rdquo;</span>
+        {displayQuery && (
+          <span className="text-muted-foreground truncate text-xs">
+            &ldquo;{displayQuery}&rdquo;
+          </span>
+        )}
         <Badge
           variant="secondary"
           className={cn(
@@ -231,7 +307,7 @@ export function WebSearchCard({ toolCall }: { toolCall: ToolCallData }) {
       </div>
 
       {/* Result cards */}
-      {meta.results.length > 0 && (
+      {results.length > 0 ? (
         <div className="border-border/30 border-t px-1.5 py-1">
           <div className="space-y-0.5">
             {visibleResults.map((r, i) => (
@@ -259,6 +335,10 @@ export function WebSearchCard({ toolCall }: { toolCall: ToolCallData }) {
             </button>
           )}
         </div>
+      ) : (
+        <div className="border-border/30 border-t px-3 py-2.5">
+          <p className="text-muted-foreground text-xs">No results found</p>
+        </div>
       )}
     </div>
   );
@@ -275,9 +355,10 @@ export function WebFetchCard({ toolCall }: { toolCall: ToolCallData }) {
   }
 
   const displayUrl = meta.finalUrl || meta.url;
-  const favicon = getFaviconUrl(displayUrl);
   const domain = getDomain(displayUrl);
-  const title = meta.title || shortenUrl(displayUrl);
+  const displayTitle = sanitizeTitle(meta.title || "");
+  const fallbackTitle = displayTitle || shortenUrl(displayUrl);
+  const displayError = sanitizeError(meta.errorMessage || "");
 
   return (
     <div className="liquid-glass-inner rounded-xl">
@@ -287,19 +368,9 @@ export function WebFetchCard({ toolCall }: { toolCall: ToolCallData }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            {favicon && (
-              // eslint-disable-next-line @next/next/no-img-element -- external favicon from Google CDN
-              <img
-                src={favicon}
-                alt=""
-                className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            )}
+            <FaviconIcon url={displayUrl} className="h-3.5 w-3.5" />
             <span className="text-muted-foreground truncate text-xs">
-              {meta.error ? domain : title}
+              {meta.error ? domain : fallbackTitle}
             </span>
           </div>
         </div>
@@ -344,9 +415,9 @@ export function WebFetchCard({ toolCall }: { toolCall: ToolCallData }) {
         )}
       </div>
 
-      {meta.error && meta.errorMessage && (
+      {displayError && (
         <div className="border-border/30 border-t px-3 py-2">
-          <p className="text-xs text-red-600/80 dark:text-red-400/80">{meta.errorMessage}</p>
+          <p className="text-xs text-red-600/80 dark:text-red-400/80">{displayError}</p>
         </div>
       )}
     </div>
