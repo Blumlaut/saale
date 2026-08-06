@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
@@ -16,6 +16,7 @@ const navItems = [
 
 export function AdminNav() {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
@@ -65,7 +66,7 @@ export function AdminNav() {
         <Button
           variant="ghost"
           className="text-muted-foreground w-full justify-start gap-2"
-          onClick={() => (window.location.href = "/dashboard/chat")}
+          onClick={() => router.push("/dashboard/chat")}
         >
           <ArrowLeft className="h-4 w-4" />
           Back to app

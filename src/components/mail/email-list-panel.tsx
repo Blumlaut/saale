@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +100,7 @@ export function EmailListPanel({
   onMarkAllRead,
 }: EmailListPanelProps) {
   const isMobile = useIsMobile();
+  const router = useRouter();
   const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   const allTags = useMemo(() => collectTags(messages), [messages]);
@@ -132,7 +134,7 @@ export function EmailListPanel({
                 <DropdownMenuItem
                   onClick={() => {
                     setShowAccountMenu(false);
-                    window.location.href = "/dashboard/mail";
+                    router.push("/dashboard/mail");
                   }}
                   className={cn(!activeAccountId && "bg-white/10 dark:bg-white/5")}
                 >
@@ -144,7 +146,7 @@ export function EmailListPanel({
                     key={acc.id}
                     onClick={() => {
                       setShowAccountMenu(false);
-                      window.location.href = `/dashboard/mail?accountId=${acc.id}`;
+                      router.push(`/dashboard/mail?accountId=${acc.id}`);
                     }}
                     className={cn(activeAccountId === acc.id && "bg-white/10 dark:bg-white/5")}
                   >
