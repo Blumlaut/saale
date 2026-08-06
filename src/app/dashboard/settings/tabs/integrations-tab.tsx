@@ -157,6 +157,7 @@ export function IntegrationsTab() {
                   }}
                   whitelistEntries={telegram.whitelistEntries}
                   whitelistLoading={telegram.whitelistLoading}
+                  onOpenWhitelist={telegram.loadWhitelist}
                   newUserId={telegram.newUserId}
                   onNewUserIdChange={telegram.setNewUserId}
                   addingUser={telegram.addingUser}

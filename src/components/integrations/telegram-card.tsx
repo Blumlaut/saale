@@ -44,6 +44,7 @@ export function TelegramCard({
   actionLoading,
   whitelistEntries,
   whitelistLoading,
+  onOpenWhitelist,
   newUserId,
   onNewUserIdChange,
   addingUser,
@@ -56,6 +57,8 @@ export function TelegramCard({
   actionLoading: string | null;
   whitelistEntries: WhitelistEntry[];
   whitelistLoading: boolean;
+  /** Called right before the whitelist dialog opens — fetches fresh entries. */
+  onOpenWhitelist: () => void;
   newUserId: string;
   onNewUserIdChange: (value: string) => void;
   addingUser: boolean;
@@ -63,6 +66,14 @@ export function TelegramCard({
   onRemoveUser: (id: string) => void;
 }) {
   const [whitelistOpen, setWhitelistOpen] = useState(false);
+
+  const handleWhitelistOpenChange = (open: boolean) => {
+    setWhitelistOpen(open);
+    // Fetch fresh entries every time the dialog opens — the whitelist can
+    // change from elsewhere (webhook auto-whitelist, another device), so we
+    // must not show stale (possibly empty) data.
+    if (open) onOpenWhitelist();
+  };
 
   return (
     <>
@@ -121,7 +132,7 @@ export function TelegramCard({
                 }
               />
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setWhitelistOpen(true)}>
+                <DropdownMenuItem onClick={() => handleWhitelistOpenChange(true)}>
                   <ShieldCheck className="mr-2 h-4 w-4" />
                   Manage Whitelist
                 </DropdownMenuItem>
@@ -141,7 +152,7 @@ export function TelegramCard({
       {/* Whitelist Dialog — owned by this card, data from parent */}
       <WhitelistDialog
         open={whitelistOpen}
-        onOpenChange={setWhitelistOpen}
+        onOpenChange={handleWhitelistOpenChange}
         entries={whitelistEntries}
         loading={whitelistLoading}
         newUserId={newUserId}
