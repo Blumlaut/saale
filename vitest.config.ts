@@ -5,7 +5,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["__tests__/**/*.test.ts"],
+    // Tests must always run in test mode — a shell-level NODE_ENV=production
+    // (or similar) would load React's production build, which strips `act`
+    // and breaks @testing-library/react rendering.
+    env: {
+      NODE_ENV: "test",
+    },
+    include: ["__tests__/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
