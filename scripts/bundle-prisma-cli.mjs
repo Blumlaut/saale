@@ -15,6 +15,14 @@
  * Self-maintaining: run after every `npm install` — the closure is recomputed
  * from whatever prisma version the lockfile resolves to.
  *
+ * Deliberately NOT walked: peerDependencies. Peer deps are optional
+ * integrations (better-sqlite3, typescript, studio's react UI stack) — the
+ * boot path (`migrate deploy`) provably needs only `dependencies` +
+ * `optionalDependencies` (verified by running the image with `--network none`).
+ * Including peers would add ~56MB of studio frontend bloat for zero benefit.
+ * If a future prisma version makes a peer a hard runtime requirement, they
+ * declare it in `dependencies` and this walk picks it up automatically.
+ *
  * Usage: node scripts/bundle-prisma-cli.mjs [output-dir]
  */
 /* eslint-disable no-console */
