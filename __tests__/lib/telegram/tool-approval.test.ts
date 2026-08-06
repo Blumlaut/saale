@@ -105,7 +105,7 @@ describe("Telegram tool approval gate — critical security", () => {
           };
         }),
         "user-1",
-        "session-1",
+        "session-ask-emit",
         async () => "ask",
         (request) => {
           emittedRequests.push(request);
@@ -113,7 +113,7 @@ describe("Telegram tool approval gate — critical security", () => {
       );
 
       const promise = tool.execute(
-        "tc-1",
+        "tc-ask-emit",
         { id: "machine-1", command: "uname -a" },
         undefined,
         undefined,
@@ -129,7 +129,7 @@ describe("Telegram tool approval gate — critical security", () => {
       expect(executed).toBe(false); // Tool should NOT have executed yet
 
       // Now approve
-      await resolveApproval("session-1", "tc-1", true);
+      await resolveApproval("session-ask-emit", "tc-ask-emit", true);
       const result = (await promise) as ToolResult;
 
       expect(executed).toBe(true);
@@ -151,7 +151,7 @@ describe("Telegram tool approval gate — critical security", () => {
 
       // This is what happens WITHOUT the approval gate — the tool runs immediately
       const result = (await unwrappedTool.execute(
-        "tc-1",
+        "tc-nogate",
         { id: "machine-1", command: "uname -a" },
         undefined,
         undefined,
@@ -175,13 +175,13 @@ describe("Telegram tool approval gate — critical security", () => {
           };
         }),
         "user-1",
-        "session-1",
+        "session-deny",
         async () => "ask",
         () => {},
       );
 
       const promise = tool.execute(
-        "tc-1",
+        "tc-deny",
         { id: "machine-1", command: "rm -rf /" },
         undefined,
         undefined,
@@ -189,7 +189,7 @@ describe("Telegram tool approval gate — critical security", () => {
       );
 
       await vi.advanceTimersByTimeAsync(50);
-      await resolveApproval("session-1", "tc-1", false);
+      await resolveApproval("session-deny", "tc-deny", false);
       const result = (await promise) as ToolResult;
 
       expect(executed).toBe(false);
@@ -208,13 +208,13 @@ describe("Telegram tool approval gate — critical security", () => {
           };
         }),
         "user-1",
-        "session-1",
+        "session-timeout",
         async () => "ask",
         () => {},
       );
 
       const promise = tool.execute(
-        "tc-1",
+        "tc-timeout",
         { id: "machine-1", command: "ls" },
         undefined,
         undefined,
@@ -240,13 +240,13 @@ describe("Telegram tool approval gate — critical security", () => {
           };
         }),
         "user-1",
-        "session-1",
+        "session-off",
         async () => "off",
         () => {},
       );
 
       const result = (await tool.execute(
-        "tc-1",
+        "tc-off",
         { id: "machine-1", command: "ls" },
         undefined,
         undefined,
@@ -269,7 +269,7 @@ describe("Telegram tool approval gate — critical security", () => {
           };
         }),
         "user-1",
-        "session-1",
+        "session-allow",
         async () => "allow",
         () => {
           throw new Error("Should not emit approval for 'allow' policy");
@@ -277,7 +277,7 @@ describe("Telegram tool approval gate — critical security", () => {
       );
 
       const result = (await tool.execute(
-        "tc-1",
+        "tc-allow",
         {},
         undefined,
         undefined,
@@ -305,14 +305,14 @@ describe("Telegram tool approval gate — critical security", () => {
           };
         }),
         "user-1",
-        "session-1",
+        "session-allow2",
         getPolicy,
         () => {
           throw new Error("Should not emit approval — user set to 'allow'");
         },
       );
 
-      await tool.execute("tc-1", {}, undefined, undefined, {} as never);
+      await tool.execute("tc-allow2", {}, undefined, undefined, {} as never);
       expect(executed).toBe(true);
     });
 
@@ -332,20 +332,20 @@ describe("Telegram tool approval gate — critical security", () => {
           };
         }),
         "user-1",
-        "session-1",
+        "session-ask2",
         getPolicy,
         (request) => {
           emittedRequests.push(request);
         },
       );
 
-      const promise = tool.execute("tc-1", {}, undefined, undefined, {} as never);
+      const promise = tool.execute("tc-ask2", {}, undefined, undefined, {} as never);
 
       await vi.advanceTimersByTimeAsync(50);
       expect(emittedRequests).toHaveLength(1);
       expect(executed).toBe(false);
 
-      await resolveApproval("session-1", "tc-1", true);
+      await resolveApproval("session-ask2", "tc-ask2", true);
       await promise;
       expect(executed).toBe(true);
     });
