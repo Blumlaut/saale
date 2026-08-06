@@ -143,6 +143,9 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     loadingSet = false;
     opts.setIsLoading(false);
     setMessages((prev) => prev.filter((m) => !m.id.startsWith("streaming-")));
+    // A `done` means the generation ended, so its approvals are resolved or
+    // moot — drop any card that a missed resolution event left behind.
+    opts.setPendingApprovals([]);
     rootMessageIdRef.current = null;
     opts.markDone(opts.sessionId);
     void opts.onReload();
@@ -298,6 +301,34 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       if (prev.some((a) => a.toolCallId === parsed.toolCallId)) return prev;
       return [...prev, parsed];
     });
+  });
+
+  // ── Approval resolved (any process: web UI, Telegram, timeout, stop) ──
+  // Removes the card so a request that was decided elsewhere (or expired)
+  // can never linger as a stuck "awaiting approval".
+  eventSource.addEventListener("tool_approval_resolved", (event: MessageEvent) => {
+    let parsed: { toolCallId: string; approved: boolean };
+    try {
+      parsed = JSON.parse(event.data) as typeof parsed;
+    } catch (err) {
+      console.error("Malformed tool_approval_resolved event:", err);
+      return;
+    }
+    opts.setPendingApprovals((prev) => prev.filter((a) => a.toolCallId !== parsed.toolCallId));
+  });
+
+  // ── Approval snapshot (server truth, sent after every (re)connect) ───
+  // Replaces the local list so stale cards — resolved elsewhere, expired,
+  // or orphaned by a crashed generation — are dropped on reconnection.
+  eventSource.addEventListener("approvals_snapshot", (event: MessageEvent) => {
+    let parsed: { approvals?: ApprovalData[] };
+    try {
+      parsed = JSON.parse(event.data) as typeof parsed;
+    } catch (err) {
+      console.error("Malformed approvals_snapshot event:", err);
+      return;
+    }
+    opts.setPendingApprovals(parsed.approvals ?? []);
   });
 
   // ── Token usage ───────────────────────────────────────────────────────

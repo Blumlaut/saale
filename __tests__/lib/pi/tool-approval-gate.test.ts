@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { publishSessionEvent } from "@/lib/pi/session-events";
 import {
   waitForApproval,
   resolveApproval,
@@ -29,16 +30,29 @@ function makeMockTool(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolResult = any;
 
+// Unique IDs per test: resolution events travel on the shared session bus,
+// so reusing a toolCallId/sessionId across tests lets a leftover event from
+// one test settle another test's wait.
+let idCounter = 0;
+
+function makeUniqueIds(prefix: string): { toolCallId: string; sessionId: string } {
+  idCounter += 1;
+  return { toolCallId: `${prefix}-${idCounter}`, sessionId: `${prefix}-session-${idCounter}` };
+}
+
 describe("tool-approval-gate", () => {
-  const makeRequest = (): ApprovalRequest => ({
-    toolCallId: "tc-123",
-    toolName: "bash",
-    sessionId: "session-abc",
-    userId: "user-1",
-    args: { cmd: "ls" },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
-  });
+  const makeRequest = (): ApprovalRequest => {
+    const { toolCallId, sessionId } = makeUniqueIds("tc");
+    return {
+      toolCallId,
+      toolName: "bash",
+      sessionId,
+      userId: "user-1",
+      args: { cmd: "ls" },
+      createdAt: Date.now(),
+      expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
+    };
+  };
 
   // ─── waitForApproval / resolveApproval ───────────────────────────────
 
@@ -72,9 +86,9 @@ describe("tool-approval-gate", () => {
 
     it("resolves false on timeout", async () => {
       const request: ApprovalRequest = {
-        toolCallId: "tc-timeout",
+        toolCallId: "tc-timeout-gate",
         toolName: "bash",
-        sessionId: "session-timeout",
+        sessionId: "session-timeout-gate",
         userId: "user-1",
         args: {},
         createdAt: Date.now(),
@@ -97,6 +111,76 @@ describe("tool-approval-gate", () => {
 
       await resolveApproval(request.sessionId, request.toolCallId, true);
       await promise;
+    });
+
+    it("getPendingApprovals excludes resolved requests", async () => {
+      const request = makeRequest();
+      const promise = waitForApproval(request);
+
+      await new Promise((r) => setTimeout(r, 10));
+      await resolveApproval(request.sessionId, request.toolCallId, true);
+      await promise;
+
+      const pending = await getPendingApprovals(request.sessionId);
+      expect(pending).toHaveLength(0);
+    });
+
+    it("resolves from a resolution event published by another process", async () => {
+      // Simulates the web API route (or Telegram callback) resolving an
+      // approval whose agent runs in a different process: no in-process
+      // promise exists here — only the session bus event can wake the wait.
+      const request = { ...makeRequest(), toolCallId: "tc-bus", sessionId: "session-bus" };
+      const promise = waitForApproval(request);
+
+      // Let the bus subscription settle before publishing.
+      await new Promise((r) => setTimeout(r, 100));
+
+      await publishSessionEvent(request.sessionId, "tool_approval_resolved", {
+        sessionId: request.sessionId,
+        toolCallId: request.toolCallId,
+        toolName: request.toolName,
+        approved: true,
+        expiresAt: new Date(request.expiresAt).toISOString(),
+      });
+
+      const result = await promise;
+      expect(result).toBe(true);
+    });
+
+    it("resolves false and cleans up when the agent is aborted", async () => {
+      const request = { ...makeRequest(), toolCallId: "tc-abort", sessionId: "session-abort" };
+      const controller = new AbortController();
+      const promise = waitForApproval(request, controller.signal);
+
+      await new Promise((r) => setTimeout(r, 20));
+      controller.abort();
+
+      const result = await promise;
+      expect(result).toBe(false);
+
+      const pending = await getPendingApprovals(request.sessionId);
+      expect(pending).toHaveLength(0);
+    });
+
+    it("timeout records a denial so no stale approval survives", async () => {
+      const request: ApprovalRequest = {
+        ...makeRequest(),
+        toolCallId: "tc-tout-cleanup",
+        sessionId: "session-tout-cleanup",
+        expiresAt: Date.now() + 60,
+      };
+      const promise = waitForApproval(request);
+
+      expect(await promise).toBe(false);
+
+      // The timed-out request is not pending anymore…
+      const pending = await getPendingApprovals(request.sessionId);
+      expect(pending).toHaveLength(0);
+
+      // …and a late approval attempt is idempotently rejected (already
+      // decided by the timeout), so the client can dismiss the stale card.
+      const late = await resolveApproval(request.sessionId, request.toolCallId, true);
+      expect(late).toBe(false);
     });
 
     it("getPendingApprovals filters expired requests", async () => {
@@ -182,46 +266,48 @@ describe("tool-approval-gate", () => {
 
     it("emits approval request and waits for 'ask' policy", async () => {
       let emittedRequest: ApprovalRequest | null = null;
+      const { toolCallId, sessionId } = makeUniqueIds("ask");
       const tool = wrapWithApprovalGate(
         makeMockTool("bash", async () => ({
           content: [{ type: "text", text: "ok" }],
           details: {},
         })),
         "user-1",
-        "session-test",
+        sessionId,
         async () => "ask",
         (request) => {
           emittedRequest = request;
         },
       );
 
-      const promise = tool.execute("tc-1", { cmd: "ls" }, undefined, undefined, {} as never);
+      const promise = tool.execute(toolCallId, { cmd: "ls" }, undefined, undefined, {} as never);
 
       await new Promise((r) => setTimeout(r, 50));
       expect(emittedRequest).not.toBeNull();
       expect(emittedRequest!.toolName).toBe("bash");
 
-      await resolveApproval("session-test", "tc-1", true);
+      await resolveApproval(sessionId, toolCallId, true);
       const result = (await promise) as ToolResult;
       expect(result.content[0].text).toBe("ok");
     });
 
     it("denies tool when approval is rejected", async () => {
+      const { toolCallId, sessionId } = makeUniqueIds("deny");
       const tool = wrapWithApprovalGate(
         makeMockTool("bash", async () => ({
           content: [{ type: "text", text: "ok" }],
           details: {},
         })),
         "user-1",
-        "session-test",
+        sessionId,
         async () => "ask",
         () => {},
       );
 
-      const promise = tool.execute("tc-1", { cmd: "ls" }, undefined, undefined, {} as never);
+      const promise = tool.execute(toolCallId, { cmd: "ls" }, undefined, undefined, {} as never);
 
       await new Promise((r) => setTimeout(r, 50));
-      await resolveApproval("session-test", "tc-1", false);
+      await resolveApproval(sessionId, toolCallId, false);
       const result = (await promise) as ToolResult;
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("denied");
@@ -263,6 +349,7 @@ describe("tool-approval-gate", () => {
     it("auto policy: infra_exec with risky command requires approval", async () => {
       let executed = false;
       const emittedRequests: ApprovalRequest[] = [];
+      const { toolCallId, sessionId } = makeUniqueIds("infra");
 
       const tool = wrapWithApprovalGate(
         makeMockTool("infra_exec", async () => {
@@ -273,7 +360,7 @@ describe("tool-approval-gate", () => {
           };
         }),
         "user-1",
-        "session-test",
+        sessionId,
         async () => "auto",
         (request) => {
           emittedRequests.push(request);
@@ -281,7 +368,7 @@ describe("tool-approval-gate", () => {
       );
 
       const promise = tool.execute(
-        "tc-1",
+        toolCallId,
         { id: "machine-1", command: "rm -rf /tmp/data" },
         undefined,
         undefined,
@@ -300,7 +387,7 @@ describe("tool-approval-gate", () => {
       expect(executed).toBe(false);
 
       // Approve
-      await resolveApproval("session-test", "tc-1", true);
+      await resolveApproval(sessionId, toolCallId, true);
       const result = (await promise) as ToolResult;
 
       expect(executed).toBe(true);
@@ -376,6 +463,7 @@ describe("tool-approval-gate", () => {
     it("auto policy: bash with risky command requires approval", async () => {
       let executed = false;
       const emittedRequests: ApprovalRequest[] = [];
+      const { toolCallId, sessionId } = makeUniqueIds("bashrisk");
 
       const tool = wrapWithApprovalGate(
         makeMockTool("bash", async () => {
@@ -386,7 +474,7 @@ describe("tool-approval-gate", () => {
           };
         }),
         "user-1",
-        "session-test",
+        sessionId,
         async () => "auto",
         (request) => {
           emittedRequests.push(request);
@@ -394,7 +482,7 @@ describe("tool-approval-gate", () => {
       );
 
       const promise = tool.execute(
-        "tc-1",
+        toolCallId,
         { command: "rm -rf /tmp/data" },
         undefined,
         undefined,
@@ -406,7 +494,7 @@ describe("tool-approval-gate", () => {
       expect(emittedRequests).toHaveLength(1);
       expect(executed).toBe(false);
 
-      await resolveApproval("session-test", "tc-1", true);
+      await resolveApproval(sessionId, toolCallId, true);
       const result = (await promise) as ToolResult;
 
       expect(executed).toBe(true);

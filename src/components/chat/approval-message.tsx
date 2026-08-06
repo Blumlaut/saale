@@ -38,7 +38,11 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("Approval failed:", err);
-        setStatus("pending");
+        // Already resolved elsewhere (another tab, Telegram, timeout) — the
+        // card is stale and can never be approved again; dismiss it so the
+        // user isn't stuck with an unapprovable approval.
+        setStatus("done");
+        onResolved(approval.toolCallId);
         return;
       }
 

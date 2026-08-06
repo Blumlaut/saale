@@ -28,7 +28,11 @@ import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
-import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
+import {
+  getPendingApprovals,
+  wrapWithApprovalGate,
+  type ApprovalRequest,
+} from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
 const SSE_HEADERS = {
@@ -306,11 +310,27 @@ export async function GET(
 
       dispatcher
         .subscribe(controller, new TextEncoder(), lastEventId)
-        .then(() => {
+        .then(async () => {
           if (aborted) {
             dispatcher.unsubscribe(controller);
             return;
           }
+
+          // ── Pending-approval snapshot: the server's view of outstanding
+          //    approvals, emitted AFTER the buffered replay. The client
+          //    replaces its local list with this, so stale cards (resolved
+          //    elsewhere, expired, or orphaned by a crashed generation) can
+          //    never linger — and live `tool_approval_request`/`resolved`
+          //    events keep it in sync afterwards.
+          const pendingApprovals = await getPendingApprovals(sessionId);
+          dispatcher.emitLocal(controller, "approvals_snapshot", {
+            approvals: pendingApprovals.map((a) => ({
+              toolCallId: a.toolCallId,
+              toolName: a.toolName,
+              args: a.args,
+              expiresAt: new Date(a.expiresAt).toISOString(),
+            })),
+          });
 
           // ── Idle: nothing to stream right now — emit done so the client
           //    settles its loading state, but KEEP the connection open: a
