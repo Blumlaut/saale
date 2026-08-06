@@ -3,13 +3,6 @@
 FROM node:25-alpine AS base
 RUN apk add --no-cache dumb-init
 
-# ─── Dependencies ─────────────────────────────────────────────────────────────
-
-FROM base AS deps
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
-
 # ─── Development stage — hot reload via docker compose watch ──────────────────
 
 FROM base AS development
@@ -29,6 +22,8 @@ COPY . .
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — not used at runtime
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 RUN npx prisma generate
+# Stage the prisma CLI + closure for the slim production image (see scripts/bundle-prisma-cli.mjs)
+RUN node scripts/bundle-prisma-cli.mjs /tmp/prisma-cli-bundle
 RUN npm run build
 RUN npm run build:worker
 
@@ -46,12 +41,14 @@ COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+# Prisma CLI + closure for `migrate deploy` at boot (standalone tracer omits the CLI)
+COPY --from=build /tmp/prisma-cli-bundle/ ./node_modules/
 
 ENTRYPOINT ["dumb-init", "--"]
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
 
 # ─── Production: Worker (BullMQ, pre-compiled) ──────────────────────────────
 

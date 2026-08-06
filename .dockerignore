@@ -1,0 +1,25 @@
+# Dependencies & build output — never copy host artifacts into the image
+node_modules
+.next
+dist
+coverage
+playwright-report
+test-results
+
+# VCS
+.git
+.gitignore
+
+# Local env & secrets
+.env
+.env.*
+!.env.example
+
+# Tests & docs not needed at build time
+__tests__
+e2e
+
+# Logs & misc
+*.log
+.DS_Store
+uploads

@@ -152,7 +152,7 @@ export default function AdminUsersPage() {
     setImpersonating(user.id);
     try {
       await authClient.admin.impersonateUser({ userId: user.id });
-      // eslint-disable-next-line react-hooks/immutability -- full page redirect after impersonation
+      // eslint-disable-next-line react-hooks/immutability, @next/next/no-location-assign-relative-destination -- full page redirect after impersonation (session cookies change, reload required)
       window.location.href = "/dashboard/chat";
     } catch (err) {
       console.error("Failed to impersonate user:", err);
