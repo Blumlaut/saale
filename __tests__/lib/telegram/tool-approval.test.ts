@@ -7,6 +7,12 @@ import {
 } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
+// The approval gate persists requests in Redis and coordinates cross-process
+// resolution over Redis pub/sub. Replace the real (ioredis-backed) module
+// with an in-memory implementation so tests run without a Redis server.
+vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
+import { resetMockRedis } from "../../helpers/in-memory-redis";
+
 /**
  * These tests verify that the Telegram agent processor MUST wrap tools
  * with the approval gate. Without wrapping, tools with "ask" policy
@@ -39,6 +45,7 @@ type ToolResult = any;
 describe("Telegram tool approval gate — critical security", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    resetMockRedis();
   });
 
   afterEach(() => {

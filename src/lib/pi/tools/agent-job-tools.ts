@@ -2,6 +2,7 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { executeAgentRun } from "@/lib/agent-jobs/executor";
+import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
 
 /**
  * Create agent job tools with userId injection for user isolation.
@@ -427,6 +428,15 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           data: { lastRunAt: new Date() },
         });
 
+        // Resolve the external output handler (e.g., Telegram) so responses
+        // are routed to the configured channel. executeAgentRun only sends
+        // output when a handler is provided.
+        const output = await buildAgentOutputHandler({
+          userId,
+          outputChannel: definition.outputChannel,
+          outputChannelId: definition.outputChannelId,
+        });
+
         // Execute asynchronously
         executeAgentRun(
           run.id,
@@ -438,6 +448,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
             thinkingLevel: definition.thinkingLevel,
           },
           userId,
+          output,
         )
           .then(async (stats) => {
             await prisma.agentRun.update({

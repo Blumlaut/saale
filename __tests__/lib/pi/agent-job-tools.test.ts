@@ -26,6 +26,13 @@ vi.mock("@/lib/agent-jobs/executor", () => ({
   executeAgentRun: vi.fn().mockResolvedValue({ inputTokens: 100, outputTokens: 50, cost: 0.001 }),
 }));
 
+vi.mock("@/lib/agent-jobs/output", () => ({
+  buildAgentOutputHandler: vi.fn().mockResolvedValue({
+    send: vi.fn(),
+    typing: vi.fn(),
+  }),
+}));
+
 // Import mocks for assertions
 import * as db from "@/lib/db";
 
@@ -37,6 +44,8 @@ const mockAgentRun = db.prisma.agentRun as any;
 const mockAgentRunMessage = db.prisma.agentRunMessage as any;
 
 import { createAgentJobTools } from "@/lib/pi/tools/agent-job-tools";
+import { executeAgentRun } from "@/lib/agent-jobs/executor";
+import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
 
 // Helper to call execute with all required args
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -400,6 +409,74 @@ describe("createAgentJobTools", () => {
   describe("agent_job_run", () => {
     const tools = createAgentJobTools(userId);
     const tool = tools.find((t) => t.name === "agent_job_run")!;
+
+    it("passes the telegram output handler to executeAgentRun", async () => {
+      const def = {
+        id: "def-1",
+        userId,
+        prompt: "Default prompt",
+        systemPrompt: "System",
+        toolConfig: { email: true },
+        modelId: "anthropic:claude",
+        thinkingLevel: "off",
+        outputChannel: "telegram",
+        outputChannelId: "12345",
+        enabled: true,
+      };
+
+      mockAgentDefinition.findFirst.mockResolvedValue(def);
+      mockAgentRun.create.mockResolvedValue({ id: "run-1" });
+      mockAgentDefinition.update.mockResolvedValue({});
+
+      await callExecute(tool.execute, { id: "def-1" });
+
+      expect(buildAgentOutputHandler).toHaveBeenCalledWith({
+        userId,
+        outputChannel: "telegram",
+        outputChannelId: "12345",
+      });
+      expect(executeAgentRun).toHaveBeenCalledWith(
+        "run-1",
+        expect.objectContaining({ prompt: "Default prompt" }),
+        userId,
+        expect.objectContaining({ send: expect.any(Function) }),
+      );
+    });
+
+    it("passes undefined output handler when definition has no channel", async () => {
+      (buildAgentOutputHandler as unknown as Mock).mockResolvedValueOnce(undefined);
+
+      const def = {
+        id: "def-1",
+        userId,
+        prompt: "Default prompt",
+        systemPrompt: null,
+        toolConfig: null,
+        modelId: null,
+        thinkingLevel: "off",
+        outputChannel: null,
+        outputChannelId: null,
+        enabled: true,
+      };
+
+      mockAgentDefinition.findFirst.mockResolvedValue(def);
+      mockAgentRun.create.mockResolvedValue({ id: "run-1" });
+      mockAgentDefinition.update.mockResolvedValue({});
+
+      await callExecute(tool.execute, { id: "def-1" });
+
+      expect(buildAgentOutputHandler).toHaveBeenCalledWith({
+        userId,
+        outputChannel: null,
+        outputChannelId: null,
+      });
+      expect(executeAgentRun).toHaveBeenCalledWith(
+        "run-1",
+        expect.objectContaining({ prompt: "Default prompt" }),
+        userId,
+        undefined,
+      );
+    });
 
     it("creates run with output channel from definition", async () => {
       const def = {
