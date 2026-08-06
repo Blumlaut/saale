@@ -482,7 +482,7 @@ export async function processTelegramMessage(
                       sendTelegramMessage(
                         encryptedToken,
                         telegramChatId,
-                        `🔧 <code>${summary}</code>`,
+                        `🔧 \`${summary}\``,
                       ).catch((err) => {
                         console.error("Failed to send Telegram tool summary:", err);
                       });
