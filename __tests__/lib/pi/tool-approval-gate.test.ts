@@ -1,6 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { publishSessionEvent } from "@/lib/pi/session-events";
+
+// The approval gate persists requests in Redis and coordinates cross-process
+// resolution over Redis pub/sub. Replace the real (ioredis-backed) module
+// with an in-memory implementation so tests run without a Redis server.
+vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
+import { resetMockRedis } from "../../helpers/in-memory-redis";
 import {
   waitForApproval,
   resolveApproval,
@@ -41,6 +47,9 @@ function makeUniqueIds(prefix: string): { toolCallId: string; sessionId: string 
 }
 
 describe("tool-approval-gate", () => {
+  beforeEach(() => {
+    resetMockRedis();
+  });
   const makeRequest = (): ApprovalRequest => {
     const { toolCallId, sessionId } = makeUniqueIds("tc");
     return {

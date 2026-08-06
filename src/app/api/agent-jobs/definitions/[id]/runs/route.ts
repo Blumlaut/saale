@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { executeAgentRun } from "@/lib/agent-jobs/executor";
+import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
 
 /**
  * GET /api/agent-jobs/definitions/:id/runs — List runs for a definition
@@ -139,6 +140,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     data: { lastRunAt: new Date() },
   });
 
+  // Resolve the external output handler (e.g., Telegram) before dispatching.
+  // executeAgentRun only routes output when a handler is provided.
+  const output = await buildAgentOutputHandler({
+    userId: authResult.user.id,
+    outputChannel: definition.outputChannel,
+    outputChannelId: definition.outputChannelId,
+  });
+
   // Execute asynchronously (fire-and-forget, but with error handling)
   executeAgentRun(
     run.id,
@@ -150,6 +159,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       thinkingLevel: definition.thinkingLevel,
     },
     authResult.user.id,
+    output,
   )
     .then(async (stats) => {
       await prisma.agentRun.update({
