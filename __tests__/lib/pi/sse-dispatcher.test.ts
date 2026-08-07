@@ -154,6 +154,44 @@ describe("SseDispatcher", () => {
       expect(decodeChunks(mock.chunks)).toContain("id: 7");
     });
 
+    it("delivers events after an event-ID reset (long tool call, counter expiry)", async () => {
+      // Regression: a client was connected through a generation that went
+      // quiet (long tool call) long enough for the Redis counter to reset.
+      // New events now carry LOW ids (1, 2, 3) even though the client has
+      // seen ids up to 42. A watermark-based dedupe would skip them all and
+      // the stream would look dead while Pi keeps working. The seen-ID set
+      // must deliver them.
+      const mock = createMockController();
+      await dispatcher.subscribe(mock.controller, mock.encoder, 42);
+      mock.enqueueMock.mockClear();
+
+      emitLive(dispatcher, 1, "tool_end", { toolCallId: "tc-1", result: "done", isError: false });
+      emitLive(dispatcher, 2, "token", { turnId: "t1", text: "resumed" });
+      emitLive(dispatcher, 3, "done", {});
+
+      expect(mock.enqueueMock).toHaveBeenCalledTimes(3);
+      const output = decodeChunks(mock.chunks);
+      expect(output).toContain("event: tool_end");
+      expect(output).toContain("event: token");
+      expect(output).toContain("event: done");
+    });
+
+    it("dedupes only what the client has actually seen (not a watermark)", async () => {
+      const mock = createMockController();
+      await dispatcher.subscribe(mock.controller, mock.encoder, -1);
+
+      // id 5 arrives live; the replay then re-delivers it — dropped.
+      emitLive(dispatcher, 5, "token", { text: "first" });
+      emitLive(dispatcher, 5, "token", { text: "first" });
+      // But a NEW event with an id BELOW 5 (post-reset) must still flow.
+      emitLive(dispatcher, 3, "token", { text: "post-reset" });
+
+      expect(mock.enqueueMock).toHaveBeenCalledTimes(2);
+      const output = decodeChunks(mock.chunks);
+      expect(output).toContain('{"text":"first"}');
+      expect(output).toContain('{"text":"post-reset"}');
+    });
+
     it("is a no-op when the controller is already subscribed", async () => {
       const mock = createMockController();
       await dispatcher.subscribe(mock.controller, mock.encoder, -1);

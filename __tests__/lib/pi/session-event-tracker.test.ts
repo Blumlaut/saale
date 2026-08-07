@@ -158,6 +158,89 @@ describe("createSessionEventTracker", () => {
     expect(mockResetSessionEvents).toHaveBeenCalledWith("s1");
   });
 
+  it("forwards tool_execution_update as tool_update, throttled per tool call", async () => {
+    vi.useFakeTimers();
+    try {
+      const { published } = setup();
+      mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+      const session = createFakeSession();
+      createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+      session.emit({
+        type: "tool_execution_start",
+        toolCallId: "tc-1",
+        toolName: "bash",
+        args: { command: "sleep 300" },
+      });
+      // Pi's bash tool streams output at ~100ms; the tracker must forward it
+      // (normalized to text) but throttle to ~1/s so the buffer isn't flooded.
+      session.emit({
+        type: "tool_execution_update",
+        toolCallId: "tc-1",
+        toolName: "bash",
+        args: { command: "sleep 300" },
+        partialResult: { content: [{ type: "text", text: "chunk-1" }] },
+      });
+      session.emit({
+        type: "tool_execution_update",
+        toolCallId: "tc-1",
+        toolName: "bash",
+        args: { command: "sleep 300" },
+        partialResult: { content: [{ type: "text", text: "chunk-2" }] },
+      });
+
+      let updates = published.filter((p) => p.event === "tool_update");
+      expect(updates).toHaveLength(1);
+      expect(updates[0]!.data.partialResult).toBe("chunk-1");
+      expect(updates[0]!.data.toolCallId).toBe("tc-1");
+      expect(typeof updates[0]!.data.turnId).toBe("string");
+
+      // After the throttle window, the next update is forwarded again.
+      vi.advanceTimersByTime(1001);
+      session.emit({
+        type: "tool_execution_update",
+        toolCallId: "tc-1",
+        toolName: "bash",
+        args: { command: "sleep 300" },
+        partialResult: { content: [{ type: "text", text: "chunk-3" }] },
+      });
+
+      updates = published.filter((p) => p.event === "tool_update");
+      expect(updates).toHaveLength(2);
+      expect(updates[1]!.data.partialResult).toBe("chunk-3");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the active-session flag fresh while Pi is streaming (no drift)", async () => {
+    vi.useFakeTimers();
+    try {
+      setup();
+      mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+      const session = createFakeSession();
+      (session as unknown as { isStreaming: boolean }).isStreaming = true;
+      createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+      session.emit({ type: "agent_start" });
+      expect(mockRegisterActiveSession).toHaveBeenCalledWith("u1", "s1");
+
+      // A long silent tool call emits no events; the heartbeat (driven by
+      // Pi's session.isStreaming) must keep refreshing the flag.
+      vi.advanceTimersByTime(30_000);
+      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(2);
+
+      // Once Pi actually stops streaming, the flag stops being refreshed.
+      (session as unknown as { isStreaming: boolean }).isStreaming = false;
+      vi.advanceTimersByTime(60_000);
+      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("emits tool_start / tool_end with the turnId", async () => {
     const { published } = setup();
     mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });

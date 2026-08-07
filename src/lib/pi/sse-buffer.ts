@@ -9,7 +9,17 @@ import { getRedis } from "@/lib/redis";
 
 const BUFFER_KEY_PREFIX = "chat:sse:buf:";
 const COUNTER_KEY_SUFFIX = ":counter";
-const BUFFER_TTL_SECONDS = 300; // 5 minutes — covers long tool executions
+// 30 minutes — replays must survive long tool executions and reconnect
+// gaps (matches the agent pool's idle-eviction window).
+const BUFFER_TTL_SECONDS = 30 * 60;
+// The event-ID counter must outlive ANY idle stretch inside a generation: a
+// tool call can legitimately run for many minutes without emitting a single
+// event. If the counter expired mid-generation, IDs would restart at 1 and
+// clients holding a higher Last-Event-ID would silently skip every new event
+// (see sse-dispatcher) — the stream looks dead while Pi is still working.
+// 24h is far beyond any realistic tool run, and the TTL is refreshed on every
+// event so abandoned sessions still clean themselves up.
+const COUNTER_TTL_SECONDS = 24 * 60 * 60;
 const BUFFER_MAX_SIZE = 500; // enough for tool-heavy workloads
 
 /**
@@ -29,7 +39,9 @@ export async function nextEventId(sessionId: string): Promise<number> {
   const redis = getRedis();
   const counterKey = `${BUFFER_KEY_PREFIX}${sessionId}${COUNTER_KEY_SUFFIX}`;
   const id = await redis.incr(counterKey);
-  await redis.expire(counterKey, BUFFER_TTL_SECONDS);
+  // Long TTL so IDs stay monotonic across the whole generation — see the
+  // COUNTER_TTL_SECONDS comment above.
+  await redis.expire(counterKey, COUNTER_TTL_SECONDS);
   return id;
 }
 

@@ -56,11 +56,14 @@ describe("nextEventId", () => {
     expect(await nextEventId("session-1")).toBe(3);
   });
 
-  it("sets TTL on counter key", async () => {
+  it("sets a long TTL on counter key so IDs never reset mid-generation", async () => {
     await nextEventId("session-1");
 
     expect(mockRedisIncr).toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
-    expect(mockRedisExpire).toHaveBeenCalledWith("chat:sse:buf:session-1:counter", 300);
+    // 24h: a tool call can run for many minutes without emitting events. If
+    // the counter expired, IDs would restart at 1 and clients holding a
+    // higher Last-Event-ID would silently skip every new event.
+    expect(mockRedisExpire).toHaveBeenCalledWith("chat:sse:buf:session-1:counter", 86400);
   });
 
   it("uses separate counters per session", async () => {
@@ -106,7 +109,7 @@ describe("bufferEvent", () => {
   it("sets TTL on buffer key", async () => {
     await bufferEvent("session-1", "token", { text: "hello" });
 
-    expect(mockRedisExpire).toHaveBeenCalledWith("chat:sse:buf:session-1", 300);
+    expect(mockRedisExpire).toHaveBeenCalledWith("chat:sse:buf:session-1", 1800);
   });
 
   it("handles Redis errors gracefully", async () => {

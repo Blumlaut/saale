@@ -43,6 +43,20 @@ const SSE_HEADERS = {
 };
 
 /**
+ * Server-side SSE heartbeat interval.
+ *
+ * During a long tool call no stream events flow for minutes, so the
+ * connection is completely idle. Idle-sniffing intermediaries (nginx
+ * proxy_read_timeout, Cloudflare, load balancers) would kill it. A periodic
+ * ping keeps the connection alive AND gives the client a liveness signal: its
+ * watchdog force-reconnects when pings stop arriving.
+ *
+ * The ping is unbuffered and carries no `id:` line, so it never disturbs
+ * Last-Event-ID reconnection or the replay dedupe.
+ */
+const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+/**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
  *
  * Pure observer: wires the HTTP response to the session's event stream
@@ -298,9 +312,24 @@ export async function GET(
       let closed = false;
       let aborted = false;
 
+      // ── Heartbeat: keep the connection alive through idle proxies and give
+      //    the client's watchdog a liveness signal (see SSE_HEARTBEAT_INTERVAL_MS).
+      const heartbeatEncoder = new TextEncoder();
+      const heartbeatTimer = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(
+            heartbeatEncoder.encode(`event: ping\ndata: {\"t\":${Date.now()}}\n\n`),
+          );
+        } catch (err) {
+          console.error("Failed to enqueue SSE heartbeat:", err);
+        }
+      }, SSE_HEARTBEAT_INTERVAL_MS);
+
       const closeController = () => {
         if (closed) return;
         closed = true;
+        clearInterval(heartbeatTimer);
         try {
           controller.close();
         } catch (err) {
@@ -381,6 +410,7 @@ export async function GET(
       //    other clients (and the buffer) keep receiving events. ─────────
       request.signal.addEventListener("abort", () => {
         aborted = true;
+        clearInterval(heartbeatTimer);
         log("client", "disconnect detected, stopping SSE forwarding (agent continues)");
         dispatcher.unsubscribe(controller);
         closeController();
