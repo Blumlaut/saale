@@ -4,6 +4,16 @@ import type { ApprovalData, Message, ToolCallData } from "./types";
 import type { TokenUsage } from "./input-bar";
 
 /**
+ * How long the client tolerates silence from the SSE connection before
+ * declaring it dead and forcing a reconnect. The server pings every 15s, so a
+ * healthy connection is never silent for more than ~15s; 60s means at least
+ * three heartbeats were lost.
+ */
+const STALL_THRESHOLD_MS = 60_000;
+/** How often the watchdog checks for stalls. */
+const WATCHDOG_TICK_MS = 15_000;
+
+/**
  * Shared SSE stream orchestration for chat.
  *
  * Single source of truth: the `messages` array. Streaming messages are
@@ -19,11 +29,19 @@ import type { TokenUsage } from "./input-bar";
  *
  * Server events:
  * - `turn_start { turnId }` — create a streaming message for the turn
- * - `token` / `thinking` / `tool_start` / `tool_end` — update the turn
+ * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end` — update
+ *   the turn (tool_update carries live partial output from a running tool)
  * - `turn_end { turnId }` — finalize the turn (safety net for final token)
  * - `message_saved { turnId, messageId }` — swap temp ID with the DB ID
  * - `done` — reload messages from DB; keep watching for the next generation
  * - `error` — terminal: reload, close the connection
+ *
+ * Heartbeat/watchdog: the server sends `event: ping` every 15s (unbuffered,
+ * no id). The browser's EventSource only auto-reconnects on transport errors
+ * — a silently half-open connection (proxy dropped, server wedged) would
+ * stall forever. If no ping arrives within STALL_THRESHOLD_MS while the
+ * connection reports OPEN, we close it and reconnect; the server replays the
+ * buffer, so nothing is lost.
  */
 
 export interface ChatStreamOptions {
@@ -40,6 +58,12 @@ export interface ChatStreamOptions {
   onStreamError?: (message: string) => void;
   /** Reload messages from the DB (called when the server signals a final state). */
   onReload: () => void;
+  /**
+   * Called when a generation ends (any `done`, including stop/error cleanup).
+   * Lets the caller flush anything queued while Pi was busy — mirrors Pi's
+   * followUp semantics (deliver queued prompts when the agent stops).
+   */
+  onGenerationEnd?: () => void;
 }
 
 export function useChatStream(options: ChatStreamOptions) {
@@ -56,6 +80,12 @@ export function useChatStream(options: ChatStreamOptions) {
   // generation, so multi-turn runs group into a single bubble.
   const rootMessageIdRef = useRef<string | null>(null);
 
+  // Watchdog bookkeeping: the reconnect tick must be cleared on disconnect and
+  // superseded on every new connection; `connectRef` lets the watchdog call
+  // `connect` without a circular useCallback dependency.
+  const watchdogRef = useRef<number | null>(null);
+  const connectRef = useRef<() => void>(() => {});
+
   /** Open (or reuse) the SSE connection for the session. */
   const connect = useCallback(() => {
     if (eventSourceRef.current) return;
@@ -69,10 +99,39 @@ export function useChatStream(options: ChatStreamOptions) {
       rootMessageIdRef,
       ...optionsRef.current,
     });
+
+    // ── Watchdog: force a reconnect if the server stops sending pings. ──
+    if (watchdogRef.current !== null) clearInterval(watchdogRef.current);
+    let lastPingAt = Date.now();
+    eventSource.addEventListener("ping", () => {
+      lastPingAt = Date.now();
+    });
+    watchdogRef.current = window.setInterval(() => {
+      // If the browser is already reconnecting, leave it alone.
+      if (eventSource.readyState !== EventSource.OPEN) return;
+      if (Date.now() - lastPingAt <= STALL_THRESHOLD_MS) return;
+      console.warn(
+        `[chat-stream] no heartbeat for ${STALL_THRESHOLD_MS}ms — connection presumed dead, reconnecting`,
+      );
+      eventSource.close();
+      eventSourceRef.current = null;
+      connectRef.current();
+    }, WATCHDOG_TICK_MS);
   }, [sessionId, eventSourceRef]);
+
+  // Keep the watchdog's escape hatch pointed at the latest `connect` (stable:
+  // its deps never change). Placed after the declaration to avoid the
+  // use-before-declaration lint on the eager dependency array.
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   /** Close the SSE connection (unmount, stop). */
   const disconnect = useCallback(() => {
+    if (watchdogRef.current !== null) {
+      clearInterval(watchdogRef.current);
+      watchdogRef.current = null;
+    }
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
@@ -148,6 +207,9 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     opts.setPendingApprovals([]);
     rootMessageIdRef.current = null;
     opts.markDone(opts.sessionId);
+    // Pi's followUp semantics: anything queued while Pi was busy is delivered
+    // now that the agent stopped.
+    opts.onGenerationEnd?.();
     void opts.onReload();
   };
 
@@ -219,6 +281,33 @@ function wireStreamListeners(opts: StreamListenerOpts) {
           : m,
       );
     });
+  });
+
+  // ── Tool update: live progress from a running tool (Pi's
+  //    tool_execution_update — e.g. bash streaming output). Proves the run is
+  //    alive and shows partial output in the running tool card. ────────────
+  eventSource.addEventListener("tool_update", (event: MessageEvent) => {
+    markLoading();
+    let parsed: { turnId: string; toolCallId: string; partialResult?: string };
+    try {
+      parsed = JSON.parse(event.data) as typeof parsed;
+    } catch (err) {
+      console.error("Malformed tool_update event:", err);
+      return;
+    }
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== `streaming-${parsed.turnId}` || !m.toolCalls) return m;
+        return {
+          ...m,
+          toolCalls: m.toolCalls.map((tc) =>
+            tc.id === parsed.toolCallId && tc.status === "running"
+              ? { ...tc, result: parsed.partialResult ?? undefined }
+              : tc,
+          ),
+        };
+      }),
+    );
   });
 
   // ── Tool end: update tool call status ─────────────────────────────────

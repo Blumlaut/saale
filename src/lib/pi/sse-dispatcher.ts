@@ -9,7 +9,7 @@
  * Lifecycle of a client:
  *   1. `subscribe(controller, encoder, lastEventId)` registers the client,
  *      subscribes to the session's pub/sub bus, then replays buffered events.
- *      The per-client `nextExpectedId` dedupes the overlap between live
+ *      The per-client `seenIds` set dedupes the overlap between live
  *      delivery (which may arrive during the replay) and the replay itself,
  *      so no event is lost or delivered twice.
  *   2. Live events are fanned out to every registered client.
@@ -38,9 +38,30 @@ function formatSseEvent(event: string, data: unknown, id?: number): string {
 interface SseClient {
   controller: ReadableStreamDefaultController;
   encoder: TextEncoder;
-  /** Lowest event ID this client still needs (dedupe replay/live overlap). */
-  nextExpectedId: number;
+  /**
+   * IDs this client has already received (dedupes the replay/live overlap).
+   *
+   * A bounded set instead of a monotonic watermark: if the Redis counter ever
+   * resets (counter TTL expiry after a very long idle tool, Redis data loss),
+   * fresh events would carry low IDs and a watermark-based dedupe would
+   * silently drop them all — the client freezes while Pi keeps working. A set
+   * only skips what was actually seen, so post-reset events still flow.
+   */
+  seenIds: Set<number>;
 }
+
+/**
+ * Cap on per-client seen IDs before the set is cleared.
+ *
+ * Small on purpose: the only real dedupe need is the replay/live overlap
+ * during `subscribe` (a few ms — a handful of events). Keeping the set small
+ * means stale history from before a Redis restart / counter reset is
+ * forgotten quickly, so post-reset events (which reuse low IDs) still flow.
+ * A cleared set can at worst re-deliver an event, and every client handler is
+ * idempotent (cumulative token text, tool_start deduped by toolCallId,
+ * message_saved mapped by ID) — harmless.
+ */
+const MAX_SEEN_IDS = 200;
 
 export class SseDispatcher {
   private clients = new Map<ReadableStreamDefaultController, SseClient>();
@@ -59,7 +80,7 @@ export class SseDispatcher {
    *
    * The bus subscription is established BEFORE reading the buffer, so events
    * published in between are either received live or included in the replay
-   * — never lost. `nextExpectedId` dedupes the overlap.
+   * — never lost. `seenIds` dedupes the overlap.
    */
   async subscribe(
     controller: ReadableStreamDefaultController,
@@ -68,7 +89,7 @@ export class SseDispatcher {
   ): Promise<void> {
     if (this.clients.has(controller)) return;
 
-    const client: SseClient = { controller, encoder, nextExpectedId: lastEventId + 1 };
+    const client: SseClient = { controller, encoder, seenIds: new Set() };
     this.clients.set(controller, client);
 
     if (!this.unsubBus) {
@@ -132,11 +153,24 @@ export class SseDispatcher {
     const targets = only ? [only] : [...this.clients.values()];
     for (const client of targets) {
       // Negative IDs only occur when buffering failed — always forward them.
-      // Otherwise skip anything already delivered via replay or an earlier
-      // live event.
-      if (evt.id >= 0 && evt.id < client.nextExpectedId) continue;
-      client.nextExpectedId = Math.max(client.nextExpectedId, evt.id + 1);
+      // Otherwise skip only what this client has genuinely seen already.
+      if (evt.id >= 0 && client.seenIds.has(evt.id)) continue;
+      client.seenIds.add(evt.id);
+      this.pruneSeenIds(client);
       this.enqueue(client, evt.event, evt.data, evt.id);
+    }
+  }
+
+  /**
+   * Bound the seen-ID set. When it overflows we clear it: a re-delivered
+   * event would at worst double-fire a client handler, and every handler is
+   * idempotent (cumulative token text, tool_start deduped by toolCallId,
+   * message_saved mapped by ID) — harmless. This keeps long sessions from
+   * growing the set forever.
+   */
+  private pruneSeenIds(client: SseClient): void {
+    if (client.seenIds.size > MAX_SEEN_IDS) {
+      client.seenIds.clear();
     }
   }
 

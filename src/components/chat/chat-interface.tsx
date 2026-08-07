@@ -57,7 +57,13 @@ export function ChatInterface({
           isGenerating?: boolean;
         };
       }>(`/api/chat/sessions/${sessionId}/messages`);
-      setMessages(data.messages);
+      setMessages((prev) => [
+        ...data.messages,
+        // Live streaming messages (running tool calls, in-flight tokens) exist
+        // ONLY client-side — the DB reload must never wipe them, or the UI
+        // rolls back to an older state while Pi is still working.
+        ...prev.filter((m) => m.id.startsWith("streaming-")),
+      ]);
       if (data.session) {
         const modelStr =
           data.session.modelProvider && data.session.modelName
@@ -92,6 +98,10 @@ export function ChatInterface({
     }
   };
 
+  // Queued send while Pi is busy (409) — mirrors Pi's followUp semantics:
+  // the prompt is delivered when the current run ends instead of being lost.
+  const queuedSendRef = useRef<{ content: string; files?: File[] } | null>(null);
+
   // Shared stream orchestration (declared after the loaders it references).
   const { connect, disconnect } = useChatStream({
     sessionId,
@@ -100,6 +110,15 @@ export function ChatInterface({
     setIsLoading,
     setPendingApprovals,
     markDone,
+    onGenerationEnd: () => {
+      const queued = queuedSendRef.current;
+      if (!queued) return;
+      queuedSendRef.current = null;
+      toast.info("Queued message sent", {
+        description: "Your message was sent once Pi finished the previous run.",
+      });
+      void handleSend(queued.content, queued.files);
+    },
     onTokenUsage: setTokenUsage,
     onCompactionStart: () => setIsCompacting(true),
     onCompactionEnd: (summary?: string, tokensBefore?: number) => {
@@ -190,9 +209,15 @@ export function ChatInterface({
             return;
           }
           if (res.status === 409) {
-            // A generation is already running (another tab/session) — drop
-            // the optimistic message and observe the live stream instead.
+            // Pi is genuinely busy (the active flag now tracks session.
+            // isStreaming, so this only fires while a real generation runs).
+            // Don't let the typed message vanish silently — queue it and
+            // deliver it when the run ends (Pi's followUp semantics).
             setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
+            queuedSendRef.current = files && files.length > 0 ? { content, files } : { content };
+            toast.info("Message queued", {
+              description: "Pi is still working — your message will be sent when it finishes.",
+            });
             void loadMessages();
             connect();
             return;

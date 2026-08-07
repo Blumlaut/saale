@@ -16,6 +16,8 @@
  *  - `turn_start { turnId }` — a new assistant turn begins
  *  - `token { turnId, text }` / `thinking { turnId, thinking }` — cumulative
  *  - `tool_start { turnId, toolCallId, toolName, args }`
+ *  - `tool_update { turnId, toolCallId, partialResult }` — live progress from
+ *    a running tool (Pi's tool_execution_update, e.g. bash streaming output)
  *  - `tool_end { turnId, toolCallId, result, isError }`
  *  - `turn_end { turnId, text?, thinking? }` — turn finalized
  *  - `message_saved { turnId, messageId }` — swap temp ID for the DB ID
@@ -78,6 +80,13 @@ export function createSessionEventTracker(
   // Tool call results tracking
   const toolCallResults = new Map<string, ToolCallResult>();
 
+  // Throttle map for tool_execution_update forwarding — bash emits output
+  // updates at ~100ms intervals; flooding the Redis buffer + SSE would be
+  // wasteful. One forwarded update per tool call per second is plenty to
+  // prove the run is alive and to show progress.
+  const toolLastUpdateAt = new Map<string, number>();
+  const TOOL_UPDATE_THROTTLE_MS = 1000;
+
   // Token usage tracking
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -111,6 +120,32 @@ export function createSessionEventTracker(
     }
   });
 
+  // ── Activity heartbeat: align the Redis active-flag with Pi's REAL state ──
+  // `session.isStreaming` is Pi's ground truth. Events are only a proxy for
+  // it, and a long tool call that emits nothing would let the flag's TTL
+  // expire mid-run (drift) — the 409 guard would stop blocking sends while
+  // Pi is genuinely busy, and the stale-generation logic could misfire.
+  // While Pi streams, refresh the flag periodically so Saale's view never
+  // drifts from Pi's.
+  const ACTIVE_SESSION_HEARTBEAT_MS = 30_000;
+  let activityTimer: ReturnType<typeof setInterval> | null = null;
+  const startActivityHeartbeat = () => {
+    if (activityTimer) return;
+    activityTimer = setInterval(() => {
+      if (!session.isStreaming) return;
+      registerActiveSession(userId, sessionId).catch((err) => {
+        console.error("Failed to refresh active session flag:", err);
+      });
+    }, ACTIVE_SESSION_HEARTBEAT_MS);
+    activityTimer.unref?.();
+  };
+  const stopActivityHeartbeat = () => {
+    if (activityTimer) {
+      clearInterval(activityTimer);
+      activityTimer = null;
+    }
+  };
+
   function handleEvent(event: AgentSessionEvent): void {
     log(
       "event",
@@ -132,6 +167,7 @@ export function createSessionEventTracker(
         resetSessionEvents(sessionId).catch((err) => {
           console.error("Failed to reset session events:", err);
         });
+        startActivityHeartbeat();
         break;
       }
 
@@ -257,8 +293,31 @@ export function createSessionEventTracker(
         break;
       }
 
+      // ── Tool live progress (Pi's tool_execution_update) ────────────────
+      // Forwarded so the UI can prove Pi is still working during long tool
+      // calls instead of assuming it. Throttled per tool call. Every
+      // published event also refreshes the Redis buffer/counter TTLs, so a
+      // long tool's progress stream keeps the event-ID counter alive.
+      case "tool_execution_update": {
+        const now = Date.now();
+        if (now - (toolLastUpdateAt.get(event.toolCallId) ?? 0) < TOOL_UPDATE_THROTTLE_MS) {
+          break;
+        }
+        toolLastUpdateAt.set(event.toolCallId, now);
+        publishSessionEvent(sessionId, "tool_update", {
+          turnId: currentTurnId ?? startTurn(),
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          partialResult: normalizeToolResult(event.partialResult),
+        }).catch((err) => {
+          console.error("Failed to publish tool_update:", err);
+        });
+        break;
+      }
+
       case "tool_execution_end": {
         const resultStr = normalizeToolResult(event.result);
+        toolLastUpdateAt.delete(event.toolCallId);
         const existing = toolCallResults.get(event.toolCallId);
         if (existing) {
           existing.result = resultStr;
@@ -490,6 +549,7 @@ export function createSessionEventTracker(
 
         // Wait for all DB saves to complete before emitting "done" — but
         // don't block agent_end settlement (other listeners still run).
+        stopActivityHeartbeat();
         void Promise.allSettled(pendingSaves).then(() => {
           publishSessionEvent(sessionId, "done", {}).catch((err) => {
             console.error("Failed to publish done:", err);
@@ -504,6 +564,7 @@ export function createSessionEventTracker(
 
   return {
     dispose() {
+      stopActivityHeartbeat();
       unsubscribe();
     },
   };
