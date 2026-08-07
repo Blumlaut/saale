@@ -26,6 +26,7 @@ import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/stream-logic";
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
+import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
 import {
@@ -307,35 +308,40 @@ export async function GET(
   // ── SSE stream ────────────────────────────────────────────────────────
   const dispatcher = getDispatcher(sessionId);
 
+  // Stream lifecycle state, shared between `start` (heartbeat + forwarding)
+  // and `cancel` (the source's teardown hook) below.
+  //
+  // Client disconnects are NOT reliably signalled by `request.signal` abort
+  // in Next.js route handlers — often it never fires at all. The runtime
+  // always calls the source's `cancel()` when the response body stream is
+  // torn down, so that hook is the source of truth. Without it, a dead
+  // connection's heartbeat keeps ticking on a closed controller and throws
+  // ERR_INVALID_STATE every interval.
+  let streamController: ReadableStreamDefaultController | null = null;
+  let heartbeat: SseHeartbeat | null = null;
+  let streamClosed = false;
+
+  const closeStream = () => {
+    if (streamClosed) return;
+    streamClosed = true;
+    heartbeat?.stop();
+    if (streamController) {
+      try {
+        streamController.close();
+      } catch (err) {
+        console.error("Failed to close controller (may already be closed):", err);
+      }
+    }
+  };
+
   const stream = new ReadableStream({
     start(controller) {
-      let closed = false;
+      streamController = controller;
       let aborted = false;
 
       // ── Heartbeat: keep the connection alive through idle proxies and give
       //    the client's watchdog a liveness signal (see SSE_HEARTBEAT_INTERVAL_MS).
-      const heartbeatEncoder = new TextEncoder();
-      const heartbeatTimer = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(
-            heartbeatEncoder.encode(`event: ping\ndata: {\"t\":${Date.now()}}\n\n`),
-          );
-        } catch (err) {
-          console.error("Failed to enqueue SSE heartbeat:", err);
-        }
-      }, SSE_HEARTBEAT_INTERVAL_MS);
-
-      const closeController = () => {
-        if (closed) return;
-        closed = true;
-        clearInterval(heartbeatTimer);
-        try {
-          controller.close();
-        } catch (err) {
-          console.error("Failed to close controller (may already be closed):", err);
-        }
-      };
+      heartbeat = createSseHeartbeat(controller, SSE_HEARTBEAT_INTERVAL_MS);
 
       dispatcher
         .subscribe(controller, new TextEncoder(), lastEventId)
@@ -397,24 +403,37 @@ export async function GET(
                 );
                 publishSessionEvent(sessionId, "done", {}).catch(console.error);
                 resetSessionEvents(sessionId).catch(console.error);
-                closeController();
+                closeStream();
               });
           }
         })
         .catch((err) => {
           console.error("Failed to subscribe stream:", err);
-          closeController();
+          closeStream();
         });
 
       // ── Client disconnect: stop forwarding; the agent keeps running and
       //    other clients (and the buffer) keep receiving events. ─────────
       request.signal.addEventListener("abort", () => {
         aborted = true;
-        clearInterval(heartbeatTimer);
         log("client", "disconnect detected, stopping SSE forwarding (agent continues)");
         dispatcher.unsubscribe(controller);
-        closeController();
+        closeStream();
       });
+    },
+    cancel() {
+      // Definitive client-disconnect signal: the response body stream was
+      // cancelled (tab closed, navigation, network drop, watchdog reconnect).
+      // `request.signal` abort often never fires in Next.js, so without this
+      // hook the heartbeat would keep ticking on a closed controller and
+      // spam ERR_INVALID_STATE errors every interval — and the dead client
+      // would stay registered in the dispatcher, erroring on every live
+      // event. Clean up both here.
+      log("client", "stream cancelled, stopping SSE forwarding (agent continues)");
+      if (streamController) {
+        dispatcher.unsubscribe(streamController);
+      }
+      closeStream();
     },
   });
 
