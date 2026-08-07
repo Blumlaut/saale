@@ -179,6 +179,16 @@ describe("formatSseEvent", () => {
     const output = formatSseEvent("list", [1, 2, 3]);
     expect(output).toBe("event: list\ndata: [1,2,3]\n\n");
   });
+
+  it("prepends the id line when an id is given", () => {
+    expect(formatSseEvent("token", { text: "x" }, 42)).toBe(
+      'id: 42\nevent: token\ndata: {"text":"x"}\n\n',
+    );
+  });
+
+  it("omits the id line when no id is given (unbuffered events)", () => {
+    expect(formatSseEvent("done", {})).not.toContain("id:");
+  });
 });
 
 describe("extractCumulativeText", () => {

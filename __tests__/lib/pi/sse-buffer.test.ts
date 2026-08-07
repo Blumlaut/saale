@@ -7,8 +7,6 @@ const mockRedisExpire = vi.fn().mockResolvedValue(1);
 const mockRedisZadd = vi.fn().mockResolvedValue(true);
 const mockRedisZremrangebyrank = vi.fn().mockResolvedValue(0);
 const mockRedisZrangebyscore = vi.fn().mockResolvedValue([]);
-const mockRedisZrevrange = vi.fn().mockResolvedValue([]);
-const mockRedisZcard = vi.fn().mockResolvedValue(0);
 const mockRedisDel = vi.fn().mockResolvedValue(1);
 
 vi.mock("@/lib/redis", () => ({
@@ -18,20 +16,11 @@ vi.mock("@/lib/redis", () => ({
     zadd: mockRedisZadd,
     zremrangebyrank: mockRedisZremrangebyrank,
     zrangebyscore: mockRedisZrangebyscore,
-    zrevrange: mockRedisZrevrange,
-    zcard: mockRedisZcard,
     del: mockRedisDel,
   }),
 }));
 
-import {
-  nextEventId,
-  bufferEvent,
-  getBufferedEvents,
-  getLatestEventId,
-  clearBuffer,
-  hasBufferedEvents,
-} from "@/lib/pi/sse-buffer";
+import { nextEventId, bufferEvent, getBufferedEvents, clearBuffer } from "@/lib/pi/sse-buffer";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -221,41 +210,6 @@ describe("getBufferedEvents", () => {
   });
 });
 
-describe("getLatestEventId", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedisZrevrange.mockResolvedValue([]);
-  });
-
-  it("returns highest event ID", async () => {
-    mockRedisZrevrange.mockResolvedValueOnce([makePayload(5, "done", {})]);
-
-    const result = await getLatestEventId("session-1");
-    expect(result).toBe(5);
-  });
-
-  it("returns -1 when no events", async () => {
-    mockRedisZrevrange.mockResolvedValueOnce([]);
-
-    const result = await getLatestEventId("session-1");
-    expect(result).toBe(-1);
-  });
-
-  it("handles Redis errors gracefully", async () => {
-    mockRedisZrevrange.mockRejectedValueOnce(new Error("Redis down"));
-
-    const result = await getLatestEventId("session-1");
-    expect(result).toBe(-1);
-  });
-
-  it("handles non-string result from Redis", async () => {
-    mockRedisZrevrange.mockResolvedValueOnce([null]);
-
-    const result = await getLatestEventId("session-1");
-    expect(result).toBe(-1);
-  });
-});
-
 describe("clearBuffer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -280,36 +234,6 @@ describe("clearBuffer", () => {
   });
 });
 
-describe("hasBufferedEvents", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedisZcard.mockResolvedValue(0);
-  });
-
-  it("returns true when events exist", async () => {
-    mockRedisZcard.mockResolvedValueOnce(5);
-
-    const result = await hasBufferedEvents("session-1");
-    expect(result).toBe(true);
-  });
-
-  it("returns false when no events", async () => {
-    mockRedisZcard.mockResolvedValueOnce(0);
-
-    const result = await hasBufferedEvents("session-1");
-    expect(result).toBe(false);
-  });
-
-  it("handles Redis errors gracefully", async () => {
-    mockRedisZcard.mockRejectedValueOnce(new Error("Redis down"));
-
-    const result = await hasBufferedEvents("session-1");
-    expect(result).toBe(false);
-  });
-});
-
-// ─── Integration-style scenarios ────────────────────────────────────────────
-
 describe("SSE buffer lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -318,8 +242,6 @@ describe("SSE buffer lifecycle", () => {
     mockRedisZadd.mockResolvedValue(true);
     mockRedisZremrangebyrank.mockResolvedValue(0);
     mockRedisZrangebyscore.mockResolvedValue([]);
-    mockRedisZrevrange.mockResolvedValue([]);
-    mockRedisZcard.mockResolvedValue(0);
     mockRedisDel.mockResolvedValue(1);
   });
 
@@ -354,16 +276,6 @@ describe("SSE buffer lifecycle", () => {
     const afterFirst = await getBufferedEvents("session-1", 1);
     expect(afterFirst).toHaveLength(2);
     expect(afterFirst[0]!.id).toBe(2);
-
-    // Check latest event ID
-    mockRedisZrevrange.mockResolvedValueOnce([makePayload(3, "done", {})]);
-    const latest = await getLatestEventId("session-1");
-    expect(latest).toBe(3);
-
-    // Check buffer has events
-    mockRedisZcard.mockResolvedValueOnce(3);
-    const hasEvents = await hasBufferedEvents("session-1");
-    expect(hasEvents).toBe(true);
 
     // Clear buffer (events only — counter survives)
     await clearBuffer("session-1");

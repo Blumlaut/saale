@@ -225,17 +225,20 @@ describe("createSessionEventTracker", () => {
       createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
       session.emit({ type: "agent_start" });
-      expect(mockRegisterActiveSession).toHaveBeenCalledWith("u1", "s1");
+      // The caller (POST /messages or the Telegram processor) registers the
+      // flag before prompting; the tracker's heartbeat only keeps it fresh.
+      expect(mockRegisterActiveSession).not.toHaveBeenCalled();
 
       // A long silent tool call emits no events; the heartbeat (driven by
       // Pi's session.isStreaming) must keep refreshing the flag.
       vi.advanceTimersByTime(30_000);
-      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(2);
+      expect(mockRegisterActiveSession).toHaveBeenCalledWith("u1", "s1");
+      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(1);
 
       // Once Pi actually stops streaming, the flag stops being refreshed.
       (session as unknown as { isStreaming: boolean }).isStreaming = false;
       vi.advanceTimersByTime(60_000);
-      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(2);
+      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
@@ -377,21 +380,6 @@ describe("createSessionEventTracker", () => {
         data: { messageCount: { increment: 1 } },
       }),
     );
-  });
-
-  it("keeps the active session flag fresh during long runs (heartbeat)", async () => {
-    setup();
-    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
-
-    const session = createFakeSession();
-    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
-
-    session.emit({
-      type: "message_update",
-      message: { role: "assistant", content: [{ type: "text", text: "tick" }] },
-    });
-
-    expect(mockRegisterActiveSession).toHaveBeenCalledWith("u1", "s1");
   });
 
   it("dispose() stops listening for events", async () => {
