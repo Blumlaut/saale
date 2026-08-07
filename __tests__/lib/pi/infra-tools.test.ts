@@ -57,6 +57,30 @@ import { createInfraTools } from "@/lib/pi/tools/infra-tools";
 const callExecute = async (execute: any, params: Record<string, unknown>) =>
   execute("call-1", params, undefined, undefined, {} as never);
 
+// Helper to parse the first JSON object from tool result text
+// (tools append _saaleInfraMeta JSON after a newline, so we extract just the first block)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const parseResult = (text: string): any => {
+  const metaIdx = text.indexOf('{"_saaleInfraMeta"');
+  if (metaIdx === -1) return JSON.parse(text);
+
+  // Walk forward to find the end of the first JSON object (depth returns to 0)
+  let depth = 0;
+  let endIdx = -1;
+  for (let i = 0; i < metaIdx; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        endIdx = i;
+        break;
+      }
+    }
+  }
+  if (endIdx === -1) return JSON.parse(text.trim());
+  return JSON.parse(text.slice(0, endIdx + 1));
+};
+
 // Shared context for tool lookups
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ctx: any = {};
@@ -99,7 +123,7 @@ describe("createInfraTools", () => {
       vi.mocked(mockInfraMachine.findMany).mockResolvedValue([]);
 
       const result = await callExecute(ctx.listMachines.execute, {});
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.count).toBe(0);
       expect(text.machines).toHaveLength(0);
@@ -125,7 +149,7 @@ describe("createInfraTools", () => {
       ]);
 
       const result = await callExecute(ctx.listMachines.execute, {});
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.count).toBe(1);
       expect(text.machines[0].id).toBe("m1");
@@ -150,7 +174,7 @@ describe("createInfraTools", () => {
       ]);
 
       const result = await callExecute(ctx.listMachines.execute, {});
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.machines[0].noteCount).toBe(2);
     });
@@ -176,7 +200,7 @@ describe("createInfraTools", () => {
         authMethod: "key",
       });
 
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
       expect(text.added).toBe(true);
       expect(text.machine.id).toBe("new-machine");
 
@@ -224,7 +248,7 @@ describe("createInfraTools", () => {
         password: "mypassword",
       });
 
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
       expect(text.added).toBe(true);
       expect(crypto.encrypt).toHaveBeenCalledWith("mypassword");
       expect(text.authorizedKeysEntry).toBeUndefined();
@@ -303,7 +327,7 @@ describe("createInfraTools", () => {
       vi.mocked(mockInfraMachine.delete).mockResolvedValue({});
 
       const result = await callExecute(ctx.removeMachine.execute, { id: "m1" });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.removed).toBe(true);
       expect(text.id).toBe("m1");
@@ -350,7 +374,7 @@ describe("createInfraTools", () => {
         id: "m1",
         command: "echo hello",
       });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.exitCode).toBe(0);
       expect(text.stdout).toBe("hello world");
@@ -425,7 +449,7 @@ describe("createInfraTools", () => {
         id: "m1",
         command: "sleep 1000",
       });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.timedOut).toBe(true);
       expect(text.exitCode).toBeNull();
@@ -448,7 +472,7 @@ describe("createInfraTools", () => {
         id: "m1",
         command: "cat /var/log/syslog",
       });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.truncated).toBe(true);
     });
@@ -506,7 +530,7 @@ describe("createInfraTools", () => {
         path: "/tmp/test.txt",
         content: "hello world",
       });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.ok).toBe(true);
       expect(client.writeFile).toHaveBeenCalledWith(
@@ -554,7 +578,7 @@ describe("createInfraTools", () => {
       ]);
 
       const result = await callExecute(ctx.notesList.execute, { id: "m1" });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.count).toBe(2);
       expect(text.notes[0].category).toBe("config");
@@ -609,7 +633,7 @@ describe("createInfraTools", () => {
       });
 
       const result = await callExecute(ctx.notesGet.execute, { id: "n1" });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.machine).toBe("prod-web");
       expect(text.note.content).toBe("nginx runs on port 80");
@@ -654,7 +678,7 @@ describe("createInfraTools", () => {
         title: "service info",
         content: "nginx and postgres",
       });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.note.id).toBe("new-note");
       expect(text.note.category).toBe("general");
@@ -714,11 +738,11 @@ describe("createInfraTools", () => {
         content: "updated content",
         category: "services",
       });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.note.id).toBe("n1");
       expect(mockInfraNote.update).toHaveBeenCalledWith({
-        where: { id: "n1" },
+        where: { id: "n1", machineId: "m1" },
         data: expect.objectContaining({ title: "updated title" }),
       });
     });
@@ -763,7 +787,7 @@ describe("createInfraTools", () => {
       vi.mocked(mockInfraNote.delete).mockResolvedValue({});
 
       const result = await callExecute(ctx.notesDelete.execute, { id: "n1" });
-      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      const text = parseResult((result.content[0] as { type: string; text: string }).text);
 
       expect(text.deleted).toBe(true);
       expect(text.machine).toBe("prod-web");

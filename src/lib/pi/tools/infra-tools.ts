@@ -34,27 +34,41 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           },
         });
 
+        // Structured metadata for UI rendering (machine list cards)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_list_machines" as const,
+            count: machines.length,
+            machines: machines.map((m) => ({
+              id: m.id,
+              name: m.name,
+              host: m.host,
+              port: m.port,
+              username: m.username,
+              authMethod: m.authMethod,
+              noteCount: m.notes.length,
+            })),
+          },
+        };
+
+        const machineEntries = machines.map((m) => ({
+          id: m.id,
+          name: m.name,
+          host: m.host,
+          port: m.port,
+          username: m.username,
+          authMethod: m.authMethod,
+          noteCount: m.notes.length,
+          createdAt: m.createdAt.toISOString(),
+        }));
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  count: machines.length,
-                  machines: machines.map((m) => ({
-                    id: m.id,
-                    name: m.name,
-                    host: m.host,
-                    port: m.port,
-                    username: m.username,
-                    authMethod: m.authMethod,
-                    noteCount: m.notes.length,
-                    createdAt: m.createdAt.toISOString(),
-                  })),
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify({ count: machines.length, machines: machineEntries }, null, 2) +
+                `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { count: machines.length },
@@ -124,37 +138,51 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           },
         });
 
+        // Structured metadata for UI rendering (add machine card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_add_machine" as const,
+            machineId: machine.id,
+            machineName: machine.name,
+            host: machine.host,
+            port: machine.port,
+            username: machine.username,
+            authMethod: machine.authMethod,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  added: true,
-                  machine: {
-                    id: machine.id,
-                    name: machine.name,
-                    host: machine.host,
-                    port: machine.port,
-                    username: machine.username,
-                    authMethod: machine.authMethod,
+              text:
+                JSON.stringify(
+                  {
+                    added: true,
+                    machine: {
+                      id: machine.id,
+                      name: machine.name,
+                      host: machine.host,
+                      port: machine.port,
+                      username: machine.username,
+                      authMethod: machine.authMethod,
+                    },
+                    ...(params.authMethod === "key"
+                      ? {
+                          authorizedKeysEntry,
+                          setupInstructions: [
+                            `Add this line to ${params.username}@${params.host}:${params.port ?? 22}'s ~/.ssh/authorized_keys:`,
+                            `  ${authorizedKeysEntry}`,
+                            `Then run 'infra_test_connection' to verify the connection works.`,
+                          ].join("\n"),
+                        }
+                      : {
+                          note: "Use 'infra_test_connection' to verify credentials, then 'infra_exec' to run commands.",
+                        }),
                   },
-                  ...(params.authMethod === "key"
-                    ? {
-                        authorizedKeysEntry,
-                        setupInstructions: [
-                          `Add this line to ${params.username}@${params.host}:${params.port ?? 22}'s ~/.ssh/authorized_keys:`,
-                          `  ${authorizedKeysEntry}`,
-                          `Then run 'infra_test_connection' to verify the connection works.`,
-                        ].join("\n"),
-                      }
-                    : {
-                        note: "Use 'infra_test_connection' to verify credentials, then 'infra_exec' to run commands.",
-                      }),
-                },
-                null,
-                2,
-              ),
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { id: machine.id },
@@ -184,19 +212,29 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           where: { id: params.id, userId },
         });
 
+        // Structured metadata for UI rendering (remove machine card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_remove_machine" as const,
+            machineId: params.id,
+            machineName: machine.name,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  removed: true,
-                  id: params.id,
-                  name: machine.name,
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    removed: true,
+                    id: params.id,
+                    name: machine.name,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { id: params.id },
@@ -251,23 +289,39 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
         const result = await executeCommand(params.id, userId, params.command, execOptions);
 
+        // Structured metadata for UI rendering (exec result cards)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_exec" as const,
+            machineId: params.id,
+            machineName: machine.name,
+            command: params.command,
+            exitCode: result.exitCode,
+            timedOut: result.timedOut,
+            truncated: result.truncated,
+            stdout: result.stdout.split("\n")[0] ?? "",
+            stderr: result.stderr.split("\n")[0] ?? "",
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  machine: machine.name,
-                  command: params.command,
-                  exitCode: result.exitCode,
-                  timedOut: result.timedOut,
-                  truncated: result.truncated,
-                  stdout: result.stdout,
-                  stderr: result.stderr,
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    machine: machine.name,
+                    command: params.command,
+                    exitCode: result.exitCode,
+                    timedOut: result.timedOut,
+                    truncated: result.truncated,
+                    stdout: result.stdout,
+                    stderr: result.stderr,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { exitCode: result.exitCode, timedOut: result.timedOut },
@@ -303,19 +357,31 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
         const result = await sftpWriteFile(params.id, userId, params.path, params.content);
 
+        // Structured metadata for UI rendering (write file card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_write_file" as const,
+            machineId: params.id,
+            machineName: machine.name,
+            path: params.path,
+            ok: result.ok,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  machine: machine.name,
-                  path: params.path,
-                  ok: result.ok,
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    machine: machine.name,
+                    path: params.path,
+                    ok: result.ok,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { ok: result.ok },
@@ -359,24 +425,41 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           orderBy: { updatedAt: "desc" },
         });
 
+        // Structured metadata for UI rendering (notes list cards)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_notes_list" as const,
+            machineId: params.id,
+            machineName: machine.name,
+            count: notes.length,
+            notes: notes.map((n) => ({
+              id: n.id,
+              title: n.title,
+              category: n.category,
+              updatedAt: n.updatedAt.toISOString(),
+            })),
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  machine: machine.name,
-                  count: notes.length,
-                  notes: notes.map((n) => ({
-                    id: n.id,
-                    title: n.title,
-                    category: n.category,
-                    updatedAt: n.updatedAt.toISOString(),
-                  })),
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    machine: machine.name,
+                    count: notes.length,
+                    notes: notes.map((n) => ({
+                      id: n.id,
+                      title: n.title,
+                      category: n.category,
+                      updatedAt: n.updatedAt.toISOString(),
+                    })),
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { count: notes.length },
@@ -396,7 +479,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       execute: async (_toolCallId, params) => {
         const note = await prisma.infraNote.findFirst({
           where: { id: params.id },
-          include: { machine: { select: { userId: true, name: true } } },
+          include: { machine: { select: { id: true, userId: true, name: true } } },
         });
 
         if (!note) {
@@ -407,24 +490,38 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           throw new Error(`Note ${params.id} not found`);
         }
 
+        // Structured metadata for UI rendering (note get card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_notes_get" as const,
+            machineId: note.machine.id,
+            machineName: note.machine.name,
+            noteId: note.id,
+            noteTitle: note.title,
+            noteCategory: note.category,
+            contentPreview: note.content.slice(0, 200),
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  machine: note.machine.name,
-                  note: {
-                    id: note.id,
-                    title: note.title,
-                    category: note.category,
-                    content: note.content,
-                    updatedAt: note.updatedAt.toISOString(),
+              text:
+                JSON.stringify(
+                  {
+                    machine: note.machine.name,
+                    note: {
+                      id: note.id,
+                      title: note.title,
+                      category: note.category,
+                      content: note.content,
+                      updatedAt: note.updatedAt.toISOString(),
+                    },
                   },
-                },
-                null,
-                2,
-              ),
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { id: note.id },
@@ -491,7 +588,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           }
 
           note = await prisma.infraNote.update({
-            where: { id: params.id },
+            where: { id: params.id, machineId: params.machineId },
             data,
           });
         } else {
@@ -500,23 +597,37 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           });
         }
 
+        // Structured metadata for UI rendering (note upsert card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_notes_upsert" as const,
+            machineId: params.machineId,
+            machineName: machine.name,
+            noteId: note.id,
+            noteTitle: note.title,
+            noteCategory: note.category,
+            isUpdate: !!params.id,
+          },
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  machine: machine.name,
-                  note: {
-                    id: note.id,
-                    title: note.title,
-                    category: note.category,
-                    updatedAt: note.updatedAt.toISOString(),
+              text:
+                JSON.stringify(
+                  {
+                    machine: machine.name,
+                    note: {
+                      id: note.id,
+                      title: note.title,
+                      category: note.category,
+                      updatedAt: note.updatedAt.toISOString(),
+                    },
                   },
-                },
-                null,
-                2,
-              ),
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { id: note.id },
@@ -536,7 +647,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       execute: async (_toolCallId, params) => {
         const note = await prisma.infraNote.findFirst({
           where: { id: params.id },
-          include: { machine: { select: { userId: true, name: true } } },
+          include: { machine: { select: { id: true, userId: true, name: true } } },
         });
 
         if (!note) {
@@ -547,22 +658,34 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           throw new Error(`Note ${params.id} not found`);
         }
 
+        // Structured metadata for UI rendering (note delete card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_notes_delete" as const,
+            machineId: note.machine.id,
+            machineName: note.machine.name,
+            noteId: params.id,
+            noteTitle: note.title,
+          },
+        };
+
         await prisma.infraNote.delete({ where: { id: params.id } });
 
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  deleted: true,
-                  machine: note.machine.name,
-                  id: params.id,
-                  title: note.title,
-                },
-                null,
-                2,
-              ),
+              text:
+                JSON.stringify(
+                  {
+                    deleted: true,
+                    machine: note.machine.name,
+                    id: params.id,
+                    title: note.title,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
             },
           ],
           details: { id: params.id },
