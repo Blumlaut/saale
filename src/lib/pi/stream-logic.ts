@@ -99,12 +99,16 @@ export function decideStreamAction(params: {
  * Escape literal newlines in a JSON payload to prevent premature SSE event
  * termination. SSE spec: a line containing only "\n" terminates the event block.
  *
+ * `id` is optional — unbuffered terminal events (e.g. an idle "done" or the
+ * heartbeat ping) omit it so they don't disturb the client's Last-Event-ID.
+ *
  * @param data - The value to serialize and escape.
  */
-export function formatSseEvent(event: string, data: unknown): string {
+export function formatSseEvent(event: string, data: unknown, id?: number): string {
   const json = JSON.stringify(data);
   const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-  return `event: ${event}\ndata: ${escaped}\n\n`;
+  const idLine = id !== undefined ? `id: ${id}\n` : "";
+  return `${idLine}event: ${event}\ndata: ${escaped}\n\n`;
 }
 
 /**

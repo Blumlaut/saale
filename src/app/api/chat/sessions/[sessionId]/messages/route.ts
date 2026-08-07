@@ -30,6 +30,21 @@ export async function GET(
   // processingSince is a DB timestamp that survives crashes and must not be trusted.
   const isGenerating = await isSessionActive(authResult.userId, sessionId);
 
+  // The active tool (if any) is persisted by the session event tracker at
+  // tool_execution_start and cleared at tool_execution_end. It lets a client
+  // that connects/refreshes mid-tool — when the SSE buffer replay is
+  // unavailable (expired/trimmed) — show what Pi is running instead of a
+  // bare "Thinking…".
+  const activeTool =
+    isGenerating && chatSession.activeToolCallId
+      ? {
+          toolCallId: chatSession.activeToolCallId,
+          name: chatSession.activeToolName,
+          args: chatSession.activeToolArgs as Record<string, unknown> | null,
+          startedAt: chatSession.activeToolStartedAt?.toISOString() ?? null,
+        }
+      : null;
+
   return NextResponse.json({
     session: {
       id: chatSession.id,
@@ -39,6 +54,7 @@ export async function GET(
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
       isGenerating,
+      activeTool,
     },
     messages: messages.map((m) => ({
       id: m.id,

@@ -30,6 +30,12 @@ export function ChatInterface({
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
+  // Tool Pi is running right now (from GET /messages — refresh recovery when
+  // the SSE buffer replay is unavailable). Cleared when the tool ends.
+  const [activeTool, setActiveTool] = useState<{
+    name: string | null;
+    startedAt?: string | null;
+  } | null>(null);
   const { markStreaming, markDone } = useStreamingSessions();
 
   // ─── Session state ───────────────────────────────────────────────────────
@@ -55,6 +61,7 @@ export function ChatInterface({
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
           isGenerating?: boolean;
+          activeTool?: { name: string | null; startedAt?: string | null } | null;
         };
       }>(`/api/chat/sessions/${sessionId}/messages`);
       setMessages((prev) => [
@@ -64,6 +71,7 @@ export function ChatInterface({
         // rolls back to an older state while Pi is still working.
         ...prev.filter((m) => m.id.startsWith("streaming-")),
       ]);
+      setActiveTool(data.session?.activeTool ?? null);
       if (data.session) {
         const modelStr =
           data.session.modelProvider && data.session.modelName
@@ -545,6 +553,7 @@ export function ChatInterface({
               setPendingApprovals((prev) => prev.filter((a) => a.toolCallId !== toolCallId));
             }}
             sessionId={sessionId}
+            activeTool={activeTool}
           />
         </div>
       </GlassPanel>

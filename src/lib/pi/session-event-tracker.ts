@@ -153,13 +153,6 @@ export function createSessionEventTracker(
       "message" in event && event.message ? { role: event.message.role } : undefined,
     );
 
-    // Heartbeat: keep the Redis active-session flag fresh for long
-    // generations (its TTL is 10 minutes). Fire-and-forget — failures only
-    // mean the flag expires early, which the stale-generation logic handles.
-    registerActiveSession(userId, sessionId).catch((err) => {
-      console.error("Failed to refresh active session flag:", err);
-    });
-
     switch (event.type) {
       // ── New run: reset the event buffer so stale events from previous
       //    runs are never replayed. The counter survives (see clearBuffer).

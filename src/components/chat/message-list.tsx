@@ -37,6 +37,8 @@ interface MessageListProps {
   pendingApprovals?: ApprovalData[];
   onApprovalResolved?: (toolCallId: string) => void;
   sessionId?: string;
+  /** The tool Pi is currently running (from the session, for refresh recovery). */
+  activeTool?: { name: string | null; startedAt?: string | null } | null;
 }
 
 const THRESHOLD = 80; // px from bottom to consider "at bottom"
@@ -50,6 +52,7 @@ export function MessageList({
   pendingApprovals = [],
   onApprovalResolved,
   sessionId,
+  activeTool,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -224,7 +227,13 @@ export function MessageList({
         {isLoading && !isStreaming && (
           <div className="text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">Thinking...</span>
+            {activeTool?.name ? (
+              <span className="text-sm">
+                Running <span className="font-medium">{activeTool.name}</span>...
+              </span>
+            ) : (
+              <span className="text-sm">Thinking...</span>
+            )}
           </div>
         )}
 

@@ -23,17 +23,7 @@
 
 import { getBufferedEvents } from "./sse-buffer";
 import { subscribeSessionEvents, type SessionStreamEvent } from "./session-events";
-
-/**
- * Format an SSE event. `id` is optional — unbuffered terminal events (e.g.
- * an idle "done") omit it so they don't disturb the client's Last-Event-ID.
- */
-function formatSseEvent(event: string, data: unknown, id?: number): string {
-  const json = JSON.stringify(data);
-  const escaped = json.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-  const idLine = id !== undefined ? `id: ${id}\n` : "";
-  return `${idLine}event: ${event}\ndata: ${escaped}\n\n`;
-}
+import { formatSseEvent } from "./stream-logic";
 
 interface SseClient {
   controller: ReadableStreamDefaultController;

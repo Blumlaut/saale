@@ -104,31 +104,6 @@ export async function getBufferedEvents(
 }
 
 /**
- * Get the latest event ID for a session (highest score in the sorted set).
- * Returns -1 if no events are buffered.
- */
-export async function getLatestEventId(sessionId: string): Promise<number> {
-  try {
-    const redis = getRedis();
-    const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
-
-    // Get the highest score (latest event ID)
-    const result = await redis.zrevrange(bufKey, 0, 0, "WITHSCORES");
-    if (result.length === 0) return -1;
-
-    const value = result[0];
-    if (typeof value === "string") {
-      const parsed = JSON.parse(value) as BufferedEvent;
-      return parsed.id;
-    }
-    return -1;
-  } catch (err) {
-    console.error("Failed to get latest event ID:", err);
-    return -1;
-  }
-}
-
-/**
  * Clear the buffered events for a session (called when a new generation starts).
  *
  * The event-ID counter is deliberately NOT reset. Event IDs must stay
@@ -143,20 +118,5 @@ export async function clearBuffer(sessionId: string): Promise<void> {
     await redis.del(bufKey);
   } catch (err) {
     console.error("Failed to clear SSE buffer:", err);
-  }
-}
-
-/**
- * Check if there are any buffered events for a session.
- */
-export async function hasBufferedEvents(sessionId: string): Promise<boolean> {
-  try {
-    const redis = getRedis();
-    const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
-    const count = await redis.zcard(bufKey);
-    return count > 0;
-  } catch (err) {
-    console.error("Failed to check buffer:", err);
-    return false;
   }
 }
