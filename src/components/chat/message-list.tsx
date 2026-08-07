@@ -12,6 +12,7 @@ import { CompactionMessage } from "./compaction-message";
 import { WebSearchCard, WebFetchCard } from "./web-tool-cards";
 import { MailToolCard } from "./mail-tool-cards";
 import { CalendarToolCard } from "./calendar-tool-cards";
+import { InfraToolCard } from "./infra-tool-cards";
 import type { ApprovalData, Message } from "./types";
 import {
   Loader2,
@@ -563,6 +564,8 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                   ) : toolCall.name === "calendar_upcoming" ||
                     toolCall.name === "calendar_search" ? (
                     <CalendarToolCard key={toolCall.id} toolCall={toolCall} />
+                  ) : toolCall.name.startsWith("infra_") ? (
+                    <InfraToolCard key={toolCall.id} toolCall={toolCall} />
                   ) : (
                     <GenericToolCall
                       key={toolCall.id}
