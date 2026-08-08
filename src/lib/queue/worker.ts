@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import "dotenv/config";
 import type { Job, Processor } from "bullmq";
-import { createWorker, getQueue, scheduleAllJobs } from "@/lib/queue";
+import { createWorker, getQueue, scheduleAllAgentDefinitions, scheduleAllJobs } from "@/lib/queue";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { registerAllWebhooks } from "@/lib/telegram";
 
@@ -54,6 +54,30 @@ async function executeJobViaApp(job: Job): Promise<unknown> {
   return response.json();
 }
 
+/**
+ * Execute a scheduled agent definition run by calling the Next.js app's
+ * internal API (the app creates the AgentRun and dispatches the agent).
+ */
+async function executeAgentJobViaApp(job: Job): Promise<unknown> {
+  const response = await fetch(`${APP_URL}/api/agent-jobs/execute`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-worker-key": WORKER_API_KEY,
+    },
+    body: JSON.stringify({
+      definitionId: (job.data as { definitionId?: string }).definitionId,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Agent job execution failed (${response.status}): ${text}`);
+  }
+
+  return response.json();
+}
+
 /** Route jobs: system jobs inline, user jobs via Next.js API. */
 function createJobRouter(): Processor {
   return async (job: Job) => {
@@ -63,6 +87,9 @@ function createJobRouter(): Processor {
         console.log(`[worker] Orphan cleanup: removed ${deleted} orphaned file(s)`);
       }
       return;
+    }
+    if (job.name === "agent_execute") {
+      return executeAgentJobViaApp(job);
     }
     return executeJobViaApp(job);
   };
@@ -115,6 +142,7 @@ async function main() {
   console.log("[worker] Worker started, listening for jobs...");
 
   await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
+  await retryUntilSuccess("Schedule agent definitions", scheduleAllAgentDefinitions);
   await retryUntilSuccess("Schedule orphan cleanup", scheduleOrphanCleanup);
   await retryUntilSuccess("Register Telegram webhooks", registerAllWebhooks);
 
