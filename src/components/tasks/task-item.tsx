@@ -12,22 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Mail, MessageSquare, Trash2, Pencil } from "lucide-react";
 import { format } from "date-fns";
-
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  dueDate: string | null;
-  tags: string[];
-  order: number;
-  source: string;
-  sourceEmailId: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { Task } from "@/types/shared";
 
 interface TaskItemProps {
   task: Task;
