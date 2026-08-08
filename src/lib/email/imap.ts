@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { simpleParser } from "mailparser";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
+import { sanitizePostgresString } from "@/lib/email/utils";
 
 /**
  * IMAP flag constants mapped to our local fields.
@@ -243,12 +244,6 @@ export async function syncMessagesBatch(
   }
 }
 
-/** Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects */
-function sanitize(str: unknown): string | null {
-  if (str == null || str === false) return null;
-  return String(str).replace(/\0/g, "");
-}
-
 /**
  * Fetch the full message body from IMAP, parse it, and store it in the DB.
  * Returns the updated message with body fields populated, or null on failure.
@@ -275,14 +270,14 @@ export async function fetchMessageBody(messageId: string): Promise<{
     }
 
     const parsed = await simpleParser(fetched.source);
-    const bodyHtml = sanitizeEmailHtml(sanitize(parsed.html));
+    const bodyHtml = sanitizeEmailHtml(sanitizePostgresString(parsed.html));
 
     const updated = await prisma.emailMessage.update({
       where: { id: messageId },
       data: {
-        bodyPreview: sanitize(parsed.text?.slice(0, 500)) ?? null,
+        bodyPreview: sanitizePostgresString(parsed.text?.slice(0, 500)) ?? null,
         bodyHtml,
-        bodyText: sanitize(parsed.text),
+        bodyText: sanitizePostgresString(parsed.text),
       },
     });
 

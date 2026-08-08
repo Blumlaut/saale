@@ -7,12 +7,7 @@ import type {
 import { ImapFlow } from "imapflow";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-
-/** Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects */
-function sanitize(str: unknown): string | null {
-  if (str == null || str === false) return null;
-  return String(str).replace(/\0/g, "");
-}
+import { sanitizePostgresString } from "@/lib/email/utils";
 
 /**
  * Special-use folder attribute → fallback names to try if SPECIAL-USE discovery fails.
@@ -116,7 +111,6 @@ async function syncMessageFromEnvelope(
   msg: FetchMessageObject,
   accountId: string,
   folder: string,
-  sanitize: (val: unknown) => string | null,
 ): Promise<void> {
   const uid = String(msg.uid ?? "");
   const envelope = msg.envelope as MessageEnvelopeObject | undefined;
@@ -141,10 +135,10 @@ async function syncMessageFromEnvelope(
 
   const updateData = {
     uid,
-    fromName: sanitize(fromName),
-    fromEmail: sanitize(fromEmail) ?? "",
-    to: sanitize(toList) ?? "",
-    subject: sanitize(subject) ?? "(no subject)",
+    fromName: sanitizePostgresString(fromName),
+    fromEmail: sanitizePostgresString(fromEmail) ?? "",
+    to: sanitizePostgresString(toList) ?? "",
+    subject: sanitizePostgresString(subject) ?? "(no subject)",
     date,
     folder,
     isRead: flagsArray.includes("\\Seen"),
@@ -256,7 +250,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
         // Process messages from the async iterator
         for await (const msg of mailbox.fetch(uids, fetchOpts)) {
           try {
-            await syncMessageFromEnvelope(msg, accountId, folder, sanitize);
+            await syncMessageFromEnvelope(msg, accountId, folder);
 
             if (msg.envelope) {
               updatedMessages++;
