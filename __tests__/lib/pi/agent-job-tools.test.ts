@@ -33,8 +33,14 @@ vi.mock("@/lib/agent-jobs/output", () => ({
   }),
 }));
 
+vi.mock("@/lib/queue", () => ({
+  scheduleAgentDefinition: vi.fn().mockResolvedValue(undefined),
+  unscheduleAgentDefinition: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Import mocks for assertions
 import * as db from "@/lib/db";
+import * as queue from "@/lib/queue";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockAgentDefinition = db.prisma.agentDefinition as any;
@@ -171,6 +177,9 @@ describe("createAgentJobTools", () => {
           cronExpression: "0 18 * * *",
         }),
       });
+
+      // Definition with a cron expression must be registered as a repeatable job
+      expect(queue.scheduleAgentDefinition).toHaveBeenCalledWith(createdDef);
     });
 
     it("normalizes modelId with / separator to :", async () => {
@@ -224,6 +233,9 @@ describe("createAgentJobTools", () => {
           cronExpression: null,
         }),
       });
+
+      // No cron → no repeatable job should be registered
+      expect(queue.scheduleAgentDefinition).not.toHaveBeenCalled();
     });
 
     it("trims string fields", async () => {
@@ -266,6 +278,7 @@ describe("createAgentJobTools", () => {
         id: "def-1",
         userId,
         name: "Old Name",
+        enabled: true,
         outputChannel: null,
         outputChannelId: null,
         cronExpression: null,
@@ -298,12 +311,17 @@ describe("createAgentJobTools", () => {
           cronExpression: "0 9 * * 1",
         }),
       });
+
+      // Schedule must be resynced: remove old scheduler, re-add with new cron
+      expect(queue.unscheduleAgentDefinition).toHaveBeenCalledWith("def-1");
+      expect(queue.scheduleAgentDefinition).toHaveBeenCalledWith(updatedDef);
     });
 
     it("clears fields when passed empty string", async () => {
       const existingDef = {
         id: "def-1",
         userId,
+        enabled: true,
         outputChannel: "telegram",
         outputChannelId: "123",
         cronExpression: "0 9 * * *",
@@ -337,6 +355,10 @@ describe("createAgentJobTools", () => {
           modelId: null,
         }),
       });
+
+      // Cron cleared → scheduler removed, nothing re-added
+      expect(queue.unscheduleAgentDefinition).toHaveBeenCalledWith("def-1");
+      expect(queue.scheduleAgentDefinition).not.toHaveBeenCalled();
     });
 
     it("throws when job not found", async () => {
@@ -395,6 +417,9 @@ describe("createAgentJobTools", () => {
       expect(text.deleted).toBe(true);
       expect(text.id).toBe("def-1");
       expect(mockAgentDefinition.delete).toHaveBeenCalledWith({ where: { id: "def-1" } });
+
+      // Deleting must remove the repeatable job so it stops firing
+      expect(queue.unscheduleAgentDefinition).toHaveBeenCalledWith("def-1");
     });
 
     it("throws when job not found", async () => {

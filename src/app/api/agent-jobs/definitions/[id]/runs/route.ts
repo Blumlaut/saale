@@ -2,8 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { executeAgentRun } from "@/lib/agent-jobs/executor";
-import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
+import { triggerAgentRun } from "@/lib/agent-jobs/run";
 
 /**
  * GET /api/agent-jobs/definitions/:id/runs — List runs for a definition
@@ -100,8 +99,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
+  // Verify the definition belongs to this user
   const definition = await prisma.agentDefinition.findFirst({
     where: { id, userId: authResult.user.id },
+    select: { id: true, enabled: true },
   });
   if (!definition) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -118,74 +119,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch {
     // No body — use definition's prompt
   }
-  const runPrompt = (body?.prompt as string) || definition.prompt;
+  const promptOverride = (body?.prompt as string) || undefined;
 
-  // Create the run record
-  const run = await prisma.agentRun.create({
-    data: {
-      definitionId: id,
-      userId: authResult.user.id,
-      status: "pending",
-      prompt: runPrompt,
-      systemPrompt: definition.systemPrompt,
-      modelId: definition.modelId,
-      outputChannel: definition.outputChannel,
-      outputChannelId: definition.outputChannelId,
-    },
-  });
-
-  // Update lastRunAt on the definition
-  await prisma.agentDefinition.update({
-    where: { id },
-    data: { lastRunAt: new Date() },
-  });
-
-  // Resolve the external output handler (e.g., Telegram) before dispatching.
-  // executeAgentRun only routes output when a handler is provided.
-  const output = await buildAgentOutputHandler({
+  // Create the run record and dispatch execution (fire-and-forget)
+  const run = await triggerAgentRun({
+    definitionId: id,
     userId: authResult.user.id,
-    outputChannel: definition.outputChannel,
-    outputChannelId: definition.outputChannelId,
+    ...(promptOverride ? { promptOverride } : {}),
   });
-
-  // Execute asynchronously (fire-and-forget, but with error handling)
-  executeAgentRun(
-    run.id,
-    {
-      prompt: runPrompt,
-      systemPrompt: definition.systemPrompt,
-      toolConfig: definition.toolConfig as Record<string, boolean> | null,
-      modelId: definition.modelId,
-      thinkingLevel: definition.thinkingLevel,
-    },
-    authResult.user.id,
-    output,
-  )
-    .then(async (stats) => {
-      await prisma.agentRun.update({
-        where: { id: run.id },
-        data: {
-          status: "completed",
-          inputTokens: stats.inputTokens,
-          outputTokens: stats.outputTokens,
-          cost: stats.cost,
-          startedAt: new Date(),
-          completedAt: new Date(),
-        },
-      });
-    })
-    .catch(async (err) => {
-      console.error(`[agent-job:${run.id}] Execution failed:`, err);
-      await prisma.agentRun.update({
-        where: { id: run.id },
-        data: {
-          status: "error",
-          error: err.message,
-          startedAt: new Date(),
-          completedAt: new Date(),
-        },
-      });
-    });
 
   return NextResponse.json({
     run: {

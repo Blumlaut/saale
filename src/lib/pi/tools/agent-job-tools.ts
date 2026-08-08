@@ -1,8 +1,8 @@
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
-import { executeAgentRun } from "@/lib/agent-jobs/executor";
-import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
+import { triggerAgentRun } from "@/lib/agent-jobs/run";
+import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
 
 /**
  * Create agent job tools with userId injection for user isolation.
@@ -174,6 +174,16 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           },
         });
 
+        // Register the repeatable BullMQ job if the definition is scheduled
+        if (definition.enabled && definition.cronExpression) {
+          await scheduleAgentDefinition(definition).catch((err) => {
+            console.error(
+              `Failed to schedule agent definition ${definition.id} (${definition.cronExpression}):`,
+              err,
+            );
+          });
+        }
+
         return {
           content: [
             {
@@ -312,6 +322,18 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           data,
         });
 
+        // Resync the BullMQ repeatable job: BullMQ does not update an existing
+        // scheduler with the same jobId, so remove first, then re-add if scheduled.
+        await unscheduleAgentDefinition(updated.id);
+        if (updated.enabled && updated.cronExpression) {
+          await scheduleAgentDefinition(updated).catch((err) => {
+            console.error(
+              `Failed to re-schedule agent definition ${updated.id} (${updated.cronExpression}):`,
+              err,
+            );
+          });
+        }
+
         return {
           content: [
             {
@@ -367,6 +389,9 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           where: { id: params.id },
         });
 
+        // Remove the BullMQ repeatable job so the deleted definition stops firing
+        await unscheduleAgentDefinition(params.id);
+
         return {
           content: [
             {
@@ -399,6 +424,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
       execute: async (_toolCallId, params) => {
         const definition = await prisma.agentDefinition.findFirst({
           where: { id: params.id, userId },
+          select: { id: true, enabled: true },
         });
         if (!definition) {
           throw new Error(`Agent job ${params.id} not found`);
@@ -407,74 +433,12 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           throw new Error(`Agent job ${params.id} is disabled`);
         }
 
-        const runPrompt = params.prompt || definition.prompt;
-
-        const run = await prisma.agentRun.create({
-          data: {
-            definitionId: params.id,
-            userId,
-            status: "pending",
-            prompt: runPrompt,
-            systemPrompt: definition.systemPrompt,
-            modelId: definition.modelId,
-            outputChannel: definition.outputChannel,
-            outputChannelId: definition.outputChannelId,
-          },
-        });
-
-        // Update lastRunAt
-        await prisma.agentDefinition.update({
-          where: { id: params.id },
-          data: { lastRunAt: new Date() },
-        });
-
-        // Resolve the external output handler (e.g., Telegram) so responses
-        // are routed to the configured channel. executeAgentRun only sends
-        // output when a handler is provided.
-        const output = await buildAgentOutputHandler({
+        // Create the run record and dispatch execution (fire-and-forget)
+        const run = await triggerAgentRun({
+          definitionId: params.id,
           userId,
-          outputChannel: definition.outputChannel,
-          outputChannelId: definition.outputChannelId,
+          ...(params.prompt ? { promptOverride: params.prompt } : {}),
         });
-
-        // Execute asynchronously
-        executeAgentRun(
-          run.id,
-          {
-            prompt: runPrompt,
-            systemPrompt: definition.systemPrompt,
-            toolConfig: definition.toolConfig as Record<string, boolean> | null,
-            modelId: definition.modelId,
-            thinkingLevel: definition.thinkingLevel,
-          },
-          userId,
-          output,
-        )
-          .then(async (stats) => {
-            await prisma.agentRun.update({
-              where: { id: run.id },
-              data: {
-                status: "completed",
-                inputTokens: stats.inputTokens,
-                outputTokens: stats.outputTokens,
-                cost: stats.cost,
-                startedAt: new Date(),
-                completedAt: new Date(),
-              },
-            });
-          })
-          .catch(async (err) => {
-            console.error(`[agent-job:${run.id}] Execution failed:`, err);
-            await prisma.agentRun.update({
-              where: { id: run.id },
-              data: {
-                status: "error",
-                error: err.message,
-                startedAt: new Date(),
-                completedAt: new Date(),
-              },
-            });
-          });
 
         return {
           content: [

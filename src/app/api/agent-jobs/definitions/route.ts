@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { scheduleAgentDefinition } from "@/lib/queue";
 
 /**
  * GET /api/agent-jobs/definitions — List user's agent job definitions
@@ -138,6 +139,16 @@ export async function POST(request: NextRequest) {
       enabled: enabled !== false,
     },
   });
+
+  // Register the repeatable BullMQ job if the definition is scheduled
+  if (definition.enabled && definition.cronExpression) {
+    await scheduleAgentDefinition(definition).catch((err) => {
+      console.error(
+        `Failed to schedule agent definition ${definition.id} (${definition.cronExpression}):`,
+        err,
+      );
+    });
+  }
 
   return NextResponse.json({
     definition: {

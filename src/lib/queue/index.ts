@@ -122,3 +122,88 @@ export async function scheduleAllJobs(): Promise<void> {
     }
   }
 }
+
+// ─── Agent definition scheduling ────────────────────────────────────────────
+
+/** BullMQ scheduler key namespace for agent definitions (separate from QueueTask). */
+const AGENT_SCHEDULER_PREFIX = "agent-scheduled-";
+
+/** Scheduler id (jobId + repeat key) for an agent definition. */
+export function agentSchedulerId(definitionId: string): string {
+  return `${AGENT_SCHEDULER_PREFIX}${definitionId}`;
+}
+
+/**
+ * Schedule a single agent definition as a repeatable BullMQ job.
+ * Only schedules when the definition is enabled and has a cron expression.
+ *
+ * @param definition - The definition's id, enabled flag, and cron expression
+ */
+export async function scheduleAgentDefinition(definition: {
+  id: string;
+  enabled: boolean;
+  cronExpression: string | null;
+}): Promise<void> {
+  if (!definition.enabled || !definition.cronExpression) return;
+
+  const queue = getQueue();
+  const schedulerId = agentSchedulerId(definition.id);
+  await queue.add(
+    "agent_execute",
+    { definitionId: definition.id },
+    {
+      jobId: schedulerId,
+      repeat: {
+        pattern: definition.cronExpression,
+        tz: "UTC",
+        key: schedulerId,
+      },
+    },
+  );
+}
+
+/** Remove the BullMQ repeatable scheduler for an agent definition. */
+export async function unscheduleAgentDefinition(definitionId: string): Promise<void> {
+  const schedulerId = agentSchedulerId(definitionId);
+  await getQueue()
+    .removeJobScheduler(schedulerId)
+    .catch((err) => {
+      console.error(`Failed to remove agent definition scheduler ${schedulerId}:`, err);
+    });
+}
+
+/**
+ * (Re)sync an agent definition's schedule with its current state.
+ * Removes any existing scheduler, then re-adds one if the definition is
+ * enabled and has a cron expression. Use after create/update.
+ */
+export async function syncAgentDefinitionSchedule(definition: {
+  id: string;
+  enabled: boolean;
+  cronExpression: string | null;
+}): Promise<void> {
+  await unscheduleAgentDefinition(definition.id);
+  await scheduleAgentDefinition(definition);
+}
+
+/**
+ * Schedule all agent definitions with cron expressions into BullMQ.
+ * Call on worker startup. Also removes stale schedulers for definitions
+ * that are disabled or no longer have a cron expression.
+ */
+export async function scheduleAllAgentDefinitions(): Promise<void> {
+  const definitions = await prisma.agentDefinition.findMany({
+    select: { id: true, enabled: true, cronExpression: true },
+  });
+
+  for (const definition of definitions) {
+    try {
+      await syncAgentDefinitionSchedule(definition);
+    } catch (err) {
+      console.error(
+        `Failed to schedule agent definition ${definition.id}:`,
+        (err as Error).message,
+      );
+    }
+  }
+}

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
 
 /**
  * GET /api/agent-jobs/definitions/:id — Get a single definition
@@ -94,6 +95,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     },
   });
 
+  // Resync the BullMQ repeatable job: BullMQ does not update an existing
+  // scheduler with the same jobId, so remove first, then re-add if scheduled.
+  await unscheduleAgentDefinition(updated.id);
+  if (updated.enabled && updated.cronExpression) {
+    await scheduleAgentDefinition(updated).catch((err) => {
+      console.error(
+        `Failed to re-schedule agent definition ${updated.id} (${updated.cronExpression}):`,
+        err,
+      );
+    });
+  }
+
   return NextResponse.json({
     definition: {
       id: updated.id,
@@ -134,6 +147,9 @@ export async function DELETE(
   }
 
   await prisma.agentDefinition.delete({ where: { id } });
+
+  // Remove the BullMQ repeatable job so the deleted definition stops firing
+  await unscheduleAgentDefinition(id);
 
   return NextResponse.json({ deleted: true, id });
 }
