@@ -1,4 +1,13 @@
 /**
+ * Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects.
+ * Returns `null` for nullish/false inputs.
+ */
+export function sanitizePostgresString(str: unknown): string | null {
+  if (str == null || str === false) return null;
+  return String(str).replace(/\0/g, "");
+}
+
+/**
  * Parse a `to` field value that may be stored as a JSON string, array, or plain string.
  */
 export function parseAddresses(raw: unknown): string[] {
