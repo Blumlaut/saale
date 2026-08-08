@@ -87,6 +87,97 @@ export function createWorker(processHandler: Processor, concurrency = 5): Worker
 
 // ─── Schedule jobs from DB ──────────────────────────────────────────────────
 
+// ─── QueueTask (legacy jobs) scheduling ────────────────────────────────────
+
+/** BullMQ scheduler key for a QueueTask (legacy scheduled job). */
+export function queueTaskSchedulerId(jobId: string): string {
+  return `scheduled-${jobId}`;
+}
+
+/**
+ * Schedule a QueueTask as a repeatable BullMQ "execute" job.
+ * Only schedules when the job is enabled and its config has a cronExpression.
+ */
+export async function scheduleQueueTask(job: {
+  id: string;
+  type: string;
+  enabled: boolean;
+  modelId: string | null;
+  config: string;
+}): Promise<void> {
+  if (!job.enabled) return;
+
+  const config = JSON.parse(job.config) as Record<string, unknown>;
+  if (!config.cronExpression) return;
+
+  await getQueue().add(
+    "execute",
+    { ...config, taskId: job.id, type: job.type, modelId: job.modelId },
+    {
+      jobId: queueTaskSchedulerId(job.id),
+      repeat: {
+        pattern: config.cronExpression as string,
+        tz: "UTC",
+        key: queueTaskSchedulerId(job.id),
+      },
+    },
+  );
+}
+
+/** Remove the BullMQ repeatable scheduler for a QueueTask. */
+export async function unscheduleQueueTask(jobId: string): Promise<void> {
+  const schedulerId = queueTaskSchedulerId(jobId);
+  await getQueue()
+    .removeJobScheduler(schedulerId)
+    .catch((err) => {
+      console.error(`Failed to remove job scheduler ${schedulerId}:`, err);
+    });
+}
+
+/**
+ * (Re)sync a QueueTask's schedule with its current state.
+ * Removes the existing scheduler, then re-adds one if the job is enabled and
+ * its config has a cronExpression. Use after create/update — this also covers
+ * cron changes, which BullMQ won't apply to an existing scheduler with the
+ * same jobId.
+ */
+export async function syncQueueTaskSchedule(job: {
+  id: string;
+  type: string;
+  enabled: boolean;
+  modelId: string | null;
+  config: string;
+}): Promise<void> {
+  await unscheduleQueueTask(job.id);
+  await scheduleQueueTask(job);
+}
+
+/**
+ * Trigger a one-off manual run of a QueueTask: records the TaskRun and
+ * enqueues a non-repeatable "execute" job. Returns the run id.
+ */
+export async function triggerQueueTaskRun(job: {
+  id: string;
+  type: string;
+  modelId: string | null;
+  config: string;
+}): Promise<{ runId: string }> {
+  const config = JSON.parse(job.config) as Record<string, unknown>;
+  const run = await addJobRun(job.id, "pending", JSON.stringify(config));
+
+  await getQueue().add(
+    "execute",
+    { ...config, taskId: job.id, runId: run.id, type: job.type, modelId: job.modelId },
+    {
+      jobId: `manual-${job.id}-${Date.now()}`,
+      removeOnComplete: false,
+      removeOnFail: 100,
+    },
+  );
+
+  return { runId: run.id };
+}
+
 /**
  * Schedule all enabled jobs from the database into BullMQ.
  * Call this on server startup.
@@ -97,28 +188,17 @@ export async function scheduleAllJobs(): Promise<void> {
     select: {
       id: true,
       type: true,
+      enabled: true,
       modelId: true,
       config: true,
     },
   });
 
-  const queue = getQueue();
   for (const job of jobs) {
-    const config = JSON.parse(job.config);
-
-    if (config.cronExpression) {
-      try {
-        await queue.add(
-          "execute",
-          { ...config, taskId: job.id, type: job.type, modelId: job.modelId },
-          {
-            jobId: `scheduled-${job.id}`,
-            repeat: { pattern: config.cronExpression, tz: "UTC", key: `scheduled-${job.id}` },
-          },
-        );
-      } catch (err) {
-        console.error(`Failed to schedule job ${job.id}: ${(err as Error).message}`);
-      }
+    try {
+      await scheduleQueueTask(job);
+    } catch (err) {
+      console.error(`Failed to schedule job ${job.id}: ${(err as Error).message}`);
     }
   }
 }

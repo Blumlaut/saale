@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireJobOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getQueue, addJobRun } from "@/lib/queue";
+import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from "@/lib/queue";
 
 /**
  * PATCH /api/jobs/:jobId — Update a job
@@ -34,30 +34,18 @@ export async function PATCH(
     data: updateData,
   });
 
-  // Sync BullMQ schedule when enabled status changes
-  if (body.enabled !== undefined) {
-    const queue = getQueue();
-    const jobConfig = JSON.parse(updated.config);
-
-    if (body.enabled && jobConfig.cronExpression) {
-      await queue
-        .add(
-          "execute",
-          { ...jobConfig, taskId: jobId, type: updated.type, modelId: updated.modelId },
-          {
-            jobId: `scheduled-${jobId}`,
-            repeat: { pattern: jobConfig.cronExpression, tz: "UTC", key: `scheduled-${jobId}` },
-          },
-        )
-        .catch((err) => {
-          console.error(`Failed to schedule job ${jobId}: ${err.message}`);
-        });
-    } else if (!body.enabled) {
-      await queue.removeJobScheduler(`scheduled-${jobId}`).catch((err) => {
-        console.error("Failed to remove job scheduler:", err);
-      });
-    }
-  }
+  // Sync the BullMQ repeatable job. Always resync — BullMQ does not update an
+  // existing scheduler with the same jobId, so cron/model/enabled changes are
+  // applied by removing first, then re-adding if the job is still scheduled.
+  await syncQueueTaskSchedule({
+    id: jobId,
+    type: updated.type,
+    enabled: updated.enabled,
+    modelId: updated.modelId,
+    config: updated.config,
+  }).catch((err) => {
+    console.error(`Failed to re-schedule job ${jobId}: ${err.message}`);
+  });
 
   return NextResponse.json({
     job: {
@@ -84,10 +72,7 @@ export async function DELETE(
   if (!authResult.ok) return authResult.response;
 
   // Remove job scheduler from BullMQ
-  const queue = getQueue();
-  await queue.removeJobScheduler(`scheduled-${jobId}`).catch((err) => {
-    console.error("Failed to remove job scheduler on delete:", err);
-  });
+  await unscheduleQueueTask(jobId);
 
   await prisma.queueTask.delete({
     where: { id: jobId },
@@ -109,23 +94,11 @@ export async function POST(
   if (!authResult.ok) return authResult.response;
   const job = authResult.job;
 
-  const config = JSON.parse(job.config);
-  const queue = getQueue();
-
-  const jobRun = await addJobRun(jobId, "pending", JSON.stringify(config));
-
-  await queue.add(
-    "execute",
-    { ...config, taskId: jobId, runId: jobRun.id, type: job.type, modelId: job.modelId },
-    {
-      jobId: `manual-${jobId}-${Date.now()}`,
-      removeOnComplete: false,
-      removeOnFail: 100,
-    },
-  );
+  // Record the run and enqueue a one-off job for the worker
+  const { runId } = await triggerQueueTaskRun(job);
 
   return NextResponse.json({
     queued: true,
-    runId: jobRun.id,
+    runId,
   });
 }
