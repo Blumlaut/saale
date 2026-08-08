@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { collectTags } from "@/lib/email/tags";
+import { emailSyncEndpoint } from "@/lib/email/sync-target";
 import { fetchJson, patchJson } from "@/lib/http";
 import { EmailListPanel } from "./email-list-panel";
 import { EmailDetailPanel } from "./email-detail-panel";
@@ -105,9 +106,10 @@ export function Inbox() {
   const handleSyncAll = async () => {
     setSyncing(true);
     try {
-      await fetchJson("/api/email/sync", { method: "POST" });
+      // Sync the selected account only, or all accounts when none is selected
+      await fetchJson(emailSyncEndpoint(activeAccountId), { method: "POST" });
       toast.success("Sync started");
-      await loadAccounts();
+      await Promise.all([loadAccounts(), loadMessages()]);
     } catch (err) {
       console.error("Failed to sync accounts:", err);
       toast.error("Failed to sync");

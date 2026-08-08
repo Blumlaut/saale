@@ -189,7 +189,7 @@ export function EmailListPanel({
             className="h-7 w-7 rounded-full"
             onClick={onSyncAll}
             disabled={syncing}
-            title="Sync all accounts"
+            title={activeAccount ? "Sync account" : "Sync all accounts"}
           >
             {syncing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
