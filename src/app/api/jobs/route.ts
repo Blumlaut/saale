@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getQueue } from "@/lib/queue";
+import { syncQueueTaskSchedule } from "@/lib/queue";
 
 /**
  * GET /api/jobs — List user's jobs
@@ -106,22 +106,10 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Register with BullMQ if enabled
-  if (job.enabled && cleanConfig.cronExpression) {
-    const queue = getQueue();
-    await queue
-      .add(
-        "execute",
-        { ...cleanConfig, taskId: job.id, type: job.type, modelId: job.modelId },
-        {
-          jobId: `scheduled-${job.id}`,
-          repeat: { pattern: cleanConfig.cronExpression, tz: "UTC" },
-        },
-      )
-      .catch((err) => {
-        console.error(`Failed to schedule job ${job.id}: ${err.message}`);
-      });
-  }
+  // Register with BullMQ if enabled (sync handles removal + re-add)
+  await syncQueueTaskSchedule(job).catch((err) => {
+    console.error(`Failed to schedule job ${job.id}: ${err.message}`);
+  });
 
   return NextResponse.json({
     job: {

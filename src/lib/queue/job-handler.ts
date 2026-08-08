@@ -3,7 +3,7 @@ import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-ag
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { lockSystemPrompt } from "@/lib/pi/processing-state";
-import { getQueue, addJobRun, updateJobRun } from "@/lib/queue";
+import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { handlerMap } from "./jobs/registry";
 
@@ -102,7 +102,7 @@ export async function processJob(job: Job): Promise<void> {
     // then skip silently instead of throwing (which would cause retries).
     if (!runId) {
       getQueue()
-        .removeJobScheduler(`scheduled-${taskId}`)
+        .removeJobScheduler(queueTaskSchedulerId(taskId))
         .catch((err) => {
           console.error(`[queue/job-handler] Failed to remove scheduler for ${taskId}:`, err);
         });

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Shared mock queue instance — the real scheduling helpers in @/lib/queue
+// call `new Queue(...)`, so the mock must return the same instance every time.
+const { mockAdd, mockRemoveJobScheduler } = vi.hoisted(() => ({
+  mockAdd: vi.fn(),
+  mockRemoveJobScheduler: vi.fn(),
+}));
+
 // Mock prisma
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -24,10 +31,11 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-// Mock queue
-vi.mock("@/lib/queue", () => ({
-  getQueue: vi.fn(),
-  addJobRun: vi.fn(),
+// Mock the queue instance (no real Redis in tests)
+vi.mock("bullmq", () => ({
+  Queue: vi.fn().mockImplementation(function MockQueue() {
+    return { add: mockAdd, removeJobScheduler: mockRemoveJobScheduler };
+  }),
 }));
 
 // Mock buildModelRuntime
@@ -37,18 +45,14 @@ vi.mock("@/lib/pi/models", () => ({
 
 // Import mocks for assertions
 import * as db from "@/lib/db";
-import * as queue from "@/lib/queue";
 import * as models from "@/lib/pi/models";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockQueueTask = db.prisma.queueTask as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockAppSettings = db.prisma.appSettings as any;
+const mockTaskRun = db.prisma.taskRun as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockQueueInstance: any = {
-  add: vi.fn().mockResolvedValue({}),
-  removeJobScheduler: vi.fn().mockResolvedValue(undefined),
-};
+const mockAppSettings = db.prisma.appSettings as any;
 
 // Import after mocks
 import { createJobTools } from "@/lib/pi/tools/job-tools";
@@ -71,7 +75,9 @@ describe("createJobTools", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(queue.getQueue).mockReturnValue(mockQueueInstance);
+    mockAdd.mockResolvedValue({});
+    mockRemoveJobScheduler.mockResolvedValue(undefined);
+    mockTaskRun.create.mockResolvedValue({ id: "run-1" });
 
     const tools = createJobTools(userId);
     ctx.modelList = tools.find((t) => t.name === "model_list")!;
@@ -171,6 +177,165 @@ describe("createJobTools", () => {
     });
   });
 
+  describe("job_create", () => {
+    it("creates the job and registers a repeatable scheduler", async () => {
+      const tools = createJobTools(userId);
+      const jobCreate = tools.find((t) => t.name === "job_create")!;
+
+      vi.mocked(mockQueueTask.create).mockResolvedValue({
+        id: "job-new",
+        type: "summarization",
+        enabled: true,
+        modelId: null,
+        config: JSON.stringify({ cronExpression: "0 */6 * * *" }),
+        createdAt: new Date(),
+      });
+
+      const result = await callExecute(jobCreate.execute, {
+        type: "summarization",
+        config: { cronExpression: "0 */6 * * *" },
+      });
+
+      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+      expect(text.created).toBe(true);
+
+      expect(mockAdd).toHaveBeenCalledWith(
+        "execute",
+        expect.objectContaining({
+          cronExpression: "0 */6 * * *",
+          taskId: "job-new",
+          type: "summarization",
+        }),
+        expect.objectContaining({
+          jobId: "scheduled-job-new",
+          repeat: expect.objectContaining({
+            pattern: "0 */6 * * *",
+            tz: "UTC",
+            key: "scheduled-job-new",
+          }),
+        }),
+      );
+    });
+
+    it("does not schedule when disabled", async () => {
+      const tools = createJobTools(userId);
+      const jobCreate = tools.find((t) => t.name === "job_create")!;
+
+      vi.mocked(mockQueueTask.create).mockResolvedValue({
+        id: "job-new",
+        type: "summarization",
+        enabled: false,
+        modelId: null,
+        config: JSON.stringify({ cronExpression: "0 */6 * * *" }),
+        createdAt: new Date(),
+      });
+
+      await callExecute(jobCreate.execute, {
+        type: "summarization",
+        config: { cronExpression: "0 */6 * * *" },
+        enabled: false,
+      });
+
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
+    it("rejects unknown job types", async () => {
+      const tools = createJobTools(userId);
+      const jobCreate = tools.find((t) => t.name === "job_create")!;
+
+      await expect(
+        callExecute(jobCreate.execute, {
+          type: "nonexistent_type",
+          config: { cronExpression: "0 * * * *" },
+        }),
+      ).rejects.toThrow('Unknown job type "nonexistent_type"');
+    });
+  });
+
+  describe("job_enable", () => {
+    it("re-schedules when enabling a job with a cron", async () => {
+      const tools = createJobTools(userId);
+      const jobEnable = tools.find((t) => t.name === "job_enable")!;
+
+      const existingJob = {
+        id: "job-1",
+        userId,
+        type: "summarization",
+        enabled: false,
+        modelId: null,
+        config: JSON.stringify({ cronExpression: "0 */6 * * *" }),
+      };
+      vi.mocked(mockQueueTask.findFirst).mockResolvedValue(existingJob);
+      vi.mocked(mockQueueTask.update).mockResolvedValue({});
+
+      await callExecute(jobEnable.execute, { id: "job-1", enabled: true });
+
+      expect(mockQueueTask.update).toHaveBeenCalledWith({
+        where: { id: "job-1" },
+        data: { enabled: true },
+      });
+      expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
+      expect(mockAdd).toHaveBeenCalledWith(
+        "execute",
+        expect.objectContaining({ taskId: "job-1" }),
+        expect.objectContaining({ jobId: "scheduled-job-1" }),
+      );
+    });
+
+    it("removes the scheduler when disabling", async () => {
+      const tools = createJobTools(userId);
+      const jobEnable = tools.find((t) => t.name === "job_enable")!;
+
+      vi.mocked(mockQueueTask.findFirst).mockResolvedValue({
+        id: "job-1",
+        userId,
+        type: "summarization",
+        enabled: true,
+        modelId: null,
+        config: JSON.stringify({ cronExpression: "0 */6 * * *" }),
+      });
+      vi.mocked(mockQueueTask.update).mockResolvedValue({});
+
+      await callExecute(jobEnable.execute, { id: "job-1", enabled: false });
+
+      expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("job_run", () => {
+    it("records a run and enqueues a one-off job", async () => {
+      const tools = createJobTools(userId);
+      const jobRun = tools.find((t) => t.name === "job_run")!;
+
+      vi.mocked(mockQueueTask.findFirst).mockResolvedValue({
+        id: "job-1",
+        userId,
+        type: "summarization",
+        enabled: true,
+        modelId: null,
+        config: JSON.stringify({ cronExpression: "0 */6 * * *" }),
+      });
+
+      const result = await callExecute(jobRun.execute, { id: "job-1" });
+      const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
+
+      expect(text.queued).toBe(true);
+      expect(text.runId).toBe("run-1");
+      expect(mockTaskRun.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ taskId: "job-1" }) }),
+      );
+      expect(mockAdd).toHaveBeenCalledWith(
+        "execute",
+        expect.objectContaining({ taskId: "job-1", runId: "run-1" }),
+        expect.objectContaining({
+          jobId: expect.stringMatching(/^manual-job-1-\d+$/),
+          removeOnComplete: false,
+        }),
+      );
+    });
+  });
+
   describe("job_update", () => {
     it("updates modelId on existing job", async () => {
       const existingJob = {
@@ -200,8 +365,8 @@ describe("createJobTools", () => {
       });
 
       // Scheduler should be removed and re-added
-      expect(mockQueueInstance.removeJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
-      expect(mockQueueInstance.add).toHaveBeenCalled();
+      expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
+      expect(mockAdd).toHaveBeenCalled();
     });
 
     it("updates cron expression and re-schedules", async () => {
@@ -222,8 +387,8 @@ describe("createJobTools", () => {
         config: { cronExpression: "*/30 * * * *" },
       });
 
-      expect(mockQueueInstance.removeJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
-      expect(mockQueueInstance.add).toHaveBeenCalledWith(
+      expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
+      expect(mockAdd).toHaveBeenCalledWith(
         "execute",
         expect.objectContaining({
           cronExpression: "*/30 * * * *",
@@ -298,9 +463,9 @@ describe("createJobTools", () => {
         enabled: false,
       });
 
-      expect(mockQueueInstance.removeJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
+      expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
       // Should NOT re-add scheduler when disabled
-      expect(mockQueueInstance.add).not.toHaveBeenCalled();
+      expect(mockAdd).not.toHaveBeenCalled();
     });
   });
 
@@ -324,7 +489,7 @@ describe("createJobTools", () => {
       expect(text.deleted).toBe(true);
       expect(text.id).toBe("job-1");
 
-      expect(mockQueueInstance.removeJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
+      expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
       expect(mockQueueTask.delete).toHaveBeenCalledWith({ where: { id: "job-1" } });
     });
 
@@ -356,7 +521,7 @@ describe("createJobTools", () => {
 
       vi.mocked(mockQueueTask.findFirst).mockResolvedValue(existingJob);
       vi.mocked(mockQueueTask.delete).mockResolvedValue({});
-      vi.mocked(mockQueueInstance.removeJobScheduler).mockRejectedValue(new Error("Redis error"));
+      mockRemoveJobScheduler.mockRejectedValue(new Error("Redis error"));
 
       // Should still succeed — scheduler removal failure is logged, not thrown
       const result = await callExecute(ctx.jobDelete.execute, { id: "job-1" });

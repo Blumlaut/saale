@@ -29,29 +29,36 @@ async function scheduleOrphanCleanup(): Promise<void> {
 }
 
 /**
- * Execute a user job by calling the Next.js app's internal API.
- * The app handles all Pi-dependent logic (AI dispatch, etc.).
+ * Call the Next.js app's internal API from the worker.
+ * The app handles all Pi-dependent logic (AI dispatch, run records, etc.).
  */
-async function executeJobViaApp(job: Job): Promise<unknown> {
-  const response = await fetch(`${APP_URL}/api/jobs/execute`, {
+async function postToApp(path: string, payload: unknown): Promise<unknown> {
+  const response = await fetch(`${APP_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-worker-key": WORKER_API_KEY,
     },
-    body: JSON.stringify({
-      jobId: job.id,
-      name: job.name,
-      data: job.data,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Job execution failed (${response.status}): ${text}`);
+    throw new Error(`App call ${path} failed (${response.status}): ${text}`);
   }
 
   return response.json();
+}
+
+/**
+ * Execute a user job by calling the Next.js app's internal API.
+ */
+async function executeJobViaApp(job: Job): Promise<unknown> {
+  return postToApp("/api/jobs/execute", {
+    jobId: job.id,
+    name: job.name,
+    data: job.data,
+  });
 }
 
 /**
@@ -59,23 +66,9 @@ async function executeJobViaApp(job: Job): Promise<unknown> {
  * internal API (the app creates the AgentRun and dispatches the agent).
  */
 async function executeAgentJobViaApp(job: Job): Promise<unknown> {
-  const response = await fetch(`${APP_URL}/api/agent-jobs/execute`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-worker-key": WORKER_API_KEY,
-    },
-    body: JSON.stringify({
-      definitionId: (job.data as { definitionId?: string }).definitionId,
-    }),
+  return postToApp("/api/agent-jobs/execute", {
+    definitionId: (job.data as { definitionId?: string }).definitionId,
   });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Agent job execution failed (${response.status}): ${text}`);
-  }
-
-  return response.json();
 }
 
 /** Route jobs: system jobs inline, user jobs via Next.js API. */

@@ -1,7 +1,7 @@
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
-import { getQueue, addJobRun } from "@/lib/queue";
+import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from "@/lib/queue";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 import { buildModelRuntime } from "@/lib/pi/models";
 
@@ -113,29 +113,16 @@ export function createJobTools(userId: string): ToolDefinition[] {
           data: { enabled: params.enabled },
         });
 
-        // Update BullMQ schedule
-        const queue = getQueue();
-        if (params.enabled) {
-          const config = JSON.parse(job.config);
-          if (config.cronExpression) {
-            await queue.add(
-              "execute",
-              { ...config, taskId: params.id, type: job.type, modelId: job.modelId },
-              {
-                jobId: `scheduled-${params.id}`,
-                repeat: {
-                  pattern: config.cronExpression,
-                  tz: "UTC",
-                  key: `scheduled-${params.id}`,
-                },
-              },
-            );
-          }
-        } else {
-          await queue.removeJobScheduler(`scheduled-${params.id}`).catch((err) => {
-            console.error("Failed to remove job scheduler:", err);
-          });
-        }
+        // Update BullMQ schedule (remove-then-add if still scheduled)
+        await syncQueueTaskSchedule({
+          id: job.id,
+          type: job.type,
+          enabled: params.enabled,
+          modelId: job.modelId,
+          config: job.config,
+        }).catch((err) => {
+          console.error(`Failed to update schedule for job ${params.id}:`, err);
+        });
 
         return {
           content: [
@@ -176,20 +163,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           throw new Error(`Job ${params.id} not found`);
         }
 
-        const queue = getQueue();
-        const config = JSON.parse(job.config);
-
-        const jobRun = await addJobRun(params.id, "pending", JSON.stringify(config));
-
-        await queue.add(
-          "execute",
-          { ...config, taskId: params.id, runId: jobRun.id, type: job.type, modelId: job.modelId },
-          {
-            jobId: `manual-${params.id}-${Date.now()}`,
-            removeOnComplete: false,
-            removeOnFail: 100,
-          },
-        );
+        const { runId } = await triggerQueueTaskRun(job);
 
         return {
           content: [
@@ -199,14 +173,14 @@ export function createJobTools(userId: string): ToolDefinition[] {
                 {
                   queued: true,
                   jobId: params.id,
-                  runId: jobRun.id,
+                  runId,
                 },
                 null,
                 2,
               ),
             },
           ],
-          details: { queued: true, runId: jobRun.id },
+          details: { queued: true, runId },
         };
       },
     }),
@@ -441,30 +415,9 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         // Register with BullMQ if enabled
-        if (job.enabled && mergedConfig.cronExpression) {
-          const queue = getQueue();
-          await queue
-            .add(
-              "execute",
-              {
-                ...mergedConfig,
-                taskId: job.id,
-                type: job.type,
-                modelId: job.modelId,
-              },
-              {
-                jobId: `scheduled-${job.id}`,
-                repeat: {
-                  pattern: mergedConfig.cronExpression as string,
-                  tz: "UTC",
-                  key: `scheduled-${job.id}`,
-                },
-              },
-            )
-            .catch((err) => {
-              console.error(`Failed to schedule job ${job.id}: ${err.message}`);
-            });
-        }
+        await syncQueueTaskSchedule(job).catch((err) => {
+          console.error(`Failed to schedule job ${job.id}: ${err.message}`);
+        });
 
         return {
           content: [
@@ -647,39 +600,16 @@ export function createJobTools(userId: string): ToolDefinition[] {
           },
         });
 
-        // Update BullMQ scheduler
-        const queue = getQueue();
-        const schedulerKey = `scheduled-${params.id}`;
-
-        // Remove existing scheduler first
-        await queue.removeJobScheduler(schedulerKey).catch(() => {
-          // Silently ignore — scheduler may not exist
+        // Update BullMQ scheduler — remove existing first, then re-add if scheduled
+        await syncQueueTaskSchedule({
+          id: params.id,
+          type: job.type,
+          enabled: newEnabled,
+          modelId: newModelId,
+          config: JSON.stringify(newConfig),
+        }).catch((err) => {
+          console.error(`Failed to re-schedule job ${params.id}: ${err.message}`);
         });
-
-        // Re-add if enabled and has cron
-        if (newEnabled && newConfig.cronExpression) {
-          await queue
-            .add(
-              "execute",
-              {
-                ...newConfig,
-                taskId: params.id,
-                type: job.type,
-                modelId: newModelId,
-              },
-              {
-                jobId: schedulerKey,
-                repeat: {
-                  pattern: newConfig.cronExpression as string,
-                  tz: "UTC",
-                  key: schedulerKey,
-                },
-              },
-            )
-            .catch((err) => {
-              console.error(`Failed to re-schedule job ${params.id}: ${err.message}`);
-            });
-        }
 
         return {
           content: [
@@ -727,10 +657,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
         }
 
         // Remove BullMQ scheduler
-        const queue = getQueue();
-        await queue.removeJobScheduler(`scheduled-${params.id}`).catch((err) => {
-          console.error(`Failed to remove scheduler for job ${params.id}:`, err);
-        });
+        await unscheduleQueueTask(params.id);
 
         // Delete from database (cascades to TaskRun records)
         await prisma.queueTask.delete({
