@@ -13,6 +13,20 @@ function getUserDir(userId: string): string {
   return path.join(UPLOADS_DIR, userId);
 }
 
+/** Fetch all account IDs belonging to a user. Used for user-isolated queries. */
+export async function getUserAccountIds(userId: string): Promise<string[]> {
+  const accounts = await prisma.emailAccount.findMany({
+    where: { userId },
+    select: { id: true },
+  });
+  return accounts.map((a) => a.id);
+}
+
+/** Format a sender as "Name <email>" or just "email" when name is missing. */
+export function formatFrom(fromName: string | null, fromEmail: string): string {
+  return fromName ? `${fromName} <${fromEmail}>` : fromEmail;
+}
+
 /**
  * Create mail tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's email accounts.
@@ -246,12 +260,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        // Get this user's account IDs
-        const userAccounts = await prisma.emailAccount.findMany({
-          where: { userId },
-          select: { id: true },
-        });
-        const accountIds = userAccounts.map((a) => a.id);
+        const accountIds = await getUserAccountIds(userId);
 
         const where: Record<string, unknown> = {
           accountId: { in: accountIds },
@@ -323,7 +332,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           }) => ({
             id: e.id,
             uid: e.uid,
-            from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+            from: formatFrom(e.fromName, e.fromEmail),
             to: e.to,
             subject: e.subject,
             date: e.date.toISOString(),
@@ -386,12 +395,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        // Get this user's account IDs
-        const userAccounts = await prisma.emailAccount.findMany({
-          where: { userId },
-          select: { id: true },
-        });
-        const accountIds = userAccounts.map((a) => a.id);
+        const accountIds = await getUserAccountIds(userId);
 
         const emails = await prisma.emailMessage.findMany({
           where: {
@@ -474,7 +478,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
             spamScore: number | null;
           }) => ({
             id: e.id,
-            from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+            from: formatFrom(e.fromName, e.fromEmail),
             to: e.to,
             subject: e.subject,
             date: e.date.toISOString(),
@@ -535,12 +539,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        // Get this user's account IDs
-        const userAccounts = await prisma.emailAccount.findMany({
-          where: { userId },
-          select: { id: true },
-        });
-        const accountIds = userAccounts.map((a) => a.id);
+        const accountIds = await getUserAccountIds(userId);
 
         // Split multi-word queries into individual terms so "hello world" matches emails
         // containing either "hello" OR "world" (not just the exact phrase "hello world")
@@ -594,7 +593,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
             folder: string;
           }) => ({
             id: e.id,
-            from: e.fromName ? `${e.fromName} <${e.fromEmail}>` : e.fromEmail,
+            from: formatFrom(e.fromName, e.fromEmail),
             subject: e.subject,
             date: e.date.toISOString(),
             preview: (e.bodyPreview ?? "").slice(0, 200),
@@ -759,12 +758,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        // Get this user's account IDs
-        const userAccounts = await prisma.emailAccount.findMany({
-          where: { userId },
-          select: { id: true },
-        });
-        const accountIds = userAccounts.map((a) => a.id);
+        const accountIds = await getUserAccountIds(userId);
 
         const emails = await prisma.emailMessage.findMany({
           where: { id: { in: params.ids }, accountId: { in: accountIds } },
@@ -829,12 +823,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         }),
       }),
       execute: async (_toolCallId, params) => {
-        // Get this user's account IDs
-        const userAccounts = await prisma.emailAccount.findMany({
-          where: { userId },
-          select: { id: true },
-        });
-        const accountIds = userAccounts.map((a) => a.id);
+        const accountIds = await getUserAccountIds(userId);
 
         // Fetch messages before updating so we have uid + folder for IMAP sync
         const messages = await prisma.emailMessage.findMany({
@@ -889,12 +878,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         ),
       }),
       execute: async (_toolCallId, params) => {
-        // Get this user's account IDs
-        const userAccounts = await prisma.emailAccount.findMany({
-          where: { userId },
-          select: { id: true },
-        });
-        const accountIds = userAccounts.map((a) => a.id);
+        const accountIds = await getUserAccountIds(userId);
 
         // Fetch messages before deleting so we have uid + folder for IMAP sync
         const messages = await prisma.emailMessage.findMany({
