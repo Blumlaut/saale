@@ -14,22 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
-
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  dueDate: string | null;
-  tags: string[];
-  order: number;
-  source: string;
-  sourceEmailId: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { Task } from "@/types/shared";
 
 interface TaskFormProps {
   open: boolean;
