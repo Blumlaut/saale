@@ -415,6 +415,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List notes for a machine",
     category: "infra",
     defaultPolicy: "allow",
+    summaryTemplate: "Listing notes for {machineName}",
   },
   {
     name: "infra_notes_get",
@@ -429,6 +430,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Register a new remote machine",
     category: "infra",
     defaultPolicy: "ask",
+    summaryTemplate: "Adding machine {name}",
   },
   {
     name: "infra_notes_upsert",
@@ -436,6 +438,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Create or update a machine note",
     category: "infra",
     defaultPolicy: "allow",
+    summaryTemplate: "Saving note on {machineName}",
   },
   {
     name: "infra_exec",
@@ -443,6 +446,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Run a shell command on a remote machine",
     category: "infra",
     defaultPolicy: "auto",
+    summaryTemplate: "Running {command} on {machineName}",
   },
   {
     name: "infra_write_file",
@@ -450,6 +454,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Write content to a file on a remote machine",
     category: "infra",
     defaultPolicy: "ask",
+    summaryTemplate: "Writing to {path} on {machineName}",
   },
   {
     name: "infra_notes_delete",
@@ -464,6 +469,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Remove a registered machine and all its notes",
     category: "infra",
     defaultPolicy: "ask",
+    summaryTemplate: "Removing machine {name}",
   },
 ];
 
@@ -478,6 +484,27 @@ export function getDefaultPolicy(toolName: string): ToolPolicy {
 }
 
 /**
+ * Resolve `{key}` placeholders in a template string against an args object.
+ *
+ * Unknown or nullish keys are left as `{key}` in the output.
+ *
+ * @example resolveTemplate("Running {cmd} on {host}", { cmd: "ls", host: "prod" })
+ *   → "Running ls on prod"
+ */
+export function resolveTemplate(template: string, args: Record<string, unknown>): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key) => {
+    const value = args[key];
+    if (value === undefined || value === null) return `{${key}}`;
+    return typeof value === "string" ? value : String(value);
+  });
+}
+
+/** Look up a tool's info entry (or `undefined` if not found). */
+export function findToolInfo(toolName: string): ToolInfo | undefined {
+  return ALL_TOOL_INFOS.find((t) => t.name === toolName);
+}
+
+/**
  * Resolve a tool's summary template against its arguments.
  *
  * Replaces `{argName}` placeholders with the corresponding arg value.
@@ -487,12 +514,8 @@ export function getDefaultPolicy(toolName: string): ToolPolicy {
  *   → 'searching web for "latest news"'
  */
 export function formatToolSummary(toolName: string, args: Record<string, unknown>): string | null {
-  const info = ALL_TOOL_INFOS.find((t) => t.name === toolName);
+  const info = findToolInfo(toolName);
   if (!info?.summaryTemplate) return null;
 
-  return info.summaryTemplate.replace(/\{(\w+)\}/g, (_match, key) => {
-    const value = args[key];
-    if (value === undefined || value === null) return `{${key}}`;
-    return typeof value === "string" ? value : String(value);
-  });
+  return resolveTemplate(info.summaryTemplate, args);
 }
