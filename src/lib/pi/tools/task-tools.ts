@@ -2,6 +2,7 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { Type } from "typebox";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { taskToResponse, buildTaskUpdateData } from "@/lib/tasks/task-api-helpers";
 
 /**
  * Create task tools with userId injection for user isolation.
@@ -14,39 +15,6 @@ export function createTaskTools(userId: string): ToolDefinition[] {
     return prisma.task.findFirst({
       where: { id: taskId, userId },
     });
-  }
-
-  /** Serialize a task for tool response */
-  function serializeTask(t: {
-    id: string;
-    title: string;
-    description: string | null;
-    status: string;
-    priority: string;
-    dueDate: Date | null;
-    tags: string[];
-    order: number;
-    source: string;
-    sourceEmailId: string | null;
-    completedAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }) {
-    return {
-      id: t.id,
-      title: t.title,
-      description: t.description,
-      status: t.status,
-      priority: t.priority,
-      dueDate: t.dueDate?.toISOString() ?? null,
-      tags: t.tags,
-      order: t.order,
-      source: t.source,
-      sourceEmailId: t.sourceEmailId,
-      completedAt: t.completedAt?.toISOString() ?? null,
-      createdAt: t.createdAt.toISOString(),
-      updatedAt: t.updatedAt.toISOString(),
-    };
   }
 
   return [
@@ -98,7 +66,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
 
         const response: Record<string, unknown> = {
           created: true,
-          task: serializeTask(task),
+          task: taskToResponse(task),
         };
 
         if (existing.length > 0) {
@@ -144,18 +112,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
           throw new Error(`Task ${params.taskId} not found`);
         }
 
-        const updateData: Record<string, unknown> = {};
-        if (params.title !== undefined) updateData.title = params.title;
-        if (params.description !== undefined) updateData.description = params.description;
-        if (params.priority !== undefined) updateData.priority = params.priority;
-        if (params.dueDate !== undefined)
-          updateData.dueDate = params.dueDate ? new Date(params.dueDate) : null;
-        if (params.tags !== undefined) updateData.tags = params.tags;
-        if (params.status !== undefined) updateData.status = params.status;
-        if (params.status === "completed") updateData.completedAt = new Date();
-        if (params.status === "pending") {
-          updateData.completedAt = null;
-        }
+        const updateData = buildTaskUpdateData(params);
 
         const updated = await prisma.task.update({
           where: { id: params.taskId },
@@ -169,7 +126,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
               text: JSON.stringify(
                 {
                   updated: true,
-                  task: serializeTask(updated),
+                  task: taskToResponse(updated),
                 },
                 null,
                 2,
@@ -211,7 +168,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
               text: JSON.stringify(
                 {
                   count: tasks.length,
-                  tasks: tasks.map(serializeTask),
+                  tasks: tasks.map(taskToResponse),
                 },
                 null,
                 2,
@@ -291,7 +248,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
                   {
                     query: trimmedQuery,
                     count: results.length,
-                    tasks: results.map(serializeTask),
+                    tasks: results.map(taskToResponse),
                   },
                   null,
                   2,
@@ -326,7 +283,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
                 {
                   query: null,
                   count: tasks.length,
-                  tasks: tasks.map(serializeTask),
+                  tasks: tasks.map(taskToResponse),
                 },
                 null,
                 2,
