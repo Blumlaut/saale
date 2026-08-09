@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { taskToResponse } from "@/lib/tasks/task-api-helpers";
 
 /**
  * GET /api/tasks — List tasks with optional filters
@@ -51,21 +52,7 @@ export async function GET(request: NextRequest) {
   ]);
 
   return NextResponse.json({
-    tasks: tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      description: t.description,
-      status: t.status,
-      priority: t.priority,
-      dueDate: t.dueDate?.toISOString() ?? null,
-      tags: t.tags,
-      order: t.order,
-      source: t.source,
-      sourceEmailId: t.sourceEmailId,
-      completedAt: t.completedAt?.toISOString() ?? null,
-      createdAt: t.createdAt.toISOString(),
-      updatedAt: t.updatedAt.toISOString(),
-    })),
+    tasks: tasks.map(taskToResponse),
     total,
     limit,
     offset,
@@ -98,19 +85,5 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({
-    task: {
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      status: task.status,
-      priority: task.priority,
-      dueDate: task.dueDate?.toISOString() ?? null,
-      tags: task.tags,
-      order: task.order,
-      source: task.source,
-      createdAt: task.createdAt.toISOString(),
-      updatedAt: task.updatedAt.toISOString(),
-    },
-  });
+  return NextResponse.json({ task: taskToResponse(task) });
 }

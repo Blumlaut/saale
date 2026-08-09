@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { buildTaskUpdateData } from "@/lib/tasks/task-api-helpers";
 
 /**
  * PATCH /api/tasks/bulk — Bulk update tasks (e.g. mark multiple as completed)
@@ -21,14 +22,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Missing or invalid 'ids' array" }, { status: 400 });
   }
 
-  const updateData: Record<string, unknown> = {};
-  if (updates.status !== undefined) updateData.status = updates.status;
-  if (updates.priority !== undefined) updateData.priority = updates.priority;
-  if (updates.dueDate !== undefined && typeof updates.dueDate === "string")
-    updateData.dueDate = updates.dueDate ? new Date(updates.dueDate) : null;
-  if (updates.tags !== undefined) updateData.tags = updates.tags;
-  if (updates.status === "completed") updateData.completedAt = new Date();
-  if (updates.status === "pending") updateData.completedAt = null;
+  const updateData = buildTaskUpdateData(updates);
 
   const result = await prisma.task.updateMany({
     where: { id: { in: ids }, userId: authResult.user.id },
