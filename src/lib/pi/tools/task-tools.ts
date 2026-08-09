@@ -218,11 +218,13 @@ export function createTaskTools(userId: string): ToolDefinition[] {
               completedAt: Date | null;
               createdAt: Date;
               updatedAt: Date;
+              rank: number;
             }>
           >(
             Prisma.sql`
               SELECT id, title, description, status, priority, "dueDate", tags, "order",
-                     source, "sourceEmailId", "completedAt", "createdAt", "updatedAt"
+                     source, "sourceEmailId", "completedAt", "createdAt", "updatedAt",
+                     ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(description, '')), plainto_tsquery('english', ${trimmedQuery})) AS rank
               FROM "Task"
               WHERE "userId" = ${userId}
                 ${params.status ? Prisma.sql`AND status = ${params.status}` : Prisma.empty}
@@ -230,8 +232,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
                 ${params.tag ? Prisma.sql`AND tags && ARRAY[${params.tag}]::text[]` : Prisma.empty}
                 ${params.dueBefore ? Prisma.sql`AND "dueDate" IS NOT NULL AND "dueDate" < ${new Date(params.dueBefore)}` : Prisma.empty}
                 AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', ${trimmedQuery})
-              ORDER BY to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(description, ''))
-                       @@ plainto_tsquery('english', ${trimmedQuery})
+              ORDER BY rank DESC
               LIMIT 100
             `,
           );
