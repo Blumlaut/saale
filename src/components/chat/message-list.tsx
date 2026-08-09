@@ -130,6 +130,29 @@ export function MessageList({
   }, [messages, isLoading, isAtBottom]);
 
   if (messages.length === 0) {
+    // While a generation is loading, never show the "Start a conversation"
+    // empty state — even a brief flash reads as a broken UI (e.g. during a
+    // race between a send and a DB reload, or while a queued message waits
+    // for Pi to finish). Show the loading indicator instead.
+    if (isLoading) {
+      return (
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">
+              {activeTool?.name ? (
+                <>
+                  Running <span className="font-medium">{activeTool.name}</span>...
+                </>
+              ) : (
+                "Thinking..."
+              )}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
     const suggestions = [
       ...(hasJobs === false
         ? [
