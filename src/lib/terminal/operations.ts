@@ -211,9 +211,6 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
       exec: async (command, _cwd, { onData, signal, timeout, env }) => {
         // Use the factory cwd (user home), not the per-call cwd
         const mergedEnv = mergeEnv(env as Record<string, string> | undefined);
-        const execBody: Record<string, unknown> = { command };
-        if (cwd) execBody.cwd = cwd;
-        if (mergedEnv) execBody.env = mergedEnv;
 
         const result = await terminal.executeCommand(command, {
           ...common,
