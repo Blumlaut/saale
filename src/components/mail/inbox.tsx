@@ -312,7 +312,7 @@ export function Inbox() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4 md:h-[calc(100vh-7rem)]">
+    <div className="flex h-full min-h-0 gap-4">
       <EmailListPanel
         messages={messages}
         accounts={accounts}

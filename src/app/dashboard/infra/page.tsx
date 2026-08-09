@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { Page, PageHeader, PageScroll } from "@/components/layout/page";
 import { MachineList } from "@/components/infra/machine-list";
 import { MachineDialog } from "@/components/infra/machine-dialog";
 
@@ -38,31 +39,28 @@ export default function InfraPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">
-            Infrastructure
-          </h1>
-          <p className="text-muted-foreground mt-1 text-xs md:text-sm">
-            Remote machines the agent can manage via SSH
-          </p>
-        </div>
+    <Page>
+      {/* Header — pinned, never scrolls */}
+      <PageHeader
+        title="Infrastructure"
+        description="Remote machines the agent can manage via SSH"
+        actions={
+          <Button
+            variant="default"
+            size="icon"
+            className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+            onClick={() => setShowDialog(true)}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden md:inline">Add Machine</span>
+          </Button>
+        }
+      />
 
-        <Button
-          variant="default"
-          size="icon"
-          className="h-8 w-8 md:h-9 md:w-auto md:px-3"
-          onClick={() => setShowDialog(true)}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">Add Machine</span>
-        </Button>
-      </div>
-
-      {/* Machine List */}
-      <MachineList key={refreshKey} onEdit={handleEdit} onRefresh={handleCreated} />
+      {/* Machine List — scrolls internally */}
+      <PageScroll>
+        <MachineList key={refreshKey} onEdit={handleEdit} onRefresh={handleCreated} />
+      </PageScroll>
 
       {/* Add/Edit Dialog */}
       <MachineDialog
@@ -71,6 +69,6 @@ export default function InfraPage() {
         onSuccess={handleCreated}
         machine={editingMachine}
       />
-    </div>
+    </Page>
   );
 }

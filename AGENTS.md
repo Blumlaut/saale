@@ -123,22 +123,33 @@ try {
 - **Never use `h-dvh`, `h-screen`, or `calc(100vh - X)` inside page components.** The dashboard layout handles viewport sizing; pages use `h-full` to fill their allocated space.
 - **The flex containment chain:** `h-full` (page) → `flex flex-col` → header (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scrollable area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
 
-### Pattern
+### Use the shared Page components (required)
+
+New pages **must** be built from `src/components/layout/page.tsx` — do not hand-roll the flex chain:
+
+- `<Page>` — root wrapper (`flex h-full min-h-0 flex-col gap-4`).
+- `<PageHeader title description icon actions>` — pinned header; actions never scroll away.
+- `<PageScroll>` — the ONLY scrollable content region (`min-h-0 flex-1 overflow-y-auto`).
+- `<PageTabStrip>` — pinned, swipe-scrollable tab strip with hidden scrollbar (for `Tabs` pages).
 
 ```tsx
-// ✅ GOOD — input always visible, messages scroll internally
-<div className="flex h-full flex-col">
-  <div className="shrink-0">Header</div>
-  <div className="min-h-0 flex-1 overflow-y-auto">Messages</div>
-  <div className="shrink-0">Input bar</div>
-</div>
+// ✅ GOOD — the pattern every page uses
+<Page>
+  <PageHeader title="Tasks" actions={<Button>New Task</Button>} />
+  <PageScroll>{/* tall content scrolls here */}</PageScroll>
+</Page>
 
-// ❌ BAD — input scrolls out of view
+// ❌ BAD — input scrolls out of view / content clipped with no scroll
 <div className="flex flex-col">
   <div>Header</div>
   <div>Messages</div>
   <div>Input bar</div>  {/* gets pushed off-screen */}
-</div>```
+</div>
+```
+
+Tab pages: strip goes in `<PageTabStrip>`, tab content gets `className="min-h-0 flex-1 overflow-y-auto"`. Never add `w-full` to a `TabsList` (triggers squeeze and overlap). Grid items holding lists need `min-w-0` so nowrap text truncates instead of widening the page.
+
+`e2e/mobile-overflow.spec.ts` enforces the whole contract at 375px and 320px — if a page regresses (horizontal overflow, squeezed tabs, body scroll, unreachable content), CI fails.
 
 ## Unified Glass Panels
 
@@ -268,3 +279,13 @@ export async function POST(request: NextRequest) {
 
 - `docker compose up` starts everything (app + postgres + redis) with hot reload.
 - `docker compose build --target production` for production image.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

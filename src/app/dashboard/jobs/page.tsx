@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Plus, Bot, RefreshCw } from "lucide-react";
+import { Page, PageHeader, PageTabStrip } from "@/components/layout/page";
 import { JobList } from "@/components/jobs/job-list";
 import { JobDialog } from "@/components/jobs/job-dialog";
 import { AgentJobList } from "@/components/jobs/agent-job-list";
@@ -69,36 +70,31 @@ export default function JobsPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Jobs</h1>
-          <p className="text-muted-foreground mt-1 text-xs md:text-sm">
-            Automated tasks and AI agents
-          </p>
-        </div>
-      </div>
+    <Page>
+      {/* Header — pinned, never scrolls */}
+      <PageHeader title="Jobs" description="Automated tasks and AI agents" />
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-        <div className="flex items-center justify-between">
-          <TabsList>
-            <TabsTrigger value="agents" className="gap-2">
-              <Bot className="h-4 w-4" />
-              Agent Jobs
-            </TabsTrigger>
-            <TabsTrigger value="scheduled" className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Scheduled Jobs
-            </TabsTrigger>
-          </TabsList>
+      {/* Tabs — strip pinned, content scrolls internally */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-center justify-between gap-2">
+          <PageTabStrip className="min-w-0 flex-1">
+            <TabsList>
+              <TabsTrigger value="agents" className="gap-2">
+                <Bot className="h-4 w-4" />
+                Agent Jobs
+              </TabsTrigger>
+              <TabsTrigger value="scheduled" className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Scheduled Jobs
+              </TabsTrigger>
+            </TabsList>
+          </PageTabStrip>
 
           {activeTab === "agents" && (
             <Button
               variant="default"
               size="icon"
-              className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+              className="h-8 w-8 shrink-0 md:h-9 md:w-auto md:px-3"
               onClick={() => setShowAgentDialog(true)}
             >
               <Plus className="h-4 w-4" />
@@ -109,7 +105,7 @@ export default function JobsPage() {
             <Button
               variant="default"
               size="icon"
-              className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+              className="h-8 w-8 shrink-0 md:h-9 md:w-auto md:px-3"
               onClick={() => setShowJobDialog(true)}
             >
               <Plus className="h-4 w-4" />
@@ -118,8 +114,8 @@ export default function JobsPage() {
           )}
         </div>
 
-        {/* Agent Jobs tab */}
-        <TabsContent value="agents" className="mt-4">
+        {/* Agent Jobs tab — the only scroll region below the strip */}
+        <TabsContent value="agents" className="mt-4 min-h-0 flex-1 overflow-y-auto">
           <AgentJobList
             key={agentRefreshKey}
             onEdit={handleAgentEdit}
@@ -128,7 +124,7 @@ export default function JobsPage() {
         </TabsContent>
 
         {/* Scheduled Jobs tab */}
-        <TabsContent value="scheduled" className="mt-4">
+        <TabsContent value="scheduled" className="mt-4 min-h-0 flex-1 overflow-y-auto">
           <JobList key={jobRefreshKey} onEdit={handleJobEdit} onRefresh={handleJobCreated} />
         </TabsContent>
       </Tabs>
@@ -148,6 +144,6 @@ export default function JobsPage() {
         onSuccess={handleJobCreated}
         job={editingJob}
       />
-    </div>
+    </Page>
   );
 }
