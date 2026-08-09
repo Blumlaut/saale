@@ -15,59 +15,33 @@ export interface ICSExportEvent {
 }
 
 /**
- * Generate a single .ics string for one event.
- * Used for CalDAV push operations.
+ * Default duration for events without an end time (1 hour).
  */
-export function generateICS(event: ICSExportEvent): string {
-  const cal = createCalendar(event);
-  return cal.toString();
+const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
+
+/**
+ * Create a calendar instance with standard prodId.
+ */
+function createBaseCalendar(name = "Saale"): ReturnType<typeof ical> {
+  const cal = ical();
+  cal.prodId("-//Saale//Calendar//EN");
+  cal.name(name);
+  return cal;
 }
 
 /**
- * Generate a .ics string for multiple events.
- * Used for bulk export/download.
+ * Add an ICSExportEvent to an existing calendar instance.
+ * Returns the created ical-generator event for further customization.
  */
-export function generateICSBulk(events: ICSExportEvent[]): string {
-  const cal = ical();
-  cal.prodId("-//Saale//Calendar//EN");
-  cal.name("Saale Calendar Export");
-
-  for (const evt of events) {
-    const icalEvent = cal.createEvent({
-      id: evt.uid,
-      start: evt.dtStart,
-      end: evt.dtEnd ?? new Date(evt.dtStart.getTime() + 60 * 60 * 1000),
-      summary: evt.summary,
-      description: evt.description,
-      location: evt.location,
-      timezone: evt.timeZone,
-      allDay: evt.allDay,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator enums are opaque
-      status: evt.status as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator enums are opaque
-      transparency: evt.transparency as any,
-    });
-
-    if (evt.recurrenceRule && evt.recurrenceRule) {
-      icalEvent.repeating(evt.recurrenceRule);
-    }
-  }
-
-  return cal.toString();
-}
-
-/**
- * Create a Calendar instance with a single event.
- */
-function createCalendar(event: ICSExportEvent): ReturnType<typeof ical> {
-  const cal = ical();
-  cal.prodId("-//Saale//Calendar//EN");
-  cal.name("Saale");
-
+export function addEventToCalendar(
+  cal: ReturnType<typeof ical>,
+  event: ICSExportEvent,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator return type is opaque
+): any {
   const icalEvent = cal.createEvent({
     id: event.uid,
     start: event.dtStart,
-    end: event.dtEnd ?? new Date(event.dtStart.getTime() + 60 * 60 * 1000),
+    end: event.dtEnd ?? new Date(event.dtStart.getTime() + DEFAULT_EVENT_DURATION_MS),
     summary: event.summary,
     description: event.description,
     location: event.location,
@@ -79,9 +53,33 @@ function createCalendar(event: ICSExportEvent): ReturnType<typeof ical> {
     transparency: event.transparency as any,
   });
 
-  if (event.recurrenceRule && event.recurrenceRule) {
+  if (event.recurrenceRule) {
     icalEvent.repeating(event.recurrenceRule);
   }
 
-  return cal;
+  return icalEvent;
+}
+
+/**
+ * Generate a single .ics string for one event.
+ * Used for CalDAV push operations.
+ */
+export function generateICS(event: ICSExportEvent): string {
+  const cal = createBaseCalendar();
+  addEventToCalendar(cal, event);
+  return cal.toString();
+}
+
+/**
+ * Generate a .ics string for multiple events.
+ * Used for bulk export/download.
+ */
+export function generateICSBulk(events: ICSExportEvent[]): string {
+  const cal = createBaseCalendar("Saale Calendar Export");
+
+  for (const evt of events) {
+    addEventToCalendar(cal, evt);
+  }
+
+  return cal.toString();
 }
