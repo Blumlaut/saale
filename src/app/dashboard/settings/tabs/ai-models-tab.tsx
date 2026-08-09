@@ -334,7 +334,7 @@ export function AiModelsTab({
                                     });
                                     setDisabledSet(new Set(updated));
                                   }}
-                                  className="scale-75 data-[state=unchecked]:opacity-50"
+                                  className="scale-75 data-unchecked:opacity-50"
                                   onClick={(e) => e.stopPropagation()}
                                 />
                               </div>
@@ -413,7 +413,7 @@ export function AiModelsTab({
                                   <Switch
                                     checked={!disabled}
                                     onCheckedChange={() => handleToggleModel(providerKey, model.id)}
-                                    className="scale-75 data-[state=unchecked]:opacity-50"
+                                    className="scale-75 data-unchecked:opacity-50"
                                     onClick={(e) => e.stopPropagation()}
                                   />
                                 </div>
