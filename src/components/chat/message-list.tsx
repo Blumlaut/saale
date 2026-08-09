@@ -13,6 +13,8 @@ import { WebSearchCard, WebFetchCard } from "./web-tool-cards";
 import { MailToolCard } from "./mail-tool-cards";
 import { CalendarToolCard } from "./calendar-tool-cards";
 import { InfraToolCard } from "./infra-tool-cards";
+import { groupMessages } from "@/lib/chat/group-messages";
+import { isStreamingMessage } from "@/lib/chat/message-factories";
 import type { ApprovalData, Message } from "./types";
 import {
   Loader2,
@@ -81,44 +83,7 @@ export function MessageList({
   }, []);
 
   // Group consecutive assistant messages that share a parentMessageId
-  const groupedMessages = useMemo(() => {
-    const groups: Array<
-      | { type: "user"; message: Message }
-      | { type: "assistant-group"; messages: Message[] }
-      | { type: "compaction"; message: Message }
-    > = [];
-    let i = 0;
-
-    while (i < messages.length) {
-      const msg = messages[i]!;
-      if (msg.role === "user" || msg.role === "system") {
-        groups.push({ type: "user", message: msg });
-        i++;
-      } else if (msg.role === "compaction") {
-        groups.push({ type: "compaction", message: msg });
-        i++;
-      } else if (msg.role === "assistant") {
-        // Collect this message and all consecutive child turns
-        const rootId = msg.parentMessageId || msg.id;
-        const turnMessages: Message[] = [msg];
-        i++;
-        while (i < messages.length) {
-          const next = messages[i]!;
-          if (next.role === "assistant" && next.parentMessageId === rootId) {
-            turnMessages.push(next);
-            i++;
-          } else {
-            break;
-          }
-        }
-        groups.push({ type: "assistant-group", messages: turnMessages });
-      } else {
-        i++;
-      }
-    }
-
-    return groups;
-  }, [messages]);
+  const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
 
   // Auto-scroll to bottom only while streaming and user is near the bottom (locked-in mode).
   // When streaming, user can scroll up to "unlock" — scrolling back to bottom re-locks.
@@ -203,8 +168,7 @@ export function MessageList({
 
   // Check if the last message is a streaming message (streaming-* IDs)
   const lastMsg = messages[messages.length - 1];
-  const isStreaming =
-    isLoading && lastMsg?.role === "assistant" && lastMsg.id.startsWith("streaming-");
+  const isStreaming = isLoading && lastMsg?.role === "assistant" && isStreamingMessage(lastMsg);
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>

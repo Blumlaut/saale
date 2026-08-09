@@ -8,8 +8,15 @@ import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
 import { fetchJson, patchJson } from "@/lib/http";
 import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
+import {
+  isTempUserMessage,
+  makeCompactionMessage,
+  makeTempUserMessage,
+} from "@/lib/chat/message-factories";
+import { sendChatMessage } from "@/lib/chat/send-message";
+import type { ToolConfig } from "@/lib/pi/tool-config";
+import { useChatSessionState } from "./use-chat-session-state";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
-import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 import type { Message, ApprovalData } from "./types";
 import { ChatHeader } from "./chat-header";
 import { useChatStream } from "./use-chat-stream";
@@ -39,20 +46,30 @@ export function ChatInterface({
   } | null>(null);
   const { markStreaming, markDone } = useStreamingSessions();
 
-  // ─── Session state ───────────────────────────────────────────────────────
+  // Session metadata (title, model, thinking, tool config) + persistence.
+  const {
+    sessionTitle,
+    editingTitle,
+    titleDraft,
+    setTitleDraft,
+    setEditingTitle,
+    modelId,
+    setModelId,
+    thinkingLevel,
+    setThinkingLevel,
+    toolConfig,
+    applySession,
+    loadSessionTitle,
+    saveTitle,
+    toggleTool,
+  } = useChatSessionState(sessionId);
 
-  const [sessionTitle, setSessionTitle] = useState("");
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [thinkingLevel, setThinkingLevel] = useState("off");
-  const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
+  // Abort the in-flight send POST when the component unmounts.
+  const abortRef = useRef<AbortController | null>(null);
 
   // ─── Data loading ────────────────────────────────────────────────────────
 
-  const abortRef = useRef<AbortController | null>(null);
-
-  const loadMessages = useCallback(async (): Promise<{ isGenerating?: boolean } | null> => {
+  const loadMessages = useCallback(async (): Promise<void> => {
     try {
       const data = await fetchJson<{
         messages: Message[];
@@ -71,45 +88,21 @@ export function ChatInterface({
       // wipe the just-sent message, or the UI flashes back to the empty state.
       setMessages((prev) => mergeMessagesWithLive(data.messages, prev));
       setActiveTool(data.session?.activeTool ?? null);
-      if (data.session) {
-        const modelStr =
-          data.session.modelProvider && data.session.modelName
-            ? `${data.session.modelProvider}/${data.session.modelName}`
-            : "";
-        if (modelStr) setModelId(modelStr);
-        if (data.session.thinkingLevel) setThinkingLevel(data.session.thinkingLevel);
-        if (data.session.toolConfig) {
-          setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...data.session.toolConfig });
-        }
-      }
-      return data.session ?? null;
+      applySession(data.session);
     } catch (err) {
       if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {
         router.push("/dashboard/chat");
-        return null;
       }
-      return null;
     }
-  }, [sessionId, router]);
-
-  const loadSessionTitle = async () => {
-    try {
-      const data = await fetchJson<{ session: { title: string } }>(
-        `/api/chat/sessions/${sessionId}`,
-      );
-      if (data.session?.title) {
-        setSessionTitle(data.session.title);
-      }
-    } catch (err) {
-      console.error("Failed to load session title:", err);
-    }
-  };
+  }, [sessionId, router, applySession]);
 
   // Queued send while Pi is busy (409) — mirrors Pi's followUp semantics:
   // the prompt is delivered when the current run ends instead of being lost.
   const queuedSendRef = useRef<{ content: string; files?: File[] } | null>(null);
 
-  // Shared stream orchestration (declared after the loaders it references).
+  // Shared stream orchestration (declared before the message handlers it
+  // references; `onGenerationEnd` is only invoked after mount, by which time
+  // `handleSend` is initialized).
   const { connect, disconnect } = useChatStream({
     sessionId,
     eventSourceRef,
@@ -131,20 +124,7 @@ export function ChatInterface({
     onCompactionEnd: (summary?: string, tokensBefore?: number) => {
       setIsCompacting(false);
       if (summary) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `compaction-${Date.now()}`,
-            role: "compaction" as const,
-            content: summary,
-            thinking: undefined,
-            toolCalls: undefined,
-            parentMessageId: undefined,
-            createdAt: new Date().toISOString(),
-            attachments: undefined,
-            compaction: { tokensBefore: tokensBefore ?? 0 },
-          },
-        ]);
+        setMessages((prev) => [...prev, makeCompactionMessage(summary, tokensBefore ?? 0)]);
       }
     },
     onStreamError: (message) => {
@@ -165,23 +145,7 @@ export function ChatInterface({
 
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
-      const userMsg: Message = {
-        id: `temp-${Date.now()}`,
-        role: "user",
-        content,
-        thinking: undefined,
-        toolCalls: undefined,
-        parentMessageId: undefined,
-        createdAt: new Date().toISOString(),
-        attachments:
-          files?.map((f) => ({
-            id: `temp-${f.name}-${f.size}`,
-            storageId: `temp-${f.name}`,
-            fileName: f.name,
-            mimeType: f.type,
-            size: f.size,
-          })) ?? undefined,
-      };
+      const userMsg = makeTempUserMessage(content, files);
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
 
@@ -189,38 +153,18 @@ export function ChatInterface({
       abortRef.current = abortController;
 
       try {
-        let res: Response;
+        const result = await sendChatMessage(sessionId, content, files, abortController.signal);
 
-        if (files && files.length > 0) {
-          const formData = new FormData();
-          formData.append("content", content);
-          for (const file of files) {
-            formData.append("files", file);
-          }
-          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
-            method: "POST",
-            body: formData,
-          });
-        } else {
-          res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content }),
-          });
-        }
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          if (res.status === 404) {
+        switch (result.kind) {
+          case "not-found":
             router.push("/dashboard/chat");
             return;
-          }
-          if (res.status === 409) {
+          case "conflict":
             // Pi is genuinely busy (the active flag now tracks session.
             // isStreaming, so this only fires while a real generation runs).
             // Don't let the typed message vanish silently — queue it and
             // deliver it when the run ends (Pi's followUp semantics).
-            setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
+            setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
             queuedSendRef.current = files && files.length > 0 ? { content, files } : { content };
             toast.info("Message queued", {
               description: "Pi is still working — your message will be sent when it finishes.",
@@ -228,37 +172,33 @@ export function ChatInterface({
             void loadMessages();
             connect();
             return;
-          }
-          throw new Error(`Failed to send message: ${body.error || res.statusText}`);
+          case "error":
+            throw new Error(result.message);
+          case "ok":
+            // Swap the optimistic temp message for the real DB message.
+            setMessages((prev) =>
+              prev.map((m) =>
+                isTempUserMessage(m)
+                  ? {
+                      ...m,
+                      id: result.message.id,
+                      createdAt: result.message.createdAt,
+                      attachments: result.message.attachments?.length
+                        ? result.message.attachments
+                        : undefined,
+                    }
+                  : m,
+              ),
+            );
+            // Connect to the SSE stream — the server prompts and streams
+            // events. A keep-alive observer connection is already open, but
+            // it was decided when the chat was idle, so it never claims the
+            // pending prompt. Reconnect to force the server to re-decide
+            // (prompt) and dispatch the message to the LLM immediately.
+            disconnect();
+            connect();
+            return;
         }
-
-        const data = await res.json();
-
-        // Update temp user message with real ID
-        if (data.message) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id.startsWith("temp-")
-                ? {
-                    ...m,
-                    id: data.message.id,
-                    createdAt: data.message.createdAt,
-                    attachments: data.message.attachments?.length
-                      ? data.message.attachments
-                      : undefined,
-                  }
-                : m,
-            ),
-          );
-        }
-
-        // Connect to the SSE stream — the server prompts and streams events.
-        // A keep-alive observer connection is already open, but it was
-        // decided when the chat was idle, so it never claims the pending
-        // prompt. Reconnect to force the server to re-decide (prompt) and
-        // dispatch the message to the LLM immediately.
-        disconnect();
-        connect();
       } catch (err) {
         setIsLoading(false);
         // The message never reached the DB — drop the optimistic copy so a
@@ -267,7 +207,7 @@ export function ChatInterface({
         // failure would leave it stuck forever). Skip on abort: that only
         // happens on unmount, where the component is going away anyway.
         if (!(err instanceof Error && err.name === "AbortError")) {
-          setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
+          setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
           console.error("Send error:", err);
           toast.error("Failed to send message", {
             description: err instanceof Error ? err.message : "Something went wrong.",
@@ -275,8 +215,7 @@ export function ChatInterface({
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, router, connect, disconnect, loadMessages, eventSourceRef],
+    [sessionId, router, connect, disconnect, loadMessages],
   );
 
   const handleEditMessage = useCallback(
@@ -327,20 +266,7 @@ export function ChatInterface({
 
     // Add optimistic compaction message so the user sees feedback immediately
     const optimisticId = `temp-compaction-${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: optimisticId,
-        role: "compaction" as const,
-        content: "",
-        thinking: undefined,
-        toolCalls: undefined,
-        parentMessageId: undefined,
-        createdAt: new Date().toISOString(),
-        attachments: undefined,
-        compaction: { tokensBefore: 0 },
-      },
-    ]);
+    setMessages((prev) => [...prev, makeCompactionMessage("", 0, optimisticId)]);
 
     fetch(`/api/chat/sessions/${sessionId}/compact`, { method: "POST" })
       .then(async (res) => {
@@ -380,11 +306,10 @@ export function ChatInterface({
 
   // ─── Effects ─────────────────────────────────────────────────────────────
 
-  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     const init = async () => {
       await loadMessages();
-      loadSessionTitle();
+      await loadSessionTitle();
       // Always connect — the server decides what to do: prompt an unanswered
       // message, observe a live generation (any process), or report done for
       // an idle chat. The connection stays open to pick up future
@@ -392,15 +317,15 @@ export function ChatInterface({
       connect();
     };
 
-    init();
+    void init();
 
     return () => {
       disconnect();
     };
-  }, [sessionId]);
-  /* eslint-enable react-hooks/exhaustive-deps */
+  }, [sessionId, connect, disconnect, loadMessages, loadSessionTitle]);
 
-  // Temporary session auto-delete on unmount
+  // Temporary session auto-delete on unmount (only after the tab has been
+  // open long enough to be a real visit, and never while a generation runs).
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
   const mountTimeRef = useRef(0);
@@ -463,66 +388,6 @@ export function ChatInterface({
     };
   }, [disconnect]);
 
-  // ─── Title & settings ────────────────────────────────────────────────────
-
-  const handleSaveTitle = useCallback(
-    async (newTitle: string) => {
-      const sanitized = newTitle.replace(/\0/g, "").slice(0, 50).trim();
-      if (!sanitized) return;
-      setSessionTitle(sanitized);
-      setEditingTitle(false);
-      try {
-        await patchJson(`/api/chat/sessions/${sessionId}`, { title: sanitized });
-        window.dispatchEvent(new CustomEvent("chat-renamed"));
-      } catch (err) {
-        console.error("Failed to save session title:", err);
-      }
-    },
-    [sessionId],
-  );
-
-  const handleToggleTool = useCallback(
-    async (category: keyof ToolConfig) => {
-      const updated = { ...toolConfig, [category]: !toolConfig[category] };
-      setToolConfig(updated);
-      try {
-        await patchJson(`/api/chat/sessions/${sessionId}`, { toolConfig: updated });
-      } catch (err) {
-        console.error("Failed to save tool config:", err);
-      }
-    },
-    [toolConfig, sessionId],
-  );
-
-  // Persist model/thinking changes (debounced)
-  const prevModelIdRef = useRef(modelId);
-  const prevThinkingLevelRef = useRef(thinkingLevel);
-
-  useEffect(() => {
-    if (!modelId && thinkingLevel === "off") return;
-    if (modelId === prevModelIdRef.current && thinkingLevel === prevThinkingLevelRef.current)
-      return;
-
-    const saveTimer = setTimeout(async () => {
-      const [provider, ...modelParts] = modelId.split("/");
-      try {
-        await patchJson(`/api/chat/sessions/${sessionId}`, {
-          modelProvider: provider || undefined,
-          modelName: modelParts.join("/") || undefined,
-          thinkingLevel,
-        });
-      } catch (err) {
-        console.error("Failed to persist model/thinking settings:", err);
-      }
-    }, 300);
-    return () => clearTimeout(saveTimer);
-  }, [modelId, thinkingLevel, sessionId]);
-
-  useEffect(() => {
-    prevModelIdRef.current = modelId;
-    prevThinkingLevelRef.current = thinkingLevel;
-  });
-
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
@@ -546,7 +411,7 @@ export function ChatInterface({
             setEditingTitle(false);
             setTitleDraft(sessionTitle);
           }}
-          onSaveTitle={handleSaveTitle}
+          onSaveTitle={saveTitle}
           onModelChange={setModelId}
           onThinkingChange={setThinkingLevel}
         />
@@ -573,7 +438,7 @@ export function ChatInterface({
         isLoading={isLoading}
         onStop={handleStop}
         toolConfig={toolConfig}
-        onToggleTool={handleToggleTool}
+        onToggleTool={toggleTool}
         tokenUsage={tokenUsage}
         isCompacting={isCompacting}
         onCompact={handleCompact}
