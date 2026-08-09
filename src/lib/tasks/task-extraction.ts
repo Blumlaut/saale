@@ -192,29 +192,21 @@ async function extractSingleEmail(
 }
 
 /**
- * Check if a task with similar title already exists.
- * Scoped to the user's own tasks.
+ * Check if a task with a similar title already exists.
+ * Uses DB-level case-insensitive substring matching (scoped to the user's pending tasks).
  */
 async function checkDuplicate(task: ExtractedTask, userId: string): Promise<boolean> {
-  const normalizedTitle = task.title.toLowerCase().trim();
-
   const existing = await prisma.task.findMany({
     where: {
       userId,
       status: "pending",
+      title: { contains: task.title, mode: "insensitive" },
     },
-    take: 50,
-    select: { title: true },
+    take: 5,
+    select: { id: true, title: true },
   });
 
-  return existing.some((e) => {
-    const existingTitle = e.title.toLowerCase().trim();
-    return (
-      existingTitle === normalizedTitle ||
-      existingTitle.includes(normalizedTitle) ||
-      normalizedTitle.includes(existingTitle)
-    );
-  });
+  return existing.length > 0;
 }
 
 /**
