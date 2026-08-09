@@ -111,43 +111,88 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
       }),
       execute: async (_toolCallId, params) => {
         const limit = Math.min(params.limit ?? 10, 50);
-
-        // Build raw query for full-text search with optional filters
         const searchQuery = params.query.trim();
         const collectionFilter = params.collection;
         const tagsFilter = params.tags;
 
-        // Use raw query for full-text search with tsvector (parameterized via Prisma.sql)
-        const results = await prisma.$queryRaw<
-          Array<{
-            id: string;
-            collection: string;
-            title: string;
-            content: string;
-            tags: string[];
-            importance: number;
-            accessCount: number;
-            createdAt: Date;
-            updatedAt: Date;
-            rank: number;
-          }>
-        >(
-          Prisma.sql`
-            SELECT id, collection, title, content, tags, importance, "accessCount", "createdAt", "updatedAt",
-                   ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')), plainto_tsquery('english', ${searchQuery})) AS rank
-            FROM "Memory"
-            WHERE "userId" = ${userId}
-              AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')) @@ plainto_tsquery('english', ${searchQuery})
-              ${collectionFilter ? Prisma.sql`AND collection = ${collectionFilter}` : Prisma.empty}
-              ${
-                tagsFilter && tagsFilter.length > 0
-                  ? Prisma.sql`AND tags && ${tagsFilter}::text[]`
-                  : Prisma.empty
-              }
-            ORDER BY rank DESC
-            LIMIT ${limit}
-          `,
-        );
+        // Guard: empty/whitespace queries would produce an empty tsquery matching everything
+        if (!searchQuery) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ count: 0, memories: [], error: "Query is empty" }, null, 2),
+              },
+            ],
+            details: { count: 0 },
+          };
+        }
+
+        // Try full-text search first, fall back to simple contains on error
+        let results: Array<{
+          id: string;
+          collection: string;
+          title: string;
+          content: string;
+          tags: string[];
+          importance: number;
+          accessCount: number;
+          createdAt: Date;
+          updatedAt: Date;
+        }>;
+
+        try {
+          const ftsResults = await prisma.$queryRaw<
+            Array<{
+              id: string;
+              collection: string;
+              title: string;
+              content: string;
+              tags: string[];
+              importance: number;
+              accessCount: number;
+              createdAt: Date;
+              updatedAt: Date;
+              rank: number;
+            }>
+          >(
+            Prisma.sql`
+              SELECT id, collection, title, content, tags, importance, "accessCount", "createdAt", "updatedAt",
+                     ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')), plainto_tsquery('english', ${searchQuery})) AS rank
+              FROM "Memory"
+              WHERE "userId" = ${userId}
+                AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')) @@ plainto_tsquery('english', ${searchQuery})
+                ${collectionFilter ? Prisma.sql`AND collection = ${collectionFilter}` : Prisma.empty}
+                ${
+                  tagsFilter && tagsFilter.length > 0
+                    ? Prisma.sql`AND tags && ${tagsFilter}::text[]`
+                    : Prisma.empty
+                }
+              ORDER BY rank DESC
+              LIMIT ${limit}
+            `,
+          );
+          results = ftsResults;
+        } catch (err) {
+          console.error("memory_search FTS failed, falling back to contains:", err);
+
+          // Fallback: simple case-insensitive contains search via Prisma ORM
+          const where: Record<string, unknown> = {
+            userId,
+            OR: [
+              { title: { contains: searchQuery, mode: "insensitive" } },
+              { content: { contains: searchQuery, mode: "insensitive" } },
+            ],
+          };
+          if (collectionFilter) where.collection = collectionFilter;
+          if (tagsFilter && tagsFilter.length > 0) where.tags = { hasSome: tagsFilter };
+
+          results = await prisma.memory.findMany({
+            where,
+            orderBy: { updatedAt: "desc" },
+            take: limit,
+          });
+        }
 
         // Increment accessCount for returned memories (bulk update, scoped to user)
         const memoryIds = results.map((r) => r.id);
