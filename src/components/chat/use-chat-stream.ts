@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type { ApprovalData, Message, ToolCallData } from "./types";
+import type { ApprovalData, Message } from "./types";
 import type { TokenUsage } from "./input-bar";
+import { streamReducer, type StreamAction } from "@/lib/chat/stream-reducer";
 
 /**
  * How long the client tolerates silence from the SSE connection before
@@ -26,6 +27,11 @@ const WATCHDOG_TICK_MS = 15_000;
  * picked up live. Transport errors are handled by the browser's EventSource
  * auto-retry, which sends `Last-Event-ID` — the server replays buffered
  * events from there, so the client self-heals without manual reconnection.
+ *
+ * All message-state transitions are handled by the pure `streamReducer`
+ * (unit-tested in `__tests__/lib/chat/stream-reducer.test.ts`); this module
+ * only parses event JSON, dispatches actions, and runs side effects
+ * (loading flags, approvals, sidebar markers, DB reloads).
  *
  * Server events:
  * - `turn_start { turnId }` — create a streaming message for the turn
@@ -163,33 +169,24 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   };
 
   /**
-   * Ensure a streaming message exists for a turnId. Returns the updated
-   * array (replaying events may arrive without the preceding turn_start,
-   * e.g. when the buffer was trimmed).
+   * Route a parsed stream event through the pure reducer. All message-state
+   * transitions live there (unit-tested); here we only glue React state.
    */
-  const ensureTurnMessage = (
-    prev: Message[],
-    turnId: string,
-    patch?: Partial<Message>,
-  ): Message[] => {
-    const id = `streaming-${turnId}`;
-    if (prev.some((m) => m.id === id)) {
-      return prev.map((m) => (m.id === id ? { ...m, ...patch } : m));
+  const dispatch = (action: StreamAction) => {
+    setMessages(
+      (prev) =>
+        streamReducer({ messages: prev, rootMessageId: rootMessageIdRef.current }, action).messages,
+    );
+  };
+
+  /** Parse an SSE payload; malformed events are logged and dropped. */
+  const parseEvent = <T>(data: string): T | null => {
+    try {
+      return JSON.parse(data) as T;
+    } catch (err) {
+      console.error("Malformed SSE event:", err);
+      return null;
     }
-    return [
-      ...prev,
-      {
-        id,
-        role: "assistant",
-        content: "",
-        thinking: undefined,
-        toolCalls: undefined,
-        parentMessageId: rootMessageIdRef.current || undefined,
-        createdAt: new Date().toISOString(),
-        attachments: undefined,
-        ...patch,
-      },
-    ];
   };
 
   /**
@@ -201,7 +198,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   const handleDone = () => {
     loadingSet = false;
     opts.setIsLoading(false);
-    setMessages((prev) => prev.filter((m) => !m.id.startsWith("streaming-")));
+    dispatch({ type: "generation_done" });
     // A `done` means the generation ended, so its approvals are resolved or
     // moot — drop any card that a missed resolution event left behind.
     opts.setPendingApprovals([]);
@@ -213,179 +210,109 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     void opts.onReload();
   };
 
-  // ── Turn start: create the streaming message ───────────────────────────
+  // ── Turn lifecycle: all state changes go through the reducer ──────────
   eventSource.addEventListener("turn_start", (event: MessageEvent) => {
     markLoading();
-    const parsed = JSON.parse(event.data) as { turnId: string };
-    setMessages((prev) => ensureTurnMessage(prev, parsed.turnId));
+    const parsed = parseEvent<{ turnId: string }>(event.data);
+    if (parsed) dispatch({ type: "turn_start", turnId: parsed.turnId });
   });
 
-  // ── Token: update streaming message content ───────────────────────────
   eventSource.addEventListener("token", (event: MessageEvent) => {
     markLoading();
-    let parsed: { turnId: string; text: string };
-    try {
-      parsed = JSON.parse(event.data) as { turnId: string; text: string };
-    } catch (err) {
-      console.error("Malformed token event:", err);
-      return;
-    }
-    setMessages((prev) => ensureTurnMessage(prev, parsed.turnId, { content: parsed.text }));
+    const parsed = parseEvent<{ turnId: string; text: string }>(event.data);
+    if (parsed) dispatch({ type: "token", turnId: parsed.turnId, text: parsed.text });
   });
 
-  // ── Thinking: update streaming message thinking ───────────────────────
   eventSource.addEventListener("thinking", (event: MessageEvent) => {
     markLoading();
-    let parsed: { turnId: string; thinking: string };
-    try {
-      parsed = JSON.parse(event.data) as { turnId: string; thinking: string };
-    } catch (err) {
-      console.error("Malformed thinking event:", err);
-      return;
-    }
-    setMessages((prev) =>
-      ensureTurnMessage(prev, parsed.turnId, {
-        thinking: parsed.thinking || undefined,
-      }),
-    );
+    const parsed = parseEvent<{ turnId: string; thinking: string }>(event.data);
+    if (parsed) dispatch({ type: "thinking", turnId: parsed.turnId, thinking: parsed.thinking });
   });
 
-  // ── Tool start: add running tool call to the turn ─────────────────────
   eventSource.addEventListener("tool_start", (event: MessageEvent) => {
     markLoading();
-    let parsed: {
+    const parsed = parseEvent<{
       turnId: string;
       toolCallId: string;
       toolName: string;
       args: Record<string, unknown>;
-    };
-    try {
-      parsed = JSON.parse(event.data) as typeof parsed;
-    } catch (err) {
-      console.error("Malformed tool_start event:", err);
-      return;
+    }>(event.data);
+    if (parsed) {
+      dispatch({
+        type: "tool_start",
+        turnId: parsed.turnId,
+        toolCallId: parsed.toolCallId,
+        toolName: parsed.toolName,
+        args: parsed.args,
+      });
     }
-    setMessages((prev) => {
-      const id = `streaming-${parsed.turnId}`;
-      const existing = prev.find((m) => m.id === id);
-      if (!existing) {
-        return ensureTurnMessage(prev, parsed.turnId, {
-          toolCalls: [buildRunningToolCall(parsed)],
-        });
-      }
-      // Dedupe — the same tool call may be re-delivered on reconnect.
-      if (existing.toolCalls?.some((tc) => tc.id === parsed.toolCallId)) return prev;
-      return prev.map((m) =>
-        m.id === id
-          ? { ...m, toolCalls: [...(m.toolCalls || []), buildRunningToolCall(parsed)] }
-          : m,
-      );
-    });
   });
 
-  // ── Tool update: live progress from a running tool (Pi's
-  //    tool_execution_update — e.g. bash streaming output). Proves the run is
-  //    alive and shows partial output in the running tool card. ────────────
   eventSource.addEventListener("tool_update", (event: MessageEvent) => {
     markLoading();
-    let parsed: { turnId: string; toolCallId: string; partialResult?: string };
-    try {
-      parsed = JSON.parse(event.data) as typeof parsed;
-    } catch (err) {
-      console.error("Malformed tool_update event:", err);
-      return;
-    }
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== `streaming-${parsed.turnId}` || !m.toolCalls) return m;
-        return {
-          ...m,
-          toolCalls: m.toolCalls.map((tc) =>
-            tc.id === parsed.toolCallId && tc.status === "running"
-              ? { ...tc, result: parsed.partialResult ?? undefined }
-              : tc,
-          ),
-        };
-      }),
+    const parsed = parseEvent<{ turnId: string; toolCallId: string; partialResult?: string }>(
+      event.data,
     );
+    if (parsed) {
+      dispatch({
+        type: "tool_update",
+        turnId: parsed.turnId,
+        toolCallId: parsed.toolCallId,
+        ...(parsed.partialResult !== undefined ? { partialResult: parsed.partialResult } : {}),
+      });
+    }
   });
 
-  // ── Tool end: update tool call status ─────────────────────────────────
   eventSource.addEventListener("tool_end", (event: MessageEvent) => {
     markLoading();
-    let parsed: { turnId: string; toolCallId: string; result?: string; isError?: boolean };
-    try {
-      parsed = JSON.parse(event.data) as typeof parsed;
-    } catch (err) {
-      console.error("Malformed tool_end event:", err);
-      return;
+    const parsed = parseEvent<{
+      turnId: string;
+      toolCallId: string;
+      result?: string;
+      isError?: boolean;
+    }>(event.data);
+    if (parsed) {
+      dispatch({
+        type: "tool_end",
+        turnId: parsed.turnId,
+        toolCallId: parsed.toolCallId,
+        ...(parsed.result !== undefined ? { result: parsed.result } : {}),
+        ...(parsed.isError !== undefined ? { isError: parsed.isError } : {}),
+      });
     }
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== `streaming-${parsed.turnId}` || !m.toolCalls) return m;
-        return {
-          ...m,
-          toolCalls: m.toolCalls.map((tc) =>
-            tc.id === parsed.toolCallId
-              ? {
-                  ...tc,
-                  status: parsed.isError ? ("error" as const) : ("completed" as const),
-                  result: parsed.result ?? undefined,
-                  error: parsed.isError ? (parsed.result ?? undefined) : undefined,
-                }
-              : tc,
-          ),
-        };
-      }),
-    );
   });
 
-  // ── Turn end: finalize current turn (safety net for the final token) ──
   eventSource.addEventListener("turn_end", (event: MessageEvent) => {
     markLoading();
-    let parsed: { turnId: string; text?: string; thinking?: string | null };
-    try {
-      parsed = JSON.parse(event.data) as typeof parsed;
-    } catch (err) {
-      console.error("Malformed turn_end event:", err);
-      return;
-    }
-    setMessages((prev) =>
-      ensureTurnMessage(prev, parsed.turnId, {
-        ...(parsed.text ? { content: parsed.text } : {}),
-        ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
-      }),
+    const parsed = parseEvent<{ turnId: string; text?: string; thinking?: string | null }>(
+      event.data,
     );
+    if (parsed) {
+      dispatch({
+        type: "turn_end",
+        turnId: parsed.turnId,
+        ...(parsed.text !== undefined ? { text: parsed.text } : {}),
+        ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
+      });
+    }
   });
 
   // ── Message saved: swap temp ID with real DB ID ───────────────────────
   eventSource.addEventListener("message_saved", (event: MessageEvent) => {
-    let parsed: { turnId: string; messageId: string };
-    try {
-      parsed = JSON.parse(event.data) as typeof parsed;
-    } catch (err) {
-      console.error("Malformed message_saved event:", err);
-      return;
-    }
+    const parsed = parseEvent<{ turnId: string; messageId: string }>(event.data);
+    if (!parsed) return;
     // First saved message of a generation = the root (parent of later turns).
     if (!rootMessageIdRef.current) {
       rootMessageIdRef.current = parsed.messageId;
     }
-    setMessages((prev) =>
-      prev.map((m) => (m.id === `streaming-${parsed.turnId}` ? { ...m, id: parsed.messageId } : m)),
-    );
+    dispatch({ type: "message_saved", turnId: parsed.turnId, messageId: parsed.messageId });
   });
 
   // ── Approval request ──────────────────────────────────────────────────
   eventSource.addEventListener("tool_approval_request", (event: MessageEvent) => {
     markLoading();
-    let parsed: ApprovalData;
-    try {
-      parsed = JSON.parse(event.data) as ApprovalData;
-    } catch (err) {
-      console.error("Malformed tool_approval_request event:", err);
-      return;
-    }
+    const parsed = parseEvent<ApprovalData>(event.data);
+    if (!parsed) return;
     opts.setPendingApprovals((prev) => {
       if (prev.some((a) => a.toolCallId === parsed.toolCallId)) return prev;
       return [...prev, parsed];
@@ -396,13 +323,8 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   // Removes the card so a request that was decided elsewhere (or expired)
   // can never linger as a stuck "awaiting approval".
   eventSource.addEventListener("tool_approval_resolved", (event: MessageEvent) => {
-    let parsed: { toolCallId: string; approved: boolean };
-    try {
-      parsed = JSON.parse(event.data) as typeof parsed;
-    } catch (err) {
-      console.error("Malformed tool_approval_resolved event:", err);
-      return;
-    }
+    const parsed = parseEvent<{ toolCallId: string; approved: boolean }>(event.data);
+    if (!parsed) return;
     opts.setPendingApprovals((prev) => prev.filter((a) => a.toolCallId !== parsed.toolCallId));
   });
 
@@ -410,27 +332,16 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   // Replaces the local list so stale cards — resolved elsewhere, expired,
   // or orphaned by a crashed generation — are dropped on reconnection.
   eventSource.addEventListener("approvals_snapshot", (event: MessageEvent) => {
-    let parsed: { approvals?: ApprovalData[] };
-    try {
-      parsed = JSON.parse(event.data) as typeof parsed;
-    } catch (err) {
-      console.error("Malformed approvals_snapshot event:", err);
-      return;
-    }
+    const parsed = parseEvent<{ approvals?: ApprovalData[] }>(event.data);
+    if (!parsed) return;
     opts.setPendingApprovals(parsed.approvals ?? []);
   });
 
   // ── Token usage ───────────────────────────────────────────────────────
   if (opts.onTokenUsage) {
     eventSource.addEventListener("token_usage", (event: MessageEvent) => {
-      let parsed: TokenUsage;
-      try {
-        parsed = JSON.parse(event.data) as TokenUsage;
-      } catch (err) {
-        console.error("Malformed token_usage event:", err);
-        return;
-      }
-      opts.onTokenUsage!(parsed);
+      const parsed = parseEvent<TokenUsage>(event.data);
+      if (parsed) opts.onTokenUsage!(parsed);
     });
   }
 
@@ -443,13 +354,10 @@ function wireStreamListeners(opts: StreamListenerOpts) {
 
   if (opts.onCompactionEnd) {
     eventSource.addEventListener("compaction_end", (event: MessageEvent) => {
-      let parsed: { summary?: string; tokensBefore?: number; aborted?: boolean };
-      try {
-        parsed = JSON.parse(event.data) as typeof parsed;
-      } catch (err) {
-        console.error("Malformed compaction_end event:", err);
-        return;
-      }
+      const parsed = parseEvent<{ summary?: string; tokensBefore?: number; aborted?: boolean }>(
+        event.data,
+      );
+      if (!parsed) return;
       if (!parsed.aborted) {
         opts.onCompactionEnd!(parsed.summary, parsed.tokensBefore);
       } else {
@@ -470,13 +378,8 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   eventSource.addEventListener("error", (event: MessageEvent) => {
     if (!event.data) return; // Transport error — handled by onerror
 
-    let message = "Stream error";
-    try {
-      const parsed = JSON.parse(event.data) as { message?: string };
-      message = parsed.message || message;
-    } catch {
-      console.error("Stream error (invalid JSON):", event.data);
-    }
+    const parsed = parseEvent<{ message?: string }>(event.data);
+    const message = parsed?.message || "Stream error";
     console.error("Stream error:", message);
     opts.onStreamError?.(message);
 
@@ -491,20 +394,5 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   //    the server replays buffered events, so we don't need to do anything.
   eventSource.onerror = () => {
     // Auto-reconnect handled by the browser.
-  };
-}
-
-function buildRunningToolCall(parsed: {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-}): ToolCallData {
-  return {
-    id: parsed.toolCallId,
-    name: parsed.toolName,
-    args: parsed.args,
-    status: "running",
-    result: undefined,
-    error: undefined,
   };
 }
