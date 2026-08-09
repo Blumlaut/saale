@@ -7,6 +7,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
 import { fetchJson, patchJson } from "@/lib/http";
+import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 import type { Message, ApprovalData } from "./types";
@@ -64,13 +65,11 @@ export function ChatInterface({
           activeTool?: { name: string | null; startedAt?: string | null } | null;
         };
       }>(`/api/chat/sessions/${sessionId}/messages`);
-      setMessages((prev) => [
-        ...data.messages,
-        // Live streaming messages (running tool calls, in-flight tokens) exist
-        // ONLY client-side — the DB reload must never wipe them, or the UI
-        // rolls back to an older state while Pi is still working.
-        ...prev.filter((m) => m.id.startsWith("streaming-")),
-      ]);
+      // Merge the DB snapshot with client-side-only live messages (in-flight
+      // tokens/tools + the optimistic user message whose POST hasn't resolved
+      // yet). A stale snapshot fetched before the POST committed must never
+      // wipe the just-sent message, or the UI flashes back to the empty state.
+      setMessages((prev) => mergeMessagesWithLive(data.messages, prev));
       setActiveTool(data.session?.activeTool ?? null);
       if (data.session) {
         const modelStr =
@@ -262,7 +261,18 @@ export function ChatInterface({
         connect();
       } catch (err) {
         setIsLoading(false);
-        console.error("Send error:", err);
+        // The message never reached the DB — drop the optimistic copy so a
+        // failed send can't linger as a phantom (loadMessages preserves temp
+        // user messages while a POST is in flight, so without this cleanup a
+        // failure would leave it stuck forever). Skip on abort: that only
+        // happens on unmount, where the component is going away anyway.
+        if (!(err instanceof Error && err.name === "AbortError")) {
+          setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")));
+          console.error("Send error:", err);
+          toast.error("Failed to send message", {
+            description: err instanceof Error ? err.message : "Something went wrong.",
+          });
+        }
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
