@@ -50,7 +50,11 @@ export async function handler(params: {
   const maxSessions = (config.maxSessionsPerRun as number) ?? 10;
   const maxExisting = (config.maxExistingMemories as number) ?? 15;
 
-  // Find sessions with unprocessed messages
+  // Find sessions with unprocessed messages.
+  // Cursor: lastSummarizedAt vs lastActivityAt (real message activity). NOT
+  // updatedAt — the job itself writes to the session row (cursor/summary),
+  // which bumps @updatedAt and would re-select the same sessions forever,
+  // keeping their "last activity" perpetually fresh.
   const sessions = await prisma.$queryRaw<
     Array<{
       id: string;
@@ -63,8 +67,8 @@ export async function handler(params: {
       FROM "ChatSession"
       WHERE "userId" = ${userId}
         AND "messageCount" > 0
-        AND ("lastSummarizedAt" IS NULL OR "lastSummarizedAt" < "updatedAt")
-      ORDER BY "updatedAt" DESC
+        AND ("lastSummarizedAt" IS NULL OR "lastSummarizedAt" < "lastActivityAt")
+      ORDER BY "lastActivityAt" DESC
       LIMIT ${maxSessions}
     `,
   );

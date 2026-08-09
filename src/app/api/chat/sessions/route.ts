@@ -13,7 +13,9 @@ export async function GET() {
 
   const sessions = await prisma.chatSession.findMany({
     where: { userId: authResult.user.id },
-    orderBy: { updatedAt: "desc" },
+    // Sort by real chat activity (messages sent, title edited) — NOT
+    // updatedAt, which is bumped by tool state and background jobs.
+    orderBy: { lastActivityAt: "desc" },
     take: 50,
     select: {
       id: true,
@@ -22,6 +24,7 @@ export async function GET() {
       messageCount: true,
       createdAt: true,
       updatedAt: true,
+      lastActivityAt: true,
     },
   });
 
@@ -37,6 +40,7 @@ export async function GET() {
       isGenerating: activeSessionIds.has(s.id),
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),
+      lastActivityAt: s.lastActivityAt.toISOString(),
     })),
   });
 }

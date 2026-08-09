@@ -119,6 +119,11 @@ model ChatSession {
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+  // Bumped ONLY on real chat activity (message sent/saved, title edited).
+  // Sort/display timestamps in the UI use this — NOT updatedAt, which is
+  // touched by tool state, background jobs (memory extraction, title
+  // generation), etc. and would make every chat look "active today".
+  lastActivityAt    DateTime      @default(now())
 
   @@index([userId, createdAt])
   @@index([shareToken])

@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       Array<{
         id: string;
         title: string;
-        updatedAt: Date;
+        lastActivityAt: Date;
         messageCount: number;
         similarity: number;
       }>
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         SELECT
           "ChatSession".id,
           "ChatSession".title,
-          "ChatSession"."updatedAt",
+          COALESCE("ChatSession"."lastActivityAt", "ChatSession"."updatedAt") AS "lastActivityAt",
           "ChatSession"."messageCount",
           similarity("ChatSession".title, ${trimmedQuery}) AS similarity
         FROM "ChatSession"
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
         id: row.id,
         title: row.title,
         snippet: row.title,
-        date: row.updatedAt.toISOString(),
+        date: row.lastActivityAt.toISOString(),
         score: Number(row.similarity),
         metadata: {
           messageCount: row.messageCount,

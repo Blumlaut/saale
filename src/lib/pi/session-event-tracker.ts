@@ -529,11 +529,15 @@ export function createSessionEventTracker(
           }
 
           // Unregister the active session and bump the message count once.
+          // Assistant output is real chat activity — advance lastActivityAt
+          // too (the UI's sort/display timestamp). Note: tool_execution_
+          // start/end do NOT touch it, so tool calls alone never move a chat
+          // to the top of the list.
           Promise.all([
             unregisterActiveSession(userId, sessionId),
             prisma.chatSession.update({
               where: { id: sessionId },
-              data: { messageCount: { increment: turnIndex || 1 } },
+              data: { messageCount: { increment: turnIndex || 1 }, lastActivityAt: new Date() },
             }),
           ]).catch((err) => {
             console.error("Failed to finalize session bookkeeping:", err);
