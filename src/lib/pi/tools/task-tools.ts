@@ -2,7 +2,11 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { Type } from "typebox";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { taskToResponse, buildTaskUpdateData } from "@/lib/tasks/task-api-helpers";
+import {
+  taskToResponse,
+  buildTaskUpdateData,
+  findDuplicateTasks,
+} from "@/lib/tasks/task-api-helpers";
 
 /**
  * Create task tools with userId injection for user isolation.
@@ -42,15 +46,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
       }),
       execute: async (_toolCallId, params) => {
         // Search for potential duplicates before creating
-        const existing = await prisma.task.findMany({
-          where: {
-            userId,
-            status: "pending",
-            title: { contains: params.title, mode: "insensitive" },
-          },
-          take: 5,
-          select: { id: true, title: true },
-        });
+        const existing = await findDuplicateTasks(params.title, userId);
 
         const task = await prisma.task.create({
           data: {

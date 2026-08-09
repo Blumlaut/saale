@@ -1,5 +1,23 @@
-import { describe, it, expect } from "vitest";
-import { taskToResponse, buildTaskUpdateData } from "@/lib/tasks/task-api-helpers";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  taskToResponse,
+  buildTaskUpdateData,
+  findDuplicateTasks,
+} from "@/lib/tasks/task-api-helpers";
+
+// Mock prisma for findDuplicateTasks
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    task: {
+      findMany: vi.fn(),
+    },
+  },
+}));
+
+// Import mock for assertions
+import * as db from "@/lib/db";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockTask = db.prisma.task as any;
 
 // Factory to create a Prisma-style Task record (with Date fields)
 function makeTask(overrides = {}) {
@@ -150,5 +168,75 @@ describe("buildTaskUpdateData", () => {
   it("handles description as string", () => {
     const result = buildTaskUpdateData({ description: "New description" });
     expect(result.description).toBe("New description");
+  });
+});
+
+describe("findDuplicateTasks", () => {
+  const userId = "user-123";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns empty array when no duplicates found", async () => {
+    mockTask.findMany.mockResolvedValue([]);
+
+    const result = await findDuplicateTasks("Buy groceries", userId);
+
+    expect(result).toEqual([]);
+    expect(mockTask.findMany).toHaveBeenCalledWith({
+      where: {
+        userId,
+        status: "pending",
+        title: { contains: "Buy groceries", mode: "insensitive" },
+      },
+      take: 5,
+      select: { id: true, title: true },
+    });
+  });
+
+  it("returns matching pending tasks", async () => {
+    mockTask.findMany.mockResolvedValue([
+      { id: "task-a", title: "Buy groceries for dinner" },
+      { id: "task-b", title: "Groceries shopping list" },
+    ]);
+
+    const result = await findDuplicateTasks("groceries", userId);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.id).toBe("task-a");
+    expect(result[1]?.id).toBe("task-b");
+  });
+
+  it("is scoped to the given user", async () => {
+    mockTask.findMany.mockResolvedValue([]);
+
+    await findDuplicateTasks("test", "other-user");
+
+    expect(mockTask.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: "other-user" }),
+      }),
+    );
+  });
+
+  it("only searches pending tasks", async () => {
+    mockTask.findMany.mockResolvedValue([]);
+
+    await findDuplicateTasks("test", userId);
+
+    expect(mockTask.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: "pending" }),
+      }),
+    );
+  });
+
+  it("caps results at 5", async () => {
+    mockTask.findMany.mockResolvedValue([]);
+
+    await findDuplicateTasks("test", userId);
+
+    expect(mockTask.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5 }));
   });
 });

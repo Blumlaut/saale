@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { dispatchAiJob } from "@/lib/queue/job-handler";
+import { findDuplicateTasks } from "@/lib/tasks/task-api-helpers";
 
 export interface ExtractedTask {
   title: string;
@@ -104,8 +105,8 @@ export async function extractTasksFromEmails(params: {
           if (!taskData.title) continue;
 
           // Dedup check (scoped to user)
-          const isDuplicate = await checkDuplicate(taskData, params.userId);
-          if (isDuplicate) {
+          const duplicates = await findDuplicateTasks(taskData.title, params.userId);
+          if (duplicates.length > 0) {
             tasksSkipped++;
             continue;
           }
@@ -189,24 +190,6 @@ async function extractSingleEmail(
     console.warn(`[task-extraction] Failed to parse AI response:`, text.slice(0, 200));
     return [];
   }
-}
-
-/**
- * Check if a task with a similar title already exists.
- * Uses DB-level case-insensitive substring matching (scoped to the user's pending tasks).
- */
-async function checkDuplicate(task: ExtractedTask, userId: string): Promise<boolean> {
-  const existing = await prisma.task.findMany({
-    where: {
-      userId,
-      status: "pending",
-      title: { contains: task.title, mode: "insensitive" },
-    },
-    take: 5,
-    select: { id: true, title: true },
-  });
-
-  return existing.length > 0;
 }
 
 /**
