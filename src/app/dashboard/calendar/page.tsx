@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchJson } from "@/lib/http";
 import { startOfWeekUTC } from "@/lib/calendar/date-utils";
 import type { CalendarEvent } from "@/types/shared";
+import { Page, PageHeader, PageScroll } from "@/components/layout/page";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { CalendarSidebar } from "@/components/calendar/calendar-sidebar";
 import { MonthView } from "@/components/calendar/month-view";
@@ -151,101 +152,97 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <GlassPanel className="rounded-xl p-2">
-            <CalendarIcon className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
-          </GlassPanel>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight md:text-2xl">Calendar</h1>
-            <p className="text-muted-foreground text-xs md:text-sm">
-              {events.length} event{events.length !== 1 ? "s" : ""} this {view}
-            </p>
+    <Page>
+      {/* Header — pinned, never scrolls */}
+      <PageHeader
+        title="Calendar"
+        description={`${events.length} event${events.length !== 1 ? "s" : ""} this ${view}`}
+        icon={<CalendarIcon className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />}
+        actions={
+          <Button
+            size="sm"
+            onClick={() => {
+              setSelectedDate(new Date());
+              setCreateDialogOpen(true);
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            New Event
+          </Button>
+        }
+      />
+
+      {/* Sidebar + calendar — scrolls internally */}
+      <PageScroll>
+        <div className="flex flex-col gap-4 md:flex-row">
+          <CalendarSidebar accounts={accounts} onAccountsChange={loadAccounts} />
+
+          {/* Main content */}
+          <div className="min-w-0 flex-1">
+            <GlassPanel>
+              <GlassPanelContent className="space-y-4 p-4">
+                {/* Toolbar */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={goToToday}>
+                      Today
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate(1)}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <h2 className="ml-2 text-sm font-semibold md:text-base">{formatDateRange()}</h2>
+                  </div>
+
+                  <Tabs value={view} onValueChange={(v) => setView(v as "month" | "week" | "day")}>
+                    <TabsList className="h-7">
+                      <TabsTrigger value="month" className="text-xs">
+                        Month
+                      </TabsTrigger>
+                      <TabsTrigger value="week" className="text-xs">
+                        Week
+                      </TabsTrigger>
+                      <TabsTrigger value="day" className="text-xs">
+                        Day
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                {/* View */}
+                {loading ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+                  </div>
+                ) : view === "month" ? (
+                  <MonthView
+                    date={currentDate}
+                    events={events}
+                    onDateClick={handleDateClick}
+                    onEventClick={handleEventClick}
+                  />
+                ) : view === "week" ? (
+                  <WeekView
+                    date={currentDate}
+                    events={events}
+                    onEventClick={handleEventClick}
+                    onTimeSlotClick={handleDateClick}
+                  />
+                ) : (
+                  <DayView
+                    date={currentDate}
+                    events={events}
+                    onEventClick={handleEventClick}
+                    onTimeSlotClick={handleDateClick}
+                  />
+                )}
+              </GlassPanelContent>
+            </GlassPanel>
           </div>
         </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            setSelectedDate(new Date());
-            setCreateDialogOpen(true);
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Event
-        </Button>
-      </div>
-
-      {/* Sidebar — stacks above calendar on mobile */}
-      <div className="flex flex-col gap-4 md:flex-row">
-        <CalendarSidebar accounts={accounts} onAccountsChange={loadAccounts} />
-
-        {/* Main content */}
-        <div className="min-w-0 flex-1">
-          <GlassPanel>
-            <GlassPanelContent className="space-y-4 p-4">
-              {/* Toolbar */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={goToToday}>
-                    Today
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => navigate(1)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <h2 className="ml-2 text-sm font-semibold md:text-base">{formatDateRange()}</h2>
-                </div>
-
-                <Tabs value={view} onValueChange={(v) => setView(v as "month" | "week" | "day")}>
-                  <TabsList className="h-7">
-                    <TabsTrigger value="month" className="text-xs">
-                      Month
-                    </TabsTrigger>
-                    <TabsTrigger value="week" className="text-xs">
-                      Week
-                    </TabsTrigger>
-                    <TabsTrigger value="day" className="text-xs">
-                      Day
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-
-              {/* View */}
-              {loading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-                </div>
-              ) : view === "month" ? (
-                <MonthView
-                  date={currentDate}
-                  events={events}
-                  onDateClick={handleDateClick}
-                  onEventClick={handleEventClick}
-                />
-              ) : view === "week" ? (
-                <WeekView
-                  date={currentDate}
-                  events={events}
-                  onEventClick={handleEventClick}
-                  onTimeSlotClick={handleDateClick}
-                />
-              ) : (
-                <DayView
-                  date={currentDate}
-                  events={events}
-                  onEventClick={handleEventClick}
-                  onTimeSlotClick={handleDateClick}
-                />
-              )}
-            </GlassPanelContent>
-          </GlassPanel>
-        </div>
-      </div>
+      </PageScroll>
 
       {/* View Event Sheet */}
       <EventViewSheet
@@ -264,6 +261,6 @@ export default function CalendarPage() {
         date={selectedDate}
         onSuccess={handleEventCreated}
       />
-    </div>
+    </Page>
   );
 }

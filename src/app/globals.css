@@ -192,6 +192,20 @@
   }
 }
 
+/* ===== Scrollable tab strips =====
+
+Tab strips (TabsList inside overflow-x-auto) must stay swipe-scrollable but
+should not show a horizontal scrollbar — it overlaps the tabs on desktop
+(where classic scrollbars take layout space) and looks glitchy. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ===== App shell (desktop + mobile) ===== */
 
 /* Page wrapper — flex-1 fills <main>, overflow hidden so child pages
@@ -224,8 +238,13 @@
   }
 }
 
-/* ===== Glass utilities ===== */
+/* ===== Glass utilities =====
 
+These live in the `components` layer so Tailwind utilities (e.g. `hidden`,
+`rounded-xl`, `border-0`) can override them. Un-layered CSS would beat every
+utility — breaking `hidden` on GlassPanels and silently ignoring radius/border
+overrides. */
+@layer components {
 .glass-panel {
   @apply relative flex flex-col overflow-hidden rounded-2xl border border-white/20 bg-white/60 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-white/5;
 }
@@ -365,6 +384,7 @@
 
 .dark .liquid-glass-destructive:hover {
   background: rgba(255, 69, 58, 0.28);
+}
 }
 
 /* ===== Syntax highlighting (rehype-highlight / hljs) ===== */

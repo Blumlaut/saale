@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AdminNav } from "@/components/admin/admin-nav";
+import { MobileNav } from "@/components/layout/mobile-nav";
 
 // All admin pages require auth + admin role and redirect if unauthenticated —
 // no point prerendering them as static content.
@@ -32,13 +33,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </main>
       </div>
 
-      {/* Mobile layout */}
+      {/* Mobile layout — bottom nav provides navigation back to the dashboard */}
       <div className="mobile-shell md:hidden">
         <main className="flex flex-col overflow-hidden p-4 pb-20">
           <div className="page-wrapper">
             <div className="flex h-full flex-col gap-4 overflow-hidden">{children}</div>
           </div>
         </main>
+        <MobileNav />
       </div>
     </div>
   );

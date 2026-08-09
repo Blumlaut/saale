@@ -19,7 +19,8 @@ export function MobileNav() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/80 backdrop-blur-xl md:hidden dark:bg-black/60">
-      <div className="flex h-14 items-center justify-around px-2">
+      {/* flex-1 + min-w-0 keeps 6 items on 320px screens; truncate is a safety net */}
+      <div className="flex h-14 items-center px-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
@@ -29,12 +30,17 @@ export function MobileNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors",
+                "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 transition-colors",
                 isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
               <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
-              <span className={cn("text-[10px] font-medium", isActive && "text-foreground")}>
+              <span
+                className={cn(
+                  "max-w-full truncate text-[10px] font-medium",
+                  isActive && "text-foreground",
+                )}
+              >
                 {item.label}
               </span>
             </Link>

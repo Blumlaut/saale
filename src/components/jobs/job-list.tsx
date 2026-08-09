@@ -252,12 +252,12 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
   const jobSchema = selectedJob ? schemas.find((s) => s.type === selectedJob.type) : null;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-5">
+    <div className="grid min-h-0 gap-4 lg:grid-cols-5">
       {/* Job list */}
-      <div className="lg:col-span-2">
+      <div className="min-w-0 lg:col-span-2">
         <GlassPanel className="h-full">
           <GlassPanelHeader title="Jobs" />
-          <GlassPanelContent className="p-0">
+          <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
@@ -277,11 +277,16 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
                         selectedJob?.id === job.id && "bg-white/20 dark:bg-white/5",
                       )}
                     >
-                      <button className="flex-1 text-left" onClick={() => setSelectedJob(job)}>
+                      <button
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => setSelectedJob(job)}
+                      >
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{schema?.label ?? job.type}</span>
+                          <span className="truncate text-sm font-medium">
+                            {schema?.label ?? job.type}
+                          </span>
                           {schema?.usesAi && job.modelId && (
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant="secondary" className="max-w-[12rem] truncate text-xs">
                               <Brain className="mr-1 h-3 w-3" />
                               {getModelLabel(job.modelId)}
                             </Badge>
@@ -360,7 +365,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
       </div>
 
       {/* Job detail / run history */}
-      <div className="lg:col-span-3">
+      <div className="min-w-0 lg:col-span-3">
         <GlassPanel className="h-full">
           {selectedJob ? (
             <>

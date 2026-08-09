@@ -280,8 +280,8 @@ export default function AdminModelsPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "providers" | "models")}>
-          <div className="overflow-x-auto pb-1">
-            <TabsList className="w-full sm:w-auto">
+          <div className="no-scrollbar overflow-x-auto pb-1">
+            <TabsList>
               <TabsTrigger value="providers" className="gap-2">
                 <Key className="h-4 w-4" />
                 API Providers

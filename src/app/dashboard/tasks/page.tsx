@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2 } from "lucide-react";
+import { Page, PageHeader, PageScroll } from "@/components/layout/page";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskForm } from "@/components/tasks/task-form";
 import {
@@ -110,39 +111,39 @@ export default function TasksPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg leading-tight font-semibold tracking-tight md:text-2xl">Tasks</h1>
-          <p className="text-muted-foreground mt-1 text-xs md:text-sm">
-            Action items and reminders
-          </p>
-        </div>
-        <Button
-          variant="default"
-          size="icon"
-          className="h-8 w-8 md:h-9 md:w-auto md:px-3"
-          onClick={() => setShowForm(true)}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">New Task</span>
-        </Button>
-      </div>
+    <Page>
+      {/* Header — pinned, never scrolls */}
+      <PageHeader
+        title="Tasks"
+        description="Action items and reminders"
+        actions={
+          <Button
+            variant="default"
+            size="icon"
+            className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+            onClick={() => setShowForm(true)}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden md:inline">New Task</span>
+          </Button>
+        }
+      />
 
-      {/* Task list */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-muted-foreground text-sm">Loading tasks...</div>
-        </div>
-      ) : (
-        <TaskList
-          tasks={tasks}
-          onToggle={handleToggleComplete}
-          onDelete={handleDeleteRequest}
-          onEdit={handleEdit}
-        />
-      )}
+      {/* Task list — scrolls internally */}
+      <PageScroll>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-muted-foreground text-sm">Loading tasks...</div>
+          </div>
+        ) : (
+          <TaskList
+            tasks={tasks}
+            onToggle={handleToggleComplete}
+            onDelete={handleDeleteRequest}
+            onEdit={handleEdit}
+          />
+        )}
+      </PageScroll>
 
       {/* Form dialog */}
       <TaskForm
@@ -170,6 +171,6 @@ export default function TasksPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Page>
   );
 }

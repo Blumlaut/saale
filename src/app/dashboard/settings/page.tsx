@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Page, PageHeader, PageTabStrip } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
 import {
   Settings as SettingsIcon,
@@ -73,118 +73,112 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <GlassPanel className="rounded-xl p-2">
-            <SettingsIcon className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
-          </GlassPanel>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight md:text-2xl">Settings</h1>
-            <p className="text-muted-foreground text-xs md:text-sm">
-              Configure your AI models, integrations, email accounts, and preferences
-            </p>
-          </div>
-        </div>
+    <Page>
+      {/* Header — pinned, never scrolls */}
+      <PageHeader
+        title="Settings"
+        description="Configure your AI models, integrations, email accounts, and preferences"
+        icon={<SettingsIcon className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />}
+      />
 
-        <Tabs defaultValue="ai" className="space-y-6">
-          <div className="overflow-x-auto pb-1">
-            <TabsList className="w-full sm:w-auto">
-              <TabsTrigger value="ai" className="gap-2">
-                <Bot className="h-4 w-4" />
-                AI &amp; Models
-              </TabsTrigger>
-              <TabsTrigger value="persona" className="gap-2">
-                <PenTool className="h-4 w-4" />
-                Agent Persona
-              </TabsTrigger>
-              <TabsTrigger value="email" className="gap-2">
-                <Mail className="h-4 w-4" />
-                Email
-              </TabsTrigger>
-              <TabsTrigger value="calendar" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                Calendar
-              </TabsTrigger>
-              <TabsTrigger value="appearance" className="gap-2">
-                <Palette className="h-4 w-4" />
-                Appearance
-              </TabsTrigger>
-              <TabsTrigger value="memories" className="gap-2">
-                <Brain className="h-4 w-4" />
-                Memories
-              </TabsTrigger>
-              <TabsTrigger value="account" className="gap-2">
-                <Shield className="h-4 w-4" />
-                Account
-              </TabsTrigger>
-              <TabsTrigger value="integrations" className="gap-2">
-                <Plug className="h-4 w-4" />
-                Integrations
-              </TabsTrigger>
-              <TabsTrigger value="tools" className="gap-2">
-                <Wrench className="h-4 w-4" />
-                Tools
-              </TabsTrigger>
-            </TabsList>
-          </div>
+      <Tabs defaultValue="ai" className="flex min-h-0 flex-1 flex-col">
+        {/* Tab strip — pinned, swipe-scrollable, no visible scrollbar */}
+        <PageTabStrip className="pb-1">
+          <TabsList>
+            <TabsTrigger value="ai" className="gap-2">
+              <Bot className="h-4 w-4" />
+              AI &amp; Models
+            </TabsTrigger>
+            <TabsTrigger value="persona" className="gap-2">
+              <PenTool className="h-4 w-4" />
+              Agent Persona
+            </TabsTrigger>
+            <TabsTrigger value="email" className="gap-2">
+              <Mail className="h-4 w-4" />
+              Email
+            </TabsTrigger>
+            <TabsTrigger value="calendar" className="gap-2">
+              <Calendar className="h-4 w-4" />
+              Calendar
+            </TabsTrigger>
+            <TabsTrigger value="appearance" className="gap-2">
+              <Palette className="h-4 w-4" />
+              Appearance
+            </TabsTrigger>
+            <TabsTrigger value="memories" className="gap-2">
+              <Brain className="h-4 w-4" />
+              Memories
+            </TabsTrigger>
+            <TabsTrigger value="account" className="gap-2">
+              <Shield className="h-4 w-4" />
+              Account
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="gap-2">
+              <Plug className="h-4 w-4" />
+              Integrations
+            </TabsTrigger>
+            <TabsTrigger value="tools" className="gap-2">
+              <Wrench className="h-4 w-4" />
+              Tools
+            </TabsTrigger>
+          </TabsList>
+        </PageTabStrip>
 
-          <TabsContent value="ai" className="space-y-6">
-            <AiModelsTab
-              settings={settings}
-              onSettingsChange={setSettings}
-              saving={saving}
-              saveStatus={saveStatus}
-              onSave={handleSaveSettings}
-            />
-          </TabsContent>
+        {/* Tab content — the only scroll region */}
+        <TabsContent value="ai" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <AiModelsTab
+            settings={settings}
+            onSettingsChange={setSettings}
+            saving={saving}
+            saveStatus={saveStatus}
+            onSave={handleSaveSettings}
+          />
+        </TabsContent>
 
-          <TabsContent value="persona" className="space-y-6">
-            <AgentPersonaTab
-              settings={settings}
-              onSettingsChange={setSettings}
-              saving={saving}
-              saveStatus={saveStatus}
-              onSave={handleSaveSettings}
-            />
-          </TabsContent>
+        <TabsContent value="persona" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <AgentPersonaTab
+            settings={settings}
+            onSettingsChange={setSettings}
+            saving={saving}
+            saveStatus={saveStatus}
+            onSave={handleSaveSettings}
+          />
+        </TabsContent>
 
-          <TabsContent value="email" className="space-y-6">
-            <EmailTab />
-          </TabsContent>
+        <TabsContent value="email" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <EmailTab />
+        </TabsContent>
 
-          <TabsContent value="calendar" className="space-y-6">
-            <CalendarTab />
-          </TabsContent>
+        <TabsContent value="calendar" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <CalendarTab />
+        </TabsContent>
 
-          <TabsContent value="appearance" className="space-y-6">
-            <AppearanceTab />
-          </TabsContent>
+        <TabsContent value="appearance" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <AppearanceTab />
+        </TabsContent>
 
-          <TabsContent value="memories" className="space-y-6">
-            <MemoriesTab />
-          </TabsContent>
+        <TabsContent value="memories" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <MemoriesTab />
+        </TabsContent>
 
-          <TabsContent value="account" className="space-y-6">
-            <AccountTab />
-          </TabsContent>
+        <TabsContent value="account" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <AccountTab />
+        </TabsContent>
 
-          <TabsContent value="integrations" className="space-y-6">
-            <IntegrationsTab />
-          </TabsContent>
+        <TabsContent value="integrations" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <IntegrationsTab />
+        </TabsContent>
 
-          <TabsContent value="tools" className="space-y-6">
-            <ToolsTab
-              settings={settings}
-              onSettingsChange={setSettings}
-              saving={saving}
-              saveStatus={saveStatus}
-              onSave={handleSaveSettings}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+        <TabsContent value="tools" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <ToolsTab
+            settings={settings}
+            onSettingsChange={setSettings}
+            saving={saving}
+            saveStatus={saveStatus}
+            onSave={handleSaveSettings}
+          />
+        </TabsContent>
+      </Tabs>
+    </Page>
   );
 }

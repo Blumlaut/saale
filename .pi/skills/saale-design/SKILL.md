@@ -137,6 +137,45 @@ export function MyList() {
 }
 ```
 
+### Page Layout (App Shell) — ALWAYS use these
+
+Every dashboard/admin page is a fixed-height shell (`h-dvh overflow-hidden`); the
+body **never scrolls**. Pages must use the shared layout components in
+`src/components/layout/page.tsx` — never build a page root by hand:
+
+```tsx
+import { Page, PageHeader, PageScroll, PageTabStrip } from "@/components/layout/page";
+
+export default function MyPage() {
+  return (
+    <Page>
+      <PageHeader title="My Page" description="What it does" actions={<Button>Act</Button>} />
+      <PageScroll>
+        {/* tall content scrolls here — the ONLY scroll region */}
+      </PageScroll>
+    </Page>
+  );
+}
+```
+
+Rules:
+
+- **Header pinned** — `PageHeader` is `shrink-0`; actions (buttons) never scroll away.
+- **Content scrolls inside `PageScroll`** (`min-h-0 flex-1 overflow-y-auto`) — the
+  only scrollable region on the page.
+- **Tab pages** — put the strip in `PageTabStrip` (pinned, swipe-scrollable,
+  hidden scrollbar) and the tab content in `PageScroll`:
+  `<Tabs className="flex min-h-0 flex-1 flex-col">` + `<TabsContent className="min-h-0 flex-1 overflow-y-auto">`.
+- **Never** use `h-dvh`, `h-screen`, or `calc(100vh - X)` on page components.
+- **Never** put `w-full` on a `TabsList` with many tabs — triggers squeeze and
+  labels overlap. Keep it `w-fit` (default) inside `PageTabStrip`.
+- Grid items containing lists/tables need `min-w-0` (`lg:col-span-2` →
+  `min-w-0 lg:col-span-2`) so nowrap text truncates instead of blowing the grid
+  track wider than the viewport.
+
+The e2e suite (`e2e/mobile-overflow.spec.ts`) enforces all of this at 375px and
+320px — a page that regresses fails CI.
+
 ### Unified Glass Surfaces
 
 All overlay surfaces include `liquid-glass` by default — no manual class needed:

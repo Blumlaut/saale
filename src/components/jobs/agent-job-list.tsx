@@ -196,12 +196,12 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-5">
+    <div className="grid min-h-0 gap-4 lg:grid-cols-5">
       {/* Job list */}
-      <div className="lg:col-span-2">
+      <div className="min-w-0 lg:col-span-2">
         <GlassPanel className="h-full">
           <GlassPanelHeader title="Agent Jobs" />
-          <GlassPanelContent className="p-0">
+          <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
@@ -307,7 +307,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
       </div>
 
       {/* Job detail / run history */}
-      <div className="lg:col-span-3">
+      <div className="min-w-0 lg:col-span-3">
         <GlassPanel className="h-full">
           {selectedJob ? (
             <div className="flex h-full flex-col">
