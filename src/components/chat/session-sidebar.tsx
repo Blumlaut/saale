@@ -14,6 +14,7 @@ interface ChatSession {
   temporary: boolean;
   messageCount: number;
   updatedAt: string;
+  lastActivityAt?: string;
   isGenerating?: boolean;
   forkedFromSessionId?: string;
 }
@@ -120,7 +121,8 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
                     )}
                   </div>
                   <div className="text-muted-foreground truncate text-xs">
-                    {formatDate(session.updatedAt)} · {session.messageCount} messages
+                    {formatDate(session.lastActivityAt ?? session.updatedAt)} ·{" "}
+                    {session.messageCount} messages
                     {session.forkedFromSessionId && " · fork"}
                     {session.temporary && " · auto-delete"}
                   </div>

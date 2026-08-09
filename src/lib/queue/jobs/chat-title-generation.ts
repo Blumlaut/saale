@@ -44,7 +44,7 @@ export async function handler(params: {
       messageCount: { gt: 1 }, // skip sessions with 0-1 messages
       OR: [{ title: { endsWith: "..." } }, { title: "New Chat" }],
     },
-    orderBy: { updatedAt: "desc" },
+    orderBy: { lastActivityAt: "desc" },
     take: maxSessions,
     select: {
       id: true,

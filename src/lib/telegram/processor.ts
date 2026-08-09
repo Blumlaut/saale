@@ -967,6 +967,19 @@ async function saveUserMessage(sessionId: string, content: string): Promise<void
       content,
     },
   });
+
+  // Real chat activity — advance lastActivityAt so the session list sorts/
+  // displays this chat correctly (updatedAt alone is unreliable here: the
+  // tracker only writes the session at agent_end, so a processing error
+  // would leave it stale).
+  await prisma.chatSession
+    .update({
+      where: { id: sessionId },
+      data: { lastActivityAt: new Date() },
+    })
+    .catch((err) => {
+      console.error(`Failed to bump lastActivityAt for telegram session ${sessionId}:`, err);
+    });
 }
 
 // ─── Whitelist Helpers ───────────────────────────────────────────────────────

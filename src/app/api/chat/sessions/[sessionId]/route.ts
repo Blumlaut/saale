@@ -55,6 +55,12 @@ export async function PATCH(
   if (toolConfig && JSON.stringify(toolConfig) !== JSON.stringify(authResult.session.toolConfig))
     data.toolConfig = toolConfig;
 
+  // A user-initiated change (e.g. renaming the chat) is real activity —
+  // advance lastActivityAt so the session list reflects the modification.
+  if (Object.keys(data).length > 0) {
+    data.lastActivityAt = new Date();
+  }
+
   const updated =
     Object.keys(data).length > 0
       ? await prisma.chatSession.update({

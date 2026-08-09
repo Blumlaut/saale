@@ -25,6 +25,17 @@ export async function saveCompactionMessage({
         parentMessageId: null,
       },
     });
+
+    // A compaction summary is new chat content — advance lastActivityAt so
+    // the session list reflects it.
+    await prisma.chatSession
+      .update({
+        where: { id: sessionId },
+        data: { lastActivityAt: new Date() },
+      })
+      .catch((err) => {
+        console.error(`Failed to bump lastActivityAt after compaction for ${sessionId}:`, err);
+      });
   } catch (err) {
     console.error("Failed to save compaction message:", err);
   }

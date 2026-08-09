@@ -204,11 +204,13 @@ export async function POST(
       include: { attachments: true },
     });
 
-    // Update session metadata
+    // Update session metadata — sending a message is real chat activity, so
+    // also advance lastActivityAt (the UI's sort/display timestamp).
     await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
         messageCount: { increment: 1 },
+        lastActivityAt: new Date(),
         title:
           chatSession.title === "New Chat"
             ? (sanitizedContent || "Image").slice(0, 47) +
@@ -303,6 +305,17 @@ export async function DELETE(
   await prisma.chatMessage.deleteMany({
     where: { sessionId, id: messageId },
   });
+
+  // Deleting a message modifies the conversation — advance lastActivityAt so
+  // the chat reflects the modification in the list ordering.
+  await prisma.chatSession
+    .update({
+      where: { id: sessionId },
+      data: { lastActivityAt: new Date() },
+    })
+    .catch((err) => {
+      console.error(`Failed to bump lastActivityAt after deleting message ${messageId}:`, err);
+    });
 
   return NextResponse.json({ ok: true });
 }

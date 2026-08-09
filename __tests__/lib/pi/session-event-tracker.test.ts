@@ -377,9 +377,69 @@ describe("createSessionEventTracker", () => {
     expect(mockChatSessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "s1" },
-        data: { messageCount: { increment: 1 } },
+        data: { messageCount: { increment: 1 }, lastActivityAt: expect.any(Date) },
       }),
     );
+  });
+
+  it("advances lastActivityAt on assistant output but NOT on tool state changes", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // A tool call persists active-tool state — it must NOT advance
+    // lastActivityAt (that would move the chat to the top of the list
+    // without any real message activity).
+    session.emit({
+      type: "tool_execution_start",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      args: { command: "ls" },
+    });
+    session.emit({
+      type: "tool_execution_end",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      result: "ok",
+      isError: false,
+    });
+
+    const toolUpdates = mockChatSessionUpdate.mock.calls.filter(
+      (call) => (call[0] as { data: Record<string, unknown> }).data.activeToolName !== undefined,
+    );
+    expect(toolUpdates.length).toBeGreaterThan(0);
+    for (const call of toolUpdates) {
+      const data = (call[0] as { data: Record<string, unknown> }).data;
+      expect(data).not.toHaveProperty("lastActivityAt");
+    }
+
+    // Assistant output (agent_end) is real activity — it must advance it.
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "Hi" }] },
+    });
+    session.emit({
+      type: "turn_end",
+      message: { role: "assistant", content: [{ type: "text", text: "Hi" }] },
+      toolResults: [],
+    });
+    session.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "Hi" }] }],
+    });
+
+    await flush();
+    await flush();
+
+    const agentEndUpdate = mockChatSessionUpdate.mock.calls.find(
+      (call) => (call[0] as { data: Record<string, unknown> }).data.messageCount !== undefined,
+    );
+    expect(agentEndUpdate).toBeDefined();
+    expect(
+      (agentEndUpdate![0] as { data: Record<string, unknown> }).data.lastActivityAt,
+    ).toBeInstanceOf(Date);
   });
 
   it("dispose() stops listening for events", async () => {
