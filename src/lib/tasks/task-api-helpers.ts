@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/db";
+
 /**
  * Shared shape for serialized task responses.
  * Used by API routes and AI tool responses.
@@ -95,4 +97,26 @@ export function buildTaskUpdateData(updates: {
   if (updates.status === "pending") data.completedAt = null;
 
   return data;
+}
+
+/**
+ * Find potential duplicate pending tasks for a given title.
+ * Uses DB-level case-insensitive substring matching scoped to the user.
+ *
+ * Shared by task-extraction.ts (email extraction) and task-tools.ts (AI tool).
+ *
+ * @param title Task title to check against
+ * @param userId User to scope the search to
+ * @returns Array of matching pending tasks (id + title)
+ */
+export async function findDuplicateTasks(title: string, userId: string) {
+  return prisma.task.findMany({
+    where: {
+      userId,
+      status: "pending",
+      title: { contains: title, mode: "insensitive" },
+    },
+    take: 5,
+    select: { id: true, title: true },
+  });
 }
