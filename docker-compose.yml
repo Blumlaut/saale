@@ -136,7 +136,7 @@ services:
     environment:
       - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY:?Set OPEN_TERMINAL_API_KEY}
       - OPEN_TERMINAL_MULTI_USER=true
-      - OPEN_TERMINAL_PACKAGES=gh
+      - OPEN_TERMINAL_PACKAGES=gh chromium libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 libxshmfence1 ffmpeg imagemagick libssl-dev libffi-dev python3-dev build-essential jq curl wget ripgrep fd-find silversearcher-ag
       - OPEN_TERMINAL_PIP_PACKAGES=yt-dlp
     volumes:
       - open-terminal-data:/home
