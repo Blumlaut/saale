@@ -142,7 +142,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         outputChannelId: Type.Optional(
           Type.String({
             description:
-              "Target identifier for the output channel (e.g., Telegram chat ID for 'telegram' channel).",
+              "Target identifier for the output channel (e.g., Telegram chat ID for 'telegram' channel). For 'telegram', omit this to inherit the user's configured chat.",
           }),
         ),
         cronExpression: Type.Optional(
@@ -275,7 +275,8 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         ),
         outputChannelId: Type.Optional(
           Type.String({
-            description: "Output channel target ID. Pass empty string to clear.",
+            description:
+              "Output channel target ID. Pass empty string to clear. For 'telegram', pass empty string to inherit the user's configured chat.",
           }),
         ),
         cronExpression: Type.Optional(

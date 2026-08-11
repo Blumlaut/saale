@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { sendTelegramMessage, sendTypingIndicator } from "@/lib/telegram/client";
+import { resolveDefaultTelegramChat } from "@/lib/telegram/chats";
 import type { AgentOutput } from "./executor";
 
 /**
@@ -21,14 +22,14 @@ export async function buildAgentOutputHandler(params: {
 }): Promise<AgentOutput | undefined> {
   const { userId, outputChannel, outputChannelId } = params;
 
-  if (!outputChannel || !outputChannelId) {
+  if (!outputChannel) {
     return undefined;
   }
 
   if (outputChannel === "telegram") {
     const account = await prisma.telegramAccount.findUnique({
       where: { userId },
-      select: { encryptedToken: true },
+      select: { id: true, encryptedToken: true },
     });
 
     if (!account) {
@@ -38,14 +39,26 @@ export async function buildAgentOutputHandler(params: {
       return undefined;
     }
 
-    let chatId: bigint;
-    try {
-      chatId = BigInt(outputChannelId);
-    } catch {
-      console.error(
-        `[agent-jobs] Invalid Telegram chat ID "${outputChannelId}" for user ${userId} — output will not be sent.`,
-      );
-      return undefined;
+    // No explicit chat ID → inherit the user's configured Telegram chat
+    // (most recent conversation, else most recent whitelisted user).
+    let chatId: bigint | null;
+    if (outputChannelId) {
+      try {
+        chatId = BigInt(outputChannelId);
+      } catch {
+        console.error(
+          `[agent-jobs] Invalid Telegram chat ID "${outputChannelId}" for user ${userId} — output will not be sent.`,
+        );
+        return undefined;
+      }
+    } else {
+      chatId = await resolveDefaultTelegramChat(account.id);
+      if (chatId === null) {
+        console.error(
+          `[agent-jobs] Telegram output requested for user ${userId} but no configured chat exists (message the bot first or set a chat ID) — output will not be sent.`,
+        );
+        return undefined;
+      }
     }
 
     return {
@@ -58,6 +71,13 @@ export async function buildAgentOutputHandler(params: {
         sendTypingIndicator(account.encryptedToken, chatId);
       },
     };
+  }
+
+  if (!outputChannelId) {
+    console.warn(
+      `[agent-jobs] Output channel "${outputChannel}" is set without a target ID — output will not be routed.`,
+    );
+    return undefined;
   }
 
   console.warn(

@@ -23,6 +23,11 @@ vi.mock("@/lib/telegram/client", () => ({
   sendTypingIndicator: (...args: unknown[]) => mockSendTypingIndicator(...args),
 }));
 
+const mockResolveDefaultTelegramChat = vi.fn();
+vi.mock("@/lib/telegram/chats", () => ({
+  resolveDefaultTelegramChat: (...args: unknown[]) => mockResolveDefaultTelegramChat(...args),
+}));
+
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -48,7 +53,35 @@ describe("buildAgentOutputHandler", () => {
     expect(mockTelegramAccount.findUnique).not.toHaveBeenCalled();
   });
 
-  it("returns undefined when channel is set but ID is missing", async () => {
+  it("inherits the configured chat when telegram has no explicit chat ID", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+    mockResolveDefaultTelegramChat.mockResolvedValue(BigInt("119075844"));
+    mockSendTelegramMessage.mockResolvedValue([42]);
+
+    const handler = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "telegram",
+      outputChannelId: null,
+    });
+
+    expect(handler).toBeDefined();
+    expect(mockResolveDefaultTelegramChat).toHaveBeenCalledWith("acc-1");
+
+    handler!.send("Job finished — here is the report");
+
+    await vi.waitFor(() => {
+      expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+        "enc-token",
+        BigInt("119075844"),
+        "Job finished — here is the report",
+      );
+    });
+  });
+
+  it("logs and returns undefined when telegram inherits but no configured chat exists", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+    mockResolveDefaultTelegramChat.mockResolvedValue(null);
+
     const handler = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
@@ -56,7 +89,22 @@ describe("buildAgentOutputHandler", () => {
     });
 
     expect(handler).toBeUndefined();
-    expect(mockTelegramAccount.findUnique).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("no configured chat exists"),
+    );
+  });
+
+  it("logs and returns undefined for non-telegram channels without a target ID", async () => {
+    const handler = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "discord",
+      outputChannelId: null,
+    });
+
+    expect(handler).toBeUndefined();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Output channel "discord" is set without a target ID'),
+    );
   });
 
   it("logs and returns undefined when telegram output requested but no account configured", async () => {
@@ -71,7 +119,7 @@ describe("buildAgentOutputHandler", () => {
     expect(handler).toBeUndefined();
     expect(mockTelegramAccount.findUnique).toHaveBeenCalledWith({
       where: { userId },
-      select: { encryptedToken: true },
+      select: { id: true, encryptedToken: true },
     });
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("no Telegram account is configured"),
@@ -79,7 +127,7 @@ describe("buildAgentOutputHandler", () => {
   });
 
   it("logs and returns undefined when chat ID is not a valid bigint", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ encryptedToken: "enc-token" });
+    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
 
     const handler = await buildAgentOutputHandler({
       userId,
@@ -94,7 +142,7 @@ describe("buildAgentOutputHandler", () => {
   });
 
   it("builds a handler that sends turn text to the configured chat", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ encryptedToken: "enc-token" });
+    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
     mockSendTelegramMessage.mockResolvedValue([42]);
 
     const handler = await buildAgentOutputHandler({
@@ -119,7 +167,7 @@ describe("buildAgentOutputHandler", () => {
   });
 
   it("send logs an error when the Telegram API call fails", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ encryptedToken: "enc-token" });
+    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
     mockSendTelegramMessage.mockRejectedValue(new Error("chat not found"));
 
     const handler = await buildAgentOutputHandler({
@@ -140,7 +188,7 @@ describe("buildAgentOutputHandler", () => {
   });
 
   it("typing() sends a typing indicator", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ encryptedToken: "enc-token" });
+    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
 
     const handler = await buildAgentOutputHandler({
       userId,

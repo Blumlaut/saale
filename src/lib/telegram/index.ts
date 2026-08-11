@@ -12,3 +12,10 @@ export {
 } from "./client";
 
 export { processTelegramMessage, isWhitelisted, upsertWhitelistDisplayName } from "./processor";
+
+export {
+  resolveDefaultTelegramChat,
+  getDefaultTelegramChatInfo,
+  listTelegramChats,
+  type TelegramChatInfo,
+} from "./chats";
