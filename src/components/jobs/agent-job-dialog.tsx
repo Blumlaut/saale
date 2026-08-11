@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,10 +14,11 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { postJson, patchJson } from "@/lib/http";
+import { postJson, patchJson, fetchJson } from "@/lib/http";
 import { Bot, Loader2 } from "lucide-react";
 import type { AgentJobDefinition } from "@/types/shared";
 import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
+import type { TelegramChatInfo } from "@/lib/telegram/chats";
 
 interface AgentJobDialogProps {
   open: boolean;
@@ -30,6 +31,11 @@ const OUTPUT_CHANNELS = [
   { value: "telegram", label: "Telegram" },
   { value: "discord", label: "Discord" },
 ];
+
+/** Select sentinel: inherit the user's configured Telegram chat (no explicit ID). */
+const TELEGRAM_AUTO = "auto";
+/** Select sentinel: show the manual chat ID input. */
+const TELEGRAM_MANUAL = "manual";
 
 const THINKING_LEVELS = [
   { value: "off", label: "Off" },
@@ -51,6 +57,15 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [outputChannel, setOutputChannel] = useState("");
   const [outputChannelId, setOutputChannelId] = useState("");
+  // Telegram chat selection: "auto" (inherit configured chat) | "manual" | a chat ID
+  const [telegramChatSelection, setTelegramChatSelection] = useState<string>(TELEGRAM_AUTO);
+  const [manualChatId, setManualChatId] = useState("");
+  const [telegramChats, setTelegramChats] = useState<TelegramChatInfo[]>([]);
+  const [telegramDefaultChat, setTelegramDefaultChat] = useState<{
+    chatId: string;
+    label: string;
+  } | null>(null);
+  const [telegramChatsLoading, setTelegramChatsLoading] = useState(false);
   const [cronExpression, setCronExpression] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [toolConfig, setToolConfig] = useState<Record<string, boolean>>({});
@@ -68,6 +83,10 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
     setThinkingLevel("off");
     setOutputChannel("");
     setOutputChannelId("");
+    setTelegramChatSelection(TELEGRAM_AUTO);
+    setManualChatId("");
+    setTelegramChats([]);
+    setTelegramDefaultChat(null);
     setCronExpression("");
     setEnabled(true);
     setToolConfig({});
@@ -86,6 +105,10 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
       setThinkingLevel(job.thinkingLevel ?? "off");
       setOutputChannel(job.outputChannel ?? "");
       setOutputChannelId(job.outputChannelId ?? "");
+      // Telegram: a stored chat ID selects that chat (flipped to manual if
+      // unknown after chats load); null/empty means "inherit configured chat".
+      setManualChatId(job.outputChannelId ?? "");
+      setTelegramChatSelection(job.outputChannelId ? job.outputChannelId : TELEGRAM_AUTO);
       setCronExpression(job.cronExpression ?? "");
       setEnabled(job.enabled);
       setToolConfig(job.toolConfig ?? {});
@@ -99,10 +122,72 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
     setToolConfig((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const loadTelegramChats = useCallback(async () => {
+    setTelegramChatsLoading(true);
+    try {
+      const data = await fetchJson<{
+        chats: TelegramChatInfo[];
+        defaultChat: { chatId: string; label: string } | null;
+      }>("/api/integrations/telegram/chats");
+      setTelegramChats(data.chats);
+      setTelegramDefaultChat(data.defaultChat);
+    } catch (err) {
+      console.error("Failed to load Telegram chats:", err);
+      setTelegramChats([]);
+      setTelegramDefaultChat(null);
+    } finally {
+      setTelegramChatsLoading(false);
+    }
+  }, []);
+
+  // Load available chats whenever Telegram is the selected output channel.
+  useEffect(() => {
+    if (outputChannel === "telegram") {
+      loadTelegramChats();
+    }
+  }, [outputChannel, loadTelegramChats]);
+
+  // A stored chat ID that no longer matches a known chat falls back to manual entry.
+  useEffect(() => {
+    if (telegramChatsLoading) return;
+    const selection = telegramChatSelection;
+    if (selection !== TELEGRAM_AUTO && selection !== TELEGRAM_MANUAL) {
+      const known = telegramChats.some((chat) => chat.chatId === selection);
+      if (!known) setTelegramChatSelection(TELEGRAM_MANUAL);
+    }
+  }, [telegramChats, telegramChatsLoading, telegramChatSelection]);
+
   const handleSubmit = async () => {
     if (!name.trim() || !prompt.trim()) {
       setError("Name and prompt are required");
       return;
+    }
+
+    if (
+      outputChannel === "telegram" &&
+      telegramChatSelection === TELEGRAM_AUTO &&
+      telegramChats.length === 0 &&
+      !telegramDefaultChat
+    ) {
+      setError(
+        "No configured Telegram chat found. Message your bot on Telegram first, or choose a chat ID manually.",
+      );
+      return;
+    }
+
+    // Resolve the output channel ID: an explicit ID, a picked chat, or
+    // nothing (Telegram inherits the configured chat at run time).
+    let resolvedOutputChannelId: string | undefined;
+    if (outputChannel === "telegram") {
+      if (telegramChatSelection === TELEGRAM_MANUAL) {
+        resolvedOutputChannelId = manualChatId.trim() || undefined;
+      } else if (telegramChatSelection === TELEGRAM_AUTO) {
+        resolvedOutputChannelId = undefined;
+      } else {
+        resolvedOutputChannelId = telegramChatSelection;
+      }
+    } else {
+      resolvedOutputChannelId = outputChannelId.trim() || undefined;
     }
 
     setLoading(true);
@@ -118,7 +203,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
         modelId: modelId.trim() || undefined,
         thinkingLevel: thinkingLevel || undefined,
         outputChannel: outputChannel || undefined,
-        outputChannelId: outputChannelId.trim() || undefined,
+        outputChannelId: resolvedOutputChannelId,
         cronExpression: cronExpression.trim() || undefined,
         enabled,
       };
@@ -259,13 +344,72 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
 
             {outputChannel && (
               <div className="space-y-2">
-                <Label htmlFor="agent-channel-id">Channel ID</Label>
-                <Input
-                  id="agent-channel-id"
-                  value={outputChannelId}
-                  onChange={(e) => setOutputChannelId(e.target.value)}
-                  placeholder={outputChannel === "telegram" ? "Telegram chat ID" : "Channel ID"}
-                />
+                {outputChannel === "telegram" ? (
+                  <>
+                    <Label>Telegram Chat</Label>
+                    <Select
+                      value={telegramChatSelection}
+                      onValueChange={(v) => setTelegramChatSelection(v ?? TELEGRAM_AUTO)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem
+                          value={TELEGRAM_AUTO}
+                          disabled={!telegramDefaultChat && telegramChats.length === 0}
+                        >
+                          Use configured chat
+                        </SelectItem>
+                        {telegramChats.map((chat) => (
+                          <SelectItem key={chat.chatId} value={chat.chatId}>
+                            {chat.label} ({chat.chatId})
+                          </SelectItem>
+                        ))}
+                        <SelectItem value={TELEGRAM_MANUAL}>Enter chat ID manually…</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {telegramChatSelection === TELEGRAM_AUTO && telegramChatsLoading && (
+                      <p className="text-muted-foreground text-xs">Loading your chats…</p>
+                    )}
+                    {telegramChatSelection === TELEGRAM_AUTO &&
+                      !telegramChatsLoading &&
+                      telegramDefaultChat && (
+                        <p className="text-muted-foreground text-xs">
+                          Sends to {telegramDefaultChat.label} ({telegramDefaultChat.chatId})
+                        </p>
+                      )}
+                    {telegramChatSelection === TELEGRAM_AUTO &&
+                      !telegramChatsLoading &&
+                      !telegramDefaultChat &&
+                      telegramChats.length === 0 && (
+                        <p className="text-muted-foreground text-xs">
+                          No configured chat yet — message your bot on Telegram first, or enter a
+                          chat ID manually.
+                        </p>
+                      )}
+
+                    {telegramChatSelection === TELEGRAM_MANUAL && (
+                      <Input
+                        id="agent-channel-id"
+                        value={manualChatId}
+                        onChange={(e) => setManualChatId(e.target.value)}
+                        placeholder="Telegram chat ID"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Label htmlFor="agent-channel-id">Channel ID</Label>
+                    <Input
+                      id="agent-channel-id"
+                      value={outputChannelId}
+                      onChange={(e) => setOutputChannelId(e.target.value)}
+                      placeholder="Channel ID"
+                    />
+                  </>
+                )}
               </div>
             )}
           </div>
