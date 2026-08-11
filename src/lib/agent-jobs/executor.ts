@@ -6,6 +6,7 @@ import {
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { lockSystemPrompt } from "@/lib/pi/processing-state";
+import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 
@@ -171,18 +172,15 @@ export async function executeAgentRun(
   const { modelRuntime } = await buildModelRuntime(userId);
   const model = modelRuntime.getModel(modelProvider, modelName);
 
-  // Merge tool config with defaults — terminal is always disabled for agent jobs
+  // Merge tool config with defaults
   const rawToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
   const resolvedToolConfig = {
     ...DEFAULT_TOOL_CONFIG,
     ...rawToolConfig,
-    terminal: false,
   } as Required<ToolConfig>;
 
   const allCustomTools = await resolveTools(userId, runId, resolvedToolConfig, {
-    createTerminalScopedTools: () => {
-      throw new Error("Terminal tools are not available for agent jobs.");
-    },
+    createTerminalScopedTools,
   });
 
   // Create agent session
