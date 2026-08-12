@@ -514,6 +514,8 @@ model AgentDefinition {
   lastRunAt      DateTime?
 
   enabled       Boolean    @default(true)
+  /// Auto-created by Saale (e.g. the Telegram chat agent). Locked from editing/deleting/running.
+  systemManaged Boolean    @default(false)
   runs          AgentRun[]
   user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt     DateTime   @default(now())

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { scheduleAgentDefinition } from "@/lib/queue";
+import { isReservedAgentName, RESERVED_AGENT_NAME_ERROR } from "@/lib/agent-jobs/system-managed";
 
 /**
  * GET /api/agent-jobs/definitions — List user's agent job definitions
@@ -28,6 +29,7 @@ export async function GET() {
       cronExpression: true,
       lastRunAt: true,
       enabled: true,
+      systemManaged: true,
       createdAt: true,
       updatedAt: true,
       _count: { select: { runs: true } },
@@ -64,6 +66,7 @@ export async function GET() {
         cronExpression: string | null;
         lastRunAt: Date | null;
         enabled: boolean;
+        systemManaged: boolean;
         createdAt: Date;
         updatedAt: Date;
         _count: { runs: number };
@@ -81,6 +84,7 @@ export async function GET() {
         cronExpression: d.cronExpression,
         lastRunAt: d.lastRunAt?.toISOString(),
         enabled: d.enabled,
+        systemManaged: d.systemManaged,
         runCount: d._count.runs,
         latestRun: latestRunMap.get(d.id) ?? null,
         createdAt: d.createdAt.toISOString(),
@@ -117,6 +121,9 @@ export async function POST(request: NextRequest) {
   }
   if (!prompt?.trim()) {
     return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+  }
+  if (isReservedAgentName(name)) {
+    return NextResponse.json({ error: RESERVED_AGENT_NAME_ERROR }, { status: 400 });
   }
 
   // Normalize modelId format
@@ -165,6 +172,7 @@ export async function POST(request: NextRequest) {
       cronExpression: definition.cronExpression,
       lastRunAt: definition.lastRunAt?.toISOString(),
       enabled: definition.enabled,
+      systemManaged: false,
       createdAt: definition.createdAt.toISOString(),
       updatedAt: definition.updatedAt.toISOString(),
     },

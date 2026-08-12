@@ -25,6 +25,7 @@ import { registerActiveSession, markGenerationStart } from "@/lib/redis";
 import { resetSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { unregisterTelegramSession } from "./session-registry";
+import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
 
 /** Allowed MIME types that can be passed as images to the vision model */
 const IMAGE_MIME_TYPES = new Set([
@@ -172,9 +173,6 @@ Telegram-specific guidelines:
 - Keep messages readable at a glance — avoid long blocks of text.
 - Use HTML formatting: <b>bold</b>, <i>italic</i>, <code>code</code>, <pre>preformatted</pre>.
 - Avoid excessive formatting — keep it clean and readable on mobile.`;
-
-/** Name of the auto-created Telegram agent definition */
-const TELEGRAM_AGENT_NAME = "Telegram Assistant";
 
 /**
  * Process an incoming Telegram message.
@@ -677,6 +675,15 @@ async function ensureTelegramAgentDefinition(userId: string): Promise<{
     where: { userId, name: TELEGRAM_AGENT_NAME },
   });
 
+  if (definition && !definition.systemManaged) {
+    // Adopt pre-existing definitions (created before the systemManaged flag
+    // existed) so the runtime lock applies to them too.
+    definition = await prisma.agentDefinition.update({
+      where: { id: definition.id },
+      data: { systemManaged: true },
+    });
+  }
+
   if (!definition) {
     definition = await prisma.agentDefinition.create({
       data: {
@@ -696,6 +703,7 @@ async function ensureTelegramAgentDefinition(userId: string): Promise<{
         modelId: null,
         thinkingLevel: "off",
         enabled: true,
+        systemManaged: true,
       },
     });
   }
