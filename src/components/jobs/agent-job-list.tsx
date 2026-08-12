@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Settings,
   ChevronRight,
+  Lock,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -224,6 +225,12 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium">{job.name}</span>
+                        {job.systemManaged && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Lock className="mr-1 h-3 w-3" />
+                            Managed
+                          </Badge>
+                        )}
                         {!job.enabled && (
                           <Badge variant="secondary" className="text-xs">
                             Disabled
@@ -256,46 +263,55 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                       className="flex shrink-0 items-center gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {job.latestRun?.status === "running" ? (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        </Button>
+                      {job.systemManaged ? (
+                        <Lock
+                          className="text-muted-foreground/60 mx-1 h-3.5 w-3.5"
+                          aria-label="Managed by Saale — locked"
+                        />
                       ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleRun(job.id)}
-                          disabled={runningId === job.id}
-                        >
-                          {runningId === job.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                        <>
+                          {job.latestRun?.status === "running" ? (
+                            <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            </Button>
                           ) : (
-                            <Play className="h-3 w-3" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => handleRun(job.id)}
+                              disabled={runningId === job.id}
+                            >
+                              {runningId === job.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Play className="h-3 w-3" />
+                              )}
+                            </Button>
                           )}
-                        </Button>
+                          <Switch
+                            checked={job.enabled}
+                            onCheckedChange={(checked) => handleToggle(job.id, checked)}
+                            className="scale-75"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => onEdit?.(job)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleDelete(job.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
                       )}
-                      <Switch
-                        checked={job.enabled}
-                        onCheckedChange={(checked) => handleToggle(job.id, checked)}
-                        className="scale-75"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => onEdit?.(job)}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleDelete(job.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
                     </div>
                   </div>
                   {i < jobs.length - 1 && <Separator className="px-4" />}
@@ -316,6 +332,15 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                 <GlassPanelContent className="flex flex-col gap-6">
                   {/* Job info */}
                   <div className="flex flex-col gap-3">
+                    {selectedJob.systemManaged && (
+                      <div className="text-muted-foreground flex items-start gap-2 rounded-lg border bg-white/5 p-3 text-xs">
+                        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          Managed by Saale — this job powers Telegram chat. Its configuration is
+                          locked; customize the chat in Settings.
+                        </span>
+                      </div>
+                    )}
                     {selectedJob.description && (
                       <p className="text-muted-foreground text-sm">{selectedJob.description}</p>
                     )}
@@ -338,12 +363,14 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                   </div>
 
                   {/* Prompt */}
-                  <div>
-                    <h3 className="mb-2 text-sm font-medium">Prompt</h3>
-                    <div className="rounded-lg border bg-white/5 p-3">
-                      <p className="text-sm whitespace-pre-wrap">{selectedJob.prompt}</p>
+                  {selectedJob.prompt && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-medium">Prompt</h3>
+                      <div className="rounded-lg border bg-white/5 p-3">
+                        <p className="text-sm whitespace-pre-wrap">{selectedJob.prompt}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {selectedJob.systemPrompt && (
                     <div>

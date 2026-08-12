@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { triggerAgentRun } from "@/lib/agent-jobs/run";
+import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 
 /**
  * GET /api/agent-jobs/definitions/:id/runs — List runs for a definition
@@ -102,10 +103,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Verify the definition belongs to this user
   const definition = await prisma.agentDefinition.findFirst({
     where: { id, userId: authResult.user.id },
-    select: { id: true, enabled: true },
+    select: { id: true, enabled: true, systemManaged: true },
   });
   if (!definition) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (definition.systemManaged) {
+    return NextResponse.json({ error: SYSTEM_MANAGED_ERROR }, { status: 403 });
   }
 
   if (!definition.enabled) {

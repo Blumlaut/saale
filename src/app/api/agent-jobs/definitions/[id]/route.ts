@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
+import {
+  isReservedAgentName,
+  RESERVED_AGENT_NAME_ERROR,
+  SYSTEM_MANAGED_ERROR,
+} from "@/lib/agent-jobs/system-managed";
 
 /**
  * GET /api/agent-jobs/definitions/:id — Get a single definition
@@ -35,6 +40,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       cronExpression: definition.cronExpression,
       lastRunAt: definition.lastRunAt?.toISOString(),
       enabled: definition.enabled,
+      systemManaged: definition.systemManaged,
       createdAt: definition.createdAt.toISOString(),
       updatedAt: definition.updatedAt.toISOString(),
     },
@@ -54,6 +60,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   });
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // System-managed definitions (e.g. the Telegram chat agent) are read-only.
+  if (existing.systemManaged) {
+    return NextResponse.json({ error: SYSTEM_MANAGED_ERROR }, { status: 403 });
   }
 
   const body = await request.json();
@@ -76,6 +87,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (modelId !== undefined) {
     const raw = modelId || null;
     resolvedModelId = raw?.includes("/") ? raw.replace("/", ":") : raw;
+  }
+
+  // The Telegram chat agent name is reserved — renaming to it would silently
+  // hijack the telegram definition lookup (which matches by name).
+  if (name !== undefined && isReservedAgentName(name)) {
+    return NextResponse.json({ error: RESERVED_AGENT_NAME_ERROR }, { status: 400 });
   }
 
   const updated = await prisma.agentDefinition.update({
@@ -122,6 +139,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       cronExpression: updated.cronExpression,
       lastRunAt: updated.lastRunAt?.toISOString(),
       enabled: updated.enabled,
+      systemManaged: updated.systemManaged,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
     },
@@ -144,6 +162,12 @@ export async function DELETE(
   });
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // System-managed definitions are owned by Saale — deleting one would just
+  // make the next Telegram message recreate it with defaults.
+  if (existing.systemManaged) {
+    return NextResponse.json({ error: SYSTEM_MANAGED_ERROR }, { status: 403 });
   }
 
   await prisma.agentDefinition.delete({ where: { id } });

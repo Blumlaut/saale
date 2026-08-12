@@ -132,6 +132,16 @@ describe("createAgentJobTools", () => {
     const tools = createAgentJobTools(userId);
     const tool = tools.find((t) => t.name === "agent_job_create")!;
 
+    it("throws when using the reserved Telegram Assistant name", async () => {
+      await expect(
+        callExecute(tool.execute, {
+          name: "Telegram Assistant",
+          prompt: "Do a thing",
+        }),
+      ).rejects.toThrow('"Telegram Assistant" is managed by Saale');
+      expect(mockAgentDefinition.create).not.toHaveBeenCalled();
+    });
+
     it("creates definition with output channel fields", async () => {
       const createdDef = {
         id: "def-new",
@@ -361,6 +371,38 @@ describe("createAgentJobTools", () => {
       expect(queue.scheduleAgentDefinition).not.toHaveBeenCalled();
     });
 
+    it("throws when the definition is system-managed", async () => {
+      mockAgentDefinition.findFirst.mockResolvedValue({
+        id: "def-tg",
+        userId,
+        systemManaged: true,
+      });
+
+      await expect(
+        callExecute(tool.execute, {
+          id: "def-tg",
+          outputChannel: "telegram",
+        }),
+      ).rejects.toThrow('"Telegram Assistant" is managed by Saale');
+      expect(mockAgentDefinition.update).not.toHaveBeenCalled();
+    });
+
+    it("throws when renaming to the reserved Telegram Assistant name", async () => {
+      mockAgentDefinition.findFirst.mockResolvedValue({
+        id: "def-1",
+        userId,
+        systemManaged: false,
+      });
+
+      await expect(
+        callExecute(tool.execute, {
+          id: "def-1",
+          name: "Telegram Assistant",
+        }),
+      ).rejects.toThrow('"Telegram Assistant" is managed by Saale');
+      expect(mockAgentDefinition.update).not.toHaveBeenCalled();
+    });
+
     it("throws when job not found", async () => {
       mockAgentDefinition.findFirst.mockResolvedValue(null);
 
@@ -406,6 +448,19 @@ describe("createAgentJobTools", () => {
   describe("agent_job_delete", () => {
     const tools = createAgentJobTools(userId);
     const tool = tools.find((t) => t.name === "agent_job_delete")!;
+
+    it("throws when the definition is system-managed", async () => {
+      mockAgentDefinition.findFirst.mockResolvedValue({
+        id: "def-tg",
+        userId,
+        systemManaged: true,
+      });
+
+      await expect(callExecute(tool.execute, { id: "def-tg" })).rejects.toThrow(
+        '"Telegram Assistant" is managed by Saale',
+      );
+      expect(mockAgentDefinition.delete).not.toHaveBeenCalled();
+    });
 
     it("deletes definition", async () => {
       mockAgentDefinition.findFirst.mockResolvedValue({ id: "def-1", userId });
@@ -567,6 +622,20 @@ describe("createAgentJobTools", () => {
           prompt: "Override prompt",
         }),
       });
+    });
+
+    it("throws when the definition is system-managed", async () => {
+      mockAgentDefinition.findFirst.mockResolvedValue({
+        id: "def-tg",
+        userId,
+        enabled: true,
+        systemManaged: true,
+      });
+
+      await expect(callExecute(tool.execute, { id: "def-tg" })).rejects.toThrow(
+        '"Telegram Assistant" is managed by Saale',
+      );
+      expect(executeAgentRun).not.toHaveBeenCalled();
     });
 
     it("throws when job is disabled", async () => {

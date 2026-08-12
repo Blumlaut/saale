@@ -51,6 +51,7 @@ export interface AgentJobDefinition {
   cronExpression: string | null;
   lastRunAt: string | null;
   enabled: boolean;
+  systemManaged: boolean;
   runCount: number;
   latestRun: { status: string; completedAt: string | null } | null;
   createdAt: string;

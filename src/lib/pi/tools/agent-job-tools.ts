@@ -3,6 +3,11 @@ import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { triggerAgentRun } from "@/lib/agent-jobs/run";
 import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
+import {
+  isReservedAgentName,
+  RESERVED_AGENT_NAME_ERROR,
+  SYSTEM_MANAGED_ERROR,
+} from "@/lib/agent-jobs/system-managed";
 
 /**
  * Create agent job tools with userId injection for user isolation.
@@ -153,6 +158,10 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         ),
       }),
       execute: async (_toolCallId, params) => {
+        if (isReservedAgentName(params.name)) {
+          throw new Error(RESERVED_AGENT_NAME_ERROR);
+        }
+
         // Normalize modelId
         const rawModelId = params.modelId || null;
         const resolvedModelId = rawModelId?.includes("/")
@@ -297,10 +306,18 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         if (!definition) {
           throw new Error(`Agent job ${params.id} not found`);
         }
+        if (definition.systemManaged) {
+          throw new Error(SYSTEM_MANAGED_ERROR);
+        }
 
         const data: Record<string, unknown> = {};
 
-        if (params.name !== undefined) data.name = params.name.trim();
+        if (params.name !== undefined) {
+          if (isReservedAgentName(params.name)) {
+            throw new Error(RESERVED_AGENT_NAME_ERROR);
+          }
+          data.name = params.name.trim();
+        }
         if (params.prompt !== undefined) data.prompt = params.prompt.trim();
         if (params.description !== undefined) data.description = params.description?.trim() || null;
         if (params.systemPrompt !== undefined)
@@ -385,6 +402,9 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         if (!definition) {
           throw new Error(`Agent job ${params.id} not found`);
         }
+        if (definition.systemManaged) {
+          throw new Error(SYSTEM_MANAGED_ERROR);
+        }
 
         await prisma.agentDefinition.delete({
           where: { id: params.id },
@@ -425,10 +445,13 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
       execute: async (_toolCallId, params) => {
         const definition = await prisma.agentDefinition.findFirst({
           where: { id: params.id, userId },
-          select: { id: true, enabled: true },
+          select: { id: true, enabled: true, systemManaged: true },
         });
         if (!definition) {
           throw new Error(`Agent job ${params.id} not found`);
+        }
+        if (definition.systemManaged) {
+          throw new Error(SYSTEM_MANAGED_ERROR);
         }
         if (!definition.enabled) {
           throw new Error(`Agent job ${params.id} is disabled`);
