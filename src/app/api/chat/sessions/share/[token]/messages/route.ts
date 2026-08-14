@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
  * GET /api/chat/sessions/share/:token/messages — Public endpoint for shared chats.
  *
  * No authentication required. Returns session metadata + messages.
- * Excludes attachments and thinking content for shared views.
+ * Excludes attachments and thinking content for shared views
+ * (compaction messages only expose their token count, stored in `thinking`).
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -30,6 +31,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       id: true,
       role: true,
       content: true,
+      thinking: true,
       toolCalls: true,
       parentMessageId: true,
       createdAt: true,
@@ -54,6 +56,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         : undefined,
       parentMessageId: m.parentMessageId || undefined,
       createdAt: m.createdAt.toISOString(),
+      ...(m.role === "compaction"
+        ? {
+            compaction: {
+              tokensBefore: m.thinking ? parseInt(m.thinking, 10) : 0,
+            },
+          }
+        : {}),
     })),
   });
 }
