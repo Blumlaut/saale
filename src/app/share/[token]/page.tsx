@@ -15,6 +15,7 @@ interface ShareMessage {
   toolCalls: ToolCallData[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;
+  compaction?: { tokensBefore: number };
 }
 
 export default async function SharePage({ params }: SharePageProps) {
@@ -41,6 +42,7 @@ export default async function SharePage({ params }: SharePageProps) {
     parentMessageId: m.parentMessageId,
     createdAt: m.createdAt,
     attachments: undefined,
+    ...(m.compaction && { compaction: m.compaction }),
   }));
 
   // Check if viewer is authenticated
