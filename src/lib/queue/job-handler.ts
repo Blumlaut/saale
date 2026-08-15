@@ -5,6 +5,7 @@ import { buildModelRuntime } from "@/lib/pi/models";
 import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { handlerMap } from "./jobs/registry";
 
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
@@ -50,12 +51,25 @@ export async function dispatchAiJob(
     `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
   lockSystemPrompt(session, systemPrompt);
 
-  let timerId: ReturnType<typeof setTimeout>;
-
   return new Promise((resolve, reject) => {
+    // Idle timeout — fires only if the session goes completely silent
+    // (hung model, dead connection). Every agent event resets the window.
+    const idleTimeout = createAgentIdleTimeout({
+      session,
+      timeoutMs: 5 * 60_000,
+      label: `ai-job:${userId}`,
+      onTimeout: () => {
+        unsubscribe();
+        session.abort().catch((err) => {
+          console.error("[queue/ai-job] Failed to abort on timeout:", err);
+        });
+        reject(new Error("AI job stalled (no activity for 5min)"));
+      },
+    });
+
     const unsubscribe = session.subscribe((event) => {
       if (event.type === "agent_end") {
-        clearTimeout(timerId);
+        idleTimeout.clear();
         unsubscribe();
         const lastMsg = event.messages.findLast((m) => m.role === "assistant");
         const textBlocks = lastMsg?.content.filter(
@@ -69,15 +83,13 @@ export async function dispatchAiJob(
       }
     });
 
-    // Timeout after 5min
-    timerId = setTimeout(() => {
-      unsubscribe();
-      reject(new Error("AI job timed out (5min)"));
-    }, 5 * 60_000);
-
     // Call agent.prompt directly to bypass AgentSession's preflight logic
     // which resets systemPrompt back to the Pi base prompt on every turn
-    session.agent.prompt(prompt);
+    session.agent.prompt(prompt).catch((err) => {
+      idleTimeout.clear();
+      unsubscribe();
+      reject(err);
+    });
   });
 }
 
