@@ -14,18 +14,23 @@ import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
-import { wrapWithApprovalGate, type ApprovalRequest } from "@/lib/pi/tool-approval-gate";
+import {
+  wrapWithApprovalGate,
+  type ApprovalRequest,
+  type ApprovalResolutionData,
+} from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { resolveToolSummary } from "@/lib/pi/tool-summary-resolver";
-import { sendTelegramApprovalRequest } from "./approval";
+import { sendTelegramApprovalRequest, deleteTelegramApprovalMessage } from "./approval";
+import { createApprovalCardTracker } from "./approval-cards";
 import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
 import { registerActiveSession, markGenerationStart } from "@/lib/redis";
-import { resetSessionEvents } from "@/lib/pi/session-events";
+import { resetSessionEvents, subscribeSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
-import { unregisterTelegramSession } from "./session-registry";
+import { unregisterTelegramSession, wasTelegramSessionInterrupted } from "./session-registry";
 import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
 
 /** Allowed MIME types that can be passed as images to the vision model */
@@ -363,12 +368,38 @@ export async function processTelegramMessage(
   const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow" | "auto"> =>
     toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
+  // Track approval cards sent to Telegram so they can be deleted when the
+  // approval resolves (button, web, timeout, interrupt) or the run ends.
+  const cardTracker = createApprovalCardTracker((cardId) =>
+    deleteTelegramApprovalMessage(encryptedToken, cardId),
+  );
+
+  // Every resolution path publishes `tool_approval_resolved` on the session
+  // bus — resolving the card from that event covers Telegram button
+  // presses, web-UI decisions, approval timeouts, and interrupts.
+  const approvalBusSub = subscribeSessionEvents(sessionId, (evt) => {
+    if (evt.event !== "tool_approval_resolved") return;
+    const data = evt.data as ApprovalResolutionData | undefined;
+    if (data?.toolCallId) {
+      cardTracker.onResolved(data.toolCallId);
+    }
+  }).catch((err) => {
+    console.error("Failed to subscribe to approval resolution events:", err);
+    return undefined;
+  });
+
   // Build the approval wrapper — every tool goes through the gate
   const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
     wrapWithApprovalGate(tool, userId, sessionId, getPolicy, (request: ApprovalRequest) => {
-      sendTelegramApprovalRequest(userId, request).catch((err) => {
-        console.error("Failed to send Telegram approval request:", err);
-      });
+      sendTelegramApprovalRequest(userId, request)
+        .then((cardId) => {
+          if (cardId) {
+            cardTracker.track(request.toolCallId, cardId);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to send Telegram approval request:", err);
+        });
     });
 
   const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
@@ -389,6 +420,13 @@ export async function processTelegramMessage(
     thinkingLevel:
       (definition.thinkingLevel as
         "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ?? "off",
+  });
+
+  // Mark the run as running — startedAt is when the agent actually starts
+  // (the run record was created earlier as "pending").
+  await prisma.agentRun.update({
+    where: { id: run.id },
+    data: { status: "running", startedAt: new Date() },
   });
 
   // Build system prompt using shared utility (aligned with web chat)
@@ -616,9 +654,16 @@ export async function processTelegramMessage(
       stopTyping();
     }
 
+    // Detect interruption BEFORE cleanup: a new message aborting this run
+    // marks it in the registry (the old entry may already have been
+    // overwritten — in that narrow race the run counts as completed).
+    const interrupted = wasTelegramSessionInterrupted(session);
+
     // For single-turn responses (no turn_end fired), make sure the text is
     // still delivered to Telegram. The tracker handles the DB save.
-    if (turnIndex === 0 && currentTurnText.trim() && !flushedTurnTexts.has(0)) {
+    // Interrupted runs are superseded by the new message's response —
+    // a stale partial reply would only confuse the user.
+    if (!interrupted && turnIndex === 0 && currentTurnText.trim() && !flushedTurnTexts.has(0)) {
       await sendTelegramMessage(
         encryptedToken,
         telegramChatId,
@@ -627,16 +672,16 @@ export async function processTelegramMessage(
       );
     }
 
-    // Get stats and mark run as completed
+    // Get stats and mark run as completed (or cancelled if interrupted)
     const stats = session.getSessionStats();
     await prisma.agentRun.update({
       where: { id: run.id },
       data: {
-        status: "completed",
+        status: interrupted ? "cancelled" : "completed",
+        ...(interrupted ? { error: "Interrupted by user message" } : {}),
         inputTokens: stats.tokens.input,
         outputTokens: stats.tokens.output,
         cost: stats.cost,
-        startedAt: new Date(),
         completedAt: new Date(),
       },
     });
@@ -654,7 +699,6 @@ export async function processTelegramMessage(
       data: {
         status: "error",
         error: (err as Error).message,
-        startedAt: new Date(),
         completedAt: new Date(),
       },
     });
@@ -670,9 +714,23 @@ export async function processTelegramMessage(
     // It also unregisters the active session + updates the message count.
     tracker.dispose();
 
-    // Always unregister from the session registry (for interruption tracking)
+    // Delete any approval cards still outstanding (a denial that raced with
+    // the run ending, or a bus event that was missed).
+    cardTracker.flush();
+
+    // Await the bus subscription settling so a late subscription can't
+    // leak its listener after the run is done.
+    await approvalBusSub.then((unsub) => {
+      if (unsub) {
+        unsub();
+      }
+    });
+
+    // Always unregister from the session registry (for interruption
+    // tracking). Identity-checked: a new run registered during the
+    // interrupt must not be unregistered by the old run's cleanup.
     if (wasRegistered) {
-      unregisterTelegramSession(userId, telegramChatId);
+      unregisterTelegramSession(userId, telegramChatId, session);
     }
   }
 }

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { createBot } from "./client";
 import type { ApprovalRequest } from "@/lib/pi/tool-approval-gate";
+import type { ApprovalCardId } from "./approval-cards";
 
 /** Redis key prefix for short approval tokens. */
 const TOKEN_KEY_PREFIX = "saale:approval-token:";
@@ -13,17 +14,20 @@ const TOKEN_KEY_PREFIX = "saale:approval-token:";
  * Only sends if the user has an enabled Telegram bot configured.
  * Uses a short random token (stored in Redis) for callback_data
  * to stay within Telegram's 64-byte limit.
+ *
+ * @returns The card's chat + message IDs (so the sender can delete it
+ *          later), or null if no card was sent.
  */
 export async function sendTelegramApprovalRequest(
   userId: string,
   request: ApprovalRequest,
-): Promise<void> {
+): Promise<ApprovalCardId | null> {
   const account = await prisma.telegramAccount.findFirst({
     where: { userId, enabled: true },
     select: { id: true, encryptedToken: true, userId: true },
   });
 
-  if (!account) return;
+  if (!account) return null;
 
   // Find the user's Telegram chat ID from TelegramChat records
   const chat = await prisma.telegramChat.findFirst({
@@ -32,7 +36,7 @@ export async function sendTelegramApprovalRequest(
     orderBy: { updatedAt: "desc" },
   });
 
-  if (!chat) return;
+  if (!chat) return null;
 
   const bot = createBot(account.encryptedToken);
 
@@ -62,7 +66,7 @@ export async function sendTelegramApprovalRequest(
       console.error("Failed to store approval token in Redis:", err);
     });
 
-  await bot.api.sendMessage(Number(chat.telegramChatId), text, {
+  const sent = await bot.api.sendMessage(Number(chat.telegramChatId), text, {
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [
@@ -79,6 +83,23 @@ export async function sendTelegramApprovalRequest(
       ],
     },
   });
+
+  return { chatId: Number(chat.telegramChatId), messageId: sent.message_id };
+}
+
+/**
+ * Delete a previously sent approval card.
+ *
+ * Deletion is owned by the run that sent the card (see
+ * createApprovalCardTracker) — the card goes away when the approval
+ * resolves on ANY path (Telegram button, web UI, timeout, interrupt).
+ */
+export async function deleteTelegramApprovalMessage(
+  encryptedToken: string,
+  cardId: ApprovalCardId,
+): Promise<void> {
+  const bot = createBot(encryptedToken);
+  await bot.api.deleteMessage(cardId.chatId, cardId.messageId);
 }
 
 /**
@@ -90,12 +111,15 @@ export async function sendTelegramApprovalRequest(
  *
  * Verifies user isolation: the session must belong to the Telegram account's user.
  *
+ * The approval card itself is deleted by the run's card tracker (which
+ * observes the `tool_approval_resolved` session bus event this resolution
+ * publishes) — not here — so every resolution path removes the card.
+ *
  * @returns true if the callback was handled, false if it was not an approval callback.
  */
 export async function handleApprovalCallback(
   accountId: string,
   callbackData: string,
-  opts?: { deleteMessage?: () => Promise<void> },
 ): Promise<{ handled: boolean; message?: string; approved?: boolean }> {
   if (!callbackData.startsWith("a:") && !callbackData.startsWith("d:")) {
     return { handled: false };
@@ -156,13 +180,6 @@ export async function handleApprovalCallback(
       ? "✅ Tool call approved."
       : "❌ Tool call denied."
     : "⚠️ Approval request not found (may have expired).";
-
-  // Delete the approval message so it doesn't clutter the chat
-  if (resolved && opts?.deleteMessage) {
-    opts.deleteMessage().catch((err) => {
-      console.error("Failed to delete approval message:", err);
-    });
-  }
 
   return {
     handled: true,
