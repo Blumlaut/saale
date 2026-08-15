@@ -9,6 +9,7 @@ import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
+import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -219,10 +220,25 @@ export async function executeAgentRun(
     },
   });
 
-  let timerId: ReturnType<typeof setTimeout>;
-  const TIMEOUT_MS = 10 * 60_000; // 10 minutes
+  const TIMEOUT_MS = 10 * 60_000; // idle window, not a total-duration cap
 
   return new Promise((resolve, reject) => {
+    // Idle timeout — fires only if the session goes completely silent
+    // (hung model, stuck tool). Every agent event resets the window, so an
+    // actively working agent can run longer than the idle window.
+    const idleTimeout = createAgentIdleTimeout({
+      session,
+      timeoutMs: TIMEOUT_MS,
+      label: `agent-job:${runId}`,
+      onTimeout: () => {
+        unsubscribe();
+        session.abort().catch((err) => {
+          console.error(`[agent-job:${runId}] Failed to abort on timeout:`, err);
+        });
+        reject(new Error("Agent job stalled (no activity for 10min)"));
+      },
+    });
+
     const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
       try {
         handleAgentEvent(event, runId, state, output);
@@ -231,7 +247,7 @@ export async function executeAgentRun(
       }
 
       if (event.type === "agent_end") {
-        clearTimeout(timerId);
+        idleTimeout.clear();
         unsubscribe();
 
         try {
@@ -248,24 +264,15 @@ export async function executeAgentRun(
       }
 
       if (event.type === "auto_retry_end" && !event.success) {
-        clearTimeout(timerId);
+        idleTimeout.clear();
         unsubscribe();
         reject(new Error(event.finalError ?? "Agent retry failed"));
       }
     });
 
-    // Timeout guard
-    timerId = setTimeout(() => {
-      unsubscribe();
-      session.abort().catch((err) => {
-        console.error(`[agent-job:${runId}] Failed to abort on timeout:`, err);
-      });
-      reject(new Error("Agent job timed out (10min)"));
-    }, TIMEOUT_MS);
-
     // Send the prompt
     session.agent.prompt(definition.prompt).catch((err) => {
-      clearTimeout(timerId);
+      idleTimeout.clear();
       unsubscribe();
       reject(err);
     });

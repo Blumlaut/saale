@@ -24,6 +24,7 @@ import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-st
 import { registerActiveSession, markGenerationStart } from "@/lib/redis";
 import { resetSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
+import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { unregisterTelegramSession } from "./session-registry";
 import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
 
@@ -40,6 +41,14 @@ const IMAGE_MIME_TYPES = new Set([
 
 /** Max file size for Telegram downloads (20MB per Telegram API limit) */
 const MAX_TELEGRAM_FILE_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Idle timeout for Telegram agent runs. If the session produces no events
+ * at all (tokens, tool calls, turns) for this long, the run is considered
+ * stalled and aborted. Any agent activity resets the window, so this is
+ * NOT a cap on total run duration.
+ */
+const AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
 
 /** Uploads directory for storing downloaded Telegram files */
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
@@ -438,14 +447,22 @@ export async function processTelegramMessage(
   try {
     try {
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          unsubscribe();
-          processingDone?.resolve();
-          session.abort().catch((err) => {
-            console.error(`Telegram session abort failed:`, err);
-          });
-          reject(new Error("Telegram agent timed out (10min)"));
-        }, 10 * 60_000);
+        // Idle timeout — fires only if the session goes completely silent
+        // (hung model, stuck tool). Every agent event resets the window, so
+        // an actively working agent can run longer than the idle window.
+        const idleTimeout = createAgentIdleTimeout({
+          session,
+          timeoutMs: AGENT_IDLE_TIMEOUT_MS,
+          label: `telegram:${run.id}`,
+          onTimeout: () => {
+            unsubscribe();
+            processingDone?.resolve();
+            session.abort().catch((err) => {
+              console.error(`Telegram session abort failed:`, err);
+            });
+            reject(new Error("Telegram agent stalled (no activity for 10min)"));
+          },
+        });
 
         const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
           switch (event.type) {
@@ -561,7 +578,7 @@ export async function processTelegramMessage(
             }
 
             case "agent_end": {
-              clearTimeout(timer);
+              idleTimeout.clear();
               unsubscribe();
               processingDone?.resolve();
               resolve();
@@ -570,7 +587,7 @@ export async function processTelegramMessage(
 
             case "auto_retry_end": {
               if (!event.success) {
-                clearTimeout(timer);
+                idleTimeout.clear();
                 unsubscribe();
                 processingDone?.resolve();
                 reject(new Error(event.finalError ?? "Agent retry failed"));
@@ -589,7 +606,7 @@ export async function processTelegramMessage(
         // Send the user message to the agent (with images if available)
         const images = processedFile?.imageData ? [processedFile.imageData] : undefined;
         session.agent.prompt(promptText, images).catch((err) => {
-          clearTimeout(timer);
+          idleTimeout.clear();
           unsubscribe();
           processingDone?.resolve();
           reject(err);
