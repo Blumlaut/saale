@@ -70,6 +70,13 @@ export async function triggerAgentRun(params: {
     outputChannelId: definition.outputChannelId,
   });
 
+  // Mark the run as running — startedAt is when execution actually starts
+  // (the run record was created above as "pending").
+  await prisma.agentRun.update({
+    where: { id: run.id },
+    data: { status: "running", startedAt: new Date() },
+  });
+
   // Execute asynchronously (fire-and-forget, but with error handling)
   executeAgentRun(
     run.id,
@@ -91,7 +98,6 @@ export async function triggerAgentRun(params: {
           inputTokens: stats.inputTokens,
           outputTokens: stats.outputTokens,
           cost: stats.cost,
-          startedAt: new Date(),
           completedAt: new Date(),
         },
       });
@@ -103,7 +109,6 @@ export async function triggerAgentRun(params: {
         data: {
           status: "error",
           error: err.message,
-          startedAt: new Date(),
           completedAt: new Date(),
         },
       });

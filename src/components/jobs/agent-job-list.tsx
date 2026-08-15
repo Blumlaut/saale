@@ -20,6 +20,7 @@ import {
   Settings,
   ChevronRight,
   Lock,
+  Ban,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -184,6 +185,13 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
           <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
             <Loader2 className="mr-1 h-3 w-3 animate-spin" />
             Running
+          </Badge>
+        );
+      case "cancelled":
+        return (
+          <Badge variant="secondary" className="bg-zinc-500/10 text-zinc-600 dark:text-zinc-400">
+            <Ban className="mr-1 h-3 w-3" />
+            Cancelled
           </Badge>
         );
       default:

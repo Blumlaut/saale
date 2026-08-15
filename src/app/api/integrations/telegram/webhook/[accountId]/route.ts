@@ -143,19 +143,10 @@ export async function POST(
   if (callbackQuery && callbackQuery.data) {
     const bot = createBot(account.encryptedToken);
 
-    // Build a delete callback bound to the approval message's chat and message IDs
-    const approvalChatId = callbackQuery.message?.chat?.id;
-    const approvalMessageId = callbackQuery.message?.message_id;
-    const deleteApprovalMessage = async () => {
-      if (approvalChatId != null && approvalMessageId != null) {
-        await bot.api.deleteMessage(approvalChatId, approvalMessageId);
-      }
-    };
-
-    // Handle approval callbacks (with accountId for user isolation)
-    const result = await handleApprovalCallback(accountId, callbackQuery.data, {
-      deleteMessage: deleteApprovalMessage,
-    });
+    // Handle approval callbacks (with accountId for user isolation).
+    // The approval card is deleted by the run's card tracker when the
+    // resolution event reaches it.
+    const result = await handleApprovalCallback(accountId, callbackQuery.data);
     if (result.handled && result.message) {
       try {
         await bot.api.answerCallbackQuery(callbackQuery.id, {
