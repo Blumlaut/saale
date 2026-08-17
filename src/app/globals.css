@@ -268,7 +268,6 @@ overrides. */
     rgba(255, 255, 255, 0.85) 100%
   );
   backdrop-filter: saturate(200%) blur(40px);
-  -webkit-backdrop-filter: saturate(200%) blur(40px);
   border: 1px solid rgba(255, 255, 255, 0.55);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.1),
@@ -284,7 +283,6 @@ overrides. */
     rgba(25, 25, 35, 0.78) 100%
   );
   backdrop-filter: saturate(200%) blur(40px);
-  -webkit-backdrop-filter: saturate(200%) blur(40px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.35),
@@ -295,7 +293,6 @@ overrides. */
 .liquid-glass-inner {
   background: rgba(255, 255, 255, 0.5);
   backdrop-filter: saturate(120%) blur(12px);
-  -webkit-backdrop-filter: saturate(120%) blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
@@ -303,7 +300,6 @@ overrides. */
 .dark .liquid-glass-inner {
   background: rgba(255, 255, 255, 0.07);
   backdrop-filter: saturate(120%) blur(12px);
-  -webkit-backdrop-filter: saturate(120%) blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
@@ -312,7 +308,6 @@ overrides. */
 .liquid-glass-pill {
   background: rgba(255, 255, 255, 0.55);
   backdrop-filter: saturate(140%) blur(8px);
-  -webkit-backdrop-filter: saturate(140%) blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.45);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
   transition: all 0.2s ease;
@@ -342,7 +337,6 @@ overrides. */
     rgba(0, 82, 204, 0.86) 100%
   );
   backdrop-filter: saturate(140%) blur(12px);
-  -webkit-backdrop-filter: saturate(140%) blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.3);
   box-shadow:
     0 4px 16px rgba(0, 102, 255, 0.3),
@@ -366,7 +360,6 @@ overrides. */
 .liquid-glass-destructive {
   background: rgba(255, 59, 48, 0.2);
   backdrop-filter: saturate(120%) blur(8px);
-  -webkit-backdrop-filter: saturate(120%) blur(8px);
   border: 1px solid rgba(255, 59, 48, 0.3);
   color: rgba(255, 59, 48, 0.9);
   transition: all 0.2s ease;
