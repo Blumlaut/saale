@@ -6,8 +6,10 @@ import { Bot, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CompactionMessage } from "./compaction-message";
+import { CopyButton } from "./copy-button";
 import { ToolCallView } from "./tool-call-view";
 import { groupMessages } from "@/lib/chat/group-messages";
+import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import type { Message } from "./types";
 
@@ -189,6 +191,9 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
 
   const timestamp = visibleMessages[visibleMessages.length - 1]?.createdAt;
 
+  // Combined response text for the copy button (empty when no turn has text)
+  const copyText = getAssistantCopyText(visibleMessages);
+
   return (
     <div className="flex gap-3">
       <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
@@ -211,7 +216,18 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
             )}
           </div>
         ))}
-        {timestamp && <div className="text-muted-foreground text-xs">{formatTime(timestamp)}</div>}
+        {timestamp && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">{formatTime(timestamp)}</span>
+            {copyText && (
+              <CopyButton
+                text={copyText}
+                label="Copy response"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

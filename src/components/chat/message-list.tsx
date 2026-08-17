@@ -6,8 +6,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
+import { CopyButton } from "./copy-button";
 import { ToolCallView } from "./tool-call-view";
 import { groupMessages } from "@/lib/chat/group-messages";
+import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
 import type { ApprovalData, Message } from "./types";
 import {
@@ -456,8 +458,11 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
   // Use the last message's timestamp
   const timestamp = visibleMessages[visibleMessages.length - 1]?.createdAt;
 
+  // Combined response text for the copy button (empty when no turn has text)
+  const copyText = getAssistantCopyText(visibleMessages);
+
   return (
-    <div className="flex gap-3">
+    <div className="group/message flex gap-3">
       {/* Single avatar for the entire group */}
       <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
         <Bot className="h-4 w-4" />
@@ -533,13 +538,22 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
           </div>
         ))}
 
-        {/* Single timestamp for the group */}
+        {/* Single timestamp + copy action for the group */}
         {timestamp && (
-          <div className="text-muted-foreground text-xs">
-            {new Date(timestamp).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">
+              {new Date(timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+            {copyText && (
+              <CopyButton
+                text={copyText}
+                label="Copy response"
+                className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover/message:opacity-70"
+              />
+            )}
           </div>
         )}
       </div>
