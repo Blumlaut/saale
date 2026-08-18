@@ -739,7 +739,7 @@ export async function processTelegramMessage(
  * Ensure the Telegram agent definition exists for the user.
  * Creates it on first Telegram interaction if it doesn't exist.
  */
-async function ensureTelegramAgentDefinition(userId: string): Promise<{
+export async function ensureTelegramAgentDefinition(userId: string): Promise<{
   id: string;
   systemPrompt: string | null;
   toolConfig: unknown;

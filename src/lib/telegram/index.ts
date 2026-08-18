@@ -11,7 +11,13 @@ export {
   startTypingIndicator,
 } from "./client";
 
-export { processTelegramMessage, isWhitelisted, upsertWhitelistDisplayName } from "./processor";
+export {
+  processTelegramMessage,
+  compactTelegramSession,
+  ensureTelegramAgentDefinition,
+  isWhitelisted,
+  upsertWhitelistDisplayName,
+} from "./processor";
 
 export {
   resolveDefaultTelegramChat,
