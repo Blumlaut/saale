@@ -370,9 +370,9 @@ async function doWaitForApproval(
  * Wrap a tool definition with an approval gate.
  *
  * Before every tool execution, the wrapper checks:
- * 0. Auto-approve mode (/stfu) active for the user → execute immediately,
- *    bypassing every per-tool policy (including "off").
- * 1. Policy: "off" → reject immediately
+ * 0. Policy: "off" → reject immediately (even during auto-approve mode)
+ * 1. Auto-approve mode (/stfu) active for the user → execute immediately,
+ *    bypassing "ask" and risky "auto" approvals (never re-enables "off" tools)
  * 2. Policy: "ask" → emit approval request, wait for user decision
  * 3. Policy: "allow" → proceed
  * 4. Policy: "auto" → command-aware (infra_exec only): auto-approve safe commands, ask for risky ones
@@ -391,21 +391,23 @@ export function wrapWithApprovalGate(
   return {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-      // Auto-approve mode (/stfu): accept ALL tool use requests for this
-      // user until the window expires — regardless of per-tool policies.
-      if (await isAutoApproveActive(userId)) {
-        return originalExecute(toolCallId, params, signal, onUpdate, ctx);
-      }
-
       const policy = await getPolicy(tool.name);
 
-      // Policy: "off" — tool is disabled
+      // Policy: "off" — tool is disabled. Never overridden, not even by
+      // auto-approve mode (/stfu): a disabled tool stays disabled.
       if (policy === "off") {
         return {
           content: [{ type: "text", text: `Tool "${tool.name}" is disabled.` }],
           isError: true,
           details: {},
         };
+      }
+
+      // Auto-approve mode (/stfu): accept tool use requests for this user
+      // until the window expires — bypasses "ask" and risky "auto"
+      // approvals, regardless of per-tool preferences.
+      if (await isAutoApproveActive(userId)) {
+        return originalExecute(toolCallId, params, signal, onUpdate, ctx);
       }
 
       // Policy: "auto" — command-aware approval (infra_exec, bash)
