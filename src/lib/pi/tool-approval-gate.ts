@@ -1,5 +1,6 @@
 import { getRedis } from "@/lib/redis";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand } from "./command-classifier";
 import { publishSessionEvent, subscribeSessionEvents } from "./session-events";
 
@@ -369,6 +370,8 @@ async function doWaitForApproval(
  * Wrap a tool definition with an approval gate.
  *
  * Before every tool execution, the wrapper checks:
+ * 0. Auto-approve mode (/stfu) active for the user → execute immediately,
+ *    bypassing every per-tool policy (including "off").
  * 1. Policy: "off" → reject immediately
  * 2. Policy: "ask" → emit approval request, wait for user decision
  * 3. Policy: "allow" → proceed
@@ -388,6 +391,12 @@ export function wrapWithApprovalGate(
   return {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      // Auto-approve mode (/stfu): accept ALL tool use requests for this
+      // user until the window expires — regardless of per-tool policies.
+      if (await isAutoApproveActive(userId)) {
+        return originalExecute(toolCallId, params, signal, onUpdate, ctx);
+      }
+
       const policy = await getPolicy(tool.name);
 
       // Policy: "off" — tool is disabled

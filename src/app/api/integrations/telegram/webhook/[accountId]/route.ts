@@ -8,13 +8,24 @@ import {
   upsertWhitelistDisplayName,
   type TelegramFileInfo,
 } from "@/lib/telegram/processor";
-import { createBot } from "@/lib/telegram/client";
+import { createBot, sendTelegramMessage } from "@/lib/telegram/client";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
+import { handleModelCallback, sendModelPicker } from "@/lib/telegram/model-selection";
+import { enableAutoApprove, disableAutoApprove, STFU_DURATION_MS } from "@/lib/pi/auto-approve";
 import {
   isTelegramSessionActive,
   registerTelegramSession,
   abortTelegramSession,
 } from "@/lib/telegram/session-registry";
+
+/**
+ * Match a Telegram command like `/model`, `/model@BotName`, or `/model arg`.
+ * The optional @botname suffix is stripped by Telegram when the bot is the
+ * only one in the chat; handle both forms defensively.
+ */
+function isCommand(text: string, command: string): boolean {
+  return text === command || text.startsWith(`${command}@`) || text.startsWith(`${command} `);
+}
 
 /**
  * Extract processable content from a Telegram message.
@@ -156,6 +167,23 @@ export async function POST(
       } catch (err) {
         console.error("Failed to answer callback query:", err);
       }
+    } else if (!result.handled) {
+      // Not an approval callback — try the /model picker callback.
+      const modelResult = await handleModelCallback(
+        accountId,
+        callbackQuery.data,
+        callbackQuery.message,
+      );
+      if (modelResult.handled && modelResult.message) {
+        try {
+          await bot.api.answerCallbackQuery(callbackQuery.id, {
+            text: modelResult.message,
+            show_alert: false,
+          });
+        } catch (err) {
+          console.error("Failed to answer model callback query:", err);
+        }
+      }
     }
 
     return NextResponse.json({ ok: true });
@@ -205,8 +233,9 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  // 7.5. Handle /compact command
-  if (content.text === "/compact") {
+  // 7.5. Handle commands
+  // /compact — compact the current chat session
+  if (isCommand(content.text ?? "", "/compact")) {
     compactTelegramSession({
       userId: account.userId,
       encryptedToken: account.encryptedToken,
@@ -215,6 +244,70 @@ export async function POST(
     }).catch((err) => {
       console.error("Telegram /compact command failed:", err);
     });
+    return NextResponse.json({ ok: true });
+  }
+
+  // /model — inline-keyboard picker for the user's Telegram model
+  if (isCommand(content.text ?? "", "/model")) {
+    sendModelPicker({
+      userId: account.userId,
+      encryptedToken: account.encryptedToken,
+      telegramChatId,
+      replyToMessageId: message.message_id,
+    }).catch((err) => {
+      console.error("Telegram /model command failed:", err);
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // /stfu — auto-accept ALL tool use requests for 2 hours, regardless of
+  // per-tool policies. /stfu stop cancels early.
+  const stfuText = content.text ?? "";
+  if (isCommand(stfuText, "/stfu")) {
+    const reply = { replyToMessageId: message.message_id } as const;
+    // Strip the command and any @botname suffix to get the argument.
+    const stfuArg = stfuText.replace(/^\/stfu(@\w+)?/, "").trim();
+    if (stfuArg === "stop") {
+      disableAutoApprove(account.userId)
+        .then(() =>
+          sendTelegramMessage(
+            account.encryptedToken,
+            telegramChatId,
+            "✅ STFU mode cancelled. Tool approvals are back to your normal policies.",
+            reply,
+          ),
+        )
+        .catch((err) => {
+          console.error("Telegram /stfu stop failed:", err);
+        });
+    } else if (stfuArg !== "") {
+      sendTelegramMessage(
+        account.encryptedToken,
+        telegramChatId,
+        "Usage: /stfu (auto-approve all tool calls for 2h) or /stfu stop (cancel).",
+        reply,
+      ).catch((err) => {
+        console.error("Telegram /stfu usage reply failed:", err);
+      });
+    } else {
+      enableAutoApprove(account.userId, STFU_DURATION_MS)
+        .then((until) => {
+          const time = new Date(until).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          return sendTelegramMessage(
+            account.encryptedToken,
+            telegramChatId,
+            `🤐 STFU mode ON for 2 hours — ALL tool calls are auto-approved until ${time}, ` +
+              `regardless of your tool policies (even disabled ones). Send /stfu stop to cancel.`,
+            reply,
+          );
+        })
+        .catch((err) => {
+          console.error("Telegram /stfu command failed:", err);
+        });
+    }
     return NextResponse.json({ ok: true });
   }
 
