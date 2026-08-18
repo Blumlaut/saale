@@ -3,8 +3,10 @@ import { getRedis } from "@/lib/redis";
 /**
  * Time-boxed "auto-approve every tool call" mode (the Telegram /stfu command).
  *
- * When active for a user, the tool approval gate bypasses ALL per-tool
- * policies — including "off" — and executes every tool call without asking.
+ * When active for a user, the tool approval gate auto-accepts every tool
+ * call that would otherwise require approval ("ask" policy, and risky
+ * commands under the "auto" policy) without asking. Tools disabled with
+ * the "off" policy stay disabled — STFU never re-enables them.
  * The flag lives in Redis with a TTL equal to the window, so it expires
  * automatically and works across processes/restarts.
  */

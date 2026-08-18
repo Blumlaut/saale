@@ -260,8 +260,9 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  // /stfu — auto-accept ALL tool use requests for 2 hours, regardless of
-  // per-tool policies. /stfu stop cancels early.
+  // /stfu — auto-accept ALL tool use requests that require approval for 2
+  // hours, regardless of per-tool "ask"/"auto" preferences. Tools disabled
+  // with the "off" policy stay disabled. /stfu stop cancels early.
   const stfuText = content.text ?? "";
   if (isCommand(stfuText, "/stfu")) {
     const reply = { replyToMessageId: message.message_id } as const;
@@ -299,8 +300,9 @@ export async function POST(
           return sendTelegramMessage(
             account.encryptedToken,
             telegramChatId,
-            `🤐 STFU mode ON for 2 hours — ALL tool calls are auto-approved until ${time}, ` +
-              `regardless of your tool policies (even disabled ones). Send /stfu stop to cancel.`,
+            `🤐 STFU mode ON for 2 hours — tool approvals are auto-accepted until ${time}, ` +
+              `regardless of your ask/auto preferences. Tools you've disabled stay off. ` +
+              `Send /stfu stop to cancel.`,
             reply,
           );
         })

@@ -138,7 +138,7 @@ describe("approval gate honours auto-approve (/stfu)", () => {
     expect(result.content[0].text).toBe("ok");
   });
 
-  it("overrides the 'off' policy (disabled tools run during STFU)", async () => {
+  it("does not re-enable 'off'-policy tools during STFU", async () => {
     let executed = false;
 
     await enableAutoApprove("user-1");
@@ -162,8 +162,9 @@ describe("approval gate honours auto-approve (/stfu)", () => {
       {} as never,
     )) as ToolResult;
 
-    expect(executed).toBe(true);
-    expect(result.content[0].text).toBe("ok");
+    expect(executed).toBe(false);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("disabled");
   });
 
   it("stops auto-approving after the window expires", async () => {
@@ -195,6 +196,39 @@ describe("approval gate honours auto-approve (/stfu)", () => {
     await resolveApproval("session-stfu-expired", "tc-3", true);
     await promise;
     expect(executed).toBe(true);
+  });
+
+  it("auto-approves risky commands under the 'auto' policy during STFU", async () => {
+    let executed = false;
+    const emittedRequests: ApprovalRequest[] = [];
+
+    await enableAutoApprove("user-1");
+
+    const tool = wrapWithApprovalGate(
+      makeMockTool("infra_exec", async () => {
+        executed = true;
+        return { content: [{ type: "text", text: "ok" }], details: {} };
+      }),
+      "user-1",
+      "session-stfu-auto",
+      async () => "auto",
+      (request) => {
+        emittedRequests.push(request);
+      },
+    );
+
+    // A risky command would normally trigger an approval under "auto".
+    const result = (await tool.execute(
+      "tc-5",
+      { command: "rm -rf /" },
+      undefined,
+      undefined,
+      {} as never,
+    )) as ToolResult;
+
+    expect(executed).toBe(true);
+    expect(emittedRequests).toHaveLength(0);
+    expect(result.content[0].text).toBe("ok");
   });
 
   it("is scoped to the user who enabled it", async () => {
