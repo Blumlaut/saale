@@ -378,23 +378,32 @@ export async function GET(
           }
 
           // ── Prompt: dispatch the agent, forward events via the bus ────
+          // Uses session.prompt() — the same path the Pi TUI uses — NOT
+          // session.agent.prompt(). The session wrapper runs the SDK's
+          // pre-prompt compaction check and post-run processing (error
+          // retry, auto-compaction at the run boundary, agent.continue()
+          // after overflow recovery) and only settles (agent_settled) when
+          // everything is truly done. The custom system prompt survives the
+          // preflight because lockSystemPrompt() replaced the SDK's base
+          // prompt. The promise resolves on settle, so promptInFlight stays
+          // set across any post-run compaction (no re-dispatch races).
           if (action.type === "prompt" && promptSession && lastMessage?.role === "user") {
             log("prompt", `sending prompt, message.id=${lastMessage.id}`);
 
             const promptPromise =
               lastMessageImages.length > 0
-                ? promptSession.session.agent.prompt(lastMessage.content, lastMessageImages)
-                : promptSession.session.agent.prompt(lastMessage.content);
+                ? promptSession.session.prompt(lastMessage.content, { images: lastMessageImages })
+                : promptSession.session.prompt(lastMessage.content);
 
             promptPromise
               .then(() => {
                 promptSession!.promptInFlight = false;
-                log("prompt", "agent.prompt() resolved");
+                log("prompt", "session.prompt() settled");
               })
               .catch((err) => {
                 promptSession!.promptInFlight = false;
                 promptSession!.lastPromptedMessageId = null;
-                console.error("agent.prompt() failed:", err);
+                console.error("session.prompt() failed:", err);
                 unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
                 // Notify connected clients, then clear the buffer so a later
                 // connect can retry the prompt instead of replaying the error.

@@ -50,7 +50,7 @@ Guidelines:
  * This function overwrites `_baseSystemPrompt` with the Saale prompt and locks
  * both the internal and external properties to prevent the SDK from replacing it.
  *
- * Must be called after `createAgentSession` returns and before `session.agent.prompt()`.
+ * Must be called after `createAgentSession` returns and before `session.prompt()`.
  */
 export function lockSystemPrompt(session: AgentSession, prompt: string): void {
   // @ts-expect-error — _baseSystemPrompt is internal to the Pi SDK

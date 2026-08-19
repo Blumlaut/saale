@@ -42,7 +42,6 @@ export function wireSessionPersistence(
     sessionId,
     userId,
     session,
-    autoCompact: true,
     onDone: () => {
       persistenceMap.delete(sessionId);
     },

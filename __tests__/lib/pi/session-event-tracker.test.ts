@@ -30,8 +30,9 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+const mockSaveCompactionMessage = vi.fn();
 vi.mock("@/lib/chat/compaction", () => ({
-  saveCompactionMessage: vi.fn().mockResolvedValue(undefined),
+  saveCompactionMessage: (...args: unknown[]) => mockSaveCompactionMessage(...args),
 }));
 
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
@@ -77,7 +78,28 @@ function setup() {
   mockRegisterActiveSession.mockResolvedValue(undefined);
   mockUnregisterActiveSession.mockResolvedValue(undefined);
   mockChatSessionUpdate.mockResolvedValue({});
+  mockSaveCompactionMessage.mockResolvedValue(undefined);
   return { published };
+}
+
+/**
+ * Emit a full single-turn run up to (but not including) agent_settled.
+ */
+function emitRun(session: ReturnType<typeof createFakeSession>, text: string = "Hello"): void {
+  session.emit({ type: "agent_start" });
+  session.emit({
+    type: "message_update",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+  });
+  session.emit({
+    type: "turn_end",
+    message: { role: "assistant", content: [{ type: "text", text }] },
+    toolResults: [],
+  });
+  session.emit({
+    type: "agent_end",
+    messages: [{ role: "assistant", content: [{ type: "text", text }] }],
+  });
 }
 
 describe("createSessionEventTracker", () => {
@@ -110,6 +132,7 @@ describe("createSessionEventTracker", () => {
       type: "agent_end",
       messages: [{ role: "assistant", content: [{ type: "text", text: "Hello world" }] }],
     });
+    session.emit({ type: "agent_settled" });
 
     await flush();
     await flush();
@@ -349,30 +372,28 @@ describe("createSessionEventTracker", () => {
     expect(finalCall[5]).toBe("msg-1");
   });
 
-  it("unregisters the active session and bumps the message count at agent_end", async () => {
-    setup();
+  it("defers done, unregister, and message count to agent_settled (not agent_end)", async () => {
+    const { published } = setup();
     mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
 
     const session = createFakeSession();
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
-    session.emit({
-      type: "message_update",
-      message: { role: "assistant", content: [{ type: "text", text: "Hi" }] },
-    });
-    session.emit({
-      type: "turn_end",
-      message: { role: "assistant", content: [{ type: "text", text: "Hi" }] },
-      toolResults: [],
-    });
-    session.emit({
-      type: "agent_end",
-      messages: [{ role: "assistant", content: [{ type: "text", text: "Hi" }] }],
-    });
+    emitRun(session, "Hi");
 
     await flush();
     await flush();
 
+    // agent_end is NOT terminal: the SDK may still compact/retry/continue.
+    expect(published.map((p) => p.event)).not.toContain("done");
+    expect(mockUnregisterActiveSession).not.toHaveBeenCalled();
+
+    session.emit({ type: "agent_settled" });
+
+    await flush();
+    await flush();
+
+    expect(published.map((p) => p.event)).toContain("done");
     expect(mockUnregisterActiveSession).toHaveBeenCalledWith("u1", "s1");
     expect(mockChatSessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -415,20 +436,9 @@ describe("createSessionEventTracker", () => {
       expect(data).not.toHaveProperty("lastActivityAt");
     }
 
-    // Assistant output (agent_end) is real activity — it must advance it.
-    session.emit({
-      type: "message_update",
-      message: { role: "assistant", content: [{ type: "text", text: "Hi" }] },
-    });
-    session.emit({
-      type: "turn_end",
-      message: { role: "assistant", content: [{ type: "text", text: "Hi" }] },
-      toolResults: [],
-    });
-    session.emit({
-      type: "agent_end",
-      messages: [{ role: "assistant", content: [{ type: "text", text: "Hi" }] }],
-    });
+    // Assistant output (settled run) is real activity — it must advance it.
+    emitRun(session, "Hi");
+    session.emit({ type: "agent_settled" });
 
     await flush();
     await flush();
@@ -456,5 +466,167 @@ describe("createSessionEventTracker", () => {
     });
 
     expect(published).toHaveLength(0);
+  });
+
+  it("never calls session.compact() mid-run, even when usage crosses 85%", async () => {
+    const { published } = setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    session.emit({ type: "agent_start" });
+    // Multi-turn run: each assistant message_end reports usage that pushes
+    // the cumulative total far past any threshold. The old bug called
+    // session.compact() on EVERY such event (it aborted the run and,
+    // without an in-flight guard, double-compacted).
+    for (let i = 0; i < 3; i++) {
+      session.emit({
+        type: "message_update",
+        message: { role: "assistant", content: [{ type: "text", text: `turn ${i}` }] },
+      });
+      session.emit({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          usage: { input: 60_000, output: 6_000, cacheRead: 0, cacheWrite: 0 },
+        },
+      });
+      session.emit({
+        type: "turn_end",
+        message: { role: "assistant", content: [{ type: "text", text: `turn ${i}` }] },
+        toolResults: [],
+      });
+    }
+
+    await flush();
+
+    expect(session.compact).not.toHaveBeenCalled();
+    // Usage is still tracked and published for the UI.
+    const usageEvents = published.filter((p) => p.event === "token_usage");
+    expect(usageEvents.length).toBe(3);
+    expect(usageEvents[2]!.data.total).toBe(198_000);
+  });
+
+  it("persists SDK auto-compaction between agent_end and agent_settled, defers done", async () => {
+    const { published } = setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    emitRun(session, "Final answer");
+    // The SDK runs auto-compaction after agent_end (before settling).
+    session.emit({ type: "compaction_start", reason: "threshold" });
+    session.emit({
+      type: "compaction_end",
+      reason: "threshold",
+      result: { summary: "Summary of the conversation", tokensBefore: 150_000 },
+      aborted: false,
+      willRetry: false,
+    });
+    session.emit({ type: "agent_settled" });
+
+    await flush();
+    await flush();
+    await flush();
+
+    // Compaction summary is persisted and forwarded.
+    expect(mockSaveCompactionMessage).toHaveBeenCalledWith({
+      sessionId: "s1",
+      summary: "Summary of the conversation",
+      tokensBefore: 150_000,
+    });
+    expect(published.map((p) => p.event)).toContain("compaction_start");
+    expect(published.map((p) => p.event)).toContain("compaction_end");
+
+    // done is emitted exactly once, only after settling.
+    const doneEvents = published.filter((p) => p.event === "done");
+    expect(doneEvents).toHaveLength(1);
+    expect(published.findIndex((p) => p.event === "done")).toBeGreaterThan(
+      published.findIndex((p) => p.event === "compaction_end"),
+    );
+
+    // The tracker disposed itself: later events are ignored.
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "after settle" }] },
+    });
+    expect(published.some((p) => p.event === "token")).toBe(true);
+    const tokensAfter = published.filter((p) => p.event === "token").map((p) => p.data.text);
+    expect(tokensAfter).not.toContain("after settle");
+  });
+
+  it("handles a continuation run (overflow retry) and emits done only once", async () => {
+    const { published } = setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // Run 1: the context-overflow turn (agent stops, SDK compacts+continues).
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "overflow" }] },
+    });
+    session.emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        usage: { input: 90_000, output: 5_000, cacheRead: 0, cacheWrite: 0 },
+      },
+    });
+    session.emit({
+      type: "turn_end",
+      message: { role: "assistant", content: [{ type: "text", text: "overflow" }] },
+      toolResults: [],
+    });
+    session.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "overflow" }] }],
+    });
+    session.emit({ type: "compaction_start", reason: "overflow" });
+    session.emit({
+      type: "compaction_end",
+      reason: "overflow",
+      result: { summary: "Compacted", tokensBefore: 180_000 },
+      aborted: false,
+      willRetry: true,
+    });
+    // Run 2: the SDK continued the interrupted turn.
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "Recovered answer" }] },
+    });
+    session.emit({
+      type: "turn_end",
+      message: { role: "assistant", content: [{ type: "text", text: "Recovered answer" }] },
+      toolResults: [],
+    });
+    session.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "Recovered answer" }] }],
+    });
+    session.emit({ type: "agent_settled" });
+
+    await flush();
+    await flush();
+    await flush();
+
+    const events = published.map((p) => p.event);
+    expect(events.filter((e) => e === "done")).toHaveLength(1);
+    // Both turns were tracked (2 turn_starts, done only after the final settle).
+    expect(events.filter((e) => e === "turn_start")).toHaveLength(2);
+    expect(events.indexOf("done")).toBeGreaterThan(events.lastIndexOf("turn_end"));
+
+    // Message count covers all turns of both runs.
+    expect(mockChatSessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "s1" },
+        data: { messageCount: { increment: 2 }, lastActivityAt: expect.any(Date) },
+      }),
+    );
   });
 });

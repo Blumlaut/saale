@@ -444,7 +444,6 @@ export async function processTelegramMessage(
     sessionId,
     userId,
     session,
-    autoCompact: false,
   });
 
   // Telegram-specific send state. DB persistence + stream events are handled
@@ -615,7 +614,10 @@ export async function processTelegramMessage(
               break;
             }
 
-            case "agent_end": {
+            // agent_end only means the current run iteration stopped — the
+            // SDK may still retry, auto-compact, or continue the run. The
+            // settled event is the "completely finished" signal (TUI parity).
+            case "agent_settled": {
               idleTimeout.clear();
               unsubscribe();
               processingDone?.resolve();
@@ -641,9 +643,16 @@ export async function processTelegramMessage(
           wasRegistered = true;
         }
 
-        // Send the user message to the agent (with images if available)
-        const images = processedFile?.imageData ? [processedFile.imageData] : undefined;
-        session.agent.prompt(promptText, images).catch((err) => {
+        // Send the user message to the agent (with images if available).
+        // session.prompt() — the TUI path — runs the SDK's pre-prompt
+        // compaction check and post-run processing (retry, auto-compaction,
+        // overflow continue) and resolves when the session settles. The
+        // system prompt is locked via lockSystemPrompt() above, so the
+        // preflight cannot reset it.
+        const promptOptions = processedFile?.imageData
+          ? { images: [processedFile.imageData] }
+          : undefined;
+        session.prompt(promptText, promptOptions).catch((err) => {
           idleTimeout.clear();
           unsubscribe();
           processingDone?.resolve();
@@ -710,7 +719,7 @@ export async function processTelegramMessage(
       replyToMessageId != null ? { replyToMessageId } : undefined,
     );
   } finally {
-    // The tracker unsubscribes itself on agent_end; dispose() is a no-op then.
+    // The tracker unsubscribes itself on agent_settled; dispose() is a no-op then.
     // It also unregisters the active session + updates the message count.
     tracker.dispose();
 
@@ -1053,8 +1062,8 @@ async function saveUserMessage(sessionId: string, content: string): Promise<void
 
   // Real chat activity — advance lastActivityAt so the session list sorts/
   // displays this chat correctly (updatedAt alone is unreliable here: the
-  // tracker only writes the session at agent_end, so a processing error
-  // would leave it stale).
+  // tracker only writes the session when the run settles, so a processing
+  // error would leave it stale).
   await prisma.chatSession
     .update({
       where: { id: sessionId },
