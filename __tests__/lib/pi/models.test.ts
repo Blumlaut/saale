@@ -38,7 +38,7 @@ vi.mock("@/lib/pi/models", async (importOriginal) => {
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import * as pi from "@earendil-works/pi-coding-agent";
-import { buildModelRuntime } from "@/lib/pi/models";
+import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
 
 describe("buildModelRuntime", () => {
   beforeEach(() => {
@@ -237,5 +237,59 @@ describe("buildModelRuntime", () => {
       where: { userId: "user-specific-456" },
       select: { provider: true, encryptedKey: true, baseUrl: true },
     });
+  });
+});
+
+describe("resolveModel", () => {
+  const fakeModel = (overrides: Record<string, unknown> = {}) => ({
+    id: "test-model",
+    name: "Test Model",
+    api: "openai-completions",
+    provider: "test",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+    maxTokens: 16384,
+    ...overrides,
+  });
+
+  const makeRuntime = (model: unknown) =>
+    ({
+      getModel: vi.fn(() => (model ?? undefined) as never),
+    }) as never;
+
+  it("raises maxTokens to the context window when capped lower", () => {
+    const runtime = makeRuntime(fakeModel());
+    const result = resolveModel(runtime, "test", "test-model");
+
+    expect(result).toMatchObject({
+      id: "test-model",
+      contextWindow: 131072,
+      maxTokens: 131072,
+    });
+  });
+
+  it("returns the same object when maxTokens already covers the context window", () => {
+    const model = fakeModel({ maxTokens: 200000 });
+    const runtime = makeRuntime(model);
+
+    expect(resolveModel(runtime, "test", "test-model")).toBe(model);
+  });
+
+  it("does not mutate the runtime's cached model definition", () => {
+    const model = fakeModel();
+    const runtime = makeRuntime(model);
+
+    const result = resolveModel(runtime, "test", "test-model");
+
+    expect(result).not.toBe(model);
+    expect(model.maxTokens).toBe(16384);
+  });
+
+  it("returns undefined for unknown models", () => {
+    const runtime = makeRuntime(undefined);
+
+    expect(resolveModel(runtime, "test", "nope")).toBeUndefined();
   });
 });

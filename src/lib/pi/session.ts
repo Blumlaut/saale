@@ -14,7 +14,7 @@ import {
 import { createTerminalOperations } from "@/lib/terminal/operations";
 import { getTerminalHomeDir } from "@/lib/terminal/client";
 import { getGitHubEnv } from "@/lib/github";
-import { buildModelRuntime } from "./models";
+import { buildModelRuntime, resolveModel } from "./models";
 import { resolveTools } from "./tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-categories";
 
@@ -102,7 +102,7 @@ export async function buildSessionDeps(options: {
 
   let model;
   if (options.modelProvider && options.modelName) {
-    model = modelRuntime.getModel(options.modelProvider, options.modelName);
+    model = resolveModel(modelRuntime, options.modelProvider, options.modelName);
   }
 
   return { modelRuntime, allCustomTools, model };

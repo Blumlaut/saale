@@ -7,6 +7,31 @@ interface ProviderModelConfig {
   models?: string[];
 }
 
+// Default context window for models discovered via OpenAI-compatible /models
+// (the endpoint doesn't report it). Also used as the output token cap.
+const DEFAULT_CONTEXT_WINDOW = 131_072;
+
+/**
+ * Resolve a model from the runtime with its output token cap raised to the
+ * full context window.
+ *
+ * Pi's built-in model definitions cap `maxTokens` well below `contextWindow`
+ * (often ~16k), and pi-ai falls back to `model.maxTokens` for the request's
+ * `max_tokens`. This truncates responses mid-thought when reasoning is on.
+ * Returns a shallow copy so the runtime's cached model definition is not
+ * mutated.
+ */
+export function resolveModel(
+  runtime: ModelRuntime,
+  provider: string,
+  modelId: string,
+): ReturnType<ModelRuntime["getModel"]> {
+  const model = runtime.getModel(provider, modelId);
+  if (!model) return model;
+  if (model.maxTokens >= model.contextWindow) return model;
+  return { ...model, maxTokens: model.contextWindow };
+}
+
 /**
  * Fetch global admin model config.
  */
@@ -168,8 +193,8 @@ export async function buildModelRuntime(userId: string) {
               reasoning: false,
               input: ["text", "image"] as const,
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 131072,
-              maxTokens: 8192,
+              contextWindow: DEFAULT_CONTEXT_WINDOW,
+              maxTokens: DEFAULT_CONTEXT_WINDOW,
             })),
           });
 
@@ -207,8 +232,8 @@ export async function buildModelRuntime(userId: string) {
               reasoning: false,
               input: ["text", "image"] as const,
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 131072,
-              maxTokens: 8192,
+              contextWindow: DEFAULT_CONTEXT_WINDOW,
+              maxTokens: DEFAULT_CONTEXT_WINDOW,
             })),
           });
         }

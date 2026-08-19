@@ -4,7 +4,7 @@ import {
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { buildModelRuntime } from "@/lib/pi/models";
+import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
 import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
@@ -171,7 +171,7 @@ export async function executeAgentRun(
 
   // Build model runtime and tools
   const { modelRuntime } = await buildModelRuntime(userId);
-  const model = modelRuntime.getModel(modelProvider, modelName);
+  const model = resolveModel(modelRuntime, modelProvider, modelName);
 
   // Merge tool config with defaults
   const rawToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
