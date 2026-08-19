@@ -76,9 +76,17 @@ const { modelRuntime, models } = await buildModelRuntime(userId);
 
 ### Resolving a specific model
 
+**Always use `resolveModel(runtime, provider, modelName)` from `src/lib/pi/models`** — never `modelRuntime.getModel()` directly for inference.
+
+Pi's built-in model definitions cap `maxTokens` well below `contextWindow` (often ~16k), and pi-ai falls back to `model.maxTokens` for the request's `max_tokens`. This truncates responses mid-thought when reasoning is on. `resolveModel()` returns a copy with `maxTokens` raised to the full context window:
+
 ```ts
-const model = modelRuntime.getModel(provider, modelName);
+import { resolveModel } from "@/lib/pi/models";
+
+const model = resolveModel(modelRuntime, provider, modelName);
 ```
+
+`modelRuntime.getModel()` is fine for metadata-only use (e.g. listing thinking levels).
 
 ### Available models (for UI lists)
 

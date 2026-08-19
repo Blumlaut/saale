@@ -1,7 +1,7 @@
 import type { Job } from "bullmq";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { buildModelRuntime } from "@/lib/pi/models";
+import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
 import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
@@ -35,7 +35,7 @@ export async function dispatchAiJob(
 
   let model;
   if (modelInfo) {
-    model = modelRuntime.getModel(modelInfo.provider, modelInfo.name);
+    model = resolveModel(modelRuntime, modelInfo.provider, modelInfo.name);
   }
 
   const { session } = await createAgentSession({

@@ -10,7 +10,7 @@ import {
 import type { ImageContent } from "@earendil-works/pi-ai/compat";
 import { prisma } from "@/lib/db";
 import { createBot, sendTelegramMessage, startTypingIndicator } from "./client";
-import { buildModelRuntime } from "@/lib/pi/models";
+import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
@@ -321,7 +321,7 @@ export async function processTelegramMessage(
 
   const modelId = explicitModelId ?? `${resolvedModelConfig.provider}:${resolvedModelConfig.name}`;
   const [provider, ...nameParts] = modelId.split(":");
-  const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
+  const resolvedModel = resolveModel(modelRuntime, provider ?? "", nameParts.join(":"));
 
   // 8. Create the AgentRun (for tracking in the dashboard)
   const run = await prisma.agentRun.create({
@@ -860,7 +860,7 @@ export async function compactTelegramSession(params: {
 
   const modelId = explicitModelId ?? `${resolvedModelConfig.provider}:${resolvedModelConfig.name}`;
   const [provider, ...nameParts] = modelId.split(":");
-  const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
+  const resolvedModel = resolveModel(modelRuntime, provider ?? "", nameParts.join(":"));
 
   // 3. Build tool config
   const userSettings = await prisma.appSettings.findUnique({
