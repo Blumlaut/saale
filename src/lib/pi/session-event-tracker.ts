@@ -12,6 +12,17 @@
  * Used by BOTH the web chat persistence layer and the Telegram processor so
  * the two code paths stay identical and any change applies everywhere.
  *
+ * Lifecycle semantics mirror Pi's TUI (callers must use `session.prompt()`,
+ * NOT `session.agent.prompt()` — the former runs the SDK's post-run
+ * processing): the agent run may STOP at `agent_end` but keep GOING (error
+ * retry, auto-compaction + `agent.continue()` after overflow, queued
+ * messages). `agent_settled` is the "completely finished" signal — only then
+ * does this tracker emit `done` and dispose. Compaction is triggered by the
+ * SDK itself (pre-prompt and post-run checks); the tracker only observes the
+ * `compaction_start`/`compaction_end` events and persists the summary.
+ * Never call `session.compact()` here: it aborts any in-flight run and, if
+ * fired more than once, double-compacts the session.
+ *
  * Stream protocol (turnId-based):
  *  - `turn_start { turnId }` — a new assistant turn begins
  *  - `token { turnId, text }` / `thinking { turnId, thinking }` — cumulative
@@ -21,7 +32,7 @@
  *  - `tool_end { turnId, toolCallId, result, isError }`
  *  - `turn_end { turnId, text?, thinking? }` — turn finalized
  *  - `message_saved { turnId, messageId }` — swap temp ID for the DB ID
- *  - `done {}` — run finished (emitted after all DB saves settle)
+ *  - `done {}` — run settled (emitted on agent_settled after all DB saves settle)
  */
 
 import crypto from "crypto";
@@ -39,9 +50,7 @@ export interface SessionEventTrackerOptions {
   sessionId: string;
   userId: string;
   session: AgentSession;
-  /** Auto-compact at 85% of the context window (web chat only). */
-  autoCompact?: boolean;
-  /** Called once after the run ends and the `done` event has been published. */
+  /** Called once after the run settles and the `done` event has been published. */
   onDone?: () => void;
 }
 
@@ -60,7 +69,7 @@ interface ToolCallResult {
 export function createSessionEventTracker(
   options: SessionEventTrackerOptions,
 ): SessionEventTracker {
-  const { sessionId, userId, session, autoCompact = true } = options;
+  const { sessionId, userId, session } = options;
 
   const log = (tag: string, ...args: unknown[]) =>
     // eslint-disable-next-line no-console
@@ -94,8 +103,14 @@ export function createSessionEventTracker(
   let totalCacheWriteTokens = 0;
   let contextWindow = 0;
 
-  // Guard: agent_end DB persistence runs exactly once
+  // Guard: agent_end DB persistence runs once per run. Reset on agent_start
+  // because a settled run can be followed by a continuation run (the SDK
+  // re-enters the loop via agent.continue() after an error retry or an
+  // overflow compact-and-retry), and each run finalizes its own last message.
   let agentEndPersisted = false;
+
+  // Guard: settled bookkeeping runs exactly once per tracker.
+  let settledFinalized = false;
 
   // Track all pending DB saves so "done" can wait for them
   const pendingSaves: Promise<unknown>[] = [];
@@ -157,6 +172,7 @@ export function createSessionEventTracker(
       // ── New run: reset the event buffer so stale events from previous
       //    runs are never replayed. The counter survives (see clearBuffer).
       case "agent_start": {
+        agentEndPersisted = false;
         resetSessionEvents(sessionId).catch((err) => {
           console.error("Failed to reset session events:", err);
         });
@@ -164,7 +180,14 @@ export function createSessionEventTracker(
         break;
       }
 
-      // ── Token usage tracking + auto-compaction ───────────────────────────
+      // ── Token usage tracking ───────────────────────────────────────────────
+      // NO auto-compaction here. Compaction is the SDK's job: it checks the
+      // REAL context size (last message usage vs. contextWindow - reserve)
+      // at run boundaries — before prompt submission and after agent_end —
+      // and on overflow it compacts and continues the run. Calling
+      // session.compact() mid-run would abort the in-flight run, and the
+      // cumulative counter below only grows, so a threshold check here would
+      // re-fire compact() on every subsequent message_end (double compaction).
       case "message_end": {
         if (event.message.role !== "assistant") break;
 
@@ -191,24 +214,6 @@ export function createSessionEventTracker(
         }).catch((err) => {
           console.error("Failed to publish token_usage:", err);
         });
-
-        if (autoCompact && contextWindow > 0) {
-          const compactionThreshold = contextWindow * 0.85;
-          if (totalInputTokens + totalOutputTokens > compactionThreshold) {
-            log(
-              "compaction",
-              `auto-triggering (${totalInputTokens + totalOutputTokens}/${contextWindow})`,
-            );
-            session
-              .compact()
-              .then((result) => {
-                log("compaction", `completed: ${result?.tokensBefore ?? "unknown"} tokens before`);
-              })
-              .catch((err) => {
-                console.error("Auto-compaction failed:", err);
-              });
-          }
-        }
         break;
       }
 
@@ -444,11 +449,16 @@ export function createSessionEventTracker(
 
       case "compaction_end": {
         if (event.result && !event.aborted) {
-          void saveCompactionMessage({
-            sessionId,
-            summary: event.result.summary,
-            tokensBefore: event.result.tokensBefore,
-          });
+          // Tracked as a pending save so `done` (emitted on agent_settled
+          // after all saves settle) always lands after the summary is in
+          // the DB — late /messages fetches can't miss it.
+          pendingSaves.push(
+            saveCompactionMessage({
+              sessionId,
+              summary: event.result.summary,
+              tokensBefore: event.result.tokensBefore,
+            }),
+          );
 
           publishSessionEvent(sessionId, "compaction_end", {
             reason: event.reason,
@@ -473,11 +483,17 @@ export function createSessionEventTracker(
         break;
       }
 
-      // ── Agent finished ───────────────────────────────────────────────────
+      // ── Agent run stopped — NOT necessarily finished ─────────────────────
+      // Mirrors the TUI: agent_end only means the current loop iteration
+      // ended. The SDK may still retry an error, run auto-compaction, or
+      // continue the run (overflow recovery). So: finalize this run's last
+      // message, but do NOT emit `done`, unregister, or dispose — that all
+      // happens on agent_settled.
       case "agent_end": {
         log("agent_end", `totalMessages=${event.messages.length}, turnIndex=${turnIndex}`);
 
-        // Atomic guard: only persists to DB once
+        // Per-run guard: each run finalizes its own last assistant message
+        // (reset in agent_start for continuation runs).
         if (!agentEndPersisted) {
           agentEndPersisted = true;
           log("agent_end", `persisting to DB (totalMessages=${event.messages.length})`);
@@ -527,25 +543,38 @@ export function createSessionEventTracker(
                 }),
             );
           }
-
-          // Unregister the active session and bump the message count once.
-          // Assistant output is real chat activity — advance lastActivityAt
-          // too (the UI's sort/display timestamp). Note: tool_execution_
-          // start/end do NOT touch it, so tool calls alone never move a chat
-          // to the top of the list.
-          Promise.all([
-            unregisterActiveSession(userId, sessionId),
-            prisma.chatSession.update({
-              where: { id: sessionId },
-              data: { messageCount: { increment: turnIndex || 1 }, lastActivityAt: new Date() },
-            }),
-          ]).catch((err) => {
-            console.error("Failed to finalize session bookkeeping:", err);
-          });
         }
+        break;
+      }
 
-        // Wait for all DB saves to complete before emitting "done" — but
-        // don't block agent_end settlement (other listeners still run).
+      // ── Agent settled: completely finished ───────────────────────────────
+      // Emitted by the SDK after the run AND all post-run processing (error
+      // retries, auto-compaction, queued continuations) are done. This is
+      // the only safe moment to declare the generation finished: the
+      // active-session flag, message count, `done` event, and tracker
+      // disposal all happen here — never on agent_end.
+      case "agent_settled": {
+        log("agent_settled", `turns=${turnIndex}`);
+        if (settledFinalized) break;
+        settledFinalized = true;
+
+        // Unregister the active session and bump the message count once.
+        // Assistant output is real chat activity — advance lastActivityAt
+        // too (the UI's sort/display timestamp). Note: tool_execution_
+        // start/end do NOT touch it, so tool calls alone never move a chat
+        // to the top of the list.
+        void Promise.all([
+          unregisterActiveSession(userId, sessionId),
+          prisma.chatSession.update({
+            where: { id: sessionId },
+            data: { messageCount: { increment: turnIndex || 1 }, lastActivityAt: new Date() },
+          }),
+        ]).catch((err) => {
+          console.error("Failed to finalize session bookkeeping:", err);
+        });
+
+        // Wait for all DB saves (turn saves, agent_end finalization,
+        // compaction messages) to complete before emitting "done".
         stopActivityHeartbeat();
         void Promise.allSettled(pendingSaves).then(() => {
           publishSessionEvent(sessionId, "done", {}).catch((err) => {

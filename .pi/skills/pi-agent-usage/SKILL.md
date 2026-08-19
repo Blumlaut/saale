@@ -7,62 +7,85 @@ description: Conventions and gotchas for using the Pi agent SDK (@earendil-works
 
 Rules and patterns for using `@earendil-works/pi-coding-agent` in Saale.
 
-## Critical: `agent.prompt()` vs `session.prompt()`
+## Critical: `session.prompt()` vs `agent.prompt()`
 
-**Always use `session.agent.prompt(text)` — never `session.prompt(text)`.**
+**Chat and Telegram: use `session.prompt(text, { images? })` — the same path the Pi TUI uses. Always call `lockSystemPrompt()` first.**
 
-`session.prompt()` runs AgentSession preflight logic that **resets `systemPrompt` back to the Pi base prompt** ("you are an expert coding assistant operating inside pi...") on every turn. This silently overwrites any custom system prompt you set.
+`session.prompt()` runs the AgentSession preflight + post-run processing that
+`session.agent.prompt()` (the raw core agent loop) bypasses:
 
-`session.agent.prompt()` calls the underlying agent directly, preserving your custom system prompt.
+- **Pre-prompt compaction check** (catches stale/overflowed contexts)
+- **Post-run auto-compaction** at the `agent_end` boundary (real context size
+  vs. `contextWindow - reserveTokens`, never mid-run, never aborts the run)
+- **Error retry** and **overflow recovery** (compact + `agent.continue()`)
+- **`agent_settled`** — the "completely finished" event. `agent_end` only
+  means the run iteration stopped; the run may still continue.
+
+The old gotcha — `session.prompt()` resetting the system prompt to the Pi base
+prompt — is **neutralized by `lockSystemPrompt()`** (from
+`src/lib/pi/processing-state.ts`): it replaces the SDK's `_baseSystemPrompt`
+(the preflight's reset target) with the Saale prompt, and the per-turn prompt
+resolution is `_systemPromptOverride ?? _baseSystemPrompt`. Set the prompt
+with `lockSystemPrompt(session, prompt)` — do NOT set
+`session.agent.state.systemPrompt` directly (it is a reflection property the
+SDK overwrites).
 
 ```ts
-// ✅ CORRECT — preserves custom system prompt
-session.agent.state.systemPrompt = "Your custom prompt...";
-session.agent.prompt(userMessage);
+// ✅ CORRECT for chat/Telegram — TUI-parity prompt path
+lockSystemPrompt(session, buildAgentSystemPrompt({ ... }));
+await session.prompt(userMessage);            // resolves on agent_settled
+// or with images:
+await session.prompt(userMessage, { images });
 
-// ❌ WRONG — preflight logic resets systemPrompt to Pi base prompt
-session.agent.state.systemPrompt = "Your custom prompt...";
-session.prompt(userMessage); // silently overwrites systemPrompt!
+// ❌ WRONG for chat/Telegram — bypasses compaction, retry, agent_settled
+session.agent.prompt(userMessage);
 ```
 
-This is the #1 gotcha. Every integration point in Saale uses `agent.prompt()`:
+**Never call `session.compact()` from the event tracker or mid-run.**
+`AgentSession.compact()` is the MANUAL path: it aborts the in-flight run
+first, and firing it more than once (it has no in-flight guard) double-compacts
+the session. Compaction is the SDK's job; the session event tracker only
+observes `compaction_start`/`compaction_end` and persists the summary.
+
+Use `session.agent.prompt(text, images)` ONLY for short one-shot jobs where
+post-run processing is irrelevant:
 - Queue jobs: `src/lib/queue/job-handler.ts` (`dispatchAiJob`)
 - Email drafts: `src/app/api/email/draft/route.ts`
-- Chat stream: `src/app/api/chat/sessions/[sessionId]/stream/route.ts`
+
+Chat stream (`src/app/api/chat/sessions/[sessionId]/stream/route.ts`) and the
+Telegram processor (`src/lib/telegram/processor.ts`) use `session.prompt()`.
 
 ## System Prompts
 
 **Always set a custom system prompt.** Never rely on the default Pi base prompt (it contains coding-agent noise irrelevant to end users).
 
-Set it immediately after creating the session, before calling `agent.prompt()`:
+Set it with `lockSystemPrompt()` immediately after creating the session, before
+calling `session.prompt()` — it is the only setter that survives the SDK's
+preflight (see Critical section above):
 
 ```ts
+import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+
 const { session } = await createAgentSession({ /* ... */ });
 
-session.agent.state.systemPrompt = `Your custom system prompt here.`;
+lockSystemPrompt(session, buildAgentSystemPrompt({ customInstructions, toolConfig }));
 
 // ... later ...
-session.agent.prompt(userMessage);
+await session.prompt(userMessage);
 ```
+
+`buildAgentSystemPrompt()` (from `src/lib/pi/processing-state.ts`) builds the
+Saale assistant prompt from the user's custom instructions + tool config.
+One-shot jobs (email drafts, queue jobs) that set a bespoke prompt should use
+`lockSystemPrompt(session, bespokePrompt)` as well.
 
 ### Prompt conventions by feature
 
 | Feature | Prompt style | Reference |
 |---------|-------------|-----------|
-| Chat | Short, generic assistant prompt | `src/app/api/chat/sessions/[sessionId]/stream/route.ts` |
+| Chat | `buildAgentSystemPrompt()` (assistant + custom instructions + tools) | `src/app/api/chat/sessions/[sessionId]/stream/route.ts` |
 | Email draft | Task-specific, output-only rules | `src/app/api/email/draft/route.ts` |
 | Queue jobs | JSON-only, structured output | `src/lib/queue/job-handler.ts` |
-
-### Chat system prompt
-
-The chat uses a short, generic prompt. No feature descriptions, no tool listings — the agent infers capabilities from available tools:
-
-```ts
-session.agent.state.systemPrompt =
-  "You are a helpful AI assistant. Be concise, direct, and write natural responses.";
-```
-
-> **Future:** User-defined system prompt override will be stored in `ChatSession` or `AppSettings`. Until then, keep the hardcoded prompt minimal so it's easy to replace.
 
 ## Model Runtime
 
@@ -142,8 +165,10 @@ const unsubscribe = session.subscribe((event) => {
     case "message_update":
       // Forward cumulative text as `token` events
       break;
-    case "agent_end":
-      // Forward final text as `done` event, close stream
+    case "agent_settled":
+      // Run completely finished (after any compaction/retry) — emit `done`,
+      // close stream. NOT agent_end: that only stops one run iteration and
+      // the SDK may continue (auto-compaction, overflow retry).
       break;
   }
 });
@@ -179,9 +204,11 @@ Reference: `src/lib/queue/job-handler.ts` (`dispatchAiJob`)
 
 | Anti-pattern | Why | Fix |
 |-------------|-----|-----------|
-| `session.prompt()` | Resets systemPrompt to Pi base prompt | Use `session.agent.prompt()` |
+| `session.agent.prompt()` for chat/Telegram | Bypasses SDK compaction, retry, `agent_settled` — treats a stopped run as finished | Use `session.prompt()` (with `lockSystemPrompt()` first) |
+| Calling `session.compact()` on token thresholds / mid-run | Aborts the in-flight run; no in-flight guard → double compaction | Let the SDK auto-compact at run boundaries; only observe `compaction_*` events |
+| Treating `agent_end` as "done" | Run may continue after compaction/error retry | Emit `done` on `agent_settled` |
 | `getAvailable()[0]` for model | Grabs first model (could be an embedding model) | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings |
-| No custom systemPrompt | Pi base prompt has coding-agent noise | Always set `session.agent.state.systemPrompt` |
+| No custom systemPrompt | Pi base prompt has coding-agent noise | Always use `lockSystemPrompt(session, prompt)` |
 | `noTools: "builtin"` for text-only tasks | Heavier than needed | Use `noTools: "all"` |
 | No timeout on non-streaming calls | Can hang indefinitely | Always add a timeout (5min default) |
 | Passing `authStorage`/`modelRegistry` to `createAgentSession` | Deprecated API (pre-0.80.8) | Use `modelRuntime` instead |
