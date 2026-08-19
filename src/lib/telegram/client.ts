@@ -2,6 +2,7 @@ import { Bot, type Context } from "grammy";
 import { convert as convertToTelegramMarkdown } from "telegram-markdown-v2";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { TELEGRAM_MAX_MESSAGE_LENGTH, splitMarkdownV2, splitPlainText } from "./message-split";
 
 /** Webhook endpoint pattern */
 const WEBHOOK_PATH = "/api/integrations/telegram/webhook";
@@ -139,21 +140,36 @@ export async function findAccountByWebhookSecret(webhookSecret: string): Promise
 /**
  * Send a message to a Telegram chat.
  * Handles splitting long messages into chunks (Telegram limit: 4096 chars).
+ *
+ * Returns the message IDs of all chunks sent (a single message may become
+ * several Telegram messages).
  */
 export async function sendTelegramMessage(
   encryptedToken: string,
   chatId: bigint,
   text: string,
   options?: {
-    replyToMessageId: number | undefined;
+    replyToMessageId?: number;
     parseMode?: "HTML" | "Markdown" | "MarkdownV2";
   },
 ): Promise<number[]> {
   const bot = createBot(encryptedToken);
-  const messageIds: number[] = [];
+  const parseMode: "HTML" | "Markdown" | "MarkdownV2" = options?.parseMode ?? "MarkdownV2";
 
-  // Telegram has a 4096 character limit per message
-  const chunks = splitMessage(text, 4096);
+  // Convert Markdown to Telegram's MarkdownV2 using a proper parser — the
+  // whole text first, then split the converted output. telegram-markdown-v2
+  // uses remark to build an AST, so unmatched formatting chars (like a stray
+  // "*" in "*arr apps") are safely escaped instead of breaking the parse.
+  // Escaping adds backslash characters that count toward Telegram's 4096
+  // limit, so splitting the raw markdown and converting per chunk can still
+  // overflow (and get rejected with "message is too long").
+  const converted = parseMode === "MarkdownV2" ? convertToTelegramMarkdown(text, "escape") : text;
+  const chunks =
+    parseMode === "MarkdownV2"
+      ? splitMarkdownV2(converted, TELEGRAM_MAX_MESSAGE_LENGTH)
+      : splitPlainText(converted, TELEGRAM_MAX_MESSAGE_LENGTH);
+
+  const messageIds: number[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
@@ -164,22 +180,14 @@ export async function sendTelegramMessage(
         ? { message_id: options.replyToMessageId }
         : undefined;
 
-    const parseMode: "HTML" | "Markdown" | "MarkdownV2" = options?.parseMode ?? "MarkdownV2";
     const sendMessageParams: Record<string, unknown> = { parse_mode: parseMode };
     if (replyParams) {
       sendMessageParams.reply_parameters = replyParams;
     }
 
-    // Convert Markdown to Telegram's MarkdownV2 using a proper parser.
-    // telegram-markdown-v2 uses remark to build an AST, so unmatched formatting
-    // chars (like a stray "*" in "*arr apps") are safely escaped instead of
-    // breaking the parse.
-    const processedChunk =
-      parseMode === "MarkdownV2" ? convertToTelegramMarkdown(chunk, "escape") : chunk;
-
     const result = await bot.api.sendMessage(
       Number(chatId),
-      processedChunk,
+      chunk,
       sendMessageParams as Record<string, never>,
     );
     messageIds.push(result.message_id);
@@ -225,37 +233,4 @@ export function startTypingIndicator(encryptedToken: string, chatId: bigint): ()
     stopped = true;
     clearInterval(interval);
   };
-}
-
-/**
- * Split a message into chunks that fit within Telegram's 4096 character limit.
- * Tries to split at word boundaries to avoid cutting words in half.
- */
-function splitMessage(text: string, maxLength: number): string[] {
-  if (text.length <= maxLength) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
-      chunks.push(remaining);
-      break;
-    }
-
-    // Find a good split point (at a space or newline)
-    let splitAt = remaining.lastIndexOf(" ", maxLength);
-    if (splitAt === -1) {
-      splitAt = remaining.lastIndexOf("\n", maxLength);
-    }
-    if (splitAt === -1) {
-      // No space found — force split at maxLength
-      splitAt = maxLength;
-    }
-
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  return chunks;
 }
