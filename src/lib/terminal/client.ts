@@ -420,6 +420,51 @@ export async function writeFile(
 }
 
 /**
+ * Upload a binary file to the user's workspace via multipart form data.
+ * POST /files/upload?directory=<dir>
+ *
+ * The `directory` is resolved against the user's home directory inside the
+ * container (multi-user mode) and created if it does not exist. Returns the
+ * absolute path of the written file as seen from inside the container.
+ */
+export async function uploadFile(
+  fileName: string,
+  content: Buffer,
+  options: { directory: string; userId: string; sessionId?: string },
+): Promise<{ path: string; size: number }> {
+  const { directory, userId, sessionId } = options;
+
+  const url = new URL(`${BASE_URL}/files/upload`);
+  url.searchParams.append("directory", directory);
+
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(content)]), fileName);
+
+  // Multipart body: fetch sets Content-Type (with the boundary) itself, so the
+  // JSON content type from getHeaders() must not be sent here.
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${API_KEY}`,
+  };
+  if (userId) headers["X-User-Id"] = userId;
+  if (sessionId) headers["X-Session-Id"] = sessionId;
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: form,
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
+    );
+  }
+
+  return response.json() as Promise<{ path: string; size: number }>;
+}
+
+/**
  * List directory contents.
  * GET /files/list
  */

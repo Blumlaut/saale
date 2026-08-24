@@ -1,13 +1,10 @@
-import fs from "fs/promises";
 import path from "path";
-import type { Bot, Context } from "grammy";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   createAgentSession,
   SessionManager,
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
-import type { ImageContent } from "@earendil-works/pi-ai/compat";
 import { prisma } from "@/lib/db";
 import { createBot, sendTelegramMessage, startTypingIndicator } from "./client";
 import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
@@ -26,26 +23,20 @@ import { createApprovalCardTracker } from "./approval-cards";
 import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+import { createTerminalScopedTools } from "@/lib/pi/session";
+import {
+  downloadAndProcessTelegramFile,
+  buildFilePromptText,
+  TELEGRAM_FILES_DIR,
+  type ProcessedFile,
+  type TelegramFileInfo,
+} from "./files";
 import { registerActiveSession, markGenerationStart } from "@/lib/redis";
 import { resetSessionEvents, subscribeSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { unregisterTelegramSession, wasTelegramSessionInterrupted } from "./session-registry";
 import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
-
-/** Allowed MIME types that can be passed as images to the vision model */
-const IMAGE_MIME_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-  "image/bmp",
-  "image/tiff",
-  "image/avif",
-]);
-
-/** Max file size for Telegram downloads (20MB per Telegram API limit) */
-const MAX_TELEGRAM_FILE_BYTES = 20 * 1024 * 1024;
 
 /**
  * Idle timeout for Telegram agent runs. If the session produces no events
@@ -54,118 +45,6 @@ const MAX_TELEGRAM_FILE_BYTES = 20 * 1024 * 1024;
  * NOT a cap on total run duration.
  */
 const AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
-
-/** Uploads directory for storing downloaded Telegram files */
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
-
-/**
- * File metadata extracted from a Telegram message (photo, document, etc.).
- */
-export interface TelegramFileInfo {
-  /** File ID from Telegram (used to download) */
-  fileId: string;
-  /** Original file name (may be undefined for photos) */
-  fileName?: string | undefined;
-  /** MIME type (may be undefined for photos) */
-  mimeType?: string | undefined;
-  /** File size in bytes */
-  fileSize?: number | undefined;
-  /** Width of the media */
-  width?: number | undefined;
-  /** Height of the media */
-  height?: number | undefined;
-}
-
-/**
- * Result of downloading and processing a Telegram file.
- */
-interface ProcessedFile {
-  /** Base64-encoded image data (for image files) */
-  imageData?: ImageContent;
-  /** File path on disk (for document files) */
-  filePath?: string;
-  /** MIME type */
-  mimeType: string;
-  /** Original file name */
-  fileName: string;
-}
-
-/**
- * Download a file from Telegram's CDN and process it.
- *
- * For image files: returns base64 data ready for the vision model.
- * For document files: saves to disk and returns the file path.
- */
-async function downloadAndProcessTelegramFile(
-  bot: Bot<Context>,
-  userId: string,
-  fileInfo: TelegramFileInfo,
-): Promise<ProcessedFile> {
-  // Get file info from Telegram API
-  const file = await bot.api.getFile(fileInfo.fileId);
-
-  // Download the file
-  const downloadUrl = `https://api.telegram.org/file/bot${bot.token}/${file.file_path}`;
-  const response = await fetch(downloadUrl);
-
-  if (!response.ok) {
-    throw new Error(`Failed to download Telegram file: ${response.status} ${response.statusText}`);
-  }
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-
-  if (buffer.length > MAX_TELEGRAM_FILE_BYTES) {
-    throw new Error(`Telegram file too large: ${(buffer.length / 1024 / 1024).toFixed(1)}MB`);
-  }
-
-  const mimeType = fileInfo.mimeType ?? "application/octet-stream";
-  const fileName = fileInfo.fileName ?? `telegram_${file.file_id}.dat`;
-
-  // For image files, return as base64 for the vision model
-  if (IMAGE_MIME_TYPES.has(mimeType)) {
-    return {
-      imageData: {
-        type: "image",
-        data: buffer.toString("base64"),
-        mimeType,
-      },
-      mimeType,
-      fileName,
-    };
-  }
-
-  // For document files, save to disk
-  const userDir = path.join(UPLOADS_DIR, userId, "telegram_files");
-  await fs.mkdir(userDir, { recursive: true });
-
-  // Sanitize file name and ensure unique path
-  const safeName = path.basename(fileName.replace(/[^a-zA-Z0-9._-]/g, "_"));
-  const filePath = path.join(userDir, safeName);
-  await fs.writeFile(filePath, buffer);
-
-  return { filePath, mimeType, fileName };
-}
-
-/**
- * Build a text description for a file attachment to include in the prompt.
- */
-function buildFilePromptText(processedFile: ProcessedFile, caption: string | undefined): string {
-  const parts: string[] = [];
-
-  if (caption) {
-    parts.push(caption);
-  }
-
-  if (processedFile.imageData) {
-    parts.push(`[Image attached: ${processedFile.fileName} (${processedFile.mimeType})]`);
-  } else if (processedFile.filePath) {
-    parts.push(
-      `[File attached: ${processedFile.fileName} (${processedFile.mimeType}) at ${processedFile.filePath}]`,
-    );
-  }
-
-  return parts.join(" ");
-}
 
 /**
  * Shared Saale system prompt (matches the web chat stream endpoint).
@@ -195,8 +74,8 @@ Telegram-specific guidelines:
  * history across messages — no manual context assembly needed.
  *
  * Supports text messages, photos, and document files. Images are passed
- * directly to the vision model; documents are saved to disk and referenced
- * in the prompt.
+ * directly to the vision model; documents are uploaded into the terminal
+ * workspace (or saved locally as a fallback) and referenced in the prompt.
  */
 export async function processTelegramMessage(
   params: {
@@ -272,9 +151,10 @@ export async function processTelegramMessage(
     });
 
     if (userMessage) {
-      // Use a path relative to the user workspace so resolveImagePath()
-      // and deleteAllImages() can locate it correctly
-      const relativePath = `telegram_files/${path.basename(processedFile.filePath)}`;
+      // Use a path relative to the user workspace (the terminal home when
+      // Open Terminal is configured) so the workspace-files endpoint and
+      // cleanup helpers can locate it correctly
+      const relativePath = path.join(TELEGRAM_FILES_DIR, path.basename(processedFile.filePath!));
 
       await prisma.chatAttachment.create({
         data: {
@@ -282,7 +162,7 @@ export async function processTelegramMessage(
           storageId: crypto.randomUUID(),
           fileName: processedFile.fileName,
           mimeType: processedFile.mimeType,
-          size: 0,
+          size: processedFile.size ?? 0,
           storagePath: relativePath,
         },
       });
@@ -346,7 +226,9 @@ export async function processTelegramMessage(
     sessionId,
   );
 
-  // Resolve tool config: user settings → agent definition overrides → defaults → no terminal
+  // Resolve tool config: user settings → agent definition overrides → defaults
+  // (the system definition enables terminal access so files sent via
+  // Telegram are reachable by the agent's file tools)
   const userSettings = await prisma.appSettings.findUnique({
     where: { userId },
     select: { defaultToolConfig: true, agentCustomInstructions: true, toolPolicies: true },
@@ -357,7 +239,6 @@ export async function processTelegramMessage(
     ...DEFAULT_TOOL_CONFIG,
     ...userToolConfig,
     ...defToolConfig,
-    terminal: false,
   } as Required<ToolConfig>;
 
   // Build policy lookup from user settings (default: per-tool sane default)
@@ -403,9 +284,7 @@ export async function processTelegramMessage(
     });
 
   const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
-    createTerminalScopedTools: () => {
-      throw new Error("Terminal tools are not available for agent jobs.");
-    },
+    createTerminalScopedTools,
     wrapWithApproval: approvalWrapper,
   });
 
@@ -768,6 +647,19 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
     });
   }
 
+  if (definition) {
+    // Ensure the definition always grants terminal access: the Telegram agent
+    // needs file tools to reach documents sent via Telegram (they are
+    // uploaded into the Open Terminal workspace).
+    const existingToolConfig = (definition.toolConfig as Record<string, boolean> | null) ?? {};
+    if (existingToolConfig.terminal !== true) {
+      definition = await prisma.agentDefinition.update({
+        where: { id: definition.id },
+        data: { toolConfig: { ...existingToolConfig, terminal: true } },
+      });
+    }
+  }
+
   if (!definition) {
     definition = await prisma.agentDefinition.create({
       data: {
@@ -783,6 +675,7 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
           web: true,
           memory: true,
           tasks: true,
+          terminal: true,
         },
         modelId: null,
         thinkingLevel: "off",
@@ -882,7 +775,6 @@ export async function compactTelegramSession(params: {
     ...DEFAULT_TOOL_CONFIG,
     ...userToolConfig,
     ...defToolConfig,
-    terminal: false,
   } as Required<ToolConfig>;
 
   // 4. Create persistent session from JSONL files
@@ -894,9 +786,7 @@ export async function compactTelegramSession(params: {
   );
 
   const allCustomTools = await resolveTools(userId, "compact", resolvedToolConfig, {
-    createTerminalScopedTools: () => {
-      throw new Error("Terminal tools are not available for agent jobs.");
-    },
+    createTerminalScopedTools,
   });
 
   const { session } = await createAgentSession({
