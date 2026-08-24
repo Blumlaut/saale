@@ -6,8 +6,8 @@ import {
   compactTelegramSession,
   isWhitelisted,
   upsertWhitelistDisplayName,
-  type TelegramFileInfo,
 } from "@/lib/telegram/processor";
+import type { TelegramFileInfo } from "@/lib/telegram/files";
 import { createBot, sendTelegramMessage } from "@/lib/telegram/client";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
 import { handleModelCallback, sendModelPicker } from "@/lib/telegram/model-selection";
