@@ -9,6 +9,7 @@
  */
 
 import { Defuddle } from "defuddle/node";
+import { fetchRedditUrl, isRedditHost } from "./reddit";
 
 // Lazy-load wreq-js to avoid native module errors during Next.js SSR
 let wreqFetch: typeof import("wreq-js").fetch | null = null;
@@ -34,6 +35,13 @@ const DEFAULT_MAX_CHARS = 50_000;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
 const MAX_REDIRECTS = 5;
+
+/**
+ * Page titles served by bot-block interstitials that still return HTTP 200.
+ * Observed with Reddit ("Welcome to Reddit" JS shell) — returning such a
+ * shell as successful content would feed the LLM a wall of CSS.
+ */
+const BOT_BLOCK_TITLES = new Set(["Welcome to Reddit", "Reddit - The heart of the internet"]);
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -277,6 +285,12 @@ export async function fetchUrl(options: FetchOptions): Promise<FetchOutput> {
     };
   }
 
+  // Reddit network-blocks this server's IP (403 on .json, JS shell on
+  // HTML). Route Reddit URLs through the Arctic Shift archive path.
+  if (isRedditHost(parsed.hostname)) {
+    return fetchRedditUrl(parsed.href, { maxChars });
+  }
+
   return fetchWithRedirects(
     {
       url: parsed.href,
@@ -474,6 +488,21 @@ async function fetchWithRedirects(
         includeReplies,
         useAsync: false,
       });
+
+      // Defense in depth: a 200 response can still be a bot-block
+      // interstitial (e.g. Reddit's "Welcome to Reddit" shell). Never
+      // return that as successful content.
+      if (extracted.title && BOT_BLOCK_TITLES.has(extracted.title)) {
+        return {
+          error: `Server returned a bot-block interstitial for ${url} (title: "${extracted.title}"). The site is blocking this server — try a different source.`,
+          code: "bot_block_page",
+          phase: "loading",
+          retryable: false,
+          url,
+          finalUrl,
+          statusCode,
+        };
+      }
 
       const content =
         format === "markdown"
