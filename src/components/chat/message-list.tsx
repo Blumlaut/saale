@@ -166,7 +166,7 @@ export function MessageList({
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
-      <div className="space-y-4 px-3 py-4 md:space-y-6 md:px-6 md:py-6">
+      <div className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
         {groupedMessages.map((group, groupIndex) =>
           group.type === "compaction" ? (
             <CompactionMessage
@@ -293,10 +293,11 @@ function UserMessageItem({
   if (isEditing) {
     return (
       <div className="flex flex-row-reverse gap-3">
-        <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+        {/* Avatar is desktop-only — alignment (right = user) already identifies the speaker on mobile */}
+        <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
           <User className="h-4 w-4" />
         </div>
-        <div className="max-w-[85%] min-w-0 space-y-2">
+        <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
           {/* Image attachments (read-only during edit) */}
           {imageAttachments && imageAttachments.length > 0 && (
             <div className="flex flex-row-reverse flex-wrap gap-2">
@@ -370,10 +371,11 @@ function UserMessageItem({
 
   return (
     <div className="group/message flex flex-row-reverse gap-3">
-      <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+      {/* Avatar is desktop-only — alignment (right = user) already identifies the speaker on mobile */}
+      <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
         <User className="h-4 w-4" />
       </div>
-      <div className="max-w-[85%] min-w-0 space-y-2">
+      <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
         {/* Image attachments */}
         {imageAttachments && imageAttachments.length > 0 && (
           <div className="flex flex-row-reverse flex-wrap gap-2">
@@ -463,13 +465,13 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
 
   return (
     <div className="group/message flex gap-3">
-      {/* Single avatar for the entire group */}
-      <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+      {/* Single avatar for the entire group — desktop-only, saves ~44px per group on mobile */}
+      <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
         <Bot className="h-4 w-4" />
       </div>
 
       {/* All turns' content flowing naturally */}
-      <div className="max-w-[85%] min-w-0 space-y-2">
+      <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
         {visibleMessages.map((message) => (
           <div key={message.id}>
             {/* Thinking block */}

@@ -59,7 +59,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Header */}
-      <div className="flex shrink-0 items-start justify-between gap-4 pb-2 md:pb-4">
+      <div className="flex shrink-0 items-center justify-between gap-3 pb-2 md:items-start md:gap-4 md:pb-4">
         <div className="flex items-center gap-2">
           {/* Mobile: session list in a sheet — lives in header, not content */}
           <div className="md:hidden">
@@ -80,7 +80,8 @@ export default function ChatLayout({ children: _children }: { children: React.Re
             <h1 className="truncate text-lg leading-tight font-semibold tracking-tight md:text-2xl">
               Chat
             </h1>
-            <p className="text-muted-foreground mt-1 text-xs md:text-sm">
+            {/* Description only on desktop — it wraps to two lines and wastes vertical space on mobile */}
+            <p className="text-muted-foreground mt-1 hidden text-sm md:block">
               Ask questions, brainstorm ideas, or get help with your work
             </p>
           </div>
@@ -116,7 +117,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
       </div>
 
       {/* Content: sidebar + main — flex-1 fills remaining viewport, overflow contained */}
-      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden px-2 py-4 md:px-4">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden px-2 py-2 md:px-4 md:py-4">
         {/* Sidebar — desktop only */}
         <div className="hidden w-64 shrink-0 md:block">
           <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
