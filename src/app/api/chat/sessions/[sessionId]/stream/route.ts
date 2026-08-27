@@ -285,9 +285,12 @@ export async function GET(
         // Wire persistence exactly once per pooled session.
         wireSessionPersistence(sessionId, authResult.userId, promptSession.session);
 
-        // Pre-load images for the current user message.
+        // Pre-load images for the current user message. Only image
+        // attachments are vision content — other file types are referenced
+        // by path in the message content (uploads/ in the agent workspace).
         if (lastMessage.attachments.length > 0) {
           for (const att of lastMessage.attachments) {
+            if (!att.mimeType.startsWith("image/")) continue;
             try {
               const { data, mimeType } = await readImageAsBase64(
                 authResult.userId,

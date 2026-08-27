@@ -26,7 +26,8 @@ Guidelines:
   const toolConfig = options.toolConfig ?? {};
   const terminalInstruction =
     toolConfig.terminal === true
-      ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available."
+      ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. " +
+        "Files the user uploads in chat are placed in the `uploads/` directory of the working directory — read them from there when the user refers to an attached file."
       : "";
 
   const memoryInstruction =

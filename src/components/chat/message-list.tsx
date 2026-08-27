@@ -11,7 +11,8 @@ import { ToolCallView } from "./tool-call-view";
 import { groupMessages } from "@/lib/chat/group-messages";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
-import type { ApprovalData, Message } from "./types";
+import { formatFileSize } from "@/lib/utils";
+import type { ApprovalData, Message, AttachmentData } from "./types";
 import {
   Loader2,
   Bot,
@@ -22,6 +23,8 @@ import {
   Lightbulb,
   Pencil,
   X,
+  FileText,
+  File as FileIcon,
 } from "lucide-react";
 
 interface MessageListProps {
@@ -281,14 +284,13 @@ function UserMessageItem({
     }
   }, [isEditing]);
 
-  // Determine image URLs: temp messages use object URLs, real messages use API route
-  const imageAttachments = message.attachments?.map((att) => {
-    if (att.storageId.startsWith("temp-")) {
-      // Temp attachment — we can't reconstruct the object URL, show a placeholder
-      return { ...att, url: undefined };
-    }
-    return { ...att, url: `/api/chat/attachments/${att.storageId}` };
-  });
+  // Real attachments are served via API route; temp ones (optimistic, still
+  // in flight) have no object URL we can reconstruct, so they render muted.
+  const attachmentViews = message.attachments?.map((att) => ({
+    att,
+    isImage: att.mimeType.startsWith("image/"),
+    url: att.storageId.startsWith("temp-") ? undefined : `/api/chat/attachments/${att.storageId}`,
+  }));
 
   if (isEditing) {
     return (
@@ -298,25 +300,29 @@ function UserMessageItem({
           <User className="h-4 w-4" />
         </div>
         <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
-          {/* Image attachments (read-only during edit) */}
-          {imageAttachments && imageAttachments.length > 0 && (
-            <div className="flex flex-row-reverse flex-wrap gap-2">
-              {imageAttachments.map((att) =>
-                att.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
-                  <img
-                    key={att.id}
-                    src={att.url}
-                    alt={att.fileName}
-                    className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
-                  />
+          {/* Attachments (read-only during edit) */}
+          {attachmentViews && attachmentViews.length > 0 && (
+            <div className="flex flex-row-reverse flex-wrap items-center gap-2">
+              {attachmentViews.map(({ att, isImage, url }) =>
+                isImage ? (
+                  url ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
+                    <img
+                      key={att.id}
+                      src={url}
+                      alt={att.fileName}
+                      className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
+                    />
+                  ) : (
+                    <div
+                      key={att.id}
+                      className="bg-muted/50 text-muted-foreground flex h-24 w-32 items-center justify-center rounded-xl text-xs"
+                    >
+                      {att.fileName}
+                    </div>
+                  )
                 ) : (
-                  <div
-                    key={att.id}
-                    className="bg-muted/50 text-muted-foreground flex h-24 w-32 items-center justify-center rounded-xl text-xs"
-                  >
-                    {att.fileName}
-                  </div>
+                  <AttachmentChip key={att.id} attachment={att} url={url} />
                 ),
               )}
             </div>
@@ -376,25 +382,29 @@ function UserMessageItem({
         <User className="h-4 w-4" />
       </div>
       <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
-        {/* Image attachments */}
-        {imageAttachments && imageAttachments.length > 0 && (
-          <div className="flex flex-row-reverse flex-wrap gap-2">
-            {imageAttachments.map((att) =>
-              att.url ? (
-                // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
-                <img
-                  key={att.id}
-                  src={att.url}
-                  alt={att.fileName}
-                  className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
-                />
+        {/* Attachments */}
+        {attachmentViews && attachmentViews.length > 0 && (
+          <div className="flex flex-row-reverse flex-wrap items-center gap-2">
+            {attachmentViews.map(({ att, isImage, url }) =>
+              isImage ? (
+                url ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
+                  <img
+                    key={att.id}
+                    src={url}
+                    alt={att.fileName}
+                    className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
+                  />
+                ) : (
+                  <div
+                    key={att.id}
+                    className="bg-muted/50 text-muted-foreground flex h-24 w-32 items-center justify-center rounded-xl text-xs"
+                  >
+                    {att.fileName}
+                  </div>
+                )
               ) : (
-                <div
-                  key={att.id}
-                  className="bg-muted/50 text-muted-foreground flex h-24 w-32 items-center justify-center rounded-xl text-xs"
-                >
-                  {att.fileName}
-                </div>
+                <AttachmentChip key={att.id} attachment={att} url={url} />
               ),
             )}
           </div>
@@ -426,6 +436,52 @@ function UserMessageItem({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Non-image attachment rendered as a compact chip. Real attachments link to
+ * the download endpoint; temp (in-flight) ones render muted without a link.
+ */
+function AttachmentChip({
+  attachment,
+  url,
+}: {
+  attachment: AttachmentData;
+  url: string | undefined;
+}) {
+  const Icon = attachment.mimeType.startsWith("text/") ? FileText : FileIcon;
+  const chip = (
+    <>
+      <div className="bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+        <Icon className="text-muted-foreground h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="max-w-[140px] truncate text-xs font-medium md:max-w-[200px]">
+          {attachment.fileName}
+        </p>
+        <p className="text-muted-foreground text-[11px]">{formatFileSize(attachment.size)}</p>
+      </div>
+    </>
+  );
+
+  if (!url) {
+    return (
+      <div className="border-border/30 flex items-center gap-2 rounded-xl border bg-white/5 px-2.5 py-1.5 opacity-70">
+        {chip}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      download={attachment.fileName}
+      aria-label={`Download ${attachment.fileName}`}
+      className="border-border/30 flex items-center gap-2 rounded-xl border bg-white/5 px-2.5 py-1.5 transition-colors hover:bg-white/10"
+    >
+      {chip}
+    </a>
   );
 }
 
