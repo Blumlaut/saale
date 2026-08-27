@@ -3,7 +3,14 @@ import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isSessionActive, registerActiveSession, setPendingPrompt } from "@/lib/redis";
-import { validateImageUpload, processAndStoreImage, deleteAllImages } from "@/lib/image-attachment";
+import { deleteAllImages } from "@/lib/image-attachment";
+import {
+  buildAttachmentPromptText,
+  deliverChatFileToAgent,
+  storeChatFile,
+  validateChatFile,
+  type StoredChatFile,
+} from "@/lib/file-attachment";
 
 /**
  * GET /api/chat/sessions/:sessionId/messages — Get messages for a session
@@ -116,49 +123,42 @@ export async function POST(
 
   try {
     let content: string;
-    const imageAttachments: Array<{
-      storageId: string;
+    const attachments: Array<{
+      stored: StoredChatFile;
       fileName: string;
       mimeType: string;
       size: number;
-      width?: number;
-      height?: number;
+      /** Absolute path in the agent workspace, or null when not delivered. */
+      agentPath: string | null;
     }> = [];
 
     const contentType = request.headers.get("content-type") || "";
 
     if (contentType.includes("multipart/form-data")) {
-      // Multipart: extract text content + image files
+      // Multipart: extract text content + files
       const formData = await request.formData();
       content = (formData.get("content") as string) || "";
 
-      // Process image files
+      // Store each file (host-side) and copy it into the agent's terminal
+      // workspace so the agent's file tools can view and manipulate it.
       const files = formData.getAll("files");
       for (const file of files) {
         if (!(file instanceof File)) continue;
 
-        const error = validateImageUpload(file);
+        const error = validateChatFile(file);
         if (error) {
           return NextResponse.json({ error }, { status: 400 });
         }
 
+        const mimeType = file.type || "application/octet-stream";
         const buffer = Buffer.from(await file.arrayBuffer());
-        const result = await processAndStoreImage(
-          authResult.userId,
-          buffer,
-          file.name,
-          file.type,
-          file.size,
-        );
+        const stored = await storeChatFile(authResult.userId, buffer, file.name, mimeType);
 
-        imageAttachments.push({
-          storageId: result.storageId,
-          fileName: file.name,
-          mimeType: file.type,
-          size: file.size,
-          width: result.width,
-          height: result.height,
-        });
+        // Throws when the terminal is configured but unreachable — a
+        // non-image file would be useless to the agent without the copy.
+        const agentPath = await deliverChatFileToAgent(authResult.userId, buffer, stored.safeName);
+
+        attachments.push({ stored, fileName: file.name, mimeType, size: file.size, agentPath });
       }
     } else {
       // JSON: plain text message
@@ -169,29 +169,42 @@ export async function POST(
     if (typeof content !== "string") {
       return NextResponse.json({ error: "Content is required" }, { status: 400 });
     }
-    if (!content.trim() && imageAttachments.length === 0) {
+    if (!content.trim() && attachments.length === 0) {
       return NextResponse.json({ error: "Content is required" }, { status: 400 });
     }
 
     // Strip null bytes and limit length
     const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
+    // Append file-reference lines so the model knows where uploaded files
+    // live (same convention as Telegram documents).
+    const promptContent =
+      attachments.length > 0
+        ? `${sanitizedContent ? `${sanitizedContent}\n` : ""}${buildAttachmentPromptText(
+            attachments.map((att) => ({
+              fileName: att.fileName,
+              mimeType: att.mimeType,
+              agentPath: att.agentPath,
+            })),
+          )}`
+        : sanitizedContent;
+
     // Save user message with attachments in a single transaction
     const userMessage = await prisma.chatMessage.create({
       data: {
         sessionId,
         role: "user",
-        content: sanitizedContent,
-        ...(imageAttachments.length > 0 && {
+        content: promptContent,
+        ...(attachments.length > 0 && {
           attachments: {
-            create: imageAttachments.map((att) => ({
-              storageId: att.storageId,
+            create: attachments.map((att) => ({
+              storageId: att.stored.storageId,
               fileName: att.fileName,
               mimeType: att.mimeType,
               size: att.size,
-              width: att.width ?? null,
-              height: att.height ?? null,
-              storagePath: `images/${att.storageId}.png`,
+              width: att.stored.width ?? null,
+              height: att.stored.height ?? null,
+              storagePath: att.stored.storagePath,
             })),
           },
         }),
@@ -206,6 +219,7 @@ export async function POST(
 
     // Update session metadata — sending a message is real chat activity, so
     // also advance lastActivityAt (the UI's sort/display timestamp).
+    const titleSource = sanitizedContent || attachments[0]?.fileName || "Attachment";
     await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
@@ -213,8 +227,7 @@ export async function POST(
         lastActivityAt: new Date(),
         title:
           chatSession.title === "New Chat"
-            ? (sanitizedContent || "Image").slice(0, 47) +
-              ((sanitizedContent || "Image").length > 47 ? "..." : "")
+            ? titleSource.slice(0, 47) + (titleSource.length > 47 ? "..." : "")
             : chatSession.title,
       },
     });
@@ -251,7 +264,12 @@ export async function POST(
   } catch (err) {
     console.error("POST /api/chat/sessions/:sessionId/messages error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
+      {
+        error:
+          err instanceof Error
+            ? `Failed to process message: ${err.message}`
+            : "Internal server error",
+      },
       { status: 500 },
     );
   }

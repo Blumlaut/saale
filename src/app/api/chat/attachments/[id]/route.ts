@@ -49,14 +49,26 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const fullPath = resolveImagePath(userId, attachment.storagePath);
     const buffer = await fs.readFile(fullPath);
 
-    return new NextResponse(buffer, {
-      headers: {
-        "Content-Type": attachment.mimeType,
-        "Cache-Control": "public, max-age=86400, immutable",
-        "Content-Length": String(buffer.length),
-      },
-    });
-  } catch {
+    const headers: Record<string, string> = {
+      "Content-Type": attachment.mimeType,
+      "Cache-Control": "public, max-age=86400, immutable",
+      "Content-Length": String(buffer.length),
+      // Attachments can be any file type the user uploaded — never let the
+      // browser sniff the content into something executable.
+      "X-Content-Type-Options": "nosniff",
+    };
+
+    // Non-images are downloads (avoids navigating away to a rendered file).
+    if (!attachment.mimeType.startsWith("image/")) {
+      headers["Content-Disposition"] = `attachment; filename="${attachment.fileName.replace(
+        /["\\\r\n]/g,
+        "_",
+      )}"`;
+    }
+
+    return new NextResponse(buffer, { headers });
+  } catch (err) {
+    console.error(`Failed to read attachment ${attachment.storageId}:`, err);
     return new NextResponse("File not found", { status: 404 });
   }
 }

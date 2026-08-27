@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -11,8 +11,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Paperclip, Send, Loader2, Wrench, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Paperclip, Send, Loader2, Wrench, X, FileText, File as FileIcon } from "lucide-react";
+import { cn, formatFileSize } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
 import { ContextCircle } from "./token-usage-display";
 
@@ -27,9 +27,10 @@ export interface TokenUsage {
   contextWindow: number;
 }
 
-interface PendingImage {
+interface PendingFile {
   file: File;
-  previewUrl: string;
+  /** Object URL for image previews (null for non-image files). */
+  previewUrl: string | null;
 }
 
 interface InputBarProps {
@@ -43,16 +44,6 @@ interface InputBarProps {
   onCompact?: () => void;
 }
 
-const ALLOWED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-  "image/bmp",
-  "image/tiff",
-  "image/avif",
-]);
-
 export function InputBar({
   onSend,
   isLoading,
@@ -64,24 +55,24 @@ export function InputBar({
   onCompact,
 }: InputBarProps) {
   const [input, setInput] = useState("");
-  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasToolToggle = onToggleTool !== undefined && toolConfig !== undefined;
 
-  const canSend = input.trim().length > 0 || pendingImages.length > 0;
+  const canSend = input.trim().length > 0 || pendingFiles.length > 0;
 
   const handleSubmit = useCallback(() => {
     if (!canSend || isLoading) return;
-    const files = pendingImages.map((img) => img.file);
+    const files = pendingFiles.map((f) => f.file);
     onSend(input.trim(), files.length > 0 ? files : undefined);
     setInput("");
-    setPendingImages([]);
+    setPendingFiles([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [input, pendingImages, canSend, isLoading, onSend]);
+  }, [input, pendingFiles, canSend, isLoading, onSend]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -90,33 +81,35 @@ export function InputBar({
     }
   };
 
-  const addImages = useCallback((files: FileList | File[]) => {
-    const imageFiles: File[] = [];
+  // Accept any file type — images are previewed as thumbnails, everything
+  // else as a file chip. The server stores it and the agent gets a copy in
+  // its terminal workspace.
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const accepted: File[] = [];
     for (const file of files) {
-      if (file instanceof File && ALLOWED_IMAGE_TYPES.has(file.type)) {
-        imageFiles.push(file);
+      if (file instanceof File) {
+        accepted.push(file);
       }
     }
 
-    if (imageFiles.length === 0) return;
+    if (accepted.length === 0) return;
 
-    setPendingImages((prev) => {
-      const newImages: PendingImage[] = imageFiles.map((file) => ({
+    setPendingFiles((prev) => {
+      const newFiles: PendingFile[] = accepted.map((file) => ({
         file,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
       }));
-      return [...prev, ...newImages];
+      return [...prev, ...newFiles];
     });
 
-    // Focus textarea after adding images
+    // Focus textarea after adding files
     textareaRef.current?.focus();
   }, []);
 
-  const removeImage = useCallback((index: number) => {
-    setPendingImages((prev) => {
+  const removeFile = useCallback((index: number) => {
+    setPendingFiles((prev) => {
       const next = [...prev];
-      const removed = next.splice(index, 1)[0];
-      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      next.splice(index, 1);
       return next;
     });
   }, []);
@@ -124,42 +117,49 @@ export function InputBar({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      addImages(files);
+      addFiles(files);
     }
     if (e.target) e.target.value = "";
   };
 
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent) => {
-      const items = e.clipboardData.items;
-      const imageFiles: File[] = [];
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]!;
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) {
-            imageFiles.push(file);
-          }
-        }
+  // React 19 no longer delegates the native `paste` event to onPaste, so
+  // attach a DOM listener directly. Only real files (kind === "file") are
+  // captured — plain text pastes (kind "string") keep working as text.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const pastedFiles: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind !== "file") continue;
+        const file = item.getAsFile();
+        if (file) pastedFiles.push(file);
       }
-
-      if (imageFiles.length > 0) {
+      if (pastedFiles.length > 0) {
         e.preventDefault();
-        addImages(imageFiles);
-      }
-    },
-    [addImages],
-  );
-
-  // Cleanup preview URLs on unmount
-  useState(() => {
-    return () => {
-      for (const img of pendingImages) {
-        URL.revokeObjectURL(img.previewUrl);
+        addFiles(pastedFiles);
       }
     };
-  });
+    el.addEventListener("paste", onPaste);
+    return () => el.removeEventListener("paste", onPaste);
+  }, [addFiles]);
+
+  // Revoke object URLs as soon as a preview disappears (and on unmount).
+  const livePreviewUrlsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const current = new Set(pendingFiles.map((f) => f.previewUrl).filter((u): u is string => !!u));
+    for (const url of livePreviewUrlsRef.current) {
+      if (!current.has(url)) URL.revokeObjectURL(url);
+    }
+    livePreviewUrlsRef.current = current;
+  }, [pendingFiles]);
+  useEffect(() => {
+    return () => {
+      for (const url of livePreviewUrlsRef.current) URL.revokeObjectURL(url);
+    };
+  }, []);
 
   const autoResize = () => {
     if (textareaRef.current) {
@@ -170,27 +170,57 @@ export function InputBar({
 
   return (
     <div className="border-border/30 border-t pt-2">
-      {/* Image preview strip */}
-      {pendingImages.length > 0 && (
+      {/* Attachment preview strip */}
+      {pendingFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-2">
-          {pendingImages.map((img, index) => (
+          {pendingFiles.map((pending, index) => (
             <div key={index} className="group relative">
-              {/* eslint-disable-next-line @next/next/no-img-element -- local object URLs for preview */}
-              <img
-                src={img.previewUrl}
-                alt={img.file.name}
-                className="ring-border/50 h-14 w-14 rounded-lg object-cover ring-1"
-              />
-              <Button
-                type="button"
-                variant="destructive"
-                size="icon"
-                onClick={() => removeImage(index)}
-                className="absolute -top-1.5 -right-1.5 h-5 w-5 opacity-70 transition-opacity group-hover:opacity-100"
-                aria-label={`Remove ${img.file.name}`}
-              >
-                <X className="h-3 w-3" />
-              </Button>
+              {pending.previewUrl ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local object URLs for preview */}
+                  <img
+                    src={pending.previewUrl}
+                    alt={pending.file.name}
+                    className="ring-border/50 h-14 w-14 rounded-lg object-cover ring-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    onClick={() => removeFile(index)}
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 opacity-70 transition-opacity group-hover:opacity-100"
+                    aria-label={`Remove ${pending.file.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </>
+              ) : (
+                <div className="border-border/30 flex max-w-[220px] items-center gap-2 rounded-lg border bg-white/5 px-2.5 py-1.5 hover:bg-white/10">
+                  {pending.file.type.startsWith("text/") ? (
+                    <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
+                  ) : (
+                    <FileIcon className="text-muted-foreground h-4 w-4 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="max-w-[140px] truncate text-xs font-medium">
+                      {pending.file.name}
+                    </p>
+                    <p className="text-muted-foreground text-[11px]">
+                      {formatFileSize(pending.file.size)}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeFile(index)}
+                    className="text-muted-foreground hover:text-foreground h-6 w-6 shrink-0 opacity-70 transition-opacity group-hover:opacity-100"
+                    aria-label={`Remove ${pending.file.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -226,19 +256,19 @@ export function InputBar({
           </DropdownMenu>
         )}
 
-        {/* File upload button */}
+        {/* File upload button — any file type */}
         <Button
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0 rounded-lg"
           onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach files"
         >
           <Paperclip className="h-4 w-4" />
         </Button>
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
           multiple
           className="hidden"
           onChange={handleFileChange}
@@ -253,7 +283,6 @@ export function InputBar({
             autoResize();
           }}
           onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
           placeholder="Message Saale..."
           className={cn(
             "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
@@ -277,6 +306,7 @@ export function InputBar({
             size="icon"
             className="h-9 w-9 shrink-0 rounded-full"
             onClick={onStop}
+            aria-label="Stop generating"
           >
             <Loader2 className="h-4 w-4 animate-spin" />
           </Button>
@@ -286,6 +316,7 @@ export function InputBar({
             size="icon"
             onClick={handleSubmit}
             disabled={!canSend}
+            aria-label="Send message"
           >
             <Send className="h-4 w-4" />
           </Button>
