@@ -11,6 +11,7 @@ import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
+import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -238,30 +239,64 @@ export async function executeAgentRun(
       },
     });
 
-    const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+    // In-flight DB writes, so the run is not resolved before its last turn
+    // lands (turn_end persists the assistant message asynchronously).
+    const pendingPersists = new Set<Promise<void>>();
+
+    /** The provider failure of a terminal attempt, if the run ended in one. */
+    let terminalProviderError: string | null = null;
+
+    /** Settle the run's outcome once Pi is completely finished. */
+    const finish = async () => {
+      await Promise.allSettled([...pendingPersists]);
+      if (terminalProviderError) {
+        reject(new Error(terminalProviderError));
+        return;
+      }
       try {
-        handleAgentEvent(event, runId, state, output);
+        const stats = session.getSessionStats();
+        resolve({
+          inputTokens: stats.tokens.input,
+          outputTokens: stats.tokens.output,
+          cost: stats.cost,
+        });
       } catch (err) {
-        console.error(`[agent-job:${runId}] Event handler error:`, err);
+        console.error(`[agent-job:${runId}] Failed to get session stats:`, err);
+        resolve({ inputTokens: 0, outputTokens: 0, cost: 0 });
+      }
+    };
+
+    const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+      // The handler writes to the DB, so its rejections must be handled here —
+      // a synchronous try/catch cannot see them.
+      const persisted = handleAgentEvent(event, runId, state, output).catch((err) => {
+        console.error(`[agent-job:${runId}] Failed to persist agent event:`, err);
+      });
+      pendingPersists.add(persisted);
+      void persisted.finally(() => pendingPersists.delete(persisted));
+
+      // A provider failure does not throw: it ends the assistant message with
+      // stopReason "error". Only the terminal attempt decides the run, so this
+      // is recorded when no retry is pending (the run would otherwise be
+      // reported as completed with no output).
+      if (event.type === "agent_end" && !event.willRetry) {
+        const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant") as
+          ProviderErrorSource | undefined;
+        terminalProviderError = extractProviderError(lastAssistant);
       }
 
-      if (event.type === "agent_end") {
+      // `agent_settled` — emitted after retries and post-run compaction — is
+      // the only point at which the run is truly over. `agent_end` fires once
+      // per attempt, so resolving there would mark a job completed while Pi is
+      // still working — and any later rejection would be a no-op on an
+      // already-settled promise.
+      if (event.type === "agent_settled") {
         idleTimeout.clear();
         unsubscribe();
-
-        try {
-          const stats = session.getSessionStats();
-          resolve({
-            inputTokens: stats.tokens.input,
-            outputTokens: stats.tokens.output,
-            cost: stats.cost,
-          });
-        } catch (err) {
-          console.error(`[agent-job:${runId}] Failed to get session stats:`, err);
-          resolve({ inputTokens: 0, outputTokens: 0, cost: 0 });
-        }
+        void finish();
       }
 
+      // A retry the SDK gave up on (including one cancelled by an abort).
       if (event.type === "auto_retry_end" && !event.success) {
         idleTimeout.clear();
         unsubscribe();
@@ -269,8 +304,10 @@ export async function executeAgentRun(
       }
     });
 
-    // Send the prompt
-    session.agent.prompt(definition.prompt).catch((err) => {
+    // Send the prompt. session.prompt() — not session.agent.prompt() — runs the
+    // SDK's post-run processing (retry, auto-compaction, agent_settled), which
+    // is what makes `agent_settled` above reachable at all.
+    session.prompt(definition.prompt, { expandPromptTemplates: false }).catch((err) => {
       idleTimeout.clear();
       unsubscribe();
       reject(err);
