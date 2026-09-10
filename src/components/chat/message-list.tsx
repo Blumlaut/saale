@@ -8,6 +8,8 @@ import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
 import { ToolCallView } from "./tool-call-view";
+import { ProviderErrorNotice } from "./provider-error-notice";
+import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages } from "@/lib/chat/group-messages";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
@@ -25,6 +27,7 @@ import {
   X,
   FileText,
   File as FileIcon,
+  AlertTriangle,
 } from "lucide-react";
 
 interface MessageListProps {
@@ -38,6 +41,8 @@ interface MessageListProps {
   sessionId?: string;
   /** The tool Pi is currently running (from the session, for refresh recovery). */
   activeTool?: { name: string | null; startedAt?: string | null } | null;
+  /** Set while a failed provider call is being retried. */
+  retry?: { attempt: number; maxAttempts: number; errorMessage: string } | null;
 }
 
 const THRESHOLD = 80; // px from bottom to consider "at bottom"
@@ -52,6 +57,7 @@ export function MessageList({
   onApprovalResolved,
   sessionId,
   activeTool,
+  retry,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -210,8 +216,20 @@ export function MessageList({
 
         {isLoading && !isStreaming && (
           <div className="text-muted-foreground flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {activeTool?.name ? (
+            {retry ? (
+              <AlertTriangle className="text-destructive h-4 w-4 shrink-0" />
+            ) : (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            )}
+            {retry ? (
+              <span className="min-w-0 text-sm break-words">
+                <span className="text-destructive font-medium">Provider error</span>{" "}
+                <span>
+                  {formatProviderError(retry.errorMessage).message} — retrying ({retry.attempt} of{" "}
+                  {retry.maxAttempts})...
+                </span>
+              </span>
+            ) : activeTool?.name ? (
               <span className="text-sm">
                 Running <span className="font-medium">{activeTool.name}</span>...
               </span>
@@ -504,9 +522,10 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
     });
   };
 
-  // Filter out turns with no content at all
+  // Filter out turns with no content at all. An errored turn is kept even when
+  // it is empty — the error notice is the only thing there is to show.
   const visibleMessages = messages.filter(
-    (m) => m.content || m.thinking || (m.toolCalls && m.toolCalls.length > 0),
+    (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
   );
 
   if (visibleMessages.length === 0) {
@@ -576,8 +595,12 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
               </div>
             )}
 
+            {/* Provider error (failed turn) */}
+            {message.errorMessage && <ProviderErrorNotice error={message.errorMessage} />}
+
             {/* Streaming indicator for empty current turn */}
             {!message.content &&
+              !message.errorMessage &&
               isStreaming &&
               message.id === visibleMessages[visibleMessages.length - 1]?.id && (
                 <div className="liquid-glass-inner flex items-center gap-1 rounded-2xl px-4 py-3">

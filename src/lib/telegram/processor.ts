@@ -22,6 +22,7 @@ import { resolveToolSummary } from "@/lib/pi/tool-summary-resolver";
 import { sendTelegramApprovalRequest, deleteTelegramApprovalMessage } from "./approval";
 import { createApprovalCardTracker } from "./approval-cards";
 import { extractCumulativeText } from "@/lib/pi/stream-logic";
+import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
 import { createTerminalScopedTools } from "@/lib/pi/session";
@@ -500,6 +501,27 @@ export async function processTelegramMessage(
               unsubscribe();
               processingDone?.resolve();
               resolve();
+              break;
+            }
+
+            // A provider failure does not throw — it ends the assistant
+            // message with stopReason "error". Without this, a run that fails
+            // for a non-retryable reason (bad request, exhausted quota) ends
+            // silently: no reply text, no error, nothing to act on.
+            // Rejecting routes it into the run's error handling, which records
+            // the failure and tells the user. `willRetry` runs are skipped —
+            // the retry either succeeds or reports its own final failure.
+            case "agent_end": {
+              if (event.willRetry) break;
+              const lastAssistant = [...event.messages]
+                .reverse()
+                .find((m) => m.role === "assistant") as ProviderErrorSource | undefined;
+              const providerError = extractProviderError(lastAssistant);
+              if (!providerError) break;
+              idleTimeout.clear();
+              unsubscribe();
+              processingDone?.resolve();
+              reject(new Error(providerError));
               break;
             }
 

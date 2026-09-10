@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock Prisma
 const mockChatMessageCreate = vi.fn();
+const mockChatMessageUpdate = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatMessage: {
       create: (...args: unknown[]) => mockChatMessageCreate(...args),
+      update: (...args: unknown[]) => mockChatMessageUpdate(...args),
     },
   },
 }));
@@ -20,7 +22,7 @@ describe("saveAssistantMessage", () => {
   it("creates an assistant message with text only", async () => {
     mockChatMessageCreate.mockResolvedValueOnce({ id: "msg-1" });
 
-    const result = await saveAssistantMessage("session-1", "Hello world");
+    const result = await saveAssistantMessage({ sessionId: "session-1", content: "Hello world" });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: {
@@ -29,6 +31,7 @@ describe("saveAssistantMessage", () => {
         content: "Hello world",
         thinking: null,
         toolCalls: null,
+        errorMessage: null,
         parentMessageId: null,
       },
     });
@@ -38,7 +41,11 @@ describe("saveAssistantMessage", () => {
   it("saves thinking content when provided", async () => {
     mockChatMessageCreate.mockResolvedValueOnce({ id: "msg-2" });
 
-    await saveAssistantMessage("session-1", "Answer", "Let me think...");
+    await saveAssistantMessage({
+      sessionId: "session-1",
+      content: "Answer",
+      thinking: "Let me think...",
+    });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -59,7 +66,7 @@ describe("saveAssistantMessage", () => {
       },
     ];
 
-    await saveAssistantMessage("session-1", "Result", undefined, toolCalls);
+    await saveAssistantMessage({ sessionId: "session-1", content: "Result", toolCalls });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -71,7 +78,7 @@ describe("saveAssistantMessage", () => {
   it("sets toolCalls to null when empty array", async () => {
     mockChatMessageCreate.mockResolvedValueOnce({ id: "msg-4" });
 
-    await saveAssistantMessage("session-1", "Result", undefined, []);
+    await saveAssistantMessage({ sessionId: "session-1", content: "Result", toolCalls: [] });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -83,7 +90,7 @@ describe("saveAssistantMessage", () => {
   it("sets toolCalls to null when undefined", async () => {
     mockChatMessageCreate.mockResolvedValueOnce({ id: "msg-5" });
 
-    await saveAssistantMessage("session-1", "Result");
+    await saveAssistantMessage({ sessionId: "session-1", content: "Result" });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -95,7 +102,11 @@ describe("saveAssistantMessage", () => {
   it("saves parentMessageId when provided", async () => {
     mockChatMessageCreate.mockResolvedValueOnce({ id: "msg-6" });
 
-    await saveAssistantMessage("session-1", "Follow-up", undefined, undefined, "parent-1");
+    await saveAssistantMessage({
+      sessionId: "session-1",
+      content: "Follow-up",
+      parentMessageId: "parent-1",
+    });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -107,7 +118,7 @@ describe("saveAssistantMessage", () => {
   it("sets parentMessageId to null when undefined", async () => {
     mockChatMessageCreate.mockResolvedValueOnce({ id: "msg-7" });
 
-    await saveAssistantMessage("session-1", "First turn");
+    await saveAssistantMessage({ sessionId: "session-1", content: "First turn" });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -128,12 +139,49 @@ describe("saveAssistantMessage", () => {
       },
     ];
 
-    await saveAssistantMessage("session-1", "Error response", undefined, toolCalls);
+    await saveAssistantMessage({ sessionId: "session-1", content: "Error response", toolCalls });
 
     expect(mockChatMessageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         toolCalls: JSON.stringify(toolCalls),
       }),
+    });
+  });
+
+  it("persists the provider error on a failed turn", async () => {
+    mockChatMessageCreate.mockResolvedValueOnce({ id: "msg-9" });
+
+    await saveAssistantMessage({
+      sessionId: "session-1",
+      content: "",
+      errorMessage: '400: {"message":"Invalid max_tokens value"}',
+    });
+
+    expect(mockChatMessageCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        errorMessage: '400: {"message":"Invalid max_tokens value"}',
+      }),
+    });
+  });
+
+  it("updates the existing message and clears a stale error", async () => {
+    mockChatMessageUpdate.mockResolvedValueOnce({ id: "msg-10" });
+
+    await saveAssistantMessage({
+      sessionId: "session-1",
+      content: "Final answer",
+      messageId: "msg-10",
+    });
+
+    expect(mockChatMessageCreate).not.toHaveBeenCalled();
+    expect(mockChatMessageUpdate).toHaveBeenCalledWith({
+      where: { id: "msg-10", sessionId: "session-1" },
+      data: {
+        content: "Final answer",
+        thinking: null,
+        toolCalls: null,
+        errorMessage: null,
+      },
     });
   });
 });

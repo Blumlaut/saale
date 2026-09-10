@@ -35,6 +35,8 @@ export interface Message {
   role: "user" | "assistant" | "system" | "approval" | "compaction";
   content: string;
   thinking: string | undefined;
+  /** Provider error when the turn failed (stopReason "error"). */
+  errorMessage?: string | undefined;
   toolCalls: ToolCallData[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;

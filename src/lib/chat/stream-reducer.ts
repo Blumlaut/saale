@@ -30,6 +30,8 @@ export type StreamAction =
   | { type: "tool_end"; turnId: string; toolCallId: string; result?: string; isError?: boolean }
   | { type: "turn_end"; turnId: string; text?: string; thinking?: string | null }
   | { type: "message_saved"; turnId: string; messageId: string }
+  /** The SDK discarded a failed turn to retry it — drop the live bubble. */
+  | { type: "turn_discarded"; turnId: string; messageId: string | null }
   /** Generation finished (done/error) — drop live streaming turns. */
   | { type: "generation_done" };
 
@@ -153,6 +155,26 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           ...(action.thinking ? { thinking: action.thinking } : {}),
         }),
       };
+
+    case "turn_discarded": {
+      // The retry re-runs the turn, so the bubble goes; `rootMessageId` must
+      // be cleared when it pointed at the discarded message, otherwise the
+      // retried turn would be grouped as a child of a nonexistent parent.
+      // Match on both ids: the turn may still be streaming, or may already
+      // have been swapped for its (now deleted) DB row by `message_saved`.
+      const rootMessageId =
+        state.rootMessageId && state.rootMessageId === action.messageId
+          ? null
+          : state.rootMessageId;
+      return {
+        rootMessageId,
+        messages: state.messages.filter(
+          (m) =>
+            m.id !== `streaming-${action.turnId}` &&
+            (action.messageId === null || m.id !== action.messageId),
+        ),
+      };
+    }
 
     case "message_saved": {
       // First saved message of a generation is the root (parent of later turns).

@@ -137,6 +137,7 @@ model ChatMessage {
   content         String           @db.Text
   thinking        String?          @db.Text // thinking/reasoning content for assistant turns
   toolCalls       String?          @db.Text // JSON array of tool calls
+  errorMessage    String?          @db.Text // provider error when the turn failed (stopReason "error")
   parentMessageId String?          // links turns to the root assistant message
   createdAt       DateTime         @default(now())
   editedAt        DateTime?

@@ -44,6 +44,13 @@ export function ChatInterface({
     name: string | null;
     startedAt?: string | null;
   } | null>(null);
+  // Transient provider failure being retried by Pi — shown instead of a
+  // motionless "Thinking..." during the backoff.
+  const [retryNotice, setRetryNotice] = useState<{
+    attempt: number;
+    maxAttempts: number;
+    errorMessage: string;
+  } | null>(null);
   const { markStreaming, markDone } = useStreamingSessions();
 
   // Session metadata (title, model, thinking, tool config) + persistence.
@@ -111,6 +118,8 @@ export function ChatInterface({
     setPendingApprovals,
     markDone,
     onGenerationEnd: () => {
+      // The generation ended, so any in-flight retry did too.
+      setRetryNotice(null);
       const queued = queuedSendRef.current;
       if (!queued) return;
       queuedSendRef.current = null;
@@ -128,6 +137,7 @@ export function ChatInterface({
       }
     },
     onStreamError: (message) => {
+      setRetryNotice(null);
       if (message.includes("No AI model configured")) {
         toast.error("No AI model configured", {
           description: "Select a default model in Settings > AI & Models to start chatting.",
@@ -139,6 +149,8 @@ export function ChatInterface({
       }
     },
     onReload: () => void loadMessages(),
+    onRetryStart: (retry) => setRetryNotice(retry),
+    onRetryEnd: () => setRetryNotice(null),
   });
 
   // ─── Message handlers ────────────────────────────────────────────────────
@@ -429,6 +441,7 @@ export function ChatInterface({
             }}
             sessionId={sessionId}
             activeTool={activeTool}
+            retry={retryNotice}
           />
         </div>
       </GlassPanel>

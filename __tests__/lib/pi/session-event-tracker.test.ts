@@ -22,10 +22,14 @@ vi.mock("@/lib/redis", () => ({
 }));
 
 const mockChatSessionUpdate = vi.fn();
+const mockChatMessageDeleteMany = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatSession: {
       update: (...args: unknown[]) => mockChatSessionUpdate(...args),
+    },
+    chatMessage: {
+      deleteMany: (...args: unknown[]) => mockChatMessageDeleteMany(...args),
     },
   },
 }));
@@ -78,6 +82,7 @@ function setup() {
   mockRegisterActiveSession.mockResolvedValue(undefined);
   mockUnregisterActiveSession.mockResolvedValue(undefined);
   mockChatSessionUpdate.mockResolvedValue({});
+  mockChatMessageDeleteMany.mockResolvedValue({ count: 1 });
   mockSaveCompactionMessage.mockResolvedValue(undefined);
   return { published };
 }
@@ -161,11 +166,11 @@ describe("createSessionEventTracker", () => {
 
     // The assistant message was persisted with the streamed content.
     expect(mockSaveAssistantMessage).toHaveBeenCalledWith(
-      "s1",
-      "Hello world",
-      undefined,
-      undefined,
-      null,
+      expect.objectContaining({
+        sessionId: "s1",
+        content: "Hello world",
+        parentMessageId: null,
+      }),
     );
   });
 
@@ -365,11 +370,8 @@ describe("createSessionEventTracker", () => {
     await flush();
 
     // The agent_end finalize re-saves with the existing message id.
-    const finalCall = mockSaveAssistantMessage.mock.calls.at(-1)!;
-    expect(finalCall[0]).toBe("s1");
-    expect(finalCall[1]).toBe("Final");
-    // messageId (6th arg) = the turn_end save's id.
-    expect(finalCall[5]).toBe("msg-1");
+    const finalCall = mockSaveAssistantMessage.mock.calls.at(-1)![0] as { messageId?: string };
+    expect(finalCall.messageId).toBe("msg-1");
   });
 
   it("defers done, unregister, and message count to agent_settled (not agent_end)", async () => {
@@ -628,5 +630,307 @@ describe("createSessionEventTracker", () => {
         data: { messageCount: { increment: 2 }, lastActivityAt: expect.any(Date) },
       }),
     );
+  });
+
+  it("persists the provider error on a terminal failure", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // A provider failure is an assistant message with stopReason "error" and
+    // no content — Pi does not throw, so this is the only failure signal.
+    const failed = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: '400: {"message":"Invalid max_tokens value"}',
+    };
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "message_end", message: failed });
+    session.emit({ type: "turn_end", message: failed, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [failed], willRetry: false });
+
+    await flush();
+    await flush();
+
+    // turn_end cannot know whether the attempt will be retried, so the error is
+    // written by the terminal agent_end finalize only.
+    const turnSave = mockSaveAssistantMessage.mock.calls[0]![0] as { errorMessage?: string };
+    expect(turnSave.errorMessage).toBeUndefined();
+    const finalSave = mockSaveAssistantMessage.mock.calls.at(-1)![0] as { errorMessage?: string };
+    expect(finalSave.errorMessage).toBe('400: {"message":"Invalid max_tokens value"}');
+  });
+
+  it("keeps partial output from an attempt that is about to be retried", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // The stream died after the model had already produced text the user saw.
+    const failed = {
+      role: "assistant",
+      content: [{ type: "text", text: "Starting to answer" }],
+      stopReason: "error",
+      errorMessage: "terminated",
+    };
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "Starting to answer" }] },
+    });
+    session.emit({ type: "turn_end", message: failed, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [failed], willRetry: true });
+
+    await flush();
+    await flush();
+
+    // Nothing is deleted, and no error is reported: the attempt is provisional,
+    // so the run's outcome is still open (a retry, or a user pressing stop).
+    expect(mockChatMessageDeleteMany).not.toHaveBeenCalled();
+    const saves = mockSaveAssistantMessage.mock.calls.map((c) => c[0] as { errorMessage?: string });
+    expect(saves).toHaveLength(1);
+    expect(saves[0]!.errorMessage).toBeUndefined();
+  });
+
+  it("does not record a user's stop as a provider error", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // A cancelled request is reported exactly like a stream failure
+    // (stopReason "error", errorMessage "terminated"), and the SDK marks it
+    // retryable — the retry is what the abort then cancels.
+    const aborted = {
+      role: "assistant",
+      content: [{ type: "text", text: "half an answer" }],
+      stopReason: "error",
+      errorMessage: "terminated",
+    };
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "half an answer" }] },
+    });
+    session.emit({ type: "turn_end", message: aborted, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [aborted], willRetry: true });
+    session.emit({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 2000,
+      errorMessage: "terminated",
+    });
+    session.emit({ type: "auto_retry_end", success: false, attempt: 1, finalError: "cancelled" });
+    session.emit({ type: "agent_settled" });
+
+    await flush();
+    await flush();
+    await flush();
+
+    // The partial answer survives, with no error attached to it.
+    expect(mockChatMessageDeleteMany).not.toHaveBeenCalled();
+    const saves = mockSaveAssistantMessage.mock.calls.map((c) => c[0] as { errorMessage?: string });
+    expect(saves.every((save) => save.errorMessage === undefined)).toBe(true);
+  });
+
+  it("ignores an SDK message with a true abort stop reason", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    const aborted = {
+      role: "assistant",
+      content: [{ type: "text", text: "partial" }],
+      stopReason: "aborted",
+      errorMessage: "Request was aborted",
+    };
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "turn_end", message: aborted, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [aborted], willRetry: false });
+
+    await flush();
+    await flush();
+
+    const finalSave = mockSaveAssistantMessage.mock.calls.at(-1)![0] as { errorMessage?: string };
+    expect(finalSave.errorMessage).toBeNull();
+  });
+
+  it("discards the failed turn when the SDK retries, keeping earlier turns", async () => {
+    const { published } = setup();
+    let savedCounter = 0;
+    mockSaveAssistantMessage.mockImplementation(() => {
+      savedCounter++;
+      return Promise.resolve({ id: `msg-${savedCounter}` });
+    });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // Attempt 1, turn 1: a real answer with a tool call — the SDK keeps this.
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "Working on it" }] },
+    });
+    session.emit({
+      type: "turn_end",
+      message: { role: "assistant", content: [{ type: "text", text: "Working on it" }] },
+      toolResults: [],
+    });
+    // Attempt 1, turn 2: the provider fails transiently.
+    const failed = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: "503: service unavailable",
+    };
+    session.emit({ type: "turn_end", message: failed, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [failed], willRetry: true });
+    session.emit({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 2000,
+      errorMessage: "503: service unavailable",
+    });
+
+    await flush();
+    await flush();
+
+    // Only the failed turn's row is removed (`_prepareRetry` drops just the
+    // last message) — the earlier turn stays part of the transcript.
+    expect(mockChatMessageDeleteMany).toHaveBeenCalledTimes(1);
+    expect(mockChatMessageDeleteMany).toHaveBeenCalledWith({
+      where: { id: "msg-2", sessionId: "s1" },
+    });
+
+    // agent_end must not have persisted the doomed turn.
+    const savedIds = mockSaveAssistantMessage.mock.calls.map(
+      (c) => (c[0] as { messageId?: string }).messageId,
+    );
+    expect(savedIds).toEqual([undefined, undefined]);
+
+    // The client is told to drop the bubble; retry progress is published.
+    const discarded = published.find((p) => p.event === "turn_discarded")!;
+    expect(discarded.data.messageId).toBe("msg-2");
+    expect(typeof discarded.data.turnId).toBe("string");
+
+    const retryStart = published.find((p) => p.event === "retry_start")!;
+    expect(retryStart.data).toMatchObject({ attempt: 1, maxAttempts: 3, delayMs: 2000 });
+  });
+
+  it("starts a fresh group after discarding the root message", async () => {
+    const { published } = setup();
+    let savedCounter = 0;
+    mockSaveAssistantMessage.mockImplementation(() => {
+      savedCounter++;
+      return Promise.resolve({ id: `msg-${savedCounter}` });
+    });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // Single-turn failure: the doomed row IS the generation's root, so the
+    // retried turn must not be linked to the deleted message.
+    const failed = { role: "assistant", content: [], stopReason: "error", errorMessage: "429" };
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "turn_end", message: failed, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [failed], willRetry: true });
+    session.emit({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 2000,
+      errorMessage: "429",
+    });
+
+    await flush();
+    await flush();
+
+    // Retry succeeds.
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "Recovered" }] },
+    });
+    session.emit({
+      type: "turn_end",
+      message: { role: "assistant", content: [{ type: "text", text: "Recovered" }] },
+      toolResults: [],
+    });
+
+    await flush();
+
+    const retriedSave = mockSaveAssistantMessage.mock.calls.at(-1)![0] as {
+      parentMessageId?: string | null;
+    };
+    expect(retriedSave.parentMessageId).toBeNull();
+    expect(published.find((p) => p.event === "turn_discarded")!.data.messageId).toBe("msg-1");
+  });
+
+  it("does not count discarded attempts in the session message count", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    const failed = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: "503: service unavailable",
+    };
+
+    // Three attempts fail and are discarded, the fourth is terminal.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      session.emit({ type: "agent_start" });
+      session.emit({ type: "turn_end", message: failed, toolResults: [] });
+      session.emit({ type: "agent_end", messages: [failed], willRetry: true });
+    }
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "turn_end", message: failed, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [failed], willRetry: false });
+    session.emit({ type: "agent_settled" });
+
+    await flush();
+    await flush();
+    await flush();
+
+    // Only the terminal attempt left a row, so the count must match it.
+    expect(mockChatMessageDeleteMany).toHaveBeenCalledTimes(3);
+    expect(mockChatSessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ messageCount: { increment: 1 } }),
+      }),
+    );
+  });
+
+  it("publishes the end of a retry sequence", async () => {
+    const { published } = setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "auto_retry_end", success: false, attempt: 3, finalError: "503" });
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "auto_retry_end", success: true, attempt: 2 });
+
+    await flush();
+
+    const retryEnds = published.filter((p) => p.event === "retry_end");
+    expect(retryEnds).toHaveLength(2);
+    expect(retryEnds[0]!.data).toMatchObject({ success: false, attempt: 3, finalError: "503" });
+    expect(retryEnds[1]!.data).toMatchObject({ success: true, attempt: 2 });
   });
 });
