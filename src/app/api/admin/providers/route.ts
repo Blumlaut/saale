@@ -3,23 +3,8 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "../settings/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-
-// Known providers with their labels
-const PROVIDERS = {
-  anthropic: { label: "Anthropic" },
-  openai: { label: "OpenAI" },
-  google: { label: "Google" },
-  deepseek: { label: "DeepSeek" },
-  xai: { label: "xAI (Grok)" },
-  groq: { label: "Groq" },
-  cerebras: { label: "Cerebras" },
-  openrouter: { label: "OpenRouter" },
-  mistral: { label: "Mistral" },
-  together: { label: "Together AI" },
-  fireworks: { label: "Fireworks" },
-  huggingface: { label: "Hugging Face" },
-  custom: { label: "OpenAI-compatible" },
-};
+import { PROVIDERS, supportsCustomLimits } from "@/lib/providers/config";
+import { parseProviderLimits } from "@/lib/providers/limits";
 
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
@@ -57,6 +42,8 @@ export async function GET() {
       provider: true,
       label: true,
       baseUrl: true,
+      contextWindow: true,
+      maxOutputTokens: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -72,6 +59,7 @@ export async function GET() {
     availableProviders: Object.entries(PROVIDERS).map(([key, val]) => ({
       id: key,
       name: val.label,
+      limitsConfigurable: supportsCustomLimits(key),
     })),
   });
 }
@@ -106,6 +94,11 @@ export async function POST(request: NextRequest) {
 
   const encryptedKey = encrypt(apiKey || "");
 
+  const parsedLimits = parseProviderLimits(provider, body);
+  if ("error" in parsedLimits) {
+    return NextResponse.json({ error: parsedLimits.error }, { status: 400 });
+  }
+
   // Upsert: find existing global provider or create new one
   const existing = await prisma.providerApiKey.findFirst({
     where: {
@@ -121,6 +114,7 @@ export async function POST(request: NextRequest) {
           encryptedKey,
           label: label || "",
           baseUrl: provider === "custom" ? baseUrl : null,
+          ...parsedLimits.limits,
         },
       })
     : await prisma.providerApiKey.create({
@@ -130,6 +124,7 @@ export async function POST(request: NextRequest) {
           encryptedKey,
           label: label || "",
           baseUrl: provider === "custom" ? baseUrl : null,
+          ...parsedLimits.limits,
         },
       });
 
@@ -143,6 +138,8 @@ export async function POST(request: NextRequest) {
     provider: key.provider,
     label: key.label,
     baseUrl: key.baseUrl,
+    contextWindow: key.contextWindow,
+    maxOutputTokens: key.maxOutputTokens,
     configured: true,
     displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
     discoveredModels,

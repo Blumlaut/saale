@@ -1,35 +1,12 @@
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { DISCOVERABLE_PROVIDERS, getProviderBaseUrl } from "@/lib/providers/config";
+import { limitFields, type ProviderModelLimits } from "@/lib/providers/limits";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 interface ProviderModelConfig {
   enabled: boolean;
   models?: string[];
-}
-
-// Default context window for models discovered via OpenAI-compatible /models
-// (the endpoint doesn't report it). Also used as the output token cap.
-const DEFAULT_CONTEXT_WINDOW = 131_072;
-
-/**
- * Resolve a model from the runtime with its output token cap raised to the
- * full context window.
- *
- * Pi's built-in model definitions cap `maxTokens` well below `contextWindow`
- * (often ~16k), and pi-ai falls back to `model.maxTokens` for the request's
- * `max_tokens`. This truncates responses mid-thought when reasoning is on.
- * Returns a shallow copy so the runtime's cached model definition is not
- * mutated.
- */
-export function resolveModel(
-  runtime: ModelRuntime,
-  provider: string,
-  modelId: string,
-): ReturnType<ModelRuntime["getModel"]> {
-  const model = runtime.getModel(provider, modelId);
-  if (!model) return model;
-  if (model.maxTokens >= model.contextWindow) return model;
-  return { ...model, maxTokens: model.contextWindow };
 }
 
 /**
@@ -74,22 +51,6 @@ function isModelAllowed(
   return true; // no model list set = all allowed
 }
 
-// Providers that support OpenAI-compatible /models endpoint for dynamic discovery
-const DISCOVERABLE_PROVIDERS = new Set(["openrouter", "together", "fireworks", "huggingface"]);
-
-/**
- * Get the base URL for a known provider's OpenAI-compatible API.
- */
-function getProviderBaseUrl(provider: string): string | null {
-  const baseUrls: Record<string, string> = {
-    openrouter: "https://openrouter.ai/api/v1",
-    together: "https://api.together.xyz",
-    fireworks: "https://api.fireworks.ai/inference/v1",
-    huggingface: "https://api-inference.huggingface.com",
-  };
-  return baseUrls[provider] ?? null;
-}
-
 /**
  * Fetch model IDs from an OpenAI-compatible /models endpoint.
  */
@@ -128,22 +89,30 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
 export async function buildModelRuntime(userId: string) {
   const globalConfig = await getGlobalModelConfig();
 
+  const keySelect = {
+    provider: true,
+    encryptedKey: true,
+    baseUrl: true,
+    contextWindow: true,
+    maxOutputTokens: true,
+  };
+
   // Fetch global providers (userId = null)
   const globalKeys = await prisma.providerApiKey.findMany({
     where: { userId: null },
-    select: { provider: true, encryptedKey: true, baseUrl: true },
+    select: keySelect,
   });
 
   // Fetch user-scoped providers (user keys override global ones)
   const userKeys = await prisma.providerApiKey.findMany({
     where: { userId },
-    select: { provider: true, encryptedKey: true, baseUrl: true },
+    select: keySelect,
   });
 
   // Merge: global keys as base, user keys override by provider
   const mergedMap = new Map<
     string,
-    { provider: string; encryptedKey: string; baseUrl: string | null }
+    { provider: string; encryptedKey: string; baseUrl: string | null } & ProviderModelLimits
   >();
   for (const key of globalKeys) {
     mergedMap.set(key.provider, key);
@@ -163,8 +132,8 @@ export async function buildModelRuntime(userId: string) {
       if (decryptedKey) {
         await modelRuntime.setRuntimeApiKey(key.provider, decryptedKey);
       }
-    } catch {
-      // skip
+    } catch (err) {
+      console.error(`Failed to decrypt the API key for provider ${key.provider}:`, err);
     }
   }
 
@@ -172,72 +141,70 @@ export async function buildModelRuntime(userId: string) {
   const discoveredModels: Array<{ provider: string; id: string; name: string }> = [];
 
   for (const key of storedKeys) {
-    if (key.provider === "custom" && key.baseUrl) {
-      const decryptedKey = decrypt(key.encryptedKey);
-      const baseUrl = key.baseUrl.replace(/\/+$/, "");
+    const limits: ProviderModelLimits = {
+      contextWindow: key.contextWindow,
+      maxOutputTokens: key.maxOutputTokens,
+    };
 
-      // Fetch models from the server
-      const modelIds = await fetchOpenAIModels(baseUrl, decryptedKey);
+    // Isolate per provider: a bad key, an unreachable endpoint or a rejected
+    // model definition must not take down every other provider.
+    try {
+      if (key.provider === "custom" && key.baseUrl) {
+        const decryptedKey = decrypt(key.encryptedKey);
+        const baseUrl = key.baseUrl.replace(/\/+$/, "");
+        const modelIds = await fetchOpenAIModels(baseUrl, decryptedKey);
 
-      try {
-        if (modelIds.length > 0) {
-          const apiKey = decryptedKey || "placeholder";
-          modelRuntime.registerProvider("custom", {
-            baseUrl,
-            apiKey,
-            api: "openai-completions",
-            models: modelIds.map((m) => ({
-              id: m,
-              name: m,
-              api: "openai-completions" as const,
-              reasoning: false,
-              input: ["text", "image"] as const,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: DEFAULT_CONTEXT_WINDOW,
-              maxTokens: DEFAULT_CONTEXT_WINDOW,
-            })),
-          });
+        modelRuntime.registerProvider("custom", {
+          baseUrl,
+          apiKey: decryptedKey || "placeholder",
+          api: "openai-completions",
+          ...(modelIds.length > 0
+            ? {
+                models: modelIds.map((m) => ({
+                  id: m,
+                  name: m,
+                  api: "openai-completions" as const,
+                  reasoning: false,
+                  input: ["text", "image"] as const,
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  ...limitFields(limits),
+                })),
+              }
+            : {}),
+        });
 
-          for (const m of modelIds) {
-            discoveredModels.push({ provider: "custom", id: m, name: m });
+        for (const m of modelIds) {
+          discoveredModels.push({ provider: "custom", id: m, name: m });
+        }
+      }
+
+      // Dynamic model discovery for providers supporting OpenAI-compatible /models endpoint
+      if (DISCOVERABLE_PROVIDERS.has(key.provider) && key.provider !== "custom") {
+        const decryptedKey = decrypt(key.encryptedKey);
+        const providerBaseUrl = getProviderBaseUrl(key.provider);
+        if (providerBaseUrl) {
+          const modelIds = await fetchOpenAIModels(providerBaseUrl, decryptedKey);
+          if (modelIds.length > 0) {
+            // Register discovered models to override built-in list
+            modelRuntime.registerProvider(key.provider, {
+              baseUrl: providerBaseUrl,
+              apiKey: decryptedKey || "placeholder",
+              api: "openai-completions",
+              models: modelIds.map((m) => ({
+                id: m,
+                name: m,
+                api: "openai-completions" as const,
+                reasoning: false,
+                input: ["text", "image"] as const,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                ...limitFields(limits),
+              })),
+            });
           }
-        } else {
-          modelRuntime.registerProvider("custom", {
-            baseUrl,
-            apiKey: decryptedKey,
-            api: "openai-completions",
-          });
-        }
-      } catch (err) {
-        console.error(`Failed to register custom provider ${key.baseUrl}:`, err);
-      }
-    }
-
-    // Dynamic model discovery for providers supporting OpenAI-compatible /models endpoint
-    if (DISCOVERABLE_PROVIDERS.has(key.provider) && key.provider !== "custom") {
-      const decryptedKey = decrypt(key.encryptedKey);
-      const providerBaseUrl = getProviderBaseUrl(key.provider);
-      if (providerBaseUrl) {
-        const modelIds = await fetchOpenAIModels(providerBaseUrl, decryptedKey);
-        if (modelIds.length > 0) {
-          // Register discovered models to override built-in list
-          modelRuntime.registerProvider(key.provider, {
-            baseUrl: providerBaseUrl,
-            apiKey: decryptedKey || "placeholder",
-            api: "openai-completions",
-            models: modelIds.map((m) => ({
-              id: m,
-              name: m,
-              api: "openai-completions" as const,
-              reasoning: false,
-              input: ["text", "image"] as const,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: DEFAULT_CONTEXT_WINDOW,
-              maxTokens: DEFAULT_CONTEXT_WINDOW,
-            })),
-          });
         }
       }
+    } catch (err) {
+      console.error(`Failed to register provider ${key.provider}:`, err);
     }
   }
 

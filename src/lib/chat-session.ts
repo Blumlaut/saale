@@ -1,4 +1,5 @@
 import { fetchJson, postJson } from "@/lib/http";
+import { DEFAULT_THINKING_LEVEL_SETTING } from "@/lib/pi/thinking-levels";
 import type { ToolConfig } from "@/lib/pi/tool-config";
 
 interface UserSettings {
@@ -30,7 +31,7 @@ export async function createChatSession(options?: {
     temporary: options?.temporary || false,
     modelProvider: settings?.defaultModelProvider || undefined,
     modelName: settings?.defaultModelName || undefined,
-    thinkingLevel: settings?.defaultThinkingLevel || "off",
+    thinkingLevel: settings?.defaultThinkingLevel || DEFAULT_THINKING_LEVEL_SETTING,
     toolConfig: settings?.defaultToolConfig || undefined,
   });
 

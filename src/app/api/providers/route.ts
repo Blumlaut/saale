@@ -3,23 +3,8 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-
-// Known providers with their labels
-const PROVIDERS = {
-  anthropic: { label: "Anthropic" },
-  openai: { label: "OpenAI" },
-  google: { label: "Google" },
-  deepseek: { label: "DeepSeek" },
-  xai: { label: "xAI (Grok)" },
-  groq: { label: "Groq" },
-  cerebras: { label: "Cerebras" },
-  openrouter: { label: "OpenRouter" },
-  mistral: { label: "Mistral" },
-  together: { label: "Together AI" },
-  fireworks: { label: "Fireworks" },
-  huggingface: { label: "Hugging Face" },
-  custom: { label: "OpenAI-compatible" },
-};
+import { PROVIDERS, supportsCustomLimits } from "@/lib/providers/config";
+import { parseProviderLimits } from "@/lib/providers/limits";
 
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
@@ -80,6 +65,8 @@ export async function GET() {
       provider: true,
       label: true,
       baseUrl: true,
+      contextWindow: true,
+      maxOutputTokens: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -93,6 +80,8 @@ export async function GET() {
       provider: true,
       label: true,
       baseUrl: true,
+      contextWindow: true,
+      maxOutputTokens: true,
     },
     orderBy: { provider: "asc" },
   });
@@ -116,6 +105,9 @@ export async function GET() {
       id: key,
       name: val.label,
       configured: userKeys.some((u) => u.provider === key) || globalProviderIds.has(key),
+      // Only providers whose models Saale defines itself can have their limits
+      // configured — Pi's catalog already knows the rest.
+      limitsConfigurable: supportsCustomLimits(key),
     })),
   });
 }
@@ -153,6 +145,11 @@ export async function POST(request: NextRequest) {
   // Encrypt the API key (use empty string if not provided)
   const encryptedKey = encrypt(apiKey || "");
 
+  const parsedLimits = parseProviderLimits(provider, body);
+  if ("error" in parsedLimits) {
+    return NextResponse.json({ error: parsedLimits.error }, { status: 400 });
+  }
+
   const key = await prisma.providerApiKey.upsert({
     where: {
       userId_provider: {
@@ -166,11 +163,13 @@ export async function POST(request: NextRequest) {
       encryptedKey,
       label: label || "",
       baseUrl: provider === "custom" ? baseUrl : null,
+      ...parsedLimits.limits,
     },
     update: {
       encryptedKey,
       label: label || "",
       baseUrl: provider === "custom" ? baseUrl : null,
+      ...parsedLimits.limits,
     },
   });
 
@@ -188,11 +187,59 @@ export async function POST(request: NextRequest) {
     provider: key.provider,
     label: key.label,
     baseUrl: key.baseUrl,
+    contextWindow: key.contextWindow,
+    maxOutputTokens: key.maxOutputTokens,
     configured: true,
     displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
     discoveredModels,
     modelCount: discoveredModels.length,
     modelError,
+  });
+}
+
+/**
+ * PATCH /api/providers — Update a provider's model limits without touching its
+ * API key (so the UI never has to re-submit a stored credential).
+ */
+export async function PATCH(request: NextRequest) {
+  const authResult = await requireSession();
+  if (!authResult.ok) return authResult.response;
+
+  const body = await request.json();
+  const provider = body.provider;
+
+  if (!provider || typeof provider !== "string") {
+    return NextResponse.json({ error: "provider is required" }, { status: 400 });
+  }
+
+  const parsedLimits = parseProviderLimits(provider, body);
+  if ("error" in parsedLimits) {
+    return NextResponse.json({ error: parsedLimits.error }, { status: 400 });
+  }
+
+  const existing = await prisma.providerApiKey.findUnique({
+    where: {
+      userId_provider: {
+        userId: authResult.user.id,
+        provider,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return NextResponse.json({ error: "Provider is not configured" }, { status: 404 });
+  }
+
+  const key = await prisma.providerApiKey.update({
+    where: { id: existing.id },
+    data: parsedLimits.limits,
+  });
+
+  return NextResponse.json({
+    provider: key.provider,
+    contextWindow: key.contextWindow,
+    maxOutputTokens: key.maxOutputTokens,
   });
 }
 

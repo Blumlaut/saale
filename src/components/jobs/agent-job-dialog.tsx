@@ -18,6 +18,11 @@ import { postJson, patchJson, fetchJson } from "@/lib/http";
 import { Bot, Loader2 } from "lucide-react";
 import type { AgentJobDefinition } from "@/types/shared";
 import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
+import {
+  DEFAULT_THINKING_LEVEL_SETTING,
+  THINKING_LEVEL_OPTIONS,
+  normalizeThinkingLevelSetting,
+} from "@/lib/pi/thinking-levels";
 import type { TelegramChatInfo } from "@/lib/telegram/chats";
 
 interface AgentJobDialogProps {
@@ -37,14 +42,6 @@ const TELEGRAM_AUTO = "auto";
 /** Select sentinel: show the manual chat ID input. */
 const TELEGRAM_MANUAL = "manual";
 
-const THINKING_LEVELS = [
-  { value: "off", label: "Off" },
-  { value: "minimal", label: "Minimal" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-];
-
 export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobDialogProps) {
   const isEditMode = !!job;
 
@@ -54,7 +51,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
   const [prompt, setPrompt] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [modelId, setModelId] = useState("");
-  const [thinkingLevel, setThinkingLevel] = useState("off");
+  const [thinkingLevel, setThinkingLevel] = useState<string>(DEFAULT_THINKING_LEVEL_SETTING);
   const [outputChannel, setOutputChannel] = useState("");
   const [outputChannelId, setOutputChannelId] = useState("");
   // Telegram chat selection: "auto" (inherit configured chat) | "manual" | a chat ID
@@ -102,7 +99,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
       setPrompt(job.prompt);
       setSystemPrompt(job.systemPrompt ?? "");
       setModelId(job.modelId ?? "");
-      setThinkingLevel(job.thinkingLevel ?? "off");
+      setThinkingLevel(job.thinkingLevel ?? DEFAULT_THINKING_LEVEL_SETTING);
       setOutputChannel(job.outputChannel ?? "");
       setOutputChannelId(job.outputChannelId ?? "");
       // Telegram: a stored chat ID selects that chat (flipped to manual if
@@ -201,7 +198,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
         systemPrompt: systemPrompt.trim() || undefined,
         toolConfig: Object.keys(toolConfig).length > 0 ? toolConfig : undefined,
         modelId: modelId.trim() || undefined,
-        thinkingLevel: thinkingLevel || undefined,
+        thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
         outputChannel: outputChannel || undefined,
         outputChannelId: resolvedOutputChannelId,
         cronExpression: cronExpression.trim() || undefined,
@@ -309,13 +306,16 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
 
             <div className="space-y-2">
               <Label>Thinking Level</Label>
-              <Select value={thinkingLevel} onValueChange={(v) => setThinkingLevel(v ?? "off")}>
+              <Select
+                value={thinkingLevel}
+                onValueChange={(v) => setThinkingLevel(v ?? DEFAULT_THINKING_LEVEL_SETTING)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {THINKING_LEVELS.map((level) => (
-                    <SelectItem key={level.value} value={level.value}>
+                  {THINKING_LEVEL_OPTIONS.map((level) => (
+                    <SelectItem key={level.id} value={level.id}>
                       {level.label}
                     </SelectItem>
                   ))}

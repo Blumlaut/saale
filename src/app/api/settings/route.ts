@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 import type { AppSettings } from "@prisma/client";
 
 /** Fields that may be updated via PATCH /api/settings. */
@@ -72,6 +73,14 @@ export async function PATCH(request: NextRequest) {
     if (ALLOWED_FIELDS.has(key)) {
       updateData[key] = value;
     }
+  }
+
+  // An unknown level would silently mean "no thinking override" — store the
+  // fallback instead so the setting always reflects what a user chose.
+  if ("defaultThinkingLevel" in updateData) {
+    updateData.defaultThinkingLevel = normalizeThinkingLevelSetting(
+      updateData.defaultThinkingLevel,
+    );
   }
 
   const settings = await prisma.appSettings.upsert({

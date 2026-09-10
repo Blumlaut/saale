@@ -30,6 +30,9 @@ export interface ConfiguredProvider {
   configured: boolean;
   isGlobal: boolean;
   displayName: string;
+  baseUrl?: string | null;
+  contextWindow?: number | null;
+  maxOutputTokens?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,6 +41,8 @@ export interface ProviderInfo {
   id: string;
   name: string;
   configured?: boolean;
+  /** Whether this provider's models are defined by Saale, so its limits are configurable. */
+  limitsConfigurable?: boolean;
 }
 
 export interface AvailableModel {

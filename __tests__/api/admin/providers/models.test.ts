@@ -93,6 +93,8 @@ describe("GET /api/admin/providers/models", () => {
         encryptedKey: "encrypted-key",
         label: "Anthropic Key",
         baseUrl: null,
+        contextWindow: null,
+        maxOutputTokens: null,
       },
     ]);
 
@@ -149,6 +151,8 @@ describe("GET /api/admin/providers/models", () => {
         encryptedKey: "encrypted-key",
         label: "Anthropic Key",
         baseUrl: null,
+        contextWindow: null,
+        maxOutputTokens: null,
       },
     ]);
 
@@ -216,6 +220,8 @@ describe("GET /api/admin/providers/models", () => {
         encryptedKey: "corrupt",
         label: "Anthropic Key",
         baseUrl: null,
+        contextWindow: null,
+        maxOutputTokens: null,
       },
     ]);
 
@@ -251,6 +257,8 @@ describe("GET /api/admin/providers/models", () => {
         encryptedKey: "bad",
         label: "Anthropic Key",
         baseUrl: null,
+        contextWindow: null,
+        maxOutputTokens: null,
       },
     ]);
 
@@ -324,6 +332,8 @@ describe("GET /api/admin/providers/models", () => {
         encryptedKey: "key",
         label: "OpenRouter Key",
         baseUrl: null,
+        contextWindow: null,
+        maxOutputTokens: null,
       },
     ]);
 

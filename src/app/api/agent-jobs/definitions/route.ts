@@ -1,3 +1,4 @@
+import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
       systemPrompt: systemPrompt?.trim() || null,
       toolConfig: toolConfig ?? null,
       modelId: resolvedModelId,
-      thinkingLevel: thinkingLevel ?? "off",
+      thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
       outputChannel: outputChannel || null,
       outputChannelId: outputChannelId || null,
       cronExpression: cronExpression || null,

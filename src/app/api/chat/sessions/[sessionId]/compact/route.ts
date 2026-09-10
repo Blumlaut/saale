@@ -61,7 +61,7 @@ export async function POST(
       toolConfig: resolvedToolConfig,
       modelProvider,
       modelName,
-      thinkingLevel: chatSession.thinkingLevel || "off",
+      thinkingLevel: chatSession.thinkingLevel,
     });
 
     // Set system prompt (same as stream route)

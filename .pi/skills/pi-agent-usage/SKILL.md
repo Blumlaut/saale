@@ -99,17 +99,27 @@ const { modelRuntime, models } = await buildModelRuntime(userId);
 
 ### Resolving a specific model
 
-**Always use `resolveModel(runtime, provider, modelName)` from `src/lib/pi/models`** — never `modelRuntime.getModel()` directly for inference.
-
-Pi's built-in model definitions cap `maxTokens` well below `contextWindow` (often ~16k), and pi-ai falls back to `model.maxTokens` for the request's `max_tokens`. This truncates responses mid-thought when reasoning is on. `resolveModel()` returns a copy with `maxTokens` raised to the full context window:
+**Use `modelRuntime.getModel(provider, modelName)`.** The returned definition is
+the one to pass to `createAgentSession` — do not copy or adjust it:
 
 ```ts
-import { resolveModel } from "@/lib/pi/models";
-
-const model = resolveModel(modelRuntime, provider, modelName);
+const { modelRuntime, models } = await buildModelRuntime(userId);
+const model = modelRuntime.getModel(provider, modelName);
 ```
 
-`modelRuntime.getModel()` is fine for metadata-only use (e.g. listing thinking levels).
+**Never raise `model.maxTokens`.** pi-ai's `buildBaseOptions` sends the model's
+`maxTokens` as the request's `max_tokens` (clamped to `contextWindow`), so it
+must describe the real endpoint. Raising it to the context window makes
+providers reject the whole request — DeepSeek answers
+`400 Invalid max_tokens value, the valid range of max_tokens is [1, 393216]`,
+Anthropic and Mistral cap output well below their context windows too. When a
+request fails this way `stopReason` is `"error"` with empty content, which looks
+like a silent no-op rather than an error.
+
+For endpoints Pi's catalog can't describe (self-hosted, discoverable catalogs),
+the limits come from the user's provider config (`contextWindow` /
+`maxOutputTokens` on `provider_api_key`, applied via `limitFields()` in
+`src/lib/providers/limits.ts`). Never invent those numbers in code.
 
 ### Available models (for UI lists)
 
@@ -126,7 +136,7 @@ const { session } = await createPiSession({
   toolConfig,           // which tool categories to enable
   modelProvider,
   modelName,
-  thinkingLevel: "off", // or user preference
+  thinkingLevel: session.thinkingLevel, // "default" = let Pi decide
 });
 ```
 
@@ -143,7 +153,7 @@ const { session } = await createAgentSession({
   noTools: "all",       // disable everything
   model,
   customTools: [],
-  thinkingLevel: "off",
+  thinkingLevel: "off", // one-shot jobs want a deterministic, cheap level
 });
 ```
 
@@ -151,9 +161,32 @@ Use `noTools: "all"` when you don't need any tools. This is lighter than `noTool
 
 ## Thinking Levels
 
-The SDK supports these thinking levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
+The SDK supports these thinking levels: `off`, `minimal`, `low`, `medium`,
+`high`, `xhigh`, `max`. Not all models support all levels — the SDK clamps to
+what the model supports.
 
-Not all models support all levels — the SDK clamps to what the model supports. Use the full range in UI selectors and let the runtime handle compatibility.
+**`src/lib/pi/thinking-levels.ts` is the single source of truth** for the level
+list and for resolving a stored setting. `"default"` is Saale's extra setting:
+it means "no opinion", and it must resolve to *no* option so Pi keeps its own
+level (the level recorded in the session file, the user's Pi setting, or Pi's
+built-in default).
+
+```ts
+import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
+
+await createAgentSession({
+  /* ... */
+  ...thinkingLevelOption(session.thinkingLevel), // omitted for "default"
+});
+```
+
+Passing a level explicitly always overrides Pi — that includes `"off"`, which is
+why `"off"` and `"default"` are different settings. Never write
+`thinkingLevel: value || "off"`: it silently converts "no opinion" into an
+override.
+
+Store settings with `normalizeThinkingLevelSetting()`; `/api/models/thinking-levels`
+reports the levels a specific model supports for UI filtering.
 
 ## Streaming Responses
 

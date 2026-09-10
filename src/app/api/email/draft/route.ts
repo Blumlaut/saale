@@ -7,7 +7,7 @@ import {
   SessionManager,
   type CreateAgentSessionResult,
 } from "@earendil-works/pi-coding-agent";
-import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
 import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   let model;
   if (modelInfo) {
-    model = resolveModel(modelRuntime, modelInfo.provider, modelInfo.name);
+    model = modelRuntime.getModel(modelInfo.provider, modelInfo.name);
   }
 
   if (!model) {

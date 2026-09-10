@@ -4,7 +4,8 @@ import {
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
+import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
 import { lockSystemPrompt } from "@/lib/pi/processing-state";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
@@ -171,7 +172,7 @@ export async function executeAgentRun(
 
   // Build model runtime and tools
   const { modelRuntime } = await buildModelRuntime(userId);
-  const model = resolveModel(modelRuntime, modelProvider, modelName);
+  const model = modelRuntime.getModel(modelProvider, modelName);
 
   // Merge tool config with defaults
   const rawToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
@@ -191,9 +192,7 @@ export async function executeAgentRun(
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
-    thinkingLevel:
-      (definition.thinkingLevel as
-        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ?? "off",
+    ...thinkingLevelOption(definition.thinkingLevel),
   });
 
   // Set system prompt (locked to prevent SDK from overwriting)

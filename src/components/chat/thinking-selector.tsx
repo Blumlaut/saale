@@ -4,24 +4,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronDown, Lightbulb, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
+import { THINKING_LEVEL_OPTIONS, type ThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 
 interface ThinkingSelectorProps {
-  value: string;
+  value: ThinkingLevelSetting | string;
   onChange: (value: string) => void;
   modelProvider?: string | undefined;
   modelName?: string | undefined;
   className?: string;
 }
-
-const ALL_THINKING_LEVELS = [
-  { id: "off", label: "Off", description: "Faster responses" },
-  { id: "minimal", label: "Minimal", description: "Light reasoning" },
-  { id: "low", label: "Low", description: "Basic reasoning" },
-  { id: "medium", label: "Medium", description: "Balanced" },
-  { id: "high", label: "High", description: "Deep reasoning" },
-  { id: "xhigh", label: "X-High", description: "Maximum depth" },
-  { id: "max", label: "Max", description: "Deepest reasoning" },
-];
 
 export function ThinkingSelector({
   value,
@@ -57,13 +48,14 @@ export function ThinkingSelector({
     };
   }, [modelProvider, modelName]);
 
-  // Filter levels based on what the model supports
+  // Filter levels based on what the model supports. "default" is not a model
+  // level — it always stays available, since it means "don't override Pi".
   const filteredLevels =
     modelProvider && modelName
-      ? ALL_THINKING_LEVELS.filter((l) => availableLevels.includes(l.id))
-      : ALL_THINKING_LEVELS;
+      ? THINKING_LEVEL_OPTIONS.filter((l) => l.id === "default" || availableLevels.includes(l.id))
+      : THINKING_LEVEL_OPTIONS;
 
-  const selectedLevel = ALL_THINKING_LEVELS.find((l) => l.id === value);
+  const selectedLevel = THINKING_LEVEL_OPTIONS.find((l) => l.id === value);
 
   // Check if current level is unsupported
   const isLevelUnsupported =
@@ -83,7 +75,7 @@ export function ThinkingSelector({
           )}
         >
           <Lightbulb className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-sm">{selectedLevel?.label ?? "Off"}</span>
+          <span className="truncate text-sm">{selectedLevel?.label ?? "Default"}</span>
           <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
         </span>
       </PopoverTrigger>

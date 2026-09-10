@@ -302,7 +302,7 @@ model AppSettings {
   userId               String   @unique
   defaultModelProvider String   @default("")
   defaultModelName     String   @default("")
-  defaultThinkingLevel String   @default("off")
+  defaultThinkingLevel String   @default("default") // "default" = leave the level to Pi
   theme                String   @default("system") // "dark" | "light" | "system"
   agentCustomInstructions String?  @db.Text // User-defined custom instructions appended to the default system prompt
   emailWritingStyle      String?  @db.Text // User-defined writing style for email reply drafts
@@ -327,6 +327,10 @@ model ProviderApiKey {
   encryptedKey   String   @db.Text
   label          String   @default("") // optional label
   baseUrl        String?  // for custom OpenAI-compatible providers
+  /// Output token cap for this provider's models. null = Pi's model default.
+  maxOutputTokens Int?
+  /// Context window for this provider's models. null = Pi's model default.
+  contextWindow   Int?
   user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 import { getActiveSessions } from "@/lib/redis";
 
 /**
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
       temporary: !!temporary,
       modelProvider,
       modelName,
-      thinkingLevel: thinkingLevel || "off",
+      thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
       toolConfig,
     },
   });
