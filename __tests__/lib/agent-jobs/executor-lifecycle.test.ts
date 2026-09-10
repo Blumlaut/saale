@@ -1,0 +1,338 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+/**
+ * Lifecycle tests for executeAgentRun.
+ *
+ * These drive the REAL event handling with a fake session, because the bug they
+ * cover was invisible to the existing tests: the executor resolved on
+ * `agent_end` (which fires once per attempt, before any retry) so a provider
+ * failure — which does not throw — was reported as a completed run with empty
+ * output, and any later rejection was a no-op on the settled promise.
+ */
+
+// ─── Mocks ───────────────────────────────────────────────────────────────────
+
+const mockAgentRunMessageCreate = vi.fn();
+const mockAppSettingsFindUnique = vi.fn();
+
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    agentRunMessage: { create: (...args: unknown[]) => mockAgentRunMessageCreate(...args) },
+    appSettings: { findUnique: (...args: unknown[]) => mockAppSettingsFindUnique(...args) },
+  },
+}));
+
+vi.mock("@/lib/pi/models", () => ({
+  buildModelRuntime: vi.fn().mockResolvedValue({
+    modelRuntime: { getModel: vi.fn().mockReturnValue({ id: "test-model" }) },
+  }),
+}));
+
+vi.mock("@/lib/pi/tool-registry", () => ({
+  resolveTools: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/pi/session", () => ({
+  createTerminalScopedTools: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock("@/lib/pi/processing-state", () => ({
+  lockSystemPrompt: vi.fn(),
+}));
+
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+  createAgentSession: vi.fn(),
+  SessionManager: { inMemory: () => ({}) },
+}));
+
+import { createAgentSession } from "@earendil-works/pi-coding-agent";
+import { executeAgentRun } from "@/lib/agent-jobs/executor";
+
+// ─── Fake session ────────────────────────────────────────────────────────────
+
+type Listener = (event: Record<string, unknown>) => void;
+
+function createFakeSession() {
+  const listeners = new Set<Listener>();
+
+  const session = {
+    subscribe: (listener: Listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSessionStats: () => ({ tokens: { input: 11, output: 7 }, cost: 0.001 }),
+    prompt: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn().mockResolvedValue(undefined),
+  };
+
+  return {
+    session,
+    emit: (event: Record<string, unknown>) => {
+      for (const listener of [...listeners]) listener(event);
+    },
+    listenerCount: () => listeners.size,
+  };
+}
+
+const DEFINITION = { prompt: "summarise my inbox", modelId: "custom:test-model" };
+
+function setup() {
+  const fake = createFakeSession();
+  vi.mocked(createAgentSession).mockResolvedValue({
+    session: fake.session,
+  } as unknown as Awaited<ReturnType<typeof createAgentSession>>);
+  mockAgentRunMessageCreate.mockResolvedValue({ id: "msg-1" });
+  mockAppSettingsFindUnique.mockResolvedValue(null);
+  return fake;
+}
+
+/** A provider failure: an assistant message that carries no content. */
+const FAILED_MESSAGE = {
+  role: "assistant",
+  content: [],
+  stopReason: "error",
+  errorMessage: '400: {"message":"Invalid max_tokens value"}',
+};
+
+const TURN_END = {
+  type: "turn_end",
+  message: { role: "assistant", content: [{ type: "text", text: "Done" }] },
+  toolResults: [],
+};
+
+/**
+ * Wrap the run promise so a test can assert it has NOT settled, without an
+ * unhandled rejection if it later rejects.
+ */
+function track<T>(promise: Promise<T>) {
+  let state: "pending" | "resolved" | "rejected" = "pending";
+  const tracked = promise.then(
+    (value) => {
+      state = "resolved";
+      return value;
+    },
+    (err) => {
+      state = "rejected";
+      throw err;
+    },
+  );
+  tracked.catch(() => {});
+  return { promise: tracked, state: () => state };
+}
+
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+/**
+ * Start a run and wait until it has subscribed to the session.
+ *
+ * executeAgentRun awaits model/tool/session setup and writes the user prompt
+ * before subscribing, so events emitted immediately would be lost.
+ */
+async function startRun(fake: ReturnType<typeof createFakeSession>) {
+  const result = track(executeAgentRun("run-1", DEFINITION, "user-1"));
+  await flush();
+  if (fake.listenerCount() === 0) {
+    throw new Error("executor never subscribed to the session");
+  }
+  return result;
+}
+
+describe("executeAgentRun — provider failures", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("resolves with stats when the run succeeds", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    fake.emit({ type: "agent_start" });
+    fake.emit(TURN_END);
+    fake.emit({ type: "agent_end", messages: [], willRetry: false });
+    fake.emit({ type: "agent_settled" });
+
+    await expect(result.promise).resolves.toEqual({
+      inputTokens: 11,
+      outputTokens: 7,
+      cost: 0.001,
+    });
+  });
+
+  it("calls session.prompt, which is what produces agent_settled", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    // The SDK only runs retry/compaction/settle handling on session.prompt();
+    // session.agent.prompt() never emits agent_settled, so the run could never
+    // observe its own completion.
+    expect(fake.session.prompt).toHaveBeenCalledWith("summarise my inbox", {
+      expandPromptTemplates: false,
+    });
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+  });
+
+  it("rejects on a terminal provider failure instead of reporting success", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    fake.emit({ type: "agent_start" });
+    fake.emit({ type: "turn_end", message: FAILED_MESSAGE, toolResults: [] });
+    fake.emit({ type: "agent_end", messages: [FAILED_MESSAGE], willRetry: false });
+    fake.emit({ type: "agent_settled" });
+
+    await expect(result.promise).rejects.toThrow('400: {"message":"Invalid max_tokens value"}');
+  });
+
+  it("does not finish the run while a retry is pending", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    fake.emit({ type: "agent_start" });
+    fake.emit({ type: "turn_end", message: FAILED_MESSAGE, toolResults: [] });
+    // Transient failure: the SDK is about to retry, so the run is not over.
+    fake.emit({ type: "agent_end", messages: [FAILED_MESSAGE], willRetry: true });
+    await flush();
+
+    expect(result.state()).toBe("pending");
+
+    // The retry succeeds.
+    fake.emit({ type: "agent_start" });
+    fake.emit(TURN_END);
+    fake.emit({ type: "agent_end", messages: [], willRetry: false });
+    fake.emit({ type: "agent_settled" });
+
+    await expect(result.promise).resolves.toEqual({
+      inputTokens: 11,
+      outputTokens: 7,
+      cost: 0.001,
+    });
+  });
+
+  it("rejects when the retry budget is exhausted", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    fake.emit({ type: "agent_start" });
+    fake.emit({ type: "turn_end", message: FAILED_MESSAGE, toolResults: [] });
+    fake.emit({ type: "agent_end", messages: [FAILED_MESSAGE], willRetry: true });
+    fake.emit({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 1,
+      delayMs: 2000,
+      errorMessage: "503: service unavailable",
+    });
+    fake.emit({
+      type: "auto_retry_end",
+      success: false,
+      attempt: 1,
+      finalError: "503: unavailable",
+    });
+    fake.emit({ type: "agent_settled" });
+
+    await expect(result.promise).rejects.toThrow("503: unavailable");
+  });
+
+  it("keeps a non-terminal attempt's failure out of the run's outcome", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    // Attempt 1 fails with a non-retryable error, but the SDK schedules a retry.
+    fake.emit({ type: "agent_start" });
+    fake.emit({ type: "turn_end", message: FAILED_MESSAGE, toolResults: [] });
+    fake.emit({ type: "agent_end", messages: [FAILED_MESSAGE], willRetry: true });
+
+    // Attempt 2 succeeds — the run must be reported as completed.
+    fake.emit({ type: "agent_start" });
+    fake.emit(TURN_END);
+    fake.emit({ type: "agent_end", messages: [], willRetry: false });
+    fake.emit({ type: "agent_settled" });
+
+    await expect(result.promise).resolves.toEqual({
+      inputTokens: 11,
+      outputTokens: 7,
+      cost: 0.001,
+    });
+  });
+
+  it("waits for the last turn's DB write before finishing", async () => {
+    const fake = setup();
+    // The user-prompt write succeeds; the turn write stays in flight.
+    mockAgentRunMessageCreate.mockResolvedValueOnce({ id: "user-msg" });
+    let releaseWrite: (value: { id: string }) => void = () => {};
+    mockAgentRunMessageCreate.mockImplementationOnce(
+      () =>
+        new Promise<{ id: string }>((resolve) => {
+          releaseWrite = resolve;
+        }),
+    );
+
+    const result = await startRun(fake);
+
+    fake.emit({ type: "agent_start" });
+    fake.emit(TURN_END); // persists asynchronously, still in flight
+    fake.emit({ type: "agent_end", messages: [], willRetry: false });
+    fake.emit({ type: "agent_settled" });
+    await flush();
+
+    // The run must not be finished while its last message is still being saved.
+    expect(result.state()).toBe("pending");
+
+    releaseWrite({ id: "msg-1" });
+    await expect(result.promise).resolves.toEqual({
+      inputTokens: 11,
+      outputTokens: 7,
+      cost: 0.001,
+    });
+  });
+
+  it("logs a failed persistence instead of throwing unhandled", async () => {
+    const fake = setup();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The user-prompt write succeeds, the turn write fails.
+    mockAgentRunMessageCreate.mockResolvedValueOnce({ id: "user-msg" });
+    mockAgentRunMessageCreate.mockRejectedValueOnce(new Error("db down"));
+
+    try {
+      const result = await startRun(fake);
+
+      fake.emit({ type: "agent_start" });
+      fake.emit(TURN_END);
+      fake.emit({ type: "agent_end", messages: [], willRetry: false });
+      fake.emit({ type: "agent_settled" });
+
+      // The write failure is reported, and the run still finishes.
+      await expect(result.promise).resolves.toEqual({
+        inputTokens: 11,
+        outputTokens: 7,
+        cost: 0.001,
+      });
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[agent-job:run-1] Failed to persist agent event:",
+        expect.any(Error),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("rejects when the prompt itself fails", async () => {
+    const fake = setup();
+    fake.session.prompt.mockRejectedValue(new Error("no model"));
+
+    const result = track(executeAgentRun("run-1", DEFINITION, "user-1"));
+    await expect(result.promise).rejects.toThrow("no model");
+  });
+
+  it("stops listening once the run settles", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+
+    expect(fake.listenerCount()).toBe(0);
+  });
+});
