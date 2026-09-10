@@ -7,9 +7,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { createBot, sendTelegramMessage, startTypingIndicator } from "./client";
-import { buildModelRuntime, resolveModel } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import {
   wrapWithApprovalGate,
@@ -201,7 +202,7 @@ export async function processTelegramMessage(
 
   const modelId = explicitModelId ?? `${resolvedModelConfig.provider}:${resolvedModelConfig.name}`;
   const [provider, ...nameParts] = modelId.split(":");
-  const resolvedModel = resolveModel(modelRuntime, provider ?? "", nameParts.join(":"));
+  const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
 
   // 8. Create the AgentRun (for tracking in the dashboard)
   const run = await prisma.agentRun.create({
@@ -296,9 +297,7 @@ export async function processTelegramMessage(
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,
-    thinkingLevel:
-      (definition.thinkingLevel as
-        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ?? "off",
+    ...thinkingLevelOption(definition.thinkingLevel),
   });
 
   // Mark the run as running — startedAt is when the agent actually starts
@@ -762,7 +761,7 @@ export async function compactTelegramSession(params: {
 
   const modelId = explicitModelId ?? `${resolvedModelConfig.provider}:${resolvedModelConfig.name}`;
   const [provider, ...nameParts] = modelId.split(":");
-  const resolvedModel = resolveModel(modelRuntime, provider ?? "", nameParts.join(":"));
+  const resolvedModel = modelRuntime.getModel(provider ?? "", nameParts.join(":"));
 
   // 3. Build tool config
   const userSettings = await prisma.appSettings.findUnique({
@@ -795,7 +794,7 @@ export async function compactTelegramSession(params: {
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,
-    thinkingLevel: (definition?.thinkingLevel as "off") ?? "off",
+    ...thinkingLevelOption(definition?.thinkingLevel),
   });
 
   // Build system prompt

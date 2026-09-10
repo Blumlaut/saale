@@ -250,7 +250,7 @@ export async function GET(
           toolConfig: resolvedToolConfig,
           ...(modelProvider ? { modelProvider } : {}),
           ...(modelName ? { modelName } : {}),
-          thinkingLevel: chatSession.thinkingLevel || "off",
+          thinkingLevel: chatSession.thinkingLevel,
           wrapTool: approvalWrapper,
         });
 

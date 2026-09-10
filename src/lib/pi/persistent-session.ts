@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { buildSessionDeps, type ToolConfig } from "./session";
+import { thinkingLevelOption } from "./thinking-levels";
 
 /**
  * Create a Pi agent session with file-based persistence.
@@ -75,9 +76,9 @@ export async function createPersistentSession(options: {
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
-    thinkingLevel:
-      (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ??
-      "off",
+    // Omitted when unset ("default") so Pi keeps the level recorded in the
+    // session file, or its own default.
+    ...thinkingLevelOption(options.thinkingLevel),
   });
 
   return result;

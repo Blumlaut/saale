@@ -1,3 +1,4 @@
+import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
@@ -104,7 +105,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...(systemPrompt !== undefined ? { systemPrompt: systemPrompt?.trim() || null } : {}),
       ...(toolConfig !== undefined ? { toolConfig } : {}),
       ...(modelId !== undefined ? { modelId: resolvedModelId } : {}),
-      ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
+      ...(thinkingLevel !== undefined
+        ? { thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel) }
+        : {}),
       ...(outputChannel !== undefined ? { outputChannel: outputChannel || null } : {}),
       ...(outputChannelId !== undefined ? { outputChannelId: outputChannelId || null } : {}),
       ...(cronExpression !== undefined ? { cronExpression: cronExpression || null } : {}),

@@ -1,23 +1,25 @@
 "use client";
 
-import { CheckCircle, Globe, RotateCcw, Brain, Zap, AlertCircle } from "lucide-react";
+import { CheckCircle, Globe, RotateCcw, Brain, Zap, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getAllPurposes } from "@/lib/pi/purposes";
+import { DEFAULT_THINKING_LEVEL_SETTING, THINKING_LEVEL_OPTIONS } from "@/lib/pi/thinking-levels";
 import { useState, useEffect } from "react";
 import type { UserSettings } from "../types";
 
-const ALL_THINKING_LEVELS = [
-  { id: "off", label: "Off", description: "Fastest", icon: Zap },
-  { id: "minimal", label: "Minimal", description: "Light reasoning", icon: Brain },
-  { id: "low", label: "Low", description: "Basic reasoning", icon: Brain },
-  { id: "medium", label: "Medium", description: "Balanced depth", icon: Brain },
-  { id: "high", label: "High", description: "Deep reasoning", icon: Brain },
-  { id: "xhigh", label: "X-High", description: "Maximum depth", icon: Brain },
-  { id: "max", label: "Max", description: "Deepest reasoning", icon: Brain },
-];
+/** Icons are presentation-only — the level list itself lives in one place. */
+const THINKING_LEVEL_ICONS: Record<string, typeof Zap> = {
+  default: Sparkles,
+  off: Zap,
+};
+
+const ALL_THINKING_LEVELS = THINKING_LEVEL_OPTIONS.map((level) => ({
+  ...level,
+  icon: THINKING_LEVEL_ICONS[level.id] ?? Brain,
+}));
 
 interface ModelSidebarProps {
   settings: UserSettings | null;
@@ -73,13 +75,14 @@ export function ModelSidebar({
   }, [effectiveModel, activePurpose]);
 
   // Filter thinking levels based on what the model supports
+  // "default" means "don't override Pi", so it is always selectable.
   const filteredLevels =
     effectiveModel && activePurpose === "__default__"
-      ? ALL_THINKING_LEVELS.filter((l) => availableLevels.includes(l.id))
+      ? ALL_THINKING_LEVELS.filter((l) => l.id === "default" || availableLevels.includes(l.id))
       : ALL_THINKING_LEVELS;
 
   // Check if current thinking level is unsupported
-  const currentLevel = settings?.defaultThinkingLevel || "off";
+  const currentLevel = settings?.defaultThinkingLevel || DEFAULT_THINKING_LEVEL_SETTING;
   const isLevelUnsupported =
     effectiveModel &&
     activePurpose === "__default__" &&

@@ -14,7 +14,8 @@ import {
 import { createTerminalOperations } from "@/lib/terminal/operations";
 import { getTerminalHomeDir } from "@/lib/terminal/client";
 import { getGitHubEnv } from "@/lib/github";
-import { buildModelRuntime, resolveModel } from "./models";
+import { buildModelRuntime } from "./models";
+import { thinkingLevelOption } from "./thinking-levels";
 import { resolveTools } from "./tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-categories";
 
@@ -102,7 +103,7 @@ export async function buildSessionDeps(options: {
 
   let model;
   if (options.modelProvider && options.modelName) {
-    model = resolveModel(modelRuntime, options.modelProvider, options.modelName);
+    model = modelRuntime.getModel(options.modelProvider, options.modelName);
   }
 
   return { modelRuntime, allCustomTools, model };
@@ -142,9 +143,8 @@ export async function createPiSession(options: {
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
-    thinkingLevel:
-      (options.thinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") ??
-      "off",
+    // Omitted when unset ("default") so Pi keeps its own level.
+    ...thinkingLevelOption(options.thinkingLevel),
   });
 
   return result;

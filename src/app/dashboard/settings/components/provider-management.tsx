@@ -13,13 +13,15 @@ import {
   EyeOff,
   Shield,
   ChevronDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { postJson, deleteJson } from "@/lib/http";
+import { postJson, deleteJson, patchJson } from "@/lib/http";
+import { PI_DEFAULT_CONTEXT_WINDOW, PI_DEFAULT_MAX_OUTPUT_TOKENS } from "@/lib/providers/limits";
 import type { ConfiguredProvider, ProviderInfo } from "../types";
 
 interface ProviderManagementProps {
@@ -37,12 +39,24 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
   const [newApiKey, setNewApiKey] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newBaseUrl, setNewBaseUrl] = useState("");
+  const [newContextWindow, setNewContextWindow] = useState("");
+  const [newMaxOutputTokens, setNewMaxOutputTokens] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [adding, setAdding] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [errorText, setErrorText] = useState("");
+  const [editingLimits, setEditingLimits] = useState<string | null>(null);
   const [discoveryInfo, setDiscoveryInfo] = useState<{ count: number; error?: string } | null>(
     null,
   );
+
+  const limitsConfigurable = availableProviders.find(
+    (p) => p.id === newProvider,
+  )?.limitsConfigurable;
+
+  /** Whether a configured provider accepts user-set model limits. */
+  const canConfigureLimits = (provider: string) =>
+    availableProviders.find((p) => p.id === provider)?.limitsConfigurable === true;
 
   const loadAll = useCallback(async () => {
     try {
@@ -84,22 +98,49 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
         apiKey: newApiKey,
         label: newLabel,
         baseUrl: newProvider === "custom" ? newBaseUrl : undefined,
+        ...(limitsConfigurable
+          ? {
+              contextWindow: newContextWindow || undefined,
+              maxOutputTokens: newMaxOutputTokens || undefined,
+            }
+          : {}),
       });
       setStatus("success");
       setNewApiKey("");
       setNewLabel("");
       setNewBaseUrl("");
       setNewProvider("");
+      setNewContextWindow("");
+      setNewMaxOutputTokens("");
       if (data.modelCount !== undefined) {
         const info: { count: number; error?: string } = { count: data.modelCount };
         if (data.modelError) info.error = data.modelError;
         setDiscoveryInfo(info);
       }
       await loadAll();
-    } catch {
+    } catch (err) {
       setStatus("error");
+      setErrorText(err instanceof Error ? err.message : "Request failed");
     }
     setAdding(false);
+  };
+
+  const handleSaveLimits = async (provider: string) => {
+    try {
+      await patchJson("/api/providers", {
+        provider,
+        contextWindow: newContextWindow || undefined,
+        maxOutputTokens: newMaxOutputTokens || undefined,
+      });
+      setEditingLimits(null);
+      setNewContextWindow("");
+      setNewMaxOutputTokens("");
+      await loadAll();
+    } catch (err) {
+      console.error("Failed to save provider limits:", err);
+      setStatus("error");
+      setErrorText(err instanceof Error ? err.message : "Failed to save limits");
+    }
   };
 
   const handleRemove = async (provider: string) => {
@@ -209,6 +250,35 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
             />
           </div>
 
+          {limitsConfigurable && (
+            <>
+              <div className="min-w-[130px] space-y-1.5">
+                <Label className="text-xs">Context window</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  placeholder={String(PI_DEFAULT_CONTEXT_WINDOW)}
+                  value={newContextWindow}
+                  onChange={(e) => setNewContextWindow(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+              </div>
+              <div className="min-w-[130px] space-y-1.5">
+                <Label className="text-xs">Max output tokens</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  placeholder={String(PI_DEFAULT_MAX_OUTPUT_TOKENS)}
+                  value={newMaxOutputTokens}
+                  onChange={(e) => setNewMaxOutputTokens(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+              </div>
+            </>
+          )}
+
           <Button
             size="sm"
             className="h-8"
@@ -225,15 +295,15 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
         </div>
 
         {/* Status messages */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {status === "success" && (
             <span className="flex items-center gap-1 text-xs text-emerald-500">
-              <CheckCircle className="h-3.5 w-3.5" /> Added
+              <CheckCircle className="h-3.5 w-3.5" /> Saved
             </span>
           )}
           {status === "error" && (
             <span className="flex items-center gap-1 text-xs text-red-500">
-              <AlertCircle className="h-3.5 w-3.5" /> Failed
+              <AlertCircle className="h-3.5 w-3.5" /> {errorText || "Failed"}
             </span>
           )}
           {discoveryInfo && discoveryInfo.count > 0 && (
@@ -271,15 +341,95 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
                 <span className="text-xs text-emerald-600 dark:text-emerald-400">
                   {p.displayName}
                 </span>
+                {p.maxOutputTokens && (
+                  <span className="text-[10px] text-emerald-500/70">
+                    {p.maxOutputTokens.toLocaleString()} out
+                  </span>
+                )}
+                {canConfigureLimits(p.provider) && (
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-emerald-500"
+                    title="Model limits"
+                    onClick={() => {
+                      setNewContextWindow(p.contextWindow ? String(p.contextWindow) : "");
+                      setNewMaxOutputTokens(p.maxOutputTokens ? String(p.maxOutputTokens) : "");
+                      setEditingLimits(editingLimits === p.provider ? null : p.provider);
+                    }}
+                  >
+                    <SlidersHorizontal className="h-3 w-3" />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="text-muted-foreground hover:text-red-500"
+                  title="Remove provider"
                   onClick={() => handleRemove(p.provider)}
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Model limits editor for a configured provider */}
+        {editingLimits && (
+          <div className="border-border/50 space-y-2 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="text-muted-foreground h-3.5 w-3.5" />
+              <span className="text-xs font-medium">
+                {providers.find((p) => p.provider === editingLimits)?.displayName ?? editingLimits}{" "}
+                limits
+              </span>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[130px] flex-1 space-y-1.5">
+                <Label className="text-xs">Context window</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  placeholder={String(PI_DEFAULT_CONTEXT_WINDOW)}
+                  value={newContextWindow}
+                  onChange={(e) => setNewContextWindow(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+              </div>
+              <div className="min-w-[130px] flex-1 space-y-1.5">
+                <Label className="text-xs">Max output tokens</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  placeholder={String(PI_DEFAULT_MAX_OUTPUT_TOKENS)}
+                  value={newMaxOutputTokens}
+                  onChange={(e) => setNewMaxOutputTokens(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+              </div>
+              <Button size="sm" className="h-8" onClick={() => handleSaveLimits(editingLimits)}>
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8"
+                onClick={() => {
+                  setEditingLimits(null);
+                  setNewContextWindow("");
+                  setNewMaxOutputTokens("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+            <p className="text-muted-foreground text-[11px]">
+              Limits applied to this provider&apos;s models. Leave empty to use Pi&apos;s defaults (
+              {PI_DEFAULT_CONTEXT_WINDOW.toLocaleString()} context /{" "}
+              {PI_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()} output). A larger output cap than the
+              endpoint allows is rejected by the provider.
+            </p>
           </div>
         )}
 
