@@ -2,6 +2,7 @@ import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolConfig, ToolCategoryKey } from "./tool-categories";
 import { TOOL_CATEGORIES } from "./tool-categories";
 import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
+import { withAbortSignal } from "./tool-abort";
 import { createChatSearchTool, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
@@ -153,10 +154,17 @@ export async function resolveTools(
     }
   }
 
+  // ── Make every tool call cancellable ────────────────────────────────
+  // Pi awaits tool execution and only checks the abort signal between tool
+  // calls, so a Stop that arrives during a tool would otherwise not take effect
+  // until that tool finishes. Applied before the approval wrapper, whose own
+  // wait already honours the signal.
+  const abortable = tools.map(withAbortSignal);
+
   // ── Apply approval gate wrapper (if provided) ───────────────────────
   if (options.wrapWithApproval) {
-    return tools.map((t) => options.wrapWithApproval!(t));
+    return abortable.map((t) => options.wrapWithApproval!(t));
   }
 
-  return tools;
+  return abortable;
 }
