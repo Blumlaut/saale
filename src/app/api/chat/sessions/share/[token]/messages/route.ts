@@ -32,6 +32,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       role: true,
       content: true,
       thinking: true,
+      errorMessage: true,
       toolCalls: true,
       parentMessageId: true,
       createdAt: true,
@@ -48,6 +49,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       id: m.id,
       role: m.role,
       content: m.content,
+      errorMessage: m.errorMessage || undefined,
       toolCalls: m.toolCalls
         ? JSON.parse(m.toolCalls).map((tc: { isError?: boolean }) => ({
             ...tc,

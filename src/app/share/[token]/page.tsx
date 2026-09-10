@@ -12,6 +12,7 @@ interface ShareMessage {
   id: string;
   role: string;
   content: string;
+  errorMessage?: string;
   toolCalls: ToolCallData[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;
@@ -38,6 +39,7 @@ export default async function SharePage({ params }: SharePageProps) {
     role: m.role as Message["role"],
     content: m.content,
     thinking: undefined,
+    errorMessage: m.errorMessage,
     toolCalls: m.toolCalls,
     parentMessageId: m.parentMessageId,
     createdAt: m.createdAt,

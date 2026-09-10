@@ -143,6 +143,33 @@ describe("streamReducer", () => {
     expect(s.messages[0]!.thinking).toBe("thought");
   });
 
+  it("turn_discarded drops the retried turn's bubble", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "token", turnId: "t1", text: "half an answer" });
+    s = streamReducer(s, { type: "turn_discarded", turnId: "t1", messageId: null });
+    expect(s.messages).toHaveLength(0);
+  });
+
+  it("turn_discarded clears the root when the discarded message was the root", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "root-1" });
+    s = streamReducer(s, { type: "turn_discarded", turnId: "t1", messageId: "root-1" });
+    expect(s.rootMessageId).toBeNull();
+    // The retried turn must not be grouped under the deleted message.
+    s = streamReducer(s, { type: "turn_start", turnId: "t2" });
+    expect(s.messages[0]!.parentMessageId).toBeUndefined();
+  });
+
+  it("turn_discarded keeps the root when an earlier turn survived", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "root-1" });
+    s = streamReducer(s, { type: "turn_start", turnId: "t2" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t2", messageId: "child-2" });
+    s = streamReducer(s, { type: "turn_discarded", turnId: "t2", messageId: "child-2" });
+    expect(s.rootMessageId).toBe("root-1");
+    expect(s.messages.map((m) => m.id)).toEqual(["root-1"]);
+  });
+
   it("message_saved swaps the streaming ID for the real DB ID", () => {
     let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
     s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "msg-1" });

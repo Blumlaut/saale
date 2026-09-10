@@ -38,6 +38,8 @@ const WATCHDOG_TICK_MS = 15_000;
  * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end` — update
  *   the turn (tool_update carries live partial output from a running tool)
  * - `turn_end { turnId }` — finalize the turn (safety net for final token)
+ * - `turn_discarded { turnId }` — the SDK discarded a failed turn to retry it
+ * - `retry_start` / `retry_end` — the provider call failed and is being retried
  * - `message_saved { turnId, messageId }` — swap temp ID with the DB ID
  * - `done` — reload messages from DB; keep watching for the next generation
  * - `error` — terminal: reload, close the connection
@@ -62,6 +64,15 @@ export interface ChatStreamOptions {
   onCompactionEnd?: (summary?: string, tokensBefore?: number) => void;
   /** Called with the error message when the server reports a stream error. */
   onStreamError?: (message: string) => void;
+  /** The provider call failed and is being retried after a backoff. */
+  onRetryStart?: (retry: {
+    attempt: number;
+    maxAttempts: number;
+    delayMs: number;
+    errorMessage: string;
+  }) => void;
+  /** A provider retry finished — successfully, or with the run giving up. */
+  onRetryEnd?: (retry: { success: boolean; attempt: number; finalError?: string }) => void;
   /** Reload messages from the DB (called when the server signals a final state). */
   onReload: () => void;
   /**
@@ -297,6 +308,16 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     }
   });
 
+  // ── Discarded turn: the SDK is retrying a failed call ─────────────────
+  eventSource.addEventListener("turn_discarded", (event: MessageEvent) => {
+    const parsed = parseEvent<{ turnId: string; messageId: string | null }>(event.data);
+    if (!parsed) return;
+    if (parsed.messageId && rootMessageIdRef.current === parsed.messageId) {
+      rootMessageIdRef.current = null;
+    }
+    dispatch({ type: "turn_discarded", turnId: parsed.turnId, messageId: parsed.messageId });
+  });
+
   // ── Message saved: swap temp ID with real DB ID ───────────────────────
   eventSource.addEventListener("message_saved", (event: MessageEvent) => {
     const parsed = parseEvent<{ turnId: string; messageId: string }>(event.data);
@@ -363,6 +384,27 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       } else {
         opts.onCompactionEnd!();
       }
+    });
+  }
+
+  // ── Provider retry: a transient failure is being retried ─────────────
+  if (opts.onRetryStart || opts.onRetryEnd) {
+    eventSource.addEventListener("retry_start", (event: MessageEvent) => {
+      markLoading();
+      const parsed = parseEvent<{
+        attempt: number;
+        maxAttempts: number;
+        delayMs: number;
+        errorMessage: string;
+      }>(event.data);
+      if (parsed) opts.onRetryStart?.(parsed);
+    });
+
+    eventSource.addEventListener("retry_end", (event: MessageEvent) => {
+      const parsed = parseEvent<{ success: boolean; attempt: number; finalError?: string }>(
+        event.data,
+      );
+      if (parsed) opts.onRetryEnd?.(parsed);
     });
   }
 

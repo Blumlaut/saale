@@ -68,6 +68,7 @@ export async function GET(
       role: m.role,
       content: m.content,
       thinking: m.thinking || undefined,
+      errorMessage: m.errorMessage || undefined,
       toolCalls: m.toolCalls
         ? JSON.parse(m.toolCalls).map((tc: { isError?: boolean }) => ({
             ...tc,

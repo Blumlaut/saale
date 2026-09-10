@@ -42,6 +42,7 @@ import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { normalizeToolResult } from "./message-replay";
+import { extractProviderError, type ProviderErrorSource } from "./provider-error";
 import { publishSessionEvent, resetSessionEvents } from "./session-events";
 import { buildFinalAssistantMessage } from "./stream-logic";
 import { saveAssistantMessage } from "./stream-helpers";
@@ -85,6 +86,12 @@ export function createSessionEventTracker(
   // without this, agent_end runs before the .then() microtask sets
   // rootMessageId, causing a duplicate message create.
   let lastTurnSavePromise: Promise<{ id: string }> | null = null;
+  // turnId of the most recent turn, needed to tell clients which bubble to drop
+  // when the SDK discards a failed turn to retry it (see
+  // `finalizeProvisionalTurn`), plus whether that turn produced anything the
+  // user could have seen.
+  let lastTurnId: string | null = null;
+  let lastTurnHadOutput = false;
 
   // Tool call results tracking
   const toolCallResults = new Map<string, ToolCallResult>();
@@ -124,6 +131,63 @@ export function createSessionEventTracker(
       });
     }
     return currentTurnId;
+  };
+
+  /**
+   * State of a turn whose assistant message the SDK is about to discard.
+   *
+   * `session.prompt()` retries transient provider failures itself: on
+   * `auto_retry_start` it removes the failed assistant message from its state
+   * and re-runs the turn. That makes the attempt's row provisional — it is not
+   * the run's outcome:
+   *
+   *  - It produced output the user already saw (a stream that died mid-answer,
+   *    or a run the user stopped) → keep the row. Deleting it would erase text
+   *    that was on screen a moment ago.
+   *  - It produced nothing (the usual failure: the request was rejected before
+   *    the first token) → remove it. Keeping it would leave one phantom bubble
+   *    per attempt — three for a 429 that exhausts the retry budget — and the
+   *    client would hold a `rootMessageId` pointing at a row that is gone.
+   */
+  const finalizeProvisionalTurn = () => {
+    const turnId = lastTurnId;
+    const hadOutput = lastTurnHadOutput;
+    const hadTurnSave = lastTurnSavePromise !== null;
+    const basePromise = lastTurnSavePromise ?? Promise.resolve(null);
+    lastTurnSavePromise = null;
+    lastTurnId = null;
+    lastTurnHadOutput = false;
+    currentTurnText = "";
+    currentTurnThinking = "";
+
+    if (hadOutput || !hadTurnSave) {
+      // The row stays exactly as turn_end saved it (no error message: this
+      // attempt is not the run's outcome, the retry is). Without a turn save
+      // there is nothing to remove either.
+      log("provisional", `kept turnId=${turnId}`);
+      return;
+    }
+
+    // The turn is about to disappear, so it must not inflate the session's
+    // message count at settle. Adjusted here, not in the delete chain below:
+    // the count is read at agent_settled, which a fast retry could reach first.
+    turnIndex = Math.max(0, turnIndex - 1);
+
+    pendingSaves.push(
+      basePromise
+        .then(async (turnResult) => {
+          const savedId = turnResult?.id ?? null;
+          if (savedId) {
+            await prisma.chatMessage.deleteMany({ where: { id: savedId, sessionId } });
+            if (rootMessageId === savedId) rootMessageId = null;
+          }
+          await publishSessionEvent(sessionId, "turn_discarded", { turnId, messageId: savedId });
+          log("discard", `turnId=${turnId}, msgId=${savedId ?? "none"}`);
+        })
+        .catch((err) => {
+          console.error(`Failed to discard retried turn for ${sessionId}:`, err);
+        }),
+    );
   };
 
   // ── Subscribe to agent events ───────────────────────────────────────────
@@ -395,14 +459,21 @@ export function createSessionEventTracker(
         // Save to DB, then notify clients with the real ID. Store the save
         // promise so agent_end can await it (avoids a duplicate create).
         const turnIndexForSave = turnIndex;
-        const turnSavePromise = saveAssistantMessage(
+        // No errorMessage here: a failed turn may still be retried by the SDK,
+        // so whether this attempt is a reported failure is only known at
+        // agent_end (see the willRetry branch).
+        const turnSavePromise = saveAssistantMessage({
           sessionId,
-          currentTurnText,
-          currentTurnThinking || undefined,
-          turnToolCalls.length > 0 ? turnToolCalls : undefined,
-          rootMessageId,
-        );
+          content: currentTurnText,
+          thinking: currentTurnThinking || undefined,
+          toolCalls: turnToolCalls.length > 0 ? turnToolCalls : undefined,
+          parentMessageId: rootMessageId,
+        });
         lastTurnSavePromise = turnSavePromise;
+        lastTurnId = turnId;
+        lastTurnHadOutput = Boolean(
+          currentTurnText || currentTurnThinking || turnToolCalls.length > 0,
+        );
 
         pendingSaves.push(
           turnSavePromise
@@ -434,6 +505,33 @@ export function createSessionEventTracker(
         currentTurnId = null;
         currentTurnText = "";
         currentTurnThinking = "";
+        break;
+      }
+
+      // ── Provider retry ──────────────────────────────────────────────────
+      // `session.prompt()` retries transient provider failures (429/5xx/network)
+      // itself, with exponential backoff. The backoff is dead air on the
+      // stream, so clients are told why nothing is arriving.
+      case "auto_retry_start": {
+        publishSessionEvent(sessionId, "retry_start", {
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+          delayMs: event.delayMs,
+          errorMessage: event.errorMessage,
+        }).catch((err) => {
+          console.error("Failed to publish retry_start:", err);
+        });
+        break;
+      }
+
+      case "auto_retry_end": {
+        publishSessionEvent(sessionId, "retry_end", {
+          success: event.success,
+          attempt: event.attempt,
+          finalError: event.finalError,
+        }).catch((err) => {
+          console.error("Failed to publish retry_end:", err);
+        });
         break;
       }
 
@@ -492,6 +590,17 @@ export function createSessionEventTracker(
       case "agent_end": {
         log("agent_end", `totalMessages=${event.messages.length}, turnIndex=${turnIndex}`);
 
+        // The SDK is about to retry this run's failed call (`willRetry` is
+        // computed from the retry budget and whether the error is transient),
+        // and retrying throws the assistant message away. This attempt is not
+        // the outcome: keep what the user saw, drop an empty attempt, and
+        // report nothing — a retry may still succeed, and an abort lands here
+        // too (a cancelled request looks like any other stream failure).
+        if (event.willRetry) {
+          finalizeProvisionalTurn();
+          break;
+        }
+
         // Per-run guard: each run finalizes its own last assistant message
         // (reset in agent_start for continuation runs).
         if (!agentEndPersisted) {
@@ -508,6 +617,7 @@ export function createSessionEventTracker(
               lastAssistant.content,
               toolCallResults,
             );
+            const errorMessage = extractProviderError(lastAssistant as ProviderErrorSource);
             const turnId = currentTurnId ?? crypto.randomUUID();
 
             // Finalize: update existing message (multi-turn) or create new
@@ -519,20 +629,23 @@ export function createSessionEventTracker(
               basePromise
                 .then((turnResult) => {
                   const existingMessageId = turnResult?.id ?? rootMessageId ?? undefined;
-                  return saveAssistantMessage(
+                  return saveAssistantMessage({
                     sessionId,
-                    text,
-                    thinking || undefined,
-                    toolCalls.length > 0 ? toolCalls : undefined,
-                    null,
-                    existingMessageId,
-                  ).then((msg) => ({ msg, existingMessageId }));
+                    content: text,
+                    thinking: thinking || undefined,
+                    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+                    messageId: existingMessageId,
+                    errorMessage,
+                  }).then((msg) => ({ msg, existingMessageId }));
                 })
                 .then(({ msg, existingMessageId }) => {
                   log(
                     "db_save",
                     `agent_end ${existingMessageId ? "updated" : "created"} msgId=${msg.id}`,
                   );
+                  if (!rootMessageId) {
+                    rootMessageId = msg.id;
+                  }
                   return publishSessionEvent(sessionId, "message_saved", {
                     turnId,
                     messageId: msg.id,
