@@ -40,6 +40,7 @@ vi.mock("@/lib/chat/compaction", () => ({
 }));
 
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
+import { requestSessionAbort, wasSessionAbortRequested } from "@/lib/pi/abort-request";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -912,6 +913,73 @@ describe("createSessionEventTracker", () => {
         data: expect.objectContaining({ messageCount: { increment: 1 } }),
       }),
     );
+  });
+
+  it("does not report a user's stop on the terminal attempt as a provider error", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // The user presses Stop during a run that has no retries left, so Pi does
+    // not mark the attempt retryable — it looks exactly like a hard failure.
+    const stopped = {
+      role: "assistant",
+      content: [{ type: "text", text: "half an answer" }],
+      stopReason: "error",
+      errorMessage: "terminated",
+    };
+    session.emit({ type: "agent_start" });
+    requestSessionAbort("u1", "s1");
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "half an answer" }] },
+    });
+    session.emit({ type: "turn_end", message: stopped, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [stopped], willRetry: false });
+    session.emit({ type: "agent_settled" });
+
+    await flush();
+    await flush();
+    await flush();
+
+    // The partial answer survives and carries no error.
+    expect(mockChatMessageDeleteMany).not.toHaveBeenCalled();
+    const saves = mockSaveAssistantMessage.mock.calls.map((c) => c[0] as { errorMessage?: string });
+    expect(
+      saves.every((save) => save.errorMessage === undefined || save.errorMessage === null),
+    ).toBe(true);
+  });
+
+  it("does not let a stale stop request swallow a later real failure", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // A stop requested after the previous run had already finished.
+    requestSessionAbort("u1", "s1");
+
+    const failed = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: '400: {"message":"Invalid max_tokens value"}',
+    };
+    // The new run clears it, so this genuine failure is reported.
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "turn_end", message: failed, toolResults: [] });
+    session.emit({ type: "agent_end", messages: [failed], willRetry: false });
+
+    await flush();
+    await flush();
+
+    const finalSave = mockSaveAssistantMessage.mock.calls.at(-1)![0] as { errorMessage?: string };
+    expect(finalSave.errorMessage).toBe('400: {"message":"Invalid max_tokens value"}');
+    // The mark is consumed by the run it was meant for.
+    expect(wasSessionAbortRequested("u1", "s1")).toBe(false);
   });
 
   it("publishes the end of a retry sequence", async () => {

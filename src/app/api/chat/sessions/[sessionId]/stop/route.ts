@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { isSessionActive, unregisterActiveSession } from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
+import { requestSessionAbort } from "@/lib/pi/abort-request";
 
 /**
  * Explicitly cancel an in-progress generation.
@@ -19,15 +20,22 @@ export async function POST(
   const authResult = await requireChatSessionOwner(sessionId);
   if (!authResult.ok) return authResult.response;
 
-  // Idempotent: if not active in Redis, just return.
-  // This handles race conditions where the client thinks generation is active
-  // but the server already cleared it (e.g., agent_end fired first).
+  // Idempotent: nothing to cancel if the session is neither flagged active in
+  // Redis nor streaming in this process. The flag is cross-process bookkeeping
+  // and can be missing (an expired key, a Redis restart, a generation started
+  // before the flag was written) — the pooled session is the local truth, so a
+  // stale flag must not make Stop a silent no-op.
   const isActive = await isSessionActive(authResult.userId, sessionId);
+  const poolKey = getPoolKey(authResult.userId, sessionId);
+  const pooled = get(poolKey);
+  const isStreamingHere = pooled?.session.isStreaming ?? false;
 
-  if (isActive) {
-    const poolKey = getPoolKey(authResult.userId, sessionId);
-    const pooled = get(poolKey);
-    if (pooled) {
+  if (isActive || isStreamingHere) {
+    if (pooled && isStreamingHere) {
+      // Record the stop before aborting: the tracker cannot tell a cancelled
+      // request from a failed one, and must not report the user's own action as
+      // a provider error.
+      requestSessionAbort(authResult.userId, sessionId);
       pooled.session.abort();
       // Don't remove from pool — let it be reused for the next message
       // (eviction handles cleanup)

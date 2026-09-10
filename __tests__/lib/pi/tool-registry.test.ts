@@ -84,6 +84,7 @@ vi.mock("@/lib/pi/tools/infra-tools", () => ({
 // Import after mocks
 import { resolveTools } from "@/lib/pi/tool-registry";
 import * as terminalClient from "@/lib/terminal/client";
+import { createWebTools } from "@/lib/pi/tools/web-tools";
 
 describe("resolveTools", () => {
   const mockTerminalTools = {
@@ -103,6 +104,74 @@ describe("resolveTools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(terminalClient.isConfigured).mockReturnValue(false);
+  });
+
+  const ALL_OFF: Required<ToolConfig> = {
+    terminal: false,
+    email: false,
+    jobs: false,
+    calendar: false,
+    chatSearch: false,
+    web: false,
+    memory: false,
+    tasks: false,
+    agentJobs: false,
+    infra: false,
+  };
+
+  it("makes every resolved tool end when the run is aborted", async () => {
+    // Pi awaits tool execution and only checks the abort signal between tool
+    // calls, so without wrapping, Stop during a tool waits for that tool.
+    const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ran" }] });
+    vi.mocked(createWebTools).mockReturnValueOnce([
+      { name: "web_fetch", execute } as unknown as ToolDefinition,
+    ]);
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, web: true }, options);
+    const tool = tools.find((t) => t.name === "web_fetch")!;
+    expect(tool).toBeDefined();
+
+    const controller = new AbortController();
+    controller.abort();
+
+    // Pi's execute signature demands a full ExtensionContext; the wrapper only
+    // cares about the signal.
+    const executeTool = tool.execute as unknown as (
+      id: string,
+      params: unknown,
+      signal?: AbortSignal,
+    ) => Promise<unknown>;
+
+    await expect(executeTool("call-1", {}, controller.signal)).rejects.toThrow("Operation aborted");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("leaves tool results untouched while the run is alive", async () => {
+    const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ran" }] });
+    vi.mocked(createWebTools).mockReturnValueOnce([
+      { name: "web_fetch", execute } as unknown as ToolDefinition,
+    ]);
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, web: true }, options);
+    const tool = tools.find((t) => t.name === "web_fetch")!;
+
+    const executeTool = tool.execute as unknown as (
+      id: string,
+      params: unknown,
+      signal?: AbortSignal,
+      onUpdate?: unknown,
+      ctx?: unknown,
+    ) => Promise<unknown>;
+    const result = await executeTool("call-1", { url: "x" }, new AbortController().signal);
+
+    expect(result).toEqual({ content: [{ type: "text", text: "ran" }] });
+    expect(execute).toHaveBeenCalledWith(
+      "call-1",
+      { url: "x" },
+      expect.any(AbortSignal),
+      undefined,
+      undefined,
+    );
   });
 
   it("returns empty array when all tools disabled", async () => {

@@ -41,6 +41,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
+import { clearSessionAbort, wasSessionAbortRequested } from "./abort-request";
 import { normalizeToolResult } from "./message-replay";
 import { extractProviderError, type ProviderErrorSource } from "./provider-error";
 import { publishSessionEvent, resetSessionEvents } from "./session-events";
@@ -237,6 +238,9 @@ export function createSessionEventTracker(
       //    runs are never replayed. The counter survives (see clearBuffer).
       case "agent_start": {
         agentEndPersisted = false;
+        // Any stop request from before this run is stale — it must not be able
+        // to swallow this run's real failures (see abort-request.ts).
+        clearSessionAbort(userId, sessionId);
         resetSessionEvents(sessionId).catch((err) => {
           console.error("Failed to reset session events:", err);
         });
@@ -601,6 +605,16 @@ export function createSessionEventTracker(
           break;
         }
 
+        // A user-initiated stop is not a provider failure: Pi reports the
+        // cancelled request as an error; Saale recorded the stop, so nothing is
+        // reported. This matters when the stop lands on the terminal attempt —
+        // with the retry budget spent (or retries disabled) there is no
+        // `willRetry` to mark the attempt provisional.
+        if (wasSessionAbortRequested(userId, sessionId)) {
+          finalizeProvisionalTurn();
+          break;
+        }
+
         // Per-run guard: each run finalizes its own last assistant message
         // (reset in agent_start for continuation runs).
         if (!agentEndPersisted) {
@@ -670,6 +684,7 @@ export function createSessionEventTracker(
         log("agent_settled", `turns=${turnIndex}`);
         if (settledFinalized) break;
         settledFinalized = true;
+        clearSessionAbort(userId, sessionId);
 
         // Unregister the active session and bump the message count once.
         // Assistant output is real chat activity — advance lastActivityAt
