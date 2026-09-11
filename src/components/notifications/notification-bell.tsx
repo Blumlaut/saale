@@ -75,7 +75,7 @@ export function NotificationBell() {
     <Popover open={open} onOpenChange={setOpen}>
       {/* PopoverTrigger renders as <button> — use a styled <span> to avoid nesting */}
       <PopoverTrigger>
-        <span className="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+        <span className="hover:bg-accent/60 relative flex h-8 w-8 items-center justify-center rounded-full transition-colors">
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
             <Badge
@@ -89,7 +89,7 @@ export function NotificationBell() {
       </PopoverTrigger>
 
       <PopoverContent side="bottom" align="end" sideOffset={4} className="w-80 gap-0 p-0">
-        <div className="flex items-center justify-between border-b border-white/20 px-4 py-3 dark:border-white/10">
+        <div className="dark:border-border flex items-center justify-between border-b border-white/20 px-4 py-3">
           <span className="text-sm font-medium">Notifications</span>
           {unreadCount > 0 && (
             <Button
@@ -114,8 +114,8 @@ export function NotificationBell() {
               <div
                 key={notification.id}
                 className={cn(
-                  "flex items-start gap-3 border-b border-white/10 px-4 py-3 transition-colors hover:bg-white/10 dark:border-white/5 dark:hover:bg-white/5",
-                  !notification.read && "bg-white/5 dark:bg-white/5",
+                  "border-border hover:bg-accent/60 dark:border-border dark:hover:bg-muted/50 flex items-start gap-3 border-b px-4 py-3 transition-colors",
+                  !notification.read && "bg-muted/50 dark:bg-white/5",
                 )}
               >
                 <div

@@ -1,15 +1,15 @@
 ---
 name: saale-design
-description: Saale's liquid glass UI design system. Use when building, styling, or reviewing any dashboard UI — panels, navigation, forms, lists, modals, buttons, inputs, or layout. Covers glass surfaces, color tokens, typography, motion, dark mode, and shadcn/ui component usage. Not for non-UI tasks, backend logic, or database work.
+description: Saale's console (NASA-punk) UI design system. Use when building, styling, or reviewing any dashboard UI — panels, navigation, forms, lists, modals, buttons, inputs, or layout. Covers flat bordered surfaces, color tokens, typography, motion, dark mode, and shadcn/ui component usage. Not for non-UI tasks, backend logic, or database work.
 ---
 
 # Saale Design System
 
 ## Overview
 
-Saale uses a **liquid glass** visual language — translucent, blurred, floating panels over a soft gradient background. The interface is calm, spacious, and instantly readable. It supports light and dark mode equally.
+Saale uses a **console** visual language (NASA-punk): flat, opaque, border-defined panels on a solid background. No blur, no gradients, no glass. Depth comes from 1px borders, elevation shadows on overlays only, and a single mission accent — **orange**. The interface reads like a mission control console: calm, dense, instantly readable. It supports light and dark mode equally.
 
-**Core rule:** Every UI element is built from shadcn/ui components, extended with glass styling. Never write raw HTML when a shadcn component exists.
+**Core rule:** Every UI element is built from shadcn/ui components. Never write raw HTML when a shadcn component exists.
 
 ## Intake
 
@@ -23,17 +23,17 @@ When the user asks for a UI element or page:
 ## Default Assumptions
 
 - Both light and dark mode supported
-- Desktop-first, responsive down to 768px
+- Desktop-first, responsive down to 320px
 - shadcn/ui for all interactive components
-- Glass styling on all content panels
-- DM Sans for all UI text
+- Flat bordered panels (`GlassPanel` — the name is legacy, the surface is flat)
+- Inter for UI text, Geist Mono for data/console labels (code, IDs, timestamps, micro-labels)
 
 ## Quick Workflow
 
 1. Load `references/design-philosophy.md` for principles and anti-patterns
 2. Load the specific reference file(s) for the component(s) needed (see Reference Index below)
 3. Load `references/shadcn-components.md` for component selection and installation
-4. Build using shadcn primitives + glass styling from `references/glass-surfaces.md`
+4. Build using shadcn primitives + console surface classes from `references/glass-surfaces.md`
 5. Verify against `references/review-checklist.md`
 
 ## Reference Index (Load On-Demand)
@@ -43,10 +43,10 @@ When the user asks for a UI element or page:
 | Need                                  | File                              |
 | ------------------------------------- | --------------------------------- |
 | Principles, anti-patterns, philosophy | `references/design-philosophy.md` |
-| Glass surface implementation          | `references/glass-surfaces.md`    |
+| Console surface implementation        | `references/glass-surfaces.md`    |
 | Color tokens, palette rules           | `references/color-system.md`      |
 | Typography scale, font rules          | `references/typography.md`        |
-| Layout, spacing, floating panels      | `references/layout.md`            |
+| Layout, spacing, panels               | `references/layout.md`            |
 | Animation, transitions, loading       | `references/motion.md`            |
 | Dark mode implementation              | `references/dark-mode.md`         |
 
@@ -90,9 +90,9 @@ See `references/shadcn-components.md` for the full mapping.
 
 ## Common Patterns
 
-### Glass Panel with Content
+### Panel with Content
 
-`GlassPanel` applies `glass-panel liquid-glass` automatically — never add `liquid-glass` manually.
+`GlassPanel` applies the flat console surface automatically — never add `liquid-glass` manually (the name is legacy; it is now a flat bordered surface, not glass).
 
 ```tsx
 import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
@@ -114,6 +114,8 @@ export function MyView() {
 
 ### List with Rows
 
+Row hover/selected states use **token fills** (`bg-accent`, `bg-muted`), never `bg-white/N` overlays — those were a glass-system idiom and look broken on flat surfaces.
+
 ```tsx
 import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
@@ -125,7 +127,7 @@ export function MyList() {
       <GlassPanelContent className="p-0">
         {items.map((item, i) => (
           <Fragment key={item.id}>
-            <div className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-white/20 dark:hover:bg-white/5">
+            <div className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/60">
               {/* row content */}
             </div>
             {i < items.length - 1 && <Separator className="px-4" />}
@@ -176,34 +178,37 @@ Rules:
 The e2e suite (`e2e/mobile-overflow.spec.ts`) enforces all of this at 375px and
 320px — a page that regresses fails CI.
 
-### Unified Glass Surfaces
+### Unified Console Surfaces
 
-All overlay surfaces include `liquid-glass` by default — no manual class needed:
+All overlay surfaces include `liquid-glass` by default (legacy name — it renders as a flat bordered popover surface with an elevation shadow, no blur) — no manual class needed:
 
-- `DialogContent` → liquid glass
-- `AlertDialogContent` → liquid glass
-- `SheetContent` → liquid glass
-- `PopoverContent` → liquid glass
-- `DropdownMenuContent` → liquid glass
-- `SelectContent` → liquid glass
-- `TabsList` → liquid glass inner
+- `DialogContent` → flat bordered surface
+- `AlertDialogContent` → flat bordered surface
+- `SheetContent` → flat bordered surface
+- `PopoverContent` → flat bordered surface
+- `DropdownMenuContent` → flat bordered surface
+- `SelectContent` → flat bordered surface
+- `TabsList` → flat bordered inner
 
-For nested content inside panels, use `liquid-glass-inner` on a plain `<div>`.
+For nested content inside panels, use `liquid-glass-inner` on a plain `<div>` (renders as a flat muted inset).
+
+## Console Micro-Labels
+
+Section labels, panel footers, and metadata use the `.console-label` class — small caps, wide tracking, muted color (`10px / 600 / 0.18em uppercase`). The sidebar footer (`SALE v0.1.0`) and the orange tick under it are the canonical example. Use for: section headers inside panels, status lines, version info. **Do not** use for body text or button labels.
 
 ## Anti-Patterns (Never Do These)
 
-| Anti-pattern           | Why                                    | Alternative                     |
-| ---------------------- | -------------------------------------- | ------------------------------- |
-| Raw HTML elements      | Inconsistent styling, no accessibility | shadcn/ui components            |
-| Neon / glowing effects | Gamer aesthetic                        | Subtle shadows and blur         |
-| Monospace UI text      | Developer-tool vibe                    | Inter for everything            |
-| Hard borders (2px+)    | Boxed-in feeling                       | 1px glass borders               |
-| Flat colored cards     | No depth                               | Glass panels with backdrop-blur |
-| Edge-to-edge panels    | No breathing room                      | Margins, floating panels        |
-| Rainbow status colors  | Distracting                            | Muted semantic colors           |
-| ALL CAPS labels        | Aggressive                             | Sentence case                   |
-| Square buttons         | Harsh                                  | `rounded-full` or `rounded-xl`  |
-| Animated backgrounds   | Distracting                            | Static gradient                 |
+| Anti-pattern             | Why                                      | Alternative                            |
+| ------------------------ | ---------------------------------------- | -------------------------------------- |
+| Raw HTML elements        | Inconsistent styling, no accessibility   | shadcn/ui components                   |
+| `bg-white/N` overlay fills | Glass idiom — invisible or wrong on flat panels in one of the modes | Token fills: `bg-accent`, `bg-muted` |
+| `backdrop-blur` on panels | Glass residue — console surfaces are opaque | Remove it; borders carry the depth   |
+| Gradients / glows        | Not the console language                 | Flat colors + 1px borders              |
+| Pill-shaped buttons      | Old design                               | `rounded-lg` (12px) rectangular        |
+| Rainbow status colors    | Distracting                              | Muted semantic colors, orange = primary action only |
+| ALL CAPS body text       | Aggressive                               | Sentence case (micro-labels excepted)  |
+| Monospace UI text        | Developer-tool vibe (except data)        | Inter for UI; Geist Mono for data, IDs, timestamps, micro-labels |
+| Animated backgrounds     | Distracting                              | Static solid background                |
 
 ## Review Checklist
 
@@ -211,6 +216,7 @@ Before committing any UI change, verify `references/review-checklist.md`.
 
 ## Search Tips
 
-- Find a glass class: `rg "backdrop-blur" src/components/`
+- Find flat surface classes: `rg "liquid-glass|glass-panel" src/components/`
+- Find leftover glass idioms: `rg "bg-white/\d|backdrop-blur" src/`
 - Find color token usage: `rg "var\(--" src/app/globals.css`
 - Find shadcn component imports: `rg "from \"@/components/ui\"" src/`

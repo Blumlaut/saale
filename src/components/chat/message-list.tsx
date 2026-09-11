@@ -157,7 +157,7 @@ export function MessageList({
                 key={s.label}
                 variant="outline"
                 size="sm"
-                className="liquid-glass border-white/10 bg-white/5 hover:bg-white/10"
+                className="liquid-glass border-border bg-muted/50 hover:bg-accent/60"
                 onClick={() => onSendMessage?.(s.prompt)}
               >
                 {s.label}
@@ -485,7 +485,7 @@ function AttachmentChip({
 
   if (!url) {
     return (
-      <div className="border-border/30 flex items-center gap-2 rounded-xl border bg-white/5 px-2.5 py-1.5 opacity-70">
+      <div className="border-border/30 bg-muted/50 flex items-center gap-2 rounded-xl border px-2.5 py-1.5 opacity-70">
         {chip}
       </div>
     );
@@ -496,7 +496,7 @@ function AttachmentChip({
       href={url}
       download={attachment.fileName}
       aria-label={`Download ${attachment.fileName}`}
-      className="border-border/30 flex items-center gap-2 rounded-xl border bg-white/5 px-2.5 py-1.5 transition-colors hover:bg-white/10"
+      className="border-border/30 bg-muted/50 hover:bg-accent/60 flex items-center gap-2 rounded-xl border px-2.5 py-1.5 transition-colors"
     >
       {chip}
     </a>
@@ -580,7 +580,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
 
                 {expandedThinking.has(message.id) && (
                   <div className="border-border/30 border-t px-3 py-2">
-                    <pre className="text-muted-foreground rounded-lg bg-white/10 p-3 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
+                    <pre className="text-muted-foreground bg-muted rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
                       {message.thinking}
                     </pre>
                   </div>

@@ -68,7 +68,7 @@ export function ChatHeader({
       ) : (
         <button
           onClick={onStartEditing}
-          className="group/title -ml-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-sm font-semibold transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+          className="group/title hover:bg-accent/60 -ml-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-sm font-semibold transition-colors"
         >
           <span className="max-w-[140px] truncate md:max-w-[300px]">{sessionTitle || "Chat"}</span>
           <Pencil className="text-muted-foreground h-3 w-3 opacity-0 transition-opacity group-hover/title:opacity-70" />
@@ -100,7 +100,7 @@ export function ChatHeader({
         <div className="md:hidden">
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <span className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+              <span className="hover:bg-accent/60 inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors">
                 <Settings2 className="h-3.5 w-3.5" />
                 <ChevronDown className="h-3 w-3" />
               </span>

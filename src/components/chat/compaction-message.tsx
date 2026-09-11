@@ -41,7 +41,7 @@ export function CompactionMessage({
       {/* Divider with badge */}
       <div className="flex items-center gap-3">
         {/* Left spacer */}
-        <div className="h-px flex-[1_1_0] bg-white/10" />
+        <div className="bg-muted h-px flex-[1_1_0]" />
 
         {/* Center badge */}
         <button
@@ -52,7 +52,7 @@ export function CompactionMessage({
         >
           <div
             className={cn(
-              "flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs transition-colors hover:bg-white/10",
+              "border-border bg-muted/50 hover:bg-accent/60 flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors",
               isCompacting && "cursor-wait",
             )}
           >
@@ -78,7 +78,7 @@ export function CompactionMessage({
         </button>
 
         {/* Right spacer */}
-        <div className="h-px flex-[1_1_0] bg-white/10" />
+        <div className="bg-muted h-px flex-[1_1_0]" />
       </div>
 
       {/* Expandable summary */}

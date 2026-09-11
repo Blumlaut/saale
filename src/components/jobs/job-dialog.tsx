@@ -231,7 +231,7 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
                   <button
                     type="button"
                     className={cn(
-                      "border-input bg-background flex h-9 w-full items-center gap-2 rounded-md border px-3 text-sm transition-colors hover:bg-white/5",
+                      "border-input bg-background hover:bg-muted/50 flex h-9 w-full items-center gap-2 rounded-md border px-3 text-sm transition-colors",
                       !selectedType && "text-muted-foreground",
                     )}
                   >
@@ -272,7 +272,7 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
                         type="button"
                         className={cn(
                           "flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
-                          "hover:bg-white/10 dark:hover:bg-white/5",
+                          "hover:bg-accent/60",
                           isSelected && "bg-primary/10",
                         )}
                         onClick={() => {

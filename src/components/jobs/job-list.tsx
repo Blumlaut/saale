@@ -273,8 +273,8 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
                   <div key={job.id}>
                     <div
                       className={cn(
-                        "flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                        selectedJob?.id === job.id && "bg-white/20 dark:bg-white/5",
+                        "hover:bg-accent/60 flex items-center gap-3 px-4 py-3 transition-colors",
+                        selectedJob?.id === job.id && "bg-accent",
                       )}
                     >
                       <button
@@ -446,7 +446,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
                       {runs.map((run) => (
                         <div
                           key={run.id}
-                          className="rounded-xl border bg-white/20 p-3 dark:bg-white/5"
+                          className="bg-accent rounded-xl border p-3 dark:bg-white/5"
                         >
                           <div className="flex items-center justify-between">
                             {getStatusBadge(run.status)}

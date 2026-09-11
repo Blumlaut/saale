@@ -45,7 +45,7 @@ export function TaskItem({ task, isLast, onToggle, onDelete, onEdit, groupKey }:
     <>
       <div
         className={cn(
-          "group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/10",
+          "group hover:bg-accent/60 flex items-center gap-3 px-4 py-2.5 transition-colors",
           isCompleted && "opacity-60",
         )}
       >
@@ -110,7 +110,7 @@ export function TaskItem({ task, isLast, onToggle, onDelete, onEdit, groupKey }:
           {/* Actions menu */}
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <span className="text-muted-foreground inline-flex h-6 w-6 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/10">
+              <span className="text-muted-foreground hover:bg-accent/60 inline-flex h-6 w-6 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100">
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </span>
             </DropdownMenuTrigger>

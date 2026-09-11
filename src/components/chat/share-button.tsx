@@ -89,7 +89,7 @@ export function ShareButton({ sessionId }: ShareButtonProps) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger>
-        <span className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+        <span className="hover:bg-accent/60 inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors">
           <Share2 className="h-3.5 w-3.5" />
         </span>
       </DialogTrigger>

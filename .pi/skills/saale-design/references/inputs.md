@@ -36,14 +36,16 @@ Never use raw `<input>`, `<textarea>`, or `<select>` elements.
 </div>
 ```
 
-### Glass Input Style
+### Console Input Style
 
-The base Input component should have a glass appearance:
+Inputs are flat: transparent background, 1px `border-input`, `rounded-lg`, orange focus ring:
 
 ```tsx
-// The shadcn Input should already support this via CSS variables
-// If customization is needed:
-className = "bg-white/30 dark:bg-white/5 border-border/50 focus:border-accent focus:ring-accent/20";
+// The shadcn Input already has this:
+// h-8 rounded-lg border bg-transparent border-input
+// focus-visible:border-ring focus-visible:ring-ring/50
+// If customization is needed, keep it flat — never bg-white/N or blur
+className = "bg-transparent";
 ```
 
 ## Textarea

@@ -111,7 +111,7 @@ export function TaskList({ tasks, onToggle, onDelete, onEdit }: TaskListProps) {
           <GlassPanel key={group.key}>
             {group.collapsible && (
               <div
-                className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white/10"
+                className="hover:bg-accent/60 flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors"
                 onClick={() => toggleGroup(group.key)}
               >
                 {isCollapsed ? (

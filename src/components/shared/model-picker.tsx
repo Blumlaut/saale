@@ -171,7 +171,7 @@ export function ModelPicker({
       <PopoverTrigger>
         <span
           className={cn(
-            "inline-flex h-7 items-center gap-1.5 px-2 text-sm font-medium transition-colors hover:bg-white/10 dark:hover:bg-white/5",
+            "hover:bg-accent/60 inline-flex h-7 items-center gap-1.5 px-2 text-sm font-medium transition-colors",
             compact ? "min-w-0" : "",
             className,
           )}
@@ -250,9 +250,7 @@ export function ModelPicker({
                         key={model.id}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
-                          isHighlighted
-                            ? "bg-white/15 dark:bg-white/10"
-                            : "hover:bg-white/10 dark:hover:bg-white/5",
+                          isHighlighted ? "bg-accent" : "hover:bg-accent/60",
                           isSelected && "bg-primary/10",
                         )}
                         onClick={() => handleSelect(modelValue)}

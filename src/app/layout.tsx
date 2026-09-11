@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { DM_Sans, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { ErrorBoundary } from "@/components/error-boundary";
 import "./globals.css";
 
-const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-sans" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${dmSans.variable} ${geistMono.variable} font-sans`}>
+      <body className={`${inter.variable} ${geistMono.variable} font-sans`}>
         <ThemeProvider>
           <ErrorBoundary>{children}</ErrorBoundary>
           <Toaster />

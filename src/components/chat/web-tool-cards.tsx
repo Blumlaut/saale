@@ -233,7 +233,7 @@ function SearchResultCard({ title, url, engine }: { title: string; url: string; 
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/10"
+      className="group hover:bg-accent/60 flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors"
     >
       {/* Favicon */}
       <div className="shrink-0 pt-0.5">

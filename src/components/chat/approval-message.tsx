@@ -114,7 +114,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
         <div className="border-border/30 border-t">
           {argsPreview && (
             <div className="px-3 py-2">
-              <pre className="rounded-lg bg-white/10 p-2 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
+              <pre className="bg-muted rounded-lg p-2 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
                 {argsPreview}
               </pre>
             </div>

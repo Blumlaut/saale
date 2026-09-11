@@ -67,7 +67,7 @@ export function MonthView({ date, events, onDateClick, onEventClick }: MonthView
             <div
               key={index}
               className={cn(
-                "border-border/30 min-h-[80px] cursor-pointer border-r border-b p-1 text-left transition-colors hover:bg-white/10",
+                "border-border/30 hover:bg-accent/60 min-h-[80px] cursor-pointer border-r border-b p-1 text-left transition-colors",
                 !isCurrentMonth && "bg-muted/20 text-muted-foreground",
                 isTodayDate && "bg-primary/5",
                 index % 7 === 6 && "border-r-0",

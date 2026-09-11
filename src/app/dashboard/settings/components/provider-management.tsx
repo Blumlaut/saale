@@ -174,7 +174,7 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
             <div className="relative">
               <button
                 type="button"
-                className="border-border/50 inline-flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-2.5 text-sm outline-hidden transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+                className="border-border/50 hover:bg-accent/60 inline-flex h-8 w-full items-center justify-between gap-2 rounded-lg border bg-transparent px-2.5 text-sm outline-hidden transition-colors"
                 onClick={() => setProviderOpen(!providerOpen)}
               >
                 <span className="truncate text-sm">
@@ -191,9 +191,7 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
                       key={p.id}
                       className={cn(
                         "flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-                        p.id === newProvider
-                          ? "bg-primary/10 font-medium"
-                          : "hover:bg-white/10 dark:hover:bg-white/5",
+                        p.id === newProvider ? "bg-primary/10 font-medium" : "hover:bg-accent/60",
                       )}
                       onClick={() => {
                         setNewProvider(p.id);

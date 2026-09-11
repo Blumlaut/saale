@@ -1,10 +1,10 @@
 # Typography
 
-## Font
+## Fonts
 
-- **Body / UI:** `DM Sans` — loaded via `next/font/google` in `layout.tsx`. Geometric, warm, friendly, excellent at small sizes.
-- **Monospace:** `Geist Mono` — code snippets only, never for UI text
-- **Single typeface family** across the entire application
+- **UI / body:** `Inter` — loaded via `next/font/google` in `layout.tsx` (`--font-sans`). Neutral, console-appropriate, excellent at small sizes.
+- **Data / console:** `Geist Mono` (`--font-mono`) — code, machine IDs, timestamps, hashes, and `.console-label` micro-labels. Monospace IS part of the console language, but only for data — never for sentences or button labels.
+- Two families, strict split: Inter for words, Geist Mono for data.
 
 ## Scale
 
@@ -15,92 +15,89 @@
 | Card title         | 16px | 500 (medium)   | snug (1.375)    | `text-base font-medium leading-snug`   |
 | Body text          | 14px | 400 (normal)   | relaxed (1.625) | `text-sm leading-relaxed`              |
 | Metadata / labels  | 12px | 400 (normal)   | normal (1.5)    | `text-xs leading-normal`               |
-| Overline / caption | 11px | 500 (medium)   | normal (1.5)    | `text-[11px] font-medium`              |
+| Console micro-label | 10px | 600 (semibold) | normal          | `.console-label` (10px, 0.18em tracking, uppercase, muted) |
+
+The base font scales with the viewport: `font-size: clamp(14px, 1.15vw + 0.25rem, 17px)` on `html` — don't override it.
+
+## Console Micro-Labels
+
+The `.console-label` class is the signature of the console language:
+
+```tsx
+<span className="console-label">SALE v0.1.0</span>
+<span className="console-label">Models</span>
+```
+
+- Small caps, wide tracking (`0.18em`), semibold, muted color
+- Use for: panel section labels, footer version blocks, status lines, metadata groupings
+- Pair with the orange tick where a "live" feel is wanted (see the sidebar footer: `console-label` + a short `h-0.5 w-6 bg-primary` line)
+- Do NOT use for headings, body text, or button labels
 
 ## Letter Spacing
 
 - **Default:** `tracking-normal` everywhere
-- **Large headings only:** `tracking-tight` (page headings, hero text)
-- **Never:** `tracking-wide` or `tracking-widest` in UI text
+- **Page headings:** `tracking-tight`
+- **Console micro-labels:** `0.18em` via `.console-label` (the only place wide tracking is allowed)
+- **Never:** `tracking-wide`/`tracking-widest` on other text
 
 ## Text Case
 
-| Context                                                    | Style         | Example                      |
-| ---------------------------------------------------------- | ------------- | ---------------------------- |
-| Headings                                                   | Title Case    | "Inbox"                      |
-| Body text                                                  | Sentence case | "You have 3 unread messages" |
-| Labels                                                     | Sentence case | "Search emails"              |
-| Buttons                                                    | Sentence case | "Send message"               |
-| Abbreviations                                              | UPPERCASE     | "API", "URL", "ID"           |
-| **Never use ALL CAPS** for UI labels, headings, or buttons |
+| Context | Style | Example |
+|---------|-------|---------|
+| Headings | Sentence case | "Chat" |
+| Body text | Sentence case | "You have 3 unread messages" |
+| Labels / buttons | Sentence case | "Search emails", "New Task" |
+| Console micro-labels | UPPERCASE (via `.console-label`) | "MODELS", "SALE v0.1.0" |
+| Abbreviations in body | UPPERCASE | "API", "URL", "ID" |
+| **Never** | ALL CAPS on headings/buttons/body |
 
 ## Text Truncation
 
 Long text must never break layout:
 
-| Context                       | Method     | Classes           |
-| ----------------------------- | ---------- | ----------------- |
-| Single line (names, subjects) | Truncate   | `truncate`        |
-| Two lines (preview text)      | Line clamp | `line-clamp-2`    |
-| Three lines (descriptions)    | Line clamp | `line-clamp-3`    |
-| Code / monospace              | Scroll     | `overflow-x-auto` |
-
-Never allow unbounded text wrapping that pushes content out of its container.
+| Context | Method | Classes |
+|---------|--------|---------|
+| Single line (names, subjects) | Truncate | `truncate` |
+| Two lines (preview text) | Line clamp | `line-clamp-2` |
+| Three lines (descriptions) | Line clamp | `line-clamp-3` |
+| Code / monospace | Scroll | `overflow-x-auto` |
 
 ## Font Weights
 
-| Weight                                                        | Usage                                      |
-| ------------------------------------------------------------- | ------------------------------------------ |
-| 400 (normal)                                                  | Body text, labels, descriptions            |
-| 500 (medium)                                                  | Card titles, button text, active nav items |
-| 600 (semibold)                                                | Page headings, section headings            |
-| **Never use 700 (bold)** except for emphasis within body text |
+| Weight | Usage |
+|--------|-------|
+| 400 | Body text, labels, descriptions |
+| 500 | Card titles, button text, active nav items |
+| 600 | Page headings, section headings, console micro-labels |
+| 700+ | Never (except inline emphasis) |
 
 ## Text Colors
 
-| Hierarchy | Token                      | Usage                                      |
-| --------- | -------------------------- | ------------------------------------------ |
-| Primary   | `text-foreground`          | Headings, body text, button labels         |
-| Secondary | `text-muted-foreground`    | Labels, timestamps, metadata, descriptions |
-| Tertiary  | `text-muted-foreground/70` | Placeholders, disabled text, hints         |
-| Link      | `text-primary` or accent   | Interactive text links                     |
+| Hierarchy | Token | Usage |
+|-----------|-------|-------|
+| Primary | `text-foreground` | Headings, body, button labels |
+| Secondary | `text-muted-foreground` | Labels, timestamps, metadata |
+| Tertiary | `text-muted-foreground/70` | Placeholders, disabled, hints |
+| Action | `text-primary` | Interactive links (orange) |
 
-## Implementation
+## Data Text (Geist Mono)
 
 ```tsx
-// Page heading
-<h1 className="text-2xl font-semibold leading-tight tracking-tight">
-  Dashboard
-</h1>
-
-// Section heading
-<h2 className="text-lg font-semibold leading-snug">
-  Recent Activity
-</h2>
-
-// Card title
-<h3 className="text-base font-medium leading-snug">
-  Email Subject
-</h3>
-
-// Body text
-<p className="text-sm leading-relaxed text-muted-foreground">
-  Description or preview text goes here.
-</p>
-
-// Metadata
-<span className="text-xs text-muted-foreground">
-  2 hours ago
-</span>
+// Timestamps, IDs, versions, hashes — mono, small, muted
+<span className="font-mono text-xs text-muted-foreground">2026-09-11T08:57Z</span>
+<span className="font-mono text-[11px] text-muted-foreground">job_a1b2c3</span>
 ```
+
+Mono data text is always ≤ `text-xs` and muted unless it is a primary data value.
 
 ## Common Mistakes
 
-| Mistake                    | Fix                                       |
-| -------------------------- | ----------------------------------------- |
-| `font-bold` on headings    | Use `font-semibold`                       |
-| `text-base` for body       | Use `text-sm` (14px is the body size)     |
-| `uppercase` on labels      | Use sentence case                         |
-| No truncation on long text | Add `truncate` or `line-clamp-*`          |
-| Monospace for UI text      | Use Inter (`font-sans`)                   |
-| Hardcoded font sizes       | Use Tailwind scale (`text-sm`, `text-lg`) |
+| Mistake | Fix |
+|---------|-----|
+| `font-bold` on headings | Use `font-semibold` |
+| `text-base` for body | Use `text-sm` |
+| Uppercase labels without `.console-label` | Use sentence case, or the micro-label class |
+| Monospace for sentences/buttons | Inter (`font-sans`) for words |
+| Sans for IDs/timestamps | `font-mono` for data |
+| No truncation on long text | `truncate` or `line-clamp-*` |
+| Hardcoded font sizes | Tailwind scale |

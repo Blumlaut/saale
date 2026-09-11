@@ -2,20 +2,20 @@
 
 ## Core Principles
 
-1. **Calm over clever.** The interface should feel quiet. Information is presented clearly without decoration competing for attention.
-2. **Space communicates hierarchy.** Empty space between elements is more effective than dividers, labels, or color coding.
-3. **Glass creates depth.** Translucent panels over a gradient background give a sense of layers without visual noise.
-4. **Friendly, not formal.** Rounded corners, warm tones, and generous spacing make the app feel approachable.
+1. **Console, not decoration.** The interface is a mission control console: flat, bordered, opaque surfaces. No blur, no gradients, no glass. Every pixel has a job.
+2. **Borders carry the depth.** A 1px border on a solid surface replaces what glass/blur did. If a panel needs visual separation, the border does it — not transparency or shadow.
+3. **One accent, orange.** Orange (`--primary`) is the single mission accent: primary actions, active states, focus rings, the console tick. Everything else is neutral gray.
+4. **Calm density.** Information is dense but never noisy. Neutral fills, muted metadata, and the accent used sparingly keep the console readable at a glance.
 5. **Instant readability.** A user should understand their situation within 3 seconds of looking at any screen.
 
 ## What We Are Building
 
-A productivity hub — email, chat, tasks in one place. The interface should feel like a well-organized desk: everything visible, nothing cluttered.
+A productivity hub — email, chat, tasks, jobs, infrastructure in one place. The interface should feel like a well-run mission control room: everything visible, instrumented, nothing decorative.
 
 ## What We Are Not Building
 
-- **A gaming dashboard.** No neon, no aggressive gradients, no "cyber" aesthetics, no glowing borders.
-- **A developer tool.** No monospace UI text, no terminal-inspired styling, no raw data dumps.
+- **A glassmorphism app.** No `backdrop-blur`, no `bg-white/N` overlays, no specular highlights, no gradient backgrounds. The old liquid-glass language is decommissioned.
+- **A gaming dashboard.** No neon glows, no animated backgrounds, no rainbow status colors.
 - **A dense enterprise app.** No cramped tables, no information overload, no 3-column grids.
 - **A social media feed.** No infinite scroll without controls, no engagement-bait patterns.
 
@@ -23,18 +23,18 @@ A productivity hub — email, chat, tasks in one place. The interface should fee
 
 When choosing between two approaches:
 
-| Criterion     | Prefer                               |
-| ------------- | ------------------------------------ |
-| Visual weight | Lighter, more transparent            |
-| Corner radius | More rounded (2xl/3xl over lg/md)    |
-| Spacing       | More whitespace over compact layout  |
-| Color         | Neutral over colored                 |
-| Border        | Subtle glass border over solid line  |
-| Background    | Translucent glass over solid color   |
-| Animation     | Subtle fade over slide/bounce        |
-| Typography    | Sentence case over ALL CAPS          |
-| Font          | Inter over monospace or decorative   |
-| Component     | shadcn/ui over custom implementation |
+| Criterion     | Prefer                                             |
+| ------------- | -------------------------------------------------- |
+| Visual weight | Lighter, flatter                                   |
+| Corner radius | `rounded-lg` (12px) for controls; `rounded-2xl` for panels |
+| Spacing       | More whitespace over compact layout                |
+| Color         | Neutral over colored; orange only for primary action |
+| Border        | 1px solid `border-border` over shadow or transparency |
+| Background    | Solid token color (`bg-card`, `bg-background`) over gradient or overlay |
+| Animation     | Subtle fade over slide/bounce                      |
+| Typography    | Sentence case over ALL CAPS (console micro-labels excepted) |
+| Font          | Inter for UI; Geist Mono for data (IDs, timestamps, code, micro-labels) |
+| Component     | shadcn/ui over custom implementation               |
 
 ## The 3-Second Rule
 

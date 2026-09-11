@@ -225,8 +225,8 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                 <div key={job.id}>
                   <div
                     className={cn(
-                      "flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-white/20 dark:hover:bg-white/5",
-                      selectedJob?.id === job.id && "bg-white/20 dark:bg-white/5",
+                      "hover:bg-accent/60 flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors",
+                      selectedJob?.id === job.id && "bg-accent",
                     )}
                     onClick={() => setSelectedJob(job)}
                   >
@@ -341,7 +341,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                   {/* Job info */}
                   <div className="flex flex-col gap-3">
                     {selectedJob.systemManaged && (
-                      <div className="text-muted-foreground flex items-start gap-2 rounded-lg border bg-white/5 p-3 text-xs">
+                      <div className="text-muted-foreground bg-muted/50 flex items-start gap-2 rounded-lg border p-3 text-xs">
                         <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
                           Managed by Saale — this job powers Telegram chat. Its configuration is
@@ -374,7 +374,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                   {selectedJob.prompt && (
                     <div>
                       <h3 className="mb-2 text-sm font-medium">Prompt</h3>
-                      <div className="rounded-lg border bg-white/5 p-3">
+                      <div className="bg-muted/50 rounded-lg border p-3">
                         <p className="text-sm whitespace-pre-wrap">{selectedJob.prompt}</p>
                       </div>
                     </div>
@@ -383,7 +383,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                   {selectedJob.systemPrompt && (
                     <div>
                       <h3 className="mb-2 text-sm font-medium">System Prompt</h3>
-                      <div className="rounded-lg border bg-white/5 p-3">
+                      <div className="bg-muted/50 rounded-lg border p-3">
                         <p className="text-sm whitespace-pre-wrap">{selectedJob.systemPrompt}</p>
                       </div>
                     </div>
@@ -405,8 +405,8 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                         <div
                           key={run.id}
                           className={cn(
-                            "cursor-pointer rounded-xl border p-3 transition-colors hover:bg-white/10",
-                            selectedRun?.id === run.id && "bg-white/10",
+                            "hover:bg-accent/60 cursor-pointer rounded-xl border p-3 transition-colors",
+                            selectedRun?.id === run.id && "bg-muted",
                           )}
                           onClick={() => handleSelectRun(run)}
                         >
@@ -525,7 +525,7 @@ function RunMessagesDialog({
                   key={msg.id}
                   className={cn(
                     "rounded-lg border p-3",
-                    msg.role === "user" ? "bg-white/5" : "bg-white/10",
+                    msg.role === "user" ? "bg-muted/50" : "bg-muted",
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -550,7 +550,7 @@ function RunMessagesDialog({
                   {msg.toolCalls && msg.toolCalls.length > 0 && (
                     <div className="mt-2 flex flex-col gap-1">
                       {msg.toolCalls.map((tc) => (
-                        <div key={tc.id} className="rounded-md bg-white/5 p-2 text-xs">
+                        <div key={tc.id} className="bg-muted/50 rounded-md p-2 text-xs">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{tc.name}</span>
                             {tc.isError && (

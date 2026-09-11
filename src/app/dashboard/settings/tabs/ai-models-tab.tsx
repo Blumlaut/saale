@@ -351,8 +351,7 @@ export function AiModelsTab({
                                   key={model.id}
                                   className={cn(
                                     "group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
-                                    !disabled &&
-                                      "cursor-pointer hover:bg-white/20 dark:hover:bg-white/5",
+                                    !disabled && "hover:bg-accent/60 cursor-pointer",
                                     disabled && "opacity-50",
                                     isSelected && !disabled && "bg-primary/10",
                                   )}

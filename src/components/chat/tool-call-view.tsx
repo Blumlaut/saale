@@ -146,7 +146,7 @@ function GenericToolCall({ toolCall }: { toolCall: ToolCallData }) {
             <div className="text-muted-foreground text-xs">
               <span className="font-medium">Arguments:</span>
             </div>
-            <pre className="overflow-x-auto rounded-lg bg-white/10 p-2 text-xs dark:bg-white/5">
+            <pre className="bg-muted overflow-x-auto rounded-lg p-2 text-xs dark:bg-white/5">
               {JSON.stringify(toolCall.args, null, 2)}
             </pre>
             {toolCall.result && (
@@ -157,7 +157,7 @@ function GenericToolCall({ toolCall }: { toolCall: ToolCallData }) {
                 <pre
                   className={cn(
                     "overflow-x-auto rounded-lg p-2 text-xs",
-                    toolCall.error ? "bg-red-500/10 text-red-600" : "bg-white/10 dark:bg-white/5",
+                    toolCall.error ? "bg-red-500/10 text-red-600" : "bg-accent/70",
                   )}
                 >
                   {toolCall.result.slice(0, 1000)}

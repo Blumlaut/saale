@@ -3,111 +3,50 @@
 ## Rules
 
 1. **Every component supports dark mode.** No exceptions.
-2. **System preference is the default.** Use `prefers-color-scheme` as the initial value.
-3. **User choice overrides system.** Stored in `localStorage`, persists across sessions.
-4. **No flash of wrong theme.** Theme is applied before the first render.
-5. **Both modes are equally polished.** Dark mode is not an afterthought.
+2. **System preference is the default.** `next-themes` with `attribute="class"`, `defaultTheme="system"`.
+3. **User choice overrides system.** The toggle (sidebar footer: sun/moon button) stores the choice in `localStorage` via next-themes.
+4. **No flash of wrong theme.** Theme applied before first render; `suppressHydrationWarning` on `<html>`.
+5. **Both modes are equally polished.** Dark mode is not an afterthought — the palette is designed for both (near-black `#0b0b0c` background, `#1a1a1c` panels, brighter orange `#ff7a2e`).
 
-## Implementation
+## Flat Surfaces in Dark Mode
 
-### Theme Provider
-
-Use `next-themes` for theme management:
-
-```bash
-npm install next-themes
-```
+There is no glass in either mode. Dark mode panels are **solid flat surfaces**:
 
 ```tsx
-// src/providers/theme-provider.tsx
-"use client";
+// Panel — just use the tokens, no dark: overrides needed
+className = "bg-card text-card-foreground border border-border";
 
-import { ThemeProvider as NextThemesProvider } from "next-themes";
+// Row hover / selected — token fills, both modes
+className = "hover:bg-accent/60";   // hover
+className = "bg-accent";            // selected
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <NextThemesProvider
-      attribute="class" // adds .dark to <html>
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange={false}
-    >
-      {children}
-    </NextThemesProvider>
-  );
-}
+// Overlay (dialog/sheet/popover) — liquid-glass utility (flat, bordered, elevated)
+className = "liquid-glass";
 ```
 
-Wrap the app in `layout.tsx`:
-
-```tsx
-import { ThemeProvider } from "@/providers/theme-provider";
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ThemeProvider>{children}</ThemeProvider>
-      </body>
-    </html>
-  );
-}
-```
-
-### Theme Toggle
-
-```tsx
-"use client";
-
-import { useTheme } from "next-themes";
-import { Moon, Sun } from "lucide-react";
-import { Button } from "@/components/ui/button";
-
-export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-    >
-      <Sun className="h-4 w-4 dark:hidden" />
-      <Moon className="hidden dark:h-4 dark:w-4" />
-    </Button>
-  );
-}
-```
+Never write `dark:bg-white/5` or `dark:bg-black/40` — the tokens already flip per mode.
 
 ## CSS Custom Properties
 
-All colors use CSS custom properties defined in `globals.css`:
+All colors are flat hex custom properties in `globals.css`:
 
 ```css
 :root {
-  --background: oklch(0.985 0.005 250);
-  --foreground: oklch(0.145 0 0);
-  /* ... all light mode tokens ... */
+  --background: #f7f8fa;
+  --foreground: #111827;
+  --primary: #f97316;
+  /* ... */
 }
 
 .dark {
-  --background: oklch(0.145 0.015 250);
-  --foreground: oklch(0.985 0 0);
-  /* ... all dark mode tokens ... */
-}
-```
-
-Tailwind maps these via `@theme inline`:
-
-```css
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --background: #0b0b0c;
+  --foreground: #f5f5f7;
+  --primary: #ff7a2e;
   /* ... */
 }
 ```
 
-Use Tailwind utilities, never hardcoded values:
+Mapped to Tailwind via the `@theme inline` block. Use utilities, never hardcoded values:
 
 ```tsx
 // Correct
@@ -117,62 +56,36 @@ className = "bg-background text-foreground border-border";
 className = "bg-white text-black border-gray-200";
 ```
 
-## Glass in Dark Mode
-
-Dark mode glass uses `bg-white/5` (not `bg-black/50`):
+Dark-mode-specific overrides (`dark:`) are needed only for things tokens don't cover, e.g. semantic tints:
 
 ```tsx
-// Light mode: frosted white glass
-// Dark mode: barely-tinted glass (like looking through dark window)
-className =
-  "bg-white/60 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10";
+className = "bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-400";
 ```
-
-The dark mode glass should feel like looking through tinted glass, not a dark box.
 
 ## Contrast Verification
 
-| Element                      | Light Mode Contrast | Dark Mode Contrast |
-| ---------------------------- | ------------------- | ------------------ |
-| Primary text on background   | > 12:1              | > 12:1             |
-| Secondary text on background | > 4.5:1             | > 4.5:1            |
-| Border on background         | > 3:1               | > 3:1              |
-| Glass text on glass          | > 10:1              | > 10:1             |
+| Element | Light | Dark |
+|---------|-------|------|
+| Primary text on background | ~15:1 | ~17:1 |
+| Secondary text on background | ~4.8:1 | ~7:1 |
+| Border on background | visible 1px edge | visible 1px edge |
+| Orange on card (text) | use `#c2570c`-equivalent tints, not raw orange on white | passes |
 
-Test every component in both modes. If it reads well in light mode but not dark (or vice versa), adjust the token — don't add a component-specific override.
+Test every component in both modes. If it reads well in light but not dark, adjust the token — don't add component-specific overrides.
 
 ## Transition Between Modes
 
-When the user toggles themes, apply a smooth transition:
-
-```css
-/* In globals.css */
-*,
-*::before,
-*::after {
-  transition:
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease;
-}
-
-/* Exclude animations from transition */
-.animate-in,
-.transition-none {
-  transition: none !important;
-}
-```
-
-This ensures colors crossfade smoothly without affecting intentional animations.
+Globals apply a 0.2s color crossfade on all elements (background-color, border-color, color) with intentional animations excluded. Do not add per-component theme transitions.
 
 ## Testing Checklist
 
 - [ ] Every component tested in both light and dark mode
-- [ ] Glass panels look correct in both modes (transparency + blur)
+- [ ] Panels are opaque `bg-card` in both modes (no transparency, no blur)
+- [ ] Row hover/selected fills use token fills, visible in both modes
+- [ ] Orange accent visible and AA in both modes (dark text on orange in light mode)
 - [ ] Text contrast meets WCAG AA in both modes
 - [ ] Borders and dividers visible in both modes
-- [ ] Icons and SVGs use `currentColor` or explicit dark variants
-- [ ] No hardcoded hex/rgb values in components
-- [ ] Theme toggle works and persists
+- [ ] No hardcoded hex/rgb in components
+- [ ] No `dark:bg-white/N` residue (glass idiom)
+- [ ] Theme toggle (sidebar footer) works and persists
 - [ ] No flash of wrong theme on page load
-- [ ] `suppressHydrationWarning` on `<html>` tag

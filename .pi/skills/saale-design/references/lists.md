@@ -33,7 +33,7 @@ export function EmailList({ emails }) {
           <Fragment key={email.id}>
             <a
               href={`/dashboard/mail/${email.id}`}
-              className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-white/20 dark:hover:bg-white/5"
+              className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-accent/60"
             >
               <Avatar>
                 <AvatarFallback>{email.sender[0]}</AvatarFallback>
@@ -56,7 +56,7 @@ export function EmailList({ emails }) {
 ### List Row Rules
 
 - **Min height:** 48px (`py-3` with content = ~48px touch target)
-- **Hover state:** `hover:bg-white/20 dark:hover:bg-white/5`
+- **Hover state:** `hover:bg-accent/60` (token fill — never `bg-white/N`)
 - **Transition:** `transition-colors duration-150`
 - **Dividers:** `<Separator className="px-4" />` between rows (not on first/last)
 - **Truncation:** `truncate` on text that might be long
@@ -67,7 +67,7 @@ export function EmailList({ emails }) {
 For lists where more items visible is important:
 
 ```tsx
-className = "flex items-center gap-2 px-4 py-2 hover:bg-white/20 dark:hover:bg-white/5";
+className = "flex items-center gap-2 px-4 py-2 hover:bg-accent/60";
 ```
 
 - Min height: 40px
@@ -78,15 +78,13 @@ className = "flex items-center gap-2 px-4 py-2 hover:bg-white/20 dark:hover:bg-w
 
 ```tsx
 className={cn(
-  "flex items-center gap-3 px-4 py-3 transition-colors duration-150 cursor-pointer",
-  isActive
-    ? "bg-white/10 dark:bg-white/5 border-l-2 border-accent"
-    : "hover:bg-white/20 dark:hover:bg-white/5 border-l-2 border-transparent"
+  "flex items-center gap-2 rounded-lg px-3 py-2 transition-colors duration-150 cursor-pointer",
+  isActive ? "bg-accent/70" : "hover:bg-accent/60"
 )}
 ```
 
-- Accent left border for active item
-- Subtle background tint for active state
+- `bg-accent/70` for the active item, `hover:bg-accent/60` for hover (token fills, both modes)
+- For the main sidebar nav, the active state is the console treatment: dark fill + orange left tick (`border-l-2 border-primary`) — see `references/navigation.md`
 - No color shift on hover (just brightness)
 
 ## Table
@@ -134,7 +132,7 @@ import {
 
 - **Only when columns add clarity.** If data fits in a list, use a list.
 - **Max 4 columns.** If you need more, use a detail view.
-- **Hover on rows:** `hover:bg-white/10 dark:hover:bg-white/5`
+- **Hover on rows:** `hover:bg-accent/60`
 - **No vertical dividers.** Only horizontal separators between rows.
 - **Right-align numbers.** Left-align everything else.
 
@@ -188,14 +186,14 @@ import { Button } from "@/components/ui/button";
 - **Touch targets ≥ 48px.** Row height including padding.
 - **Dividers between items.** `<Separator>` with horizontal padding.
 - **Truncate long text.** `truncate` or `line-clamp-*`.
-- **Hover states on every row.** Subtle glass highlight.
+- **Hover states on every row.** Subtle token fill (`hover:bg-accent/60`).
 - **Max 4 table columns.** More than that needs a detail view.
 
 ## Common Mistakes
 
 | Mistake                   | Fix                                   |
 | ------------------------- | ------------------------------------- |
-| No hover state on rows    | Add `hover:bg-white/20`               |
+| No hover state on rows    | Add `hover:bg-accent/60`              |
 | Rows < 48px tall          | Increase padding                      |
 | No dividers between items | Add `<Separator>`                     |
 | 5+ column tables          | Reduce columns, add detail view       |

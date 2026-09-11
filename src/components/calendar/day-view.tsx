@@ -73,7 +73,7 @@ export function DayView({ date, events, onEventClick, onTimeSlotClick }: DayView
                   slotDate.setUTCHours(hour, 0, 0, 0);
                   onTimeSlotClick(slotDate);
                 }}
-                className="border-border/20 flex-1 cursor-pointer border-t p-1 transition-colors hover:bg-white/10"
+                className="border-border/20 hover:bg-accent/60 flex-1 cursor-pointer border-t p-1 transition-colors"
               >
                 {hourEvents.map((evt) => (
                   <CalendarEventLabel key={evt.id} event={evt} onClick={onEventClick} />

@@ -224,7 +224,7 @@ function MachineRow({ machine }: { machine: InfraMachineEntry }) {
   const connectionStr = machine.port !== 22 ? `${host}:${machine.port}` : host;
 
   return (
-    <div className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/10">
+    <div className="group hover:bg-accent/60 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors">
       <Server className="text-muted-foreground h-4 w-4 shrink-0" />
 
       <div className="min-w-0 flex-1">
@@ -263,7 +263,7 @@ function NoteRow({ note }: { note: InfraNoteEntry }) {
   const colorClass = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.general;
 
   return (
-    <div className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/10">
+    <div className="group hover:bg-accent/60 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors">
       <NotebookPen className="text-muted-foreground h-4 w-4 shrink-0" />
 
       <div className="min-w-0 flex-1">

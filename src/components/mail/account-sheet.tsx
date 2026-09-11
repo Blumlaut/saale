@@ -330,7 +330,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
 
               {/* Test result */}
               {testResult && (
-                <div className="border-border/30 flex flex-col gap-2 rounded-2xl border bg-white/5 p-3">
+                <div className="border-border/30 bg-muted/50 flex flex-col gap-2 rounded-2xl border p-3">
                   {testResult.imap && (
                     <div className="flex items-center gap-2 text-sm">
                       {testResult.imap.success ? (
