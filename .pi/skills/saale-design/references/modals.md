@@ -46,7 +46,7 @@ Slides in from the right. The default overlay for forms, details, and multi-step
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 <Sheet open={open} onOpenChange={setOpen}>
-  <SheetContent className="liquid-glass flex w-[440px] flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl sm:max-w-none">
+  <SheetContent className="flex w-[440px] flex-col overflow-hidden p-0 sm:max-w-none">
     <div className="flex h-full flex-col">
       {/* Header */}
       <SheetHeader className="border-border/30 border-b px-6 pb-4 pt-6">
@@ -72,8 +72,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 ### Sheet Rules
 
 - **Side:** Always `side="right"` (default) — never left for content panels
-- **Width:** `w-[440px]` standard, `dark:w-[460px]` for slightly more room in dark mode
-- **Liquid glass:** Use the `liquid-glass` class on `SheetContent` for the Apple-style frosted glass look
+- **Width:** `w-[440px]` standard
+- **Surface:** `liquid-glass` is baked into the base `SheetContent` — flat `bg-popover`, 1px `border-border`, elevation shadow. Never add it manually, and never `border-0`/`bg-transparent`
 - **Structure:** Header (border-b) → scrollable content → footer (border-t) — content scrolls, header/footer stay fixed
 - **Close:** Use the built-in `showCloseButton` (default true) — don't add manual close buttons
 - **Max one sheet at a time.** Never nest sheets or stack a sheet on a dialog.
@@ -81,9 +81,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 ### Sheet for Forms
 
 ```tsx
-<SheetContent className="liquid-glass flex w-[440px] flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl sm:max-w-none">
+<SheetContent className="flex w-[440px] flex-col overflow-hidden p-0 sm:max-w-none">
   <div className="flex h-full flex-col">
-    <SheetHeader className="border-border/30 border-b px-6 pb-4 pt-6">
+    <SheetHeader className="border-b px-6 pb-4 pt-6">
       <SheetTitle className="text-xl font-semibold leading-tight tracking-tight">
         New Event
       </SheetTitle>
@@ -91,13 +91,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 
     <div className="flex-1 overflow-y-auto px-6 py-5">
       <div className="space-y-4">
-        {/* form fields with liquid-glass-inner inputs */}
-        <Input className="liquid-glass-inner h-10 rounded-full px-4 border-0 bg-transparent shadow-none" />
+        {/* plain flat inputs — the base Input is already console-styled */}
+        <Input placeholder="Event title" />
       </div>
     </div>
 
-    <div className="border-border/30 border-t px-6 py-4">
-      <Button className="liquid-glass-accent h-9 w-full rounded-full text-xs font-medium">
+    <div className="border-t px-6 py-4">
+      <Button className="h-9 w-full text-xs font-medium">
         Create Event
       </Button>
     </div>
@@ -108,9 +108,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 ### Sheet for Detail Views
 
 ```tsx
-<SheetContent className="liquid-glass flex w-[440px] flex-col overflow-hidden border-0 bg-transparent p-0 shadow-2xl sm:max-w-none">
+<SheetContent className="flex w-[440px] flex-col overflow-hidden p-0 sm:max-w-none">
   <div className="flex h-full flex-col">
-    <SheetHeader className="border-border/30 border-b px-6 pb-4 pt-6">
+    <SheetHeader className="border-b px-6 pb-4 pt-6">
       <SheetTitle className="text-xl font-semibold leading-tight tracking-tight">
         Event Title
       </SheetTitle>
@@ -118,18 +118,18 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
     </SheetHeader>
 
     <div className="flex-1 overflow-y-auto px-6 py-5">
-      {/* Info blocks in liquid-glass-inner cards */}
-      <div className="liquid-glass-inner rounded-2xl px-4 py-4">
+      {/* Info blocks in flat liquid-glass-inner cards */}
+      <div className="liquid-glass-inner rounded-xl px-4 py-4">
         {/* date, time, etc. */}
       </div>
     </div>
 
-    <div className="border-border/30 border-t px-6 py-4">
+    <div className="border-t px-6 py-4">
       <div className="flex gap-2">
-        <Button className="liquid-glass-destructive h-9 flex-1 rounded-full text-xs font-medium" variant="ghost">
+        <Button className="h-9 flex-1 text-xs font-medium" variant="destructive">
           Delete
         </Button>
-        <Button className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium">
+        <Button className="h-9 flex-1 text-xs font-medium">
           Edit
         </Button>
       </div>
@@ -144,7 +144,7 @@ Use for actions that cannot be undone. Never use for simple "are you sure?" on r
 
 ```tsx
 <AlertDialog open={open} onOpenChange={setOpen}>
-  <AlertDialogContent className="liquid-glass border-0 bg-transparent">
+  <AlertDialogContent>
     <AlertDialogHeader>
       <AlertDialogTitle>Delete this event?</AlertDialogTitle>
       <AlertDialogDescription>
@@ -172,7 +172,7 @@ Centered dialogs are the least preferred overlay. Only use when:
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 <Dialog open={open} onOpenChange={setOpen}>
-  <DialogContent className="liquid-glass border-0 bg-transparent sm:max-w-sm">
+  <DialogContent className="sm:max-w-sm">
     <DialogHeader>
       <DialogTitle>Title</DialogTitle>
     </DialogHeader>
@@ -185,7 +185,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 | Pattern | Use | Why |
 |---------|-----|-----|
-| **Sheet** (default) | Forms, details, settings, editing, multi-step | Preserves context, liquid glass aesthetic |
+| **Sheet** (default) | Forms, details, settings, editing, multi-step | Preserves context, flat console surface |
 | **AlertDialog** | Delete, remove, irreversible actions | Blocks focus, clear danger signal |
 | **Dialog** | Rare — atomic prompts only | Absolute focus, minimal interaction |
 | **Inline expansion** | Reveal more details in a list item | No overlay needed |
@@ -207,8 +207,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 | Dialog for forms | Use a Sheet instead |
 | Dialog for detail views | Use a Sheet instead |
 | Nested overlays | Use inline expansion or a single overlay |
-| No glass styling | Apply `liquid-glass` class |
-| Square buttons in overlays | Use `rounded-full` pills |
+| Removing the overlay border | Keep the 1px `border-border` (baked in) — `border-0` is a glass-era mistake |
+| Pill buttons in overlays | `rounded-lg` — the base Button already does this |
 | Manual close button on sheet | Use built-in `showCloseButton` |
 | Full-screen overlay | Use max-width and let background show |
 | Scrollable header/footer | Keep header/footer fixed, only content scrolls |

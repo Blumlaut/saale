@@ -21,7 +21,7 @@ For categories, labels, non-status tags:
 
 ### Status Badges
 
-Semantic colors as tints on glass backgrounds:
+Semantic colors as tints on flat backgrounds:
 
 ```tsx
 // Completed
@@ -47,9 +47,9 @@ Semantic colors as tints on glass backgrounds:
 
 ## Style Rules
 
-- **Shape:** `rounded-full` (pill-shaped)
+- **Shape:** pill — the base Badge is `rounded-4xl` (fully rounded ends at `h-5`). Status chips in the console language are pills; buttons are the rectangular ones.
 - **Text size:** `text-xs`
-- **Background:** Tinted glass (color at 10% opacity)
+- **Background:** Flat tint (color at 10% opacity) — no blur, no glass
 - **Text color:** Semantic color (not white, not black)
 - **Padding:** Default Badge padding (compact)
 
@@ -87,7 +87,7 @@ Semantic colors as tints on glass backgrounds:
 ### Count Badge
 
 ```tsx
-<Badge variant="secondary" className="rounded-full">
+<Badge variant="secondary">
   3
 </Badge>
 ```
@@ -98,7 +98,7 @@ Semantic colors as tints on glass backgrounds:
 ## Rules
 
 - **Semantic colors only for status.** Categories use neutral variants.
-- **Pill-shaped always.** `rounded-full`, never square.
+- **Pill-shaped always.** `rounded-4xl`/`rounded-full`, never square.
 - **Small text.** `text-xs` on all badges.
 - **Tinted backgrounds.** Color at 10% opacity, never solid.
 - **Max 2-3 badges per row.** More than that clutters the UI.
@@ -109,7 +109,7 @@ Semantic colors as tints on glass backgrounds:
 | Mistake                    | Fix                                    |
 | -------------------------- | -------------------------------------- |
 | Solid color background     | Use 10% opacity tint                   |
-| Square badges              | Use `rounded-full`                     |
+| Square badges              | Use the base pill shape (`rounded-4xl`) |
 | Large badge text           | Use `text-xs`                          |
 | Rainbow status colors      | Use muted semantic palette             |
 | More than 3 badges per row | Prioritize, move extras to detail view |

@@ -30,17 +30,18 @@ className = "animate-in fade-in slide-in-from-bottom-2 duration-200";
 
 ### Hover States
 
-Subtle brightness or background shift:
+Subtle token-fill shift (never `bg-white/N` overlays):
 
 ```tsx
-className = "hover:bg-white/20 dark:hover:bg-white/5 transition-colors duration-150";
+className = "hover:bg-accent/60 transition-colors duration-150";
 ```
 
 ### Focus Rings
 
+Orange console focus ring — `ring-ring` (which is `--primary` orange):
+
 ```tsx
-className =
-  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all duration-150";
+className = "focus-visible:ring-3 focus-visible:ring-ring/50 transition-all duration-150";
 ```
 
 ### Dialog / Modal
@@ -57,10 +58,10 @@ className = "animate-in fade-in duration-150";
 
 ```tsx
 // Hover highlight
-className = "hover:bg-white/20 dark:hover:bg-white/5 transition-colors duration-150";
+className = "hover:bg-accent/60 transition-colors duration-150";
 
 // Selected state
-className = "bg-white/10 dark:bg-white/5 transition-colors duration-150";
+className = "bg-accent/70 transition-colors duration-150";
 ```
 
 ### Loading States

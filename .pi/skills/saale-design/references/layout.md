@@ -2,13 +2,15 @@
 
 ## Dashboard Shell
 
-The dashboard uses a **floating panel layout**, not a sidebar + content split that stretches edge-to-edge.
+The dashboard is a **fixed-height app shell** — `h-dvh overflow-hidden` on the root. The body/viewport **never scrolls**; all scrolling is internal to panels. Pages are built from the shared `Page` components (`src/components/layout/page.tsx`): `Page`, `PageHeader`, `PageScroll`, `PageTabStrip`.
+
+The flex containment chain: `h-full` (page) → `flex flex-col` → header (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scroll area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
 
 ### Structure
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Page Background (gradient)                 │
+│  Page Background (solid token)                 │
 │  ┌─────────────────────────────────────┐    │
 │  │  Floating Nav / Sidebar             │    │  ← margin from edge
 │  │                                     │    │
@@ -99,13 +101,13 @@ All spacing follows the 4px rhythm (Tailwind default scale):
 
 ## Responsive Behavior
 
-| Element       | Desktop         | Tablet              | Mobile                |
-| ------------- | --------------- | ------------------- | --------------------- |
-| Panel layout  | 2-col if needed | Single column       | Single column         |
-| Sidebar       | Visible         | Collapsed / overlay | Overlay               |
-| Page margins  | 24px            | 20px                | 16px                  |
-| Panel padding | 24px            | 20px                | 16px                  |
-| Font sizes    | Standard        | Standard            | Standard (no scaling) |
+| Element       | Desktop (≥768px) | Mobile (<768px)      |
+| ------------- | ---------------- | -------------------- |
+| Panel layout  | 2-col if needed  | Single column        |
+| Navigation    | Floating sidebar | Flat bottom bar      |
+| Page margins  | 20–24px          | 16px + bottom nav    |
+| Panel padding | 24px             | 16px                 |
+| Font sizes    | Scaled (clamp)   | Scaled (clamp)       |
 
 ### Responsive Pattern
 
@@ -125,6 +127,8 @@ All spacing follows the 4px rhythm (Tailwind default scale):
 
 | Mistake                    | Fix                                       |
 | -------------------------- | ----------------------------------------- |
+| `h-dvh`/`h-screen` in a page | The shell owns viewport height — use `h-full` |
+| Page-level `overflow-y-auto` | Use `<PageScroll>` — the only scroll region |
 | Edge-to-edge panels        | Add page margins (`p-6`)                  |
 | 3+ column grid             | Reduce to 1 or 2 columns                  |
 | `w-full` on content panels | Use `max-w-3xl` or similar                |
