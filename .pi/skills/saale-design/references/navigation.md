@@ -2,171 +2,125 @@
 
 ## Dashboard Navigation
 
-The dashboard uses a **floating glass sidebar**, not an edge-stretched nav.
+The dashboard uses a **floating console sidebar** — a `GlassPanel` (flat, bordered) with an orange-tick active state and a console footer.
 
-### Structure
+### Structure (from `src/components/layout/dashboard-nav.tsx`)
+
+```
+nav.sidebar-nav (sticky top-6 h-fit w-56 shrink-0)
+└─ GlassPanel (shadow-md)
+   └─ GlassPanelContent p-3
+      ├─ Brand row: ChevronRight (orange) + "Saale" + NotificationBell
+      ├─ Separator
+      ├─ Search button (ghost, w-full, ⌘K kbd) → portal dropdown (liquid-glass, rounded-xl)
+      └─ Nav items (space-y-1): Chat, Calendar, Tasks, Jobs, Infrastructure, Settings (+ Admin for admins)
+└─ Console footer (mt-4 border-t px-3 pt-3)
+   ├─ Row: console-label "Sale v0.1.0" (version in font-mono normal-case) + theme toggle icon button
+   └─ Orange tick: div.bg-primary.h-0.5.w-8.rounded-full
+```
+
+### Nav Item States
 
 ```tsx
-import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-
-const navItems = [
-  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
-  { href: "/dashboard/mail", label: "Mail", icon: Mail },
-  { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
-];
-
-export function DashboardNav() {
-  const pathname = usePathname();
-
-  return (
-    <nav className="sticky top-6 h-fit w-56">
-      <GlassPanel className="shadow-md">
-        <GlassPanelContent className="p-3">
-          {/* Logo / Brand */}
-          <Link href="/dashboard" className="mb-2 flex items-center gap-2 px-3 py-2">
-            <ChevronRight className="text-primary h-5 w-5" />
-            <span className="text-lg font-bold tracking-tight">Saale</span>
-          </Link>
-
-          <Separator className="my-2" />
-
-          {/* Nav Items */}
-          <div className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = pathname.startsWith(item.href);
-              const Icon = item.icon;
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                    isActive
-                      ? "bg-white/20 font-medium dark:bg-white/5"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/10",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </GlassPanelContent>
-      </GlassPanel>
-
-      {/* User section (outside panel) */}
-      <div className="mt-4 px-3">
-        <p className="text-muted-foreground text-xs">v0.1.0</p>
-      </div>
-    </nav>
+/* Console nav item — active state gets an accent fill + orange edge bar */
+function navItemClass(active: boolean) {
+  return cn(
+    "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+    active
+      ? "bg-accent font-medium text-foreground before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary"
+      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
   );
 }
 ```
 
-### Nav Item Rules
+- **Active:** `bg-accent` fill + `font-medium` + 3px orange edge bar (`before:` pseudo-element, `bg-primary`, left edge, 20px tall)
+- **Inactive:** `text-muted-foreground`, hover `bg-accent/60`
+- **Never** `bg-white/N` for either state
 
-- **Width:** 224px (`w-56`)
-- **Position:** `sticky top-6` — floats, doesn't stretch
-- **Active state:** Subtle glass highlight + `font-medium`
-- **Inactive state:** `text-muted-foreground`, hover shows foreground
-- **Icon size:** `h-4 w-4` (16px)
-- **Icon + text gap:** `gap-2` (8px)
-- **Corner radius:** `rounded-lg` on items, `rounded-2xl` on panel
+### Console Footer
+
+The version block is the canonical console micro-label:
+
+```tsx
+<div className="border-border/60 mt-4 border-t px-3 pt-3">
+  <div className="flex items-center justify-between">
+    <p className="console-label">
+      Sale{" "}
+      <span className="text-muted-foreground/70 font-mono tracking-normal normal-case">v0.1.0</span>
+    </p>
+    <Button variant="ghost" size="icon" className="size-7 rounded-md" onClick={/* theme toggle */} aria-label="Toggle theme">
+      <Sun className="h-3.5 w-3.5 dark:hidden" />
+      <Moon className="hidden h-3.5 w-3.5 dark:block" />
+    </Button>
+  </div>
+  <div className="bg-primary mt-2 h-0.5 w-8 rounded-full" />
+</div>
+```
+
+Reproduce this pattern for other "console identity" moments: `console-label` + short orange tick line.
+
+### Sidebar Rules
+
+- **Width:** 224px (`w-56`), `sticky top-6 h-fit` — floats, doesn't stretch
+- **Icons:** `h-4 w-4`, `gap-2` to label
+- **Items:** sentence case, `text-sm`
+- **Search:** ghost button with `⌘K` kbd; results dropdown portals out of the panel (overflow-hidden) as a `liquid-glass rounded-xl shadow-2xl` surface
+- **Admin item:** only rendered for admin users, same styling
+
+## Mobile Navigation
+
+On < 768px the sidebar is replaced by a **flat fixed bottom bar** (`src/components/layout/mobile-nav.tsx`) — not a sheet:
+
+```tsx
+<nav className="border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
+  <div className="flex h-14 items-center px-1">
+    {navItems.map((item) => (
+      <Link className="flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5">
+        <Icon className={cn("h-5 w-5", isActive ? "text-primary stroke-[2.5px]" : "stroke-[1.5px]")} />
+        <span className="max-w-full truncate text-[10px] font-medium">{item.label}</span>
+      </Link>
+    ))}
+  </div>
+</nav>
+```
+
+- **Flat `bg-card` + `border-t`** — no blur, no frosted glass
+- **6 equal-width items** (`flex-1 min-w-0`) that fit 320px screens
+- **Active:** orange icon (`text-primary` + heavier stroke)
+- **Labels:** 10px, truncated as a safety net
+- Pages must leave bottom padding for the bar (`pb-14 md:pb-0` pattern / the app shell handles it)
 
 ## Breadcrumbs
 
 For nested views within a section:
 
 ```tsx
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-
 <Breadcrumb>
   <BreadcrumbList>
-    <BreadcrumbItem>
-      <BreadcrumbLink href="/dashboard/mail">Mail</BreadcrumbLink>
-    </BreadcrumbItem>
+    <BreadcrumbItem><BreadcrumbLink href="/dashboard/mail">Mail</BreadcrumbLink></BreadcrumbItem>
     <BreadcrumbSeparator />
-    <BreadcrumbItem>
-      <BreadcrumbPage>Inbox</BreadcrumbPage>
-    </BreadcrumbItem>
+    <BreadcrumbItem><BreadcrumbPage>Inbox</BreadcrumbPage></BreadcrumbItem>
   </BreadcrumbList>
-</Breadcrumb>;
+</Breadcrumb>
 ```
 
 - Place above the page heading, inside the content area
-- Use sentence case: "Inbox" not "INBOX"
-
-## Mobile Navigation
-
-On screens < 768px, the sidebar becomes a sheet:
-
-```tsx
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
-
-<Sheet>
-  <SheetTrigger asChild>
-    <Button variant="ghost" size="icon" className="lg:hidden">
-      <Menu className="h-5 w-5" />
-    </Button>
-  </SheetTrigger>
-  <SheetContent side="left" className="w-64 p-0">
-    {/* Same nav content as desktop sidebar */}
-  </SheetContent>
-</Sheet>;
-```
-
-## Top Bar (Optional)
-
-Some views need a top bar for search or actions:
-
-```tsx
-<div className="mb-6 flex items-center justify-between">
-  <div>
-    <h1 className="text-2xl leading-tight font-semibold tracking-tight">Inbox</h1>
-    <p className="text-muted-foreground mt-1 text-sm">3 unread messages</p>
-  </div>
-  <div className="flex items-center gap-2">
-    <Input placeholder="Search..." className="w-64" />
-    <ThemeToggle />
-    <Button>
-      <Plus className="mr-2 h-4 w-4" /> Compose
-    </Button>
-  </div>
-</div>
-```
+- Sentence case: "Inbox" not "INBOX"
 
 ## Rules
 
-- **Nav is a floating panel.** Not edge-stretched, has margin from viewport.
-- **Active item is visually clear.** Background tint + font weight change.
-- **Icons always have labels.** No icon-only navigation.
-- **Mobile uses a sheet.** Not a bottom nav bar.
-- **Max 6 nav items.** If you need more, use groups or a dropdown.
-- **Sticky positioning.** Nav stays visible on scroll (`sticky top-6`).
+- **Nav is a floating panel** with margin from the viewport edge (sidebar) — the only exception is the mobile bottom bar.
+- **Active state = accent fill + orange edge bar.** Never a `bg-white/N` tint.
+- **Icons always have labels.** No icon-only navigation on desktop.
+- **Mobile uses the bottom bar.** Not a sheet, not a hamburger.
+- **Max 6 nav items.** More than that needs groups or a dropdown.
 
 ## Common Mistakes
 
-| Mistake                   | Fix                                |
-| ------------------------- | ---------------------------------- |
-| Edge-to-edge sidebar      | Floating panel with margin         |
-| Icon-only nav items       | Always include text labels         |
-| No active state           | Add background tint + font-medium  |
-| Bottom nav on mobile      | Use a sheet (slide-from-left)      |
-| Nav stretches full height | `h-fit` with sticky positioning    |
-| No mobile hamburger       | Add Sheet trigger on small screens |
+| Mistake | Fix |
+|---------|-----|
+| Frosted-glass mobile nav | Flat `bg-card border-t` bottom bar |
+| Active item without orange bar | `before:` pseudo-element tick (3px, `bg-primary`) |
+| `bg-white/N` nav fills | `bg-accent` / `hover:bg-accent/60` |
+| Icon-only desktop nav | Always include text labels |
+| Version text in body font | `console-label` + `font-mono` version, orange tick below |
