@@ -157,7 +157,9 @@ function GenericToolCall({ toolCall }: { toolCall: ToolCallData }) {
                 <pre
                   className={cn(
                     "overflow-x-auto rounded-lg p-2 text-xs",
-                    toolCall.error ? "bg-red-500/10 text-red-600" : "bg-accent/70",
+                    toolCall.error
+                      ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                      : "bg-accent/70",
                   )}
                 >
                   {toolCall.result.slice(0, 1000)}
