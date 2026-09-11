@@ -424,9 +424,13 @@ function InfraExecCard({ meta, toolCall }: { meta: InfraExecMeta; toolCall: Tool
         </div>
 
         {(stdoutPreview || stderrPreview) && (
-          <div className="mt-1.5 rounded-lg bg-black/20 px-2.5 py-1.5 font-mono text-[11px] leading-relaxed">
-            {stderrPreview && <div className="text-red-400/80">{stderrPreview}</div>}
-            {stdoutPreview && <div className="text-green-400/80">{stdoutPreview}</div>}
+          <div className="bg-muted mt-1.5 rounded-lg px-2.5 py-1.5 font-mono text-[11px] leading-relaxed dark:bg-white/5">
+            {stderrPreview && (
+              <div className="text-red-700 dark:text-red-400/80">{stderrPreview}</div>
+            )}
+            {stdoutPreview && (
+              <div className="text-green-700 dark:text-green-400/80">{stdoutPreview}</div>
+            )}
           </div>
         )}
       </div>
