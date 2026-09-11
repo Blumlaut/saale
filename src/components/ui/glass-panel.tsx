@@ -42,7 +42,7 @@ function GlassPanelFooter({ className, children, ...props }: React.ComponentProp
   return (
     <div
       className={cn(
-        "border-border/50 flex items-center justify-between border-t bg-white/30 px-4 py-3 md:px-6 dark:bg-white/5",
+        "border-border/50 bg-muted/50 flex items-center justify-between border-t px-4 py-3 md:px-6",
         className,
       )}
       {...props}

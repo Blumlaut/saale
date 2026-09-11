@@ -81,7 +81,7 @@ export function WeekView({ date, events, onEventClick, onTimeSlotClick }: WeekVi
               return (
                 <div
                   key={dayIndex}
-                  className="border-border/20 cursor-pointer border-t p-0.5 transition-colors hover:bg-white/10"
+                  className="border-border/20 hover:bg-accent/60 cursor-pointer border-t p-0.5 transition-colors"
                   onClick={() => {
                     const slotDate = new Date(d);
                     slotDate.setUTCHours(hour, 0, 0, 0);

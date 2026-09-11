@@ -18,7 +18,7 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/80 backdrop-blur-xl md:hidden dark:bg-black/60">
+    <nav className="border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
       {/* flex-1 + min-w-0 keeps 6 items on 320px screens; truncate is a safety net */}
       <div className="flex h-14 items-center px-1">
         {navItems.map((item) => {
@@ -34,7 +34,12 @@ export function MobileNav() {
                 isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
+              <Icon
+                className={cn(
+                  "h-5 w-5",
+                  isActive ? "text-primary stroke-[2.5px]" : "stroke-[1.5px]",
+                )}
+              />
               <span
                 className={cn(
                   "max-w-full truncate text-[10px] font-medium",

@@ -28,7 +28,7 @@ export function AdminNav() {
               <ChevronRight className="text-primary h-5 w-5" />
               <span className="text-lg font-bold tracking-tight">Saale</span>
             </Link>
-            <span className="text-muted-foreground rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium dark:bg-white/5">
+            <span className="text-muted-foreground bg-muted rounded-full px-2 py-0.5 text-[10px] font-medium dark:bg-white/5">
               Admin
             </span>
           </div>
@@ -48,8 +48,8 @@ export function AdminNav() {
                   className={cn(
                     "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
                     isActive
-                      ? "bg-white/20 font-medium dark:bg-white/5"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                      ? "bg-accent font-medium dark:bg-white/5"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
                   )}
                 >
                   <Icon className="h-4 w-4" />

@@ -65,7 +65,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
           <div className="md:hidden">
             <Sheet>
               <SheetTrigger>
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5">
+                <span className="hover:bg-accent/60 inline-flex h-8 w-8 items-center justify-center rounded transition-colors">
                   <PanelLeft className="h-4 w-4" />
                 </span>
               </SheetTrigger>
@@ -88,7 +88,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
         </div>
         <div className="flex items-center gap-2">
           {/* Temporary toggle */}
-          <div className="flex items-center gap-1.5 rounded-full bg-white/5 px-2 py-1 transition-colors hover:bg-white/10">
+          <div className="bg-muted/50 hover:bg-accent/60 flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors">
             <Ghost
               className={
                 "h-3.5 w-3.5 transition-colors " +

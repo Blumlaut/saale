@@ -92,7 +92,7 @@ export function EmailDetailPanel({
             <Popover open={addingTag} onOpenChange={onToggleAddingTag}>
               <PopoverTrigger>
                 <span
-                  className="inline-flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+                  className="hover:bg-accent/60 inline-flex h-5 w-5 items-center justify-center rounded transition-colors"
                   title="Add tag"
                 >
                   <Plus className="h-3 w-3" />

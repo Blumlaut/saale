@@ -195,7 +195,7 @@ export function InputBar({
                   </Button>
                 </>
               ) : (
-                <div className="border-border/30 flex max-w-[220px] items-center gap-2 rounded-lg border bg-white/5 px-2.5 py-1.5 hover:bg-white/10">
+                <div className="border-border/30 bg-muted/50 hover:bg-accent/60 flex max-w-[220px] items-center gap-2 rounded-lg border px-2.5 py-1.5">
                   {pending.file.type.startsWith("text/") ? (
                     <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
                   ) : (
@@ -233,7 +233,7 @@ export function InputBar({
             {/* Use div instead of Button to avoid nested <button> inside DropdownMenuTrigger */}
             <DropdownMenuTrigger>
               <div
-                className="hover:text-foreground aria-expanded:text-foreground inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-white/20 aria-expanded:bg-white/20 dark:hover:bg-white/5"
+                className="hover:text-foreground aria-expanded:text-foreground hover:bg-muted aria-expanded:bg-muted inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                 aria-label="Toggle tools"
               >
                 <Wrench className="h-4 w-4" />

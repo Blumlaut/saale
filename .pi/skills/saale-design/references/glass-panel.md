@@ -4,7 +4,7 @@
 
 The `GlassPanel` is the primary content container in Saale. Every section of the dashboard lives inside a glass panel.
 
-**All panels use liquid glass by default.** The `GlassPanel` component applies both `glass-panel` and `liquid-glass` classes automatically. You should never need to add `liquid-glass` manually to a `GlassPanel`.
+**All panels use the flat console surface by default.** The `GlassPanel` component applies both `glass-panel` and `liquid-glass` classes automatically (legacy names — they render as a flat, opaque, border-defined surface, not glass). You should never need to add `liquid-glass` manually to a `GlassPanel`.
 
 ## Component Signature
 
@@ -12,7 +12,7 @@ The `GlassPanel` is the primary content container in Saale. Every section of the
 import { GlassPanel, GlassPanelHeader, GlassPanelContent, GlassPanelFooter } from "@/components/ui/glass-panel";
 ```
 
-The base `GlassPanel` applies: `glass-panel liquid-glass` — translucent, frosted glass surface with specular edge glow.
+The base `GlassPanel` applies: `glass-panel liquid-glass` — solid `bg-card`, 1px `border-border`, `rounded-2xl`. No blur, no transparency.
 
 ## Usage
 
@@ -82,9 +82,9 @@ import { Button } from "@/components/ui/button";
 
 ## Overlay Surfaces (Dialogs, Sheets, Popovers, Dropdowns)
 
-All overlay surfaces use `liquid-glass` by default:
+All overlay surfaces use the flat `liquid-glass` surface (solid `bg-popover` + 1px border + elevation shadow) by default:
 
-| Component         | Glass Applied |
+| Component         | Surface Applied |
 | ----------------- | ------------- |
 | `DialogContent`   | ✅ `liquid-glass` |
 | `AlertDialogContent` | ✅ `liquid-glass` |
@@ -117,7 +117,7 @@ All overlay surfaces use `liquid-glass` by default:
 
 ## Inner Elements
 
-For nested content areas inside panels, use `liquid-glass-inner`:
+For nested content areas inside panels, use `liquid-glass-inner` (renders as a flat muted inset with 1px border):
 
 ```tsx
 <div className="liquid-glass-inner rounded-2xl border-0 p-4">
@@ -125,11 +125,11 @@ For nested content areas inside panels, use `liquid-glass-inner`:
 </div>
 ```
 
-For buttons, badges, and toggles, use `liquid-glass-pill` or `liquid-glass-accent`:
+For buttons, badges, and toggles, use `liquid-glass-pill` or `liquid-glass-accent` (flat fills, rectangular `rounded-lg` buttons):
 
 ```tsx
-<Button className="liquid-glass-pill rounded-full">Pill Button</Button>
-<Button className="liquid-glass-accent rounded-full">Accent Button</Button>
+<Button className="liquid-glass-pill">Secondary Button</Button>
+<Button className="liquid-glass-accent">Accent Button</Button>
 ```
 
 ## Rules

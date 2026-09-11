@@ -163,7 +163,7 @@ function EventRow({ event }: { event: CalendarEvent }) {
   return (
     <div
       className={cn(
-        "group flex items-start gap-2.5 rounded-lg border-l-2 px-2.5 py-2 transition-colors hover:bg-white/10",
+        "group hover:bg-accent/60 flex items-start gap-2.5 rounded-lg border-l-2 px-2.5 py-2 transition-colors",
         event.calendarColor ? "" : "border-l-blue-500",
       )}
       style={event.calendarColor ? { borderLeftColor: event.calendarColor } : undefined}

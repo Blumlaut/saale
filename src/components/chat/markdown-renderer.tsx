@@ -130,7 +130,7 @@ const COMPONENTS = {
     return (
       <pre
         className={cn(
-          "overflow-x-auto rounded-xl bg-[#1e1e2e]/80 p-4 font-mono text-xs leading-relaxed text-gray-200 backdrop-blur-sm",
+          "overflow-x-auto rounded-xl bg-[#1e1e2e] p-4 font-mono text-xs leading-relaxed text-gray-200",
           className,
         )}
         {...rest}
@@ -167,7 +167,7 @@ const COMPONENTS = {
 
   /* ---- Tables ---- */
   table: ({ className, children, ...props }: React.HTMLAttributes<HTMLTableElement>) => (
-    <div className="border-border/40 my-4 overflow-x-auto rounded-xl border bg-white/10 dark:bg-white/[0.02]">
+    <div className="border-border/40 bg-muted my-4 overflow-x-auto rounded-xl border dark:bg-white/[0.02]">
       <table className={cn("w-full border-collapse text-left text-sm", className)} {...props}>
         {children}
       </table>
@@ -194,7 +194,7 @@ const COMPONENTS = {
   th: ({ className, children, ...props }: React.HTMLAttributes<HTMLTableHeaderCellElement>) => (
     <th
       className={cn(
-        "border-border/30 text-foreground border-b bg-white/10 px-4 py-2.5 font-medium backdrop-blur-sm dark:bg-white/[0.04]",
+        "border-border/30 text-foreground bg-card border-b px-4 py-2.5 font-medium",
         className,
       )}
       {...props}

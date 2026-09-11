@@ -195,7 +195,7 @@ function MailRow({ email }: { email: MailEntry }) {
   const folder = truncate(email.folder, MAX_FOLDER);
 
   return (
-    <div className="group flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/10">
+    <div className="group hover:bg-accent/60 flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors">
       <MailAvatar from={email.from} className="h-7 w-7 text-[11px]" />
 
       <div className="min-w-0 flex-1">

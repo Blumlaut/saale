@@ -21,7 +21,7 @@ export function CalendarsExpandable({ calendars, isExpanded, onToggle }: Calenda
   return (
     <div className="border-border/50 border-t">
       <button
-        className="flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-white/10"
+        className="hover:bg-accent/60 flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors"
         onClick={onToggle}
       >
         {isExpanded ? (

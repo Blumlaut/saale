@@ -105,7 +105,7 @@ export function ModelSidebar({
                 "w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm",
                 activePurpose === "__default__"
                   ? "bg-primary/10 text-foreground"
-                  : "hover:bg-white/20 dark:hover:bg-white/5",
+                  : "hover:bg-accent/60",
               )}
               onClick={() => onPurposeChange("__default__")}
             >
@@ -146,9 +146,7 @@ export function ModelSidebar({
                     variant="ghost"
                     className={cn(
                       "w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm",
-                      isActive
-                        ? "bg-primary/10 text-foreground"
-                        : "hover:bg-white/20 dark:hover:bg-white/5",
+                      isActive ? "bg-primary/10 text-foreground" : "hover:bg-accent/60",
                     )}
                     onClick={() => onPurposeChange(purpose.id)}
                   >
@@ -242,9 +240,7 @@ export function ModelSidebar({
                       variant="ghost"
                       className={cn(
                         "w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-sm",
-                        isActive
-                          ? "bg-primary/10 text-foreground"
-                          : "hover:bg-white/20 dark:hover:bg-white/5",
+                        isActive ? "bg-primary/10 text-foreground" : "hover:bg-accent/60",
                       )}
                       onClick={() => {
                         if (settings) {

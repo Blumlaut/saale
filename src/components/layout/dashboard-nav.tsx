@@ -44,6 +44,17 @@ const navItems = [
 
 const adminNavItem = { href: "/admin/models", label: "Admin", icon: Shield };
 
+/* Console nav item — active state gets an accent fill + orange edge bar */
+function navItemClass(active: boolean, extra = "") {
+  return cn(
+    "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+    active
+      ? "bg-accent font-medium text-foreground before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary"
+      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+    extra,
+  );
+}
+
 interface SearchResult {
   type: "chat" | "email";
   id: string;
@@ -196,7 +207,7 @@ export function DashboardNav() {
               >
                 <Search className="h-3.5 w-3.5" />
                 <span className="flex-1 text-left text-xs">Search...</span>
-                <kbd className="text-muted-foreground/50 bg-muted/50 rounded border px-1.5 py-0.5 text-[10px]">
+                <kbd className="bg-muted/50 text-muted-foreground/50 rounded border px-1.5 py-0.5 font-mono text-[10px]">
                   ⌘K
                 </kbd>
               </Button>
@@ -206,7 +217,7 @@ export function DashboardNav() {
                 searchPosition &&
                 createPortal(
                   <div
-                    className="liquid-glass fixed z-50 mt-1 w-72 rounded-xl border-0 shadow-2xl"
+                    className="liquid-glass fixed z-50 mt-1 w-72 rounded-xl shadow-2xl"
                     style={{
                       top: searchPosition.top,
                       left: searchPosition.left,
@@ -252,12 +263,7 @@ export function DashboardNav() {
                           >
                             <Badge
                               variant="secondary"
-                              className={cn(
-                                "shrink-0 rounded-full px-1.5 py-0 text-[10px]",
-                                result.type === "chat"
-                                  ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                                  : "bg-green-500/10 text-green-600 dark:text-green-400",
-                              )}
+                              className="shrink-0 rounded px-1.5 py-0 font-mono text-[10px] tracking-wide uppercase"
                             >
                               {result.type}
                             </Badge>
@@ -287,16 +293,7 @@ export function DashboardNav() {
                 const Icon = item.icon;
 
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                      isActive
-                        ? "bg-white/20 font-medium dark:bg-white/5"
-                        : "text-muted-foreground hover:text-foreground hover:bg-white/10",
-                    )}
-                  >
+                  <Link key={item.href} href={item.href} className={navItemClass(isActive)}>
                     <Icon className="h-4 w-4" />
                     {item.label}
                   </Link>
@@ -313,12 +310,7 @@ export function DashboardNav() {
                     router.push("/dashboard/mail");
                   }
                 }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                  isMailActive
-                    ? "bg-white/20 font-medium dark:bg-white/5"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/10",
-                )}
+                className={navItemClass(isMailActive, "w-full")}
               >
                 <Mail className="h-4 w-4" />
                 Mail
@@ -342,8 +334,8 @@ export function DashboardNav() {
                     className={cn(
                       "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
                       pathname === "/dashboard/mail"
-                        ? "bg-white/20 font-medium dark:bg-white/5"
-                        : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                        ? "bg-accent text-foreground font-medium"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                     )}
                   >
                     All Mail
@@ -367,8 +359,8 @@ export function DashboardNav() {
                             pathname === "/dashboard/mail" &&
                               new URLSearchParams(window.location.search).get("accountId") ===
                                 acc.id
-                              ? "bg-white/20 font-medium dark:bg-white/5"
-                              : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                              ? "bg-accent text-foreground font-medium"
+                              : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                           )}
                         >
                           <div className="bg-muted/50 flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold">
@@ -395,16 +387,7 @@ export function DashboardNav() {
                 const Icon = item.icon;
 
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                      isActive
-                        ? "bg-white/20 font-medium dark:bg-white/5"
-                        : "text-muted-foreground hover:text-foreground hover:bg-white/10",
-                    )}
-                  >
+                  <Link key={item.href} href={item.href} className={navItemClass(isActive)}>
                     <Icon className="h-4 w-4" />
                     {item.label}
                   </Link>
@@ -415,12 +398,7 @@ export function DashboardNav() {
             {isAdmin && (
               <Link
                 href={adminNavItem.href}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                  pathname.startsWith("/admin")
-                    ? "bg-white/20 font-medium dark:bg-white/5"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/10",
-                )}
+                className={navItemClass(pathname.startsWith("/admin"))}
               >
                 <adminNavItem.icon className="h-4 w-4" />
                 {adminNavItem.label}
@@ -430,19 +408,27 @@ export function DashboardNav() {
         </GlassPanelContent>
       </GlassPanel>
 
-      {/* Theme toggle + version */}
-      <div className="mt-4 flex items-center justify-between px-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 rounded-lg"
-          onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-          aria-label="Toggle theme"
-        >
-          <Sun className="h-4 w-4 dark:hidden" />
-          <Moon className="hidden h-4 w-4 dark:block" />
-        </Button>
-        <p className="text-muted-foreground text-xs">v0.1.0</p>
+      {/* Console footer — version + theme toggle */}
+      <div className="border-border/60 mt-4 border-t px-3 pt-3">
+        <div className="flex items-center justify-between">
+          <p className="console-label">
+            Sale{" "}
+            <span className="text-muted-foreground/70 font-mono tracking-normal normal-case">
+              v0.1.0
+            </span>
+          </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-md"
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            aria-label="Toggle theme"
+          >
+            <Sun className="h-3.5 w-3.5 dark:hidden" />
+            <Moon className="hidden h-3.5 w-3.5 dark:block" />
+          </Button>
+        </div>
+        <div className="bg-primary mt-2 h-0.5 w-8 rounded-full" />
       </div>
     </nav>
   );

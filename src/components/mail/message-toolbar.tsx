@@ -116,7 +116,7 @@ export function MessageToolbar({
       <DropdownMenu>
         <DropdownMenuTrigger>
           <span
-            className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors hover:bg-white/10 dark:hover:bg-white/5"
+            className="hover:bg-accent/60 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors"
             title="More actions"
           >
             <MoreHorizontal className="h-3.5 w-3.5" />

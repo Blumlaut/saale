@@ -136,7 +136,7 @@ export function EmailListPanel({
                     setShowAccountMenu(false);
                     router.push("/dashboard/mail");
                   }}
-                  className={cn(!activeAccountId && "bg-white/10 dark:bg-white/5")}
+                  className={cn(!activeAccountId && "bg-accent/70")}
                 >
                   <Mail className="mr-2 h-4 w-4" />
                   All Mail
@@ -148,7 +148,7 @@ export function EmailListPanel({
                       setShowAccountMenu(false);
                       router.push(`/dashboard/mail?accountId=${acc.id}`);
                     }}
-                    className={cn(activeAccountId === acc.id && "bg-white/10 dark:bg-white/5")}
+                    className={cn(activeAccountId === acc.id && "bg-accent/70")}
                   >
                     <Mail className="mr-2 h-4 w-4" />
                     <span className="truncate">{acc.email}</span>
@@ -256,7 +256,7 @@ export function EmailListPanel({
           {tagFilter && (
             <button
               onClick={() => onTagFilterChange(null)}
-              className="shrink-0 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium transition-colors dark:bg-white/5"
+              className="bg-accent shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors dark:bg-white/5"
             >
               <X className="mr-0.5 inline h-3 w-3" />
               {tagFilter}
@@ -287,14 +287,14 @@ export function EmailListPanel({
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="animate-pulse px-4 py-3">
                 <div className="flex items-start gap-3">
-                  <div className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full bg-white/10" />
+                  <div className="bg-muted mt-1 h-3.5 w-3.5 shrink-0 rounded-full" />
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center justify-between">
-                      <div className="h-3 w-24 rounded bg-white/10" />
-                      <div className="h-3 w-12 rounded bg-white/10" />
+                      <div className="bg-muted h-3 w-24 rounded" />
+                      <div className="bg-muted h-3 w-12 rounded" />
                     </div>
-                    <div className="h-3 w-3/4 rounded bg-white/10" />
-                    <div className="h-2.5 w-1/2 rounded bg-white/5" />
+                    <div className="bg-muted h-3 w-3/4 rounded" />
+                    <div className="bg-muted/50 h-2.5 w-1/2 rounded" />
                   </div>
                 </div>
               </div>
@@ -320,8 +320,8 @@ export function EmailListPanel({
                 <div key={msg.id}>
                   <button
                     className={cn(
-                      "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/10 dark:hover:bg-white/5",
-                      selectedId === msg.id && "bg-white/15 dark:bg-white/5",
+                      "hover:bg-accent/60 flex w-full items-start gap-3 px-4 py-3 text-left transition-colors",
+                      selectedId === msg.id && "bg-accent dark:bg-white/5",
                     )}
                     onClick={() => onSelectMessage(msg)}
                   >

@@ -441,7 +441,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
                 return (
                   <div
                     key={category.key}
-                    className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-white/5"
+                    className="hover:bg-muted/50 flex items-center gap-3 rounded-lg border p-3 transition-colors"
                   >
                     <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
                     <div className="min-w-0 flex-1">

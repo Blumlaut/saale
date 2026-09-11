@@ -97,9 +97,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
                 key={session.id}
                 className={cn(
                   "group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                  session.id === activeSessionId
-                    ? "bg-white/10 dark:bg-white/5"
-                    : "hover:bg-white/10 dark:hover:bg-white/5",
+                  session.id === activeSessionId ? "bg-accent/70" : "hover:bg-accent/60",
                 )}
               >
                 <button

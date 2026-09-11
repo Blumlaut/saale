@@ -63,7 +63,7 @@ export function EmailComposeForm({
   onDiscard,
   bodyRef,
   bodyHeader,
-  bodyClassName = "min-h-[200px] resize-y rounded-2xl border-0 bg-white/5 shadow-none",
+  bodyClassName = "min-h-[200px] resize-y rounded-2xl border-0 bg-muted/50 shadow-none",
   headerContent = (
     <>
       <Send className="h-4 w-4" />

@@ -13,7 +13,7 @@ export function ChatEmptyState({ temporaryMode }: { temporaryMode: boolean }) {
     <GlassPanel className="flex flex-1 flex-col border-0">
       <GlassPanelContent className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/30 dark:bg-white/5">
+          <div className="bg-accent mb-4 flex h-16 w-16 items-center justify-center rounded-2xl">
             <MessageSquarePlus className="text-muted-foreground h-8 w-8" />
           </div>
           <h2 className="text-base font-medium">Start a conversation</h2>
