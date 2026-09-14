@@ -19,6 +19,7 @@ vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 
 vi.mock("@/lib/redis", () => ({
   isSessionActive: mockIsSessionActive,
+  isSendQueueHeld: vi.fn().mockResolvedValue(false),
 }));
 
 import { GET } from "@/app/api/chat/sessions/[sessionId]/messages/route";

@@ -33,6 +33,7 @@ vi.mock("@/lib/redis", () => ({
   isSessionActive: mockIsSessionActive,
   registerActiveSession: mockRegisterActiveSession,
   setPendingPrompt: mockSetPendingPrompt,
+  releaseSendQueue: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/pi/agent-pool", () => ({
   get: mockGetPoolEntry,

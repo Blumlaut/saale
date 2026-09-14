@@ -8,20 +8,28 @@ import { NextRequest } from "next/server";
  * error notice for the user's own Stop.
  */
 
-const { mockRequireChatSessionOwner, mockIsSessionActive, mockUnregister, mockGet, mockAbort } =
-  vi.hoisted(() => ({
-    mockRequireChatSessionOwner: vi.fn(),
-    mockIsSessionActive: vi.fn(),
-    mockUnregister: vi.fn(),
-    mockGet: vi.fn(),
-    mockAbort: vi.fn(),
-  }));
+const {
+  mockRequireChatSessionOwner,
+  mockIsSessionActive,
+  mockUnregister,
+  mockGet,
+  mockAbort,
+  mockHoldSendQueue,
+} = vi.hoisted(() => ({
+  mockRequireChatSessionOwner: vi.fn(),
+  mockIsSessionActive: vi.fn(),
+  mockUnregister: vi.fn(),
+  mockGet: vi.fn(),
+  mockAbort: vi.fn(),
+  mockHoldSendQueue: vi.fn(),
+}));
 
 vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
 
 vi.mock("@/lib/redis", () => ({
   isSessionActive: mockIsSessionActive,
   unregisterActiveSession: mockUnregister,
+  holdSendQueue: mockHoldSendQueue,
 }));
 
 vi.mock("@/lib/pi/agent-pool", () => ({
@@ -50,6 +58,24 @@ describe("POST /api/chat/sessions/[sessionId]/stop", () => {
     mockIsSessionActive.mockResolvedValue(true);
     mockUnregister.mockResolvedValue(undefined);
     mockGet.mockReturnValue({ session: { abort: mockAbort, isStreaming: true } });
+    mockHoldSendQueue.mockResolvedValue(undefined);
+  });
+
+  it("pauses the send queue while aborting", async () => {
+    // Messages queued during the cancelled run must not start sending the
+    // moment the abort lands — Stop means "nothing more until I say so".
+    await stopRequest();
+
+    expect(mockHoldSendQueue).toHaveBeenCalledWith(SESSION_ID);
+  });
+
+  it("does not touch the send queue when there is nothing to stop", async () => {
+    mockIsSessionActive.mockResolvedValue(false);
+    mockGet.mockReturnValue(undefined);
+
+    await stopRequest();
+
+    expect(mockHoldSendQueue).not.toHaveBeenCalled();
   });
 
   it("records the abort before cancelling the generation", async () => {

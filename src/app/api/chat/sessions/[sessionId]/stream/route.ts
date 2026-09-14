@@ -35,6 +35,7 @@ import {
   publishQueueUpdate,
   restoreQueuedMessage,
 } from "@/lib/chat/queue";
+import { isSendQueueHeld } from "@/lib/redis";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
 import {
   getPendingApprovals,
@@ -411,7 +412,10 @@ export async function GET(
   const drainQueue = async (): Promise<void> => {
     await drainSendQueue({
       isPromptInFlight: () => getPoolEntry(poolKey)?.promptInFlight === true,
-      claimNext: () => claimNextQueuedMessage(sessionId),
+      // A stopped session does not send: the hold is released by the user's
+      // next message or by pushing a queued one.
+      claimNext: async () =>
+        (await isSendQueueHeld(sessionId)) ? null : claimNextQueuedMessage(sessionId),
       run: async (message) => {
         let prepared: PreparedRun | null;
         try {

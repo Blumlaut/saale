@@ -37,6 +37,9 @@ export function ChatInterface({
   const [queuedMessages, setQueuedMessages] = useState<Message[]>([]);
   // Queued message whose "send now" request is in flight.
   const [sendingQueuedId, setSendingQueuedId] = useState<string | null>(null);
+  // The queue is paused: Stop was pressed, so nothing sends until the user
+  // sends a new message or pushes a queued one.
+  const [queuePaused, setQueuePaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -96,6 +99,7 @@ export function ChatInterface({
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
           isGenerating?: boolean;
+          queueHeld?: boolean;
           activeTool?: { name: string | null; startedAt?: string | null } | null;
         };
       }>(`/api/chat/sessions/${sessionId}/messages`);
@@ -105,6 +109,7 @@ export function ChatInterface({
       // wipe the just-sent message, or the UI flashes back to the empty state.
       setMessages((prev) => mergeMessagesWithLive(data.messages, prev));
       setQueuedMessages(data.queuedMessages ?? []);
+      setQueuePaused(data.session?.queueHeld ?? false);
       setActiveTool(data.session?.activeTool ?? null);
       applySession(data.session);
     } catch (err) {
@@ -191,6 +196,10 @@ export function ChatInterface({
 
       try {
         const result = await sendChatMessage(sessionId, content, files, abortController.signal);
+
+        // Sending anything resumes a stopped queue (the server clears the hold
+        // when it accepts the message).
+        if (result.kind === "ok") setQueuePaused(false);
 
         switch (result.kind) {
           case "not-found":
@@ -316,6 +325,7 @@ export function ChatInterface({
           `/api/chat/sessions/${sessionId}/queue/${messageId}`,
           {},
         );
+        setQueuePaused(false);
         if (data.mode === "prompt") {
           // Idle session: the prompt path takes over — reconnect so the server
           // claims it and prompts immediately.
@@ -384,6 +394,9 @@ export function ChatInterface({
   );
 
   const handleStop = useCallback(() => {
+    // Stop means "nothing more until I say so": the server pauses the send
+    // queue, so queued messages wait for an explicit send/push.
+    setQueuePaused(true);
     fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" }).catch((err) => {
       console.error("Failed to call stop endpoint:", err);
     });
@@ -576,6 +589,7 @@ export function ChatInterface({
       <QueuedMessages
         messages={queuedMessages}
         sendingId={sendingQueuedId}
+        paused={queuePaused}
         onEdit={handleEditQueued}
         onSendNow={handleSendQueuedNow}
         onCancel={handleCancelQueued}

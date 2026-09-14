@@ -2,7 +2,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { isSessionActive, registerActiveSession, setPendingPrompt } from "@/lib/redis";
+import {
+  isSendQueueHeld,
+  isSessionActive,
+  registerActiveSession,
+  releaseSendQueue,
+  setPendingPrompt,
+} from "@/lib/redis";
 import { deleteAllImages } from "@/lib/image-attachment";
 import {
   countQueuedMessages,
@@ -72,6 +78,7 @@ export async function GET(
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
       isGenerating,
+      queueHeld: await isSendQueueHeld(sessionId),
       activeTool,
     },
     messages: messages.map(serializeChatMessage),
@@ -101,6 +108,10 @@ export async function POST(
   const chatSession = authResult.session;
 
   const isGenerating = await isSessionActive(authResult.userId, sessionId);
+
+  // Sending something means "keep going": a stopped session's queue (and this
+  // message) resumes.
+  await releaseSendQueue(sessionId);
 
   if (isGenerating && (await countQueuedMessages(sessionId)) >= MAX_QUEUED_MESSAGES) {
     return NextResponse.json(
