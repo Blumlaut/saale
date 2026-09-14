@@ -49,9 +49,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ to
     });
   }
 
-  // Fetch all messages from source session
+  // Fetch all messages from source session (queued messages are not part of
+  // the shared conversation)
   const sourceMessages = await prisma.chatMessage.findMany({
-    where: { sessionId: sourceSession.id },
+    where: { sessionId: sourceSession.id, queuedAt: null },
     orderBy: { createdAt: "asc" },
     select: {
       role: true,

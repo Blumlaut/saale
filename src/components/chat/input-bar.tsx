@@ -11,7 +11,16 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Paperclip, Send, Loader2, Wrench, X, FileText, File as FileIcon } from "lucide-react";
+import {
+  Paperclip,
+  Send,
+  Loader2,
+  ListPlus,
+  Wrench,
+  X,
+  FileText,
+  File as FileIcon,
+} from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
 import { ContextCircle } from "./token-usage-display";
@@ -35,6 +44,9 @@ interface PendingFile {
 
 interface InputBarProps {
   onSend: (message: string, files?: File[]) => void;
+  /** Current composer text — owned by the parent so drafts survive navigation. */
+  value: string;
+  onValueChange: (value: string) => void;
   isLoading: boolean;
   onStop: () => void;
   toolConfig?: ToolConfig;
@@ -46,6 +58,8 @@ interface InputBarProps {
 
 export function InputBar({
   onSend,
+  value,
+  onValueChange,
   isLoading,
   onStop,
   toolConfig,
@@ -54,25 +68,24 @@ export function InputBar({
   isCompacting,
   onCompact,
 }: InputBarProps) {
-  const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasToolToggle = onToggleTool !== undefined && toolConfig !== undefined;
 
-  const canSend = input.trim().length > 0 || pendingFiles.length > 0;
+  const canSend = value.trim().length > 0 || pendingFiles.length > 0;
 
   const handleSubmit = useCallback(() => {
-    if (!canSend || isLoading) return;
+    if (!canSend) return;
     const files = pendingFiles.map((f) => f.file);
-    onSend(input.trim(), files.length > 0 ? files : undefined);
-    setInput("");
+    onSend(value.trim(), files.length > 0 ? files : undefined);
+    onValueChange("");
     setPendingFiles([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [input, pendingFiles, canSend, isLoading, onSend]);
+  }, [value, pendingFiles, canSend, onSend, onValueChange]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -161,12 +174,17 @@ export function InputBar({
     };
   }, []);
 
-  const autoResize = () => {
+  const autoResize = useCallback(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
     }
-  };
+  }, []);
+
+  // The value also changes from outside (restored draft, cleared on send).
+  useEffect(() => {
+    autoResize();
+  }, [value, autoResize]);
 
   return (
     <div className="border-border/30 border-t pt-2">
@@ -274,13 +292,12 @@ export function InputBar({
           onChange={handleFileChange}
         />
 
-        {/* Textarea */}
+        {/* Textarea — stays editable while Pi works so messages can be queued */}
         <Textarea
           ref={textareaRef}
-          value={input}
+          value={value}
           onChange={(e) => {
-            setInput(e.target.value);
-            autoResize();
+            onValueChange(e.target.value);
           }}
           onKeyDown={handleKeyDown}
           placeholder="Message Saale..."
@@ -289,7 +306,6 @@ export function InputBar({
             "placeholder:text-muted-foreground",
           )}
           rows={1}
-          disabled={isLoading}
         />
 
         {/* Context usage indicator */}
@@ -299,8 +315,8 @@ export function InputBar({
           onCompact={onCompact ?? (() => {})}
         />
 
-        {/* Send / Stop button */}
-        {isLoading ? (
+        {/* Stop (while generating) + Send/Queue */}
+        {isLoading && (
           <Button
             variant="secondary"
             size="icon"
@@ -310,17 +326,17 @@ export function InputBar({
           >
             <Loader2 className="h-4 w-4 animate-spin" />
           </Button>
-        ) : (
-          <Button
-            className="liquid-glass-accent h-9 w-9 shrink-0 rounded-full transition-opacity disabled:opacity-50"
-            size="icon"
-            onClick={handleSubmit}
-            disabled={!canSend}
-            aria-label="Send message"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
         )}
+        <Button
+          className="liquid-glass-accent h-9 w-9 shrink-0 rounded-full transition-opacity disabled:opacity-50"
+          size="icon"
+          onClick={handleSubmit}
+          disabled={!canSend}
+          aria-label={isLoading ? "Queue message" : "Send message"}
+          title={isLoading ? "Queue — sent when the current response finishes" : undefined}
+        >
+          {isLoading ? <ListPlus className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+        </Button>
       </div>
     </div>
   );

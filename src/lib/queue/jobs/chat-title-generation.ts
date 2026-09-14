@@ -63,9 +63,10 @@ export async function handler(params: {
       continue;
     }
 
-    // Fetch conversation messages for context
+    // Fetch conversation messages for context (queued messages are not part
+    // of the conversation yet)
     const messages = await prisma.chatMessage.findMany({
-      where: { sessionId: session.id },
+      where: { sessionId: session.id, queuedAt: null },
       orderBy: { createdAt: "asc" },
       select: { role: true, content: true },
       take: 20, // limit to first 20 messages for token efficiency

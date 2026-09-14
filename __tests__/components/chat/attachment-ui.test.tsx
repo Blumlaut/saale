@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { useState } from "react";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { InputBar } from "@/components/chat/input-bar";
@@ -41,6 +42,26 @@ function makeUserMessage(overrides: Partial<Message> = {}): Message {
 // ─── InputBar: pasting and attaching files ───────────────────────────────────
 
 describe("InputBar file attachment", () => {
+  /**
+   * The composer text is owned by the parent (it is the persisted draft), so
+   * tests drive it through the controlled props exactly like ChatInterface.
+   */
+  function renderInputBar(props: { onSend: (message: string, files?: File[]) => void }) {
+    function Harness() {
+      const [value, setValue] = useState("");
+      return (
+        <InputBar
+          onSend={props.onSend}
+          value={value}
+          onValueChange={setValue}
+          isLoading={false}
+          onStop={() => {}}
+        />
+      );
+    }
+    return render(<Harness />);
+  }
+
   function pasteFile(textarea: HTMLElement, file: File) {
     fireEvent.paste(textarea, {
       clipboardData: {
@@ -53,7 +74,7 @@ describe("InputBar file attachment", () => {
   it("adds a pasted image as a preview and sends it with the message", async () => {
     const onSend = vi.fn();
     const image = new File([new Uint8Array([1])], "photo.png", { type: "image/png" });
-    const { container } = render(<InputBar onSend={onSend} isLoading={false} onStop={() => {}} />);
+    const { container } = renderInputBar({ onSend });
 
     const textarea = container.querySelector("textarea")!;
     pasteFile(textarea, image);
@@ -77,7 +98,7 @@ describe("InputBar file attachment", () => {
   it("adds a pasted non-image file as a chip with name and size", () => {
     const onSend = vi.fn();
     const csv = new File([new Uint8Array(2048)], "data.csv", { type: "text/csv" });
-    const { container } = render(<InputBar onSend={onSend} isLoading={false} onStop={() => {}} />);
+    const { container } = renderInputBar({ onSend });
 
     const textarea = container.querySelector("textarea")!;
     pasteFile(textarea, csv);
@@ -90,7 +111,7 @@ describe("InputBar file attachment", () => {
 
   it("ignores plain text pastes (only kind === 'file' creates attachments)", () => {
     const onSend = vi.fn();
-    const { container } = render(<InputBar onSend={onSend} isLoading={false} onStop={() => {}} />);
+    const { container } = renderInputBar({ onSend });
 
     const textarea = container.querySelector("textarea")!;
     fireEvent.paste(textarea, {

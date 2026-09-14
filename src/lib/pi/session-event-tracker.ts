@@ -40,6 +40,7 @@ import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
+import { publishQueueUpdate } from "@/lib/chat/queue";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { clearSessionAbort, wasSessionAbortRequested } from "./abort-request";
 import { normalizeToolResult } from "./message-replay";
@@ -241,9 +242,16 @@ export function createSessionEventTracker(
         // Any stop request from before this run is stale — it must not be able
         // to swallow this run's real failures (see abort-request.ts).
         clearSessionAbort(userId, sessionId);
-        resetSessionEvents(sessionId).catch((err) => {
-          console.error("Failed to reset session events:", err);
-        });
+        // Reset the buffer first, then publish the send queue's current state:
+        // a run can start from the queue (the drain claims a message before
+        // prompting it) and clients move that message out of their queue strip
+        // when this snapshot arrives. Publishing first would be discarded by
+        // the reset.
+        void resetSessionEvents(sessionId)
+          .then(() => publishQueueUpdate(sessionId))
+          .catch((err) => {
+            console.error("Failed to reset session events:", err);
+          });
         startActivityHeartbeat();
         break;
       }

@@ -7,8 +7,10 @@ import type { Message } from "@/components/chat/types";
  */
 
 export type SendMessageResult =
-  | { kind: "ok"; message: Message }
-  /** 409 — a generation is already running; caller may queue the message. */
+  /** Accepted. `queued` means a generation was already running, so the
+   *  message is waiting in the send queue instead of being prompted now. */
+  | { kind: "ok"; message: Message; queued: boolean }
+  /** 409 — unexpected: the server queues instead of rejecting. */
   | { kind: "conflict" }
   /** 404 — session gone; caller should navigate away. */
   | { kind: "not-found" }
@@ -47,9 +49,9 @@ export async function sendChatMessage(
     return { kind: "error", message: body.error || res.statusText };
   }
 
-  const data = (await res.json()) as { message?: Message };
+  const data = (await res.json()) as { message?: Message; queued?: boolean };
   if (!data.message) {
     return { kind: "error", message: "Missing message in response" };
   }
-  return { kind: "ok", message: data.message };
+  return { kind: "ok", message: data.message, queued: data.queued === true };
 }

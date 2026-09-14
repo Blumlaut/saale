@@ -141,10 +141,15 @@ model ChatMessage {
   parentMessageId String?          // links turns to the root assistant message
   createdAt       DateTime         @default(now())
   editedAt        DateTime?
+  /// Set while the message waits in the session's send queue (a generation
+  /// was already running). Cleared when it is handed to the agent, which is
+  /// also what moves it from the queue strip into the conversation.
+  queuedAt        DateTime?
   session         ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   attachments     ChatAttachment[]
 
   @@index([sessionId, createdAt])
+  @@index([sessionId, queuedAt])
   @@map("ChatMessage")
 }
 

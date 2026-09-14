@@ -25,7 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   }
 
   const messages = await prisma.chatMessage.findMany({
-    where: { sessionId: session.id },
+    where: { sessionId: session.id, queuedAt: null },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,

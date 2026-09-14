@@ -6,7 +6,9 @@ import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
 import { InputBar } from "./input-bar";
-import { fetchJson, patchJson } from "@/lib/http";
+import { QueuedMessages } from "./queued-messages";
+import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
+import { useChatDraft } from "@/hooks/use-chat-draft";
 import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
 import {
   isTempUserMessage,
@@ -31,8 +33,15 @@ export function ChatInterface({
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
+  // Messages waiting in the send queue (submitted while Pi was working).
+  const [queuedMessages, setQueuedMessages] = useState<Message[]>([]);
+  // Queued message whose "send now" request is in flight.
+  const [sendingQueuedId, setSendingQueuedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Composer draft — persisted per session, so it survives navigation.
+  const { draft, setDraft } = useChatDraft(sessionId);
 
   // Session state
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
@@ -80,6 +89,7 @@ export function ChatInterface({
     try {
       const data = await fetchJson<{
         messages: Message[];
+        queuedMessages?: Message[];
         session: {
           modelProvider?: string;
           modelName?: string;
@@ -94,6 +104,7 @@ export function ChatInterface({
       // yet). A stale snapshot fetched before the POST committed must never
       // wipe the just-sent message, or the UI flashes back to the empty state.
       setMessages((prev) => mergeMessagesWithLive(data.messages, prev));
+      setQueuedMessages(data.queuedMessages ?? []);
       setActiveTool(data.session?.activeTool ?? null);
       applySession(data.session);
     } catch (err) {
@@ -103,9 +114,28 @@ export function ChatInterface({
     }
   }, [sessionId, router, applySession]);
 
-  // Queued send while Pi is busy (409) — mirrors Pi's followUp semantics:
-  // the prompt is delivered when the current run ends instead of being lost.
-  const queuedSendRef = useRef<{ content: string; files?: File[] } | null>(null);
+  // Latest queue for the stream callback below, which is captured once per
+  // connection and must not close over stale state.
+  const queuedRef = useRef<Message[]>([]);
+  useEffect(() => {
+    queuedRef.current = queuedMessages;
+  }, [queuedMessages]);
+
+  /**
+   * Queue snapshot from the server (mutation, or a run starting after a
+   * delivery). A message that left the queue has been handed to the agent, so
+   * the conversation has to be reloaded to show it as a normal message.
+   */
+  const handleQueueUpdate = useCallback(
+    (next: Message[]) => {
+      const previous = queuedRef.current;
+      setQueuedMessages(next);
+      if (previous.some((queued) => !next.some((item) => item.id === queued.id))) {
+        void loadMessages();
+      }
+    },
+    [loadMessages],
+  );
 
   // Shared stream orchestration (declared before the message handlers it
   // references; `onGenerationEnd` is only invoked after mount, by which time
@@ -118,16 +148,11 @@ export function ChatInterface({
     setPendingApprovals,
     markDone,
     onGenerationEnd: () => {
-      // The generation ended, so any in-flight retry did too.
+      // The generation ended, so any in-flight retry did too. The send queue
+      // is drained server-side — this client only observes the result.
       setRetryNotice(null);
-      const queued = queuedSendRef.current;
-      if (!queued) return;
-      queuedSendRef.current = null;
-      toast.info("Queued message sent", {
-        description: "Your message was sent once Pi finished the previous run.",
-      });
-      void handleSend(queued.content, queued.files);
     },
+    onQueueUpdate: handleQueueUpdate,
     onTokenUsage: setTokenUsage,
     onCompactionStart: () => setIsCompacting(true),
     onCompactionEnd: (summary?: string, tokensBefore?: number) => {
@@ -172,17 +197,13 @@ export function ChatInterface({
             router.push("/dashboard/chat");
             return;
           case "conflict":
-            // Pi is genuinely busy (the active flag now tracks session.
-            // isStreaming, so this only fires while a real generation runs).
-            // Don't let the typed message vanish silently — queue it and
-            // deliver it when the run ends (Pi's followUp semantics).
+            // Unexpected: the server queues while a generation runs. Nothing
+            // was saved, so hand the text back to the composer.
             setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
-            queuedSendRef.current = files && files.length > 0 ? { content, files } : { content };
-            toast.info("Message queued", {
-              description: "Pi is still working — your message will be sent when it finishes.",
+            setDraft(content);
+            toast.error("Could not send message", {
+              description: "The message is back in the input box — try again.",
             });
-            void loadMessages();
-            connect();
             return;
           case "error":
             throw new Error(result.message);
@@ -202,11 +223,29 @@ export function ChatInterface({
                   : m,
               ),
             );
+
+            if (result.queued) {
+              // Pi is still working: the message waits in the send queue.
+              // Drop the optimistic copy — the queue strip owns it now.
+              setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
+              setQueuedMessages((prev) => [
+                ...prev.filter((m) => m.id !== result.message.id),
+                result.message,
+              ]);
+              // Top-center: a bottom toast would cover the composer and the
+              // queue strip it is talking about.
+              toast.info("Queued", {
+                description: "Sent as soon as the current response finishes.",
+                position: "top-center",
+              });
+            }
+
             // Connect to the SSE stream — the server prompts and streams
             // events. A keep-alive observer connection is already open, but
             // it was decided when the chat was idle, so it never claims the
             // pending prompt. Reconnect to force the server to re-decide
-            // (prompt) and dispatch the message to the LLM immediately.
+            // (prompt, or observe a run already in flight) and dispatch the
+            // message to the LLM immediately.
             disconnect();
             connect();
             return;
@@ -220,6 +259,8 @@ export function ChatInterface({
         // happens on unmount, where the component is going away anyway.
         if (!(err instanceof Error && err.name === "AbortError")) {
           setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
+          // Don't lose what the user typed.
+          setDraft(content);
           console.error("Send error:", err);
           toast.error("Failed to send message", {
             description: err instanceof Error ? err.message : "Something went wrong.",
@@ -227,7 +268,86 @@ export function ChatInterface({
         }
       }
     },
-    [sessionId, router, connect, disconnect, loadMessages],
+    [sessionId, router, connect, disconnect, setDraft],
+  );
+
+  // ─── Send queue actions ──────────────────────────────────────────────────
+
+  const handleEditQueued = useCallback(
+    async (messageId: string, content: string) => {
+      try {
+        const data = await patchJson<{ message: Message }>(
+          `/api/chat/sessions/${sessionId}/queue/${messageId}`,
+          { content },
+        );
+        setQueuedMessages((prev) => prev.map((m) => (m.id === messageId ? data.message : m)));
+      } catch (err) {
+        console.error("Failed to edit queued message:", err);
+        toast.error("Failed to update the queued message", {
+          description: err instanceof Error ? err.message : "Something went wrong.",
+        });
+        await loadMessages();
+      }
+    },
+    [sessionId, loadMessages],
+  );
+
+  const handleCancelQueued = useCallback(
+    async (messageId: string) => {
+      try {
+        await deleteJson(`/api/chat/sessions/${sessionId}/queue/${messageId}`);
+        setQueuedMessages((prev) => prev.filter((m) => m.id !== messageId));
+      } catch (err) {
+        console.error("Failed to cancel queued message:", err);
+        toast.error("Failed to cancel the queued message", {
+          description: err instanceof Error ? err.message : "Something went wrong.",
+        });
+        await loadMessages();
+      }
+    },
+    [sessionId, loadMessages],
+  );
+
+  const handleSendQueuedNow = useCallback(
+    async (messageId: string) => {
+      setSendingQueuedId(messageId);
+      try {
+        const data = await postJson<{ delivered: boolean; mode?: "steered" | "prompt" }>(
+          `/api/chat/sessions/${sessionId}/queue/${messageId}`,
+          {},
+        );
+        if (data.mode === "prompt") {
+          // Idle session: the prompt path takes over — reconnect so the server
+          // claims it and prompts immediately.
+          setQueuedMessages((prev) => prev.filter((m) => m.id !== messageId));
+          setIsLoading(true);
+          disconnect();
+          connect();
+        }
+        // Steered into the running turn, or prompted: the message is part of
+        // the conversation now.
+        await loadMessages();
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          "status" in err &&
+          (err as { status?: number }).status === 409
+        ) {
+          toast.info("Still busy", {
+            description: "The message stays queued and is sent as soon as the run finishes.",
+          });
+          await loadMessages();
+        } else {
+          console.error("Failed to send queued message now:", err);
+          toast.error("Failed to send the message now", {
+            description: err instanceof Error ? err.message : "Something went wrong.",
+          });
+        }
+      } finally {
+        setSendingQueuedId(null);
+      }
+    },
+    [sessionId, connect, disconnect, loadMessages],
   );
 
   const handleEditMessage = useCallback(
@@ -337,9 +457,11 @@ export function ChatInterface({
   }, [sessionId, connect, disconnect, loadMessages, loadSessionTitle]);
 
   // Temporary session auto-delete on unmount (only after the tab has been
-  // open long enough to be a real visit, and never while a generation runs).
+  // open long enough to be a real visit, never while a generation runs, and
+  // never while the send queue still holds messages for it).
   const temporaryRef = useRef(temporaryMode);
   const loadingRef = useRef(isLoading);
+  const queuedCountRef = useRef(queuedMessages.length);
   const mountTimeRef = useRef(0);
 
   useEffect(() => {
@@ -353,6 +475,10 @@ export function ChatInterface({
   useEffect(() => {
     loadingRef.current = isLoading;
   }, [isLoading]);
+
+  useEffect(() => {
+    queuedCountRef.current = queuedMessages.length;
+  }, [queuedMessages]);
 
   useEffect(() => {
     if (isLoading) {
@@ -382,6 +508,7 @@ export function ChatInterface({
       const mountedFor = Date.now() - mountedAt;
       if (mountedFor < 1000) return;
       if (!temporaryRef.current || loadingRef.current) return;
+      if (queuedCountRef.current > 0) return;
 
       const url = `${window.location.origin}/api/chat/sessions/${sessionId}`;
       if (navigator.sendBeacon) {
@@ -446,8 +573,18 @@ export function ChatInterface({
         </div>
       </GlassPanel>
 
+      <QueuedMessages
+        messages={queuedMessages}
+        sendingId={sendingQueuedId}
+        onEdit={handleEditQueued}
+        onSendNow={handleSendQueuedNow}
+        onCancel={handleCancelQueued}
+      />
+
       <InputBar
         onSend={handleSend}
+        value={draft}
+        onValueChange={setDraft}
         isLoading={isLoading}
         onStop={handleStop}
         toolConfig={toolConfig}

@@ -78,10 +78,12 @@ export async function handler(params: {
   let sessionsProcessed = 0;
 
   for (const session of sessions) {
-    // Fetch new messages since last summarized
+    // Fetch new messages since last summarized (queued messages are not part
+    // of the conversation yet)
     const newMessages = await prisma.chatMessage.findMany({
       where: {
         sessionId: session.id,
+        queuedAt: null,
         ...(session.lastSummarizedAt ? { createdAt: { gt: session.lastSummarizedAt } } : {}),
       },
       orderBy: { createdAt: "asc" },

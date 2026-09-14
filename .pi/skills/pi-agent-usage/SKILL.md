@@ -233,6 +233,26 @@ return new Promise((resolve, reject) => {
 
 Reference: `src/lib/queue/job-handler.ts` (`dispatchAiJob`)
 
+## Chat Send Queue
+
+Messages submitted while a generation runs are queued instead of rejected
+(`ChatMessage.queuedAt`): they stay out of the conversation and render in the
+composer's queue strip (`src/components/chat/queued-messages.tsx`).
+
+- **Delivery** — the stream route drains the queue (`src/lib/chat/drain-queue.ts`):
+  at run settle it claims the oldest queued message and prompts it as its own run
+  (`session.prompt()`, re-wiring persistence), then repeats. It runs server-side,
+  so queued messages are answered even when every client has navigated away.
+- **Send now** — `POST /queue/:messageId` steers the message into the running
+  agent (`session.steer`) when the session is streaming in this process; otherwise
+  the message stays queued (409) and the drain delivers it in order.
+- **One tracker per run** — `wireSessionPersistence()` replaces the previous
+  run's tracker, and a new run must `await waitForPersistenceTeardown(sessionId)`
+  first. Wiring mid-teardown leaves the run unpersisted and double-publishes
+  every stream event.
+- **Transcript queries must exclude queued rows** (`queuedAt: null`) — the
+  conversation, shared chats, title generation and memory extraction all do.
+
 ## Anti-Patterns
 
 | Anti-pattern | Why | Fix |

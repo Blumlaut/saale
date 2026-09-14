@@ -49,6 +49,15 @@ export async function PATCH(
   if (message.role !== "user") {
     return NextResponse.json({ error: "Only user messages can be edited" }, { status: 400 });
   }
+  // Editing here rewrites history and deletes everything after the message.
+  // A queued message has no history yet — it is edited (and deleted) through
+  // /queue/:messageId instead.
+  if (message.queuedAt) {
+    return NextResponse.json(
+      { error: "Message is queued — edit it from the send queue." },
+      { status: 409 },
+    );
+  }
 
   const body = await request.json();
   const { content } = body;
