@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vites
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import sharp from "sharp";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,50 @@ describe("storeChatFile", () => {
 
     const onDisk = await fs.readFile(path.join(tmpRoot, "user-1", result.storagePath));
     expect(onDisk.length).toBeGreaterThan(0);
+  });
+
+  it("bakes EXIF orientation into stored pixels so portrait phone photos stay portrait", async () => {
+    // Phones store raw landscape pixels plus an EXIF orientation tag
+    // (6 = display rotated 90° clockwise). The stored PNG must be the
+    // portrait image the user actually saw.
+    const rightHalf = await sharp({
+      create: { width: 50, height: 50, channels: 3, background: "#0000ff" },
+    })
+      .png()
+      .toBuffer();
+    const phonePhoto = await sharp({
+      create: { width: 100, height: 50, channels: 3, background: "#ff0000" },
+    })
+      .composite([{ input: rightHalf, left: 50, top: 0 }])
+      .withMetadata({ orientation: 6 })
+      .jpeg()
+      .toBuffer();
+
+    const result = await attachmentsModule.storeChatFile(
+      "user-1",
+      phonePhoto,
+      "phone-photo.jpg",
+      "image/jpeg",
+    );
+
+    // 100x50 landscape pixels + orientation 6 → 50x100 portrait output
+    expect(result.width).toBe(50);
+    expect(result.height).toBe(100);
+
+    // Content check: rotating 90° clockwise puts the red left half on top
+    // and the blue right half on the bottom.
+    const out = await sharp(path.join(tmpRoot, "user-1", result.storagePath))
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const pixel = (x: number, y: number) => {
+      const i = (y * out.info.width + x) * out.info.channels;
+      return [out.data[i]!, out.data[i + 1]!, out.data[i + 2]!];
+    };
+    const [topR, topG] = pixel(10, 10);
+    const [, , bottomB] = pixel(10, 90);
+    expect(topR).toBeGreaterThan(200);
+    expect(topG).toBeLessThan(60);
+    expect(bottomB).toBeGreaterThan(200);
   });
 
   it("never collides when the same name is uploaded twice", async () => {
