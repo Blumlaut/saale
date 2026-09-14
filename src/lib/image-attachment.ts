@@ -70,8 +70,12 @@ export async function processAndStoreImage(
   const storagePath = `images/${storageId}.png`;
   const fullPath = path.join(UPLOADS_DIR, userId, storagePath);
 
-  // Process with sharp: resize, convert to PNG
+  // Process with sharp: auto-orient, resize, convert to PNG.
+  // autoOrient() bakes the EXIF orientation into the pixels — phone photos
+  // store landscape pixels plus a rotation tag, and PNG cannot carry that
+  // tag, so without this the LLM sees vertical photos lying on their side.
   const metadata = await sharp(fileBuffer)
+    .autoOrient()
     .resize({
       width: MAX_DIMENSION,
       height: MAX_DIMENSION,
