@@ -41,6 +41,8 @@ const WATCHDOG_TICK_MS = 15_000;
  * - `turn_discarded { turnId }` — the SDK discarded a failed turn to retry it
  * - `retry_start` / `retry_end` — the provider call failed and is being retried
  * - `message_saved { turnId, messageId }` — swap temp ID with the DB ID
+ * - `queue_update { messages }` — the send queue changed (a message was
+ *   queued, edited, cancelled, or delivered)
  * - `done` — reload messages from DB; keep watching for the next generation
  * - `error` — terminal: reload, close the connection
  *
@@ -76,9 +78,14 @@ export interface ChatStreamOptions {
   /** Reload messages from the DB (called when the server signals a final state). */
   onReload: () => void;
   /**
+   * The send queue changed. Carries the full queue, so the client never has
+   * to merge deltas. Called for queue mutations and at every run start, which
+   * is how a delivered message leaves the queue strip.
+   */
+  onQueueUpdate?: (messages: Message[]) => void;
+  /**
    * Called when a generation ends (any `done`, including stop/error cleanup).
-   * Lets the caller flush anything queued while Pi was busy — mirrors Pi's
-   * followUp semantics (deliver queued prompts when the agent stops).
+   * The send queue drains server-side — this only clears per-run UI state.
    */
   onGenerationEnd?: () => void;
 }
@@ -357,6 +364,16 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     if (!parsed) return;
     opts.setPendingApprovals(parsed.approvals ?? []);
   });
+
+  // ── Send queue ────────────────────────────────────────────────────────
+  // Full snapshot on every change: the queue is small and merging deltas in
+  // the client would be a second source of truth.
+  if (opts.onQueueUpdate) {
+    eventSource.addEventListener("queue_update", (event: MessageEvent) => {
+      const parsed = parseEvent<{ messages?: Message[] }>(event.data);
+      if (parsed) opts.onQueueUpdate!(parsed.messages ?? []);
+    });
+  }
 
   // ── Token usage ───────────────────────────────────────────────────────
   if (opts.onTokenUsage) {

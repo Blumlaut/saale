@@ -49,7 +49,6 @@ async function get() {
   );
   return res.json();
 }
-
 beforeEach(() => {
   vi.clearAllMocks();
   mockRequireChatSessionOwner.mockResolvedValue({
@@ -116,5 +115,35 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
       thinking: "reasoning so far",
       errorMessage: "503: service unavailable",
     });
+  });
+
+  it("reports the send queue separately from the conversation", async () => {
+    const queuedAt = new Date("2026-01-01T00:01:00Z");
+    mockPrisma.chatMessage.findMany
+      .mockResolvedValueOnce([baseMessage({ id: "answered", role: "assistant" })])
+      .mockResolvedValueOnce([
+        baseMessage({ id: "queued-1", role: "user", content: "not yet", queuedAt }),
+      ]);
+
+    const body = await get();
+
+    // Queued messages never mix into the conversation, and they are not
+    // filtered out of the conversation by the client either.
+    expect(body.messages.map((m: { id: string }) => m.id)).toEqual(["answered"]);
+    expect(body.queuedMessages.map((m: { id: string }) => m.id)).toEqual(["queued-1"]);
+    expect(body.queuedMessages[0].content).toBe("not yet");
+
+    // The conversation query excludes them in the database, not in the client.
+    expect(mockPrisma.chatMessage.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: { sessionId: SESSION_ID, queuedAt: null } }),
+    );
+    expect(mockPrisma.chatMessage.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { sessionId: SESSION_ID, queuedAt: { not: null } },
+        orderBy: { queuedAt: "asc" },
+      }),
+    );
   });
 });

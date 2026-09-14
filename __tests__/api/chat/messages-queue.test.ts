@@ -1,0 +1,184 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+
+/**
+ * POST /messages must never reject a message because Pi is busy — it queues it
+ * instead (the stream route drains the queue when the run settles). These tests
+ * pin the two states apart: a queued message has `queuedAt` set and claims no
+ * prompt, a normal message keeps the existing pending-prompt handshake.
+ */
+
+const {
+  mockRequireChatSessionOwner,
+  mockPrisma,
+  mockIsSessionActive,
+  mockRegisterActiveSession,
+  mockSetPendingPrompt,
+  mockPublishSessionEvent,
+} = vi.hoisted(() => ({
+  mockRequireChatSessionOwner: vi.fn(),
+  mockPrisma: {
+    chatMessage: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
+    chatSession: { update: vi.fn() },
+  },
+  mockIsSessionActive: vi.fn(),
+  mockRegisterActiveSession: vi.fn().mockResolvedValue(undefined),
+  mockSetPendingPrompt: vi.fn().mockResolvedValue(undefined),
+  mockPublishSessionEvent: vi.fn().mockResolvedValue(1),
+}));
+
+vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
+vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/redis", () => ({
+  isSessionActive: mockIsSessionActive,
+  registerActiveSession: mockRegisterActiveSession,
+  setPendingPrompt: mockSetPendingPrompt,
+}));
+vi.mock("@/lib/image-attachment", () => ({
+  deleteAllImages: vi.fn(),
+  processAndStoreImage: vi.fn(),
+  readImageAsBase64: vi.fn(),
+}));
+vi.mock("@/lib/terminal/client", () => ({
+  isConfigured: vi.fn(() => false),
+  uploadFile: vi.fn(),
+}));
+vi.mock("@/lib/pi/session-events", () => ({
+  publishSessionEvent: mockPublishSessionEvent,
+}));
+
+import { POST } from "@/app/api/chat/sessions/[sessionId]/messages/route";
+import { MAX_QUEUED_MESSAGES } from "@/lib/chat/queue";
+
+const SESSION_ID = "session-1";
+const USER_ID = "user-1";
+
+function postMessage(content: string) {
+  return POST(
+    new NextRequest(`http://localhost/api/chat/sessions/${SESSION_ID}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }),
+    { params: Promise.resolve({ sessionId: SESSION_ID }) },
+  );
+}
+
+/** A stored row as Prisma would return it. */
+function storedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "msg-1",
+    sessionId: SESSION_ID,
+    role: "user",
+    content: "hello",
+    thinking: null,
+    toolCalls: null,
+    errorMessage: null,
+    parentMessageId: null,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    editedAt: null,
+    queuedAt: null,
+    attachments: [],
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockRequireChatSessionOwner.mockResolvedValue({
+    ok: true,
+    userId: USER_ID,
+    session: { id: SESSION_ID, title: "New Chat", toolConfig: {}, thinkingLevel: "default" },
+  });
+  mockPrisma.chatMessage.count.mockResolvedValue(0);
+  mockPrisma.chatMessage.create.mockResolvedValue({ id: "msg-1" });
+  mockPrisma.chatSession.update.mockResolvedValue({});
+});
+
+describe("POST /messages while a generation is running", () => {
+  beforeEach(() => {
+    mockIsSessionActive.mockResolvedValue(true);
+  });
+
+  it("queues the message instead of rejecting it", async () => {
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow({ queuedAt: new Date() }));
+
+    const res = await postMessage("hello");
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.queued).toBe(true);
+    expect(body.message.id).toBe("msg-1");
+
+    // Stored with queuedAt set — that is what keeps it out of the conversation
+    // until the drain delivers it.
+    expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ queuedAt: expect.any(Date), role: "user" }),
+      }),
+    );
+
+    // A queued message must not claim a prompt: the running generation owns it.
+    expect(mockSetPendingPrompt).not.toHaveBeenCalled();
+    expect(mockRegisterActiveSession).not.toHaveBeenCalled();
+  });
+
+  it("tells connected clients the queue changed", async () => {
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow({ queuedAt: new Date() }));
+    mockPrisma.chatMessage.findMany.mockResolvedValue([storedRow({ queuedAt: new Date() })]);
+
+    await postMessage("hello");
+
+    expect(mockPublishSessionEvent).toHaveBeenCalledWith(
+      SESSION_ID,
+      "queue_update",
+      expect.objectContaining({ messages: expect.any(Array) }),
+    );
+  });
+
+  it("rejects with 429 when the send queue is full", async () => {
+    mockPrisma.chatMessage.count.mockResolvedValue(MAX_QUEUED_MESSAGES);
+
+    const res = await postMessage("hello");
+    const body = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(body.error).toContain(String(MAX_QUEUED_MESSAGES));
+    expect(mockPrisma.chatMessage.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /messages while idle", () => {
+  beforeEach(() => {
+    mockIsSessionActive.mockResolvedValue(false);
+  });
+
+  it("saves normally, claims the prompt, and reports queued: false", async () => {
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow());
+
+    const res = await postMessage("hello");
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.queued).toBe(false);
+    expect(body.streamUrl).toBe(`/api/chat/sessions/${SESSION_ID}/stream`);
+    expect(mockSetPendingPrompt).toHaveBeenCalledWith(SESSION_ID, "msg-1");
+    expect(mockRegisterActiveSession).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ queuedAt: null }) }),
+    );
+  });
+
+  it("does not check the queue cap when nothing is running", async () => {
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow());
+
+    await postMessage("hello");
+
+    expect(mockPrisma.chatMessage.count).not.toHaveBeenCalled();
+  });
+});

@@ -18,15 +18,24 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe("sendChatMessage", () => {
   it("posts plain text as JSON with the content-type header", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ message: { id: "m1" } }));
+    mockFetch.mockResolvedValueOnce(jsonResponse({ message: { id: "m1" }, queued: false }));
     const result = await sendChatMessage("sess-1", "hello");
 
-    expect(result).toEqual({ kind: "ok", message: { id: "m1" } });
+    expect(result).toEqual({ kind: "ok", message: { id: "m1" }, queued: false });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/api/chat/sessions/sess-1/messages");
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ "Content-Type": "application/json" });
     expect(JSON.parse(init.body as string)).toEqual({ content: "hello" });
+  });
+
+  it("flags a message the server queued instead of prompting", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ message: { id: "m2" }, queued: true }));
+    expect(await sendChatMessage("sess-1", "hello")).toEqual({
+      kind: "ok",
+      message: { id: "m2" },
+      queued: true,
+    });
   });
 
   it("sends files as multipart form data", async () => {

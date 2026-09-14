@@ -126,7 +126,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
         {/* Main area — flex column so ChatInterface can flex-1 to fill height */}
         <div className="flex min-w-0 flex-1 flex-col">
           {sessionId ? (
-            <ChatInterface sessionId={sessionId} temporaryMode={temporaryMode} />
+            <ChatInterface key={sessionId} sessionId={sessionId} temporaryMode={temporaryMode} />
           ) : (
             <ChatEmptyState temporaryMode={temporaryMode} />
           )}

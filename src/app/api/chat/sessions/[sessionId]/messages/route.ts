@@ -5,6 +5,14 @@ import { prisma } from "@/lib/db";
 import { isSessionActive, registerActiveSession, setPendingPrompt } from "@/lib/redis";
 import { deleteAllImages } from "@/lib/image-attachment";
 import {
+  countQueuedMessages,
+  listQueuedMessages,
+  MAX_QUEUED_MESSAGES,
+  publishQueueUpdate,
+  serializeQueuedMessages,
+} from "@/lib/chat/queue";
+import { serializeChatMessage } from "@/lib/chat/serialize-message";
+import {
   buildAttachmentPromptText,
   deliverChatFileToAgent,
   storeChatFile,
@@ -25,13 +33,16 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
   const chatSession = authResult.session;
 
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "asc" },
-    include: {
-      attachments: true,
-    },
-  });
+  // Queued messages are not part of the conversation yet — they are rendered
+  // in the composer's queue strip until the server delivers them.
+  const [messages, queuedMessages] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { sessionId, queuedAt: null },
+      orderBy: { createdAt: "asc" },
+      include: { attachments: true },
+    }),
+    listQueuedMessages(sessionId),
+  ]);
 
   // Source of truth: Redis tracks active generations (ephemeral — cleared on crash).
   // processingSince is a DB timestamp that survives crashes and must not be trusted.
@@ -63,37 +74,8 @@ export async function GET(
       isGenerating,
       activeTool,
     },
-    messages: messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      thinking: m.thinking || undefined,
-      errorMessage: m.errorMessage || undefined,
-      toolCalls: m.toolCalls
-        ? JSON.parse(m.toolCalls).map((tc: { isError?: boolean }) => ({
-            ...tc,
-            status: tc.isError ? ("error" as const) : ("completed" as const),
-          }))
-        : undefined,
-      parentMessageId: m.parentMessageId || undefined,
-      createdAt: m.createdAt.toISOString(),
-      attachments: m.attachments.map((a) => ({
-        id: a.id,
-        storageId: a.storageId,
-        fileName: a.fileName,
-        mimeType: a.mimeType,
-        size: a.size,
-        width: a.width,
-        height: a.height,
-      })),
-      ...(m.role === "compaction"
-        ? {
-            compaction: {
-              tokensBefore: m.thinking ? parseInt(m.thinking, 10) : 0,
-            },
-          }
-        : {}),
-    })),
+    messages: messages.map(serializeChatMessage),
+    queuedMessages: serializeQueuedMessages(queuedMessages),
   });
 }
 
@@ -103,6 +85,10 @@ export async function GET(
  * Accepts either:
  * - application/json: { content: string }
  * - multipart/form-data: { content: string, files: File[] }
+ *
+ * When a generation is already running the message is queued instead of
+ * rejected: the row is saved with `queuedAt` set and the server delivers it
+ * when the run settles (see the chat stream route's drain).
  */
 export async function POST(
   request: NextRequest,
@@ -114,11 +100,12 @@ export async function POST(
   if (!authResult.ok) return authResult.response;
   const chatSession = authResult.session;
 
-  // Prevent sending another message while one is being processed
-  if (await isSessionActive(authResult.userId, sessionId)) {
+  const isGenerating = await isSessionActive(authResult.userId, sessionId);
+
+  if (isGenerating && (await countQueuedMessages(sessionId)) >= MAX_QUEUED_MESSAGES) {
     return NextResponse.json(
-      { error: "A response is already being generated. Please wait." },
-      { status: 409 },
+      { error: `Send queue is full (${MAX_QUEUED_MESSAGES} messages). Wait for a response first.` },
+      { status: 429 },
     );
   }
 
@@ -190,12 +177,15 @@ export async function POST(
           )}`
         : sanitizedContent;
 
-    // Save user message with attachments in a single transaction
+    // Save user message with attachments in a single transaction. Queued
+    // messages are stamped with `queuedAt` so they stay out of the
+    // conversation until the server delivers them.
     const userMessage = await prisma.chatMessage.create({
       data: {
         sessionId,
         role: "user",
         content: promptContent,
+        queuedAt: isGenerating ? new Date() : null,
         ...(attachments.length > 0 && {
           attachments: {
             create: attachments.map((att) => ({
@@ -233,6 +223,17 @@ export async function POST(
       },
     });
 
+    // A queued message is delivered by the stream route's drain once the
+    // running generation settles — it must not claim the prompt itself.
+    if (isGenerating) {
+      await publishQueueUpdate(sessionId);
+      return NextResponse.json({
+        ok: true,
+        queued: true,
+        message: serializeChatMessage(userMessageWithAttachments!),
+      });
+    }
+
     // Register in Redis so the 409 guard works before the SSE connection is made.
     // Cleared by unregisterActiveSession on agent_end or stop.
     await registerActiveSession(authResult.userId, sessionId);
@@ -245,22 +246,9 @@ export async function POST(
     // Return stream URL and the saved message for client-side replacement
     return NextResponse.json({
       ok: true,
+      queued: false,
       streamUrl: `/api/chat/sessions/${sessionId}/stream`,
-      message: {
-        id: userMessageWithAttachments!.id,
-        role: "user" as const,
-        content: userMessageWithAttachments!.content,
-        createdAt: userMessageWithAttachments!.createdAt.toISOString(),
-        attachments: userMessageWithAttachments!.attachments.map((a) => ({
-          id: a.id,
-          storageId: a.storageId,
-          fileName: a.fileName,
-          mimeType: a.mimeType,
-          size: a.size,
-          width: a.width,
-          height: a.height,
-        })),
-      },
+      message: serializeChatMessage(userMessageWithAttachments!),
     });
   } catch (err) {
     console.error("POST /api/chat/sessions/:sessionId/messages error:", err);

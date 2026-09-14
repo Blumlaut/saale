@@ -23,12 +23,19 @@ import {
   getSessionDir,
 } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
-import { wireSessionPersistence } from "@/lib/pi/session-persistence";
+import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/stream-logic";
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+import {
+  claimNextQueuedMessage,
+  countQueuedMessages,
+  publishQueueUpdate,
+  restoreQueuedMessage,
+} from "@/lib/chat/queue";
+import { drainSendQueue } from "@/lib/chat/drain-queue";
 import {
   getPendingApprovals,
   wrapWithApprovalGate,
@@ -75,7 +82,7 @@ const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
  *
  * Emits: turn_start, token, thinking, tool_start, tool_end, turn_end,
  * message_saved, token_usage, compaction_start, compaction_end, done, error,
- * tool_approval_request
+ * tool_approval_request, queue_update
  */
 export async function GET(
   request: NextRequest,
@@ -134,8 +141,11 @@ export async function GET(
       : -1;
 
   // ── Decision inputs ───────────────────────────────────────────────────
+  // Queued messages (submitted while a generation ran) are not part of the
+  // conversation: they are delivered by the drain below, not by the normal
+  // prompt path, so they must not be mistaken for the last user message.
   const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
+    where: { sessionId, queuedAt: null },
     orderBy: { createdAt: "asc" },
     include: {
       attachments: {
@@ -145,12 +155,13 @@ export async function GET(
   });
   const lastMessage = messages[messages.length - 1];
 
-  const [isGenerating, generationStartedAt, pendingPromptMessageId, bufferedEvents] =
+  const [isGenerating, generationStartedAt, pendingPromptMessageId, bufferedEvents, queuedCount] =
     await Promise.all([
       isSessionActive(authResult.userId, sessionId),
       getGenerationStartedAt(sessionId),
       getPendingPrompt(sessionId),
       getBufferedEvents(sessionId, lastEventId),
+      countQueuedMessages(sessionId),
     ]);
   const bufferHasDone = bufferedEvents.some((e) => e.event === "done" || e.event === "error");
   const bufferHasEvents = bufferedEvents.length > 0;
@@ -220,99 +231,10 @@ export async function GET(
     );
   }
 
-  // ── Prompt path: claim, pool, wire persistence ────────────────────────
-  // The prompt is claimed atomically (GETDEL of the pending-prompt key) so
-  // concurrent connections never double-prompt. `promptInFlight` on the pool
-  // entry guards the recovery path (no pending key) within this process.
-  let promptSession: Awaited<ReturnType<typeof createAndPool>> | null = null;
-  const lastMessageImages: ImageContent[] = [];
-
-  if (action.type === "prompt" && lastMessage && lastMessage.role === "user") {
-    const claim = await claimPendingPrompt(sessionId);
-    if (pendingPromptMessageId === lastMessage.id && claim !== lastMessage.id) {
-      // We raced another connection for the POST's pending prompt and lost.
-      action = { type: "observe", reason: "prompt claim lost to another connection" };
-      log("decision", `revised to observe (lost prompt claim)`);
-    } else {
-      const resolvedToolConfig: ToolConfig = chatSession.toolConfig
-        ? { ...(chatSession.toolConfig as ToolConfig) }
-        : {};
-      const sessionDir = getSessionDir(authResult.userId, sessionId);
-
-      const existingPoolEntry = getPoolEntry(poolKey);
-      promptSession = await createAndPool(poolKey, async () => {
-        log("pool", "miss — creating new agent");
-        const result = await createPersistentSession({
-          userId: authResult.userId,
-          sessionId,
-          sessionDir,
-          customTools: [],
-          toolConfig: resolvedToolConfig,
-          ...(modelProvider ? { modelProvider } : {}),
-          ...(modelName ? { modelName } : {}),
-          thinkingLevel: chatSession.thinkingLevel,
-          wrapTool: approvalWrapper,
-        });
-
-        const systemPrompt = buildAgentSystemPrompt({
-          customInstructions: userSettings?.agentCustomInstructions,
-          toolConfig: resolvedToolConfig,
-        });
-        lockSystemPrompt(result.session, systemPrompt);
-
-        return { session: result.session, sessionDir };
-      });
-
-      if (existingPoolEntry) {
-        log("pool", `hit — lastPromptedMessageId=${promptSession.lastPromptedMessageId}`);
-      }
-
-      // Same-process double-prompt guard (recovery path race).
-      if (promptSession.promptInFlight) {
-        action = { type: "observe", reason: "prompt already in flight" };
-        log("decision", "revised to observe (prompt already in flight)");
-      } else {
-        // Claim synchronously before any further awaits.
-        promptSession.promptInFlight = true;
-        promptSession.lastPromptedMessageId = lastMessage.id;
-
-        // Signal the generation to other connections, then clear stale
-        // buffered events from previous runs.
-        await registerActiveSession(authResult.userId, sessionId);
-        await markGenerationStart(sessionId);
-        await resetSessionEvents(sessionId);
-
-        // Wire persistence exactly once per pooled session.
-        wireSessionPersistence(sessionId, authResult.userId, promptSession.session);
-
-        // Pre-load images for the current user message. Only image
-        // attachments are vision content — other file types are referenced
-        // by path in the message content (uploads/ in the agent workspace).
-        if (lastMessage.attachments.length > 0) {
-          for (const att of lastMessage.attachments) {
-            if (!att.mimeType.startsWith("image/")) continue;
-            try {
-              const { data, mimeType } = await readImageAsBase64(
-                authResult.userId,
-                att.storagePath,
-              );
-              lastMessageImages.push({ type: "image" as const, data, mimeType });
-            } catch (err) {
-              console.error("Failed to load image for current message:", err);
-            }
-          }
-        }
-
-        log("prompt", `claimed prompt for message ${lastMessage.id}`);
-      }
-    }
-  }
-
-  // ── SSE stream ────────────────────────────────────────────────────────
-  const dispatcher = getDispatcher(sessionId);
-
-  // Stream lifecycle state, shared between `start` (heartbeat + forwarding)
-  // and `cancel` (the source's teardown hook) below.
+  // ── Stream lifecycle state ────────────────────────────────────────────
+  // Declared before the prompt helpers: a failed run closes the stream, and
+  // the helpers are shared by the connection that prompts and by the queue
+  // drain that runs after it settles.
   //
   // Client disconnects are NOT reliably signalled by `request.signal` abort
   // in Next.js route handlers — often it never fires at all. The runtime
@@ -336,6 +258,221 @@ export async function GET(
       }
     }
   };
+
+  // ── Prompt helpers ────────────────────────────────────────────────────
+  // One code path prompts every message: the message a POST claimed, and
+  // every message the send queue drains afterwards.
+
+  /** A message this connection can hand to the agent. */
+  interface PromptTarget {
+    id: string;
+    content: string;
+    attachments: { storagePath: string; mimeType: string }[];
+  }
+
+  interface PreparedRun {
+    entry: Awaited<ReturnType<typeof createAndPool>>;
+    target: PromptTarget;
+    images: ImageContent[];
+  }
+
+  /**
+   * Collect vision content for a message's image attachments. Non-image files
+   * are referenced by path in the message content instead (the agent reads
+   * them from its workspace).
+   */
+  const loadPromptImages = async (
+    attachments: PromptTarget["attachments"],
+  ): Promise<ImageContent[]> => {
+    const images: ImageContent[] = [];
+    for (const att of attachments) {
+      if (!att.mimeType.startsWith("image/")) continue;
+      try {
+        const { data, mimeType } = await readImageAsBase64(authResult.userId, att.storagePath);
+        images.push({ type: "image" as const, data, mimeType });
+      } catch (err) {
+        console.error("Failed to load image for message:", err);
+      }
+    }
+    return images;
+  };
+
+  /**
+   * Claim this process's pooled agent for a message and make it runnable:
+   * guard against a double prompt, register the generation (so other
+   * connections observe instead of prompting), clear the previous run's
+   * buffered events, wire DB persistence, and pre-load images.
+   *
+   * Returns null when a prompt is already in flight in this process — the
+   * caller must not claim work it cannot deliver.
+   */
+  const prepareRun = async (target: PromptTarget): Promise<PreparedRun | null> => {
+    const resolvedToolConfig: ToolConfig = chatSession.toolConfig
+      ? { ...(chatSession.toolConfig as ToolConfig) }
+      : {};
+    const sessionDir = getSessionDir(authResult.userId, sessionId);
+
+    const existingPoolEntry = getPoolEntry(poolKey);
+    const entry = await createAndPool(poolKey, async () => {
+      log("pool", "miss — creating new agent");
+      const result = await createPersistentSession({
+        userId: authResult.userId,
+        sessionId,
+        sessionDir,
+        customTools: [],
+        toolConfig: resolvedToolConfig,
+        ...(modelProvider ? { modelProvider } : {}),
+        ...(modelName ? { modelName } : {}),
+        thinkingLevel: chatSession.thinkingLevel,
+        wrapTool: approvalWrapper,
+      });
+
+      const systemPrompt = buildAgentSystemPrompt({
+        customInstructions: userSettings?.agentCustomInstructions,
+        toolConfig: resolvedToolConfig,
+      });
+      lockSystemPrompt(result.session, systemPrompt);
+
+      return { session: result.session, sessionDir };
+    });
+
+    if (existingPoolEntry) {
+      log("pool", `hit — lastPromptedMessageId=${entry.lastPromptedMessageId}`);
+    }
+
+    // Same-process double-prompt guard (recovery path race).
+    if (entry.promptInFlight) return null;
+
+    // Claim synchronously before any further awaits.
+    entry.promptInFlight = true;
+    entry.lastPromptedMessageId = target.id;
+
+    // Signal the generation to other connections, then clear stale buffered
+    // events from previous runs.
+    await registerActiveSession(authResult.userId, sessionId);
+    await markGenerationStart(sessionId);
+    await resetSessionEvents(sessionId);
+
+    // A previous run's tracker may still be publishing `done` and
+    // unsubscribing. Wait for it: wiring a fresh tracker mid-teardown would
+    // leave this run unpersisted (and double-publish its events).
+    await waitForPersistenceTeardown(sessionId);
+    wireSessionPersistence(sessionId, authResult.userId, entry.session);
+
+    const images = await loadPromptImages(target.attachments);
+    log("prompt", `claimed prompt for message ${target.id}`);
+    return { entry, target, images };
+  };
+
+  /**
+   * Dispatch a prepared run and resolve when it has fully settled
+   * (`agent_settled` — after any error retry, auto-compaction, or queued
+   * continuation).
+   *
+   * Uses session.prompt() — the same path the Pi TUI uses — NOT
+   * session.agent.prompt(): the session wrapper runs the SDK's pre-prompt
+   * compaction check and post-run processing, and only settles when the run
+   * is truly finished. The custom system prompt survives the preflight
+   * because lockSystemPrompt() replaced the SDK's base prompt.
+   */
+  const dispatchRun = async (run: PreparedRun): Promise<boolean> => {
+    log("prompt", `sending prompt, message.id=${run.target.id}`);
+    try {
+      await (run.images.length > 0
+        ? run.entry.session.prompt(run.target.content, { images: run.images })
+        : run.entry.session.prompt(run.target.content));
+      run.entry.promptInFlight = false;
+      log("prompt", "session.prompt() settled");
+      return true;
+    } catch (err) {
+      run.entry.promptInFlight = false;
+      run.entry.lastPromptedMessageId = null;
+      console.error("session.prompt() failed:", err);
+      unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
+      // Notify connected clients, then clear the buffer so a later connect can
+      // retry the prompt instead of replaying the error.
+      publishSessionEvent(sessionId, "error", {
+        message: err instanceof Error ? err.message : String(err),
+      }).catch(console.error);
+      publishSessionEvent(sessionId, "done", {}).catch(console.error);
+      resetSessionEvents(sessionId).catch(console.error);
+      closeStream();
+      return false;
+    }
+  };
+
+  /**
+   * Deliver every queued message, one run each.
+   *
+   * Runs server-side, so queued messages are answered even when every client
+   * has navigated away: the drain is chained off the previous run's settle,
+   * and the promise chain outlives the SSE connection.
+   */
+  const drainQueue = async (): Promise<void> => {
+    await drainSendQueue({
+      isPromptInFlight: () => getPoolEntry(poolKey)?.promptInFlight === true,
+      claimNext: () => claimNextQueuedMessage(sessionId),
+      run: async (message) => {
+        let prepared: PreparedRun | null;
+        try {
+          prepared = await prepareRun({
+            id: message.id,
+            content: message.content,
+            attachments: message.attachments,
+          });
+        } catch (err) {
+          console.error(`Failed to prepare queued message ${message.id}:`, err);
+          return false;
+        }
+        if (!prepared) return false;
+        log("queue", `delivering queued message ${message.id}`);
+        await dispatchRun(prepared);
+        return true;
+      },
+      restore: (message) => restoreQueuedMessage(sessionId, message.id, message.queuedAt),
+      publishQueue: () => publishQueueUpdate(sessionId),
+      log: (message) => log("queue", message),
+    });
+  };
+
+  /**
+   * Drain without letting a failure escape: the callers are fire-and-forget
+   * (a settled run, an idle connection), and an unhandled rejection there has
+   * nowhere to surface.
+   */
+  const drainQueueSafely = (): void => {
+    drainQueue().catch((err) => {
+      console.error(`Send queue drain failed for session ${sessionId}:`, err);
+    });
+  };
+
+  // ── Prompt path: claim, pool, wire persistence ────────────────────────
+  // The prompt is claimed atomically (GETDEL of the pending-prompt key) so
+  // concurrent connections never double-prompt. `promptInFlight` on the pool
+  // entry guards the recovery path (no pending key) within this process.
+  let pendingRun: PreparedRun | null = null;
+
+  if (action.type === "prompt" && lastMessage && lastMessage.role === "user") {
+    const claim = await claimPendingPrompt(sessionId);
+    if (pendingPromptMessageId === lastMessage.id && claim !== lastMessage.id) {
+      // We raced another connection for the POST's pending prompt and lost.
+      action = { type: "observe", reason: "prompt claim lost to another connection" };
+      log("decision", `revised to observe (lost prompt claim)`);
+    } else {
+      pendingRun = await prepareRun({
+        id: lastMessage.id,
+        content: lastMessage.content,
+        attachments: lastMessage.attachments,
+      });
+      if (!pendingRun) {
+        action = { type: "observe", reason: "prompt already in flight" };
+        log("decision", "revised to observe (prompt already in flight)");
+      }
+    }
+  }
+
+  // ── SSE stream ────────────────────────────────────────────────────────
+  const dispatcher = getDispatcher(sessionId);
 
   const stream = new ReadableStream({
     start(controller) {
@@ -377,46 +514,22 @@ export async function GET(
           if (action.type === "done") {
             log("stream", "idle — emitting done, staying open as observer");
             dispatcher.emitLocal(controller, "done", {});
+
+            // Recovery drain: a run that died (process restart, crash) can
+            // strand messages in the send queue. Deliver them now that the
+            // session is idle — and keep the connection open, the drain
+            // streams through this same dispatcher.
+            if (queuedCount > 0) drainQueueSafely();
             return;
           }
 
           // ── Prompt: dispatch the agent, forward events via the bus ────
-          // Uses session.prompt() — the same path the Pi TUI uses — NOT
-          // session.agent.prompt(). The session wrapper runs the SDK's
-          // pre-prompt compaction check and post-run processing (error
-          // retry, auto-compaction at the run boundary, agent.continue()
-          // after overflow recovery) and only settles (agent_settled) when
-          // everything is truly done. The custom system prompt survives the
-          // preflight because lockSystemPrompt() replaced the SDK's base
-          // prompt. The promise resolves on settle, so promptInFlight stays
-          // set across any post-run compaction (no re-dispatch races).
-          if (action.type === "prompt" && promptSession && lastMessage?.role === "user") {
-            log("prompt", `sending prompt, message.id=${lastMessage.id}`);
-
-            const promptPromise =
-              lastMessageImages.length > 0
-                ? promptSession.session.prompt(lastMessage.content, { images: lastMessageImages })
-                : promptSession.session.prompt(lastMessage.content);
-
-            promptPromise
-              .then(() => {
-                promptSession!.promptInFlight = false;
-                log("prompt", "session.prompt() settled");
-              })
-              .catch((err) => {
-                promptSession!.promptInFlight = false;
-                promptSession!.lastPromptedMessageId = null;
-                console.error("session.prompt() failed:", err);
-                unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
-                // Notify connected clients, then clear the buffer so a later
-                // connect can retry the prompt instead of replaying the error.
-                publishSessionEvent(sessionId, "error", { message: err.message }).catch(
-                  console.error,
-                );
-                publishSessionEvent(sessionId, "done", {}).catch(console.error);
-                resetSessionEvents(sessionId).catch(console.error);
-                closeStream();
-              });
+          // The run is dispatched here, after the subscription is in place,
+          // so the client receives the live stream. When it settles, the send
+          // queue drains — messages submitted during this run are delivered
+          // next, in order.
+          if (action.type === "prompt" && pendingRun) {
+            void dispatchRun(pendingRun).then(drainQueueSafely);
           }
         })
         .catch((err) => {
