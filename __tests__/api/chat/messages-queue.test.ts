@@ -15,6 +15,8 @@ const {
   mockRegisterActiveSession,
   mockSetPendingPrompt,
   mockPublishSessionEvent,
+  mockReleaseSendQueue,
+  mockIsSendQueueHeld,
 } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockPrisma: {
@@ -30,6 +32,8 @@ const {
   mockRegisterActiveSession: vi.fn().mockResolvedValue(undefined),
   mockSetPendingPrompt: vi.fn().mockResolvedValue(undefined),
   mockPublishSessionEvent: vi.fn().mockResolvedValue(1),
+  mockReleaseSendQueue: vi.fn().mockResolvedValue(undefined),
+  mockIsSendQueueHeld: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
@@ -38,6 +42,8 @@ vi.mock("@/lib/redis", () => ({
   isSessionActive: mockIsSessionActive,
   registerActiveSession: mockRegisterActiveSession,
   setPendingPrompt: mockSetPendingPrompt,
+  releaseSendQueue: mockReleaseSendQueue,
+  isSendQueueHeld: mockIsSendQueueHeld,
 }));
 vi.mock("@/lib/image-attachment", () => ({
   deleteAllImages: vi.fn(),
@@ -172,6 +178,15 @@ describe("POST /messages while idle", () => {
     expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ queuedAt: null }) }),
     );
+  });
+
+  it("resumes a stopped queue by accepting the message", async () => {
+    // Stop holds the queue; sending something is the user asking to go on.
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow());
+
+    await postMessage("keep going");
+
+    expect(mockReleaseSendQueue).toHaveBeenCalledWith(SESSION_ID);
   });
 
   it("does not check the queue cap when nothing is running", async () => {

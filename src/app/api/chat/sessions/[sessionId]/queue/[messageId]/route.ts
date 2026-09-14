@@ -1,7 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
-import { isSessionActive, registerActiveSession, setPendingPrompt } from "@/lib/redis";
+import {
+  isSessionActive,
+  registerActiveSession,
+  releaseSendQueue,
+  setPendingPrompt,
+} from "@/lib/redis";
 import {
   claimQueuedMessage,
   getQueuedMessage,
@@ -89,6 +94,9 @@ export async function POST(
   if (!message) {
     return NextResponse.json({ error: "Message is no longer queued" }, { status: 409 });
   }
+
+  // An explicit "send now" is the user asking to keep going.
+  await releaseSendQueue(sessionId);
 
   // Idle (nothing is generating): hand it to the prompt path exactly like a
   // fresh POST /messages — the client's SSE reconnect claims and prompts it.

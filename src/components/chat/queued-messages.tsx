@@ -16,6 +16,7 @@ import type { Message } from "./types";
 export function QueuedMessages({
   messages,
   sendingId,
+  paused,
   onEdit,
   onSendNow,
   onCancel,
@@ -23,6 +24,8 @@ export function QueuedMessages({
   messages: Message[];
   /** Message whose "send now" request is in flight. */
   sendingId?: string | null;
+  /** Generation stopped — these wait for the user (send now, or a new message). */
+  paused?: boolean;
   onEdit: (messageId: string, content: string) => Promise<void>;
   onSendNow: (messageId: string) => Promise<void>;
   onCancel: (messageId: string) => Promise<void>;
@@ -48,9 +51,14 @@ export function QueuedMessages({
     <div className="border-border/30 bg-muted/30 mb-2 rounded-2xl border px-2 py-1.5">
       <div className="text-muted-foreground flex items-center gap-1.5 px-1.5 py-1">
         <Clock className="h-3 w-3" />
-        <span className="console-label">Queued · {messages.length}</span>
+        <span className="console-label">
+          Queued · {messages.length}
+          {paused ? " · paused" : ""}
+        </span>
         <span className="ml-auto hidden text-[11px] sm:inline">
-          Sent when the current response finishes
+          {paused
+            ? "Paused — send now, or send a new message"
+            : "Sent when the current response finishes"}
         </span>
       </div>
 

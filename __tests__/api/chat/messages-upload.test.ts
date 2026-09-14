@@ -44,6 +44,7 @@ vi.mock("@/lib/redis", () => ({
   isSessionActive: vi.fn().mockResolvedValue(false),
   registerActiveSession: vi.fn().mockResolvedValue(undefined),
   setPendingPrompt: vi.fn().mockResolvedValue(undefined),
+  releaseSendQueue: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Real file-attachment logic runs against a temp UPLOADS_DIR (stubbbed below),

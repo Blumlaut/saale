@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
-import { isSessionActive, unregisterActiveSession } from "@/lib/redis";
+import { holdSendQueue, isSessionActive, unregisterActiveSession } from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
 import { requestSessionAbort } from "@/lib/pi/abort-request";
 
@@ -9,7 +9,8 @@ import { requestSessionAbort } from "@/lib/pi/abort-request";
  * Explicitly cancel an in-progress generation.
  *
  * Different from client disconnect (navigation/refresh) — this is a user-initiated
- * "stop" that aborts the LLM and clears the active session flag immediately.
+ * "stop" that aborts the LLM, clears the active session flag immediately, and
+ * pauses the send queue until the user sends or pushes something.
  */
 export async function POST(
   request: NextRequest,
@@ -31,6 +32,10 @@ export async function POST(
   const isStreamingHere = pooled?.session.isStreaming ?? false;
 
   if (isActive || isStreamingHere) {
+    // A stop pauses the send queue as well: whatever was queued during this run
+    // must not start sending the moment the abort lands (see redis.ts).
+    await holdSendQueue(sessionId);
+
     if (pooled && isStreamingHere) {
       // Record the stop before aborting: the tracker cannot tell a cancelled
       // request from a failed one, and must not report the user's own action as

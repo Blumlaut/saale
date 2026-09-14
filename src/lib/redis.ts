@@ -202,6 +202,51 @@ export async function getPendingPrompt(sessionId: string): Promise<string | null
   }
 }
 
+// ─── Send Queue Hold ────────────────────────────────────────────────────────
+
+/**
+ * A stopped session stops sending its queue too.
+ *
+ * Stop means "nothing more until I say so": without this, the send queue's
+ * drain would immediately deliver the messages that were queued during the run
+ * the user just cancelled. The hold is cleared by the actions that express
+ * "keep going" — a new message, or pushing a queued one.
+ */
+
+const QUEUE_HOLD_PREFIX = "chat:queue_hold:";
+const QUEUE_HOLD_TTL_SECONDS = 600;
+
+/** Pause the session's send queue (called by the stop route). */
+export async function holdSendQueue(sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.set(`${QUEUE_HOLD_PREFIX}${sessionId}`, "1", "EX", QUEUE_HOLD_TTL_SECONDS);
+  } catch (err) {
+    console.error("Failed to hold send queue:", err);
+  }
+}
+
+/** Whether the session's send queue is paused. */
+export async function isSendQueueHeld(sessionId: string): Promise<boolean> {
+  try {
+    const redis = getRedis();
+    return (await redis.exists(`${QUEUE_HOLD_PREFIX}${sessionId}`)) === 1;
+  } catch (err) {
+    console.error("Failed to read send queue hold:", err);
+    return false;
+  }
+}
+
+/** Resume the session's send queue (a new message, or an explicit "send now"). */
+export async function releaseSendQueue(sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.del(`${QUEUE_HOLD_PREFIX}${sessionId}`);
+  } catch (err) {
+    console.error("Failed to release send queue:", err);
+  }
+}
+
 /**
  * Atomically claim the pending prompt (GETDEL).
  *
