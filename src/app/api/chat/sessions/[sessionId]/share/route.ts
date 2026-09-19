@@ -5,6 +5,29 @@ import { prisma } from "@/lib/db";
 import { generateShareToken } from "@/lib/chat/share";
 
 /**
+ * GET /api/chat/sessions/:sessionId/share — Get current share state.
+ */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> },
+) {
+  const { sessionId } = await params;
+
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
+
+  if (authResult.session.shared && authResult.session.shareToken) {
+    return NextResponse.json({
+      ok: true,
+      isShared: true,
+      shareUrl: `/share/${authResult.session.shareToken}`,
+    });
+  }
+
+  return NextResponse.json({ ok: true, isShared: false });
+}
+
+/**
  * POST /api/chat/sessions/:sessionId/share — Enable sharing for a chat session.
  *
  * Returns the share URL. Idempotent — calling again returns the existing token.

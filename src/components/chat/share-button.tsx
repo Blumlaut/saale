@@ -67,12 +67,27 @@ export function ShareButton({ sessionId }: ShareButtonProps) {
     }
   };
 
+  const loadShareState = useCallback(async () => {
+    try {
+      const data = await fetchJson<{
+        ok: boolean;
+        isShared: boolean;
+        shareUrl?: string;
+      }>(`/api/chat/sessions/${sessionId}/share`);
+      if (data.ok) {
+        setIsShared(data.isShared);
+        setShareUrl(data.isShared && data.shareUrl ? getFullUrl(data.shareUrl) : "");
+      }
+    } catch (err) {
+      console.error("Failed to load share state:", err);
+    }
+  }, [sessionId]);
+
   // Load current share state when dialog opens
   const handleOpenChange = (open: boolean) => {
     setOpen(open);
-    if (open && isShared) {
-      // Refresh share state
-      enableSharing();
+    if (open) {
+      void loadShareState();
     }
   };
 
