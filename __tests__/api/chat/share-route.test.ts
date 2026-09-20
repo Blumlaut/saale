@@ -82,10 +82,7 @@ describe("POST /api/chat/sessions/[sessionId]/share", () => {
   it("is idempotent and reuses the existing token", async () => {
     authWith(getSession(true, "abc123"));
 
-    const res = await POST(
-      new NextRequest("http://localhost/api/x", { method: "POST" }),
-      params(),
-    );
+    const res = await POST(new NextRequest("http://localhost/api/x", { method: "POST" }), params());
     const body = await res.json();
 
     expect(body).toEqual({
@@ -100,10 +97,7 @@ describe("POST /api/chat/sessions/[sessionId]/share", () => {
   it("creates a new token and marks the session shared", async () => {
     authWith(getSession(false, null));
 
-    const res = await POST(
-      new NextRequest("http://localhost/api/x", { method: "POST" }),
-      params(),
-    );
+    const res = await POST(new NextRequest("http://localhost/api/x", { method: "POST" }), params());
     const body = await res.json();
 
     expect(body.shareToken).toBe("fresh-token");

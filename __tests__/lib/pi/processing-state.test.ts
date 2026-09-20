@@ -1,5 +1,8 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { describe, it, expect } from "vitest";
-import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt, createSystemPromptLoader } from "@/lib/pi/processing-state";
 
 describe("buildAgentSystemPrompt", () => {
   it("returns default prompt with no options", () => {
@@ -62,5 +65,29 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Custom instructions:\nBe friendly.");
     expect(prompt).toContain("A Terminal is available");
     expect(prompt).toContain("persistent memory system");
+  });
+});
+
+describe("createSystemPromptLoader", () => {
+  it("serves the given prompt verbatim with no file source", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "saale-loader-"));
+    const multiLine =
+      "You are Saale, a personal AI assistant.\n\nGuidelines:\n- Be concise and direct.";
+    const loader = await createSystemPromptLoader(multiLine, dir);
+
+    expect(loader.getSystemPrompt()).toBe(multiLine);
+    // Inline prompt — no file source, no append prompt
+    expect(loader.getSystemPromptSource()).toBeUndefined();
+    expect(loader.getAppendSystemPrompt()).toEqual([]);
+  });
+
+  it("disables discovery so the session prompt stays clean", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "saale-loader-"));
+    const loader = await createSystemPromptLoader("test prompt", dir);
+
+    expect(loader.getSkills().skills).toEqual([]);
+    expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
+    expect(loader.getPrompts().prompts).toEqual([]);
+    expect(loader.getExtensions().extensions).toEqual([]);
   });
 });

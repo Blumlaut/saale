@@ -37,7 +37,7 @@ vi.mock("@/lib/pi/session", () => ({
 }));
 
 vi.mock("@/lib/pi/processing-state", () => ({
-  lockSystemPrompt: vi.fn(),
+  createSystemPromptLoader: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({

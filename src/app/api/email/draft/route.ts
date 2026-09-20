@@ -8,7 +8,7 @@ import {
   type CreateAgentSessionResult,
 } from "@earendil-works/pi-coding-agent";
 import { buildModelRuntime } from "@/lib/pi/models";
-import { lockSystemPrompt } from "@/lib/pi/processing-state";
+import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 /**
@@ -76,18 +76,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Create a lightweight agent session — no tools, no thinking, just text completion
-  const result: CreateAgentSessionResult = await createAgentSession({
-    sessionManager: SessionManager.inMemory(),
-    modelRuntime,
-    noTools: "all",
-    model,
-    customTools: [],
-    thinkingLevel: "off",
-  });
-
-  const { session: piSession } = result;
-
   // Fetch user's email writing style
   const emailSettings = await prisma.appSettings.findUnique({
     where: { userId: authResult.user.id },
@@ -120,7 +108,19 @@ Rules:
 - If the original message asks questions, answer them directly
 - If the original message makes a request, acknowledge it clearly
 - Output plain text only — no markdown formatting`;
-  lockSystemPrompt(piSession, emailSystemPrompt);
+
+  // Create a lightweight agent session — no tools, no thinking, just text completion
+  const result: CreateAgentSessionResult = await createAgentSession({
+    sessionManager: SessionManager.inMemory(),
+    modelRuntime,
+    noTools: "all",
+    model,
+    customTools: [],
+    resourceLoader: await createSystemPromptLoader(emailSystemPrompt, process.cwd()),
+    thinkingLevel: "off",
+  });
+
+  const { session: piSession } = result;
 
   // Build the user prompt from the original email
   const originalBody = message.bodyText || message.bodyPreview || "";

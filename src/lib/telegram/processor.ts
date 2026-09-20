@@ -24,7 +24,7 @@ import { createApprovalCardTracker } from "./approval-cards";
 import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
-import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt, createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import {
   downloadAndProcessTelegramFile,
@@ -292,12 +292,22 @@ export async function processTelegramMessage(
 
   const sessionManager = SessionManager.continueRecent(sessionDir, sessionDir);
 
+  // Build system prompt using shared utility (aligned with web chat)
+  const baseSystemPrompt = buildAgentSystemPrompt({
+    customInstructions: userSettings?.agentCustomInstructions,
+    toolConfig: resolvedToolConfig,
+  });
+
   const { session } = await createAgentSession({
     sessionManager,
     modelRuntime,
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,
+    resourceLoader: await createSystemPromptLoader(
+      baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE,
+      sessionDir,
+    ),
     ...thinkingLevelOption(definition.thinkingLevel),
   });
 
@@ -307,13 +317,6 @@ export async function processTelegramMessage(
     where: { id: run.id },
     data: { status: "running", startedAt: new Date() },
   });
-
-  // Build system prompt using shared utility (aligned with web chat)
-  const baseSystemPrompt = buildAgentSystemPrompt({
-    customInstructions: userSettings?.agentCustomInstructions,
-    toolConfig: resolvedToolConfig,
-  });
-  lockSystemPrompt(session, baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE);
 
   // 10. Wire the shared session event tracker — it persists assistant
   //     messages to the DB and publishes live stream events (turn_start,
@@ -547,8 +550,8 @@ export async function processTelegramMessage(
         // session.prompt() — the TUI path — runs the SDK's pre-prompt
         // compaction check and post-run processing (retry, auto-compaction,
         // overflow continue) and resolves when the session settles. The
-        // system prompt is locked via lockSystemPrompt() above, so the
-        // preflight cannot reset it.
+        // system prompt comes from the resource loader above, so the
+        // SDK's per-turn prompt resolution keeps it.
         const promptOptions = processedFile?.imageData
           ? { images: [processedFile.imageData] }
           : undefined;
@@ -810,21 +813,24 @@ export async function compactTelegramSession(params: {
     createTerminalScopedTools,
   });
 
+  // Build system prompt
+  const baseSystemPrompt = buildAgentSystemPrompt({
+    customInstructions: userSettings?.agentCustomInstructions,
+    toolConfig: resolvedToolConfig,
+  });
+
   const { session } = await createAgentSession({
     sessionManager: SessionManager.continueRecent(sessionDir, sessionDir),
     modelRuntime,
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,
+    resourceLoader: await createSystemPromptLoader(
+      baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE,
+      sessionDir,
+    ),
     ...thinkingLevelOption(definition?.thinkingLevel),
   });
-
-  // Build system prompt
-  const baseSystemPrompt = buildAgentSystemPrompt({
-    customInstructions: userSettings?.agentCustomInstructions,
-    toolConfig: resolvedToolConfig,
-  });
-  lockSystemPrompt(session, baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE);
 
   try {
     const result = await session.compact();
