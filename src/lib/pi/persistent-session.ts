@@ -5,6 +5,7 @@ import {
   type CreateAgentSessionResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { createSystemPromptLoader } from "./processing-state";
 import { buildSessionDeps, type ToolConfig } from "./session";
 import { thinkingLevelOption } from "./thinking-levels";
 
@@ -27,6 +28,7 @@ import { thinkingLevelOption } from "./thinking-levels";
  * @param options.modelName - Model name (e.g., "claude-sonnet-4-5")
  * @param options.thinkingLevel - Thinking level for the model
  * @param options.wrapTool - Optional wrapper applied to every resolved tool (e.g. approval gate)
+ * @param options.systemPrompt - Custom system prompt (served via resource loader)
  */
 export async function createPersistentSession(options: {
   userId: string;
@@ -39,6 +41,7 @@ export async function createPersistentSession(options: {
   thinkingLevel?: string;
   /** Optional wrapper applied to every resolved tool (e.g. approval gate). */
   wrapTool?: (tool: ToolDefinition) => ToolDefinition;
+  systemPrompt?: string;
 }): Promise<CreateAgentSessionResult> {
   // Ensure session directory exists
   await fs.mkdir(options.sessionDir, { recursive: true });
@@ -76,6 +79,9 @@ export async function createPersistentSession(options: {
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
+    ...(options.systemPrompt
+      ? { resourceLoader: await createSystemPromptLoader(options.systemPrompt, options.sessionDir) }
+      : {}),
     // Omitted when unset ("default") so Pi keeps the level recorded in the
     // session file, or its own default.
     ...thinkingLevelOption(options.thinkingLevel),

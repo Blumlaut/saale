@@ -28,7 +28,7 @@ import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
-import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
 import {
   claimNextQueuedMessage,
   countQueuedMessages,
@@ -316,6 +316,10 @@ export async function GET(
     const existingPoolEntry = getPoolEntry(poolKey);
     const entry = await createAndPool(poolKey, async () => {
       log("pool", "miss — creating new agent");
+      const systemPrompt = buildAgentSystemPrompt({
+        customInstructions: userSettings?.agentCustomInstructions,
+        toolConfig: resolvedToolConfig,
+      });
       const result = await createPersistentSession({
         userId: authResult.userId,
         sessionId,
@@ -326,13 +330,8 @@ export async function GET(
         ...(modelName ? { modelName } : {}),
         thinkingLevel: chatSession.thinkingLevel,
         wrapTool: approvalWrapper,
+        systemPrompt,
       });
-
-      const systemPrompt = buildAgentSystemPrompt({
-        customInstructions: userSettings?.agentCustomInstructions,
-        toolConfig: resolvedToolConfig,
-      });
-      lockSystemPrompt(result.session, systemPrompt);
 
       return { session: result.session, sessionDir };
     });
@@ -373,8 +372,8 @@ export async function GET(
    * Uses session.prompt() — the same path the Pi TUI uses — NOT
    * session.agent.prompt(): the session wrapper runs the SDK's pre-prompt
    * compaction check and post-run processing, and only settles when the run
-   * is truly finished. The custom system prompt survives the preflight
-   * because lockSystemPrompt() replaced the SDK's base prompt.
+   * is truly finished. The custom system prompt survives the per-turn prompt
+   * resolution because it comes from the session's resource loader.
    */
   const dispatchRun = async (run: PreparedRun): Promise<boolean> => {
     log("prompt", `sending prompt, message.id=${run.target.id}`);

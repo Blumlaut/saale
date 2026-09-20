@@ -68,6 +68,14 @@ function detectImageMimeTypeFromBuffer(data: Buffer): string | null {
 /**
  * Poll a running command until it finishes or the signal/timeout fires.
  * Streams output chunks via onData as they arrive.
+ *
+ * Failure signaling (consumed by the Pi bash tool, which appends captured
+ * output before the message):
+ * - timeout → throws `timeout:<secs>`  → "Command timed out after N seconds"
+ * - abort   → throws `aborted`         → "Command aborted"
+ * - a null exit code (e.g. the container cleaned up the process) is passed
+ *   through and reported by the tool as "Command terminated without an exit
+ *   code" — pi v0.86 treats null as a failure, not partial success.
  */
 async function pollCommand(
   processId: string,
@@ -90,10 +98,10 @@ async function pollCommand(
     if (deadline && Date.now() > deadline) {
       try {
         await terminal.killCommand(processId, { userId, sessionId, force: true });
-      } catch {
-        // Ignore kill errors on timeout
+      } catch (err) {
+        console.error("Failed to kill command on timeout:", err);
       }
-      return { exitCode: null };
+      throw new Error(`timeout:${timeout}`);
     }
 
     const remaining = deadline
@@ -140,10 +148,10 @@ async function pollCommand(
   if (signal?.aborted) {
     try {
       await terminal.killCommand(processId, { userId, sessionId });
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to kill aborted command:", err);
     }
-    return { exitCode: null };
+    throw new Error("aborted");
   }
 
   return { exitCode };

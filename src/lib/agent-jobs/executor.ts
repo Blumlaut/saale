@@ -6,7 +6,7 @@ import {
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
-import { lockSystemPrompt } from "@/lib/pi/processing-state";
+import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
@@ -186,6 +186,10 @@ export async function executeAgentRun(
     createTerminalScopedTools,
   });
 
+  const systemPrompt =
+    definition.systemPrompt ??
+    `You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.`;
+
   // Create agent session
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
@@ -193,14 +197,9 @@ export async function executeAgentRun(
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,
+    resourceLoader: await createSystemPromptLoader(systemPrompt, process.cwd()),
     ...thinkingLevelOption(definition.thinkingLevel),
   });
-
-  // Set system prompt (locked to prevent SDK from overwriting)
-  const systemPrompt =
-    definition.systemPrompt ??
-    `You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.`;
-  lockSystemPrompt(session, systemPrompt);
 
   // Run state
   const state: RunState = {

@@ -1,4 +1,8 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import {
+  DefaultResourceLoader,
+  getAgentDir,
+  type ResourceLoader,
+} from "@earendil-works/pi-coding-agent";
 
 /**
  * Build the default agent system prompt for a chat session.
@@ -39,35 +43,31 @@ Guidelines:
 }
 
 /**
- * Lock the system prompt on an agent session so the Pi SDK cannot overwrite it.
+ * Build a resource loader that serves the given system prompt to a Pi session.
  *
- * The Pi SDK's `prepareNextTurnWithContext` uses
- * `this._systemPromptOverride ?? this._baseSystemPrompt` to determine the
- * system prompt sent to the model — NOT `agent.state.systemPrompt` (which is
- * just a reflection property). `emitBeforeAgentStart` resets
- * `_systemPromptOverride` to undefined when no extensions return an override,
- * causing the default Pi prompt (`_baseSystemPrompt`) to be used.
+ * pi v0.86 derives the system prompt from the resource loader: the loader's
+ * `systemPrompt` becomes the prompt's preamble section and is replayed from
+ * the transcript, so it survives the SDK's per-turn prompt resolution. Pass
+ * the result to `createAgentSession` as `resourceLoader` — it does NOT reload
+ * a caller-provided loader, hence the `reload()` here.
  *
- * This function overwrites `_baseSystemPrompt` with the Saale prompt and locks
- * both the internal and external properties to prevent the SDK from replacing it.
- *
- * Must be called after `createAgentSession` returns and before `session.prompt()`.
+ * Discovery (extensions, skills, prompt templates, themes, context files) is
+ * disabled — Saale builds its own prompts and runs headless.
  */
-export function lockSystemPrompt(session: AgentSession, prompt: string): void {
-  // @ts-expect-error — _baseSystemPrompt is internal to the Pi SDK
-  session._baseSystemPrompt = prompt;
-  // @ts-expect-error — _systemPromptOverride is internal to the Pi SDK
-  session._systemPromptOverride = prompt;
-
-  // Lock agent.state.systemPrompt (reflection property used by getSystemPrompt)
-  Object.defineProperty(session.agent.state, "systemPrompt", {
-    get() {
-      return prompt;
-    },
-    set() {
-      // Silently ignore — the Saale system prompt is authoritative
-    },
-    configurable: false,
-    enumerable: true,
+export async function createSystemPromptLoader(
+  prompt: string,
+  cwd: string,
+): Promise<ResourceLoader> {
+  const loader = new DefaultResourceLoader({
+    cwd,
+    agentDir: getAgentDir(),
+    systemPrompt: prompt,
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
   });
+  await loader.reload();
+  return loader;
 }

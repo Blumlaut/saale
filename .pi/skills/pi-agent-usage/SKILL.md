@@ -9,7 +9,7 @@ Rules and patterns for using `@earendil-works/pi-coding-agent` in Saale.
 
 ## Critical: `session.prompt()` vs `agent.prompt()`
 
-**Chat and Telegram: use `session.prompt(text, { images? })` — the same path the Pi TUI uses. Always call `lockSystemPrompt()` first.**
+**Chat and Telegram: use `session.prompt(text, { images? })` — the same path the Pi TUI uses. Always pass a system-prompt resource loader to `createAgentSession` (see System Prompts).**
 
 `session.prompt()` runs the AgentSession preflight + post-run processing that
 `session.agent.prompt()` (the raw core agent loop) bypasses:
@@ -21,18 +21,20 @@ Rules and patterns for using `@earendil-works/pi-coding-agent` in Saale.
 - **`agent_settled`** — the "completely finished" event. `agent_end` only
   means the run iteration stopped; the run may still continue.
 
-The old gotcha — `session.prompt()` resetting the system prompt to the Pi base
-prompt — is **neutralized by `lockSystemPrompt()`** (from
-`src/lib/pi/processing-state.ts`): it replaces the SDK's `_baseSystemPrompt`
-(the preflight's reset target) with the Saale prompt, and the per-turn prompt
-resolution is `_systemPromptOverride ?? _baseSystemPrompt`. Set the prompt
-with `lockSystemPrompt(session, prompt)` — do NOT set
-`session.agent.state.systemPrompt` directly (it is a reflection property the
-SDK overwrites).
+Since pi v0.86 the system prompt is derived from the session's **resource
+loader** (replayed from the transcript), not from a settable string — the
+private `_baseSystemPrompt`/`_systemPromptOverride` fields no longer exist, and
+`agent.state.systemPrompt` is read-only. Set the prompt by passing
+`resourceLoader: await createSystemPromptLoader(prompt, cwd)` to
+`createAgentSession` — do NOT set `session.agent.state.systemPrompt` directly
+(it is a derived property the SDK overwrites).
 
 ```ts
 // ✅ CORRECT for chat/Telegram — TUI-parity prompt path
-lockSystemPrompt(session, buildAgentSystemPrompt({ ... }));
+const { session } = await createAgentSession({
+  /* ... */
+  resourceLoader: await createSystemPromptLoader(buildAgentSystemPrompt({ ... }), cwd),
+});
 await session.prompt(userMessage);            // resolves on agent_settled
 // or with images:
 await session.prompt(userMessage, { images });
@@ -59,25 +61,39 @@ Telegram processor (`src/lib/telegram/processor.ts`) use `session.prompt()`.
 
 **Always set a custom system prompt.** Never rely on the default Pi base prompt (it contains coding-agent noise irrelevant to end users).
 
-Set it with `lockSystemPrompt()` immediately after creating the session, before
-calling `session.prompt()` — it is the only setter that survives the SDK's
-preflight (see Critical section above):
+Provide it via a resource loader at session creation — this is the only
+mechanism that survives the SDK's per-turn prompt resolution (see Critical
+section above):
 
 ```ts
-import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt, createSystemPromptLoader } from "@/lib/pi/processing-state";
 
-const { session } = await createAgentSession({ /* ... */ });
-
-lockSystemPrompt(session, buildAgentSystemPrompt({ customInstructions, toolConfig }));
+const { session } = await createAgentSession({
+  /* ... */
+  resourceLoader: await createSystemPromptLoader(
+    buildAgentSystemPrompt({ customInstructions, toolConfig }),
+    cwd, // session dir for chat sessions, process.cwd() for one-shot jobs
+  ),
+});
 
 // ... later ...
 await session.prompt(userMessage);
 ```
 
-`buildAgentSystemPrompt()` (from `src/lib/pi/processing-state.ts`) builds the
-Saale assistant prompt from the user's custom instructions + tool config.
+`createSystemPromptLoader(prompt, cwd)` (from `src/lib/pi/processing-state.ts`)
+wraps `DefaultResourceLoader` with discovery disabled (no extensions/skills/
+context files) — Saale builds its own prompts and runs headless. It calls
+`await loader.reload()` because `createAgentSession` does NOT reload a
+caller-provided loader.
+
+`buildAgentSystemPrompt()` builds the Saale assistant prompt from the user's
+custom instructions + tool config.
 One-shot jobs (email drafts, queue jobs) that set a bespoke prompt should use
-`lockSystemPrompt(session, bespokePrompt)` as well.
+`createSystemPromptLoader(bespokePrompt, cwd)` as well.
+
+The final prompt the model sees is the custom prompt (preamble section) plus a
+small `<cwd>` section — no tools/rules/docs sections, since a custom prompt
+replaces them.
 
 ### Prompt conventions by feature
 
@@ -153,6 +169,7 @@ const { session } = await createAgentSession({
   noTools: "all",       // disable everything
   model,
   customTools: [],
+  resourceLoader: await createSystemPromptLoader(bespokePrompt, process.cwd()),
   thinkingLevel: "off", // one-shot jobs want a deterministic, cheap level
 });
 ```
@@ -257,11 +274,25 @@ composer's queue strip (`src/components/chat/queued-messages.tsx`).
 
 | Anti-pattern | Why | Fix |
 |-------------|-----|-----------|
-| `session.agent.prompt()` for chat/Telegram | Bypasses SDK compaction, retry, `agent_settled` — treats a stopped run as finished | Use `session.prompt()` (with `lockSystemPrompt()` first) |
+| `session.agent.prompt()` for chat/Telegram | Bypasses SDK compaction, retry, `agent_settled` — treats a stopped run as finished | Use `session.prompt()` (with a system-prompt resource loader) |
 | Calling `session.compact()` on token thresholds / mid-run | Aborts the in-flight run; no in-flight guard → double compaction | Let the SDK auto-compact at run boundaries; only observe `compaction_*` events |
 | Treating `agent_end` as "done" | Run may continue after compaction/error retry | Emit `done` on `agent_settled` |
 | `getAvailable()[0]` for model | Grabs first model (could be an embedding model) | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings |
-| No custom systemPrompt | Pi base prompt has coding-agent noise | Always use `lockSystemPrompt(session, prompt)` |
+| No custom systemPrompt | Pi base prompt has coding-agent noise | Always pass `resourceLoader: await createSystemPromptLoader(prompt, cwd)` |
+| Setting `session.agent.state.systemPrompt` or private `_baseSystemPrompt` | Removed in pi v0.86 (read-only derived property) | Use `createSystemPromptLoader` at session creation |
 | `noTools: "builtin"` for text-only tasks | Heavier than needed | Use `noTools: "all"` |
 | No timeout on non-streaming calls | Can hang indefinitely | Always add a timeout (5min default) |
 | Passing `authStorage`/`modelRegistry` to `createAgentSession` | Deprecated API (pre-0.80.8) | Use `modelRuntime` instead |
+| Returning `null` exit code from custom `BashOperations` for killed/failed commands | pi v0.86 treats null as failure ("Command terminated without an exit code"), not partial success | Throw `Error("aborted")` / `Error("timeout:<secs>")` for abort/timeout; keep null only when no exit code exists (e.g. container cleaned up) |
+
+## Custom BashOperations (Open Terminal)
+
+`src/lib/terminal/operations.ts` implements Pi's `BashOperations` against the
+Open Terminal REST API. The tool renders `exec` errors as tool output, so
+signal failures through the SDK's conventions:
+
+- **timeout** → throw `new Error(\`timeout:${seconds}\`)` → rendered as "Command timed out after N seconds" (output included)
+- **abort** → throw `new Error("aborted")` → rendered as "Command aborted" (output included)
+- **no exit code** (404 during status poll) → return `{ exitCode: null }` → "Command terminated without an exit code"
+
+Never swallow a `killCommand` failure — log it (repo rule: no swallowed errors).

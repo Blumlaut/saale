@@ -6,7 +6,7 @@ import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { type ToolConfig } from "@/lib/pi/session";
 import { getPoolKey, getSessionDir, createAndPool } from "@/lib/pi/agent-pool";
-import { buildAgentSystemPrompt, lockSystemPrompt } from "@/lib/pi/processing-state";
+import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 
 /**
@@ -52,6 +52,16 @@ export async function POST(
     ? { ...(chatSession.toolConfig as ToolConfig) }
     : {};
 
+  // Build system prompt (same as stream route)
+  const userSettings = await prisma.appSettings.findUnique({
+    where: { userId: authResult.userId },
+    select: { agentCustomInstructions: true },
+  });
+  const systemPrompt = buildAgentSystemPrompt({
+    customInstructions: userSettings?.agentCustomInstructions,
+    toolConfig: resolvedToolConfig,
+  });
+
   const pooled = await createAndPool(poolKey, async () => {
     const result = await createPersistentSession({
       userId: authResult.userId,
@@ -62,19 +72,8 @@ export async function POST(
       modelProvider,
       modelName,
       thinkingLevel: chatSession.thinkingLevel,
+      systemPrompt,
     });
-
-    // Set system prompt (same as stream route)
-    const userSettings = await prisma.appSettings.findUnique({
-      where: { userId: authResult.userId },
-      select: { agentCustomInstructions: true },
-    });
-
-    const systemPrompt = buildAgentSystemPrompt({
-      customInstructions: userSettings?.agentCustomInstructions,
-      toolConfig: resolvedToolConfig,
-    });
-    lockSystemPrompt(result.session, systemPrompt);
 
     return { session: result.session, sessionDir };
   });

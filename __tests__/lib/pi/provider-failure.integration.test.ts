@@ -90,7 +90,7 @@ import {
   createAgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
-import { lockSystemPrompt } from "@/lib/pi/processing-state";
+import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { requestSessionAbort } from "@/lib/pi/abort-request";
 import { withAbortSignal } from "@/lib/pi/tool-abort";
 
@@ -111,6 +111,7 @@ const HANGING_TEXT = "Starting to answer";
 
 let nextReply: () => Reply = () => ({ kind: "error", status: 500, body: {} });
 let requests = 0;
+const requestBodies: Array<Record<string, unknown>> = [];
 
 function streamChunk(text: string, finish: string | null): string {
   return `data: ${JSON.stringify({
@@ -126,9 +127,17 @@ function streamChunk(text: string, finish: string | null): string {
 const openResponses = new Set<http.ServerResponse>();
 
 const server = http.createServer((req, res) => {
-  req.resume();
+  let body = "";
+  req.on("data", (chunk: string) => {
+    body += chunk;
+  });
   req.on("end", () => {
     requests++;
+    try {
+      requestBodies.push(JSON.parse(body));
+    } catch (err) {
+      console.error("Failed to parse mock provider request body:", err);
+    }
     const reply = nextReply();
 
     if (reply.kind === "error") {
@@ -219,6 +228,7 @@ afterAll(async () => {
 beforeEach(() => {
   store.reset();
   requests = 0;
+  requestBodies.length = 0;
 });
 
 /**
@@ -246,9 +256,9 @@ async function runSession(options: {
     noTools: "builtin",
     model: TEST_MODEL,
     customTools: options.tools ?? [],
+    resourceLoader: await createSystemPromptLoader("You are a test.", process.cwd()),
     thinkingLevel: "off",
   });
-  lockSystemPrompt(session, "You are a test.");
 
   const settled = new Promise<void>((resolve, reject) => {
     createSessionEventTracker({
@@ -285,6 +295,22 @@ async function runSession(options: {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("provider failures (real SDK)", () => {
+  it("sends the resource loader's system prompt to the provider", async () => {
+    nextReply = () => ({ kind: "answer", text: "ok" });
+
+    const { requests: attempts } = await runSession({});
+
+    expect(attempts).toBeGreaterThanOrEqual(1);
+    const firstBody = requestBodies[0];
+    const messages = firstBody?.messages as Array<Record<string, unknown>> | undefined;
+    const system = messages?.find((m) => m.role === "system");
+    expect(system).toBeDefined();
+    // The loader's custom prompt is the preamble — Pi's coding-assistant
+    // base prompt must not appear.
+    expect(JSON.stringify(system)).toContain("You are a test.");
+    expect(JSON.stringify(system)).not.toContain("expert coding assistant");
+  });
+
   it("persists the error for a non-retryable failure", async () => {
     nextReply = () => ({
       kind: "error",

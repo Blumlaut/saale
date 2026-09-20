@@ -2,7 +2,7 @@ import type { Job } from "bullmq";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
-import { lockSystemPrompt } from "@/lib/pi/processing-state";
+import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
@@ -38,18 +38,18 @@ export async function dispatchAiJob(
     model = modelRuntime.getModel(modelInfo.provider, modelInfo.name);
   }
 
+  const systemPrompt =
+    options?.systemPrompt ??
+    `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
+
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
     noTools: "all",
     ...(model ? { model } : {}),
+    resourceLoader: await createSystemPromptLoader(systemPrompt, process.cwd()),
     thinkingLevel: "off",
   });
-
-  const systemPrompt =
-    options?.systemPrompt ??
-    `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
-  lockSystemPrompt(session, systemPrompt);
 
   return new Promise((resolve, reject) => {
     // Idle timeout — fires only if the session goes completely silent
