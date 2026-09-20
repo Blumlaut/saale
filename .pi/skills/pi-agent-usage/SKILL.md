@@ -270,11 +270,38 @@ composer's queue strip (`src/components/chat/queued-messages.tsx`).
 - **Transcript queries must exclude queued rows** (`queuedAt: null`) — the
   conversation, shared chats, title generation and memory extraction all do.
 
+## Message Editing (History Rewind)
+
+`PATCH /messages/:messageId` rewrites the DB history: the message is updated in
+place and everything after it is deleted. The Pi transcript is **append-only**,
+so the DB write alone is not enough — a plain re-prompt appends the edited text
+after the messages the edit deleted, and the model reads the edit as a brand new
+message following the old conversation.
+
+- The edit route leaves a rewind request in Redis
+  (`setPendingHistoryRewind`) with the pre-edit content and the message's index
+  among the session's saved user messages.
+- The stream connection that prompts the edited message applies it first
+  (`applyPendingHistoryRewind`) — `session.navigateTree()` on the message's
+  transcript entry, Pi's own "edit an earlier message" primitive. It moves the
+  leaf to the entry's parent and mirrors the rewound context into the agent, so
+  the prompt replaces the message. The abandoned branch stays in the JSONL but
+  drops off the active path.
+- Read-then-claim the request: a rewind belongs to one specific message, and
+  consuming it while prompting an unrelated one throws the edit away.
+- Never guess which entry to rewind to — a wrong pick deletes history. Match on
+  the DB position, verified against the pre-edit content, then fall back to the
+  closest content match; skip the rewind when nothing matches.
+- Rewinding past a compaction entry drops the summary from the active path (the
+  entries it summarized are still there) — editing pre-compaction history means
+  reverting to pre-compaction context, the same as Pi's TUI.
+
 ## Anti-Patterns
 
 | Anti-pattern | Why | Fix |
 |-------------|-----|-----------|
 | `session.agent.prompt()` for chat/Telegram | Bypasses SDK compaction, retry, `agent_settled` — treats a stopped run as finished | Use `session.prompt()` (with a system-prompt resource loader) |
+| Re-prompting an edited message without rewinding the transcript | The append-only transcript still holds the deleted history, so the model reads the edit as a new message | Rewind first — see "Message Editing (History Rewind)" |
 | Calling `session.compact()` on token thresholds / mid-run | Aborts the in-flight run; no in-flight guard → double compaction | Let the SDK auto-compact at run boundaries; only observe `compaction_*` events |
 | Treating `agent_end` as "done" | Run may continue after compaction/error retry | Emit `done` on `agent_settled` |
 | `getAvailable()[0]` for model | Grabs first model (could be an embedding model) | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings |

@@ -2,7 +2,12 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { isSessionActive, registerActiveSession, setPendingPrompt } from "@/lib/redis";
+import {
+  isSessionActive,
+  registerActiveSession,
+  setPendingHistoryRewind,
+  setPendingPrompt,
+} from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
 
 /**
@@ -69,6 +74,15 @@ export async function PATCH(
   // Sanitize content
   const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
+  // Position of this message among the session's saved user messages — the
+  // prompt path uses it to find the transcript entry the edit replaced.
+  const savedUserMessages = await prisma.chatMessage.findMany({
+    where: { sessionId, role: "user", queuedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const userMessageIndex = savedUserMessages.findIndex((m) => m.id === messageId);
+
   // Update the message in place and delete messages after it
   await prisma.$transaction(async (tx) => {
     // Update the message content
@@ -95,6 +109,15 @@ export async function PATCH(
   // Claim the prompt: the SSE connection for the edited message is the
   // expected prompter (see stream route).
   await setPendingPrompt(sessionId, messageId);
+
+  // The agent transcript is append-only and still holds the messages this edit
+  // deleted, so the connection that prompts must rewind it first — otherwise
+  // the model reads the edited text as a new message after the old one.
+  await setPendingHistoryRewind(sessionId, {
+    messageId,
+    previousContent: message.content,
+    userMessageIndex,
+  });
 
   // Clear lastPromptedMessageId so the stream re-prompts with the edited content.
   // The message ID is the same but its content has changed.

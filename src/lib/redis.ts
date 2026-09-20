@@ -202,6 +202,84 @@ export async function getPendingPrompt(sessionId: string): Promise<string | null
   }
 }
 
+// ─── Pending History Rewind ─────────────────────────────────────────────────
+
+/**
+ * Redis-backed history-rewind claim.
+ *
+ * Editing a message rewrites the DB history, but the agent's own transcript is
+ * append-only: the SDK appends the edited prompt to a transcript that still
+ * holds the messages the edit deleted, so the model reads the edit as a brand
+ * new message following the old, deleted conversation.
+ *
+ * The edit route stores the message's pre-edit content here; the SSE
+ * connection that prompts it claims the entry and rewinds the transcript first
+ * (see rewindSessionToMessage).
+ */
+
+const PENDING_REWIND_PREFIX = "chat:pending_rewind:";
+const PENDING_REWIND_TTL_SECONDS = 600;
+
+export interface PendingHistoryRewind {
+  /** The edited message, which is about to be prompted again. */
+  messageId: string;
+  /** The message's content before the edit — locates its transcript entry. */
+  previousContent: string;
+  /** Position of the message among the session's saved user messages. */
+  userMessageIndex: number;
+}
+
+/** Mark a message's transcript as needing a rewind before it is re-prompted. */
+export async function setPendingHistoryRewind(
+  sessionId: string,
+  rewind: PendingHistoryRewind,
+): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.set(
+      `${PENDING_REWIND_PREFIX}${sessionId}`,
+      JSON.stringify(rewind),
+      "EX",
+      PENDING_REWIND_TTL_SECONDS,
+    );
+  } catch (err) {
+    console.error("Failed to set pending history rewind:", err);
+  }
+}
+
+/** Read the session's pending history rewind (or null). */
+export async function getPendingHistoryRewind(
+  sessionId: string,
+): Promise<PendingHistoryRewind | null> {
+  try {
+    const redis = getRedis();
+    const value = await redis.get(`${PENDING_REWIND_PREFIX}${sessionId}`);
+    if (!value) return null;
+    return JSON.parse(value) as PendingHistoryRewind;
+  } catch (err) {
+    console.error("Failed to read pending history rewind:", err);
+    return null;
+  }
+}
+
+/**
+ * Atomically claim the pending history rewind (GETDEL), so exactly one of the
+ * concurrent connections that decided to prompt consumes it.
+ */
+export async function claimPendingHistoryRewind(
+  sessionId: string,
+): Promise<PendingHistoryRewind | null> {
+  try {
+    const redis = getRedis();
+    const value = await redis.getdel(`${PENDING_REWIND_PREFIX}${sessionId}`);
+    if (!value) return null;
+    return JSON.parse(value) as PendingHistoryRewind;
+  } catch (err) {
+    console.error("Failed to claim pending history rewind:", err);
+    return null;
+  }
+}
+
 // ─── Send Queue Hold ────────────────────────────────────────────────────────
 
 /**

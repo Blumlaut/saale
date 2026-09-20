@@ -24,6 +24,7 @@ import {
 } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
+import { applyPendingHistoryRewind } from "@/lib/pi/message-rewind";
 import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/stream-logic";
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
@@ -346,6 +347,14 @@ export async function GET(
     // Claim synchronously before any further awaits.
     entry.promptInFlight = true;
     entry.lastPromptedMessageId = target.id;
+
+    // An edited message still has the history its edit deleted in the agent
+    // transcript — rewind it, or the prompt lands as a brand new message after
+    // the old conversation (see message-rewind.ts).
+    const rewind = await applyPendingHistoryRewind(sessionId, entry.session, target.id);
+    if (rewind !== "nothing-pending") {
+      log("rewind", `${rewind} for message ${target.id}`);
+    }
 
     // Signal the generation to other connections, then clear stale buffered
     // events from previous runs.
