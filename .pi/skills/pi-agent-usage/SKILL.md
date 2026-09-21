@@ -284,9 +284,13 @@ message following the old conversation.
 - The stream connection that prompts the edited message applies it first
   (`applyPendingHistoryRewind`) — `session.navigateTree()` on the message's
   transcript entry, Pi's own "edit an earlier message" primitive. It moves the
-  leaf to the entry's parent and mirrors the rewound context into the agent, so
-  the prompt replaces the message. The abandoned branch stays in the JSONL but
-  drops off the active path.
+  leaf to the entry's parent, so the prompt replaces the message. The
+  abandoned branch stays in the JSONL but drops off the active path. Since pi
+  v0.87 the `SessionManager` is canonical for the provider context (every
+  request is rebuilt from its projection), so moving the leaf is the whole
+  rewind — `navigateTree()` resyncs the agent's public state itself. The root
+  case (edited first message, no parent entry) uses
+  `sessionManager.resetLeaf()` + `session.refreshContext()` instead.
 - Read-then-claim the request: a rewind belongs to one specific message, and
   consuming it while prompting an unrelated one throws the edit away.
 - Never guess which entry to rewind to — a wrong pick deletes history. Match on
@@ -307,6 +311,7 @@ message following the old conversation.
 | `getAvailable()[0]` for model | Grabs first model (could be an embedding model) | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings |
 | No custom systemPrompt | Pi base prompt has coding-agent noise | Always pass `resourceLoader: await createSystemPromptLoader(prompt, cwd)` |
 | Setting `session.agent.state.systemPrompt` or private `_baseSystemPrompt` | Removed in pi v0.86 (read-only derived property) | Use `createSystemPromptLoader` at session creation |
+| Assigning `session.agent.state.messages` | Since pi v0.87 the provider context comes from the `SessionManager` projection — the assignment compiles but no longer affects future requests | Navigate with `session.navigateTree()`; for direct `sessionManager` mutations call `session.refreshContext()` after |
 | `noTools: "builtin"` for text-only tasks | Heavier than needed | Use `noTools: "all"` |
 | No timeout on non-streaming calls | Can hang indefinitely | Always add a timeout (5min default) |
 | Passing `authStorage`/`modelRegistry` to `createAgentSession` | Deprecated API (pre-0.80.8) | Use `modelRuntime` instead |

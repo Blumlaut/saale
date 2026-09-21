@@ -16,8 +16,12 @@ import { claimPendingHistoryRewind, getPendingHistoryRewind } from "@/lib/redis"
  *
  * Pi's own primitive for this is `navigateTree()` (the TUI's "edit an earlier
  * message" flow): pointing it at a user-message entry moves the leaf to that
- * entry's parent and mirrors the rewound context into the agent, so the next
- * prompt replaces the message instead of appending to it.
+ * entry's parent, so the next prompt replaces the message instead of appending
+ * to it. Since pi v0.87 the SessionManager is canonical for the provider
+ * context — every request is rebuilt from its projection — so moving the leaf
+ * is the whole rewind; `navigateTree()` resyncs the agent's public state
+ * itself. Never assign `session.agent.state.messages`: since v0.87 it does not
+ * affect what future requests send.
  */
 
 /** The edited message, located from both the DB and its pre-edit content. */
@@ -106,8 +110,10 @@ export async function rewindSessionToMessage(
     if (entry.parentId) {
       await session.navigateTree(entry.parentId);
     } else {
+      // The first message has no parent entry to navigate to — reset the leaf
+      // directly and resync the agent's state from the (now empty) projection.
       sessionManager.resetLeaf();
-      session.agent.state.messages = sessionManager.buildSessionContext().messages;
+      session.refreshContext();
     }
     return true;
   }
