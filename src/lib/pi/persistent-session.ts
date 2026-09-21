@@ -59,7 +59,7 @@ export async function createPersistentSession(options: {
 
   // Create or resume file-based SessionManager.
   //
-  // SessionManager.continueRecent() (session-manager.js:1094-1102):
+  // SessionManager.continueRecent() (session-manager.js:1354-1362):
   //   1. Calls findMostRecentSession() to scan sessionDir for .jsonl files
   //   2. If found → new SessionManager(cwd, dir, filePath, true) → setSessionFile()
   //      → loadEntriesFromFile() → builds full in-memory index from disk

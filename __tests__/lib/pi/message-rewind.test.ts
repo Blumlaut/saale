@@ -61,18 +61,23 @@ function twoTurnBranch(): SessionEntry[] {
 
 function fakeSession(branch: SessionEntry[], leafId: string | null) {
   const navigateTree = vi.fn().mockResolvedValue({ cancelled: false });
+  const refreshContext = vi.fn();
   const sessionManager = {
     getBranch: () => branch,
     getLeafId: () => leafId,
     resetLeaf: vi.fn(),
-    buildSessionContext: () => ({ messages: [{ role: "user", content: "ALPHA" }] }),
   };
   const session = {
     sessionManager,
     navigateTree,
-    agent: { state: { messages: [] as unknown[] } },
+    refreshContext,
   };
-  return { session: session as unknown as AgentSession, navigateTree, sessionManager };
+  return {
+    session: session as unknown as AgentSession,
+    navigateTree,
+    sessionManager,
+    refreshContext,
+  };
 }
 
 describe("transcriptUserMessages", () => {
@@ -153,8 +158,11 @@ describe("rewindSessionToMessage", () => {
   });
 
   it("resets the leaf when the first message is the leaf", async () => {
+    // The first message has no parent entry to navigate to, so the rewind
+    // resets the leaf directly and lets the session resync the agent's state
+    // from the (now empty) projection — pi v0.87's canonical SessionManager.
     const branch = [userEntry("u1", "ALPHA", null)];
-    const { session, navigateTree, sessionManager } = fakeSession(branch, "u1");
+    const { session, navigateTree, sessionManager, refreshContext } = fakeSession(branch, "u1");
 
     const rewound = await rewindSessionToMessage(session, {
       userMessageIndex: 0,
@@ -164,7 +172,7 @@ describe("rewindSessionToMessage", () => {
     expect(rewound).toBe(true);
     expect(navigateTree).not.toHaveBeenCalled();
     expect(sessionManager.resetLeaf).toHaveBeenCalled();
-    expect(session.agent.state.messages).toEqual([{ role: "user", content: "ALPHA" }]);
+    expect(refreshContext).toHaveBeenCalled();
   });
 
   it("leaves the session alone when the edited message is not in the transcript", async () => {
