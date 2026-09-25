@@ -190,7 +190,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <div className="flex flex-col gap-4">
               {/* Email & Password */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label className="text-xs">Email</Label>
                   <div className="relative">
@@ -255,7 +255,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
                   {/* IMAP Settings */}
                   <div>
                     <h3 className="mb-2 text-sm font-medium">IMAP Settings</h3>
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div className="space-y-2">
                         <Label className="text-xs">Host</Label>
                         <Input
@@ -293,7 +293,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
                   {/* SMTP Settings */}
                   <div>
                     <h3 className="mb-2 text-sm font-medium">SMTP Settings</h3>
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div className="space-y-2">
                         <Label className="text-xs">Host</Label>
                         <Input
@@ -376,7 +376,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
 
           {/* Footer */}
           <div className="border-border/30 border-t px-6 py-4">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="outline"
                 className="liquid-glass-pill h-9 rounded-full text-xs font-medium"

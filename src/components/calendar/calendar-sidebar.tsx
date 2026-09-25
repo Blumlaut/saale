@@ -179,6 +179,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
                       variant="ghost"
                       size="icon"
                       className="h-5 w-5"
+                      aria-label="Add calendar"
+                      title="Add calendar"
                       onClick={() => openAddSheet(account.id)}
                     >
                       <Plus className="h-3 w-3" />

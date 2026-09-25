@@ -103,7 +103,7 @@ export function CalendarAccountDialog({
 
         <div className="flex flex-col gap-4">
           {/* Account details */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Account Name</Label>
               <Input
@@ -122,7 +122,7 @@ export function CalendarAccountDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Username</Label>
               <Input

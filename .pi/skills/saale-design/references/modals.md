@@ -199,6 +199,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 - **Focus trap.** Handled by Radix primitives automatically.
 - **Loading state.** Show a spinner inside the overlay, don't show a blank overlay.
 - **Scrollable content, fixed header/footer.** Use `flex-1 overflow-y-auto` for the content area.
+- **Never scroll horizontally.** The modal must fit its bounds at 320px — long unbreakable values (keys, tokens, URLs, IDs) wrap with `break-all` / `whitespace-pre-wrap`, and grids declare a base track (`grid-cols-1`, not a bare `grid`). Register every new overlay in `e2e/modal-scenarios.ts`: `e2e/modal-overflow.spec.ts` and `__tests__/overlay-coverage.test.ts` enforce this.
 
 ## Common Mistakes
 
@@ -212,3 +213,5 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 | Manual close button on sheet | Use built-in `showCloseButton` |
 | Full-screen overlay | Use max-width and let background show |
 | Scrollable header/footer | Keep header/footer fixed, only content scrolls |
+| Modal wider than its bounds / horizontal scrollbar in a modal | Wrap the offending value (`break-all`), add `min-w-0` to the squashed row, give grids a base track (`grid-cols-1`) |
+| Icon-only trigger button with no name | Add `aria-label` (and `title` when it needs a tooltip) |
