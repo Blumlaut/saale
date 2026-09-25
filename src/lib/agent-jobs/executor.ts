@@ -232,10 +232,10 @@ export async function executeAgentRun(
       timeoutMs: TIMEOUT_MS,
       label: `agent-job:${runId}`,
       onTimeout: () => {
-        unsubscribe();
-        session.abort().catch((err) => {
+        void session.abort().catch((err) => {
           console.error(`[agent-job:${runId}] Failed to abort on timeout:`, err);
         });
+        settle();
         reject(new Error("Agent job stalled (no activity for 10min)"));
       },
     });
@@ -244,14 +244,31 @@ export async function executeAgentRun(
     // lands (turn_end persists the assistant message asynchronously).
     const pendingPersists = new Set<Promise<void>>();
 
-    /** The provider failure of a terminal attempt, if the run ended in one. */
-    let terminalProviderError: string | null = null;
+    /**
+     * Outcome of the last finished attempt. A provider failure does not throw —
+     * it ends the assistant message with stopReason "error" — and an overflow
+     * failure reports `willRetry: false` while the SDK compacts and continues,
+     * so the error alone does not mean the run failed. The text decides.
+     */
+    let lastAttemptError: string | null = null;
+    let lastAttemptText = "";
+
+    /**
+     * Stop listening and release the session. `dispose()` aborts the agent (and
+     * its bash/retry/compaction hooks) and cancels the cache warmer, whose
+     * timer would otherwise stay armed after the run ends.
+     */
+    const settle = () => {
+      idleTimeout.clear();
+      unsubscribe();
+      session.dispose();
+    };
 
     /** Settle the run's outcome once Pi is completely finished. */
     const finish = async () => {
       await Promise.allSettled([...pendingPersists]);
-      if (terminalProviderError) {
-        reject(new Error(terminalProviderError));
+      if (lastAttemptError && !lastAttemptText) {
+        reject(new Error(lastAttemptError));
         return;
       }
       try {
@@ -276,14 +293,14 @@ export async function executeAgentRun(
       pendingPersists.add(persisted);
       void persisted.finally(() => pendingPersists.delete(persisted));
 
-      // A provider failure does not throw: it ends the assistant message with
-      // stopReason "error". Only the terminal attempt decides the run, so this
-      // is recorded when no retry is pending (the run would otherwise be
-      // reported as completed with no output).
+      // Record what this attempt produced. `agent_end` fires per attempt, so
+      // this is overwritten by whatever came after — a run recovered from an
+      // overflow reports the continuation's text, not the first failure.
       if (event.type === "agent_end" && !event.willRetry) {
         const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant") as
-          ProviderErrorSource | undefined;
-        terminalProviderError = extractProviderError(lastAssistant);
+          (ProviderErrorSource & { content: unknown[] }) | undefined;
+        lastAttemptError = extractProviderError(lastAssistant);
+        lastAttemptText = lastAssistant ? extractText(lastAssistant.content) : "";
       }
 
       // `agent_settled` — emitted after retries and post-run compaction — is
@@ -292,15 +309,13 @@ export async function executeAgentRun(
       // still working — and any later rejection would be a no-op on an
       // already-settled promise.
       if (event.type === "agent_settled") {
-        idleTimeout.clear();
-        unsubscribe();
+        settle();
         void finish();
       }
 
       // A retry the SDK gave up on (including one cancelled by an abort).
       if (event.type === "auto_retry_end" && !event.success) {
-        idleTimeout.clear();
-        unsubscribe();
+        settle();
         reject(new Error(event.finalError ?? "Agent retry failed"));
       }
     });
@@ -309,8 +324,7 @@ export async function executeAgentRun(
     // SDK's post-run processing (retry, auto-compaction, agent_settled), which
     // is what makes `agent_settled` above reachable at all.
     session.prompt(definition.prompt, { expandPromptTemplates: false }).catch((err) => {
-      idleTimeout.clear();
-      unsubscribe();
+      settle();
       reject(err);
     });
   });

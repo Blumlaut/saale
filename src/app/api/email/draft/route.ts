@@ -11,6 +11,8 @@ import { buildModelRuntime } from "@/lib/pi/models";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { createSessionSettings } from "@/lib/pi/settings";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
+import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 
 /**
  * POST /api/email/draft — Generate an AI email draft reply
@@ -149,60 +151,118 @@ Rules:
     controller.enqueue(encoder.encode(`event: ${event}\ndata: ${json}\n\n`));
   }
 
+  /** Text blocks of an assistant message's content array. */
+  function extractText(content: unknown[]): string {
+    return content
+      .filter(
+        (c): c is Record<string, unknown> =>
+          typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
+      )
+      .map((c) => (c.text as string) || "")
+      .join("");
+  }
+
   const stream = new ReadableStream({
     start(controller) {
+      /** Idle window — a hung provider must not leave the stream open forever. */
+      const IDLE_TIMEOUT_MS = 10 * 60_000;
+      let finished = false;
+
+      /**
+       * End the response exactly once, whatever the outcome. The listener, the
+       * idle timer and the session must all go: a disposed session aborts the
+       * agent and cancels the cache warmer.
+       */
+      const close = (event: string, data: unknown) => {
+        if (finished || aborted) return;
+        finished = true;
+        idleTimeout.clear();
+        unsubscribe();
+        piSession.dispose();
+        sendEvent(controller, event, data);
+        controller.close();
+      };
+
+      const fail = (message: string) => {
+        console.error(`[email:${messageId}] Draft generation failed:`, message);
+        close("error", { error: message });
+      };
+
+      const idleTimeout = createAgentIdleTimeout({
+        session: piSession,
+        timeoutMs: IDLE_TIMEOUT_MS,
+        label: `email-draft:${messageId}`,
+        onTimeout: () => {
+          piSession.abort().catch((err) => {
+            console.error(`[email:${messageId}] Failed to abort stalled draft:`, err);
+          });
+          fail("Draft generation stalled (no activity for 10min)");
+        },
+      });
+
+      /** Outcome of the last finished attempt (see the `agent_end` case). */
+      let lastAttemptError: string | null = null;
+      let lastAttemptText = "";
+
       const unsubscribe = piSession.subscribe((event) => {
-        if (aborted) return;
+        if (aborted || finished) return;
 
         if (event.type === "message_update" && event.message.role === "assistant") {
-          const msg = event.message as { content: unknown[] };
-          const textBlocks = msg.content.filter(
-            (c) =>
-              typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
-          );
-          currentText = textBlocks
-            .map((c) => ((c as Record<string, unknown>).text as string) || "")
-            .join("");
-          if (currentText) {
-            sendEvent(controller, "token", { text: currentText });
+          const text = extractText((event.message as { content: unknown[] }).content);
+          currentText = text;
+          if (text) {
+            sendEvent(controller, "token", { text });
           }
         }
 
-        if (event.type === "agent_end") {
-          // Extract final text
-          const assistantMessages = (
-            event.messages as { role: string; content: unknown[] }[]
-          ).filter((m) => m.role === "assistant");
-          const lastAssistant = assistantMessages[assistantMessages.length - 1];
+        // One report per attempt: `agent_end` fires before any retry, and an
+        // overflow failure (`willRetry: false`) is followed by a
+        // compact-and-continue — so the final attempt is what counts.
+        if (event.type === "agent_end" && !event.willRetry) {
+          const lastAssistant = [...event.messages]
+            .reverse()
+            .find((m) => m.role === "assistant") as ProviderErrorSource | undefined;
+          lastAttemptError = extractProviderError(lastAssistant);
+          lastAttemptText = lastAssistant
+            ? extractText((lastAssistant as { content: unknown[] }).content)
+            : "";
+        }
 
-          let finalText = currentText;
-          if (lastAssistant) {
-            const textBlocks = lastAssistant.content.filter(
-              (c) =>
-                typeof c === "object" &&
-                c !== null &&
-                (c as Record<string, unknown>).type === "text",
-            );
-            finalText = textBlocks
-              .map((c) => ((c as Record<string, unknown>).text as string) || "")
-              .join("");
+        // Only `agent_settled` — after retries, compaction and any continuation
+        // — means the draft is complete. Closing on `agent_end` reported failed
+        // or truncated drafts as successful empty ones.
+        if (event.type === "agent_settled") {
+          if (lastAttemptError && !lastAttemptText) {
+            fail(lastAttemptError);
+            return;
           }
-
-          sendEvent(controller, "done", { text: finalText });
-          controller.close();
+          close("done", { text: lastAttemptText || currentText });
         }
       });
 
-      // Call agent.prompt directly to bypass AgentSession's preflight logic
-      // which resets systemPrompt back to the Pi base prompt on every turn
-      piSession.agent.prompt(userPrompt);
+      // session.prompt() — not session.agent.prompt() — runs the SDK's preflight
+      // and post-run processing (retries, overflow recovery, `agent_settled`).
+      // The per-turn system prompt comes from the resource loader, so switching
+      // to it does not reset the prompt the way agent.prompt() was thought to.
+      piSession.prompt(userPrompt, { expandPromptTemplates: false }).catch((err: Error) => {
+        fail(err.message);
+      });
 
       // Handle client disconnect
       request.signal.addEventListener("abort", () => {
         aborted = true;
+        idleTimeout.clear();
         unsubscribe();
-        piSession.abort();
-        controller.close();
+        piSession.abort().catch((err) => {
+          console.error(`[email:${messageId}] Failed to abort draft on disconnect:`, err);
+        });
+        piSession.dispose();
+        try {
+          controller.close();
+        } catch (err) {
+          // The client is already gone; a closed controller is expected.
+          console.error(`[email:${messageId}] Failed to close aborted stream:`, err);
+        }
       });
     },
   });
