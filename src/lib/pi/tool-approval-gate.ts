@@ -396,12 +396,11 @@ export function wrapWithApprovalGate(
 
       // Policy: "off" — tool is disabled. Never overridden, not even by
       // auto-approve mode (/stfu): a disabled tool stays disabled.
+      // Thrown, not returned: Pi's agent loop hardcodes `isError: false` for
+      // any non-throwing tool result, so a returned error would reach the
+      // model and the UI as a successful call.
       if (policy === "off") {
-        return {
-          content: [{ type: "text", text: `Tool "${tool.name}" is disabled.` }],
-          isError: true,
-          details: {},
-        };
+        throw new Error(`Tool "${tool.name}" is disabled.`);
       }
 
       // Auto-approve mode (/stfu): accept tool use requests for this user
@@ -430,16 +429,9 @@ export function wrapWithApprovalGate(
           );
 
           if (!approved) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Tool call "${tool.name}" was denied by the user (approval timed out or explicitly rejected).`,
-                },
-              ],
-              isError: true,
-              details: {},
-            };
+            throw new Error(
+              `Tool call "${tool.name}" was denied by the user (approval timed out or explicitly rejected).`,
+            );
           }
         }
         // Safe command — proceed without approval
@@ -458,16 +450,9 @@ export function wrapWithApprovalGate(
         );
 
         if (!approved) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Tool call "${tool.name}" was denied by the user (approval timed out or explicitly rejected).`,
-              },
-            ],
-            isError: true,
-            details: {},
-          };
+          throw new Error(
+            `Tool call "${tool.name}" was denied by the user (approval timed out or explicitly rejected).`,
+          );
         }
       }
 

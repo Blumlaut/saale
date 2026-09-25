@@ -195,13 +195,12 @@ describe("Telegram tool approval gate — critical security", () => {
         {} as never,
       );
 
+      const rejection = expect(promise).rejects.toThrow(/denied/);
       await vi.advanceTimersByTimeAsync(50);
       await resolveApproval("session-deny", "tc-deny", false);
-      const result = (await promise) as ToolResult;
+      await rejection;
 
       expect(executed).toBe(false);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("denied");
     });
 
     it("'ask' tool is denied on timeout", async () => {
@@ -228,12 +227,12 @@ describe("Telegram tool approval gate — critical security", () => {
         {} as never,
       );
 
+      const rejection = expect(promise).rejects.toThrow(/denied/);
       // Advance past the default 5-minute timeout
       await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
-      const result = (await promise) as ToolResult;
+      await rejection;
 
       expect(executed).toBe(false);
-      expect(result.isError).toBe(true);
     });
 
     it("'off' policy blocks tool immediately", async () => {
@@ -252,17 +251,17 @@ describe("Telegram tool approval gate — critical security", () => {
         () => {},
       );
 
-      const result = (await tool.execute(
-        "tc-off",
-        { id: "machine-1", command: "ls" },
-        undefined,
-        undefined,
-        {} as never,
-      )) as ToolResult;
+      await expect(
+        tool.execute(
+          "tc-off",
+          { id: "machine-1", command: "ls" },
+          undefined,
+          undefined,
+          {} as never,
+        ),
+      ).rejects.toThrow(/disabled/);
 
       expect(executed).toBe(false);
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("disabled");
     });
 
     it("'allow' policy executes immediately without approval", async () => {
