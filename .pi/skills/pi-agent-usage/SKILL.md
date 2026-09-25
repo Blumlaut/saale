@@ -105,13 +105,22 @@ replaces them.
 
 ## Model Runtime
 
-**Always use `buildModelRuntime(userId)` from `src/lib/pi/models`.** This creates a `ModelRuntime` with the user's configured providers and API keys.
+**Always use `buildModelRuntime(userId)` from `src/lib/pi/models`.** This creates a `ModelRuntime` with the user's configured providers and API keys — and only those.
 
 ```ts
 import { buildModelRuntime } from "@/lib/pi/models";
 
 const { modelRuntime, models } = await buildModelRuntime(userId);
 ```
+
+**Never call `ModelRuntime.create()` bare.** Its defaults read the *host's*
+`~/.pi/agent/auth.json` and `models.json` (SDK docs, "Credential priority"), so
+a server running on a machine where the operator uses Pi would hand every tenant
+that operator's provider keys and private endpoints, and write fetched catalogs
+into the operator's Pi directory. `buildModelRuntime` passes
+`{ credentials: new InMemoryCredentialStore(), modelsPath: null }`; keep it that
+way. (Environment-provided keys — `ANTHROPIC_API_KEY` etc. — are still honoured
+by the SDK, so keep provider keys out of the app's environment too.)
 
 ### Resolving a specific model
 
@@ -143,20 +152,37 @@ the limits come from the user's provider config (`contextWindow` /
 
 ## Session Creation
 
-### With tools (chat, queue jobs that need tools)
+### Chat sessions
+
+`src/lib/pi/chat-session-factory.ts` is the one place a chat's agent session is
+built — the stream route and `/compact` both call it, so they cannot drift:
 
 ```ts
-const { session } = await createPiSession({
-  userId,
-  customTools: [],
-  toolConfig,           // which tool categories to enable
-  modelProvider,
-  modelName,
-  thinkingLevel: session.thinkingLevel, // "default" = let Pi decide
-});
+export async function createChatAgentSession(options: {
+  userId: string;
+  sessionId: string;              // ChatSession.id
+  chatSession: ChatSessionModelConfig;  // model, thinking level, tool config
+  model?: { provider: string; name: string }; // omitted → user's default chat model
+  customInstructions: string | null;
+  /** The approval gate. Omitting it runs every tool unapproved. */
+  wrapTool: (tool: ToolDefinition) => ToolDefinition;
+}): Promise<{ session: AgentSession; sessionDir: string }>;
 ```
 
-Use `createPiSession` from `src/lib/pi/session.ts` — it handles model runtime, auth, and tool scoping.
+Build the gate with `createToolApprovalGate({ userId, sessionId, toolPolicies,
+emitApprovalRequest })` (`src/lib/pi/tool-approval-gate.ts`) — it resolves each
+tool's policy and wraps `wrapWithApprovalGate`, which is the only thing that
+enforces the user's policies. Tools wrapped without it execute unapproved, so
+`createChatAgentSession` requires it.
+
+#### Changing a chat's settings
+
+A pooled session's model, thinking level and tool loadout are fixed when it is
+built. `PATCH /api/chat/sessions/:id` therefore also updates the live session
+(`syncPooledAgentSession`): `session.setModel()` / `session.setThinkingLevel()`
+for models and levels, and a pool eviction when the tool loadout changes (tools
+are resolved from the config at creation). Writing only to the database leaves
+the chat answering with the previous model until the session is evicted.
 
 ### Without tools (simple text generation like email drafts)
 
@@ -166,6 +192,7 @@ const { modelRuntime } = await buildModelRuntime(userId);
 const { session } = await createAgentSession({
   sessionManager: SessionManager.inMemory(),
   modelRuntime,
+  settingsManager: createSessionSettings(), // never the host's ~/.pi/agent settings
   noTools: "all",       // disable everything
   model,
   customTools: [],
@@ -314,6 +341,8 @@ message following the old conversation.
 | Assigning `session.agent.state.messages` | Since pi v0.87 the provider context comes from the `SessionManager` projection — the assignment compiles but no longer affects future requests | Navigate with `session.navigateTree()`; for direct `sessionManager` mutations call `session.refreshContext()` after |
 | `noTools: "builtin"` for text-only tasks | Heavier than needed | Use `noTools: "all"` |
 | No timeout on non-streaming calls | Can hang indefinitely | Always add a timeout (5min default) |
+| Returning `{ isError: true }` from a tool | Pi's agent loop hardcodes `isError: false` for non-throwing results, so the failure reaches the model and the UI as a successful call | `throw new Error("…")` — the loop turns it into a flagged error result with the message |
+| Omitting `settingsManager` from `createAgentSession` | Pi then reads the *host's* `~/.pi/agent/settings.json`: thinking level, compaction budget, retries, image blocking, proxy, and a `packages` list it resolves (npm install!) on every session creation | Pass `createSessionSettings()` (`src/lib/pi/settings.ts`) |
 | Passing `authStorage`/`modelRegistry` to `createAgentSession` | Deprecated API (pre-0.80.8) | Use `modelRuntime` instead |
 | Returning `null` exit code from custom `BashOperations` for killed/failed commands | pi v0.86 treats null as failure ("Command terminated without an exit code"), not partial success | Throw `Error("aborted")` / `Error("timeout:<secs>")` for abort/timeout; keep null only when no exit code exists (e.g. container cleaned up) |
 
@@ -328,3 +357,10 @@ signal failures through the SDK's conventions:
 - **no exit code** (404 during status poll) → return `{ exitCode: null }` → "Command terminated without an exit code"
 
 Never swallow a `killCommand` failure — log it (repo rule: no swallowed errors).
+
+**Never forward the `env` the SDK hands `exec()`.** It is the *server's*
+environment (`resolveSpawnContext` copies `process.env`), so passing it on ships
+`DATABASE_URL`, `ENCRYPTION_KEY` and `OPEN_TERMINAL_API_KEY` into the container,
+where any command the model runs can read them. Open Terminal merges what you
+send into the container's own environment, so send only `extraEnv` (GH_TOKEN)
+and the container's PATH/HOME stay intact.
