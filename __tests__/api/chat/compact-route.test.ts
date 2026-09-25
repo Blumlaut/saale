@@ -118,16 +118,12 @@ describe("POST /api/chat/sessions/[sessionId]/compact", () => {
     // The gate is real: the user disabled `bash`, so a bash call must be
     // rejected without reaching the tool.
     let executed = false;
-    const result = (await options
-      .wrapTool(makeTool("bash", () => (executed = true)))
-      .execute("tc-1", { cmd: "rm -rf /" }, undefined, undefined, {} as never)) as {
-      isError?: boolean;
-      content: { type: string; text: string }[];
-    };
-
+    await expect(
+      options
+        .wrapTool(makeTool("bash", () => (executed = true)))
+        .execute("tc-1", { cmd: "rm -rf /" }, undefined, undefined, {} as never),
+    ).rejects.toThrow(/disabled/);
     expect(executed).toBe(false);
-    expect(result.isError).toBe(true);
-    expect(result.content[0]!.text).toContain("disabled");
   });
 
   it("persists the summary so the chat shows it", async () => {

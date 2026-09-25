@@ -154,17 +154,10 @@ describe("approval gate honours auto-approve (/stfu)", () => {
       () => {},
     );
 
-    const result = (await tool.execute(
-      "tc-2",
-      {},
-      undefined,
-      undefined,
-      {} as never,
-    )) as ToolResult;
-
+    await expect(tool.execute("tc-2", {}, undefined, undefined, {} as never)).rejects.toThrow(
+      /disabled/,
+    );
     expect(executed).toBe(false);
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("disabled");
   });
 
   it("stops auto-approving after the window expires", async () => {
@@ -258,7 +251,8 @@ describe("approval gate honours auto-approve (/stfu)", () => {
     expect(emittedRequests).toHaveLength(1);
 
     // Resolve the outstanding approval so the pending execute settles.
+    const rejection = expect(promise).rejects.toThrow(/denied/);
     await resolveApproval("session-stfu-other", "tc-4", false);
-    await promise;
+    await rejection;
   });
 });

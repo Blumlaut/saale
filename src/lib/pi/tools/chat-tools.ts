@@ -196,32 +196,16 @@ export function createShowFileTool(userId: string, sessionId: string) {
         // Validate path stays within user home
         const normalizedBase = path.resolve(homeDir);
         if (!fullPath.startsWith(normalizedBase + path.sep) && fullPath !== normalizedBase) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Access denied: path "${filePath}" escapes workspace`,
-              },
-            ],
-            details: { fileName, size: 0, mimeType: "" },
-            isError: true,
-          };
+          throw new Error(`Access denied: path "${filePath}" escapes workspace`);
         }
 
         try {
           const result = await terminal.readFileBinary(fullPath, { userId, sessionId });
 
           if (result.buffer.length > MAX_FILE_SIZE) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: `File too large: ${(result.buffer.length / 1024 / 1024).toFixed(1)}MB. Max: ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(0)}MB.`,
-                },
-              ],
-              details: { fileName, size: result.buffer.length, mimeType: "" },
-              isError: true,
-            };
+            throw new Error(
+              `File too large: ${(result.buffer.length / 1024 / 1024).toFixed(1)}MB. Max: ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(0)}MB.`,
+            );
           }
 
           const mimeType = !result.mimeType.startsWith("application/octet-stream")
@@ -249,11 +233,7 @@ export function createShowFileTool(userId: string, sessionId: string) {
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("404")) {
-            return {
-              content: [{ type: "text" as const, text: `File not found: ${filePath}` }],
-              details: { fileName, size: 0, mimeType: "" },
-              isError: true,
-            };
+            throw new Error(`File not found: ${filePath}`);
           }
           throw err;
         }
@@ -270,32 +250,17 @@ export function createShowFileTool(userId: string, sessionId: string) {
         try {
           stats = await fs.stat(fullPath);
         } catch {
-          return {
-            content: [{ type: "text" as const, text: `File not found: ${filePath}` }],
-            details: { fileName, size: 0, mimeType: "" },
-            isError: true,
-          };
+          throw new Error(`File not found: ${filePath}`);
         }
 
         if (!stats.isFile()) {
-          return {
-            content: [{ type: "text" as const, text: `Not a file: ${filePath}` }],
-            details: { fileName, size: 0, mimeType: "" },
-            isError: true,
-          };
+          throw new Error(`Not a file: ${filePath}`);
         }
 
         if (stats.size > MAX_FILE_SIZE) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB. Max: ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(0)}MB.`,
-              },
-            ],
-            details: { fileName, size: stats.size, mimeType: "" },
-            isError: true,
-          };
+          throw new Error(
+            `File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB. Max: ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(0)}MB.`,
+          );
         }
 
         const mimeType = guessMimeType(filePath);

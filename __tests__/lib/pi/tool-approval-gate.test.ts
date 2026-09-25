@@ -243,15 +243,12 @@ describe("tool-approval-gate", () => {
         () => {},
       );
 
-      const result = (await tool.execute(
-        "tc-1",
-        { cmd: "ls" },
-        undefined,
-        undefined,
-        {} as never,
-      )) as ToolResult;
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("disabled");
+      // Rejection is a throw: Pi's agent loop overrides `isError` on returned
+      // tool results, so returning `isError: true` would reach the model and
+      // the UI as a successful call.
+      await expect(
+        tool.execute("tc-1", { cmd: "ls" }, undefined, undefined, {} as never),
+      ).rejects.toThrow(/disabled/);
     });
 
     it("allows tools with 'allow' policy", async () => {
@@ -315,12 +312,11 @@ describe("tool-approval-gate", () => {
       );
 
       const promise = tool.execute(toolCallId, { cmd: "ls" }, undefined, undefined, {} as never);
+      const rejection = expect(promise).rejects.toThrow(/denied/);
 
       await new Promise((r) => setTimeout(r, 50));
       await resolveApproval(sessionId, toolCallId, false);
-      const result = (await promise) as ToolResult;
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("denied");
+      await rejection;
     });
 
     it("auto policy: infra_exec with safe command executes without approval", async () => {
@@ -532,16 +528,9 @@ describe("tool-approval-gate", () => {
         emitApprovalRequest: () => {},
       });
 
-      const result = (await gate(okTool()).execute(
-        "tc-gate-1",
-        { cmd: "ls" },
-        undefined,
-        undefined,
-        {} as never,
-      )) as ToolResult;
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("disabled");
+      await expect(
+        gate(okTool()).execute("tc-gate-1", { cmd: "ls" }, undefined, undefined, {} as never),
+      ).rejects.toThrow(/disabled/);
     });
 
     it("falls back to the tool's built-in default policy", async () => {
@@ -594,8 +583,7 @@ describe("tool-approval-gate", () => {
       expect(emitted).toHaveLength(1);
 
       await resolveApproval("session-gate-unknown", "tc-gate-3", false);
-      const result = (await promise) as ToolResult;
-      expect(result.isError).toBe(true);
+      await expect(promise).rejects.toThrow(/denied/);
     });
   });
 });
