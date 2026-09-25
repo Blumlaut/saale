@@ -3,6 +3,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand } from "./command-classifier";
 import { publishSessionEvent, subscribeSessionEvents } from "./session-events";
+import { getDefaultPolicy } from "./tool-infos";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -474,4 +475,37 @@ export function wrapWithApprovalGate(
       return originalExecute(toolCallId, params, signal, onUpdate, ctx);
     },
   };
+}
+
+/**
+ * Build the approval gate applied to every tool of a chat session.
+ *
+ * Encapsulates the policy lookup so every entry point that creates a chat
+ * agent (the stream route, `/compact`, Telegram) enforces the same rule:
+ * the user's stored policy for the tool, else the tool's built-in default.
+ *
+ * @param emitApprovalRequest - Publishes the request to whoever can answer it
+ *   (the web session event bus, a Telegram card, …).
+ */
+export function createToolApprovalGate(options: {
+  userId: string;
+  sessionId: string;
+  toolPolicies: Record<string, string> | null | undefined;
+  emitApprovalRequest: (request: ApprovalRequest) => void;
+}): (tool: ToolDefinition) => ToolDefinition {
+  const getPolicy = async (toolName: string): Promise<ToolPolicy> => {
+    const policy = options.toolPolicies?.[toolName];
+    return policy === "off" || policy === "ask" || policy === "allow" || policy === "auto"
+      ? policy
+      : getDefaultPolicy(toolName);
+  };
+
+  return (tool) =>
+    wrapWithApprovalGate(
+      tool,
+      options.userId,
+      options.sessionId,
+      getPolicy,
+      options.emitApprovalRequest,
+    );
 }

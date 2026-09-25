@@ -13,6 +13,7 @@ import {
   getPendingApprovals,
   APPROVAL_TIMEOUT_MS,
   wrapWithApprovalGate,
+  createToolApprovalGate,
   type ApprovalRequest,
 } from "@/lib/pi/tool-approval-gate";
 
@@ -508,6 +509,93 @@ describe("tool-approval-gate", () => {
 
       expect(executed).toBe(true);
       expect(result.content[0].text).toBe("ok");
+    });
+  });
+
+  // ─── createToolApprovalGate ───────────────────────────────────────────
+  // The gate every chat/tool-hosting entry point uses: it resolves each
+  // tool's policy from the user's stored settings and falls back to the
+  // tool's built-in default. Entry points that skip it (or build their own
+  // resolver) let tools run unapproved.
+  describe("createToolApprovalGate", () => {
+    const okTool = () =>
+      makeMockTool("bash", async () => ({
+        content: [{ type: "text", text: "ok" }],
+        details: {},
+      }));
+
+    it("applies the user's stored policy for a tool", async () => {
+      const gate = createToolApprovalGate({
+        userId: "user-1",
+        sessionId: "session-gate",
+        toolPolicies: { bash: "off" },
+        emitApprovalRequest: () => {},
+      });
+
+      const result = (await gate(okTool()).execute(
+        "tc-gate-1",
+        { cmd: "ls" },
+        undefined,
+        undefined,
+        {} as never,
+      )) as ToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("disabled");
+    });
+
+    it("falls back to the tool's built-in default policy", async () => {
+      // mail_send's built-in default is "ask": the request must be emitted and
+      // the tool must not run until it is approved.
+      const emitted: ApprovalRequest[] = [];
+      let executed = false;
+      const gate = createToolApprovalGate({
+        userId: "user-1",
+        sessionId: "session-gate-default",
+        toolPolicies: null,
+        emitApprovalRequest: (request) => emitted.push(request),
+      });
+
+      const tool = gate(
+        makeMockTool("mail_send", async () => {
+          executed = true;
+          return { content: [{ type: "text", text: "sent" }], details: {} };
+        }),
+      );
+
+      const promise = tool.execute("tc-gate-2", { to: "a@b.c" }, undefined, undefined, {} as never);
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(emitted).toHaveLength(1);
+      expect(executed).toBe(false);
+
+      await resolveApproval("session-gate-default", "tc-gate-2", true);
+      const result = (await promise) as ToolResult;
+      expect(result.content[0].text).toBe("sent");
+    });
+
+    it("ignores an unknown policy value and uses the default", async () => {
+      const emitted: ApprovalRequest[] = [];
+      const gate = createToolApprovalGate({
+        userId: "user-1",
+        sessionId: "session-gate-unknown",
+        toolPolicies: { mail_send: "banana" },
+        emitApprovalRequest: (request) => emitted.push(request),
+      });
+
+      const promise = gate(
+        makeMockTool("mail_send", async () => ({
+          content: [{ type: "text", text: "sent" }],
+          details: {},
+        })),
+      ).execute("tc-gate-3", {}, undefined, undefined, {} as never);
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(emitted).toHaveLength(1);
+
+      await resolveApproval("session-gate-unknown", "tc-gate-3", false);
+      const result = (await promise) as ToolResult;
+      expect(result.isError).toBe(true);
     });
   });
 });

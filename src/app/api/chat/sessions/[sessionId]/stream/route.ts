@@ -1,5 +1,4 @@
 import type { NextRequest } from "next/server";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
@@ -11,18 +10,11 @@ import {
   registerActiveSession,
   unregisterActiveSession,
 } from "@/lib/redis";
-import { type ToolConfig } from "@/lib/pi/session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { readImageAsBase64 } from "@/lib/image-attachment";
 import type { ImageContent } from "@/lib/pi/message-replay";
-import {
-  createAndPool,
-  get as getPoolEntry,
-  getDispatcher,
-  getPoolKey,
-  getSessionDir,
-} from "@/lib/pi/agent-pool";
-import { createPersistentSession } from "@/lib/pi/persistent-session";
+import { createAndPool, get as getPoolEntry, getDispatcher, getPoolKey } from "@/lib/pi/agent-pool";
+import { createChatAgentSession, loadChatUserSettings } from "@/lib/pi/chat-session-factory";
 import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { applyPendingHistoryRewind } from "@/lib/pi/message-rewind";
@@ -30,7 +22,6 @@ import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/
 import { getBufferedEvents } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
-import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
 import {
   claimNextQueuedMessage,
   countQueuedMessages,
@@ -40,11 +31,10 @@ import {
 import { isSendQueueHeld } from "@/lib/redis";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
 import {
+  createToolApprovalGate,
   getPendingApprovals,
-  wrapWithApprovalGate,
   type ApprovalRequest,
 } from "@/lib/pi/tool-approval-gate";
-import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -103,22 +93,15 @@ export async function GET(
   }
 
   // ── User settings (system prompt + tool policies) ─────────────────────
-  const userSettings = await prisma.appSettings.findUnique({
-    where: { userId: authResult.userId },
-    select: { agentCustomInstructions: true, toolPolicies: true },
-  });
-
-  const toolPolicies = userSettings?.toolPolicies as Record<
-    string,
-    "off" | "ask" | "allow" | "auto"
-  > | null;
-  const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow" | "auto"> =>
-    toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
+  const userSettings = await loadChatUserSettings(authResult.userId);
 
   // Approval wrapper — publishes approval requests on the session event bus
   // so every connected client (in any process) sees them.
-  const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
-    wrapWithApprovalGate(tool, authResult.userId, sessionId, getPolicy, (req: ApprovalRequest) => {
+  const approvalWrapper = createToolApprovalGate({
+    userId: authResult.userId,
+    sessionId,
+    toolPolicies: userSettings.toolPolicies,
+    emitApprovalRequest: (req: ApprovalRequest) => {
       publishSessionEvent(sessionId, "tool_approval_request", {
         toolCallId: req.toolCallId,
         toolName: req.toolName,
@@ -127,7 +110,8 @@ export async function GET(
       }).catch((err) => {
         console.error("Failed to publish approval request:", err);
       });
-    });
+    },
+  });
 
   const log = (tag: string, ...args: unknown[]) =>
     // eslint-disable-next-line no-console
@@ -310,32 +294,19 @@ export async function GET(
    * caller must not claim work it cannot deliver.
    */
   const prepareRun = async (target: PromptTarget): Promise<PreparedRun | null> => {
-    const resolvedToolConfig: ToolConfig = chatSession.toolConfig
-      ? { ...(chatSession.toolConfig as ToolConfig) }
-      : {};
-    const sessionDir = getSessionDir(authResult.userId, sessionId);
-
     const existingPoolEntry = getPoolEntry(poolKey);
     const entry = await createAndPool(poolKey, async () => {
       log("pool", "miss — creating new agent");
-      const systemPrompt = buildAgentSystemPrompt({
-        customInstructions: userSettings?.agentCustomInstructions,
-        toolConfig: resolvedToolConfig,
-      });
-      const result = await createPersistentSession({
+      return createChatAgentSession({
         userId: authResult.userId,
         sessionId,
-        sessionDir,
-        customTools: [],
-        toolConfig: resolvedToolConfig,
-        ...(modelProvider ? { modelProvider } : {}),
-        ...(modelName ? { modelName } : {}),
-        thinkingLevel: chatSession.thinkingLevel,
+        chatSession,
+        ...(modelProvider && modelName
+          ? { model: { provider: modelProvider, name: modelName } }
+          : {}),
+        customInstructions: userSettings.customInstructions,
         wrapTool: approvalWrapper,
-        systemPrompt,
       });
-
-      return { session: result.session, sessionDir };
     });
 
     if (existingPoolEntry) {
