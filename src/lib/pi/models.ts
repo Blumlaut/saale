@@ -10,6 +10,19 @@ interface ProviderModelConfig {
   models?: string[];
 }
 
+/**
+ * A model offered to the UI. `reasoning` and `contextWindow` describe what Pi's
+ * catalog knows about it; a discovered model Pi has no entry for reports no
+ * context window rather than a guessed one.
+ */
+export interface AvailableModel {
+  provider: string;
+  id: string;
+  name: string;
+  reasoning?: boolean | undefined;
+  contextWindow?: number | undefined;
+}
+
 /** A model definition passed to `registerProvider`. */
 type ProviderModelDefinition = Parameters<ModelRuntime["registerProvider"]>[1]["models"] extends
   (infer T)[] | undefined
@@ -284,19 +297,29 @@ export async function buildModelRuntime(userId: string) {
     }
   }
 
-  // Get available models from the runtime
+  // Get available models from the runtime. `reasoning` and `contextWindow` come
+  // along: the pickers badge thinking models with them, and dropping them here
+  // meant the UI received a bare {id, name} list (the fields are optional in the
+  // response type, so nothing failed — the badges just never appeared).
   const available = modelRuntime.getAvailableSnapshot();
-  const allModels = available.map((m) => ({
+  const allModels: AvailableModel[] = available.map((m) => ({
     provider: m.provider,
     id: m.id,
     name: m.name,
+    reasoning: m.reasoning,
+    contextWindow: m.contextWindow,
   }));
 
   // Add discovered custom models (not already in built-in list)
   const knownIds = new Set(allModels.map((m) => `${m.provider}:${m.id}`));
   for (const dm of discoveredModels) {
     if (!knownIds.has(`${dm.provider}:${dm.id}`)) {
-      allModels.push(dm);
+      const model = modelRuntime.getModel(dm.provider, dm.id);
+      allModels.push({
+        ...dm,
+        reasoning: model?.reasoning ?? false,
+        contextWindow: model?.contextWindow,
+      });
     }
   }
 

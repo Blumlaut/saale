@@ -60,9 +60,27 @@ describe("GET /api/providers/models", () => {
     vi.mocked(models.buildModelRuntime).mockResolvedValue({
       modelRuntime: mockModelRuntime as never,
       models: [
-        { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
-        { provider: "anthropic", id: "claude-opus-4", name: "Claude Opus 4" },
-        { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
+        {
+          provider: "anthropic",
+          id: "claude-sonnet-4",
+          name: "Claude Sonnet 4",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
+        {
+          provider: "anthropic",
+          id: "claude-opus-4",
+          name: "Claude Opus 4",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
+        {
+          provider: "openai",
+          id: "gpt-4o",
+          name: "GPT-4o",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
       ],
     });
 
@@ -106,9 +124,27 @@ describe("GET /api/providers/models", () => {
     vi.mocked(models.buildModelRuntime).mockResolvedValue({
       modelRuntime: mockModelRuntime as never,
       models: [
-        { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
-        { provider: "anthropic", id: "claude-opus-4", name: "Claude Opus 4" },
-        { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
+        {
+          provider: "anthropic",
+          id: "claude-sonnet-4",
+          name: "Claude Sonnet 4",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
+        {
+          provider: "anthropic",
+          id: "claude-opus-4",
+          name: "Claude Opus 4",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
+        {
+          provider: "openai",
+          id: "gpt-4o",
+          name: "GPT-4o",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
       ],
     });
 
@@ -144,8 +180,20 @@ describe("GET /api/providers/models", () => {
     vi.mocked(models.buildModelRuntime).mockResolvedValue({
       modelRuntime: mockModelRuntime as never,
       models: [
-        { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
-        { provider: "anthropic", id: "claude-opus-4", name: "Claude Opus 4" },
+        {
+          provider: "anthropic",
+          id: "claude-sonnet-4",
+          name: "Claude Sonnet 4",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
+        {
+          provider: "anthropic",
+          id: "claude-opus-4",
+          name: "Claude Opus 4",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
       ],
     });
 
@@ -208,8 +256,20 @@ describe("GET /api/providers/models", () => {
     vi.mocked(models.buildModelRuntime).mockResolvedValue({
       modelRuntime: mockModelRuntime as never,
       models: [
-        { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
-        { provider: "custom-provider", id: "custom-model", name: "Custom Model" },
+        {
+          provider: "anthropic",
+          id: "claude-sonnet-4",
+          name: "Claude Sonnet 4",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
+        {
+          provider: "custom-provider",
+          id: "custom-model",
+          name: "Custom Model",
+          reasoning: false,
+          contextWindow: 200_000,
+        },
       ],
     });
 
