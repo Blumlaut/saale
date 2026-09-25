@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { DISCOVERABLE_PROVIDERS, getProviderBaseUrl } from "@/lib/providers/config";
 import { limitFields, type ProviderModelLimits } from "@/lib/providers/limits";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 interface ProviderModelConfig {
@@ -122,8 +123,15 @@ export async function buildModelRuntime(userId: string) {
   }
   const storedKeys = Array.from(mergedMap.values());
 
-  // Create ModelRuntime (uses in-memory credential store by default)
-  const modelRuntime = await ModelRuntime.create();
+  // Credentials come from the database only. `ModelRuntime.create()` would
+  // otherwise read the host's ~/.pi/agent/auth.json, models.json and
+  // models-store.json (SDK docs, "Credential priority"), handing every tenant
+  // the operator's provider keys and private endpoints — and writing fetched
+  // catalogs into the operator's Pi directory.
+  const modelRuntime = await ModelRuntime.create({
+    credentials: new InMemoryCredentialStore(),
+    modelsPath: null,
+  });
 
   // Set runtime API keys on the model runtime
   for (const key of storedKeys) {
