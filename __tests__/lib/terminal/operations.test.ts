@@ -58,6 +58,50 @@ describe("terminal bash operations", () => {
     expect(Buffer.concat(chunks).toString("utf8")).toBe("hello\n");
   });
 
+  // The SDK passes the *server's* environment to BashOperations.exec so a
+  // local shell has a PATH. Forwarding it would ship DATABASE_URL, the
+  // encryption key and the terminal API key into the container, where any
+  // command the model runs can read them.
+  it("never forwards the server environment to the container", async () => {
+    process.env.DATABASE_URL = "postgresql://saale:secret@postgres:5432/saale";
+    process.env.ENCRYPTION_KEY = "deadbeef".repeat(8);
+    const ops = createTerminalOperations({ ...COMMON, cwd: "/home/user" });
+    vi.mocked(terminal.getCommandStatus).mockResolvedValue(
+      status({ status: "done", exit_code: 0 }),
+    );
+
+    await ops.bash.exec("env", "/home/user", {
+      onData: () => {},
+      env: { ...process.env, PATH: "/usr/bin" },
+    });
+
+    const [, options] = vi.mocked(terminal.executeCommand).mock.calls[0]!;
+    expect(options?.env).toBeUndefined();
+    delete process.env.DATABASE_URL;
+    delete process.env.ENCRYPTION_KEY;
+  });
+
+  it("forwards only the explicitly configured extra environment", async () => {
+    const ops = createTerminalOperations({
+      ...COMMON,
+      cwd: "/home/user",
+      extraEnv: { GH_TOKEN: "gh-token" },
+    });
+    vi.mocked(terminal.getCommandStatus).mockResolvedValue(
+      status({ status: "done", exit_code: 0 }),
+    );
+
+    await ops.bash.exec("gh auth status", "/home/user", {
+      onData: () => {},
+      env: { SECRET: "should-not-be-sent" } as unknown as NodeJS.ProcessEnv,
+    });
+
+    const [, options] = vi.mocked(terminal.executeCommand).mock.calls[0]!;
+    // Open Terminal merges this into the container's own environment, so the
+    // container's PATH/HOME stay intact.
+    expect(options?.env).toEqual({ GH_TOKEN: "gh-token" });
+  });
+
   it("passes through a null exit code from the container (e.g. signal-killed)", async () => {
     const ops = setup();
     vi.mocked(terminal.getCommandStatus).mockResolvedValue(

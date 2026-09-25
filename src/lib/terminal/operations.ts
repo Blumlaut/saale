@@ -184,11 +184,18 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
   const { userId, sessionId, cwd, extraEnv } = opts;
   const common: TerminalCommon = { userId, sessionId };
 
-  /** Merge extra env vars with per-call env (per-call takes precedence). */
-  function mergeEnv(callEnv?: Record<string, string>): Record<string, string> | undefined {
-    if (!extraEnv && !callEnv) return undefined;
-    return { ...extraEnv, ...callEnv };
-  }
+  /**
+   * Environment for every command: our explicit extras only.
+   *
+   * The SDK hands `BashOperations.exec` the *server's* environment
+   * (`{...process.env}`, see `resolveSpawnContext` in the SDK's bash tool) so a
+   * local shell has a PATH. Forwarding it to a remote terminal would ship
+   * DATABASE_URL, the encryption key and the terminal API key into the
+   * container, where any command the model runs can read them. Open Terminal
+   * merges what we send into the container's own environment, so the
+   * container's PATH/HOME survive and only GH_TOKEN (when configured) is added.
+   */
+  const commandEnv = extraEnv;
 
   // ── Shared helpers (used by both read and edit operations) ──
 
@@ -216,14 +223,14 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
     // ─── Bash ───────────────────────────────────────────────────────────
 
     bash: {
-      exec: async (command, _cwd, { onData, signal, timeout, env }) => {
-        // Use the factory cwd (user home), not the per-call cwd
-        const mergedEnv = mergeEnv(env as Record<string, string> | undefined);
-
+      exec: async (command, _cwd, { onData, signal, timeout }) => {
+        // The per-call cwd is deliberately ignored: it can be a host-side path
+        // (the Pi session directory), which does not exist in the container.
+        // `cwd` is the user's home there, which is what the file tools use too.
         const result = await terminal.executeCommand(command, {
           ...common,
           cwd,
-          ...(mergedEnv ? { env: mergedEnv } : {}),
+          ...(commandEnv ? { env: commandEnv } : {}),
           wait: 0, // Don't wait — we poll manually
         });
 
