@@ -21,25 +21,31 @@ export function ThinkingSelector({
   modelName,
   className,
 }: ThinkingSelectorProps) {
-  const [availableLevels, setAvailableLevels] = useState<string[]>([]);
+  // `null` means "not known yet" (still loading, or the lookup failed), which is
+  // not the same as "this model supports nothing": treating the empty initial
+  // list as knowledge left a thinking model with only "Default" to choose from,
+  // permanently so when the request failed.
+  const [availableLevels, setAvailableLevels] = useState<string[] | null>(null);
 
   // Fetch available thinking levels for the current model
   useEffect(() => {
     if (!modelProvider || !modelName) {
-      setAvailableLevels([]);
+      setAvailableLevels(null);
       return;
     }
 
     let cancelled = false;
+    setAvailableLevels(null);
     fetch(
       `/api/models/thinking-levels?provider=${encodeURIComponent(modelProvider)}&model=${encodeURIComponent(modelName)}`,
     )
-      .then((r) => r.json())
+      .then(async (r) => (r.ok ? ((await r.json()) as { levels?: string[] }) : null))
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || !data) return;
         setAvailableLevels(data.levels ?? []);
       })
       .catch((err) => {
+        // Leave the levels unknown so every option stays selectable.
         console.error("Failed to fetch thinking levels:", err);
       });
 
@@ -51,7 +57,7 @@ export function ThinkingSelector({
   // Filter levels based on what the model supports. "default" is not a model
   // level — it always stays available, since it means "don't override Pi".
   const filteredLevels =
-    modelProvider && modelName
+    modelProvider && modelName && availableLevels
       ? THINKING_LEVEL_OPTIONS.filter((l) => l.id === "default" || availableLevels.includes(l.id))
       : THINKING_LEVEL_OPTIONS;
 
@@ -59,7 +65,8 @@ export function ThinkingSelector({
 
   // Check if current level is unsupported
   const isLevelUnsupported =
-    modelProvider && modelName && availableLevels.length > 0 && !availableLevels.includes(value);
+    Boolean(modelProvider && modelName && availableLevels?.length) &&
+    !availableLevels!.includes(value);
 
   return (
     <Popover>

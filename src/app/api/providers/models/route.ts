@@ -28,12 +28,15 @@ export async function GET(request: NextRequest) {
     ? models
     : models.filter((m) => !disabledSet.has(`${m.provider}:${m.id}`));
 
-  // Group by provider
+  // Group by provider, carrying the fields the model pickers render with
+  // (thinking badge, context size).
   const byProvider: Record<
     string,
     Array<{
       id: string;
       name: string;
+      reasoning: boolean;
+      contextWindow: number | undefined;
     }>
   > = {};
 
@@ -45,6 +48,8 @@ export async function GET(request: NextRequest) {
     byProvider[provider]!.push({
       id: model.id,
       name: model.name,
+      reasoning: model.reasoning ?? false,
+      contextWindow: "contextWindow" in model ? model.contextWindow : undefined,
     });
   }
 
