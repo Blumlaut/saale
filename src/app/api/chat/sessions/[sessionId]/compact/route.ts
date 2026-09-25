@@ -1,13 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
-import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
-import { type ToolConfig } from "@/lib/pi/session";
-import { getPoolKey, getSessionDir, createAndPool } from "@/lib/pi/agent-pool";
-import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
-import { createPersistentSession } from "@/lib/pi/persistent-session";
+import { getPoolKey, createAndPool } from "@/lib/pi/agent-pool";
+import {
+  createChatAgentSession,
+  loadChatUserSettings,
+  resolveChatModel,
+} from "@/lib/pi/chat-session-factory";
+import { createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
+import { publishSessionEvent } from "@/lib/pi/session-events";
 
 /**
  * Manually trigger conversation compaction.
@@ -29,54 +31,42 @@ export async function POST(
   const chatSession = authResult.session;
 
   // Resolve model
-  let modelProvider = chatSession.modelProvider || undefined;
-  let modelName = chatSession.modelName || undefined;
-
-  if (!modelProvider || !modelName) {
-    const resolved = await resolveModelForPurpose(authResult.userId, "chat", undefined);
-    if (resolved) {
-      modelProvider = resolved.provider;
-      modelName = resolved.name;
-    }
-  }
-
-  if (!modelProvider || !modelName) {
+  const model = await resolveChatModel(authResult.userId, chatSession);
+  if (!model) {
     return NextResponse.json({ error: "No AI model configured" }, { status: 400 });
   }
 
-  // Get or create pooled agent (recreates from JSONL if evicted)
+  // Get or create pooled agent (recreates from JSONL if evicted). The approval
+  // gate must be applied here too: this route can be the one that puts the
+  // session into the pool, and tools are only gated when the agent is built.
   const poolKey = getPoolKey(authResult.userId, sessionId);
-  const sessionDir = getSessionDir(authResult.userId, sessionId);
-
-  const resolvedToolConfig: ToolConfig = chatSession.toolConfig
-    ? { ...(chatSession.toolConfig as ToolConfig) }
-    : {};
-
-  // Build system prompt (same as stream route)
-  const userSettings = await prisma.appSettings.findUnique({
-    where: { userId: authResult.userId },
-    select: { agentCustomInstructions: true },
+  const userSettings = await loadChatUserSettings(authResult.userId);
+  const approvalWrapper = createToolApprovalGate({
+    userId: authResult.userId,
+    sessionId,
+    toolPolicies: userSettings.toolPolicies,
+    emitApprovalRequest: (req) => {
+      publishSessionEvent(sessionId, "tool_approval_request", {
+        toolCallId: req.toolCallId,
+        toolName: req.toolName,
+        args: req.args,
+        expiresAt: new Date(req.expiresAt).toISOString(),
+      }).catch((err) => {
+        console.error("Failed to publish approval request:", err);
+      });
+    },
   });
-  const systemPrompt = buildAgentSystemPrompt({
-    customInstructions: userSettings?.agentCustomInstructions,
-    toolConfig: resolvedToolConfig,
-  });
 
-  const pooled = await createAndPool(poolKey, async () => {
-    const result = await createPersistentSession({
+  const pooled = await createAndPool(poolKey, () =>
+    createChatAgentSession({
       userId: authResult.userId,
       sessionId,
-      sessionDir,
-      customTools: [],
-      toolConfig: resolvedToolConfig,
-      modelProvider,
-      modelName,
-      thinkingLevel: chatSession.thinkingLevel,
-      systemPrompt,
-    });
-
-    return { session: result.session, sessionDir };
-  });
+      chatSession,
+      model,
+      customInstructions: userSettings.customInstructions,
+      wrapTool: approvalWrapper,
+    }),
+  );
 
   try {
     const result = await pooled.session.compact();

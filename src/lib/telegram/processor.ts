@@ -1,5 +1,4 @@
 import path from "path";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   createAgentSession,
   SessionManager,
@@ -13,11 +12,10 @@ import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import {
-  wrapWithApprovalGate,
+  createToolApprovalGate,
   type ApprovalRequest,
   type ApprovalResolutionData,
 } from "@/lib/pi/tool-approval-gate";
-import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { resolveToolSummary } from "@/lib/pi/tool-summary-resolver";
 import { sendTelegramApprovalRequest, deleteTelegramApprovalMessage } from "./approval";
 import { createApprovalCardTracker } from "./approval-cards";
@@ -248,8 +246,6 @@ export async function processTelegramMessage(
     string,
     "off" | "ask" | "allow" | "auto"
   > | null;
-  const getPolicy = async (toolName: string): Promise<"off" | "ask" | "allow" | "auto"> =>
-    toolPolicies?.[toolName] ?? getDefaultPolicy(toolName);
 
   // Track approval cards sent to Telegram so they can be deleted when the
   // approval resolves (button, web, timeout, interrupt) or the run ends.
@@ -272,8 +268,11 @@ export async function processTelegramMessage(
   });
 
   // Build the approval wrapper — every tool goes through the gate
-  const approvalWrapper = (tool: ToolDefinition): ToolDefinition =>
-    wrapWithApprovalGate(tool, userId, sessionId, getPolicy, (request: ApprovalRequest) => {
+  const approvalWrapper = createToolApprovalGate({
+    userId,
+    sessionId,
+    toolPolicies,
+    emitApprovalRequest: (request: ApprovalRequest) => {
       sendTelegramApprovalRequest(userId, request)
         .then((cardId) => {
           if (cardId) {
@@ -283,7 +282,8 @@ export async function processTelegramMessage(
         .catch((err) => {
           console.error("Failed to send Telegram approval request:", err);
         });
-    });
+    },
+  });
 
   const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
     createTerminalScopedTools,
