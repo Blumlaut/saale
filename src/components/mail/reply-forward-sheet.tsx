@@ -157,6 +157,9 @@ export function ReplyForwardSheet({
       const decoder = new TextDecoder();
       let buffer = "";
       let draftText = "";
+      // The stream ends even when drafting fails, so the error is delivered in
+      // the payload rather than as a transport failure.
+      let streamError = "";
 
       if (reader) {
         while (true) {
@@ -171,16 +174,25 @@ export function ReplyForwardSheet({
             if (line.startsWith("data: ")) {
               try {
                 const data = JSON.parse(line.slice(6));
-                if (data.text) {
+                if (data.error) {
+                  streamError = String(data.error);
+                } else if (data.text) {
                   draftText = data.text;
                   setBody(draftText);
                 }
-              } catch {
-                // Skip malformed JSON
+              } catch (err) {
+                console.error("Malformed draft stream event:", err);
               }
             }
           }
         }
+      }
+
+      if (streamError) {
+        throw new Error(streamError);
+      }
+      if (!draftText.trim()) {
+        throw new Error("The model returned an empty draft");
       }
 
       toast.success("Draft generated");

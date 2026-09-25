@@ -65,6 +65,7 @@ function createFakeSession() {
     getSessionStats: () => ({ tokens: { input: 11, output: 7 }, cost: 0.001 }),
     prompt: vi.fn().mockResolvedValue(undefined),
     abort: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
   };
 
   return {
@@ -257,6 +258,51 @@ describe("executeAgentRun — provider failures", () => {
       outputTokens: 7,
       cost: 0.001,
     });
+  });
+
+  it("resolves the recovered answer after an overflow", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    // A context overflow reports `willRetry: false` (compaction handles it, not
+    // retry) and is followed by a compact-and-continue. Reporting the error
+    // would fail a run whose answer arrives a moment later.
+    const overflow = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: "This model's maximum context length is 128000 tokens",
+    };
+    fake.emit({ type: "agent_start" });
+    fake.emit({ type: "turn_end", message: overflow, toolResults: [] });
+    fake.emit({ type: "agent_end", messages: [overflow], willRetry: false });
+
+    // The continuation produces the answer.
+    fake.emit({ type: "agent_start" });
+    fake.emit(TURN_END);
+    fake.emit({ type: "agent_end", messages: [], willRetry: false });
+    fake.emit({ type: "agent_settled" });
+
+    await expect(result.promise).resolves.toEqual({
+      inputTokens: 11,
+      outputTokens: 7,
+      cost: 0.001,
+    });
+  });
+
+  it("disposes the session when the run settles", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    fake.emit({ type: "agent_start" });
+    fake.emit(TURN_END);
+    fake.emit({ type: "agent_end", messages: [], willRetry: false });
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+
+    // dispose() cancels the cache warmer's timer and aborts the agent — without
+    // it they stay alive after the run.
+    expect(fake.session.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("waits for the last turn's DB write before finishing", async () => {
