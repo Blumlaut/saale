@@ -1,14 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/terminal/client", () => ({
-  executeCommand: vi.fn(),
-  getCommandStatus: vi.fn(),
-  killCommand: vi.fn(),
-  readFile: vi.fn(),
-  readFileBinary: vi.fn(),
-  writeFile: vi.fn(),
-  createDirectory: vi.fn(),
-}));
+vi.mock("@/lib/terminal/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/terminal/client")>();
+  return {
+    ...actual,
+    executeCommand: vi.fn(),
+    getCommandStatus: vi.fn(),
+    killCommand: vi.fn(),
+    readFile: vi.fn(),
+    readFileBinary: vi.fn(),
+    writeFile: vi.fn(),
+    createDirectory: vi.fn(),
+  };
+});
 
 import * as terminal from "@/lib/terminal/client";
 import { createTerminalOperations } from "@/lib/terminal/operations";
@@ -115,11 +119,110 @@ describe("terminal bash operations", () => {
 
   it("returns null exit code when the container cleaned up the process (404)", async () => {
     const ops = setup();
-    vi.mocked(terminal.getCommandStatus).mockRejectedValue(new Error("404 Not Found"));
+    vi.mocked(terminal.getCommandStatus).mockRejectedValue(
+      new terminal.TerminalApiError(404, "Not Found", ""),
+    );
 
     const result = await ops.bash.exec("ls", "/home/user", { onData: () => {} });
 
     expect(result).toEqual({ exitCode: null });
+  });
+
+  it("only surfaces an HTTP 404 as a cleaned-up process, not any error mentioning 404", async () => {
+    const ops = setup();
+    vi.mocked(terminal.getCommandStatus).mockRejectedValue(
+      new Error("Command 4041 is not running (404 retries)"),
+    );
+
+    await expect(ops.bash.exec("ls", "/home/user", { onData: () => {} })).rejects.toThrow(
+      /4041 is not running/,
+    );
+  });
+
+  it("maps a signal-killed command to its shell exit code", async () => {
+    const ops = setup();
+    // Python's subprocess reports a signal death as a negative return code.
+    vi.mocked(terminal.getCommandStatus).mockResolvedValue(
+      status({ status: "killed", exit_code: -15 }),
+    );
+
+    const result = await ops.bash.exec("sleep 100", "/home/user", { onData: () => {} });
+
+    expect(result).toEqual({ exitCode: 143 });
+  });
+
+  it("kills the command as soon as the signal aborts, without waiting for the poll", async () => {
+    const ops = setup();
+    const controller = new AbortController();
+    // The poll stays in flight for the full 5s wait window.
+    vi.mocked(terminal.getCommandStatus).mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(status()), 5_000)),
+    );
+
+    const promise = ops.bash.exec("sleep 100", "/home/user", {
+      onData: () => {},
+      signal: controller.signal,
+    });
+    const assertion = expect(promise).rejects.toThrow("aborted");
+    await new Promise((r) => setTimeout(r, 10));
+
+    controller.abort();
+    await assertion;
+
+    // Stop must not wait out the poll window.
+    expect(terminal.killCommand).toHaveBeenCalledWith("proc-1", { ...COMMON, force: true });
+  }, 2_000);
+
+  it("reports container-truncated output instead of passing a partial log off as complete", async () => {
+    const ops = setup();
+    const chunks: string[] = [];
+    vi.mocked(terminal.getCommandStatus).mockResolvedValue(
+      status({ status: "done", exit_code: 0, output: ["tail only\n"], truncated: true }),
+    );
+
+    await ops.bash.exec("big-output", "/home/user", { onData: (d) => chunks.push(d.toString()) });
+
+    expect(chunks.join("")).toContain("tail only");
+    expect(chunks.join("")).toContain("truncated");
+  });
+
+  it("runs in the container home when the requested cwd is a host path", async () => {
+    const ops = setup();
+    vi.mocked(terminal.getCommandStatus).mockResolvedValue(
+      status({ status: "done", exit_code: 0 }),
+    );
+
+    await ops.bash.exec("ls", "/app/uploads/pi_sessions/user-1/sess-1", { onData: () => {} });
+    expect(vi.mocked(terminal.executeCommand).mock.calls[0]![1]).toMatchObject({
+      cwd: "/home/user",
+    });
+
+    await ops.bash.exec("ls", "/home/user/projects", { onData: () => {} });
+    expect(vi.mocked(terminal.executeCommand).mock.calls[1]![1]).toMatchObject({
+      cwd: "/home/user/projects",
+    });
+  });
+
+  it("ignores a negative or non-finite timeout instead of expiring immediately", async () => {
+    vi.useFakeTimers();
+    try {
+      const ops = setup();
+      vi.mocked(terminal.getCommandStatus).mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve(status({ status: "done", exit_code: 0 })), 2_000),
+          ),
+      );
+
+      for (const timeout of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        const promise = ops.bash.exec("sleep 5", "/home/user", { onData: () => {}, timeout });
+        await vi.advanceTimersByTimeAsync(2_100);
+        await expect(promise).resolves.toEqual({ exitCode: 0 });
+        expect(terminal.killCommand).not.toHaveBeenCalled();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("throws timeout:<secs> when the deadline passes, after force-killing the command", async () => {
@@ -169,7 +272,11 @@ describe("terminal bash operations", () => {
       await vi.advanceTimersByTimeAsync(100);
 
       await assertion;
-      expect(terminal.killCommand).toHaveBeenCalledWith("proc-1", COMMON);
+      // Stop force-kills: a command that ignores SIGTERM must still die.
+      expect(terminal.killCommand).toHaveBeenCalledWith("proc-1", {
+        ...COMMON,
+        force: true,
+      });
     } finally {
       vi.useRealTimers();
     }
