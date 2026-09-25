@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { requireAdmin } from "../../settings/auth";
 import { fetchOpenAIModels } from "@/lib/pi/models";
@@ -35,8 +36,15 @@ export async function GET() {
     select: { provider: true, encryptedKey: true, baseUrl: true },
   });
 
-  // Create ModelRuntime (uses in-memory credential store by default)
-  const modelRuntime = await ModelRuntime.create();
+  // Credentials come from the database only. `ModelRuntime.create()` would
+  // otherwise read the host's ~/.pi/agent/auth.json, models.json and
+  // models-store.json (SDK docs, "Credential priority"), handing every tenant
+  // the operator's provider keys and private endpoints — and writing fetched
+  // catalogs into the operator's Pi directory.
+  const modelRuntime = await ModelRuntime.create({
+    credentials: new InMemoryCredentialStore(),
+    modelsPath: null,
+  });
 
   // Set runtime API keys
   for (const key of globalKeys) {

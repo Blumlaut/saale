@@ -38,6 +38,7 @@ vi.mock("@/lib/pi/models", async (importOriginal) => {
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import * as pi from "@earendil-works/pi-coding-agent";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { buildModelRuntime } from "@/lib/pi/models";
 
 describe("buildModelRuntime", () => {
@@ -63,6 +64,20 @@ describe("buildModelRuntime", () => {
     expect(pi.ModelRuntime.create).toHaveBeenCalled();
     expect(result.modelRuntime).toBeDefined();
     expect(result.models).toEqual([]);
+  });
+
+  // The SDK's default runtime reads the host's ~/.pi/agent/{auth,models}.json.
+  // On a server those belong to whoever installed Pi there, so a default
+  // runtime would serve tenants the operator's keys and private endpoints.
+  it("is built without the host's credential files", async () => {
+    await buildModelRuntime("user-1");
+
+    const options = vi.mocked(pi.ModelRuntime.create).mock.calls[0]![0] as {
+      credentials?: unknown;
+      modelsPath?: unknown;
+    };
+    expect(options.credentials).toBeInstanceOf(InMemoryCredentialStore);
+    expect(options.modelsPath).toBeNull();
   });
 
   it("fetches global and user-scoped provider keys", async () => {
