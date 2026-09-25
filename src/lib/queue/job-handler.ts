@@ -7,6 +7,7 @@ import { createSessionSettings } from "@/lib/pi/settings";
 import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
+import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { handlerMap } from "./jobs/registry";
 
 // ─── AI Dispatch ─────────────────────────────────────────────────────────────
@@ -69,25 +70,46 @@ export async function dispatchAiJob(
       },
     });
 
+    // Outcome of the last attempt. A provider failure does not throw — it ends
+    // the assistant message with stopReason "error" — so without this a failed
+    // job would "succeed" with an empty string and callers would silently do
+    // nothing (e.g. a classifier returning no results).
+    let text = "";
+    let providerError: string | null = null;
+
     const unsubscribe = session.subscribe((event) => {
+      // One report per attempt: `agent_end` fires once per attempt, before any
+      // retry, and an overflow failure is followed by compaction + continue.
       if (event.type === "agent_end") {
-        idleTimeout.clear();
-        unsubscribe();
         const lastMsg = event.messages.findLast((m) => m.role === "assistant");
         const textBlocks = lastMsg?.content.filter(
           (c) => typeof c === "object" && c.type === "text",
         );
-        const text =
+        text =
           textBlocks
             ?.map((c) => (typeof c === "object" && "text" in c ? (c.text as string) : ""))
             .join("") ?? "";
-        resolve(text);
+        providerError = extractProviderError(lastMsg as ProviderErrorSource);
+      }
+
+      // `agent_settled` — after retries, auto-compaction and any continuation —
+      // is the only point at which the run is over.
+      if (event.type === "agent_settled") {
+        idleTimeout.clear();
+        unsubscribe();
+        if (providerError && !text) {
+          reject(new Error(providerError));
+        } else {
+          resolve(text);
+        }
       }
     });
 
-    // Call agent.prompt directly to bypass AgentSession's preflight logic
-    // which resets systemPrompt back to the Pi base prompt on every turn
-    session.agent.prompt(prompt).catch((err) => {
+    // session.prompt() — not session.agent.prompt() — runs the SDK's preflight
+    // and post-run processing (retry, auto-compaction, `agent_settled`). The
+    // system prompt comes from the resource loader, so per-turn prompt
+    // resolution keeps it.
+    session.prompt(prompt, { expandPromptTemplates: false }).catch((err) => {
       idleTimeout.clear();
       unsubscribe();
       reject(err);
