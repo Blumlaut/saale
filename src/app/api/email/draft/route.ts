@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
+import { createSessionSettings } from "@/lib/pi/settings";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 /**
@@ -113,6 +114,7 @@ Rules:
   const result: CreateAgentSessionResult = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
+    settingsManager: createSessionSettings(),
     noTools: "all",
     model,
     customTools: [],

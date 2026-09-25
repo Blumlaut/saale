@@ -23,6 +23,7 @@ import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { buildAgentSystemPrompt, createSystemPromptLoader } from "@/lib/pi/processing-state";
+import { createSessionSettings } from "@/lib/pi/settings";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import {
   downloadAndProcessTelegramFile,
@@ -301,6 +302,7 @@ export async function processTelegramMessage(
   const { session } = await createAgentSession({
     sessionManager,
     modelRuntime,
+    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,
@@ -822,6 +824,7 @@ export async function compactTelegramSession(params: {
   const { session } = await createAgentSession({
     sessionManager: SessionManager.continueRecent(sessionDir, sessionDir),
     modelRuntime,
+    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,

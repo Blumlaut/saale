@@ -3,6 +3,7 @@ import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-ag
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
+import { createSessionSettings } from "@/lib/pi/settings";
 import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
@@ -45,6 +46,7 @@ export async function dispatchAiJob(
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
+    settingsManager: createSessionSettings(),
     noTools: "all",
     ...(model ? { model } : {}),
     resourceLoader: await createSystemPromptLoader(systemPrompt, process.cwd()),

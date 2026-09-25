@@ -36,6 +36,7 @@ vi.mock("@/lib/pi/tool-registry", () => ({
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: vi.fn(),
   SessionManager: { inMemory: vi.fn() },
+  SettingsManager: { inMemory: vi.fn().mockReturnValue({}) },
 }));
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
