@@ -91,6 +91,18 @@ describe("formatProviderError", () => {
     expect(formatProviderError("")).toEqual({ message: "", shortened: false });
   });
 
+  it("splits a space-separated status (Anthropic's form)", () => {
+    // Anthropic answers with plain text: `400 invalid_request_error: ...`,
+    // which used to be shown to the user with the status glued to the front.
+    expect(
+      formatProviderError("400 invalid_request_error: max_tokens: must be >= 1"),
+    ).toEqual({
+      status: 400,
+      message: "invalid_request_error: max_tokens: must be >= 1",
+      shortened: false,
+    });
+  });
+
   it("does not treat a 4-digit number as a status", () => {
     expect(formatProviderError("1234: oops")).toEqual({ message: "1234: oops", shortened: false });
   });
