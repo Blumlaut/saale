@@ -20,10 +20,11 @@ import type { InfraMachine } from "@/app/dashboard/infra/page";
 
 interface MachineListProps {
   onEdit: (machine: InfraMachine) => void;
+  onOpenNotes: (machine: InfraMachine) => void;
   onRefresh: () => void;
 }
 
-export function MachineList({ onEdit, onRefresh }: MachineListProps) {
+export function MachineList({ onEdit, onOpenNotes, onRefresh }: MachineListProps) {
   const [machines, setMachines] = useState<InfraMachine[]>([]);
   const [loading, setLoading] = useState(true);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -138,13 +139,19 @@ export function MachineList({ onEdit, onRefresh }: MachineListProps) {
 
               {/* Actions */}
               <div className="flex items-center gap-1.5">
-                {/* Note count */}
-                {machine.noteCount > 0 && (
-                  <Badge variant="outline" className="rounded-full px-2 text-[10px]">
-                    <FileText className="mr-0.5 h-3 w-3" />
-                    {machine.noteCount}
-                  </Badge>
-                )}
+                {/* Notes */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-7 gap-1", machine.noteCount > 0 && "w-auto min-w-7 px-1.5")}
+                  onClick={() => onOpenNotes(machine)}
+                  title="View notes"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {machine.noteCount > 0 && (
+                    <span className="text-[10px] font-medium">{machine.noteCount}</span>
+                  )}
+                </Button>
 
                 {/* Test connection */}
                 <Button

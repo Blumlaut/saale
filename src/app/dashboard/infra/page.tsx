@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { Page, PageHeader, PageScroll } from "@/components/layout/page";
 import { MachineList } from "@/components/infra/machine-list";
 import { MachineDialog } from "@/components/infra/machine-dialog";
+import { MachineNotesDialog } from "@/components/infra/machine-notes-dialog";
 
 export interface InfraMachine {
   id: string;
@@ -22,6 +23,7 @@ export interface InfraMachine {
 export default function InfraPage() {
   const [showDialog, setShowDialog] = useState(false);
   const [editingMachine, setEditingMachine] = useState<InfraMachine | null>(null);
+  const [notesMachine, setNotesMachine] = useState<InfraMachine | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleCreated = useCallback(() => {
@@ -31,6 +33,14 @@ export default function InfraPage() {
   const handleEdit = useCallback((machine: InfraMachine) => {
     setEditingMachine(machine);
     setShowDialog(true);
+  }, []);
+
+  const handleOpenNotes = useCallback((machine: InfraMachine) => {
+    setNotesMachine(machine);
+  }, []);
+
+  const handleNotesClose = useCallback((open: boolean) => {
+    if (!open) setNotesMachine(null);
   }, []);
 
   const handleDialogClose = useCallback((open: boolean) => {
@@ -59,7 +69,12 @@ export default function InfraPage() {
 
       {/* Machine List — scrolls internally */}
       <PageScroll>
-        <MachineList key={refreshKey} onEdit={handleEdit} onRefresh={handleCreated} />
+        <MachineList
+          key={refreshKey}
+          onEdit={handleEdit}
+          onOpenNotes={handleOpenNotes}
+          onRefresh={handleCreated}
+        />
       </PageScroll>
 
       {/* Add/Edit Dialog */}
@@ -68,6 +83,14 @@ export default function InfraPage() {
         onOpenChange={handleDialogClose}
         onSuccess={handleCreated}
         machine={editingMachine}
+      />
+
+      {/* Notes Dialog */}
+      <MachineNotesDialog
+        open={!!notesMachine}
+        onOpenChange={handleNotesClose}
+        machine={notesMachine}
+        onSuccess={handleCreated}
       />
     </Page>
   );
