@@ -94,9 +94,7 @@ describe("formatProviderError", () => {
   it("splits a space-separated status (Anthropic's form)", () => {
     // Anthropic answers with plain text: `400 invalid_request_error: ...`,
     // which used to be shown to the user with the status glued to the front.
-    expect(
-      formatProviderError("400 invalid_request_error: max_tokens: must be >= 1"),
-    ).toEqual({
+    expect(formatProviderError("400 invalid_request_error: max_tokens: must be >= 1")).toEqual({
       status: 400,
       message: "invalid_request_error: max_tokens: must be >= 1",
       shortened: false,

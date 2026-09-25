@@ -78,6 +78,14 @@ describe("session settings", () => {
     expect(settings.getEnableInstallTelemetry()).toBe(false);
   });
 
+  it("does not warm provider prompt caches", () => {
+    // Pi's default is "streaming": it sends extra requests to warm the cache
+    // while a run is in flight and records `cache_warm` usage turns in the
+    // transcript. An interactive CLI wants that; a hosted chat pays for it.
+    const settings = createSessionSettings();
+    expect(settings.getCacheWarmingMode()).toBe("off");
+  });
+
   it("keeps the SDK's own compaction and retry behaviour", () => {
     const settings = createSessionSettings();
     expect(settings.getCompactionSettings()).toEqual({

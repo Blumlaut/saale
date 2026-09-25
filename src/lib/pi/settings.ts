@@ -24,5 +24,11 @@ export function createSessionSettings(): SettingsManager {
     // its traffic should not be attributed to pi — and nothing in this app
     // needs the headers.
     enableInstallTelemetry: false,
+    // Pi warms the provider's prompt cache while a run is in flight ("streaming"
+    // is its default). That is a CLI optimization for an interactive session: in
+    // a hosted chat it spends extra provider requests — and money — during long
+    // tool executions, and the warm-up turns are appended to the session
+    // transcript as `cache_warm` usage entries.
+    cacheWarming: "off",
   });
 }
