@@ -188,11 +188,21 @@ export async function evictIdle(): Promise<void> {
     await clearSessionResources(sessionId);
   }
 
-  // Hard cap — evict oldest idle sessions if over limit
+  // Hard cap — evict the oldest sessions that are not running. A session with a
+  // run in flight (or one about to prompt, e.g. a message deferred until a
+  // compaction ends) must never be disposed: that aborts the run and drops the
+  // client's stream.
   while (pool.size > MAX_POOL_SIZE) {
-    const sorted = [...pool.entries()].sort((a, b) => a[1].lastActive - b[1].lastActive);
+    const sorted = [...pool.entries()]
+      .filter(([, entry]) => !entry.session.isStreaming && !entry.promptInFlight)
+      .sort((a, b) => a[1].lastActive - b[1].lastActive);
     const oldest = sorted[0];
-    if (!oldest) break;
+    if (!oldest) {
+      console.warn(
+        `[agent-pool] Pool is over its limit (${pool.size}) with no idle session to evict`,
+      );
+      break;
+    }
     const [oldestKey, oldestEntry] = oldest;
     if (pool.has(oldestKey)) {
       oldestEntry.session.dispose();

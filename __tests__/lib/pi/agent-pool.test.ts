@@ -318,6 +318,33 @@ describe("agent-pool", () => {
       expect(mockSession.dispose).not.toHaveBeenCalled();
     });
 
+    // The hard cap exists to bound memory, but it must not cut a live
+    // generation: disposing a streaming session aborts the run and drops every
+    // connected client's stream.
+    it("never evicts a streaming session to enforce the pool cap", async () => {
+      const running = createMockAgentSession(true); // isStreaming = true
+      const runningEntry = await createAndPool("user-1:running", async () => ({
+        session: asAgentSession(running),
+        sessionDir: "/tmp/running",
+      }));
+      // Oldest entry of all — a naive "evict the oldest" would pick it first.
+      runningEntry.lastActive = 0;
+
+      for (let i = 0; i < 101; i++) {
+        await createAndPool(`user-${i}:session-${i}`, async () => ({
+          session: asAgentSession(createMockAgentSession()),
+          sessionDir: `/tmp/session-${i}`,
+        }));
+      }
+      // createAndPool enforces the cap on the way in, so the pool never grows
+      // past it — and the running session, the oldest entry of all, survives
+      // every pass.
+      await evictIdle();
+      expect(running.dispose).not.toHaveBeenCalled();
+      expect(getPoolKeys()).toContain("user-1:running");
+      expect(getPoolSize()).toBeLessThanOrEqual(100);
+    });
+
     it("evicts idle non-streaming sessions", async () => {
       const mockSession = createMockAgentSession(false); // isStreaming = false
       const poolKey = "user-1:session-abc";
