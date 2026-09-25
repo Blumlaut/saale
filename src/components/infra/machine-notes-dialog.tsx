@@ -207,7 +207,7 @@ export function MachineNotesDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
           {/* Header — pinned */}
           <DialogHeader className="border-border/50 shrink-0 gap-1 border-b px-4 py-3 sm:px-5">
             <DialogTitle className="flex items-center gap-2">
