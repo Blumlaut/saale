@@ -23,6 +23,7 @@ import {
   getSessionDir,
 } from "@/lib/pi/agent-pool";
 import { createPersistentSession } from "@/lib/pi/persistent-session";
+import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { applyPendingHistoryRewind } from "@/lib/pi/message-rewind";
 import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/stream-logic";
@@ -387,9 +388,14 @@ export async function GET(
   const dispatchRun = async (run: PreparedRun): Promise<boolean> => {
     log("prompt", `sending prompt, message.id=${run.target.id}`);
     try {
-      await (run.images.length > 0
-        ? run.entry.session.prompt(run.target.content, { images: run.images })
-        : run.entry.session.prompt(run.target.content));
+      // A manual /compact can still be holding the session when a message
+      // arrives — Pi rejects a prompt while compaction runs, so wait it out
+      // and submit again rather than failing the message.
+      await submitDeferringToCompaction(run.entry.session, () =>
+        run.images.length > 0
+          ? run.entry.session.prompt(run.target.content, { images: run.images })
+          : run.entry.session.prompt(run.target.content),
+      );
       run.entry.promptInFlight = false;
       log("prompt", "session.prompt() settled");
       return true;

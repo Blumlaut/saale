@@ -561,16 +561,23 @@ export function createSessionEventTracker(
 
       case "compaction_end": {
         if (event.result && !event.aborted) {
-          // Tracked as a pending save so `done` (emitted on agent_settled
-          // after all saves settle) always lands after the summary is in
-          // the DB — late /messages fetches can't miss it.
-          pendingSaves.push(
-            saveCompactionMessage({
-              sessionId,
-              summary: event.result.summary,
-              tokensBefore: event.result.tokensBefore,
-            }),
-          );
+          // A manual compaction is started, and its summary persisted, by the
+          // request that owns it (the /compact route). The tracker can still
+          // be subscribed while that happens — a prompt run aborted by the
+          // compaction settles after it began — and saving here as well would
+          // put the same summary in the chat twice.
+          if (event.reason !== "manual") {
+            // Tracked as a pending save so `done` (emitted on agent_settled
+            // after all saves settle) always lands after the summary is in
+            // the DB — late /messages fetches can't miss it.
+            pendingSaves.push(
+              saveCompactionMessage({
+                sessionId,
+                summary: event.result.summary,
+                tokensBefore: event.result.tokensBefore,
+              }),
+            );
+          }
 
           publishSessionEvent(sessionId, "compaction_end", {
             reason: event.reason,

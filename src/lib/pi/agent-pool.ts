@@ -14,6 +14,25 @@ interface PooledSession {
 const pool = new Map<string, PooledSession>();
 
 /**
+ * Creations in flight, keyed like the pool.
+ *
+ * Creating a session is slow (it loads the transcript and builds the tool
+ * registry), and two requests for the same chat can overlap — a message sent
+ * while /compact is still spinning up its session. Without single-flight, both
+ * callers would find the pool empty, create their own AgentSession over the
+ * same JSONL file, and the second would overwrite the first's pool entry: two
+ * live session objects appending to one transcript, one of them orphaned and
+ * invisible to every later request.
+ */
+const pendingCreations = new Map<string, Promise<PooledSession>>();
+
+/**
+ * Bumped by teardown. A creation that started before a teardown must not pool
+ * its session afterwards — that would resurrect a pool that was just cleared.
+ */
+let poolGeneration = 0;
+
+/**
  * Per-session SSE dispatcher for emitting stream events.
  *
  * Lives alongside the pool so it survives across requests for the same session.
@@ -85,6 +104,7 @@ export function get(key: string): PooledSession | undefined {
  * Get or create a pooled session.
  * If the session already exists, returns it (updates lastActive).
  * Otherwise calls createFn to build a new one and adds it to the pool.
+ * Concurrent callers for the same key share one creation (single-flight).
  * Runs idle eviction before creating new entries.
  */
 export async function createAndPool(
@@ -97,18 +117,30 @@ export async function createAndPool(
     return existing;
   }
 
+  const inFlight = pendingCreations.get(key);
+  if (inFlight) return inFlight;
+
   evictIdle();
 
-  const { session, sessionDir } = await createFn();
-  const entry: PooledSession = {
-    session,
-    sessionDir,
-    lastPromptedMessageId: null,
-    promptInFlight: false,
-    lastActive: Date.now(),
-  };
-  pool.set(key, entry);
-  return entry;
+  const generation = poolGeneration;
+  const creation = createFn()
+    .then(({ session, sessionDir }) => {
+      const entry: PooledSession = {
+        session,
+        sessionDir,
+        lastPromptedMessageId: null,
+        promptInFlight: false,
+        lastActive: Date.now(),
+      };
+      if (generation === poolGeneration) pool.set(key, entry);
+      return entry;
+    })
+    .finally(() => {
+      pendingCreations.delete(key);
+    });
+
+  pendingCreations.set(key, creation);
+  return creation;
 }
 
 /**
@@ -191,6 +223,8 @@ export function getPoolKeys(): string[] {
  */
 export async function clearPool(): Promise<void> {
   clearInterval(timer);
+  poolGeneration++;
+  pendingCreations.clear();
   for (const [, entry] of pool) {
     entry.session.dispose();
   }
@@ -207,6 +241,8 @@ export async function clearPool(): Promise<void> {
  */
 export async function shutdown(): Promise<void> {
   clearInterval(timer);
+  poolGeneration++;
+  pendingCreations.clear();
   for (const [, entry] of pool) {
     entry.session.dispose();
   }
