@@ -385,6 +385,10 @@ export async function processTelegramMessage(
           },
         });
 
+        // The provider failure of the last attempt, if it ended in one. Only
+        // the settled event decides the run's outcome (see the agent_end case).
+        let lastProviderError: string | null = null;
+
         const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
           switch (event.type) {
             case "message_update": {
@@ -500,42 +504,40 @@ export async function processTelegramMessage(
 
             // agent_end only means the current run iteration stopped — the
             // SDK may still retry, auto-compact, or continue the run. The
-            // settled event is the "completely finished" signal (TUI parity).
+            // settled event is the "completely finished" signal (TUI parity),
+            // and the only safe place to decide the run's outcome: an overflow
+            // failure reports `willRetry: false` (compaction handles it, not
+            // retry) and is followed by a compact-and-continue, so deciding
+            // here would report an error for a run whose answer arrives a
+            // moment later — and drop it, because the listener is gone.
             case "agent_settled": {
               idleTimeout.clear();
               unsubscribe();
               processingDone?.resolve();
-              resolve();
+              if (lastProviderError) {
+                reject(new Error(lastProviderError));
+              } else {
+                resolve();
+              }
               break;
             }
 
             // A provider failure does not throw — it ends the assistant
-            // message with stopReason "error". Without this, a run that fails
-            // for a non-retryable reason (bad request, exhausted quota) ends
-            // silently: no reply text, no error, nothing to act on.
-            // Rejecting routes it into the run's error handling, which records
-            // the failure and tells the user. `willRetry` runs are skipped —
-            // the retry either succeeds or reports its own final failure.
+            // message with stopReason "error". Record it per attempt; the
+            // settled handler decides. `willRetry` runs are skipped because
+            // their failure is provisional and the retry reports its own.
             case "agent_end": {
               if (event.willRetry) break;
               const lastAssistant = [...event.messages]
                 .reverse()
                 .find((m) => m.role === "assistant") as ProviderErrorSource | undefined;
-              const providerError = extractProviderError(lastAssistant);
-              if (!providerError) break;
-              idleTimeout.clear();
-              unsubscribe();
-              processingDone?.resolve();
-              reject(new Error(providerError));
+              lastProviderError = extractProviderError(lastAssistant);
               break;
             }
 
             case "auto_retry_end": {
               if (!event.success) {
-                idleTimeout.clear();
-                unsubscribe();
-                processingDone?.resolve();
-                reject(new Error(event.finalError ?? "Agent retry failed"));
+                lastProviderError = event.finalError ?? "Agent retry failed";
               }
               break;
             }
