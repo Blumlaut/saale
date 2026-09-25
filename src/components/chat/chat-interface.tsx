@@ -393,6 +393,21 @@ export function ChatInterface({
     [sessionId, connect, disconnect, loadMessages],
   );
 
+  // ─── MessageList callbacks ───────────────────────────────────────────────
+  // Stable identities: MessageList is memoized, so inline arrows here would
+  // defeat the memo and re-render every message on each keystroke.
+
+  const handleApprovalResolved = useCallback((toolCallId: string) => {
+    setPendingApprovals((prev) => prev.filter((a) => a.toolCallId !== toolCallId));
+  }, []);
+
+  const handleSuggestionSend = useCallback(
+    (content: string) => {
+      void handleSend(content);
+    },
+    [handleSend],
+  );
+
   const handleStop = useCallback(() => {
     // Stop means "nothing more until I say so": the server pauses the send
     // queue, so queued messages wait for an explicit send/push.
@@ -574,11 +589,9 @@ export function ChatInterface({
             isLoading={isLoading}
             isCompacting={isCompacting}
             onEditMessage={handleEditMessage}
-            onSendMessage={(content) => handleSend(content)}
+            onSendMessage={handleSuggestionSend}
             pendingApprovals={pendingApprovals}
-            onApprovalResolved={(toolCallId) => {
-              setPendingApprovals((prev) => prev.filter((a) => a.toolCallId !== toolCallId));
-            }}
+            onApprovalResolved={handleApprovalResolved}
             sessionId={sessionId}
             activeTool={activeTool}
             retry={retryNotice}
