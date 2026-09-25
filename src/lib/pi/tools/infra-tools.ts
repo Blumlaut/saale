@@ -16,7 +16,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_list_machines",
       label: "List Machines",
       description:
-        "List all registered remote machines with their connection details (host, port, username, auth method).",
+        "List all registered remote machines with their connection details (host, port, username, auth method) and how many notes each has.",
       parameters: Type.Object({}),
       execute: async (_toolCallId, _params) => {
         const machines = await prisma.infraMachine.findMany({
@@ -395,7 +395,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_notes_list",
       label: "List Machine Notes",
       description:
-        "List all notes for a machine. Notes contain agent-maintained knowledge about the system: services, paths, configurations, quirks, credentials.",
+        "List the notes for a machine. Notes are the durable record of what that machine is right now: services, paths, configuration, quirks, credentials. Read them before inspecting or changing a machine, and before writing a note so you can update the existing one instead of creating a duplicate.",
       parameters: Type.Object({
         id: Type.String({ description: "Machine ID." }),
         category: Type.Optional(
@@ -472,7 +472,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
     defineTool({
       name: "infra_notes_get",
       label: "Get Machine Note",
-      description: "Get the full content of a specific note.",
+      description: "Read one note in full. Use `infra_notes_list` first to find the note ID.",
       parameters: Type.Object({
         id: Type.String({ description: "Note ID." }),
       }),
@@ -535,7 +535,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_notes_upsert",
       label: "Upsert Machine Note",
       description:
-        "Create or update a note for a machine. Use this to record knowledge about the system: what services run, important paths, configuration details, known quirks, credentials, etc. If a note ID is provided, it updates that note. Otherwise it creates a new one.",
+        "Create or update a machine note. Notes record only what the machine is right now: verified present-state facts — never plans, intentions, TODOs, command output, or values that change on their own (ephemeral addresses, process IDs, versions mid-upgrade). To avoid duplicates, call `infra_notes_list` first and pass the existing note's `id` when one already covers the topic; omit `id` only when creating a note for a topic that has none. When reality changes, update the note; when a note is no longer true and nothing replaces it, delete it.",
       parameters: Type.Object({
         machineId: Type.String({ description: "Machine ID." }),
         title: Type.String({ description: "Note title." }),
@@ -640,7 +640,8 @@ export function createInfraTools(userId: string): ToolDefinition[] {
     defineTool({
       name: "infra_notes_delete",
       label: "Delete Machine Note",
-      description: "Delete a note for a machine.",
+      description:
+        "Delete a note that is no longer true or has been superseded. Removing stale notes is part of keeping a machine's notes accurate.",
       parameters: Type.Object({
         id: Type.String({ description: "Note ID." }),
       }),

@@ -118,6 +118,35 @@ describe("createInfraTools", () => {
     expect(names).toHaveLength(9);
   });
 
+  // Tool descriptions are prompt surface for every session type (chat, Telegram
+  // and agent jobs, which supply their own system prompt). The note-hygiene
+  // contract must travel with the tools, not only in the shared system prompt.
+  describe("note prompting contract", () => {
+    it("upsert requires listing first and updating by id, not duplicating", () => {
+      const desc = ctx.notesUpsert.description;
+      expect(desc).toContain("infra_notes_list");
+      expect(desc).toContain("id");
+      expect(desc.toLowerCase()).toContain("duplicate");
+    });
+
+    it("upsert restricts notes to present-state facts", () => {
+      const desc = ctx.notesUpsert.description;
+      expect(desc).toContain("right now");
+      expect(desc).toContain("never plans");
+      expect(desc.toLowerCase()).toContain("change on their own");
+    });
+
+    it("list reads notes as durable state before writing", () => {
+      const desc = ctx.notesList.description;
+      expect(desc).toContain("durable record");
+      expect(desc.toLowerCase()).toContain("duplicate");
+    });
+
+    it("delete is framed as removing stale notes", () => {
+      expect(ctx.notesDelete.description.toLowerCase()).toContain("stale");
+    });
+  });
+
   describe("infra_list_machines", () => {
     it("returns empty list when no machines exist", async () => {
       vi.mocked(mockInfraMachine.findMany).mockResolvedValue([]);

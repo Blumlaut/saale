@@ -2,6 +2,30 @@ import { describe, it, expect } from "vitest";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
 import { wrapWithApprovalGate } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
+import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
+
+/**
+ * The prompt under test, with the option names these tests use.
+ *
+ * Deliberately a thin adapter over the real builder instead of a copy of the
+ * prompt text: a copied prompt rots silently and stops protecting the thing it
+ * claims to protect.
+ */
+function buildSystemPrompt(options: {
+  customInstructions: string | null;
+  terminalEnabled?: boolean;
+  memoryEnabled?: boolean;
+  infraEnabled?: boolean;
+}): string {
+  return buildAgentSystemPrompt({
+    customInstructions: options.customInstructions,
+    toolConfig: {
+      terminal: options.terminalEnabled ?? false,
+      memory: options.memoryEnabled ?? true,
+      ...(options.infraEnabled !== undefined ? { infra: options.infraEnabled } : {}),
+    },
+  });
+}
 
 /**
  * Prompt Cache Integrity Tests
@@ -36,37 +60,6 @@ describe("system prompt stability", () => {
    * is rebuilt from current DB values. Any change invalidates the cache.
    */
   it("system prompt template is deterministic for same inputs", () => {
-    // Simulate the system prompt construction from the stream route
-    function buildSystemPrompt(options: {
-      customInstructions: string | null;
-      terminalEnabled: boolean;
-      memoryEnabled: boolean;
-    }): string {
-      const defaultSystemPrompt = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
-
-Guidelines:
-- Be concise and direct — get to the point without unnecessary preamble.
-- Write naturally, like a capable colleague, not a generic AI.
-- Use bullet points or short paragraphs when listing things.
-- When uncertain, say so briefly rather than guessing.
-- Match the user's tone and language preference.`;
-
-      const customInstructions =
-        options.customInstructions && options.customInstructions.trim()
-          ? "\n\nCustom instructions:\n" + options.customInstructions
-          : "";
-
-      const terminalInstruction = options.terminalEnabled
-        ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available."
-        : "";
-
-      const memoryInstruction = options.memoryEnabled
-        ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
-        : "";
-
-      return defaultSystemPrompt + customInstructions + terminalInstruction + memoryInstruction;
-    }
-
     // Same inputs → same output
     const config = {
       customInstructions: "Always respond in German.",
@@ -100,43 +93,20 @@ Guidelines:
     const withMemory = buildSystemPrompt({ ...config, memoryEnabled: true });
     const withoutMemory = buildSystemPrompt({ ...config, memoryEnabled: false });
     expect(withMemory).not.toBe(withoutMemory);
+
+    // Infra toggle changes prompt, and the infra block is stable across builds
+    const withInfra = buildSystemPrompt({ ...config, infraEnabled: true });
+    const withoutInfra = buildSystemPrompt({ ...config, infraEnabled: false });
+    expect(withInfra).not.toBe(withoutInfra);
+    expect(buildSystemPrompt({ ...config, infraEnabled: true })).toBe(withInfra);
   });
 
   it("system prompt does NOT contain non-deterministic values", () => {
-    function buildSystemPrompt(options: {
-      customInstructions: string | null;
-      terminalEnabled: boolean;
-      memoryEnabled: boolean;
-    }): string {
-      const defaultSystemPrompt = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
-
-Guidelines:
-- Be concise and direct — get to the point without unnecessary preamble.
-- Write naturally, like a capable colleague, not a generic AI.
-- Use bullet points or short paragraphs when listing things.
-- When uncertain, say so briefly rather than guessing.
-- Match the user's tone and language preference.`;
-
-      const customInstructions =
-        options.customInstructions && options.customInstructions.trim()
-          ? "\n\nCustom instructions:\n" + options.customInstructions
-          : "";
-
-      const terminalInstruction = options.terminalEnabled
-        ? "\n\nA Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available."
-        : "";
-
-      const memoryInstruction = options.memoryEnabled
-        ? "\n\nYou have a persistent memory system. If the user references something you don't know about, use `memory_search` to look it up before answering."
-        : "";
-
-      return defaultSystemPrompt + customInstructions + terminalInstruction + memoryInstruction;
-    }
-
     const prompt = buildSystemPrompt({
       customInstructions: "Test instructions",
       terminalEnabled: true,
       memoryEnabled: true,
+      infraEnabled: true,
     });
 
     // Should not contain timestamps, UUIDs, or other dynamic values
@@ -157,25 +127,16 @@ Guidelines:
    * is cold anyway (no prior cache to hit).
    */
   it("system prompt changes if custom instructions are edited between turns (cache risk)", () => {
-    function buildSystemPrompt(customInstructions: string | null): string {
-      const base = "You are Saale, a personal AI assistant.";
-      const custom =
-        customInstructions && customInstructions.trim()
-          ? "\n\nCustom instructions:\n" + customInstructions
-          : "";
-      return base + custom;
-    }
-
     // Turn 1: agent created with original instructions
-    const promptTurn1 = buildSystemPrompt("Be concise.");
+    const promptTurn1 = buildSystemPrompt({ customInstructions: "Be concise." });
     // Turn 2: agent evicted, recreated with new instructions
-    const promptTurn2 = buildSystemPrompt("Be concise. Use markdown.");
+    const promptTurn2 = buildSystemPrompt({ customInstructions: "Be concise. Use markdown." });
 
     // Different → cache invalidated on turn 2
     expect(promptTurn1).not.toBe(promptTurn2);
 
     // But if instructions unchanged, prompt is stable
-    const promptTurn3 = buildSystemPrompt("Be concise.");
+    const promptTurn3 = buildSystemPrompt({ customInstructions: "Be concise." });
     expect(promptTurn1).toBe(promptTurn3);
   });
 });
