@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
   getPoolKey,
   getSessionDir,
@@ -152,6 +153,57 @@ describe("agent-pool", () => {
       }));
 
       expect(second.lastActive).toBeGreaterThan(firstActive);
+    });
+
+    it("shares one creation between concurrent callers", async () => {
+      // Two requests for the same chat can overlap (a message sent while
+      // /compact is still spinning up its session). Both must get the same
+      // AgentSession — two live sessions over one transcript silently fork it.
+      const mockSession = createMockAgentSession();
+      let releaseCreation = () => {};
+      const createFn = vi.fn(
+        () =>
+          new Promise<{ session: AgentSession; sessionDir: string }>((resolve) => {
+            releaseCreation = () =>
+              resolve({ session: asAgentSession(mockSession), sessionDir: "/tmp/shared" });
+          }),
+      );
+
+      const first = createAndPool("test-key", createFn);
+      const second = createAndPool("test-key", createFn);
+      releaseCreation();
+      const [a, b] = await Promise.all([first, second]);
+
+      expect(createFn).toHaveBeenCalledTimes(1);
+      expect(a.session).toBe(mockSession);
+      expect(b).toBe(a);
+      expect(getPoolSize()).toBe(1);
+    });
+
+    it("creates a new session after a teardown, not the one that was pending", async () => {
+      const pendingSession = createMockAgentSession();
+      let releaseCreation = () => {};
+      const pending = createAndPool(
+        "test-key",
+        () =>
+          new Promise<{ session: AgentSession; sessionDir: string }>((resolve) => {
+            releaseCreation = () =>
+              resolve({ session: asAgentSession(pendingSession), sessionDir: "/tmp/pending" });
+          }),
+      );
+
+      await shutdown();
+      releaseCreation();
+      await pending;
+
+      const freshSession = createMockAgentSession();
+      const entry = await createAndPool("test-key", async () => ({
+        session: asAgentSession(freshSession),
+        sessionDir: "/tmp/fresh",
+      }));
+
+      expect(entry.session).toBe(freshSession);
+      expect(getPoolSize()).toBe(1);
     });
 
     it("handles multiple sessions independently", async () => {

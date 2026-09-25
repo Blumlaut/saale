@@ -175,6 +175,11 @@ export function ChatInterface({
             onClick: () => router.push("/dashboard/settings"),
           },
         });
+      } else {
+        // The run never started (session creation, session state, provider
+        // setup). Pi persists nothing for it, so without this the message
+        // would sit there unanswered and unexplained.
+        toast.error("Response failed", { description: message });
       }
     },
     onReload: () => void loadMessages(),

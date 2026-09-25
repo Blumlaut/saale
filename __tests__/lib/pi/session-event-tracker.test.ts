@@ -630,6 +630,33 @@ describe("createSessionEventTracker", () => {
     expect(tokensAfter).not.toContain("after settle");
   });
 
+  it("does not save a manual compaction the owning request persists", async () => {
+    const { published } = setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // A /compact route owns manual compaction: it saves the summary itself. The
+    // tracker can be subscribed while one runs (a run it aborted settles after
+    // the compaction began), and saving here too duplicates the summary.
+    session.emit({ type: "compaction_start", reason: "manual" });
+    session.emit({
+      type: "compaction_end",
+      reason: "manual",
+      result: { summary: "Manual summary", tokensBefore: 90_000 },
+      aborted: false,
+      willRetry: false,
+    });
+
+    await flush();
+
+    expect(mockSaveCompactionMessage).not.toHaveBeenCalled();
+    // Connected clients still learn that the compaction finished.
+    const compactionEnd = published.find((p) => p.event === "compaction_end");
+    expect(compactionEnd?.data.summary).toBe("Manual summary");
+  });
+
   it("handles a continuation run (overflow retry) and emits done only once", async () => {
     const { published } = setup();
     mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
