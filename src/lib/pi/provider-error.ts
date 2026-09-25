@@ -91,9 +91,11 @@ function findMessage(value: unknown, depth = 0): string | null {
  * Turn a raw provider error into something a user can act on.
  *
  * Pi reports errors as `<status>: <body>` (e.g.
- * `400: {"message":"Invalid max_tokens value"}`). Raw JSON in a chat bubble is
- * noise, so the status is split off and the body's message extracted. Anything
- * unrecognized is shown verbatim — never hidden.
+ * `400: {"message":"Invalid max_tokens value"}`) or, for providers that answer
+ * with plain text, as `<status> <message>` (Anthropic:
+ * `400 invalid_request_error: ...`). Raw JSON in a chat bubble is noise, so the
+ * status is split off and the body's message extracted. Anything unrecognized is
+ * shown verbatim — never hidden.
  *
  * @example
  * formatProviderError('400: {"message":"Invalid max_tokens value"}')
@@ -105,8 +107,10 @@ export function formatProviderError(raw: string): FormattedProviderError {
   const text = raw.trim();
 
   // `<status>: <body>` — Pi's prefix for HTTP failures (may contain a JSON body
-  // with colons of its own, so split only on the first one).
-  const statusMatch = /^(\d{3}):\s*([\s\S]*)$/.exec(text);
+  // with colons of its own, so split only on the first one). The colon is
+  // optional: Anthropic-style errors use a space, which used to leave the raw
+  // status glued to the message the user reads.
+  const statusMatch = /^(\d{3})(?!\d):?\s*([\s\S]*)$/.exec(text);
   const status = statusMatch?.[1] ? Number(statusMatch[1]) : undefined;
   const body = (statusMatch?.[2] ?? text).trim();
 
