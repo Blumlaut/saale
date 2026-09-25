@@ -23,6 +23,7 @@ import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { buildAgentSystemPrompt, createSystemPromptLoader } from "@/lib/pi/processing-state";
+import { withChatLock } from "./chat-lock";
 import { createSessionSettings } from "@/lib/pi/settings";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import {
@@ -78,25 +79,34 @@ Telegram-specific guidelines:
  * directly to the vision model; documents are uploaded into the terminal
  * workspace (or saved locally as a fallback) and referenced in the prompt.
  */
-export async function processTelegramMessage(
-  params: {
-    onSessionCreated?: (
-      session: import("@earendil-works/pi-coding-agent").AgentSession,
-      telegramChatId: bigint,
-    ) => void;
-    processingDone?: { resolve: () => void };
-  } & {
-    userId: string;
-    encryptedToken: string;
-    telegramChatId: bigint;
-    telegramUserId: bigint;
-    messageText: string;
-    messageCaption?: string | undefined;
-    fileInfo?: TelegramFileInfo | undefined;
-    messageThreadId?: number | undefined;
-    replyToMessageId?: number | undefined;
-  },
-): Promise<void> {
+export async function processTelegramMessage(params: ProcessTelegramMessageParams): Promise<void> {
+  // One run per chat: two overlapping runs share a transcript directory and can
+  // both create the chat's session (see `withChatLock`). Interruptions still
+  // replace a live run — the webhook aborts it before calling in.
+  return withChatLock(`${params.userId}:${params.telegramChatId}`, () =>
+    runTelegramMessage(params),
+  );
+}
+
+interface ProcessTelegramMessageParams {
+  onSessionCreated?: (
+    session: import("@earendil-works/pi-coding-agent").AgentSession,
+    telegramChatId: bigint,
+  ) => void;
+  processingDone?: { resolve: () => void };
+  userId: string;
+  encryptedToken: string;
+  telegramChatId: bigint;
+  telegramUserId: bigint;
+  messageText: string;
+  messageCaption?: string | undefined;
+  fileInfo?: TelegramFileInfo | undefined;
+  messageThreadId?: number | undefined;
+  replyToMessageId?: number | undefined;
+}
+
+/** The body of `processTelegramMessage`, run exclusively per chat. */
+async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise<void> {
   const {
     userId,
     encryptedToken,
@@ -728,12 +738,24 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
  * Recreates the Pi session from persistent JSONL files, runs compaction,
  * and sends the result back to Telegram.
  */
-export async function compactTelegramSession(params: {
+export async function compactTelegramSession(params: CompactTelegramSessionParams): Promise<void> {
+  // Shares the chat's lock with generation: compacting the transcript while a
+  // run is still writing to it would summarise a partial conversation, and the
+  // summary could end up off the active path.
+  return withChatLock(`${params.userId}:${params.telegramChatId}`, () =>
+    runTelegramCompaction(params),
+  );
+}
+
+interface CompactTelegramSessionParams {
   userId: string;
   encryptedToken: string;
   telegramChatId: bigint;
   replyToMessageId?: number | undefined;
-}): Promise<void> {
+}
+
+/** The body of `compactTelegramSession`, run exclusively per chat. */
+async function runTelegramCompaction(params: CompactTelegramSessionParams): Promise<void> {
   const { userId, encryptedToken, telegramChatId, replyToMessageId } = params;
 
   // 1. Find the chat session linked to this Telegram chat
