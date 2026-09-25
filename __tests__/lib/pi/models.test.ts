@@ -41,9 +41,28 @@ import * as pi from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { buildModelRuntime } from "@/lib/pi/models";
 
+/** Stub the `/models` listing a provider returns. */
+function stubModelListing(ids: string[]): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: ids.map((id) => ({ id })) }),
+    }),
+  );
+}
+
+/** URL of the last stubbed `/models` request. */
+function stubbedFetchUrl(): string | undefined {
+  const calls = vi.mocked(globalThis.fetch).mock.calls;
+  return calls.length > 0 ? String(calls[calls.length - 1]![0]) : undefined;
+}
+
 describe("buildModelRuntime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
 
     // Default mocks
     vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([]);
@@ -146,6 +165,120 @@ describe("buildModelRuntime", () => {
     expect(crypto.decrypt).toHaveBeenCalledTimes(2);
     expect(crypto.decrypt).toHaveBeenCalledWith("encrypted-anthropic-key");
     expect(crypto.decrypt).toHaveBeenCalledWith("encrypted-openai-key");
+  });
+
+  it("keeps Pi's catalog definition for a discovered model it knows", async () => {
+    // `registerProvider` REPLACES a provider's model list, and a definition only
+    // inherits api/baseUrl from the catalog entry it shadows — so a discovered
+    // id must carry the catalog's own flags, limits and cost.
+    const getModel = vi.fn().mockImplementation((provider: string, id: string) =>
+      provider === "openrouter" && id === "openai/gpt-5"
+        ? {
+            id,
+            name: "GPT-5",
+            api: "openai-responses",
+            reasoning: true,
+            input: ["text", "image"],
+            cost: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 },
+            contextWindow: 400_000,
+            maxTokens: 128_000,
+          }
+        : undefined,
+    );
+    const registerProvider = vi.fn();
+    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
+      getModel,
+      getAvailableSnapshot: vi.fn().mockReturnValue([]),
+      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+      getProvider: vi.fn(),
+      registerProvider,
+    } as never);
+
+    vi.mocked(db.prisma.providerApiKey.findMany)
+      .mockResolvedValueOnce([
+        {
+          id: "key-1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          userId: null,
+          provider: "openrouter",
+          encryptedKey: "encrypted-key",
+          label: "OpenRouter",
+          baseUrl: null,
+          contextWindow: null,
+          maxOutputTokens: null,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    vi.mocked(crypto.decrypt).mockReturnValue("sk-or-123");
+    // `buildModelRuntime` calls the real `fetchOpenAIModels`, so the listing is
+    // stubbed at the network boundary.
+    stubModelListing(["openai/gpt-5", "vendor/unknown-model"]);
+
+    await buildModelRuntime("user-1");
+
+    expect(stubbedFetchUrl()).toBe("https://openrouter.ai/api/v1/models");
+
+    const registration = registerProvider.mock.calls[0]![1] as {
+      models: Array<Record<string, unknown>>;
+    };
+    expect(registration.models[0]).toMatchObject({
+      id: "openai/gpt-5",
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: 400_000,
+      maxTokens: 128_000,
+      cost: { input: 1.25, output: 10 },
+    });
+
+    // An id the catalog does not know claims nothing it cannot do.
+    expect(registration.models[1]).toMatchObject({
+      id: "vendor/unknown-model",
+      reasoning: false,
+      input: ["text"],
+    });
+  });
+
+  it("uses the user's limits for a model the catalog does not know", async () => {
+    const registerProvider = vi.fn();
+    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
+      getModel: vi.fn().mockReturnValue(undefined),
+      getAvailableSnapshot: vi.fn().mockReturnValue([]),
+      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+      getProvider: vi.fn(),
+      registerProvider,
+    } as never);
+
+    vi.mocked(db.prisma.providerApiKey.findMany)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "key-1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          userId: "user-1",
+          provider: "custom",
+          encryptedKey: "encrypted-key",
+          label: "Self-hosted",
+          baseUrl: "https://llm.example.com/v1",
+          contextWindow: 32_768,
+          maxOutputTokens: 4_096,
+        },
+      ]);
+    vi.mocked(crypto.decrypt).mockReturnValue("local-key");
+    stubModelListing(["my-model"]);
+
+    await buildModelRuntime("user-1");
+
+    expect(stubbedFetchUrl()).toBe("https://llm.example.com/v1/models");
+    const registration = registerProvider.mock.calls[0]![1] as {
+      models: Array<Record<string, unknown>>;
+    };
+    expect(registration.models[0]).toMatchObject({
+      id: "my-model",
+      contextWindow: 32_768,
+      maxTokens: 4_096,
+    });
   });
 
   it("user keys override global keys for the same provider", async () => {

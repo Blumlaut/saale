@@ -10,6 +10,12 @@ interface ProviderModelConfig {
   models?: string[];
 }
 
+/** A model definition passed to `registerProvider`. */
+type ProviderModelDefinition = Parameters<ModelRuntime["registerProvider"]>[1]["models"] extends
+  (infer T)[] | undefined
+  ? T
+  : never;
+
 /**
  * Fetch global admin model config.
  */
@@ -38,6 +44,10 @@ function isModelAllowed(
 
   const providerConfig = globalConfig[provider];
   if (!providerConfig) return true; // not in config = allowed
+
+  // The admin's provider toggle. It used to be ignored, so switching a
+  // provider off left its models selectable.
+  if (providerConfig.enabled === false) return false;
 
   // If explicit model list, check membership
   if (providerConfig.models && providerConfig.models.length > 0) {
@@ -79,6 +89,91 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
     console.error(`Error fetching models from ${url}:`, err);
     return [];
   }
+}
+
+/**
+ * A model definition for an id returned by a provider's `/models` endpoint.
+ *
+ * Pi's `registerProvider` **replaces** a provider's model list — the extension's
+ * `models` are composed over the catalog, not merged into it
+ * (`applyExtension` in the SDK's `provider-composer.js`), and a definition only
+ * inherits `api`/`baseUrl` from the catalog entry it shadows. Everything else
+ * must be stated here, so a definition built from "id + name" alone downgrades
+ * a model Pi knows well: `reasoning: false` makes thinking impossible,
+ * `input: ["text", "image"]` makes a text-only endpoint answer 400, and
+ * zero cost plus Pi's default limits hide the real context window.
+ *
+ * A catalog hit is therefore used verbatim; only genuinely unknown ids (a model
+ * newer than the installed Pi catalog) fall back to conservative values.
+ */
+function defineDiscoveredModel(
+  runtime: ModelRuntime,
+  provider: string,
+  id: string,
+  limits: ProviderModelLimits,
+): ProviderModelDefinition {
+  const known = runtime.getModel(provider, id);
+
+  if (known) {
+    return {
+      id,
+      name: known.name || id,
+      api: known.api,
+      reasoning: known.reasoning,
+      input: known.input,
+      cost: known.cost,
+      contextWindow: known.contextWindow,
+      maxTokens: known.maxTokens,
+    };
+  }
+
+  // Unknown to Pi: claim nothing it cannot do, and use the user's limits.
+  return {
+    id,
+    name: id,
+    api: "openai-completions" as const,
+    reasoning: false,
+    input: ["text"] as ("text" | "image")[],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    ...limitFields(limits),
+  };
+}
+
+/**
+ * Register a provider from its `/models` listing.
+ *
+ * Shared by the tenant runtime and the admin model browser so both see the same
+ * models: the admin route used to duplicate this (with its own base URLs and
+ * hardcoded limits), so a fix here would silently miss the admin page.
+ *
+ * @returns The model ids the provider listed (empty when discovery failed).
+ */
+export async function registerDiscoveredModels(
+  runtime: ModelRuntime,
+  options: {
+    provider: string;
+    baseUrl: string;
+    apiKey?: string | undefined;
+    limits: ProviderModelLimits;
+  },
+): Promise<string[]> {
+  const baseUrl = options.baseUrl.replace(/\/+$/, "");
+  const modelIds = await fetchOpenAIModels(baseUrl, options.apiKey);
+
+  runtime.registerProvider(options.provider, {
+    baseUrl,
+    apiKey: options.apiKey || "placeholder",
+    api: "openai-completions",
+    ...(modelIds.length > 0
+      ? {
+          models: modelIds.map((m) =>
+            defineDiscoveredModel(runtime, options.provider, m, options.limits),
+          ),
+        }
+      : {}),
+  });
+
+  return modelIds;
 }
 
 /**
@@ -133,11 +228,15 @@ export async function buildModelRuntime(userId: string) {
     modelsPath: null,
   });
 
-  // Set runtime API keys on the model runtime
+  // Set runtime API keys on the model runtime. The decrypted keys are kept for
+  // the discovery pass below — the same provider key must not be decrypted (or
+  // its failure logged) twice.
+  const apiKeys = new Map<string, string>();
   for (const key of storedKeys) {
     try {
       const decryptedKey = decrypt(key.encryptedKey);
       if (decryptedKey) {
+        apiKeys.set(key.provider, decryptedKey);
         await modelRuntime.setRuntimeApiKey(key.provider, decryptedKey);
       }
     } catch (err) {
@@ -157,58 +256,27 @@ export async function buildModelRuntime(userId: string) {
     // Isolate per provider: a bad key, an unreachable endpoint or a rejected
     // model definition must not take down every other provider.
     try {
-      if (key.provider === "custom" && key.baseUrl) {
-        const decryptedKey = decrypt(key.encryptedKey);
-        const baseUrl = key.baseUrl.replace(/\/+$/, "");
-        const modelIds = await fetchOpenAIModels(baseUrl, decryptedKey);
+      const decryptedKey = apiKeys.get(key.provider);
 
-        modelRuntime.registerProvider("custom", {
+      // A self-hosted OpenAI-compatible endpoint: discover from the URL the
+      // user configured.
+      const baseUrl =
+        key.provider === "custom"
+          ? key.baseUrl
+          : DISCOVERABLE_PROVIDERS.has(key.provider)
+            ? getProviderBaseUrl(key.provider)
+            : null;
+
+      if (baseUrl) {
+        const modelIds = await registerDiscoveredModels(modelRuntime, {
+          provider: key.provider,
           baseUrl,
-          apiKey: decryptedKey || "placeholder",
-          api: "openai-completions",
-          ...(modelIds.length > 0
-            ? {
-                models: modelIds.map((m) => ({
-                  id: m,
-                  name: m,
-                  api: "openai-completions" as const,
-                  reasoning: false,
-                  input: ["text", "image"] as const,
-                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                  ...limitFields(limits),
-                })),
-              }
-            : {}),
+          apiKey: decryptedKey,
+          limits,
         });
 
         for (const m of modelIds) {
-          discoveredModels.push({ provider: "custom", id: m, name: m });
-        }
-      }
-
-      // Dynamic model discovery for providers supporting OpenAI-compatible /models endpoint
-      if (DISCOVERABLE_PROVIDERS.has(key.provider) && key.provider !== "custom") {
-        const decryptedKey = decrypt(key.encryptedKey);
-        const providerBaseUrl = getProviderBaseUrl(key.provider);
-        if (providerBaseUrl) {
-          const modelIds = await fetchOpenAIModels(providerBaseUrl, decryptedKey);
-          if (modelIds.length > 0) {
-            // Register discovered models to override built-in list
-            modelRuntime.registerProvider(key.provider, {
-              baseUrl: providerBaseUrl,
-              apiKey: decryptedKey || "placeholder",
-              api: "openai-completions",
-              models: modelIds.map((m) => ({
-                id: m,
-                name: m,
-                api: "openai-completions" as const,
-                reasoning: false,
-                input: ["text", "image"] as const,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                ...limitFields(limits),
-              })),
-            });
-          }
+          discoveredModels.push({ provider: key.provider, id: m, name: m });
         }
       }
     } catch (err) {
