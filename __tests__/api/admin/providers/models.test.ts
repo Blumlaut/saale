@@ -64,11 +64,13 @@ describe("GET /api/admin/providers/models", () => {
           provider: "anthropic",
           id: "claude-sonnet-4",
           name: "Claude Sonnet 4",
+          reasoning: false,
         },
         {
           provider: "openai",
           id: "gpt-4o",
           name: "GPT-4o",
+          reasoning: false,
         },
       ]),
       getProvider: vi.fn().mockImplementation((id: string) => ({
@@ -114,19 +116,23 @@ describe("GET /api/admin/providers/models", () => {
     expect(body.providers).toHaveLength(2);
   });
 
-  it("detects reasoning models by ID pattern", async () => {
+  it("reports the catalog's reasoning flag, not an id pattern", async () => {
     const mockModelRuntime = {
       setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
       getAvailableSnapshot: vi.fn().mockReturnValue([
         {
           provider: "anthropic",
+          // A non-thinking model whose id happens to contain "r1": guessing from
+          // the id marked it as a reasoner and hid the real flag.
           id: "claude-3.5-sonnet-r1",
           name: "Claude Sonnet R1",
+          reasoning: false,
         },
         {
           provider: "anthropic",
           id: "claude-sonnet-4",
           name: "Claude Sonnet 4",
+          reasoning: true,
         },
       ]),
       getProvider: vi.fn().mockReturnValue({
@@ -165,12 +171,12 @@ describe("GET /api/admin/providers/models", () => {
     const r1Model = body.models.anthropic.find((m: { id: string; reasoning: boolean }) =>
       m.id.includes("r1"),
     );
-    expect(r1Model.reasoning).toBe(true);
+    expect(r1Model.reasoning).toBe(false);
 
-    const normalModel = body.models.anthropic.find(
+    const thinkingModel = body.models.anthropic.find(
       (m: { id: string; reasoning: boolean }) => m.id === "claude-sonnet-4",
     );
-    expect(normalModel.reasoning).toBe(false);
+    expect(thinkingModel.reasoning).toBe(true);
   });
 
   it("handles empty global providers", async () => {

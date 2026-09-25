@@ -37,9 +37,13 @@ export const DISCOVERABLE_PROVIDERS = new Set<string>([
 /** Base URLs for the OpenAI-compatible endpoints of discoverable providers. */
 const PROVIDER_BASE_URLS: Record<string, string> = {
   openrouter: "https://openrouter.ai/api/v1",
-  together: "https://api.together.xyz",
+  // The bare host redirects to the sign-in page (307), so `/models` returned
+  // HTML and discovery silently found nothing.
+  together: "https://api.together.xyz/v1",
   fireworks: "https://api.fireworks.ai/inference/v1",
-  huggingface: "https://api-inference.huggingface.com",
+  // api-inference.huggingface.com is gone (301 to the .co host, which has no
+  // OpenAI-compatible listing); the router is the current endpoint.
+  huggingface: "https://router.huggingface.co/v1",
 };
 
 /** Get the base URL for a known provider's OpenAI-compatible API. */
