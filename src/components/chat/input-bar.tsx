@@ -23,18 +23,11 @@ import {
 } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
+import type { TokenUsage } from "./types";
 import { ContextCircle } from "./token-usage-display";
 
 export type { ToolConfig };
-
-export interface TokenUsage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  total: number;
-  contextWindow: number;
-}
+export type { TokenUsage };
 
 interface PendingFile {
   file: File;

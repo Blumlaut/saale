@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type { ApprovalData, Message } from "./types";
-import type { TokenUsage } from "./input-bar";
+import type { ApprovalData, Message, TokenUsage } from "./types";
 import { streamReducer, type StreamAction } from "@/lib/chat/stream-reducer";
 
 /**

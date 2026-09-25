@@ -43,6 +43,7 @@ import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { publishQueueUpdate } from "@/lib/chat/queue";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { clearSessionAbort, wasSessionAbortRequested } from "./abort-request";
+import { readContextUsage } from "./context-usage";
 import { normalizeToolResult } from "./message-replay";
 import { extractProviderError, type ProviderErrorSource } from "./provider-error";
 import { publishSessionEvent, resetSessionEvents } from "./session-events";
@@ -105,12 +106,11 @@ export function createSessionEventTracker(
   const toolLastUpdateAt = new Map<string, number>();
   const TOOL_UPDATE_THROTTLE_MS = 1000;
 
-  // Token usage tracking
+  // Token usage tracking (billed totals, cumulative over the run)
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let totalCacheReadTokens = 0;
   let totalCacheWriteTokens = 0;
-  let contextWindow = 0;
 
   // Guard: agent_end DB persistence runs once per run. Reset on agent_start
   // because a settled run can be followed by a continuation run (the SDK
@@ -276,17 +276,19 @@ export function createSessionEventTracker(
         totalCacheReadTokens += usage.cacheRead ?? 0;
         totalCacheWriteTokens += usage.cacheWrite ?? 0;
 
-        if (!contextWindow) {
-          contextWindow = session.model?.contextWindow ?? 0;
-        }
+        // Context size comes from Pi (see context-usage.ts) — NOT from the
+        // counters above, which exclude cache reads and accumulate per turn.
+        const context = readContextUsage(session);
 
         publishSessionEvent(sessionId, "token_usage", {
           input: totalInputTokens,
           output: totalOutputTokens,
           cacheRead: totalCacheReadTokens,
           cacheWrite: totalCacheWriteTokens,
-          total: totalInputTokens + totalOutputTokens,
-          contextWindow,
+          total:
+            totalInputTokens + totalOutputTokens + totalCacheReadTokens + totalCacheWriteTokens,
+          contextTokens: context.tokens,
+          contextWindow: context.contextWindow,
         }).catch((err) => {
           console.error("Failed to publish token_usage:", err);
         });

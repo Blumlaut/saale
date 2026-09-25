@@ -19,10 +19,9 @@ import { sendChatMessage } from "@/lib/chat/send-message";
 import type { ToolConfig } from "@/lib/pi/tool-config";
 import { useChatSessionState } from "./use-chat-session-state";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
-import type { Message, ApprovalData } from "./types";
+import type { Message, ApprovalData, TokenUsage } from "./types";
 import { ChatHeader } from "./chat-header";
 import { useChatStream } from "./use-chat-stream";
-import type { TokenUsage } from "./input-bar";
 
 export function ChatInterface({
   sessionId,

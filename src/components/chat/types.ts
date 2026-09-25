@@ -30,6 +30,25 @@ export interface CompactionData {
   tokensBefore: number;
 }
 
+/**
+ * Token usage for a generation, as published by the session event tracker.
+ *
+ * `input`/`output`/`cacheRead`/`cacheWrite`/`total` are billed totals,
+ * cumulative over the run — they exclude prompt-cache reads from `input`, so
+ * they must never be used to gauge how full the context is. `contextTokens`
+ * carries that instead (Pi's own context accounting).
+ */
+export interface TokenUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+  /** Tokens Pi expects on the next request, or null when unknown. */
+  contextTokens: number | null;
+  contextWindow: number;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant" | "system" | "approval" | "compaction";
