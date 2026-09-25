@@ -4,6 +4,7 @@ import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand } from "./command-classifier";
 import { publishSessionEvent, subscribeSessionEvents } from "./session-events";
 import { getDefaultPolicy } from "./tool-infos";
+import { TOOL_ABORT_MESSAGE } from "./tool-abort";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,9 +41,19 @@ const RESOLVED_KEY_MIN_TTL_S = 30;
  * wait in A still completes.
  */
 interface PendingEntry {
-  resolve: (approved: boolean) => void;
+  resolve: (outcome: ApprovalOutcome) => void;
   timer: ReturnType<typeof setTimeout>;
 }
+
+/**
+ * How an approval request ended.
+ *
+ * `aborted` is kept apart from `denied`: the run was stopped while the user was
+ * still deciding, so nothing was denied — recording a denial would blame the
+ * user for a decision they never made, and the tool result would tell the model
+ * the call was rejected when the whole run is over.
+ */
+export type ApprovalOutcome = "approved" | "denied" | "aborted";
 const pendingApprovals = new Map<string, PendingEntry>();
 
 /**
@@ -63,6 +74,8 @@ export interface ApprovalRequest {
   expiresAt: number;
   /** Present once the request has been decided (approved or denied). */
   approved?: boolean;
+  /** Set instead of `approved` when the run ended before a decision. */
+  cancelled?: boolean;
   resolvedAt?: number;
 }
 
@@ -72,6 +85,8 @@ export interface ApprovalResolutionData {
   toolCallId: string;
   toolName: string;
   approved: boolean;
+  /** The run ended before a decision — the card is gone, nothing was denied. */
+  cancelled?: boolean;
   expiresAt: string;
 }
 
@@ -110,7 +125,10 @@ async function readRecordedDecision(key: string): Promise<boolean | undefined> {
  * publish a `tool_approval_resolved` event on the session bus so waiting
  * agents in any process and all connected clients learn about it.
  */
-async function recordDecisionAndNotify(request: ApprovalRequest, approved: boolean): Promise<void> {
+async function recordDecisionAndNotify(
+  request: ApprovalRequest,
+  outcome: "approved" | "denied" | "cancelled",
+): Promise<void> {
   const redis = getRedis();
   const key = approvalKey(request.sessionId, request.toolCallId);
 
@@ -119,11 +137,13 @@ async function recordDecisionAndNotify(request: ApprovalRequest, approved: boole
     const base = raw ? (JSON.parse(raw) as ApprovalRequest) : request;
     let ttl = await redis.ttl(key);
     if (ttl < 0) ttl = Math.ceil((request.expiresAt - Date.now()) / 1000);
-    await redis.setex(
-      key,
-      Math.max(ttl, RESOLVED_KEY_MIN_TTL_S),
-      JSON.stringify({ ...base, approved, resolvedAt: Date.now() }),
-    );
+    // The key stops counting as pending either way, so a cancelled request can
+    // never linger in a client's snapshot as "awaiting approval".
+    const record =
+      outcome === "cancelled"
+        ? { ...base, cancelled: true, resolvedAt: Date.now() }
+        : { ...base, approved: outcome === "approved", resolvedAt: Date.now() };
+    await redis.setex(key, Math.max(ttl, RESOLVED_KEY_MIN_TTL_S), JSON.stringify(record));
   } catch (err) {
     console.error("Failed to record approval decision in Redis:", err);
   }
@@ -132,7 +152,8 @@ async function recordDecisionAndNotify(request: ApprovalRequest, approved: boole
     sessionId: request.sessionId,
     toolCallId: request.toolCallId,
     toolName: request.toolName,
-    approved,
+    approved: outcome === "approved",
+    ...(outcome === "cancelled" ? { cancelled: true } : {}),
     expiresAt: new Date(request.expiresAt).toISOString(),
   } satisfies ApprovalResolutionData).catch((err) => {
     console.error("Failed to publish approval resolution event:", err);
@@ -151,17 +172,19 @@ async function recordDecisionAndNotify(request: ApprovalRequest, approved: boole
  *   UI, Telegram callback, another Next.js instance)
  * - the deadline (`expiresAt`) — denied; the denial is recorded and
  *   announced so no stale approval can outlive the wait
- * - the abort signal (agent stopped) — denied, same cleanup
+ * - the abort signal (agent stopped) — the request is cancelled, not denied:
+ *   no decision is recorded for the user, but the card is closed so it cannot
+ *   linger as "awaiting approval" after the run is gone
  *
  * @param request - The approval request data.
- * @param signal - Optional AbortSignal; when aborted the request is denied
- *   and cleaned up immediately instead of waiting out the deadline.
- * @returns true if approved, false if denied or timed out.
+ * @param signal - Optional AbortSignal; when aborted, the wait ends with
+ *   "aborted" immediately instead of waiting out the deadline.
+ * @returns How the request ended.
  */
 export async function waitForApproval(
   request: ApprovalRequest,
   signal?: AbortSignal,
-): Promise<boolean> {
+): Promise<ApprovalOutcome> {
   // Fire-and-forget persistence: the key coordinates cross-process
   // resolution. The wait itself must NEVER depend on Redis round-trips —
   // the deadline timer is armed synchronously below so a tool call can
@@ -169,13 +192,13 @@ export async function waitForApproval(
   void storeApprovalRequest(request);
   const key = approvalKey(request.sessionId, request.toolCallId);
 
-  return new Promise<boolean>((resolve) => {
+  return new Promise<ApprovalOutcome>((resolve) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let unsubscribeBus: (() => void) | null = null;
 
     const onAbort = () => {
-      void concludeAtDeadline();
+      void concludeAsAborted();
     };
 
     const cleanup = () => {
@@ -189,11 +212,11 @@ export async function waitForApproval(
       pendingApprovals.delete(request.toolCallId);
     };
 
-    const settle = (approved: boolean) => {
+    const settle = (outcome: ApprovalOutcome) => {
       if (settled) return;
       settled = true;
       cleanup();
-      resolve(approved);
+      resolve(outcome);
     };
 
     /**
@@ -205,11 +228,26 @@ export async function waitForApproval(
     const concludeAtDeadline = async () => {
       const decision = await readRecordedDecision(key);
       if (decision !== undefined) {
-        settle(decision);
+        settle(decision ? "approved" : "denied");
         return;
       }
-      await recordDecisionAndNotify(request, false);
-      settle(false);
+      await recordDecisionAndNotify(request, "denied");
+      settle("denied");
+    };
+
+    /**
+     * The run was stopped before the user decided. A decision that landed in
+     * the meantime (another process, a Telegram tap) still wins; otherwise the
+     * request is recorded as cancelled — the user denied nothing.
+     */
+    const concludeAsAborted = async () => {
+      const decision = await readRecordedDecision(key);
+      if (decision !== undefined) {
+        settle(decision ? "approved" : "denied");
+        return;
+      }
+      await recordDecisionAndNotify(request, "cancelled");
+      settle("aborted");
     };
 
     timer = setTimeout(
@@ -234,7 +272,7 @@ export async function waitForApproval(
       if (evt.event !== "tool_approval_resolved") return;
       const data = evt.data as ApprovalResolutionData;
       if (!data || data.toolCallId !== request.toolCallId) return;
-      settle(data.approved);
+      settle(data.approved ? "approved" : "denied");
     }).then((unsubscribe) => {
       if (settled) {
         unsubscribe();
@@ -276,19 +314,20 @@ export async function resolveApproval(
     return false;
   }
 
-  // Idempotent: already resolved (another tab, Telegram, or timeout).
-  if (typeof existing.approved === "boolean") return false;
+  // Idempotent: already resolved (another tab, Telegram, timeout) or cancelled
+  // because the run ended while the request was pending.
+  if (typeof existing.approved === "boolean" || existing.cancelled === true) return false;
 
   // Record the decision + notify BEFORE the in-process fast path so a waiting
   // agent in another process can observe it even if its pub/sub delivery fails.
-  await recordDecisionAndNotify(existing, approved);
+  await recordDecisionAndNotify(existing, approved ? "approved" : "denied");
 
   // Same-process fast path.
   const pending = pendingApprovals.get(toolCallId);
   if (pending) {
     clearTimeout(pending.timer);
     pendingApprovals.delete(toolCallId);
-    pending.resolve(approved);
+    pending.resolve(approved ? "approved" : "denied");
   }
 
   return true;
@@ -322,7 +361,9 @@ export async function getPendingApprovals(sessionId: string): Promise<ApprovalRe
       }
     })
     .filter((r): r is ApprovalRequest => r !== null)
-    .filter((r) => r.expiresAt > Date.now() && typeof r.approved !== "boolean");
+    .filter(
+      (r) => r.expiresAt > Date.now() && typeof r.approved !== "boolean" && r.cancelled !== true,
+    );
 }
 
 // ─── Tool Wrapper ────────────────────────────────────────────────────────────
@@ -339,7 +380,7 @@ async function doWaitForApproval(
   args: Record<string, unknown>,
   emitApprovalRequest: (request: ApprovalRequest) => void,
   signal?: AbortSignal,
-): Promise<boolean> {
+): Promise<ApprovalOutcome> {
   const request: ApprovalRequest = {
     toolCallId,
     toolName,
@@ -358,13 +399,13 @@ async function doWaitForApproval(
 
   emitApprovalRequest(request);
 
-  const approved = await waitForApproval(request, signal);
+  const outcome = await waitForApproval(request, signal);
 
-  if (!approved) {
+  if (outcome === "denied") {
     console.error(`Tool call "${toolName}" was denied (timeout or rejection).`);
   }
 
-  return approved;
+  return outcome;
 }
 
 /**
@@ -418,7 +459,7 @@ export function wrapWithApprovalGate(
           : { safety: "risky", reason: "no command provided" };
 
         if (classification.safety === "risky") {
-          const approved = await doWaitForApproval(
+          const outcome = await doWaitForApproval(
             toolCallId,
             tool.name,
             userId,
@@ -428,7 +469,10 @@ export function wrapWithApprovalGate(
             signal,
           );
 
-          if (!approved) {
+          if (outcome === "aborted") {
+            throw new Error(TOOL_ABORT_MESSAGE);
+          }
+          if (outcome !== "approved") {
             throw new Error(
               `Tool call "${tool.name}" was denied by the user (approval timed out or explicitly rejected).`,
             );
@@ -439,7 +483,7 @@ export function wrapWithApprovalGate(
 
       // Policy: "ask" — wait for user approval
       if (policy === "ask") {
-        const approved = await doWaitForApproval(
+        const outcome = await doWaitForApproval(
           toolCallId,
           tool.name,
           userId,
@@ -449,7 +493,10 @@ export function wrapWithApprovalGate(
           signal,
         );
 
-        if (!approved) {
+        if (outcome === "aborted") {
+          throw new Error(TOOL_ABORT_MESSAGE);
+        }
+        if (outcome !== "approved") {
           throw new Error(
             `Tool call "${tool.name}" was denied by the user (approval timed out or explicitly rejected).`,
           );
