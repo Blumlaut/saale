@@ -206,6 +206,24 @@ function getUserHeaders(
 
 // ─── Request helper ─────────────────────────────────────────────────────────
 
+/**
+ * A non-2xx response from Open Terminal.
+ *
+ * Callers branch on the status (e.g. a 404 while polling a command means the
+ * container dropped it), so the code is a field rather than something to be
+ * pattern-matched out of the message.
+ */
+export class TerminalApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly statusText: string,
+    readonly body: string,
+  ) {
+    super(`Open Terminal error ${status}: ${statusText}${body ? ` — ${body}` : ""}`);
+    this.name = "TerminalApiError";
+  }
+}
+
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -216,10 +234,11 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
-    );
+    const body = await response.text().catch((err) => {
+      console.error("Failed to read Open Terminal error body:", err);
+      return "";
+    });
+    throw new TerminalApiError(response.status, response.statusText, body);
   }
 
   // For JSON responses

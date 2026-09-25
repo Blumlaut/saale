@@ -66,6 +66,15 @@ function detectImageMimeTypeFromBuffer(data: Buffer): string | null {
 }
 
 /**
+ * A command the user's shell would report as killed by a signal: the POSIX
+ * convention is 128 + signal number (SIGTERM → 143), which Python's
+ * `subprocess` reports as a negative return code (-15).
+ */
+function normalizeExitCode(exitCode: number | null): number | null {
+  return exitCode !== null && exitCode < 0 ? 128 - exitCode : exitCode;
+}
+
+/**
  * Poll a running command until it finishes or the signal/timeout fires.
  * Streams output chunks via onData as they arrive.
  *
@@ -93,67 +102,114 @@ async function pollCommand(
 
   const deadline = timeout ? Date.now() + timeout * 1000 : undefined;
 
-  while (!signal?.aborted) {
-    // Check deadline
-    if (deadline && Date.now() > deadline) {
-      try {
-        await terminal.killCommand(processId, { userId, sessionId, force: true });
-      } catch (err) {
-        console.error("Failed to kill command on timeout:", err);
-      }
-      throw new Error(`timeout:${timeout}`);
-    }
-
-    const remaining = deadline
-      ? Math.max(1, Math.floor((deadline - Date.now()) / 1000))
-      : undefined;
-
-    let status: terminal.ExecuteResult;
+  const kill = async (force: boolean, reason: string) => {
     try {
-      status = await terminal.getCommandStatus(processId, {
+      await terminal.killCommand(processId, {
         userId,
         sessionId,
-        offset,
-        wait: remaining ?? 5,
+        ...(force ? { force: true } : {}),
       });
-    } catch (err: unknown) {
-      // Process may have cleaned up
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("404")) {
-        return { exitCode: null };
-      }
-      throw err;
+    } catch (err) {
+      console.error(`Failed to kill command ${reason}:`, err);
     }
+  };
 
-    // Stream new output
-    if (Array.isArray(status.output)) {
-      for (const entry of status.output) {
-        const text = typeof entry === "string" ? entry : (entry.data ?? "");
-        if (text) {
+  /**
+   * Abort handling. A poll can sit in a `wait` window of up to 5s, so waiting
+   * for the next iteration to notice the signal would leave the command
+   * running — and the run waiting — for that whole window. The command is
+   * killed immediately (force: a Stop means stop) and the in-flight poll is
+   * raced against the signal so the run continues at once.
+   */
+  let notifyAborted: (() => void) | null = null;
+  const aborted = new Promise<void>((resolve) => {
+    notifyAborted = resolve;
+  });
+  const onAbort = () => {
+    void kill(true, "on abort");
+    notifyAborted?.();
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    while (!signal?.aborted) {
+      // Check deadline
+      if (deadline && Date.now() > deadline) {
+        await kill(true, "on timeout");
+        throw new Error(`timeout:${timeout}`);
+      }
+
+      const remaining = deadline
+        ? Math.max(1, Math.floor((deadline - Date.now()) / 1000))
+        : undefined;
+
+      // Both arms are handled, so a poll that loses the race (or rejects after
+      // the abort) cannot surface as an unhandled rejection.
+      const polled = terminal
+        .getCommandStatus(processId, { userId, sessionId, offset, wait: remaining ?? 5 })
+        .then(
+          (value) => ({ outcome: "status" as const, value }),
+          (error: unknown) => ({ outcome: "error" as const, error }),
+        );
+      const result = await Promise.race([
+        polled,
+        aborted.then(() => ({ outcome: "aborted" as const })),
+      ]);
+
+      if (result.outcome === "aborted") {
+        throw new Error("aborted");
+      }
+      if (result.outcome === "error") {
+        // The container dropped the process (e.g. it was cleaned up or the
+        // session was restarted) — reported as "terminated without an exit code".
+        if (result.error instanceof terminal.TerminalApiError && result.error.status === 404) {
+          return { exitCode: null };
+        }
+        throw result.error;
+      }
+
+      const status = result.value;
+
+      // Stream new output
+      if (Array.isArray(status.output)) {
+        for (const entry of status.output) {
+          const text =
+            typeof entry === "string" ? entry : typeof entry?.data === "string" ? entry.data : "";
+          if (!text) {
+            // An entry we cannot read is output the model will never see.
+            console.error("Unexpected Open Terminal output entry:", JSON.stringify(entry));
+            continue;
+          }
           onData(Buffer.from(text, "utf8"));
         }
+      } else if (status.output !== undefined) {
+        console.error("Unexpected Open Terminal output payload:", typeof status.output);
+      }
+
+      // Output beyond the container's buffer was dropped, so say so instead of
+      // presenting a partial log as complete.
+      if (status.truncated) {
+        onData(
+          Buffer.from(
+            "\n[output truncated by the terminal — earlier output was dropped]\n",
+            "utf8",
+          ),
+        );
+      }
+
+      offset = status.next_offset ?? offset;
+
+      // Process finished
+      if (status.status !== "running") {
+        exitCode = normalizeExitCode(status.exit_code);
+        break;
       }
     }
-
-    offset = status.next_offset ?? offset;
-
-    // Process finished
-    if (status.status !== "running") {
-      exitCode = status.exit_code;
-      break;
-    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
 
-  // Handle abort
-  if (signal?.aborted) {
-    try {
-      await terminal.killCommand(processId, { userId, sessionId });
-    } catch (err) {
-      console.error("Failed to kill aborted command:", err);
-    }
-    throw new Error("aborted");
-  }
-
+  // The loop only gets here after the command finished (an abort throws above).
   return { exitCode };
 }
 
@@ -211,8 +267,7 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
     try {
       await terminal.readFileBinary(absolutePath, common);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("404")) {
+      if (err instanceof terminal.TerminalApiError && err.status === 404) {
         throw new Error(`ENOENT: no such file or directory, access '${absolutePath}'`);
       }
       throw err;
@@ -223,13 +278,24 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
     // ─── Bash ───────────────────────────────────────────────────────────
 
     bash: {
-      exec: async (command, _cwd, { onData, signal, timeout }) => {
-        // The per-call cwd is deliberately ignored: it can be a host-side path
-        // (the Pi session directory), which does not exist in the container.
-        // `cwd` is the user's home there, which is what the file tools use too.
+      exec: async (command, requestedCwd, { onData, signal, timeout }) => {
+        // Pi hands us its own cwd, which is a host-side path (the Pi session
+        // directory) and does not exist in the container. Only a path inside
+        // the container's home is meaningful; anything else falls back to
+        // `cwd`, the user's home — the directory the file tools use as well.
+        const callCwd = requestedCwd && requestedCwd.startsWith(cwd) ? requestedCwd : undefined;
+
+        // The timeout comes from the model's tool arguments, so a negative or
+        // non-finite value must not arm a deadline that expires instantly (or
+        // never); anything unusable means "no timeout", the tool's own default.
+        const timeoutSecs =
+          typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0
+            ? timeout
+            : undefined;
+
         const result = await terminal.executeCommand(command, {
           ...common,
-          cwd,
+          cwd: callCwd ?? cwd,
           ...(commandEnv ? { env: commandEnv } : {}),
           wait: 0, // Don't wait — we poll manually
         });
@@ -237,7 +303,7 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
         return pollCommand(result.id, userId, sessionId, {
           onData,
           ...(signal ? { signal } : {}),
-          ...(timeout ? { timeout } : {}),
+          ...(timeoutSecs ? { timeout: timeoutSecs } : {}),
         });
       },
     },
