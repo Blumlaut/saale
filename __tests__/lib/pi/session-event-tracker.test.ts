@@ -50,8 +50,14 @@ interface FakeAgentEvent {
   [key: string]: unknown;
 }
 
-function createFakeSession() {
+function createFakeSession(
+  options: {
+    contextTokens?: number | null;
+    contextWindow?: number;
+  } = {},
+) {
   const listeners = new Set<(event: FakeAgentEvent) => void>();
+  const contextWindow = options.contextWindow ?? 100_000;
   return {
     subscribe: (listener: (event: FakeAgentEvent) => void) => {
       listeners.add(listener);
@@ -60,8 +66,18 @@ function createFakeSession() {
     emit: (event: FakeAgentEvent) => {
       for (const listener of [...listeners]) listener(event);
     },
-    model: { contextWindow: 100_000 },
+    model: { contextWindow },
     compact: vi.fn().mockResolvedValue({ tokensBefore: 50 }),
+    // Pi's own context accounting — the tracker must publish this, not a sum
+    // of per-message usage.
+    getContextUsage: () => ({
+      tokens: options.contextTokens === undefined ? 42_000 : options.contextTokens,
+      contextWindow,
+      percent:
+        options.contextTokens === null
+          ? null
+          : ((options.contextTokens ?? 42_000) / contextWindow) * 100,
+    }),
   } as unknown as AgentSession & { emit: (event: FakeAgentEvent) => void };
 }
 
@@ -509,6 +525,60 @@ describe("createSessionEventTracker", () => {
     const usageEvents = published.filter((p) => p.event === "token_usage");
     expect(usageEvents.length).toBe(3);
     expect(usageEvents[2]!.data.total).toBe(198_000);
+  });
+
+  it("publishes Pi's own context size instead of summing per-message usage", async () => {
+    const { published } = setup();
+
+    const session = createFakeSession({ contextTokens: 42_000, contextWindow: 100_000 });
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    // A cached Anthropic-style response: nearly all of the prompt is a cache
+    // read, so `input` alone says nothing about how full the context is.
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        usage: { input: 350, output: 900, cacheRead: 41_000, cacheWrite: 0 },
+      },
+    });
+
+    await flush();
+
+    const usage = published.find((p) => p.event === "token_usage")!;
+    // Context occupancy comes from Pi, not from the (cache-excluded) counters.
+    expect(usage.data.contextTokens).toBe(42_000);
+    expect(usage.data.contextWindow).toBe(100_000);
+    // Billed totals include the cache read, so the tooltip isn't a lie either.
+    expect(usage.data.input).toBe(350);
+    expect(usage.data.cacheRead).toBe(41_000);
+    expect(usage.data.total).toBe(42_250);
+  });
+
+  it("publishes a null context size when Pi has none yet", async () => {
+    const { published } = setup();
+
+    // Right after a compaction and before the next response, Pi reports no
+    // trustworthy token count. The event must still go out (the UI shows
+    // "unavailable") rather than publishing a stale or invented number.
+    const session = createFakeSession({ contextTokens: null });
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    session.emit({ type: "agent_start" });
+    session.emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 },
+      },
+    });
+
+    await flush();
+
+    const usage = published.find((p) => p.event === "token_usage")!;
+    expect(usage.data.contextTokens).toBeNull();
+    expect(usage.data.contextWindow).toBe(100_000);
   });
 
   it("persists SDK auto-compaction between agent_end and agent_settled, defers done", async () => {

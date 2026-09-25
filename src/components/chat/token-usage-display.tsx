@@ -12,15 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-
-interface TokenUsage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  total: number;
-  contextWindow: number;
-}
+import type { TokenUsage } from "./types";
 
 /**
  * Format token count as human-readable string.
@@ -30,6 +22,19 @@ function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
   return count.toString();
+}
+
+/**
+ * Percent of the context window in use.
+ *
+ * Uses Pi's context accounting (`contextTokens`), never the summed token
+ * totals: `input` excludes prompt-cache reads, so a cached conversation would
+ * read as almost empty. Returns null when Pi has no usable number yet — right
+ * after a compaction, until the next response.
+ */
+export function contextPercent(usage: TokenUsage | null): number | null {
+  if (!usage || usage.contextTokens === null || usage.contextWindow <= 0) return null;
+  return Math.min((usage.contextTokens / usage.contextWindow) * 100, 100);
 }
 
 /**
@@ -51,15 +56,14 @@ export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleP
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  // Calculate fill
-  const percent = usage?.contextWindow
-    ? Math.min((usage.total / usage.contextWindow) * 100, 100)
-    : 0;
-  const dashOffset = circumference - (percent / 100) * circumference;
+  // Fill from Pi's context accounting — see contextPercent.
+  const percent = contextPercent(usage);
+  const contextWindow = usage?.contextWindow ?? 0;
+  const dashOffset = circumference - ((percent ?? 0) / 100) * circumference;
 
   // Color based on usage
   let fillColor = "stroke-white/30";
-  if (usage) {
+  if (percent !== null) {
     if (percent > 90) fillColor = "stroke-red-400";
     else if (percent > 75) fillColor = "stroke-amber-400";
     else fillColor = "stroke-blue-400/80";
@@ -75,7 +79,11 @@ export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleP
   const tooltipParts: string[] = [];
   if (usage) {
     tooltipParts.push(`${formatTokens(usage.input)} in / ${formatTokens(usage.output)} out`);
-    tooltipParts.push(`${Math.round(percent)}% of context`);
+    tooltipParts.push(
+      percent !== null
+        ? `${formatTokens(usage.contextTokens ?? 0)} / ${formatTokens(contextWindow)} (${Math.round(percent)}%)`
+        : "Context usage unavailable",
+    );
   } else {
     tooltipParts.push("No usage data yet");
   }
@@ -133,9 +141,9 @@ export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleP
             <AlertDialogDescription>
               This will summarize the conversation history to reduce context usage. Some detail may
               be lost.
-              {usage && (
+              {usage && percent !== null && (
                 <span className="block pt-1 text-xs">
-                  {formatTokens(usage.input)} in / {formatTokens(usage.output)} out (
+                  {formatTokens(usage.contextTokens ?? 0)} / {formatTokens(contextWindow)} tokens (
                   {Math.round(percent)}%)
                 </span>
               )}
