@@ -151,6 +151,26 @@ Tab pages: strip goes in `<PageTabStrip>`, tab content gets `className="min-h-0 
 
 `e2e/mobile-overflow.spec.ts` enforces the whole contract at 375px and 320px — if a page regresses (horizontal overflow, squeezed tabs, body scroll, unreachable content), CI fails.
 
+## Modals Must Fit Their Bounds
+
+- **An open overlay never scrolls horizontally.** Long unbreakable values (SSH keys, tokens, URLs, IDs, hosts) must wrap (`break-all` / `whitespace-pre-wrap`) or scroll inside their *own* `overflow-x-auto` box — never widen the modal.
+- **Never put a bare `grid` in an overlay.** An implicit `auto` track is sized by its items' min-content, so `grid gap-2 sm:grid-cols-2` blows out the modal; always declare the mobile track first (`grid-cols-1 gap-2 sm:grid-cols-2`).
+- **`min-w-0` on the element that can be squeezed** (flex/grid item wrapping nowrap or `truncate` content), not just on an ancestor.
+- `DialogContent` / `AlertDialogContent` already apply `grid-cols-1 *:min-w-0`, so a child's min-content can't stretch a modal — do not remove those classes.
+- **Register every new overlay in `e2e/modal-scenarios.ts`** (a scenario, or an entry with a documented `skip` reason). `e2e/modal-overflow.spec.ts` opens each one at 375px and 320px and asserts the contract; `__tests__/overlay-coverage.test.ts` fails when an overlay isn't registered, and also fails on bare grids inside overlays.
+
+```tsx
+// ❌ BAD — nowrap value in a flex row widens the dialog
+<div className="flex items-center gap-2">
+  <pre className="flex-1 overflow-x-auto whitespace-nowrap">{publicKey}</pre>
+</div>
+
+// ✅ GOOD — value wraps, row can shrink
+<div className="flex min-w-0 items-start gap-2">
+  <pre className="min-w-0 flex-1 break-all whitespace-pre-wrap">{publicKey}</pre>
+</div>
+```
+
 ## Unified Glass Panels
 
 - **All panels use liquid glass by default.** The `GlassPanel` component applies `glass-panel liquid-glass` automatically.

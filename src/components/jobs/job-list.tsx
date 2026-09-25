@@ -252,7 +252,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
   const jobSchema = selectedJob ? schemas.find((s) => s.type === selectedJob.type) : null;
 
   return (
-    <div className="grid min-h-0 gap-4 lg:grid-cols-5">
+    <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-5">
       {/* Job list */}
       <div className="min-w-0 lg:col-span-2">
         <GlassPanel className="h-full">

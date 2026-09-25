@@ -178,6 +178,13 @@ Rules:
 The e2e suite (`e2e/mobile-overflow.spec.ts`) enforces all of this at 375px and
 320px — a page that regresses fails CI.
 
+Overlays follow the same rule inside their own box: `e2e/modal-overflow.spec.ts`
+opens every registered modal at both widths and fails if one scrolls horizontally
+or lets content escape its bounds. Register new overlays in
+`e2e/modal-scenarios.ts` (`__tests__/overlay-coverage.test.ts` fails otherwise)
+and never use a bare `grid` inside an overlay — see
+[references/modals.md](references/modals.md).
+
 ### Unified Console Surfaces
 
 All overlay surfaces include `liquid-glass` by default (legacy name — it renders as a flat bordered popover surface with an elevation shadow, no blur) — no manual class needed:

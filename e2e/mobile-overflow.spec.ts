@@ -1,10 +1,6 @@
-import {
-  test,
-  expect,
-  type Page,
-  type APIRequestContext,
-  type BrowserContext,
-} from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
 
 /**
  * Mobile layout guardrails.
@@ -27,14 +23,6 @@ import {
  * regardless.
  */
 
-const E2E_EMAIL = "e2e-mobile@saale.local";
-const E2E_PASSWORD = "TestPass123!";
-
-const VIEWPORTS = [
-  { name: "375px", width: 375, height: 667 }, // iPhone SE
-  { name: "320px", width: 320, height: 667 }, // smallest common phone
-];
-
 const DASHBOARD_PAGES = [
   "/dashboard/chat",
   "/dashboard/mail",
@@ -47,52 +35,7 @@ const DASHBOARD_PAGES = [
 
 const ADMIN_PAGES = ["/admin/models", "/admin/users", "/admin/settings"];
 
-let storageState: Awaited<ReturnType<BrowserContext["storageState"]>> | null = null;
-let isAdmin = false;
-
-async function ensureUser(request: APIRequestContext) {
-  // 200 = created; any other status (already exists, etc.) is fine.
-  await request.post("/api/auth/sign-up/email", {
-    data: { email: E2E_EMAIL, password: E2E_PASSWORD, name: "E2E Mobile" },
-  });
-}
-
-async function seedLayoutStressData(request: APIRequestContext) {
-  // Long names that must truncate — catches missing `min-w-0` / truncation.
-  await request
-    .post("/api/agent-jobs/definitions", {
-      data: {
-        name: "Daily Market Research Digest with a Very Long Name",
-        prompt: "Summarize the latest market trends for the team.",
-        cronExpression: "0 9 * * *",
-      },
-    })
-    .catch(() => {});
-  await request
-    .post("/api/tasks", {
-      data: { title: "A very long task title that must truncate gracefully on small screens" },
-    })
-    .catch(() => {});
-  await request
-    .post("/api/infra/machines", {
-      data: {
-        name: "Production web server cluster with a very long hostname",
-        host: "prod1.internal.example.com",
-        port: 22,
-        username: "deploy",
-        authMethod: "key",
-      },
-    })
-    .catch(() => {});
-}
-
-async function login(page: Page) {
-  await page.goto("/auth/login");
-  await page.fill('input[name="email"]', E2E_EMAIL);
-  await page.fill('input[name="password"]', E2E_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("**/dashboard/**", { timeout: 20_000 });
-}
+let session: E2ESession | null = null;
 
 interface LayoutViolations {
   documentOverflow: boolean;
@@ -196,35 +139,17 @@ async function measureLayout(page: Page): Promise<LayoutViolations> {
 
 test.describe("mobile layout guardrails", () => {
   test.beforeAll(async ({ browser, request }) => {
-    await ensureUser(request);
-    await seedLayoutStressData(request);
-
-    // Log in once and reuse the session across all tests.
-    const ctx = await browser.newContext({ viewport: { width: 375, height: 667 } });
-    const page = await ctx.newPage();
-    await login(page);
-    storageState = await ctx.storageState();
-
-    // Detect admin role so admin-page tests can skip gracefully when the
-    // e2e user isn't an admin (existing DBs where a different user is admin).
-    const session = await page.evaluate(async () => {
-      const res = await fetch("/api/auth/get-session");
-      if (!res.ok) return null;
-      const data = (await res.json()) as { user?: { role?: string | null } } | null;
-      return data?.user?.role ?? null;
-    });
-    isAdmin = session === "admin";
-
-    await ctx.close();
+    // Creates the shared user, seeds stress data and logs in once.
+    session = await bootstrapSession(browser, request);
   });
 
   for (const { name, width, height } of VIEWPORTS) {
     for (const path of DASHBOARD_PAGES) {
       test(`${path} @ ${name}`, async ({ browser }) => {
-        test.skip(!storageState, "login failed");
+        test.skip(!session, "login failed");
         const ctx = await browser.newContext({
           viewport: { width, height },
-          storageState: storageState!,
+          storageState: session!.storageState,
         });
         const page = await ctx.newPage();
         await page.goto(path, { waitUntil: "domcontentloaded" });
@@ -252,11 +177,10 @@ test.describe("mobile layout guardrails", () => {
 
     for (const path of ADMIN_PAGES) {
       test(`${path} @ ${name}`, async ({ browser }) => {
-        test.skip(!isAdmin, "e2e user is not an admin — skipping admin page");
-        test.skip(!storageState, "login failed");
+        test.skip(!session?.isAdmin, "e2e user is not an admin — skipping admin page");
         const ctx = await browser.newContext({
           viewport: { width, height },
-          storageState: storageState!,
+          storageState: session!.storageState,
         });
         const page = await ctx.newPage();
         await page.goto(path, { waitUntil: "domcontentloaded" });

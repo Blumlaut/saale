@@ -1,0 +1,521 @@
+import type { Page } from "@playwright/test";
+
+import { gotoAndSettle } from "./utils";
+
+/**
+ * Registry of every overlay instance the app renders.
+ *
+ * `modal-overflow.spec.ts` opens each scenario at phone widths and asserts the
+ * overlay contract (see `overlay-layout.ts`); `__tests__/overlay-coverage.test.ts`
+ * fails when a component renders an overlay that has no entry here, so a new
+ * modal cannot ship without being checked (or explicitly skipped with a reason).
+ */
+
+export interface ModalScenario {
+  /** Test title, e.g. `settings · add memory`. */
+  name: string;
+  /** Route the overlay is opened from. */
+  path: string;
+  /** Component file(s) rendering the overlay — verified by the coverage test. */
+  sources: string[];
+  /** Opens the overlay from a freshly loaded page. */
+  open?: (page: Page) => Promise<void>;
+  /** Stubs installed before navigation (fixtures the app can't create offline). */
+  mock?: (page: Page) => Promise<void>;
+  /** Documented reason this overlay can't be automated — the test is skipped. */
+  skip?: string;
+}
+
+const MACHINE_DIALOG = "src/components/infra/machine-dialog.tsx";
+const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
+const MEMORIES_TAB = "src/app/dashboard/settings/tabs/memories-tab.tsx";
+const SETTINGS = "/dashboard/settings";
+
+/** Realistic ED25519 public key — the content that used to widen the dialog. */
+const SSH_PUBLIC_KEY =
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL9lKcBGX0hVdN8nWmP4pQZaT7Rcj2sBvUyE1k6tZxQo saale@machine";
+
+const NOW = "2026-01-01T09:00:00.000Z";
+
+const MEMORY_TITLE =
+  "A very long memory title that must wrap instead of widening the dialog on small screens";
+const MEMORY_CONTENT =
+  "Long-form memory content used to exercise the memories dialogs at phone widths. ".repeat(6);
+const NOTE_TITLE = "Deploy runbook with a very long descriptive title for the operator";
+const NOTE_CONTENT =
+  "1. Build the image\n2. Push to the registry\n3. Roll the deployment and watch the logs ".repeat(
+    4,
+  );
+
+/** Locate the first *visible* match — the app renders a desktop and a mobile shell. */
+function visible(page: Page, selector: string) {
+  return page.locator(selector).filter({ visible: true }).first();
+}
+
+async function click(page: Page, selector: string) {
+  const target = visible(page, selector);
+  await target.waitFor({ state: "visible", timeout: 10_000 });
+  await target.click();
+}
+
+/** Click the deepest visible element containing `text` (works for icon-only rows). */
+async function clickText(page: Page, text: string) {
+  const target = page.locator(`*:has-text(${JSON.stringify(text)}):visible`).last();
+  await target.waitFor({ state: "visible", timeout: 10_000 });
+  await target.click();
+}
+
+async function openSettingsTab(page: Page, tab: string) {
+  await click(page, `[role="tab"]:has-text(${JSON.stringify(tab)})`);
+}
+
+/**
+ * Open the row action menu of a list card scoped by its text (the lists render
+ * dropdown triggers per row, and the first one on the page belongs to another panel).
+ */
+async function openRowMenu(page: Page, rowText: string) {
+  const row = page
+    .locator("div.group")
+    .filter({ has: page.locator('[data-slot="dropdown-menu-trigger"]') })
+    .filter({ hasText: rowText })
+    .filter({ visible: true })
+    .last();
+  await row.locator('[data-slot="dropdown-menu-trigger"]').click();
+}
+
+/** The seeded machine list always has at least one row to act on. */
+async function openMachineDialog(page: Page, selector: string) {
+  await click(page, selector);
+}
+
+async function mockMachineCreate(page: Page) {
+  await page.route(/\/api\/infra\/machines$/, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({
+      status: 201,
+      json: {
+        machine: {
+          id: "e2e-machine",
+          name: "e2e-machine",
+          host: "example.com",
+          port: 22,
+          username: "deploy",
+          authMethod: "key",
+          createdAt: NOW,
+        },
+        authorizedKeysEntry: SSH_PUBLIC_KEY,
+      },
+    });
+  });
+}
+
+async function mockMachineNotes(page: Page) {
+  await page.route(/\/api\/infra\/machines\/[^/]+\/notes(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        notes: [
+          {
+            id: "e2e-note",
+            machineId: "e2e-machine",
+            title: NOTE_TITLE,
+            content: NOTE_CONTENT,
+            category: "runbook",
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        ],
+      },
+    });
+  });
+}
+
+async function mockMemories(page: Page) {
+  await page.route(/\/api\/memories(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        memories: [
+          {
+            id: "e2e-memory",
+            title: MEMORY_TITLE,
+            content: MEMORY_CONTENT,
+            collection: "facts",
+            importance: 7,
+            tags: ["e2e", "layout"],
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        ],
+        total: 1,
+      },
+    });
+  });
+  await page.route(/\/api\/memories\/collections(\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        collections: [{ name: "facts", count: 1, avgImportance: 7, topTags: ["e2e"] }],
+        total: 1,
+      },
+    }),
+  );
+}
+
+async function mockAgentRuns(page: Page) {
+  await page.route(/\/api\/agent-jobs\/definitions\/[^/]+\/runs(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        runs: [
+          {
+            id: "e2e-run",
+            status: "completed",
+            prompt: "Summarize the latest market trends.",
+            modelId: null,
+            inputTokens: 1200,
+            outputTokens: 340,
+            cost: 0.0021,
+            error: null,
+            startedAt: NOW,
+            completedAt: NOW,
+            messageCount: 2,
+            duration: 4200,
+            createdAt: NOW,
+          },
+        ],
+      },
+    });
+  });
+  await page.route(/\/api\/agent-jobs\/runs\/[^/]+\/messages(\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        messages: [
+          {
+            id: "e2e-msg-1",
+            role: "assistant",
+            content: "Fetched the market digest and summarized it for the team.",
+            thinking: "The tool returned a long, unbreakable payload.",
+            toolCalls: [
+              {
+                id: "e2e-tool-1",
+                name: "web_fetch",
+                args: {
+                  url: "https://example.com/a/very/long/unbreakable/path/that/keeps/going/and/going/forever",
+                },
+                result: JSON.stringify({
+                  status: 200,
+                  body: "x".repeat(240),
+                }),
+              },
+            ],
+            createdAt: NOW,
+          },
+        ],
+      },
+    }),
+  );
+}
+
+async function mockCalendarSubscriptions(page: Page) {
+  await page.route(/\/api\/calendar\/subscriptions(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        subscriptions: [
+          {
+            id: "e2e-subscription",
+            name: "Team holiday feed",
+            url: "https://example.com/feeds/holidays.ics",
+            calendarId: "e2e-calendar",
+            calendarName: "Holidays",
+            calendarColor: null,
+            enabled: true,
+            lastSyncedAt: NOW,
+          },
+        ],
+      },
+    });
+  });
+}
+
+/** Chat fixtures are created through the real API; cached for the whole run. */
+let chatSessionId: string | null = null;
+
+async function ensureChatSession(page: Page): Promise<string> {
+  if (chatSessionId) return chatSessionId;
+  const res = await page.request.post("/api/chat/sessions", {
+    data: { title: "Modal layout guardrail chat" },
+  });
+  const body = (await res.json()) as { session?: { id?: string } };
+  if (!body.session?.id) throw new Error(`failed to create chat session: ${res.status()}`);
+  chatSessionId = body.session.id;
+  return chatSessionId;
+}
+
+async function gotoChatSession(page: Page, sessionId: string) {
+  await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
+}
+
+export const MODAL_SCENARIOS: ModalScenario[] = [
+  // ── Infrastructure ────────────────────────────────────────────────────────
+  {
+    name: "infra · add machine",
+    path: "/dashboard/infra",
+    sources: [MACHINE_DIALOG],
+    open: (page) => openMachineDialog(page, 'header button:has-text("Add Machine")'),
+  },
+  {
+    name: "infra · setup ssh key",
+    path: "/dashboard/infra",
+    sources: [MACHINE_DIALOG],
+    mock: mockMachineCreate,
+    open: async (page) => {
+      await openMachineDialog(page, 'header button:has-text("Add Machine")');
+      await visible(page, "#infra-name").fill("e2e-machine");
+      await visible(page, "#infra-host").fill("example.com");
+      await visible(page, "#infra-username").fill("deploy");
+      await click(page, 'form button[type="submit"]');
+      await page.locator(':text("Setup SSH Access"):visible').first().waitFor({ timeout: 10_000 });
+    },
+  },
+  {
+    name: "infra · edit machine",
+    path: "/dashboard/infra",
+    sources: [MACHINE_DIALOG],
+    open: (page) => openMachineDialog(page, 'button[title="Edit"]'),
+  },
+  {
+    name: "infra · machine notes",
+    path: "/dashboard/infra",
+    sources: [NOTES_DIALOG],
+    mock: mockMachineNotes,
+    open: (page) => openMachineDialog(page, 'button[title="View notes"]'),
+  },
+  {
+    name: "infra · delete note confirmation",
+    path: "/dashboard/infra",
+    sources: [NOTES_DIALOG],
+    mock: mockMachineNotes,
+    open: async (page) => {
+      await openMachineDialog(page, 'button[title="View notes"]');
+      await clickText(page, "Deploy runbook");
+      await click(page, 'button:has-text("Delete")');
+    },
+  },
+
+  // ── Tasks ─────────────────────────────────────────────────────────────────
+  {
+    name: "tasks · new task",
+    path: "/dashboard/tasks",
+    sources: ["src/components/tasks/task-form.tsx"],
+    open: (page) => click(page, 'header button:has-text("New Task")'),
+  },
+  {
+    name: "tasks · delete task confirmation",
+    path: "/dashboard/tasks",
+    sources: ["src/app/dashboard/tasks/page.tsx"],
+    open: async (page) => {
+      await click(page, '[data-slot="dropdown-menu-trigger"]');
+      await click(page, '[role="menuitem"]:has-text("Delete")');
+    },
+  },
+
+  // ── Jobs ──────────────────────────────────────────────────────────────────
+  {
+    name: "jobs · new agent job",
+    path: "/dashboard/jobs",
+    sources: ["src/components/jobs/agent-job-dialog.tsx"],
+    open: (page) => click(page, 'button:has-text("New Agent")'),
+  },
+  {
+    name: "jobs · new scheduled job",
+    path: "/dashboard/jobs",
+    sources: ["src/components/jobs/job-dialog.tsx"],
+    open: async (page) => {
+      await click(page, '[role="tab"]:has-text("Scheduled Jobs")');
+      await click(page, 'button:has-text("New Job")');
+    },
+  },
+  {
+    name: "jobs · agent run messages",
+    path: "/dashboard/jobs",
+    sources: ["src/components/jobs/agent-job-list.tsx"],
+    mock: mockAgentRuns,
+    open: async (page) => {
+      await clickText(page, "Daily Market Research Digest");
+      await clickText(page, "Completed");
+    },
+  },
+
+  // ── Chat ──────────────────────────────────────────────────────────────────
+  {
+    name: "chat · session list sheet",
+    path: "/dashboard/chat",
+    sources: ["src/app/dashboard/chat/layout.tsx"],
+    open: (page) => click(page, '[data-slot="sheet-trigger"]'),
+  },
+  {
+    name: "chat · share dialog",
+    path: "/dashboard/chat",
+    sources: ["src/components/chat/share-button.tsx"],
+    open: async (page) => {
+      await gotoChatSession(page, await ensureChatSession(page));
+      await click(page, '[data-slot="dialog-trigger"]');
+    },
+  },
+  {
+    name: "chat · compaction confirmation",
+    path: "/dashboard/chat",
+    sources: ["src/components/chat/token-usage-display.tsx"],
+    open: async (page) => {
+      await gotoChatSession(page, await ensureChatSession(page));
+      await click(page, 'button[aria-label*="compact" i]');
+    },
+  },
+
+  // ── Settings ──────────────────────────────────────────────────────────────
+  {
+    name: "settings · add memory",
+    path: SETTINGS,
+    sources: [MEMORIES_TAB],
+    open: async (page) => {
+      await openSettingsTab(page, "Memories");
+      await click(page, 'button:has-text("Add Memory")');
+    },
+  },
+  {
+    name: "settings · edit memory",
+    path: SETTINGS,
+    sources: [MEMORIES_TAB],
+    mock: mockMemories,
+    open: async (page) => {
+      await openSettingsTab(page, "Memories");
+      await openRowMenu(page, "very long memory title");
+      await click(page, '[role="menuitem"]:has-text("Edit")');
+    },
+  },
+  {
+    name: "settings · delete memory confirmation",
+    path: SETTINGS,
+    sources: [MEMORIES_TAB],
+    mock: mockMemories,
+    open: async (page) => {
+      await openSettingsTab(page, "Memories");
+      await openRowMenu(page, "very long memory title");
+      await click(page, '[role="menuitem"]:has-text("Delete")');
+    },
+  },
+  {
+    name: "settings · add integration",
+    path: SETTINGS,
+    sources: ["src/app/dashboard/settings/tabs/integrations-tab.tsx"],
+    open: async (page) => {
+      await openSettingsTab(page, "Integrations");
+      await click(page, 'button:has-text("Add Integration")');
+    },
+  },
+  {
+    name: "settings · add email account",
+    path: SETTINGS,
+    sources: ["src/components/mail/account-sheet.tsx"],
+    open: async (page) => {
+      await openSettingsTab(page, "Email");
+      await click(page, 'button:has-text("Add Account")');
+    },
+  },
+  {
+    name: "settings · add caldav account",
+    path: SETTINGS,
+    sources: ["src/components/calendar/calendar-account-dialog.tsx"],
+    open: async (page) => {
+      await openSettingsTab(page, "Calendar");
+      await click(page, 'button:has-text("Add CalDAV")');
+    },
+  },
+  {
+    name: "settings · add calendar subscription",
+    path: SETTINGS,
+    sources: ["src/components/calendar/subscription-dialog.tsx"],
+    open: async (page) => {
+      await openSettingsTab(page, "Calendar");
+      await click(page, 'button:has-text("Add Subscription")');
+    },
+  },
+  {
+    name: "settings · remove calendar subscription confirmation",
+    path: SETTINGS,
+    sources: ["src/app/dashboard/settings/tabs/calendar-tab.tsx"],
+    mock: mockCalendarSubscriptions,
+    open: async (page) => {
+      await openSettingsTab(page, "Calendar");
+      await click(page, '[data-slot="dropdown-menu-trigger"]');
+      await click(page, '[role="menuitem"]:has-text("Remove")');
+    },
+  },
+  {
+    name: "settings · telegram whitelist",
+    path: SETTINGS,
+    sources: ["src/components/integrations/telegram-card.tsx"],
+    skip: "requires a connected Telegram bot — the token is validated against the Telegram API",
+  },
+
+  // ── Calendar ──────────────────────────────────────────────────────────────
+  {
+    name: "calendar · new event",
+    path: "/dashboard/calendar",
+    sources: ["src/components/calendar/event-dialog.tsx"],
+    open: (page) => click(page, 'button:has-text("New Event")'),
+  },
+  {
+    name: "calendar · add calendar sheet",
+    path: "/dashboard/calendar",
+    sources: ["src/components/calendar/calendar-sidebar.tsx"],
+    open: (page) => click(page, 'button[aria-label="Add calendar"]'),
+  },
+  {
+    name: "calendar · event details",
+    path: "/dashboard/calendar",
+    sources: ["src/components/calendar/event-view-sheet.tsx"],
+    skip: "requires an event on the grid — the e2e user has a local calendar but no seeded event",
+  },
+
+  // ── Mail ──────────────────────────────────────────────────────────────────
+  {
+    name: "mail · compose",
+    path: "/dashboard/mail",
+    sources: ["src/components/mail/compose-sheet.tsx"],
+    skip: "requires a connected IMAP/SMTP account",
+  },
+  {
+    name: "mail · email detail",
+    path: "/dashboard/mail",
+    sources: ["src/components/mail/email-detail-sheet.tsx"],
+    skip: "requires a connected IMAP/SMTP account",
+  },
+  {
+    name: "mail · reply / forward",
+    path: "/dashboard/mail",
+    sources: ["src/components/mail/reply-forward-sheet.tsx"],
+    skip: "requires a connected IMAP/SMTP account",
+  },
+  {
+    name: "settings · remove email account confirmation",
+    path: SETTINGS,
+    sources: ["src/app/dashboard/settings/tabs/email-tab.tsx"],
+    skip: "requires a connected IMAP/SMTP account",
+  },
+
+  // ── Admin ─────────────────────────────────────────────────────────────────
+  {
+    name: "admin · models dialogs",
+    path: "/admin/models",
+    sources: ["src/app/admin/models/page.tsx"],
+    skip: "requires an admin role — the shared e2e user is a regular user (see mobile-overflow.spec.ts)",
+  },
+  {
+    name: "admin · user dialogs",
+    path: "/admin/users",
+    sources: ["src/app/admin/users/page.tsx"],
+    skip: "requires an admin role — the shared e2e user is a regular user (see mobile-overflow.spec.ts)",
+  },
+];

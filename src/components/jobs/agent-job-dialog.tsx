@@ -292,7 +292,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
           </div>
 
           {/* Model & Thinking */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="agent-model">Model</Label>
               <Input
@@ -325,7 +325,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
           </div>
 
           {/* Output Routing */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Output Channel</Label>
               <Select value={outputChannel} onValueChange={(v) => setOutputChannel(v ?? "")}>
@@ -434,7 +434,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
           {/* Tool Access */}
           <div className="space-y-3">
             <Label>Tool Access</Label>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {TOOL_CATEGORIES.map((category) => {
                 const Icon = category.icon;
                 const isChecked = toolConfig[category.key] ?? category.defaultEnabled;
