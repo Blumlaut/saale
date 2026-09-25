@@ -6,7 +6,7 @@ import { publishSessionEvent } from "@/lib/pi/session-events";
 // resolution over Redis pub/sub. Replace the real (ioredis-backed) module
 // with an in-memory implementation so tests run without a Redis server.
 vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
-import { resetMockRedis } from "../../helpers/in-memory-redis";
+import { resetMockRedis, getRedis } from "../../helpers/in-memory-redis";
 import {
   waitForApproval,
   resolveApproval,
@@ -75,10 +75,10 @@ describe("tool-approval-gate", () => {
       await resolveApproval(request.sessionId, request.toolCallId, true);
 
       const result = await promise;
-      expect(result).toBe(true);
+      expect(result).toBe("approved");
     });
 
-    it("resolves false when denied", async () => {
+    it("resolves denied when denied", async () => {
       const request = makeRequest();
       const promise = waitForApproval(request);
 
@@ -86,7 +86,7 @@ describe("tool-approval-gate", () => {
       await resolveApproval(request.sessionId, request.toolCallId, false);
 
       const result = await promise;
-      expect(result).toBe(false);
+      expect(result).toBe("denied");
     });
 
     it("returns false for non-existent approval", async () => {
@@ -94,7 +94,7 @@ describe("tool-approval-gate", () => {
       expect(resolved).toBe(false);
     });
 
-    it("resolves false on timeout", async () => {
+    it("resolves denied on timeout", async () => {
       const request: ApprovalRequest = {
         toolCallId: "tc-timeout-gate",
         toolName: "bash",
@@ -106,7 +106,7 @@ describe("tool-approval-gate", () => {
       };
       const promise = waitForApproval(request);
       const result = await promise;
-      expect(result).toBe(false);
+      expect(result).toBe("denied");
     });
 
     it("stores and retrieves pending approvals in Redis", async () => {
@@ -154,7 +154,7 @@ describe("tool-approval-gate", () => {
       });
 
       const result = await promise;
-      expect(result).toBe(true);
+      expect(result).toBe("approved");
     });
 
     it("resolves false and cleans up when the agent is aborted", async () => {
@@ -166,10 +166,42 @@ describe("tool-approval-gate", () => {
       controller.abort();
 
       const result = await promise;
-      expect(result).toBe(false);
+      expect(result).toBe("aborted");
 
       const pending = await getPendingApprovals(request.sessionId);
       expect(pending).toHaveLength(0);
+    });
+
+    it("records a cancellation, not a denial, when the run is aborted", async () => {
+      const request = { ...makeRequest(), toolCallId: "tc-abort-record" };
+      const controller = new AbortController();
+      const promise = waitForApproval(request, controller.signal);
+
+      await new Promise((r) => setTimeout(r, 20));
+      controller.abort();
+      expect(await promise).toBe("aborted");
+
+      // Nothing was decided by the user, so no decision may be recorded.
+      expect(await resolveApproval(request.sessionId, request.toolCallId, false)).toBe(false);
+      expect(await getPendingApprovals(request.sessionId)).toHaveLength(0);
+
+      const raw = await getRedis().get(`saale:approval:${request.sessionId}:${request.toolCallId}`);
+      expect(JSON.parse(raw as string)).toMatchObject({ cancelled: true });
+      expect(JSON.parse(raw as string).approved).toBeUndefined();
+    });
+
+    it("prefers a decision that landed just before the abort", async () => {
+      const request = { ...makeRequest(), toolCallId: "tc-abort-raced" };
+      const controller = new AbortController();
+      const promise = waitForApproval(request, controller.signal);
+
+      await new Promise((r) => setTimeout(r, 20));
+      // The user approved in another process, the run is stopped immediately
+      // after: the recorded decision is the truth, not the abort.
+      await resolveApproval(request.sessionId, request.toolCallId, true);
+      controller.abort();
+
+      expect(await promise).toBe("approved");
     });
 
     it("timeout records a denial so no stale approval survives", async () => {
@@ -181,7 +213,7 @@ describe("tool-approval-gate", () => {
       };
       const promise = waitForApproval(request);
 
-      expect(await promise).toBe(false);
+      expect(await promise).toBe("denied");
 
       // The timed-out request is not pending anymore…
       const pending = await getPendingApprovals(request.sessionId);
@@ -221,7 +253,7 @@ describe("tool-approval-gate", () => {
       await new Promise((r) => setTimeout(r, 10));
       await resolveApproval(request.sessionId, request.toolCallId, true);
       const result = await promise;
-      expect(result).toBe(true);
+      expect(result).toBe("approved");
 
       const second = await resolveApproval(request.sessionId, request.toolCallId, false);
       expect(second).toBe(false);
@@ -296,6 +328,37 @@ describe("tool-approval-gate", () => {
       await resolveApproval(sessionId, toolCallId, true);
       const result = (await promise) as ToolResult;
       expect(result.content[0].text).toBe("ok");
+    });
+
+    it("surfaces an aborted run as an abort, not a user denial", async () => {
+      const { toolCallId, sessionId } = makeUniqueIds("abort");
+      let executed = false;
+      const tool = wrapWithApprovalGate(
+        makeMockTool("bash", async () => {
+          executed = true;
+          return { content: [{ type: "text", text: "ok" }], details: {} };
+        }),
+        "user-1",
+        sessionId,
+        async () => "ask",
+        () => {},
+      );
+
+      const controller = new AbortController();
+      const promise = tool.execute(
+        toolCallId,
+        { cmd: "ls" },
+        controller.signal,
+        undefined,
+        {} as never,
+      );
+      const rejection = expect(promise).rejects.toThrow("Operation aborted");
+
+      await new Promise((r) => setTimeout(r, 50));
+      controller.abort();
+      await rejection;
+      // The user never approved: the tool must not run.
+      expect(executed).toBe(false);
     });
 
     it("denies tool when approval is rejected", async () => {

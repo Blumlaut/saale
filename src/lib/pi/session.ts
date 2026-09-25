@@ -79,7 +79,13 @@ export async function buildSessionDeps(options: {
   const { modelRuntime } = await buildModelRuntime(options.userId);
 
   const enabled = resolveToolConfig(options.toolConfig);
-  const allCustomTools: ToolDefinition[] = [...options.customTools];
+
+  // Caller-supplied tools get the same wrappers as the resolved ones: without
+  // this they would execute outside the approval gate (and outside the abort
+  // race), i.e. a tool added by a caller would silently be ungated.
+  const allCustomTools: ToolDefinition[] = options.wrapTool
+    ? options.customTools.map((tool) => options.wrapTool!(tool))
+    : [...options.customTools];
 
   const resolvedTools = await resolveTools(options.userId, options.sessionId, enabled, {
     createTerminalScopedTools,
