@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
+import { createSessionSettings } from "@/lib/pi/settings";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
@@ -194,6 +195,7 @@ export async function executeAgentRun(
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
+    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,

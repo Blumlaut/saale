@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createSystemPromptLoader } from "./processing-state";
+import { createSessionSettings } from "./settings";
 import { buildSessionDeps, type ToolConfig } from "./session";
 import { thinkingLevelOption } from "./thinking-levels";
 
@@ -76,6 +77,7 @@ export async function createPersistentSession(options: {
   const result = await createAgentSession({
     sessionManager, // File-based — entries persist to JSONL
     modelRuntime,
+    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,

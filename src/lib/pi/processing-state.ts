@@ -3,6 +3,7 @@ import {
   getAgentDir,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
+import { createSessionSettings } from "./settings";
 
 /**
  * Build the default agent system prompt for a chat session.
@@ -52,7 +53,8 @@ Guidelines:
  * a caller-provided loader, hence the `reload()` here.
  *
  * Discovery (extensions, skills, prompt templates, themes, context files) is
- * disabled — Saale builds its own prompts and runs headless.
+ * disabled — Saale builds its own prompts and runs headless — along with the
+ * host's Pi settings (see `createSessionSettings`).
  */
 export async function createSystemPromptLoader(
   prompt: string,
@@ -61,6 +63,7 @@ export async function createSystemPromptLoader(
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir: getAgentDir(),
+    settingsManager: createSessionSettings(),
     systemPrompt: prompt,
     noExtensions: true,
     noSkills: true,
