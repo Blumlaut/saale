@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -22,6 +22,7 @@ import {
   CheckCircle,
   ChevronDown,
   ChevronRight,
+  History,
   Lightbulb,
   Pencil,
   X,
@@ -47,7 +48,21 @@ interface MessageListProps {
 
 const THRESHOLD = 80; // px from bottom to consider "at bottom"
 
-export function MessageList({
+/**
+ * Rendering window. A long transcript is thousands of DOM nodes (markdown,
+ * highlighting, tool cards), and every layout pass pays for all of them —
+ * including the composer's per-keystroke autosize reflow. Only the tail is
+ * rendered; earlier turns are revealed on demand.
+ */
+const INITIAL_WINDOW_GROUPS = 20;
+const WINDOW_GROWTH_GROUPS = 30;
+
+/**
+ * Memoized: the composer draft lives in ChatInterface, so an un-memoized list
+ * would re-parse every message's markdown on each keystroke. Props are all
+ * primitives or state objects that only change when the conversation does.
+ */
+export const MessageList = memo(function MessageList({
   messages,
   isLoading,
   isCompacting,
@@ -77,16 +92,41 @@ export function MessageList({
     }
   }, [messages.length, hasJobs]);
 
+  // Group consecutive assistant messages that share a parentMessageId
+  const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
+
+  // ── Render window ────────────────────────────────────────────────────────
+  // `revealedFrom`: the user asked for earlier turns — that start stays frozen,
+  // so a reveal is never undone under a reader's feet.
+  // `pinnedStart`: the window held while they are scrolled away from the bottom.
+  const [revealedFrom, setRevealedFrom] = useState<number | null>(null);
+  const [pinnedStart, setPinnedStart] = useState<number | null>(null);
+  const tailStart = Math.max(0, groupedMessages.length - INITIAL_WINDOW_GROUPS);
+  const windowStart = revealedFrom ?? (isAtBottom ? tailStart : (pinnedStart ?? tailStart));
+
   // Track scroll position — unlock auto-scroll when user scrolls up
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setIsAtBottom(distFromBottom <= THRESHOLD);
-  }, []);
+    const atBottom = distFromBottom <= THRESHOLD;
+    setIsAtBottom(atBottom);
+    // Reading back: pin the window where the user left it, so arriving turns
+    // only append below. Back at the bottom, follow the tail again.
+    setPinnedStart(atBottom ? null : windowStart);
+  }, [windowStart]);
 
-  // Group consecutive assistant messages that share a parentMessageId
-  const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
+  const visibleGroups = windowStart > 0 ? groupedMessages.slice(windowStart) : groupedMessages;
+  const hiddenMessageCount = useMemo(
+    () =>
+      groupedMessages
+        .slice(0, windowStart)
+        .reduce(
+          (n, group) => n + (group.type === "assistant-group" ? group.messages.length : 1),
+          0,
+        ),
+    [groupedMessages, windowStart],
+  );
 
   // Auto-scroll to bottom only while streaming and user is near the bottom (locked-in mode).
   // When streaming, user can scroll up to "unlock" — scrolling back to bottom re-locks.
@@ -176,7 +216,20 @@ export function MessageList({
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
       <div className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
-        {groupedMessages.map((group, groupIndex) =>
+        {hiddenMessageCount > 0 && (
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground text-xs"
+              onClick={() => setRevealedFrom(Math.max(0, windowStart - WINDOW_GROWTH_GROUPS))}
+            >
+              <History className="mr-1.5 h-3.5 w-3.5" />
+              Show {hiddenMessageCount} earlier {hiddenMessageCount === 1 ? "message" : "messages"}
+            </Button>
+          </div>
+        )}
+        {visibleGroups.map((group) =>
           group.type === "compaction" ? (
             <CompactionMessage
               key={group.message.id}
@@ -190,8 +243,10 @@ export function MessageList({
               {...(onEditMessage && { onEdit: onEditMessage })}
             />
           ) : (
+            /* Keyed by the turn's root message: a positional key would remount
+               every group whenever the window slides. */
             <AssistantGroup
-              key={groupIndex}
+              key={group.messages[0]!.id}
               messages={group.messages}
               isStreaming={
                 lastMsg?.id === group.messages[group.messages.length - 1]?.id && !!isStreaming
@@ -243,7 +298,7 @@ export function MessageList({
       </div>
     </div>
   );
-}
+});
 
 function UserMessageItem({
   message,

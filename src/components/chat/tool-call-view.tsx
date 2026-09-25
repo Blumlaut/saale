@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Wrench, CheckCircle, AlertCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
@@ -18,7 +18,7 @@ import type { ToolCallData } from "./types";
  * Shared by the interactive chat (MessageList) and the read-only share
  * viewer so both render tool calls identically.
  */
-export function ToolCallView({ toolCall }: { toolCall: ToolCallData }) {
+export const ToolCallView = memo(function ToolCallView({ toolCall }: { toolCall: ToolCallData }) {
   return toolCall.name === "show_file" ? (
     <ShowFileCard toolCall={toolCall} />
   ) : toolCall.name === "web_search" ? (
@@ -36,7 +36,7 @@ export function ToolCallView({ toolCall }: { toolCall: ToolCallData }) {
   ) : (
     <GenericToolCall toolCall={toolCall} />
   );
-}
+});
 
 /**
  * Renders a show_file tool call as a FileCard with preview and download.
