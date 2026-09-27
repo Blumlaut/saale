@@ -7,6 +7,7 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
+import { SelectionQuoteButton } from "./selection-quote-button";
 import { ToolCallView } from "./tool-call-view";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
@@ -37,6 +38,8 @@ interface MessageListProps {
   isCompacting?: boolean;
   onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
   onSendMessage?: (content: string) => void;
+  /** Inserts a quoted selection into the composer. */
+  onQuoteSelection?: (text: string) => void;
   pendingApprovals?: ApprovalData[];
   onApprovalResolved?: (toolCallId: string) => void;
   sessionId?: string;
@@ -68,6 +71,7 @@ export const MessageList = memo(function MessageList({
   isCompacting,
   onEditMessage,
   onSendMessage,
+  onQuoteSelection,
   pendingApprovals = [],
   onApprovalResolved,
   sessionId,
@@ -78,6 +82,13 @@ export const MessageList = memo(function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [hasJobs, setHasJobs] = useState<boolean | null>(null);
+
+  // Bump on every content change so the selection-quote button can re-check
+  // a selection after streaming tokens or a DB reload shift the layout.
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  useEffect(() => {
+    setSelectionVersion((v) => v + 1);
+  }, [messages]);
 
   // Fetch job status to customize empty state suggestions
   useEffect(() => {
@@ -214,7 +225,7 @@ export const MessageList = memo(function MessageList({
   const isStreaming = isLoading && lastMsg?.role === "assistant" && isStreamingMessage(lastMsg);
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
+    <div ref={containerRef} className="relative flex-1 overflow-y-auto" onScroll={handleScroll}>
       <div className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
         {hiddenMessageCount > 0 && (
           <div className="flex justify-center">
@@ -296,6 +307,14 @@ export const MessageList = memo(function MessageList({
 
         <div ref={bottomRef} />
       </div>
+
+      {onQuoteSelection && (
+        <SelectionQuoteButton
+          containerRef={containerRef}
+          onQuote={onQuoteSelection}
+          version={selectionVersion}
+        />
+      )}
     </div>
   );
 });
@@ -485,7 +504,7 @@ function UserMessageItem({
 
         {/* Text content (only when there's text) */}
         {message.content && (
-          <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+          <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
             <div className="text-sm whitespace-pre-wrap">{message.content}</div>
           </div>
         )}
@@ -645,7 +664,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
 
             {/* Message bubble (only when there's text) */}
             {message.content && (
-              <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+              <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
                 <MarkdownRenderer content={message.content} />
               </div>
             )}
