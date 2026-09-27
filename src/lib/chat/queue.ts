@@ -9,7 +9,8 @@ import {
 } from "@/lib/chat/serialize-message";
 
 /**
- * Send queue — messages submitted while a generation is already running.
+ * Send queue — messages submitted while the session is busy: a generation is
+ * running, or a manual compaction holds it.
  *
  * A queued message is a normal ChatMessage row with `queuedAt` set: it is
  * excluded from the conversation (see `listQueuedMessages` callers) until it

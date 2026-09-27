@@ -93,9 +93,15 @@ export function ChatInterface({
   // Abort the in-flight send POST when the component unmounts.
   const abortRef = useRef<AbortController | null>(null);
 
-  // Whether a generation is running, readable from `handleSend` without
-  // making it depend on (and re-create on) every loading-state change.
-  const loadingRef = useRef(isLoading);
+  // Whether the session is busy — a generation running, or a manual
+  // compaction holding it — readable from `handleSend` without making it
+  // depend on (and re-create on) every state change.
+  const busyRef = useRef(isLoading || isCompacting);
+
+  // False once the component unmounts: async continuations (a compaction
+  // request resolving after navigation) must not reopen a connection the
+  // unmount cleanup already closed.
+  const mountedRef = useRef(true);
 
   // ─── Data loading ────────────────────────────────────────────────────────
 
@@ -210,13 +216,13 @@ export function ChatInterface({
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
       const optimistic = makeTempUserMessage(content, files);
-      // While Pi is generating the server queues the message (the composer's
-      // Queue button shows this is what the send means), so the optimistic
-      // copy goes straight into the queue strip. Showing it in the
-      // conversation first would flash it as sent — and, sitting behind the
-      // live turn, replace the streaming indicator with a bare "Thinking…"
-      // until the POST response moved it.
-      const placement = placementForSend(loadingRef.current);
+      // While the session is busy — Pi generating, or a compaction holding it —
+      // the server queues the message (the composer's Queue button shows this
+      // is what the send means), so the optimistic copy goes straight into the
+      // queue strip. Showing it in the conversation first would flash it as
+      // sent — and, sitting behind the live turn, replace the streaming
+      // indicator with a bare "Thinking…" until the POST response moved it.
+      const placement = placementForSend(busyRef.current);
       if (placement === "queue") {
         setQueuedMessages((prev) => [...prev, optimistic]);
       } else {
@@ -505,8 +511,15 @@ export function ChatInterface({
       })
       .finally(() => {
         setIsCompacting(false);
+        // The compaction held the session, so anything sent during it is
+        // queued: reconnect so the server re-decides — its idle path drains
+        // the send queue — instead of leaving the messages in the strip.
+        if (mountedRef.current) {
+          disconnect();
+          connect();
+        }
       });
-  }, [sessionId, loadMessages]);
+  }, [sessionId, connect, disconnect, loadMessages]);
 
   // ─── Effects ─────────────────────────────────────────────────────────────
 
@@ -550,8 +563,8 @@ export function ChatInterface({
   }, [temporaryMode]);
 
   useEffect(() => {
-    loadingRef.current = isLoading;
-  }, [isLoading]);
+    busyRef.current = isLoading || isCompacting;
+  }, [isLoading, isCompacting]);
 
   useEffect(() => {
     queuedCountRef.current = queuedMessages.length;
@@ -584,7 +597,7 @@ export function ChatInterface({
     return () => {
       const mountedFor = Date.now() - mountedAt;
       if (mountedFor < 1000) return;
-      if (!temporaryRef.current || loadingRef.current) return;
+      if (!temporaryRef.current || busyRef.current) return;
       if (queuedCountRef.current > 0) return;
 
       const url = `${window.location.origin}/api/chat/sessions/${sessionId}`;
@@ -599,6 +612,7 @@ export function ChatInterface({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       disconnect();
       abortRef.current?.abort();
     };

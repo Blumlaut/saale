@@ -2,16 +2,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 /**
- * POST /messages must never reject a message because Pi is busy — it queues it
- * instead (the stream route drains the queue when the run settles). These tests
- * pin the two states apart: a queued message has `queuedAt` set and claims no
- * prompt, a normal message keeps the existing pending-prompt handshake.
+ * POST /messages must never reject a message because the session is busy — it
+ * queues it instead (the stream route drains the queue when the session is free
+ * again). "Busy" covers a running generation and a manual compaction holding
+ * the session. These tests pin the states apart: a queued message has
+ * `queuedAt` set and claims no prompt, a normal message keeps the existing
+ * pending-prompt handshake.
  */
 
 const {
   mockRequireChatSessionOwner,
   mockPrisma,
   mockIsSessionActive,
+  mockIsSessionBusy,
   mockRegisterActiveSession,
   mockSetPendingPrompt,
   mockPublishSessionEvent,
@@ -29,6 +32,7 @@ const {
     chatSession: { update: vi.fn() },
   },
   mockIsSessionActive: vi.fn(),
+  mockIsSessionBusy: vi.fn(),
   mockRegisterActiveSession: vi.fn().mockResolvedValue(undefined),
   mockSetPendingPrompt: vi.fn().mockResolvedValue(undefined),
   mockPublishSessionEvent: vi.fn().mockResolvedValue(1),
@@ -40,6 +44,7 @@ vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOw
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 vi.mock("@/lib/redis", () => ({
   isSessionActive: mockIsSessionActive,
+  isSessionBusy: mockIsSessionBusy,
   registerActiveSession: mockRegisterActiveSession,
   setPendingPrompt: mockSetPendingPrompt,
   releaseSendQueue: mockReleaseSendQueue,
@@ -104,11 +109,13 @@ beforeEach(() => {
   mockPrisma.chatMessage.count.mockResolvedValue(0);
   mockPrisma.chatMessage.create.mockResolvedValue({ id: "msg-1" });
   mockPrisma.chatSession.update.mockResolvedValue({});
+  mockIsSessionBusy.mockResolvedValue(false);
 });
 
 describe("POST /messages while a generation is running", () => {
   beforeEach(() => {
     mockIsSessionActive.mockResolvedValue(true);
+    mockIsSessionBusy.mockResolvedValue(true);
   });
 
   it("queues the message instead of rejecting it", async () => {
@@ -156,6 +163,34 @@ describe("POST /messages while a generation is running", () => {
     expect(res.status).toBe(429);
     expect(body.error).toContain(String(MAX_QUEUED_MESSAGES));
     expect(mockPrisma.chatMessage.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /messages while a manual compaction holds the session", () => {
+  beforeEach(() => {
+    // No generation of ours: the compaction flag (`isSessionBusy`) is what
+    // makes the session refuse a prompt. Pi would reject one submitted now.
+    mockIsSessionActive.mockResolvedValue(false);
+    mockIsSessionBusy.mockResolvedValue(true);
+  });
+
+  it("queues the message instead of prompting into the compaction", async () => {
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow({ queuedAt: new Date() }));
+
+    const res = await postMessage("sent mid-compaction");
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.queued).toBe(true);
+    expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ queuedAt: expect.any(Date) }),
+      }),
+    );
+
+    // The compaction owns the prompt: this message waits for the drain.
+    expect(mockSetPendingPrompt).not.toHaveBeenCalled();
+    expect(mockRegisterActiveSession).not.toHaveBeenCalled();
   });
 });
 

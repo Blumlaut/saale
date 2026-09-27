@@ -18,6 +18,8 @@ const {
   mockCreateChatAgentSession,
   mockCompact,
   mockSaveCompactionMessage,
+  mockMarkCompactionInProgress,
+  mockClearCompactionInProgress,
 } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockCreateAndPool: vi.fn(),
@@ -26,6 +28,8 @@ const {
   mockCreateChatAgentSession: vi.fn(),
   mockCompact: vi.fn(),
   mockSaveCompactionMessage: vi.fn(),
+  mockMarkCompactionInProgress: vi.fn().mockResolvedValue(undefined),
+  mockClearCompactionInProgress: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
@@ -47,6 +51,11 @@ vi.mock("@/lib/chat/compaction", () => ({
 
 vi.mock("@/lib/pi/session-events", () => ({
   publishSessionEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/redis", () => ({
+  markCompactionInProgress: mockMarkCompactionInProgress,
+  clearCompactionInProgress: mockClearCompactionInProgress,
 }));
 
 import { POST } from "@/app/api/chat/sessions/[sessionId]/compact/route";
@@ -148,5 +157,39 @@ describe("POST /api/chat/sessions/[sessionId]/compact", () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("already_compacted");
+  });
+
+  it("keeps the session marked as compacting until the summary is generated", async () => {
+    // Pi refuses a prompt while it compacts, so the session must read as busy
+    // for as long as the summarization runs — POST /messages queues on it.
+    let releaseCompact: (result: { summary: string; tokensBefore: number }) => void = () => {};
+    mockCompact.mockImplementation(
+      () =>
+        new Promise<{ summary: string; tokensBefore: number }>((resolve) => {
+          releaseCompact = resolve;
+        }),
+    );
+
+    const pending = compactRequest();
+    await vi.waitFor(() => expect(mockCompact).toHaveBeenCalled());
+
+    expect(mockMarkCompactionInProgress).toHaveBeenCalledWith(SESSION_ID);
+    expect(mockClearCompactionInProgress).not.toHaveBeenCalled();
+
+    releaseCompact({ summary: "Sum", tokensBefore: 1000 });
+    expect((await pending).status).toBe(200);
+
+    // Released once the session is free again — the queued messages are
+    // delivered from here on.
+    expect(mockClearCompactionInProgress).toHaveBeenCalledWith(SESSION_ID);
+  });
+
+  it("releases the session when the compaction fails", async () => {
+    mockCompact.mockRejectedValue(new Error("provider exploded"));
+
+    const res = await compactRequest();
+
+    expect(res.status).toBe(500);
+    expect(mockClearCompactionInProgress).toHaveBeenCalledWith(SESSION_ID);
   });
 });

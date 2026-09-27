@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import {
   isSendQueueHeld,
   isSessionActive,
+  isSessionBusy,
   registerActiveSession,
   releaseSendQueue,
   setPendingPrompt,
@@ -93,9 +94,10 @@ export async function GET(
  * - application/json: { content: string }
  * - multipart/form-data: { content: string, files: File[] }
  *
- * When a generation is already running the message is queued instead of
- * rejected: the row is saved with `queuedAt` set and the server delivers it
- * when the run settles (see the chat stream route's drain).
+ * When the session is busy — a generation running, or a manual compaction
+ * holding it — the message is queued instead of rejected: the row is saved with
+ * `queuedAt` set and the server delivers it when the session is free again (see
+ * the chat stream route's drain).
  */
 export async function POST(
   request: NextRequest,
@@ -107,13 +109,13 @@ export async function POST(
   if (!authResult.ok) return authResult.response;
   const chatSession = authResult.session;
 
-  const isGenerating = await isSessionActive(authResult.userId, sessionId);
+  const isBusy = await isSessionBusy(authResult.userId, sessionId);
 
   // Sending something means "keep going": a stopped session's queue (and this
   // message) resumes.
   await releaseSendQueue(sessionId);
 
-  if (isGenerating && (await countQueuedMessages(sessionId)) >= MAX_QUEUED_MESSAGES) {
+  if (isBusy && (await countQueuedMessages(sessionId)) >= MAX_QUEUED_MESSAGES) {
     return NextResponse.json(
       { error: `Send queue is full (${MAX_QUEUED_MESSAGES} messages). Wait for a response first.` },
       { status: 429 },
@@ -196,7 +198,7 @@ export async function POST(
         sessionId,
         role: "user",
         content: promptContent,
-        queuedAt: isGenerating ? new Date() : null,
+        queuedAt: isBusy ? new Date() : null,
         ...(attachments.length > 0 && {
           attachments: {
             create: attachments.map((att) => ({
@@ -235,8 +237,8 @@ export async function POST(
     });
 
     // A queued message is delivered by the stream route's drain once the
-    // running generation settles — it must not claim the prompt itself.
-    if (isGenerating) {
+    // session is free again — it must not claim the prompt itself.
+    if (isBusy) {
       await publishQueueUpdate(sessionId);
       return NextResponse.json({
         ok: true,
