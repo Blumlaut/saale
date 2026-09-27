@@ -11,10 +11,16 @@ import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
 import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
 import {
-  isTempUserMessage,
+  isTempMessage,
   makeCompactionMessage,
   makeTempUserMessage,
 } from "@/lib/chat/message-factories";
+import {
+  dropOptimistic,
+  placementForSend,
+  settleQueuedMessage,
+  settleSentMessage,
+} from "@/lib/chat/outbound-message";
 import { sendChatMessage } from "@/lib/chat/send-message";
 import type { ToolConfig } from "@/lib/pi/tool-config";
 import { useChatSessionState } from "./use-chat-session-state";
@@ -87,6 +93,10 @@ export function ChatInterface({
   // Abort the in-flight send POST when the component unmounts.
   const abortRef = useRef<AbortController | null>(null);
 
+  // Whether a generation is running, readable from `handleSend` without
+  // making it depend on (and re-create on) every loading-state change.
+  const loadingRef = useRef(isLoading);
+
   // ─── Data loading ────────────────────────────────────────────────────────
 
   const loadMessages = useCallback(async (): Promise<void> => {
@@ -136,7 +146,13 @@ export function ChatInterface({
     (next: Message[]) => {
       const previous = queuedRef.current;
       setQueuedMessages(next);
-      if (previous.some((queued) => !next.some((item) => item.id === queued.id))) {
+      // Optimistic entries are local-only: their real row is in this snapshot
+      // (or in flight), so their absence is not a delivery that needs a reload.
+      if (
+        previous.some(
+          (queued) => !isTempMessage(queued) && !next.some((item) => item.id === queued.id),
+        )
+      ) {
         void loadMessages();
       }
     },
@@ -193,9 +209,20 @@ export function ChatInterface({
 
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
-      const userMsg = makeTempUserMessage(content, files);
-      setMessages((prev) => [...prev, userMsg]);
-      setIsLoading(true);
+      const optimistic = makeTempUserMessage(content, files);
+      // While Pi is generating the server queues the message (the composer's
+      // Queue button shows this is what the send means), so the optimistic
+      // copy goes straight into the queue strip. Showing it in the
+      // conversation first would flash it as sent — and, sitting behind the
+      // live turn, replace the streaming indicator with a bare "Thinking…"
+      // until the POST response moved it.
+      const placement = placementForSend(loadingRef.current);
+      if (placement === "queue") {
+        setQueuedMessages((prev) => [...prev, optimistic]);
+      } else {
+        setMessages((prev) => [...prev, optimistic]);
+        setIsLoading(true);
+      }
 
       const abortController = new AbortController();
       abortRef.current = abortController;
@@ -214,7 +241,8 @@ export function ChatInterface({
           case "conflict":
             // Unexpected: the server queues while a generation runs. Nothing
             // was saved, so hand the text back to the composer.
-            setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
+            setMessages((prev) => dropOptimistic(prev, optimistic));
+            setQueuedMessages((prev) => dropOptimistic(prev, optimistic));
             setDraft(content);
             toast.error("Could not send message", {
               description: "The message is back in the input box — try again.",
@@ -222,38 +250,38 @@ export function ChatInterface({
             return;
           case "error":
             throw new Error(result.message);
-          case "ok":
-            // Swap the optimistic temp message for the real DB message.
-            setMessages((prev) =>
-              prev.map((m) =>
-                isTempUserMessage(m)
-                  ? {
-                      ...m,
-                      id: result.message.id,
-                      createdAt: result.message.createdAt,
-                      attachments: result.message.attachments?.length
-                        ? result.message.attachments
-                        : undefined,
-                    }
-                  : m,
-              ),
-            );
+          case "ok": {
+            const saved: Message = {
+              ...optimistic,
+              id: result.message.id,
+              createdAt: result.message.createdAt,
+              attachments: result.message.attachments?.length
+                ? result.message.attachments
+                : undefined,
+            };
 
             if (result.queued) {
-              // Pi is still working: the message waits in the send queue.
-              // Drop the optimistic copy — the queue strip owns it now.
-              setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
-              setQueuedMessages((prev) => [
-                ...prev.filter((m) => m.id !== result.message.id),
-                result.message,
-              ]);
+              // Pi is still working: the message waits in the send queue and
+              // must not be part of the conversation.
+              setMessages((prev) => dropOptimistic(prev, optimistic));
+              setQueuedMessages((prev) => settleQueuedMessage(prev, optimistic, saved));
               // Top-center: a bottom toast would cover the composer and the
               // queue strip it is talking about.
               toast.info("Queued", {
                 description: "Sent as soon as the current response finishes.",
                 position: "top-center",
               });
+              // No reconnect: the running generation already streams on this
+              // connection, and it drains the queue when it settles.
+              return;
             }
+
+            // Delivered now. If this client misread the session as busy, the
+            // message is in the queue strip and has to move into the
+            // conversation.
+            setQueuedMessages((prev) => dropOptimistic(prev, optimistic, saved));
+            setMessages((prev) => settleSentMessage(prev, optimistic, saved));
+            if (placement === "queue") setIsLoading(true);
 
             // Connect to the SSE stream — the server prompts and streams
             // events. A keep-alive observer connection is already open, but
@@ -264,16 +292,20 @@ export function ChatInterface({
             disconnect();
             connect();
             return;
+          }
         }
       } catch (err) {
-        setIsLoading(false);
+        // Only undo the loading state this send raised — when the message was
+        // queued, the loading state belongs to the run that made it queue.
+        if (placement === "conversation") setIsLoading(false);
         // The message never reached the DB — drop the optimistic copy so a
         // failed send can't linger as a phantom (loadMessages preserves temp
         // user messages while a POST is in flight, so without this cleanup a
         // failure would leave it stuck forever). Skip on abort: that only
         // happens on unmount, where the component is going away anyway.
         if (!(err instanceof Error && err.name === "AbortError")) {
-          setMessages((prev) => prev.filter((m) => !isTempUserMessage(m)));
+          setMessages((prev) => dropOptimistic(prev, optimistic));
+          setQueuedMessages((prev) => dropOptimistic(prev, optimistic));
           // Don't lose what the user typed.
           setDraft(content);
           console.error("Send error:", err);
@@ -479,9 +511,14 @@ export function ChatInterface({
   // ─── Effects ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    let cancelled = false;
+
     const init = async () => {
       await loadMessages();
       await loadSessionTitle();
+      // Unmounted mid-load (navigated away): connecting here would open a
+      // stream no cleanup would ever close.
+      if (cancelled) return;
       // Always connect — the server decides what to do: prompt an unanswered
       // message, observe a live generation (any process), or report done for
       // an idle chat. The connection stays open to pick up future
@@ -492,6 +529,7 @@ export function ChatInterface({
     void init();
 
     return () => {
+      cancelled = true;
       disconnect();
     };
   }, [sessionId, connect, disconnect, loadMessages, loadSessionTitle]);
@@ -500,7 +538,6 @@ export function ChatInterface({
   // open long enough to be a real visit, never while a generation runs, and
   // never while the send queue still holds messages for it).
   const temporaryRef = useRef(temporaryMode);
-  const loadingRef = useRef(isLoading);
   const queuedCountRef = useRef(queuedMessages.length);
   const mountTimeRef = useRef(0);
 

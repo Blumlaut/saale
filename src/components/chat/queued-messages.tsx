@@ -48,7 +48,11 @@ export function QueuedMessages({
   };
 
   return (
-    <div className="border-border/30 bg-muted/30 mb-2 rounded-2xl border px-2 py-1.5">
+    <div
+      role="group"
+      aria-label="Queued messages"
+      className="border-border/30 bg-muted/30 mb-2 rounded-2xl border px-2 py-1.5"
+    >
       <div className="text-muted-foreground flex items-center gap-1.5 px-1.5 py-1">
         <Clock className="h-3 w-3" />
         <span className="console-label">
