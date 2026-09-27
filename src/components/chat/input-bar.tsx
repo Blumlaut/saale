@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useImperativeHandle } from "react";
+import { insertQuote as insertQuoteAtCaret } from "@/lib/chat/quote-insert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -35,7 +36,14 @@ interface PendingFile {
   previewUrl: string | null;
 }
 
+/** Imperative API — the message list quotes a selection into the caret. */
+export interface InputBarHandle {
+  insertQuote: (quote: string) => void;
+}
+
 interface InputBarProps {
+  /** React 19 ref-as-prop for the imperative API above. */
+  ref?: React.Ref<InputBarHandle>;
   onSend: (message: string, files?: File[]) => void;
   /** Current composer text — owned by the parent so drafts survive navigation. */
   value: string;
@@ -50,6 +58,7 @@ interface InputBarProps {
 }
 
 export function InputBar({
+  ref,
   onSend,
   value,
   onValueChange,
@@ -64,6 +73,39 @@ export function InputBar({
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const autoResize = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
+    }
+  }, []);
+
+  // Insert a quoted selection at the caret (or at the end when the composer
+  // was never focused), then focus it so the user keeps typing.
+  const insertQuote = useCallback(
+    (quote: string) => {
+      const el = textareaRef.current;
+      // selectionStart is only meaningful while the composer holds focus;
+      // otherwise the quote lands at the end of the draft.
+      const caret =
+        el && document.activeElement === el ? (el.selectionStart ?? value.length) : value.length;
+      const next = insertQuoteAtCaret(value, quote, caret);
+      if (next.value === value) return; // whitespace-only selection — nothing to insert
+      if (el) {
+        // Set the DOM value synchronously (before the state round-trip) so
+        // the caret placement below targets the new text, not the old.
+        el.value = next.value;
+        el.focus();
+        el.setSelectionRange(next.cursor, next.cursor);
+        autoResize();
+      }
+      onValueChange(next.value);
+    },
+    [value, onValueChange, autoResize],
+  );
+
+  useImperativeHandle(ref, () => ({ insertQuote }), [insertQuote]);
 
   const hasToolToggle = onToggleTool !== undefined && toolConfig !== undefined;
 
@@ -165,13 +207,6 @@ export function InputBar({
     return () => {
       for (const url of livePreviewUrlsRef.current) URL.revokeObjectURL(url);
     };
-  }, []);
-
-  const autoResize = useCallback(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + "px";
-    }
   }, []);
 
   // The value also changes from outside (restored draft, cleared on send).

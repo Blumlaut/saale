@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
-import { InputBar } from "./input-bar";
+import { InputBar, type InputBarHandle } from "./input-bar";
 import { QueuedMessages } from "./queued-messages";
 import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
@@ -44,6 +44,8 @@ export function ChatInterface({
 
   // Composer draft — persisted per session, so it survives navigation.
   const { draft, setDraft } = useChatDraft(sessionId);
+  // Imperative access to the composer (quote insertion targets its caret).
+  const inputBarRef = useRef<InputBarHandle>(null);
 
   // Session state
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
@@ -412,6 +414,12 @@ export function ChatInterface({
     [handleSend],
   );
 
+  const handleQuoteSelection = useCallback((text: string) => {
+    inputBarRef.current?.insertQuote(text);
+    // Drop the highlight so the floating Quote button doesn't reappear.
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
   const handleStop = useCallback(() => {
     // Stop means "nothing more until I say so": the server pauses the send
     // queue, so queued messages wait for an explicit send/push.
@@ -594,6 +602,7 @@ export function ChatInterface({
             isCompacting={isCompacting}
             onEditMessage={handleEditMessage}
             onSendMessage={handleSuggestionSend}
+            onQuoteSelection={handleQuoteSelection}
             pendingApprovals={pendingApprovals}
             onApprovalResolved={handleApprovalResolved}
             sessionId={sessionId}
@@ -613,6 +622,7 @@ export function ChatInterface({
       />
 
       <InputBar
+        ref={inputBarRef}
         onSend={handleSend}
         value={draft}
         onValueChange={setDraft}
