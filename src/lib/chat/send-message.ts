@@ -7,8 +7,9 @@ import type { Message } from "@/components/chat/types";
  */
 
 export type SendMessageResult =
-  /** Accepted. `queued` means a generation was already running, so the
-   *  message is waiting in the send queue instead of being prompted now. */
+  /** Accepted. `queued` means the session was busy (a generation running, or
+   *  a compaction), so the message waits in the send queue instead of being
+   *  prompted now. */
   | { kind: "ok"; message: Message; queued: boolean }
   /** 409 — unexpected: the server queues instead of rejecting. */
   | { kind: "conflict" }

@@ -10,6 +10,13 @@ import {
 } from "@/lib/pi/chat-session-factory";
 import { createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
 import { publishSessionEvent } from "@/lib/pi/session-events";
+import { clearCompactionInProgress, markCompactionInProgress } from "@/lib/redis";
+
+/**
+ * Refresh interval for the compaction flag — well inside its TTL, so a long
+ * summarization never lets the session read as idle mid-compaction.
+ */
+const COMPACTION_FLAG_REFRESH_MS = 30_000;
 
 /**
  * Manually trigger conversation compaction.
@@ -19,6 +26,10 @@ import { publishSessionEvent } from "@/lib/pi/session-events";
  *
  * Works whether the agent is currently in the pool or has been evicted —
  * it will recreate the session from the persistent JSONL file if needed.
+ *
+ * For as long as the summarization runs, the session is marked as compacting:
+ * Pi refuses a prompt until it finishes, so messages sent meanwhile are queued
+ * (see POST /messages) and delivered once the chat is idle again.
  */
 export async function POST(
   request: NextRequest,
@@ -68,6 +79,16 @@ export async function POST(
     }),
   );
 
+  // A compaction holds the session until its summarization finishes. Mark it so
+  // a message sent meanwhile is queued rather than prompted into Pi's "Cannot
+  // submit a prompt while compaction is in progress" rejection.
+  await markCompactionInProgress(sessionId);
+  const flagRefresh = setInterval(() => {
+    markCompactionInProgress(sessionId).catch((err) => {
+      console.error(`Failed to refresh the compaction flag for ${sessionId}:`, err);
+    });
+  }, COMPACTION_FLAG_REFRESH_MS);
+
   try {
     const result = await pooled.session.compact();
 
@@ -103,5 +124,8 @@ export async function POST(
 
     console.error("Manual compaction failed:", err);
     return NextResponse.json({ error: "Compaction failed" }, { status: 500 });
+  } finally {
+    clearInterval(flagRefresh);
+    await clearCompactionInProgress(sessionId);
   }
 }

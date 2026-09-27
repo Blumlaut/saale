@@ -110,6 +110,9 @@ export function InputBar({
   const hasToolToggle = onToggleTool !== undefined && toolConfig !== undefined;
 
   const canSend = value.trim().length > 0 || pendingFiles.length > 0;
+  // A compaction holds the session too: what the composer sends now is queued,
+  // so it has to say so — even though Stop is only offered for a generation.
+  const willQueue = isLoading || !!isCompacting;
 
   const handleSubmit = useCallback(() => {
     if (!canSend) return;
@@ -360,10 +363,10 @@ export function InputBar({
           size="icon"
           onClick={handleSubmit}
           disabled={!canSend}
-          aria-label={isLoading ? "Queue message" : "Send message"}
-          title={isLoading ? "Queue — sent when the current response finishes" : undefined}
+          aria-label={willQueue ? "Queue message" : "Send message"}
+          title={willQueue ? "Queue — sent when the current response finishes" : undefined}
         >
-          {isLoading ? <ListPlus className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+          {willQueue ? <ListPlus className="h-4 w-4" /> : <Send className="h-4 w-4" />}
         </Button>
       </div>
     </div>

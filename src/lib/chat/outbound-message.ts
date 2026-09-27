@@ -3,29 +3,29 @@ import type { Message } from "@/components/chat/types";
 /**
  * Placement and reconciliation of optimistic outbound messages.
  *
- * A message sent while Pi is already generating is queued server-side, so its
- * optimistic copy belongs in the composer's queue strip — never in the
- * conversation. Rendering it as a sent bubble first (which also pushes it
- * behind the live turn, replacing the streaming indicator with a bare
- * "Thinking…" placeholder) makes it flash as sent before it snaps into the
- * queue.
+ * A message sent while the session is busy — Pi generating, or a manual
+ * compaction holding the session — is queued server-side, so its optimistic
+ * copy belongs in the composer's queue strip — never in the conversation.
+ * Rendering it as a sent bubble first (which also pushes it behind the live
+ * turn, replacing the streaming indicator with a bare "Thinking…" placeholder)
+ * makes it flash as sent before it snaps into the queue.
  *
  * The POST response is the authority: it can disagree with the client's guess
- * (the connect-time `isLoading` view can be stale), so both placements have to
- * reconcile into the same end state.
+ * (the connect-time view can be stale), so both placements have to reconcile
+ * into the same end state.
  */
 
 /** Where the optimistic copy of a just-sent message is rendered. */
 export type OutboundPlacement = "conversation" | "queue";
 
 /**
- * Pi is generating → the server queues the message, so it goes straight into
- * the queue strip. Otherwise it is prompted now and shows up in the
- * conversation immediately (the user must see their own message while the
- * request is in flight).
+ * A busy session queues the message server-side, so it goes straight into the
+ * queue strip. Otherwise it is prompted now and shows up in the conversation
+ * immediately (the user must see their own message while the request is in
+ * flight).
  */
-export function placementForSend(generating: boolean): OutboundPlacement {
-  return generating ? "queue" : "conversation";
+export function placementForSend(busy: boolean): OutboundPlacement {
+  return busy ? "queue" : "conversation";
 }
 
 /**

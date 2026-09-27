@@ -21,7 +21,7 @@ function msg(id: string, content = id): Message {
 }
 
 describe("placementForSend", () => {
-  it("queues while Pi is generating, shows in the conversation otherwise", () => {
+  it("queues while the session is busy, shows in the conversation otherwise", () => {
     expect(placementForSend(true)).toBe("queue");
     expect(placementForSend(false)).toBe("conversation");
   });

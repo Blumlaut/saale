@@ -13,6 +13,10 @@ import { installMemoryStorage } from "../../helpers/memory-storage";
  * bubble first makes the message flash as sent (and, sitting behind the live
  * turn, swaps the streaming indicator for a bare "Thinking…" placeholder)
  * before it snaps into the queue.
+ *
+ * A manual compaction holds the session the same way — Pi refuses a prompt
+ * until the summarization ends — so a message sent then queues too, and the
+ * chat has to reconnect when the compaction ends so the server delivers it.
  */
 
 // A stable router: a fresh object per render would change `loadMessages`'
@@ -86,11 +90,14 @@ function dbMessage(id: string, content: string) {
   };
 }
 
-/** What the next POST /messages answers: queued by a running generation, or prompted. */
+/** What the next POST /messages answers: queued by a busy session, or prompted. */
 let sendResponse: "queued" | "prompted";
 /** Hold the POST open to inspect the UI while the request is in flight. */
 let holdSend: boolean;
 let releaseSend: (() => void) | null;
+/** Same, for a manual compaction whose summarization is still running. */
+let holdCompact: boolean;
+let releaseCompact: (() => void) | null;
 
 function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input.toString();
@@ -109,6 +116,13 @@ function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
   }
   if (url === `/api/chat/sessions/${SESSION_ID}/messages`) {
     return Promise.resolve(json({ messages: [], queuedMessages: [], session: { id: SESSION_ID } }));
+  }
+  if (url === `/api/chat/sessions/${SESSION_ID}/compact` && method === "POST") {
+    const body = { compacted: true, tokensBefore: 1000 };
+    if (!holdCompact) return Promise.resolve(json(body));
+    return new Promise<Response>((resolve) => {
+      releaseCompact = () => resolve(json(body));
+    });
   }
   if (url === `/api/chat/sessions/${SESSION_ID}`) {
     return Promise.resolve(json({ session: { title: "Test chat" } }));
@@ -159,6 +173,8 @@ beforeEach(() => {
   sendResponse = "queued";
   holdSend = false;
   releaseSend = null;
+  holdCompact = false;
+  releaseCompact = null;
 });
 
 afterEach(() => {
@@ -210,5 +226,57 @@ describe("sending while Pi is generating", () => {
     await waitFor(() => expect(screen.getByText("just asking")).toBeInTheDocument());
     expect(screen.queryByRole("group", { name: "Queued messages" })).toBeNull();
     expect(toast.info).not.toHaveBeenCalled();
+  });
+});
+
+describe("sending while a manual compaction holds the session", () => {
+  /** Start a manual compaction whose summarization stays in flight. */
+  async function startHeldCompaction() {
+    holdCompact = true;
+    fireEvent.click(screen.getByRole("button", { name: /Click to compact/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Compact" }));
+    await waitFor(() => expect(releaseCompact).not.toBeNull());
+  }
+
+  it("queues the message without flashing it into the conversation", async () => {
+    await mountStream();
+    await startHeldCompaction();
+
+    // The composer offers to queue: what it sends now cannot be prompted until
+    // the summarization ends.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Queue message" })).toBeInTheDocument(),
+    );
+
+    holdSend = true;
+    sendFromComposer("sent mid-compaction");
+
+    expect(within(queueStrip()).getByText("sent mid-compaction")).toBeInTheDocument();
+    expect(screen.getAllByText("sent mid-compaction")).toHaveLength(1);
+    expect(screen.queryByText("Thinking...")).toBeNull();
+
+    await act(async () => {
+      releaseSend?.();
+    });
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith("Queued", expect.anything()));
+
+    await act(async () => {
+      releaseCompact?.();
+    });
+  });
+
+  it("reconnects when the compaction ends so the queued message is delivered", async () => {
+    await mountStream();
+    await startHeldCompaction();
+
+    await act(async () => {
+      releaseCompact?.();
+    });
+
+    // The stream was re-decided: the connection that watched the idle chat
+    // never drains the queue, a fresh one does.
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
+    expect(MockEventSource.instances[0]!.readyState).toBe(MockEventSource.CLOSED);
+    expect(MockEventSource.instances[1]!.url).toBe(`/api/chat/sessions/${SESSION_ID}/stream`);
   });
 });

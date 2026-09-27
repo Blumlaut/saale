@@ -122,6 +122,69 @@ export async function getActiveSessions(userId: string): Promise<Set<string>> {
   }
 }
 
+// ─── Compaction-in-Progress Tracking ────────────────────────────────────────
+
+/**
+ * Redis-backed "a manual compaction holds this session" flag.
+ *
+ * Pi refuses to submit a prompt while a compaction runs, and `compact()`
+ * aborts any generation it finds — so a compaction cannot masquerade as an
+ * active session (unregistering one must never clear the other). It is a busy
+ * state of its own: POST /messages consults it via `isSessionBusy`, so a
+ * message sent mid-compaction is queued like one sent mid-generation instead
+ * of racing the summarization into a rejection.
+ *
+ * Key format: `chat:compacting:{sessionId}`, refreshed by the compaction
+ * request for as long as it runs.
+ */
+
+const COMPACTING_PREFIX = "chat:compacting:";
+const COMPACTING_TTL_SECONDS = 600;
+
+/** Mark the session as held by a manual compaction. */
+export async function markCompactionInProgress(sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.set(`${COMPACTING_PREFIX}${sessionId}`, "1", "EX", COMPACTING_TTL_SECONDS);
+  } catch (err) {
+    console.error("Failed to mark compaction in progress:", err);
+  }
+}
+
+/** Whether a manual compaction currently holds the session. */
+export async function isCompactionInProgress(sessionId: string): Promise<boolean> {
+  try {
+    const redis = getRedis();
+    return (await redis.exists(`${COMPACTING_PREFIX}${sessionId}`)) === 1;
+  } catch (err) {
+    console.error("Failed to read the compaction flag:", err);
+    return false;
+  }
+}
+
+/** Clear the compaction flag once the compaction settled (or failed). */
+export async function clearCompactionInProgress(sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.del(`${COMPACTING_PREFIX}${sessionId}`);
+  } catch (err) {
+    console.error("Failed to clear the compaction flag:", err);
+  }
+}
+
+/**
+ * Is the session busy — a generation streaming, or a manual compaction holding
+ * it? Both refuse a prompt, so a message sent now has to wait in the send queue
+ * instead of being prompted into a rejection.
+ */
+export async function isSessionBusy(userId: string, sessionId: string): Promise<boolean> {
+  const [active, compacting] = await Promise.all([
+    isSessionActive(userId, sessionId),
+    isCompactionInProgress(sessionId),
+  ]);
+  return active || compacting;
+}
+
 // ─── Generation Start Tracking ───────────────────────────────────────────────
 
 /**

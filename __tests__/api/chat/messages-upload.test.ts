@@ -42,6 +42,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/redis", () => ({
   isSessionActive: vi.fn().mockResolvedValue(false),
+  isSessionBusy: vi.fn().mockResolvedValue(false),
   registerActiveSession: vi.fn().mockResolvedValue(undefined),
   setPendingPrompt: vi.fn().mockResolvedValue(undefined),
   releaseSendQueue: vi.fn().mockResolvedValue(undefined),
@@ -71,13 +72,16 @@ const USER_ID = "user-1";
 
 let tmpRoot: string;
 
+// `vi.resetModules()` forces a fresh import of the route, which pulls in its
+// whole module graph — seconds of transform/import work, enough to blow the
+// default 10s hook budget on a loaded machine.
 beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-msg-upload-"));
   vi.stubEnv("UPLOADS_DIR", tmpRoot);
   vi.resetModules();
   const mod = await import("@/app/api/chat/sessions/[sessionId]/messages/route");
   POST = mod.POST;
-});
+}, 60_000);
 
 afterAll(async () => {
   await fs.rm(tmpRoot, { recursive: true, force: true });
