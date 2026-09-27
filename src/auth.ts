@@ -1,3 +1,9 @@
+// Must be imported before betterAuth() is constructed: Next dev can evaluate
+// this module before .env is loaded, in which case better-auth would fall
+// back to its hardcoded default secret and cookies would be signed with a
+// different secret than other module instances — intermittently invalidating
+// sessions.
+import "dotenv/config";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin } from "better-auth/plugins";
