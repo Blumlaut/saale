@@ -9,9 +9,10 @@
  * either writes), leaving the reply in a session the chat is no longer
  * linked to.
  *
- * Serializing on the chat key keeps one run per chat at a time. An
- * interruption still works: the webhook aborts the active generation before
- * calling in, so a new message replaces a live run instead of queuing behind it.
+ * Serializing on the chat key keeps one run per chat at a time. Latest
+ * message wins: the webhook supersedes the active run before calling in, and
+ * a run whose message was superseded while it sat in this queue bails out at
+ * its checkpoints (see `isLatestMessage`) instead of running to completion.
  */
 
 type Lock = Promise<void>;

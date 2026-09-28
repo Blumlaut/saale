@@ -37,7 +37,13 @@ import { registerActiveSession, markGenerationStart } from "@/lib/redis";
 import { resetSessionEvents, subscribeSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
-import { unregisterTelegramSession, wasTelegramSessionInterrupted } from "./session-registry";
+import {
+  beginTelegramRun,
+  clearTelegramRun,
+  isLatestMessage,
+  unregisterTelegramSession,
+  wasTelegramSessionInterrupted,
+} from "./session-registry";
 import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
 
 /**
@@ -81,11 +87,19 @@ Telegram-specific guidelines:
  */
 export async function processTelegramMessage(params: ProcessTelegramMessageParams): Promise<void> {
   // One run per chat: two overlapping runs share a transcript directory and can
-  // both create the chat's session (see `withChatLock`). Interruptions still
-  // replace a live run — the webhook aborts it before calling in.
-  return withChatLock(`${params.userId}:${params.telegramChatId}`, () =>
-    runTelegramMessage(params),
-  );
+  // both create the chat's session (see `withChatLock`). Latest message wins —
+  // a run superseded by a newer message bails out at its checkpoints instead
+  // of running to completion (see `isLatestMessage`).
+  return withChatLock(`${params.userId}:${params.telegramChatId}`, async () => {
+    try {
+      await runTelegramMessage(params);
+    } finally {
+      // The run is fully settled (success, error, abort, or supersession).
+      // interruptTelegramChat() awaits this promise, so every exit path —
+      // including a setup failure before the run registers — must resolve it.
+      params.processingDone?.resolve();
+    }
+  });
 }
 
 interface ProcessTelegramMessageParams {
@@ -94,6 +108,10 @@ interface ProcessTelegramMessageParams {
     telegramChatId: bigint,
   ) => void;
   processingDone?: { resolve: () => void };
+  /** This message's sequence for its chat — the run drops out if a newer message supersedes it. */
+  messageSeq: number;
+  /** Settles when this run has fully settled — registered for interrupt waits. */
+  donePromise?: Promise<void>;
   userId: string;
   encryptedToken: string;
   telegramChatId: bigint;
@@ -116,8 +134,28 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     fileInfo,
     replyToMessageId,
     onSessionCreated,
-    processingDone,
+    messageSeq,
+    donePromise,
   } = params;
+
+  // Register this run as the chat's active run BEFORE the slow setup below
+  // (DB upsert, model resolution, session creation take seconds) — an
+  // incoming message must be able to supersede the run even while the Pi
+  // session does not exist yet.
+  beginTelegramRun(userId, telegramChatId, donePromise ?? new Promise<void>(() => {}));
+
+  // Latest message wins: a newer message for this chat arrived while we were
+  // waiting for the chat lock. Drop this run before doing any work — the
+  // newer message is the one that gets processed (and replied to).
+  if (!isLatestMessage(userId, telegramChatId, messageSeq)) {
+    console.warn(
+      `Dropping superseded Telegram message (seq ${messageSeq}, msg ${replyToMessageId}, chat ${telegramChatId})`,
+    );
+    // Remove our entry — nothing left to interrupt (the superseding message
+    // overwrites the entry when its run starts).
+    clearTelegramRun(userId, telegramChatId);
+    return;
+  }
 
   // 1. Find or create the TelegramChat + ChatSession
   const { sessionId, telegramChatId: tgChatId } = await upsertTelegramChat(
@@ -375,215 +413,227 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     });
   }
 
+  // Checkpoint — a newer message may have arrived during the slow setup
+  // above, before the Pi session existed (so the webhook's interrupt could
+  // not abort it). Latest message wins: dispose the session, skip the prompt,
+  // and treat the run as interrupted (cancelled, no reply).
+  const superseded = !isLatestMessage(userId, telegramChatId, messageSeq);
+  if (superseded) {
+    console.warn(`Telegram run ${run.id} superseded before prompt (seq ${messageSeq}) — skipping`);
+    stopTyping();
+    session.dispose();
+  }
+
   try {
-    try {
-      await new Promise<void>((resolve, reject) => {
-        // Idle timeout — fires only if the session goes completely silent
-        // (hung model, stuck tool). Every agent event resets the window, so
-        // an actively working agent can run longer than the idle window.
-        const idleTimeout = createAgentIdleTimeout({
-          session,
-          timeoutMs: AGENT_IDLE_TIMEOUT_MS,
-          label: `telegram:${run.id}`,
-          onTimeout: () => {
-            unsubscribe();
-            processingDone?.resolve();
-            session.abort().catch((err) => {
-              console.error(`Telegram session abort failed:`, err);
-            });
-            reject(new Error("Telegram agent stalled (no activity for 10min)"));
-          },
-        });
-
-        // The provider failure of the last attempt, if it ended in one. Only
-        // the settled event decides the run's outcome (see the agent_end case).
-        let lastProviderError: string | null = null;
-
-        const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-          switch (event.type) {
-            case "message_update": {
-              if (event.message.role !== "assistant") return;
-              const msg = event.message as { content: unknown[] };
-              currentTurnText = extractCumulativeText(msg.content);
-
-              // Flush text NOW when a tool call appears — the approval request
-              // fires inside tool.execute() (before tool_execution_start), so we
-              // need the agent's response text to arrive BEFORE the approval.
-              const hasToolCall = msg.content.some(
-                (c) =>
-                  typeof c === "object" &&
-                  c !== null &&
-                  (c as Record<string, unknown>).type === "toolCall",
-              );
-              if (hasToolCall) {
-                flushTurnText(turnIndex);
-              }
-              break;
-            }
-
-            case "tool_execution_start": {
-              // Send a human-readable summary for tools that define one
-              if (!sentToolSummaries.has(event.toolCallId)) {
-                sentToolSummaries.add(event.toolCallId);
-
-                resolveToolSummary(event.toolName, event.args)
-                  .then((summary) => {
-                    if (summary) {
-                      sendTelegramMessage(
-                        encryptedToken,
-                        telegramChatId,
-                        `🔧 \`${summary}\``,
-                      ).catch((err) => {
-                        console.error("Failed to send Telegram tool summary:", err);
-                      });
-                    }
-                  })
-                  .catch((err) => {
-                    console.error("Failed to resolve tool summary:", err);
-                  });
-              }
-              break;
-            }
-
-            case "tool_execution_end": {
-              // Results are tracked by the session event tracker for DB saves.
-              break;
-            }
-
-            case "turn_end": {
-              const assistantMsg =
-                event.message.role === "assistant"
-                  ? (event.message as { content: unknown[] })
-                  : null;
-
-              const text = assistantMsg
-                ? extractCumulativeText(assistantMsg.content)
-                : currentTurnText;
-
-              // Send non-empty text to Telegram (skip if already flushed in message_update
-              // when a tool call was detected — that ensures text arrives before approval).
-              if (text.trim() && !flushedTurnTexts.has(turnIndex)) {
-                sendTelegramMessage(
-                  encryptedToken,
-                  telegramChatId,
-                  text,
-                  turnIndex === 0
-                    ? replyToMessageId != null
-                      ? { replyToMessageId }
-                      : undefined
-                    : undefined,
-                ).catch((err) => {
-                  console.error("Failed to send Telegram message for turn:", err);
-                });
-              }
-
-              turnIndex++;
-              currentTurnText = "";
-              break;
-            }
-
-            case "compaction_start": {
-              sendTelegramMessage(
-                encryptedToken,
-                telegramChatId,
-                "\U0001f504 Compacting conversation...",
-              ).catch((err) => {
-                console.error("Failed to send Telegram compaction start message:", err);
-              });
-              break;
-            }
-
-            case "compaction_end": {
-              // Compaction summary is persisted by the session event tracker.
-              if (event.result && !event.aborted) {
-                // Report token stats to Telegram (no summary)
-                const tokensAfter = event.result.estimatedTokensAfter;
-                const tokensInfo = tokensAfter
-                  ? ` (was ${event.result.tokensBefore.toLocaleString()} tokens, now ~${tokensAfter.toLocaleString()})`
-                  : ` (was ${event.result.tokensBefore.toLocaleString()} tokens)`;
-                sendTelegramMessage(
-                  encryptedToken,
-                  telegramChatId,
-                  `\u2705 Compaction complete${tokensInfo}.`,
-                ).catch((err) => {
-                  console.error("Failed to send Telegram compaction end message:", err);
-                });
-              }
-              break;
-            }
-
-            // agent_end only means the current run iteration stopped — the
-            // SDK may still retry, auto-compact, or continue the run. The
-            // settled event is the "completely finished" signal (TUI parity),
-            // and the only safe place to decide the run's outcome: an overflow
-            // failure reports `willRetry: false` (compaction handles it, not
-            // retry) and is followed by a compact-and-continue, so deciding
-            // here would report an error for a run whose answer arrives a
-            // moment later — and drop it, because the listener is gone.
-            case "agent_settled": {
-              idleTimeout.clear();
+    if (!superseded) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // Idle timeout — fires only if the session goes completely silent
+          // (hung model, stuck tool). Every agent event resets the window, so
+          // an actively working agent can run longer than the idle window.
+          const idleTimeout = createAgentIdleTimeout({
+            session,
+            timeoutMs: AGENT_IDLE_TIMEOUT_MS,
+            label: `telegram:${run.id}`,
+            onTimeout: () => {
               unsubscribe();
-              processingDone?.resolve();
-              if (lastProviderError) {
-                reject(new Error(lastProviderError));
-              } else {
-                resolve();
-              }
-              break;
-            }
+              session.abort().catch((err) => {
+                console.error(`Telegram session abort failed:`, err);
+              });
+              reject(new Error("Telegram agent stalled (no activity for 10min)"));
+            },
+          });
 
-            // A provider failure does not throw — it ends the assistant
-            // message with stopReason "error". Record it per attempt; the
-            // settled handler decides. `willRetry` runs are skipped because
-            // their failure is provisional and the retry reports its own.
-            case "agent_end": {
-              if (event.willRetry) break;
-              const lastAssistant = [...event.messages]
-                .reverse()
-                .find((m) => m.role === "assistant") as ProviderErrorSource | undefined;
-              lastProviderError = extractProviderError(lastAssistant);
-              break;
-            }
+          // The provider failure of the last attempt, if it ended in one. Only
+          // the settled event decides the run's outcome (see the agent_end case).
+          let lastProviderError: string | null = null;
 
-            case "auto_retry_end": {
-              if (!event.success) {
-                lastProviderError = event.finalError ?? "Agent retry failed";
+          const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+            switch (event.type) {
+              case "message_update": {
+                if (event.message.role !== "assistant") return;
+                const msg = event.message as { content: unknown[] };
+                currentTurnText = extractCumulativeText(msg.content);
+
+                // Flush text NOW when a tool call appears — the approval request
+                // fires inside tool.execute() (before tool_execution_start), so we
+                // need the agent's response text to arrive BEFORE the approval.
+                const hasToolCall = msg.content.some(
+                  (c) =>
+                    typeof c === "object" &&
+                    c !== null &&
+                    (c as Record<string, unknown>).type === "toolCall",
+                );
+                if (hasToolCall) {
+                  flushTurnText(turnIndex);
+                }
+                break;
               }
-              break;
+
+              case "tool_execution_start": {
+                // Send a human-readable summary for tools that define one
+                if (!sentToolSummaries.has(event.toolCallId)) {
+                  sentToolSummaries.add(event.toolCallId);
+
+                  resolveToolSummary(event.toolName, event.args)
+                    .then((summary) => {
+                      if (summary) {
+                        sendTelegramMessage(
+                          encryptedToken,
+                          telegramChatId,
+                          `🔧 \`${summary}\``,
+                        ).catch((err) => {
+                          console.error("Failed to send Telegram tool summary:", err);
+                        });
+                      }
+                    })
+                    .catch((err) => {
+                      console.error("Failed to resolve tool summary:", err);
+                    });
+                }
+                break;
+              }
+
+              case "tool_execution_end": {
+                // Results are tracked by the session event tracker for DB saves.
+                break;
+              }
+
+              case "turn_end": {
+                const assistantMsg =
+                  event.message.role === "assistant"
+                    ? (event.message as { content: unknown[] })
+                    : null;
+
+                const text = assistantMsg
+                  ? extractCumulativeText(assistantMsg.content)
+                  : currentTurnText;
+
+                // Send non-empty text to Telegram (skip if already flushed in message_update
+                // when a tool call was detected — that ensures text arrives before approval).
+                if (text.trim() && !flushedTurnTexts.has(turnIndex)) {
+                  sendTelegramMessage(
+                    encryptedToken,
+                    telegramChatId,
+                    text,
+                    turnIndex === 0
+                      ? replyToMessageId != null
+                        ? { replyToMessageId }
+                        : undefined
+                      : undefined,
+                  ).catch((err) => {
+                    console.error("Failed to send Telegram message for turn:", err);
+                  });
+                }
+
+                turnIndex++;
+                currentTurnText = "";
+                break;
+              }
+
+              case "compaction_start": {
+                sendTelegramMessage(
+                  encryptedToken,
+                  telegramChatId,
+                  "\U0001f504 Compacting conversation...",
+                ).catch((err) => {
+                  console.error("Failed to send Telegram compaction start message:", err);
+                });
+                break;
+              }
+
+              case "compaction_end": {
+                // Compaction summary is persisted by the session event tracker.
+                if (event.result && !event.aborted) {
+                  // Report token stats to Telegram (no summary)
+                  const tokensAfter = event.result.estimatedTokensAfter;
+                  const tokensInfo = tokensAfter
+                    ? ` (was ${event.result.tokensBefore.toLocaleString()} tokens, now ~${tokensAfter.toLocaleString()})`
+                    : ` (was ${event.result.tokensBefore.toLocaleString()} tokens)`;
+                  sendTelegramMessage(
+                    encryptedToken,
+                    telegramChatId,
+                    `\u2705 Compaction complete${tokensInfo}.`,
+                  ).catch((err) => {
+                    console.error("Failed to send Telegram compaction end message:", err);
+                  });
+                }
+                break;
+              }
+
+              // agent_end only means the current run iteration stopped — the
+              // SDK may still retry, auto-compact, or continue the run. The
+              // settled event is the "completely finished" signal (TUI parity),
+              // and the only safe place to decide the run's outcome: an overflow
+              // failure reports `willRetry: false` (compaction handles it, not
+              // retry) and is followed by a compact-and-continue, so deciding
+              // here would report an error for a run whose answer arrives a
+              // moment later — and drop it, because the listener is gone.
+              case "agent_settled": {
+                idleTimeout.clear();
+                unsubscribe();
+                if (lastProviderError) {
+                  reject(new Error(lastProviderError));
+                } else {
+                  resolve();
+                }
+                break;
+              }
+
+              // A provider failure does not throw — it ends the assistant
+              // message with stopReason "error". Record it per attempt; the
+              // settled handler decides. `willRetry` runs are skipped because
+              // their failure is provisional and the retry reports its own.
+              case "agent_end": {
+                if (event.willRetry) break;
+                const lastAssistant = [...event.messages]
+                  .reverse()
+                  .find((m) => m.role === "assistant") as ProviderErrorSource | undefined;
+                lastProviderError = extractProviderError(lastAssistant);
+                break;
+              }
+
+              case "auto_retry_end": {
+                if (!event.success) {
+                  lastProviderError = event.finalError ?? "Agent retry failed";
+                }
+                break;
+              }
             }
+          });
+
+          // Notify caller about the created session (for registry tracking)
+          if (onSessionCreated) {
+            onSessionCreated(session, telegramChatId);
+            wasRegistered = true;
           }
-        });
 
-        // Notify caller about the created session (for registry tracking)
-        if (onSessionCreated) {
-          onSessionCreated(session, telegramChatId);
-          wasRegistered = true;
-        }
-
-        // Send the user message to the agent (with images if available).
-        // session.prompt() — the TUI path — runs the SDK's pre-prompt
-        // compaction check and post-run processing (retry, auto-compaction,
-        // overflow continue) and resolves when the session settles. The
-        // system prompt comes from the resource loader above, so the
-        // SDK's per-turn prompt resolution keeps it.
-        const promptOptions = processedFile?.imageData
-          ? { images: [processedFile.imageData] }
-          : undefined;
-        session.prompt(promptText, promptOptions).catch((err) => {
-          idleTimeout.clear();
-          unsubscribe();
-          processingDone?.resolve();
-          reject(err);
+          // Send the user message to the agent (with images if available).
+          // session.prompt() — the TUI path — runs the SDK's pre-prompt
+          // compaction check and post-run processing (retry, auto-compaction,
+          // overflow continue) and resolves when the session settles. The
+          // system prompt comes from the resource loader above, so the
+          // SDK's per-turn prompt resolution keeps it.
+          const promptOptions = processedFile?.imageData
+            ? { images: [processedFile.imageData] }
+            : undefined;
+          session.prompt(promptText, promptOptions).catch((err) => {
+            idleTimeout.clear();
+            unsubscribe();
+            reject(err);
+          });
         });
-      });
-    } finally {
-      stopTyping();
+      } finally {
+        stopTyping();
+      }
     }
 
     // Detect interruption BEFORE cleanup: a new message aborting this run
     // marks it in the registry (the old entry may already have been
     // overwritten — in that narrow race the run counts as completed).
-    const interrupted = wasTelegramSessionInterrupted(session);
+    // `superseded` covers the checkpoint path, where the run bailed before
+    // the session was attached to the registry entry.
+    const interrupted = superseded || wasTelegramSessionInterrupted(session);
 
     // For single-turn responses (no turn_end fired), make sure the text is
     // still delivered to Telegram. The tracker handles the DB save.
@@ -654,8 +704,12 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
 
     // Always unregister from the session registry (for interruption
     // tracking). Identity-checked: a new run registered during the
-    // interrupt must not be unregistered by the old run's cleanup.
-    if (wasRegistered) {
+    // interrupt must not be unregistered by the old run's cleanup. A
+    // superseded run (bailed at its checkpoint) has no session attached,
+    // so it clears its own entry outright.
+    if (superseded) {
+      clearTelegramRun(userId, telegramChatId);
+    } else if (wasRegistered) {
       unregisterTelegramSession(userId, telegramChatId, session);
     }
   }
