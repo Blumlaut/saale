@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Brain, Loader2, Search, Sparkles, ChevronDown, Check } from "lucide-react";
+import { Brain, Eye, Loader2, Search, Sparkles, ChevronDown, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
@@ -16,13 +16,21 @@ export interface ModelInfo {
   provider: string;
   providerName: string;
   reasoning: boolean | undefined;
+  /** Whether this model accepts image input (images are dropped otherwise). */
+  vision: boolean | undefined;
   contextWindow: number | undefined;
 }
 
 interface ModelsApiResponse {
   models: Record<
     string,
-    Array<{ id: string; name: string; reasoning?: boolean; contextWindow?: number }>
+    Array<{
+      id: string;
+      name: string;
+      reasoning?: boolean;
+      vision?: boolean;
+      contextWindow?: number;
+    }>
   >;
   providers?: Array<{ id: string; name: string }>;
 }
@@ -77,6 +85,7 @@ export function ModelPicker({
                 provider,
                 providerName,
                 reasoning: m.reasoning,
+                vision: m.vision,
                 contextWindow: m.contextWindow,
               });
             }
@@ -277,6 +286,11 @@ export function ModelPicker({
                             </Badge>
                             {model.reasoning && (
                               <Sparkles className="text-muted-foreground h-3 w-3 shrink-0" />
+                            )}
+                            {model.vision && (
+                              <span title="Accepts image input">
+                                <Eye className="text-muted-foreground h-3 w-3 shrink-0" />
+                              </span>
                             )}
                           </div>
                         </div>

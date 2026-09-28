@@ -60,6 +60,7 @@ describe("POST /api/providers", () => {
       baseUrl: "http://localhost:8080/v1",
       contextWindow: null,
       maxOutputTokens: null,
+      modelCapabilities: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -118,6 +119,79 @@ describe("POST /api/providers", () => {
     }
     expect(db.prisma.providerApiKey.upsert).not.toHaveBeenCalled();
   });
+
+  it("records which of the endpoint's models can see images", async () => {
+    // An import is where Saale can learn this: llama.cpp answers `/props` with
+    // the projector it loaded, and without it Pi strips every image from the
+    // request to that model.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith("/models")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: [{ id: "Qwen3-VL-8B" }, { id: "Llama-3-8B" }] }),
+          };
+        }
+        const model = new URL(String(url)).searchParams.get("model");
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            model_path: `/models/${model}/quant.gguf`,
+            modalities: { vision: model === "Qwen3-VL-8B" },
+          }),
+        };
+      }),
+    );
+    vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue({} as never);
+
+    const response = await POST(post({ provider: "custom", baseUrl: "http://localhost:8080/v1" }));
+
+    expect(response.status).toBe(200);
+    expect(db.prisma.providerApiKey.update).toHaveBeenCalledWith({
+      where: { id: "key-1" },
+      data: {
+        modelCapabilities: {
+          "Qwen3-VL-8B": { vision: true },
+          "Llama-3-8B": { vision: false },
+        },
+      },
+    });
+    await expect(response.json()).resolves.toMatchObject({ modelCount: 2, visionModels: 1 });
+  });
+
+  it("keeps capabilities the user set when the endpoint cannot answer", async () => {
+    vi.mocked(db.prisma.providerApiKey.upsert).mockResolvedValue({
+      id: "key-1",
+      userId: "user-1",
+      provider: "custom",
+      encryptedKey: "enc()",
+      label: "",
+      baseUrl: "http://localhost:8080/v1",
+      contextWindow: null,
+      maxOutputTokens: null,
+      modelCapabilities: { "hand-set": { vision: true } },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue({} as never);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).endsWith("/models")
+          ? { ok: true, status: 200, json: async () => ({ data: [{ id: "hand-set" }] }) }
+          : { ok: false, status: 404, json: async () => ({}) },
+      ),
+    );
+
+    await POST(post({ provider: "custom", baseUrl: "http://localhost:8080/v1" }));
+
+    // `/props` answered nothing, so the stored override stands and no write is
+    // needed to say so.
+    expect(db.prisma.providerApiKey.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("PATCH /api/providers", () => {
@@ -137,6 +211,7 @@ describe("PATCH /api/providers", () => {
       baseUrl: "http://localhost:8080/v1",
       contextWindow: 16384,
       maxOutputTokens: 4096,
+      modelCapabilities: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -180,6 +255,7 @@ describe("PATCH /api/providers", () => {
       baseUrl: null,
       contextWindow: null,
       maxOutputTokens: null,
+      modelCapabilities: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

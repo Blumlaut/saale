@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "../settings/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-import { PROVIDERS, supportsCustomLimits } from "@/lib/providers/config";
+import { PROVIDERS, definesProviderModels } from "@/lib/providers/config";
 import { parseProviderLimits } from "@/lib/providers/limits";
+import { detectAndStoreProviderCapabilities } from "@/lib/providers/provider-capabilities";
 
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
@@ -59,7 +60,7 @@ export async function GET() {
     availableProviders: Object.entries(PROVIDERS).map(([key, val]) => ({
       id: key,
       name: val.label,
-      limitsConfigurable: supportsCustomLimits(key),
+      modelsConfigurable: definesProviderModels(key),
     })),
   });
 }
@@ -128,10 +129,23 @@ export async function POST(request: NextRequest) {
         },
       });
 
-  // For custom providers, try to discover models
+  // For custom providers, discover the model list and ask the endpoint what
+  // those models can do — an import is where Saale learns that a local vision
+  // model accepts images.
   let discoveredModels: string[] = [];
+  let visionModels = 0;
   if (provider === "custom" && baseUrl) {
     discoveredModels = await fetchOpenAIModels(baseUrl, apiKey || undefined);
+
+    if (discoveredModels.length > 0) {
+      const summary = await detectAndStoreProviderCapabilities({
+        keyId: key.id,
+        stored: key.modelCapabilities,
+        baseUrl,
+        apiKey: apiKey || undefined,
+      });
+      visionModels = summary.visionModels;
+    }
   }
 
   return NextResponse.json({
@@ -144,6 +158,7 @@ export async function POST(request: NextRequest) {
     displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
     discoveredModels,
     modelCount: discoveredModels.length,
+    visionModels,
   });
 }
 

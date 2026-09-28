@@ -111,6 +111,7 @@ describe("buildModelRuntime", () => {
         baseUrl: true,
         contextWindow: true,
         maxOutputTokens: true,
+        modelCapabilities: true,
       },
     });
     expect(db.prisma.providerApiKey.findMany).toHaveBeenCalledWith({
@@ -121,6 +122,7 @@ describe("buildModelRuntime", () => {
         baseUrl: true,
         contextWindow: true,
         maxOutputTokens: true,
+        modelCapabilities: true,
       },
     });
   });
@@ -139,6 +141,7 @@ describe("buildModelRuntime", () => {
           baseUrl: null,
           contextWindow: null,
           maxOutputTokens: null,
+          modelCapabilities: null,
         },
       ])
       .mockResolvedValueOnce([
@@ -153,6 +156,7 @@ describe("buildModelRuntime", () => {
           baseUrl: null,
           contextWindow: null,
           maxOutputTokens: null,
+          modelCapabilities: null,
         },
       ]);
 
@@ -207,6 +211,7 @@ describe("buildModelRuntime", () => {
           baseUrl: null,
           contextWindow: null,
           maxOutputTokens: null,
+          modelCapabilities: null,
         },
       ])
       .mockResolvedValueOnce([]);
@@ -239,6 +244,113 @@ describe("buildModelRuntime", () => {
     });
   });
 
+  it("claims image input for a model the provider recorded as vision-capable", async () => {
+    const registerProvider = vi.fn();
+    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
+      getModel: vi.fn().mockReturnValue(undefined),
+      getAvailableSnapshot: vi.fn().mockReturnValue([]),
+      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+      getProvider: vi.fn(),
+      registerProvider,
+    } as never);
+
+    vi.mocked(db.prisma.providerApiKey.findMany)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "key-1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          userId: "user-1",
+          provider: "custom",
+          encryptedKey: "encrypted-key",
+          label: "llama.cpp",
+          baseUrl: "http://localhost:8080/v1",
+          contextWindow: 32_768,
+          maxOutputTokens: 4_096,
+          // Written by detection (`/props` reported the projector) or by hand.
+          modelCapabilities: {
+            "Qwen3-VL-8B": { vision: true },
+            "Llama-3-8B": { vision: false },
+          },
+        },
+      ]);
+    vi.mocked(crypto.decrypt).mockReturnValue("local-key");
+    stubModelListing(["Qwen3-VL-8B", "Llama-3-8B", "never-heard-of-it"]);
+
+    await buildModelRuntime("user-1");
+
+    const registration = registerProvider.mock.calls[0]![1] as {
+      models: Array<Record<string, unknown>>;
+    };
+    // Without the flag Pi strips every image out of the request, and the model
+    // answers about a picture it never received.
+    expect(registration.models[0]).toMatchObject({
+      id: "Qwen3-VL-8B",
+      input: ["text", "image"],
+    });
+    expect(registration.models[1]).toMatchObject({ id: "Llama-3-8B", input: ["text"] });
+    // No answer anywhere: claim nothing the endpoint cannot do.
+    expect(registration.models[2]).toMatchObject({ id: "never-heard-of-it", input: ["text"] });
+  });
+
+  it("lets a configured capability overrule the catalog", async () => {
+    const getModel = vi.fn().mockImplementation((_provider: string, id: string) =>
+      id === "gpt-4o"
+        ? {
+            id,
+            name: "GPT-4o",
+            api: "openai-completions",
+            reasoning: false,
+            input: ["text", "image"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 128_000,
+            maxTokens: 16_384,
+          }
+        : undefined,
+    );
+    const registerProvider = vi.fn();
+    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
+      getModel,
+      getAvailableSnapshot: vi.fn().mockReturnValue([]),
+      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+      getProvider: vi.fn(),
+      registerProvider,
+    } as never);
+
+    vi.mocked(db.prisma.providerApiKey.findMany)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "key-1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          userId: "user-1",
+          provider: "custom",
+          encryptedKey: "encrypted-key",
+          label: "proxy",
+          baseUrl: "http://localhost:8080/v1",
+          contextWindow: null,
+          maxOutputTokens: null,
+          // The endpoint serves gpt-4o without an image pipeline.
+          modelCapabilities: { "gpt-4o": { vision: false } },
+        },
+      ]);
+    vi.mocked(crypto.decrypt).mockReturnValue("local-key");
+    stubModelListing(["gpt-4o"]);
+
+    await buildModelRuntime("user-1");
+
+    const registration = registerProvider.mock.calls[0]![1] as {
+      models: Array<Record<string, unknown>>;
+    };
+    expect(registration.models[0]).toMatchObject({
+      id: "gpt-4o",
+      input: ["text"],
+      contextWindow: 128_000,
+    });
+  });
+
   it("uses the user's limits for a model the catalog does not know", async () => {
     const registerProvider = vi.fn();
     vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
@@ -263,6 +375,7 @@ describe("buildModelRuntime", () => {
           baseUrl: "https://llm.example.com/v1",
           contextWindow: 32_768,
           maxOutputTokens: 4_096,
+          modelCapabilities: null,
         },
       ]);
     vi.mocked(crypto.decrypt).mockReturnValue("local-key");
@@ -295,6 +408,7 @@ describe("buildModelRuntime", () => {
           baseUrl: null,
           contextWindow: null,
           maxOutputTokens: null,
+          modelCapabilities: null,
         },
       ])
       .mockResolvedValueOnce([
@@ -309,6 +423,7 @@ describe("buildModelRuntime", () => {
           baseUrl: null,
           contextWindow: null,
           maxOutputTokens: null,
+          modelCapabilities: null,
         },
       ]);
 
@@ -337,6 +452,7 @@ describe("buildModelRuntime", () => {
         baseUrl: null,
         contextWindow: null,
         maxOutputTokens: null,
+        modelCapabilities: null,
       },
     ]);
 
@@ -364,11 +480,13 @@ describe("buildModelRuntime", () => {
           provider: "anthropic",
           id: "claude-sonnet-4",
           name: "Claude Sonnet 4",
+          input: ["text", "image"],
         },
         {
           provider: "openai",
           id: "gpt-4o",
           name: "GPT-4o",
+          input: ["text"],
         },
       ]),
       setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
@@ -383,11 +501,13 @@ describe("buildModelRuntime", () => {
       provider: "anthropic",
       id: "claude-sonnet-4",
       name: "Claude Sonnet 4",
+      vision: true,
     });
     expect(result.models[1]).toMatchObject({
       provider: "openai",
       id: "gpt-4o",
       name: "GPT-4o",
+      vision: false,
     });
   });
 
@@ -411,6 +531,7 @@ describe("buildModelRuntime", () => {
         baseUrl: true,
         contextWindow: true,
         maxOutputTokens: true,
+        modelCapabilities: true,
       },
     });
   });

@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-import { PROVIDERS, supportsCustomLimits } from "@/lib/providers/config";
+import { PROVIDERS, definesProviderModels } from "@/lib/providers/config";
 import { parseProviderLimits } from "@/lib/providers/limits";
+import { detectAndStoreProviderCapabilities } from "@/lib/providers/provider-capabilities";
 
 /**
  * Fetch models from an OpenAI-compatible /models endpoint.
@@ -105,9 +106,9 @@ export async function GET() {
       id: key,
       name: val.label,
       configured: userKeys.some((u) => u.provider === key) || globalProviderIds.has(key),
-      // Only providers whose models Saale defines itself can have their limits
-      // configured — Pi's catalog already knows the rest.
-      limitsConfigurable: supportsCustomLimits(key),
+      // Only providers whose models Saale defines itself can have their metadata
+      // (limits, capabilities) configured — Pi's catalog already knows the rest.
+      modelsConfigurable: definesProviderModels(key),
     })),
   });
 }
@@ -173,14 +174,28 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // For custom providers, try to discover models
+  // For custom providers, try to discover models, and ask the endpoint what
+  // those models can do while we are here — an import is where Saale learns
+  // that a local vision model accepts images.
   let discoveredModels: string[] = [];
   let modelError: string | undefined;
+  let visionModels = 0;
 
   if (provider === "custom" && baseUrl) {
     const result = await fetchOpenAIModels(baseUrl, apiKey || undefined);
     discoveredModels = result.models;
     modelError = result.error;
+
+    if (discoveredModels.length > 0) {
+      const summary = await detectAndStoreProviderCapabilities({
+        keyId: key.id,
+        stored: key.modelCapabilities,
+        baseUrl,
+        apiKey: apiKey || undefined,
+        modelIds: discoveredModels,
+      });
+      visionModels = summary.visionModels;
+    }
   }
 
   return NextResponse.json({
@@ -193,6 +208,7 @@ export async function POST(request: NextRequest) {
     displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
     discoveredModels,
     modelCount: discoveredModels.length,
+    visionModels,
     modelError,
   });
 }

@@ -41,14 +41,16 @@ export interface ProviderInfo {
   id: string;
   name: string;
   configured?: boolean;
-  /** Whether this provider's models are defined by Saale, so its limits are configurable. */
-  limitsConfigurable?: boolean;
+  /** Whether this provider's models are defined by Saale, so their metadata is configurable. */
+  modelsConfigurable?: boolean;
 }
 
 export interface AvailableModel {
   id: string;
   name: string;
   reasoning: boolean;
+  /** Whether the resolved model definition accepts image input. */
+  vision?: boolean;
   contextWindow?: number;
   maxTokens?: number;
   cost: { input: number; output: number };
@@ -58,4 +60,6 @@ export interface AvailableProvider {
   id: string;
   name: string;
   modelCount: number;
+  /** Whether this provider's per-model metadata (limits, capabilities) is editable. */
+  modelsConfigurable?: boolean;
 }

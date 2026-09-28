@@ -104,9 +104,19 @@ describe("createJobTools", () => {
       vi.mocked(models.buildModelRuntime).mockResolvedValue({
         modelRuntime: {} as never,
         models: [
-          { provider: "anthropic", id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
-          { provider: "anthropic", id: "claude-opus-4-20250514", name: "Claude Opus 4" },
-          { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
+          {
+            provider: "anthropic",
+            id: "claude-sonnet-4-20250514",
+            name: "Claude Sonnet 4",
+            vision: true,
+          },
+          {
+            provider: "anthropic",
+            id: "claude-opus-4-20250514",
+            name: "Claude Opus 4",
+            vision: true,
+          },
+          { provider: "openai", id: "gpt-4o", name: "GPT-4o", vision: true },
         ],
       });
 

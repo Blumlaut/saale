@@ -6,7 +6,7 @@ import {
   parseProviderLimits,
   parseTokenLimit,
 } from "@/lib/providers/limits";
-import { supportsCustomLimits } from "@/lib/providers/config";
+import { definesProviderModels } from "@/lib/providers/config";
 
 describe("parseTokenLimit", () => {
   it("accepts positive integers from numbers and numeric strings", () => {
@@ -93,16 +93,16 @@ describe("limitFields", () => {
   });
 });
 
-describe("supportsCustomLimits", () => {
+describe("definesProviderModels", () => {
   it("covers the providers whose models Saale defines itself", () => {
     for (const provider of ["custom", "openrouter", "together", "fireworks", "huggingface"]) {
-      expect(supportsCustomLimits(provider)).toBe(true);
+      expect(definesProviderModels(provider)).toBe(true);
     }
   });
 
   it("excludes catalog-backed providers", () => {
     for (const provider of ["anthropic", "openai", "google", "deepseek", "groq"]) {
-      expect(supportsCustomLimits(provider)).toBe(false);
+      expect(definesProviderModels(provider)).toBe(false);
     }
   });
 });
