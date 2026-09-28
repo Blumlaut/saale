@@ -7,6 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Page, PageHeader, PageScroll } from "@/components/layout/page";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskForm } from "@/components/tasks/task-form";
+import { TaskChatDialog } from "@/components/tasks/task-chat-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +26,7 @@ export default function TasksPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deleteTask, setDeleteTask] = useState<Task | null>(null);
+  const [chatTask, setChatTask] = useState<Task | null>(null);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -105,6 +107,10 @@ export default function TasksPage() {
     setShowForm(true);
   }, []);
 
+  const handleChat = useCallback((task: Task) => {
+    setChatTask(task);
+  }, []);
+
   const handleFormClose = useCallback((open: boolean) => {
     setShowForm(open);
     if (!open) setEditingTask(null);
@@ -141,6 +147,7 @@ export default function TasksPage() {
             onToggle={handleToggleComplete}
             onDelete={handleDeleteRequest}
             onEdit={handleEdit}
+            onChat={handleChat}
           />
         )}
       </PageScroll>
@@ -151,6 +158,13 @@ export default function TasksPage() {
         onOpenChange={handleFormClose}
         onSubmit={handleFormSubmit}
         task={editingTask}
+      />
+
+      {/* Chat dialog */}
+      <TaskChatDialog
+        open={!!chatTask}
+        onOpenChange={(open) => !open && setChatTask(null)}
+        task={chatTask}
       />
 
       {/* Delete confirmation */}

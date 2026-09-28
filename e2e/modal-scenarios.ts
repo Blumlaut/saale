@@ -319,6 +319,43 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
   },
+  {
+    name: "tasks · chat from task",
+    path: "/dashboard/tasks",
+    sources: ["src/components/tasks/task-chat-dialog.tsx"],
+    mock: async (page) => {
+      await page.route(/\/api\/tasks(\?|$)/, (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        return route.fulfill({
+          json: {
+            tasks: [
+              {
+                id: "e2e-task",
+                title:
+                  "A very long task title that must wrap instead of widening the dialog on small screens",
+                description:
+                  "Long-form task description used to exercise the task chat dialog at phone widths.",
+                status: "pending",
+                priority: "high",
+                dueDate: NOW,
+                tags: ["e2e", "layout"],
+                order: 0,
+                source: "manual",
+                sourceEmailId: null,
+                completedAt: null,
+                createdAt: NOW,
+                updatedAt: NOW,
+              },
+            ],
+          },
+        });
+      });
+    },
+    open: async (page) => {
+      await click(page, '[data-slot="dropdown-menu-trigger"]');
+      await click(page, '[role="menuitem"]:has-text("Chat")');
+    },
+  },
 
   // ── Jobs ──────────────────────────────────────────────────────────────────
   {
