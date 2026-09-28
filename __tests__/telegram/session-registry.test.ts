@@ -2,10 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
   isTelegramSessionActive,
-  registerTelegramSession,
+  isLatestMessage,
+  beginTelegramRun,
+  attachTelegramSession,
+  clearTelegramRun,
   unregisterTelegramSession,
   wasTelegramSessionInterrupted,
-  abortTelegramSession,
+  interruptTelegramChat,
+  nextMessageSeq,
+  shutdownTelegramSessions,
 } from "@/lib/telegram/session-registry";
 
 function makeSession() {
@@ -28,18 +33,68 @@ function nextChatId(): bigint {
 
 const USER = "user-1";
 
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
 describe("telegram session registry", () => {
-  it("tracks active sessions and removes them on unregister", () => {
-    const chatId = nextChatId();
-    const session = makeSession();
+  describe("message sequence (latest message wins)", () => {
+    it("nextMessageSeq increments per chat and is isolated between chats and users", () => {
+      const chatA = nextChatId();
+      const chatB = nextChatId();
 
-    expect(isTelegramSessionActive(USER, chatId)).toBe(false);
+      expect(nextMessageSeq(USER, chatA)).toBe(1);
+      expect(nextMessageSeq(USER, chatA)).toBe(2);
+      // Different chat (and different user) start at their own sequence.
+      expect(nextMessageSeq(USER, chatB)).toBe(1);
+      expect(nextMessageSeq("other-user", chatA)).toBe(1);
+    });
 
-    registerTelegramSession(USER, chatId, session, Promise.resolve());
-    expect(isTelegramSessionActive(USER, chatId)).toBe(true);
+    it("isLatestMessage is true only for the most recently bumped sequence", () => {
+      const chatId = nextChatId();
 
-    unregisterTelegramSession(USER, chatId, session);
-    expect(isTelegramSessionActive(USER, chatId)).toBe(false);
+      const first = nextMessageSeq(USER, chatId);
+      // Right after the bump it is still the latest message.
+      expect(isLatestMessage(USER, chatId, first)).toBe(true);
+
+      const second = nextMessageSeq(USER, chatId);
+      // A newer message supersedes the older one.
+      expect(isLatestMessage(USER, chatId, first)).toBe(false);
+      expect(isLatestMessage(USER, chatId, second)).toBe(true);
+    });
+  });
+
+  describe("two-stage registration", () => {
+    it("a run is active from beginTelegramRun, before the Pi session exists", () => {
+      const chatId = nextChatId();
+
+      expect(isTelegramSessionActive(USER, chatId)).toBe(false);
+
+      beginTelegramRun(USER, chatId, Promise.resolve());
+      // Active even while session is still null (slow pre-session setup).
+      expect(isTelegramSessionActive(USER, chatId)).toBe(true);
+
+      const session = makeSession();
+      attachTelegramSession(USER, chatId, session);
+
+      unregisterTelegramSession(USER, chatId, session);
+      expect(isTelegramSessionActive(USER, chatId)).toBe(false);
+    });
+
+    it("attachTelegramSession is a no-op when the entry was already replaced", () => {
+      const chatId = nextChatId();
+
+      const oldSession = makeSession();
+      beginTelegramRun(USER, chatId, Promise.resolve());
+      attachTelegramSession(USER, chatId, oldSession);
+
+      // A new run overwrites the entry (as it does when it starts).
+      beginTelegramRun(USER, chatId, Promise.resolve());
+
+      // Must not throw and must not resurrect the old session.
+      const newSession = makeSession();
+      attachTelegramSession(USER, chatId, newSession);
+      expect(wasTelegramSessionInterrupted(oldSession)).toBe(false);
+      expect(isTelegramSessionActive(USER, chatId)).toBe(true);
+    });
   });
 
   it("unregister is identity-checked: a late cleanup of an old run keeps the new run registered", () => {
@@ -50,9 +105,11 @@ describe("telegram session registry", () => {
     const oldSession = makeSession();
     const newSession = makeSession();
 
-    registerTelegramSession(USER, chatId, oldSession, Promise.resolve());
+    beginTelegramRun(USER, chatId, Promise.resolve());
+    attachTelegramSession(USER, chatId, oldSession);
     // New run overwrites the entry...
-    registerTelegramSession(USER, chatId, newSession, Promise.resolve());
+    beginTelegramRun(USER, chatId, Promise.resolve());
+    attachTelegramSession(USER, chatId, newSession);
 
     // ...then the old run's late cleanup runs:
     unregisterTelegramSession(USER, chatId, oldSession);
@@ -68,70 +125,142 @@ describe("telegram session registry", () => {
   it("unregister for a different user's session is a no-op", () => {
     const chatId = nextChatId();
     const session = makeSession();
-    registerTelegramSession(USER, chatId, session, Promise.resolve());
+    beginTelegramRun(USER, chatId, Promise.resolve());
+    attachTelegramSession(USER, chatId, session);
 
     // Another user, same chatId (different key) — nothing to delete.
     unregisterTelegramSession("other-user", chatId, session);
     expect(isTelegramSessionActive(USER, chatId)).toBe(true);
   });
 
-  it("abortTelegramSession marks the run interrupted and resolves when the run settles", async () => {
-    const chatId = nextChatId();
-    const session = makeSession();
-    const done = deferred();
+  describe("interruptTelegramChat", () => {
+    it("marks the run interrupted, aborts the live session, and resolves when the run settles", async () => {
+      const chatId = nextChatId();
+      const session = makeSession();
+      const done = deferred();
 
-    registerTelegramSession(USER, chatId, session, done.promise);
+      beginTelegramRun(USER, chatId, done.promise);
+      attachTelegramSession(USER, chatId, session);
 
-    const aborting = abortTelegramSession(USER, chatId);
-    expect(session.abort).toHaveBeenCalledTimes(1);
-    expect(wasTelegramSessionInterrupted(session)).toBe(true);
+      const interrupting = interruptTelegramChat(USER, chatId);
+      expect(session.abort).toHaveBeenCalledTimes(1);
+      expect(wasTelegramSessionInterrupted(session)).toBe(true);
 
-    // Still pending until the run actually settles:
-    let resolved = false;
-    void aborting.then(() => {
-      resolved = true;
+      // Still pending until the run actually settles:
+      let resolved = false;
+      void interrupting.then(() => {
+        resolved = true;
+      });
+      expect(resolved).toBe(false);
+
+      done.resolve();
+      await interrupting;
+      expect(resolved).toBe(true);
     });
-    expect(resolved).toBe(false);
 
-    done.resolve();
-    await aborting;
-    expect(resolved).toBe(true);
-  });
+    it("waits for a pre-session run (session null) without aborting", async () => {
+      // A run in slow setup cannot be aborted; the interrupt marks it and
+      // waits for the run to notice its supersession and settle on its own.
+      const chatId = nextChatId();
+      const done = deferred();
 
-  it("abortTelegramSession resolves immediately when no session is active", async () => {
-    await expect(abortTelegramSession(USER, nextChatId())).resolves.toBeUndefined();
-  });
+      beginTelegramRun(USER, chatId, done.promise);
 
-  it("abort on a settled run is a no-op that still resolves", async () => {
-    const chatId = nextChatId();
-    const session = makeSession();
-    registerTelegramSession(USER, chatId, session, Promise.resolve());
+      const interrupting = interruptTelegramChat(USER, chatId);
+      await flush();
+      let resolved = false;
+      void interrupting.then(() => {
+        resolved = true;
+      });
+      expect(resolved).toBe(false);
 
-    await abortTelegramSession(USER, chatId);
-    expect(session.abort).toHaveBeenCalledTimes(1);
-    expect(wasTelegramSessionInterrupted(session)).toBe(true);
-  });
+      // The run bails at its checkpoint and settles:
+      done.resolve();
+      await interrupting;
+      expect(resolved).toBe(true);
+    });
 
-  it("a new run registered after an interrupt is not marked interrupted", () => {
-    // Interrupt flow end-to-end: abort old run, new run takes over the slot.
-    const chatId = nextChatId();
-    const oldSession = makeSession();
-    const newSession = makeSession();
+    it("resolves immediately when no run is active", async () => {
+      await expect(interruptTelegramChat(USER, nextChatId())).resolves.toBeUndefined();
+    });
 
-    registerTelegramSession(USER, chatId, oldSession, Promise.resolve());
-    abortTelegramSession(USER, chatId);
-    expect(wasTelegramSessionInterrupted(oldSession)).toBe(true);
+    it("a second interrupt during the settling window is harmless", async () => {
+      const chatId = nextChatId();
+      const session = makeSession();
+      const done = deferred();
 
-    // Old run's finally runs (identity-checked — no-op now)...
-    unregisterTelegramSession(USER, chatId, oldSession);
+      beginTelegramRun(USER, chatId, done.promise);
+      attachTelegramSession(USER, chatId, session);
 
-    // New run registers and must NOT inherit the interrupted flag.
-    registerTelegramSession(USER, chatId, newSession, Promise.resolve());
-    expect(wasTelegramSessionInterrupted(newSession)).toBe(false);
-    expect(isTelegramSessionActive(USER, chatId)).toBe(true);
+      const first = interruptTelegramChat(USER, chatId);
+      const second = interruptTelegramChat(USER, chatId);
+      // Both await the same settling promise; each interrupt re-aborts
+      // (abort is idempotent, so this is harmless).
+      expect(session.abort).toHaveBeenCalledTimes(2);
+
+      done.resolve();
+      await Promise.all([first, second]);
+      expect(session.abort).toHaveBeenCalledTimes(2);
+    });
+
+    it("a new run registered after an interrupt is not marked interrupted", () => {
+      // Interrupt flow end-to-end: interrupt old run, new run takes over the slot.
+      const chatId = nextChatId();
+      const oldSession = makeSession();
+      const newSession = makeSession();
+
+      beginTelegramRun(USER, chatId, Promise.resolve());
+      attachTelegramSession(USER, chatId, oldSession);
+      void interruptTelegramChat(USER, chatId);
+      expect(wasTelegramSessionInterrupted(oldSession)).toBe(true);
+
+      // Old run's finally runs (identity-checked — no-op now)...
+      unregisterTelegramSession(USER, chatId, oldSession);
+
+      // New run registers and must NOT inherit the interrupted flag.
+      beginTelegramRun(USER, chatId, Promise.resolve());
+      attachTelegramSession(USER, chatId, newSession);
+      expect(wasTelegramSessionInterrupted(newSession)).toBe(false);
+      expect(isTelegramSessionActive(USER, chatId)).toBe(true);
+    });
   });
 
   it("wasTelegramSessionInterrupted is false for unknown or unregistered sessions", () => {
     expect(wasTelegramSessionInterrupted(makeSession())).toBe(false);
+  });
+
+  it("clearTelegramRun removes the entry outright (supersession bails)", () => {
+    const chatId = nextChatId();
+    const session = makeSession();
+
+    beginTelegramRun(USER, chatId, Promise.resolve());
+    attachTelegramSession(USER, chatId, session);
+    expect(isTelegramSessionActive(USER, chatId)).toBe(true);
+
+    clearTelegramRun(USER, chatId);
+    expect(isTelegramSessionActive(USER, chatId)).toBe(false);
+
+    // Clearing an unknown chat is a no-op.
+    clearTelegramRun(USER, nextChatId());
+  });
+
+  it("shutdownTelegramSessions aborts live sessions and clears the registry", async () => {
+    const chatA = nextChatId();
+    const chatB = nextChatId();
+    const sessionA = makeSession();
+    const sessionB = makeSession();
+
+    beginTelegramRun(USER, chatA, Promise.resolve());
+    attachTelegramSession(USER, chatA, sessionA);
+    beginTelegramRun(USER, chatB, Promise.resolve());
+    // Pre-session run — nothing to abort.
+
+    shutdownTelegramSessions();
+
+    await flush();
+    expect(sessionA.abort).toHaveBeenCalledTimes(1);
+    expect(sessionB.abort).not.toHaveBeenCalled();
+    expect(isTelegramSessionActive(USER, chatA)).toBe(false);
+    expect(isTelegramSessionActive(USER, chatB)).toBe(false);
   });
 });

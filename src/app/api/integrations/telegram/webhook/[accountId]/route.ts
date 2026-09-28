@@ -13,9 +13,9 @@ import { handleApprovalCallback } from "@/lib/telegram/approval";
 import { handleModelCallback, sendModelPicker } from "@/lib/telegram/model-selection";
 import { enableAutoApprove, disableAutoApprove, STFU_DURATION_MS } from "@/lib/pi/auto-approve";
 import {
-  isTelegramSessionActive,
-  registerTelegramSession,
-  abortTelegramSession,
+  attachTelegramSession,
+  interruptTelegramChat,
+  nextMessageSeq,
 } from "@/lib/telegram/session-registry";
 
 /**
@@ -332,15 +332,17 @@ export async function POST(
       console.error("Failed to update lastMessageId:", err);
     });
 
-  // 10. If there's an ongoing generation, abort it before processing the new message.
-  //     This ensures the user's latest message is processed immediately.
-  if (isTelegramSessionActive(account.userId, telegramChatId)) {
-    await abortTelegramSession(account.userId, telegramChatId);
-  }
+  // 10. Latest message wins: this message replaces any in-flight run for the
+  //     chat. Bump the chat's message sequence, then supersede the active run
+  //     (aborting the live session if the Pi session exists yet) and wait for
+  //     it to settle before the new run starts.
+  const messageSeq = nextMessageSeq(account.userId, telegramChatId);
+  await interruptTelegramChat(account.userId, telegramChatId);
 
-  // 11. Process the message asynchronously with session tracking for interruption.
-  //     The processingDone promise resolves when generation completes (success, error, or abort),
-  //     so abortAndAwait() knows when to stop waiting.
+  // 11. Process the message asynchronously with run tracking for interruption.
+  //     The done promise settles when the run has fully settled (success,
+  //     error, abort, or supersession), so interruptTelegramChat() knows when
+  //     to stop waiting.
   const processingDone = { resolve: () => {} } as { resolve: () => void };
   const processingPromise = new Promise<void>((resolve) => {
     processingDone.resolve = resolve;
@@ -355,8 +357,10 @@ export async function POST(
     messageCaption: content.caption,
     fileInfo: content.fileInfo,
     replyToMessageId: message.message_id,
+    messageSeq,
+    donePromise: processingPromise,
     onSessionCreated: (session, tgChatId) => {
-      registerTelegramSession(account.userId, tgChatId, session, processingPromise);
+      attachTelegramSession(account.userId, tgChatId, session);
     },
     processingDone,
   }).catch((err) => {
