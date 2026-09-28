@@ -337,6 +337,10 @@ model ProviderApiKey {
   maxOutputTokens Int?
   /// Context window for this provider's models. null = Pi's model default.
   contextWindow   Int?
+  /// Per-model capabilities (detected, or set by the user) for a provider whose
+  /// models Saale discovers from `/models`: { "<modelId>": { "vision": true } }.
+  /// A model with no entry here follows Pi's catalog, or claims text only.
+  modelCapabilities Json?
   user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

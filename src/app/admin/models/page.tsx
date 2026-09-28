@@ -24,7 +24,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchJson, patchJson, postJson, deleteJson } from "@/lib/http";
-import { Bot, Key, Loader2, CheckCircle, AlertCircle, Plus, Trash2, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Bot,
+  Key,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Plus,
+  Trash2,
+  Search,
+  Eye,
+  ScanEye,
+} from "lucide-react";
 import type { AvailableModel, AvailableProvider } from "@/app/dashboard/settings/types";
 
 interface ProviderModelConfig {
@@ -55,7 +67,9 @@ export default function AdminModelsPage() {
 
   // ─── Providers tab state ───
   const [providers, setProviders] = useState<ConfiguredProvider[]>([]);
-  const [availableProviders, setAvailableProviders] = useState<{ id: string; name: string }[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<
+    { id: string; name: string; modelsConfigurable?: boolean }[]
+  >([]);
   const [providersLoading, setProvidersLoading] = useState(true);
 
   // Add provider dialog
@@ -81,6 +95,11 @@ export default function AdminModelsPage() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
 
+  // ─── Capability (vision) status ───
+  const [capabilityInfo, setCapabilityInfo] = useState<string | null>(null);
+  const [detecting, setDetecting] = useState<string | null>(null);
+  const [savingVision, setSavingVision] = useState<string | null>(null);
+
   // Auto-clear save status
   useEffect(() => {
     if (saveStatus !== "idle") {
@@ -88,6 +107,14 @@ export default function AdminModelsPage() {
       return () => clearTimeout(timer);
     }
   }, [saveStatus]);
+
+  // Auto-clear capability status
+  useEffect(() => {
+    if (capabilityInfo) {
+      const timer = setTimeout(() => setCapabilityInfo(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [capabilityInfo]);
 
   // ─── Load providers ───
   const loadProviders = useCallback(async () => {
@@ -149,6 +176,54 @@ export default function AdminModelsPage() {
   }, []);
 
   // ─── Provider actions ───
+
+  /** Whether a configured provider's per-model metadata is Saale's to record. */
+  const canConfigureModels = (provider: string) =>
+    availableProviders.find((p) => p.id === provider)?.modelsConfigurable === true;
+
+  /**
+   * Ask a global provider's endpoint what its models can do and store it.
+   *
+   * Same button as in the user's own settings: only llama.cpp's `/props`
+   * answers, so "no answer" has to be visible rather than read as "no vision".
+   */
+  const handleDetectCapabilities = async (provider: string) => {
+    setDetecting(provider);
+    try {
+      const data = await postJson<{
+        modelCount: number;
+        detected: number;
+        visionModels: number;
+        unprobed: number;
+      }>("/api/admin/providers/capabilities", { provider });
+      setCapabilityInfo(
+        data.detected === 0
+          ? "This endpoint reports no model capabilities — set vision per model instead"
+          : `${data.visionModels} of ${data.modelCount} models accept images` +
+              (data.unprobed > 0 ? ` (${data.unprobed} did not report)` : ""),
+      );
+      await loadModels();
+    } catch (err) {
+      console.error("Failed to detect global provider capabilities:", err);
+      setCapabilityInfo("Capability detection failed");
+    }
+    setDetecting(null);
+  };
+
+  /** Record whether a global provider's model can see images. */
+  const handleToggleVision = async (provider: string, modelId: string, vision: boolean) => {
+    const key = `${provider}:${modelId}`;
+    setSavingVision(key);
+    try {
+      await patchJson("/api/admin/providers/capabilities", { provider, modelId, vision });
+      await loadModels();
+    } catch (err) {
+      console.error("Failed to save model vision capability:", err);
+      setCapabilityInfo("Could not save the model capability");
+    }
+    setSavingVision(null);
+  };
+
   const handleAddProvider = async () => {
     if (!addProvider) return;
     setAdding(true);
@@ -260,6 +335,11 @@ export default function AdminModelsPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {capabilityInfo && (
+              <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                <ScanEye className="h-3.5 w-3.5" /> {capabilityInfo}
+              </span>
+            )}
             {saveStatus === "success" && (
               <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                 <CheckCircle className="h-3.5 w-3.5" /> Saved
@@ -327,6 +407,22 @@ export default function AdminModelsPage() {
                               >
                                 custom
                               </Badge>
+                            )}
+                            {canConfigureModels(prov.provider) && (
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="text-muted-foreground hover:text-foreground"
+                                title="Detect model capabilities (vision)"
+                                disabled={detecting === prov.provider}
+                                onClick={() => handleDetectCapabilities(prov.provider)}
+                              >
+                                {detecting === prov.provider ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <ScanEye className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
                             )}
                           </div>
                           <span className="text-muted-foreground truncate text-xs">
@@ -503,15 +599,54 @@ export default function AdminModelsPage() {
                                     reasoning
                                   </Badge>
                                 )}
+                                {model.vision && (
+                                  <Badge
+                                    variant="outline"
+                                    className="shrink-0 gap-1 rounded-full px-1.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400"
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                    vision
+                                  </Badge>
+                                )}
                               </div>
                               <span className="text-muted-foreground text-xs">{model.id}</span>
                             </div>
-                            <Switch
-                              checked={isModelEnabled}
-                              onCheckedChange={(checked) =>
-                                handleModelToggle(provider.id, model.id, checked)
-                              }
-                            />
+                            <div className="flex shrink-0 items-center gap-2">
+                              {/* Undo a wrong (or absent) answer from the endpoint. */}
+                              {canConfigureModels(provider.id) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  className={cn(
+                                    "shrink-0",
+                                    model.vision
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : "text-muted-foreground/60 hover:text-foreground",
+                                  )}
+                                  title={
+                                    model.vision
+                                      ? "Can see images — click to turn that off"
+                                      : "Mark this model as able to see images"
+                                  }
+                                  disabled={savingVision === `${provider.id}:${model.id}`}
+                                  onClick={() =>
+                                    handleToggleVision(provider.id, model.id, !model.vision)
+                                  }
+                                >
+                                  {savingVision === `${provider.id}:${model.id}` ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Eye className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                              )}
+                              <Switch
+                                checked={isModelEnabled}
+                                onCheckedChange={(checked) =>
+                                  handleModelToggle(provider.id, model.id, checked)
+                                }
+                              />
+                            </div>
                           </div>
                           {i < models.length - 1 && <Separator className="px-4" />}
                         </div>

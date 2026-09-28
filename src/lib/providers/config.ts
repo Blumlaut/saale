@@ -53,13 +53,14 @@ export function getProviderBaseUrl(provider: string): string | null {
 
 /**
  * Whether Saale defines this provider's models itself (from a `/models`
- * response that carries no limits), rather than reading them from Pi's catalog.
+ * response), rather than reading them from Pi's catalog.
  *
- * These are exactly the providers whose context window and output cap are
- * unknown to us — so they are the ones a user can configure limits for. Kept
- * derived from the discovery list so the two can never drift apart: a provider
- * whose models Saale registers must be limit-configurable, and vice versa.
+ * These are exactly the providers whose per-model metadata is Saale's to record:
+ * Pi knows nothing about a model it has never heard of, so the context window,
+ * output cap and capabilities (vision) of these providers' models are the
+ * user's to set. Kept derived from the discovery list so the two can never
+ * drift apart: a provider whose models Saale registers must be configurable.
  */
-export function supportsCustomLimits(provider: string): boolean {
+export function definesProviderModels(provider: string): boolean {
   return provider === "custom" || DISCOVERABLE_PROVIDERS.has(provider);
 }

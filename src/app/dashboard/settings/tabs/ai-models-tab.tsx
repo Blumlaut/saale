@@ -7,11 +7,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Bot, CheckCircle, Sparkles, Search, EyeOff } from "lucide-react";
+import { Bot, CheckCircle, Loader2, Sparkles, Search, EyeOff, Eye } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SaveFooter } from "../components/save-footer";
 import { ProviderManagement } from "../components/provider-management";
 import { ModelSidebar } from "../components/model-sidebar";
 import { cn } from "@/lib/utils";
+import { patchJson } from "@/lib/http";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import type {
   UserSettings,
@@ -72,6 +74,10 @@ export function AiModelsTab({
   const [disabledSet, setDisabledSet] = useState<Set<string>>(new Set());
   const [availableModels, setAvailableModels] = useState<Record<string, AvailableModel[]>>({});
   const [availableModelProviders, setAvailableModelProviders] = useState<AvailableProvider[]>([]);
+  /** Providers whose per-model metadata (vision) the user can set. */
+  const [configurableProviders, setConfigurableProviders] = useState<Set<string>>(new Set());
+  /** Model currently having its vision flag written, so it can show as busy. */
+  const [savingVision, setSavingVision] = useState<string | null>(null);
 
   // Load available models (enabled only)
   const loadModels = useCallback(async () => {
@@ -84,34 +90,38 @@ export function AiModelsTab({
     }
   }, []);
 
+  // Load ALL models (including disabled), with every provider's editability —
+  // a per-model capability is only settable where Saale defines the models.
+  const loadAllModels = useCallback(async () => {
+    try {
+      const data: {
+        models: Record<string, AvailableModel[]>;
+        providers?: Array<{ id: string; name: string; modelsConfigurable?: boolean }>;
+        disabledModels?: string[];
+      } = await fetch("/api/providers/models?includeDisabled=true").then((r) => r.json());
+
+      const all: FullModelInfo[] = [];
+      for (const [provider, modelsList] of Object.entries(data.models ?? {})) {
+        const providerName =
+          (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
+        for (const m of modelsList) {
+          all.push({ ...m, provider, providerName });
+        }
+      }
+      setAllModels(all);
+      setDisabledSet(new Set(data.disabledModels ?? []));
+      setConfigurableProviders(
+        new Set((data.providers ?? []).filter((p) => p.modelsConfigurable).map((p) => p.id)),
+      );
+    } catch (err) {
+      console.error("Failed to load admin model settings:", err);
+    }
+  }, []);
+
   // Load ALL models (including disabled)
   useEffect(() => {
-    fetch("/api/providers/models?includeDisabled=true")
-      .then((r) => r.json())
-      .then(
-        (data: {
-          models: Record<string, AvailableModel[]>;
-          providers?: Array<{ id: string; name: string }>;
-          disabledModels?: string[];
-        }) => {
-          const all: FullModelInfo[] = [];
-          if (data.models) {
-            for (const [provider, modelsList] of Object.entries(data.models)) {
-              const providerName =
-                (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
-              for (const m of modelsList) {
-                all.push({ ...m, provider, providerName });
-              }
-            }
-          }
-          setAllModels(all);
-          setDisabledSet(new Set(data.disabledModels ?? []));
-        },
-      )
-      .catch((err) => {
-        console.error("Failed to load admin model settings:", err);
-      });
-  }, []);
+    loadAllModels();
+  }, [loadAllModels]);
 
   // Initial load
   useEffect(() => {
@@ -159,6 +169,26 @@ export function AiModelsTab({
 
   const isDisabled = (provider: string, modelId: string) =>
     disabledSet.has(`${provider}:${modelId}`);
+
+  /**
+   * Record whether a model can see images.
+   *
+   * Written straight through rather than with the settings Save: this is model
+   * metadata on the provider key (like the token limits), and what the toggle
+   * shows comes from the endpoint definition anyway — a pending edit would only
+   * show a badge that does not match what Pi will send.
+   */
+  const handleToggleVision = async (provider: string, modelId: string, vision: boolean) => {
+    const key = `${provider}:${modelId}`;
+    setSavingVision(key);
+    try {
+      await patchJson("/api/providers/capabilities", { provider, modelId, vision });
+      await Promise.all([loadAllModels(), loadModels()]);
+    } catch (err) {
+      console.error("Failed to save model vision capability:", err);
+    }
+    setSavingVision(null);
+  };
 
   const handleToggleModel = (provider: string, modelId: string) => {
     if (!settings) return;
@@ -394,6 +424,38 @@ export function AiModelsTab({
                                           Reasoning
                                         </Badge>
                                       )}
+                                      {/* Where Saale defines the models, the badge is
+                                          the control: clicking it records vision. */}
+                                      {model.vision &&
+                                        (configurableProviders.has(providerKey) ? (
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="xs"
+                                            className="h-5 shrink-0 gap-1 rounded-full px-1.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400"
+                                            title="This model sees images — click to turn that off"
+                                            disabled={savingVision === `${providerKey}:${model.id}`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleToggleVision(providerKey, model.id, false);
+                                            }}
+                                          >
+                                            {savingVision === `${providerKey}:${model.id}` ? (
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : (
+                                              <Eye className="h-3 w-3" />
+                                            )}
+                                            Vision
+                                          </Button>
+                                        ) : (
+                                          <Badge
+                                            variant="outline"
+                                            className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                          >
+                                            <Eye className="mr-0.5 h-3 w-3" />
+                                            Vision
+                                          </Badge>
+                                        ))}
                                       {disabled && (
                                         <EyeOff className="text-muted-foreground h-3 w-3 shrink-0" />
                                       )}
@@ -407,6 +469,25 @@ export function AiModelsTab({
 
                                   {isSelected && !disabled && (
                                     <CheckCircle className="text-primary h-4 w-4 shrink-0" />
+                                  )}
+
+                                  {/* A text-only model can be told to take images
+                                      where the endpoint is silent about it. */}
+                                  {!model.vision && configurableProviders.has(providerKey) && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      className="text-muted-foreground/60 shrink-0 hover:text-emerald-600 dark:hover:text-emerald-400"
+                                      title="Mark this model as able to see images"
+                                      disabled={savingVision === `${providerKey}:${model.id}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleVision(providerKey, model.id, true);
+                                      }}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                    </Button>
                                   )}
 
                                   <Switch

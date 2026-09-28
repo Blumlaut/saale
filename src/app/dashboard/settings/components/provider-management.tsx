@@ -14,6 +14,7 @@ import {
   Shield,
   ChevronDown,
   SlidersHorizontal,
+  ScanEye,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,17 @@ import type { ConfiguredProvider, ProviderInfo } from "../types";
 interface ProviderManagementProps {
   onModelsChanged: () => void;
 }
+
+/** Feedback from the last model import or capability probe. */
+type ProviderDiscoveryInfo =
+  | { kind: "import"; modelCount: number; visionModels?: number; error?: string }
+  | {
+      kind: "detect";
+      modelCount: number;
+      detected: number;
+      visionModels: number;
+      unprobed: number;
+    };
 
 export function ProviderManagement({ onModelsChanged }: ProviderManagementProps) {
   const [providers, setProviders] = useState<ConfiguredProvider[]>([]);
@@ -46,17 +58,16 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorText, setErrorText] = useState("");
   const [editingLimits, setEditingLimits] = useState<string | null>(null);
-  const [discoveryInfo, setDiscoveryInfo] = useState<{ count: number; error?: string } | null>(
-    null,
-  );
+  const [detecting, setDetecting] = useState<string | null>(null);
+  const [discoveryInfo, setDiscoveryInfo] = useState<ProviderDiscoveryInfo | null>(null);
 
-  const limitsConfigurable = availableProviders.find(
+  const modelsConfigurable = availableProviders.find(
     (p) => p.id === newProvider,
-  )?.limitsConfigurable;
+  )?.modelsConfigurable;
 
-  /** Whether a configured provider accepts user-set model limits. */
-  const canConfigureLimits = (provider: string) =>
-    availableProviders.find((p) => p.id === provider)?.limitsConfigurable === true;
+  /** Whether a configured provider takes user-set model metadata. */
+  const canConfigureModels = (provider: string) =>
+    availableProviders.find((p) => p.id === provider)?.modelsConfigurable === true;
 
   const loadAll = useCallback(async () => {
     try {
@@ -93,12 +104,16 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
     if (newProvider === "custom" && !newBaseUrl) return;
     setAdding(true);
     try {
-      const data = await postJson<{ modelCount?: number; modelError?: string }>("/api/providers", {
+      const data = await postJson<{
+        modelCount?: number;
+        modelError?: string;
+        visionModels?: number;
+      }>("/api/providers", {
         provider: newProvider,
         apiKey: newApiKey,
         label: newLabel,
         baseUrl: newProvider === "custom" ? newBaseUrl : undefined,
-        ...(limitsConfigurable
+        ...(modelsConfigurable
           ? {
               contextWindow: newContextWindow || undefined,
               maxOutputTokens: newMaxOutputTokens || undefined,
@@ -113,9 +128,12 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
       setNewContextWindow("");
       setNewMaxOutputTokens("");
       if (data.modelCount !== undefined) {
-        const info: { count: number; error?: string } = { count: data.modelCount };
-        if (data.modelError) info.error = data.modelError;
-        setDiscoveryInfo(info);
+        setDiscoveryInfo({
+          kind: "import",
+          modelCount: data.modelCount,
+          ...(data.modelError ? { error: data.modelError } : {}),
+          ...(data.visionModels ? { visionModels: data.visionModels } : {}),
+        });
       }
       await loadAll();
     } catch (err) {
@@ -141,6 +159,37 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
       setStatus("error");
       setErrorText(err instanceof Error ? err.message : "Failed to save limits");
     }
+  };
+
+  /**
+   * Ask the endpoint what its models can do (image input, today) and store the
+   * answers. A button rather than something automatic: most endpoints cannot
+   * answer at all — llama.cpp's `/props` is the one that can — so a failed probe
+   * must not be mistaken for "no model here sees images".
+   */
+  const handleDetectCapabilities = async (provider: string) => {
+    setDetecting(provider);
+    try {
+      const data = await postJson<{
+        modelCount: number;
+        detected: number;
+        visionModels: number;
+        unprobed: number;
+      }>("/api/providers/capabilities", { provider });
+      setDiscoveryInfo({
+        kind: "detect",
+        modelCount: data.modelCount,
+        detected: data.detected,
+        visionModels: data.visionModels,
+        unprobed: data.unprobed,
+      });
+      onModelsChanged();
+    } catch (err) {
+      console.error("Failed to detect provider capabilities:", err);
+      setStatus("error");
+      setErrorText(err instanceof Error ? err.message : "Detection failed");
+    }
+    setDetecting(null);
   };
 
   const handleRemove = async (provider: string) => {
@@ -248,7 +297,7 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
             />
           </div>
 
-          {limitsConfigurable && (
+          {modelsConfigurable && (
             <>
               <div className="min-w-[130px] space-y-1.5">
                 <Label className="text-xs">Context window</Label>
@@ -304,15 +353,33 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
               <AlertCircle className="h-3.5 w-3.5" /> {errorText || "Failed"}
             </span>
           )}
-          {discoveryInfo && discoveryInfo.count > 0 && (
+          {discoveryInfo?.kind === "import" && discoveryInfo.modelCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-blue-500">
               <Sparkles className="h-3.5 w-3.5" />
-              {discoveryInfo.count} models discovered
+              {discoveryInfo.modelCount} models discovered
+              {discoveryInfo.visionModels ? `, ${discoveryInfo.visionModels} with vision` : ""}
             </span>
           )}
-          {discoveryInfo && discoveryInfo.error && (
+          {discoveryInfo?.kind === "import" && discoveryInfo.error && (
             <span className="flex items-center gap-1 text-xs text-amber-500">
               <AlertCircle className="h-3.5 w-3.5" /> {discoveryInfo.error}
+            </span>
+          )}
+          {discoveryInfo?.kind === "detect" && discoveryInfo.detected === 0 && (
+            <span className="flex items-center gap-1 text-xs text-amber-500">
+              <AlertCircle className="h-3.5 w-3.5" /> This endpoint reports no model capabilities —
+              set vision per model in the list below
+            </span>
+          )}
+          {discoveryInfo?.kind === "detect" && discoveryInfo.detected > 0 && (
+            <span className="flex items-center gap-1 text-xs text-emerald-500">
+              <ScanEye className="h-3.5 w-3.5" />
+              {discoveryInfo.visionModels} of {discoveryInfo.modelCount} models accept images
+            </span>
+          )}
+          {discoveryInfo?.kind === "detect" && discoveryInfo.unprobed > 0 && (
+            <span className="flex items-center gap-1 text-xs text-amber-500">
+              <AlertCircle className="h-3.5 w-3.5" /> {discoveryInfo.unprobed} did not report
             </span>
           )}
         </div>
@@ -344,19 +411,34 @@ export function ProviderManagement({ onModelsChanged }: ProviderManagementProps)
                     {p.maxOutputTokens.toLocaleString()} out
                   </span>
                 )}
-                {canConfigureLimits(p.provider) && (
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-emerald-500"
-                    title="Model limits"
-                    onClick={() => {
-                      setNewContextWindow(p.contextWindow ? String(p.contextWindow) : "");
-                      setNewMaxOutputTokens(p.maxOutputTokens ? String(p.maxOutputTokens) : "");
-                      setEditingLimits(editingLimits === p.provider ? null : p.provider);
-                    }}
-                  >
-                    <SlidersHorizontal className="h-3 w-3" />
-                  </button>
+                {canConfigureModels(p.provider) && (
+                  <>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-emerald-500 disabled:opacity-50"
+                      title="Detect model capabilities (vision)"
+                      disabled={detecting === p.provider}
+                      onClick={() => handleDetectCapabilities(p.provider)}
+                    >
+                      {detecting === p.provider ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ScanEye className="h-3 w-3" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-emerald-500"
+                      title="Model limits"
+                      onClick={() => {
+                        setNewContextWindow(p.contextWindow ? String(p.contextWindow) : "");
+                        setNewMaxOutputTokens(p.maxOutputTokens ? String(p.maxOutputTokens) : "");
+                        setEditingLimits(editingLimits === p.provider ? null : p.provider);
+                      }}
+                    >
+                      <SlidersHorizontal className="h-3 w-3" />
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"

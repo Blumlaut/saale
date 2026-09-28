@@ -65,12 +65,14 @@ describe("GET /api/admin/providers/models", () => {
           id: "claude-sonnet-4",
           name: "Claude Sonnet 4",
           reasoning: false,
+          input: ["text", "image"],
         },
         {
           provider: "openai",
           id: "gpt-4o",
           name: "GPT-4o",
           reasoning: false,
+          input: ["text", "image"],
         },
       ]),
       getProvider: vi.fn().mockImplementation((id: string) => ({
@@ -97,6 +99,7 @@ describe("GET /api/admin/providers/models", () => {
         baseUrl: null,
         contextWindow: null,
         maxOutputTokens: null,
+        modelCapabilities: null,
       },
     ]);
 
@@ -112,6 +115,7 @@ describe("GET /api/admin/providers/models", () => {
       id: "claude-sonnet-4",
       name: "Claude Sonnet 4",
       reasoning: false,
+      vision: true,
     });
     expect(body.providers).toHaveLength(2);
   });
@@ -127,12 +131,14 @@ describe("GET /api/admin/providers/models", () => {
           id: "claude-3.5-sonnet-r1",
           name: "Claude Sonnet R1",
           reasoning: false,
+          input: ["text"],
         },
         {
           provider: "anthropic",
           id: "claude-sonnet-4",
           name: "Claude Sonnet 4",
           reasoning: true,
+          input: ["text", "image"],
         },
       ]),
       getProvider: vi.fn().mockReturnValue({
@@ -159,6 +165,7 @@ describe("GET /api/admin/providers/models", () => {
         baseUrl: null,
         contextWindow: null,
         maxOutputTokens: null,
+        modelCapabilities: null,
       },
     ]);
 
@@ -228,6 +235,7 @@ describe("GET /api/admin/providers/models", () => {
         baseUrl: null,
         contextWindow: null,
         maxOutputTokens: null,
+        modelCapabilities: null,
       },
     ]);
 
@@ -265,6 +273,7 @@ describe("GET /api/admin/providers/models", () => {
         baseUrl: null,
         contextWindow: null,
         maxOutputTokens: null,
+        modelCapabilities: null,
       },
     ]);
 
@@ -285,6 +294,7 @@ describe("GET /api/admin/providers/models", () => {
           provider: "custom",
           id: "custom-model",
           name: "Custom Model",
+          input: ["text"],
         },
       ]),
       getProvider: vi.fn().mockReturnValue(undefined),
@@ -314,6 +324,7 @@ describe("GET /api/admin/providers/models", () => {
           provider: "openrouter",
           id: "anthropic/claude-sonnet-4",
           name: "Anthropic: Claude Sonnet 4",
+          input: ["text", "image"],
         },
       ]),
       getProvider: vi.fn().mockReturnValue({
@@ -340,6 +351,7 @@ describe("GET /api/admin/providers/models", () => {
         baseUrl: null,
         contextWindow: null,
         maxOutputTokens: null,
+        modelCapabilities: null,
       },
     ]);
 

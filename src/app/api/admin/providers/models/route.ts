@@ -5,8 +5,13 @@ import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { requireAdmin } from "../../settings/auth";
 import { registerDiscoveredModels } from "@/lib/pi/models";
-import { DISCOVERABLE_PROVIDERS, getProviderBaseUrl } from "@/lib/providers/config";
+import {
+  definesProviderModels,
+  DISCOVERABLE_PROVIDERS,
+  getProviderBaseUrl,
+} from "@/lib/providers/config";
 import { PI_DEFAULT_CONTEXT_WINDOW, PI_DEFAULT_MAX_OUTPUT_TOKENS } from "@/lib/providers/limits";
+import { parseModelCapabilityMap } from "@/lib/providers/capabilities";
 
 /**
  * GET /api/admin/providers/models — List models available from global providers only.
@@ -19,7 +24,7 @@ export async function GET() {
   // Fetch only global providers
   const globalKeys = await prisma.providerApiKey.findMany({
     where: { userId: null },
-    select: { provider: true, encryptedKey: true, baseUrl: true },
+    select: { provider: true, encryptedKey: true, baseUrl: true, modelCapabilities: true },
   });
 
   // Credentials come from the database only. `ModelRuntime.create()` would
@@ -74,6 +79,7 @@ export async function GET() {
         baseUrl,
         apiKey: decrypt(key.encryptedKey),
         limits,
+        capabilities: parseModelCapabilityMap(key.modelCapabilities),
       });
       for (const m of modelIds) {
         discoveredModels.push({
@@ -94,21 +100,29 @@ export async function GET() {
     provider: m.provider,
     id: m.id,
     name: m.name,
-    // The catalog's own flag — the page used to guess it from the model id
-    // (any id containing "r1"), which marked non-thinking models as reasoners.
+    // The catalog's own flags — the page used to guess reasoning from the model
+    // id (any id containing "r1"), which marked non-thinking models as reasoners,
+    // and dropped vision entirely, so a vision model showed as text-only.
     reasoning: m.reasoning,
+    vision: m.input.includes("image"),
   }));
 
   // Add discovered custom models (not already in built-in list)
   const knownIds = new Set(allModels.map((m) => `${m.provider}:${m.id}`));
   for (const dm of discoveredModels) {
     if (!knownIds.has(`${dm.provider}:${dm.id}`)) {
-      allModels.push(dm);
+      allModels.push({
+        ...dm,
+        vision: modelRuntime.getModel(dm.provider, dm.id)?.input.includes("image") ?? false,
+      });
     }
   }
 
   // Group by provider
-  const models: Record<string, Array<{ id: string; name: string; reasoning: boolean }>> = {};
+  const models: Record<
+    string,
+    Array<{ id: string; name: string; reasoning: boolean; vision: boolean }>
+  > = {};
   const providerSet = new Set<string>();
 
   for (const m of allModels) {
@@ -121,6 +135,7 @@ export async function GET() {
       id: m.id,
       name: m.name,
       reasoning: m.reasoning,
+      vision: m.vision,
     });
   }
 
@@ -128,6 +143,7 @@ export async function GET() {
     id,
     name: modelRuntime.getProvider(id)?.name ?? id,
     modelCount: (models[id] ?? []).length,
+    modelsConfigurable: definesProviderModels(id),
   }));
 
   return NextResponse.json({ models, providers });

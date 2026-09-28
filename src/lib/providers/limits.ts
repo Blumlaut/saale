@@ -10,7 +10,7 @@
  * provider and set by the user (see `provider_api_key`).
  */
 
-import { supportsCustomLimits } from "./config";
+import { definesProviderModels } from "./config";
 
 /**
  * Fallbacks for a provider the user hasn't configured limits for. These mirror
@@ -60,7 +60,7 @@ export function parseProviderLimits(
   if (maxOutputTokens === undefined) {
     return { error: "maxOutputTokens must be a positive integer" };
   }
-  if ((contextWindow !== null || maxOutputTokens !== null) && !supportsCustomLimits(provider)) {
+  if ((contextWindow !== null || maxOutputTokens !== null) && !definesProviderModels(provider)) {
     return {
       error:
         "Model limits can only be configured for OpenAI-compatible providers (OpenAI-compatible, OpenRouter, Together, Fireworks, Hugging Face)",

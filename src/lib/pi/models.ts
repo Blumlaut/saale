@@ -2,6 +2,12 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { DISCOVERABLE_PROVIDERS, getProviderBaseUrl } from "@/lib/providers/config";
 import { limitFields, type ProviderModelLimits } from "@/lib/providers/limits";
+import {
+  parseModelCapabilityMap,
+  resolveModelInput,
+  configuredVision,
+  type ModelCapabilityMap,
+} from "@/lib/providers/capabilities";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
@@ -13,7 +19,9 @@ interface ProviderModelConfig {
 /**
  * A model offered to the UI. `reasoning` and `contextWindow` describe what Pi's
  * catalog knows about it; a discovered model Pi has no entry for reports no
- * context window rather than a guessed one.
+ * context window rather than a guessed one. `vision` is whether the resolved
+ * definition accepts image input, so pickers can say which models can look at
+ * a picture before one is sent.
  */
 export interface AvailableModel {
   provider: string;
@@ -21,6 +29,7 @@ export interface AvailableModel {
   name: string;
   reasoning?: boolean | undefined;
   contextWindow?: number | undefined;
+  vision: boolean;
 }
 
 /** A model definition passed to `registerProvider`. */
@@ -113,19 +122,24 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
  * inherits `api`/`baseUrl` from the catalog entry it shadows. Everything else
  * must be stated here, so a definition built from "id + name" alone downgrades
  * a model Pi knows well: `reasoning: false` makes thinking impossible,
- * `input: ["text", "image"]` makes a text-only endpoint answer 400, and
- * zero cost plus Pi's default limits hide the real context window.
+ * `input: ["text"]` silently drops every image from the request (while
+ * `["text", "image"]` on a text-only endpoint is answered with a 400), and zero
+ * cost plus Pi's default limits hide the real context window.
  *
  * A catalog hit is therefore used verbatim; only genuinely unknown ids (a model
- * newer than the installed Pi catalog) fall back to conservative values.
+ * newer than the installed Pi catalog) fall back to conservative values — and a
+ * recorded capability wins over both, because the endpoint that serves the model
+ * (or the person running it) knows better than the catalog does.
  */
 function defineDiscoveredModel(
   runtime: ModelRuntime,
   provider: string,
   id: string,
   limits: ProviderModelLimits,
+  capabilities: ModelCapabilityMap,
 ): ProviderModelDefinition {
   const known = runtime.getModel(provider, id);
+  const vision = configuredVision(capabilities, id);
 
   if (known) {
     return {
@@ -133,7 +147,7 @@ function defineDiscoveredModel(
       name: known.name || id,
       api: known.api,
       reasoning: known.reasoning,
-      input: known.input,
+      input: resolveModelInput(known.input, vision),
       cost: known.cost,
       contextWindow: known.contextWindow,
       maxTokens: known.maxTokens,
@@ -146,7 +160,7 @@ function defineDiscoveredModel(
     name: id,
     api: "openai-completions" as const,
     reasoning: false,
-    input: ["text"] as ("text" | "image")[],
+    input: resolveModelInput(undefined, vision),
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     ...limitFields(limits),
   };
@@ -168,10 +182,12 @@ export async function registerDiscoveredModels(
     baseUrl: string;
     apiKey?: string | undefined;
     limits: ProviderModelLimits;
+    capabilities?: ModelCapabilityMap | undefined;
   },
 ): Promise<string[]> {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const modelIds = await fetchOpenAIModels(baseUrl, options.apiKey);
+  const capabilities = options.capabilities ?? {};
 
   runtime.registerProvider(options.provider, {
     baseUrl,
@@ -180,7 +196,7 @@ export async function registerDiscoveredModels(
     ...(modelIds.length > 0
       ? {
           models: modelIds.map((m) =>
-            defineDiscoveredModel(runtime, options.provider, m, options.limits),
+            defineDiscoveredModel(runtime, options.provider, m, options.limits, capabilities),
           ),
         }
       : {}),
@@ -204,6 +220,7 @@ export async function buildModelRuntime(userId: string) {
     baseUrl: true,
     contextWindow: true,
     maxOutputTokens: true,
+    modelCapabilities: true,
   };
 
   // Fetch global providers (userId = null)
@@ -221,7 +238,10 @@ export async function buildModelRuntime(userId: string) {
   // Merge: global keys as base, user keys override by provider
   const mergedMap = new Map<
     string,
-    { provider: string; encryptedKey: string; baseUrl: string | null } & ProviderModelLimits
+    { provider: string; encryptedKey: string; baseUrl: string | null } & ProviderModelLimits & {
+        /** The raw `ProviderApiKey.modelCapabilities` column — parsed below. */
+        modelCapabilities: unknown;
+      }
   >();
   for (const key of globalKeys) {
     mergedMap.set(key.provider, key);
@@ -265,6 +285,9 @@ export async function buildModelRuntime(userId: string) {
       contextWindow: key.contextWindow,
       maxOutputTokens: key.maxOutputTokens,
     };
+    // Only providers whose models Saale registers can carry a capability map; the
+    // stored JSON is untrusted (hand-edited, or written by an older version).
+    const capabilities = parseModelCapabilityMap(key.modelCapabilities);
 
     // Isolate per provider: a bad key, an unreachable endpoint or a rejected
     // model definition must not take down every other provider.
@@ -286,6 +309,7 @@ export async function buildModelRuntime(userId: string) {
           baseUrl,
           apiKey: decryptedKey,
           limits,
+          capabilities,
         });
 
         for (const m of modelIds) {
@@ -297,10 +321,10 @@ export async function buildModelRuntime(userId: string) {
     }
   }
 
-  // Get available models from the runtime. `reasoning` and `contextWindow` come
-  // along: the pickers badge thinking models with them, and dropping them here
-  // meant the UI received a bare {id, name} list (the fields are optional in the
-  // response type, so nothing failed — the badges just never appeared).
+  // Get available models from the runtime. `reasoning`, `contextWindow` and
+  // `vision` come along: the pickers badge models with them, and dropping them
+  // here meant the UI received a bare {id, name} list (the fields are optional in
+  // the response type, so nothing failed — the badges just never appeared).
   const available = modelRuntime.getAvailableSnapshot();
   const allModels: AvailableModel[] = available.map((m) => ({
     provider: m.provider,
@@ -308,6 +332,7 @@ export async function buildModelRuntime(userId: string) {
     name: m.name,
     reasoning: m.reasoning,
     contextWindow: m.contextWindow,
+    vision: m.input.includes("image"),
   }));
 
   // Add discovered custom models (not already in built-in list)
@@ -319,6 +344,7 @@ export async function buildModelRuntime(userId: string) {
         ...dm,
         reasoning: model?.reasoning ?? false,
         contextWindow: model?.contextWindow,
+        vision: model?.input.includes("image") ?? false,
       });
     }
   }
