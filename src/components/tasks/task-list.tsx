@@ -11,11 +11,12 @@ interface TaskListProps {
   onToggle: (task: Task) => void;
   onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
+  onChat: (task: Task) => void;
 }
 
 type GroupKey = "overdue" | "today" | "thisWeek" | "someday" | "completed";
 
-export function TaskList({ tasks, onToggle, onDelete, onEdit }: TaskListProps) {
+export function TaskList({ tasks, onToggle, onDelete, onEdit, onChat }: TaskListProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<GroupKey>>(new Set(["completed"]));
 
   const groups = useMemo(() => {
@@ -141,6 +142,7 @@ export function TaskList({ tasks, onToggle, onDelete, onEdit }: TaskListProps) {
                     onToggle={onToggle}
                     onDelete={onDelete}
                     onEdit={onEdit}
+                    onChat={onChat}
                     groupKey={group.key}
                   />
                 ))}

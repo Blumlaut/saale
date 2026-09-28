@@ -20,6 +20,7 @@ interface TaskItemProps {
   onToggle: (task: Task) => void;
   onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
+  onChat: (task: Task) => void;
   groupKey: string;
 }
 
@@ -34,7 +35,15 @@ const sourceConfig: Record<string, { icon: typeof Mail; label: string }> = {
   chat: { icon: MessageSquare, label: "Chat" },
 };
 
-export function TaskItem({ task, isLast, onToggle, onDelete, onEdit, groupKey }: TaskItemProps) {
+export function TaskItem({
+  task,
+  isLast,
+  onToggle,
+  onDelete,
+  onEdit,
+  onChat,
+  groupKey,
+}: TaskItemProps) {
   const dueDateLabel = task.dueDate ? format(new Date(task.dueDate), "EEE MMM d") : null;
 
   const isCompleted = task.status === "completed";
@@ -115,6 +124,10 @@ export function TaskItem({ task, isLast, onToggle, onDelete, onEdit, groupKey }:
               </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-36">
+              <DropdownMenuItem onClick={() => onChat(task)}>
+                <MessageSquare className="mr-2 h-3.5 w-3.5" />
+                Chat
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(task)}>
                 <Pencil className="mr-2 h-3.5 w-3.5" />
                 Edit
