@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Page, PageHeader, PageScroll } from "@/components/layout/page";
+import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import {
   Dialog,
   DialogContent,
@@ -189,29 +189,22 @@ export default function AdminUsersPage() {
 
   return (
     <Page>
-      {/* Header — pinned, never scrolls */}
-      <PageHeader
-        title="Users"
-        description="Manage user accounts and roles"
-        icon={<Users className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />}
-        actions={
-          <>
-            {saveStatus === "success" && (
-              <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                <CheckCircle className="h-3.5 w-3.5" /> Saved
-              </span>
-            )}
-            {saveStatus === "error" && (
-              <span className="text-destructive flex items-center gap-1 text-xs">
-                <AlertCircle className="h-3.5 w-3.5" /> Error
-              </span>
-            )}
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add
-            </Button>
-          </>
-        }
-      />
+      {/* Header — compact one-line, pinned */}
+      <PageToolbar title="Users">
+        {saveStatus === "success" && (
+          <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+            <CheckCircle className="h-3.5 w-3.5" /> Saved
+          </span>
+        )}
+        {saveStatus === "error" && (
+          <span className="text-destructive flex items-center gap-1 text-xs">
+            <AlertCircle className="h-3.5 w-3.5" /> Error
+          </span>
+        )}
+        <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Plus className="mr-1 h-3.5 w-3.5" /> Add
+        </Button>
+      </PageToolbar>
 
       {/* Scrollable content */}
       <PageScroll>

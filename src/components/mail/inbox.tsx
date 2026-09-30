@@ -11,7 +11,13 @@ import { EmailDetailPanel } from "./email-detail-panel";
 import { EmailDetailSheet } from "./email-detail-sheet";
 import type { EmailMessage, EmailMessageDetail, InboxEmailAccount } from "./types";
 
-export function Inbox() {
+export function Inbox({
+  onCompose,
+  onAddAccount,
+}: {
+  onCompose: () => void;
+  onAddAccount: () => void;
+}) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlAccountId = searchParams.get("accountId");
@@ -356,6 +362,8 @@ export function Inbox() {
         }}
         onSyncAll={handleSyncAll}
         onMarkAllRead={handleMarkAllRead}
+        onCompose={onCompose}
+        onAddAccount={onAddAccount}
       />
 
       <EmailDetailPanel

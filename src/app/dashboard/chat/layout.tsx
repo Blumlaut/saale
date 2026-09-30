@@ -5,11 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatInterface } from "@/components/chat/chat-interface";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { patchJson } from "@/lib/http";
-import { PanelLeft, MessageSquarePlus, Ghost } from "lucide-react";
 import { createChatSession } from "@/lib/chat-session";
 
 export default function ChatLayout({ children: _children }: { children: React.ReactNode }) {
@@ -30,8 +26,8 @@ export default function ChatLayout({ children: _children }: { children: React.Re
       if (data.session?.temporary !== undefined) {
         setTemporaryMode(data.session.temporary);
       }
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to sync temporary mode:", err);
     }
   }, []);
 
@@ -48,75 +44,25 @@ export default function ChatLayout({ children: _children }: { children: React.Re
       if (sessionId) {
         try {
           await patchJson(`/api/chat/sessions/${sessionId}`, { temporary: checked });
-        } catch {
-          // Silently fail — local state is already updated
+        } catch (err) {
+          console.error("Failed to update temporary mode:", err);
         }
       }
     },
     [sessionId],
   );
 
+  const handleNewChat = useCallback(() => {
+    createChatSession({ temporary: temporaryMode })
+      .then((session) => router.push(`/dashboard/chat/${session.id}`))
+      .catch((err) => {
+        console.error("Failed to create chat session:", err);
+      });
+  }, [router, temporaryMode]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between gap-3 pb-2 md:items-start md:gap-4 md:pb-4">
-        <div className="flex items-center gap-2">
-          {/* Mobile: session list in a sheet — lives in header, not content */}
-          <div className="md:hidden">
-            <Sheet>
-              <SheetTrigger>
-                <span className="hover:bg-accent/60 inline-flex h-8 w-8 items-center justify-center rounded transition-colors">
-                  <PanelLeft className="h-4 w-4" />
-                </span>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-4/5 max-w-[280px] p-0">
-                <div className="h-full">
-                  <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
-                </div>
-              </SheetContent>
-            </Sheet>
-          </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-lg leading-tight font-semibold tracking-tight md:text-2xl">
-              Chat
-            </h1>
-            {/* Description only on desktop — it wraps to two lines and wastes vertical space on mobile */}
-            <p className="text-muted-foreground mt-1 hidden text-sm md:block">
-              Ask questions, brainstorm ideas, or get help with your work
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Temporary toggle */}
-          <div className="bg-muted/50 hover:bg-accent/60 flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors">
-            <Ghost
-              className={
-                "h-3.5 w-3.5 transition-colors " +
-                (temporaryMode ? "text-foreground" : "text-muted-foreground")
-              }
-            />
-            <Switch
-              size="sm"
-              checked={temporaryMode}
-              onCheckedChange={handleToggleTemporary}
-              title="Temporary chat — auto-deleted on close"
-            />
-          </div>
-          <Button
-            className="liquid-glass-accent flex h-8 w-8 shrink-0 items-center gap-1.5 rounded-full md:h-9 md:w-auto md:px-3"
-            size="icon"
-            onClick={async () => {
-              const session = await createChatSession({ temporary: temporaryMode });
-              router.push(`/dashboard/chat/${session.id}`);
-            }}
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-            <span className="hidden md:inline">New Chat</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Content: sidebar + main — flex-1 fills remaining viewport, overflow contained */}
+      {/* Content: sidebar + main — flex-1 fills viewport, overflow contained */}
       <div className="flex min-h-0 flex-1 gap-4 overflow-hidden px-2 py-2 md:px-4 md:py-4">
         {/* Sidebar — desktop only */}
         <div className="hidden w-64 shrink-0 md:block">
@@ -126,9 +72,18 @@ export default function ChatLayout({ children: _children }: { children: React.Re
         {/* Main area — flex column so ChatInterface can flex-1 to fill height */}
         <div className="flex min-w-0 flex-1 flex-col">
           {sessionId ? (
-            <ChatInterface key={sessionId} sessionId={sessionId} temporaryMode={temporaryMode} />
+            <ChatInterface
+              key={sessionId}
+              sessionId={sessionId}
+              temporaryMode={temporaryMode}
+              onTemporaryChange={handleToggleTemporary}
+              onNewChat={handleNewChat}
+            />
           ) : (
-            <ChatEmptyState temporaryMode={temporaryMode} />
+            <ChatEmptyState
+              temporaryMode={temporaryMode}
+              onTemporaryChange={handleToggleTemporary}
+            />
           )}
         </div>
       </div>

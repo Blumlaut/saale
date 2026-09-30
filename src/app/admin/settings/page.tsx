@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Page, PageHeader, PageScroll } from "@/components/layout/page";
+import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
 import { ModelPicker } from "@/components/shared/model-picker";
-import { Settings, Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
 
 interface AdminSettings {
   signupsEnabled: boolean;
@@ -78,30 +78,23 @@ export default function AdminSettingsPage() {
 
   return (
     <Page>
-      {/* Header — pinned, never scrolls */}
-      <PageHeader
-        title="Settings"
-        description="Global application settings"
-        icon={<Settings className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />}
-        actions={
-          <>
-            {saveStatus === "success" && (
-              <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                <CheckCircle className="h-3.5 w-3.5" /> Saved
-              </span>
-            )}
-            {saveStatus === "error" && (
-              <span className="text-destructive flex items-center gap-1 text-xs">
-                <AlertCircle className="h-3.5 w-3.5" /> Error
-              </span>
-            )}
-            <Button size="sm" disabled={saving} onClick={handleSave}>
-              {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-              Save
-            </Button>
-          </>
-        }
-      />
+      {/* Header — compact one-line, pinned */}
+      <PageToolbar title="Settings">
+        {saveStatus === "success" && (
+          <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+            <CheckCircle className="h-3.5 w-3.5" /> Saved
+          </span>
+        )}
+        {saveStatus === "error" && (
+          <span className="text-destructive flex items-center gap-1 text-xs">
+            <AlertCircle className="h-3.5 w-3.5" /> Error
+          </span>
+        )}
+        <Button size="sm" disabled={saving} onClick={handleSave}>
+          {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+          Save
+        </Button>
+      </PageToolbar>
 
       <PageScroll>
         <div className="space-y-6">

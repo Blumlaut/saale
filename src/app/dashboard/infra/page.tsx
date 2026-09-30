@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { Page, PageHeader, PageScroll } from "@/components/layout/page";
+import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import { MachineList } from "@/components/infra/machine-list";
 import { MachineDialog } from "@/components/infra/machine-dialog";
 import { MachineNotesDialog } from "@/components/infra/machine-notes-dialog";
@@ -50,22 +50,18 @@ export default function InfraPage() {
 
   return (
     <Page>
-      {/* Header — pinned, never scrolls */}
-      <PageHeader
-        title="Infrastructure"
-        description="Remote machines the agent can manage via SSH"
-        actions={
-          <Button
-            variant="default"
-            size="icon"
-            className="h-8 w-8 md:h-9 md:w-auto md:px-3"
-            onClick={() => setShowDialog(true)}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden md:inline">Add Machine</span>
-          </Button>
-        }
-      />
+      {/* Header — compact one-line, pinned */}
+      <PageToolbar title="Infrastructure">
+        <Button
+          variant="default"
+          size="icon"
+          className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+          onClick={() => setShowDialog(true)}
+        >
+          <Plus className="h-4 w-4" />
+          <span className="hidden md:inline">Add Machine</span>
+        </Button>
+      </PageToolbar>
 
       {/* Machine List — scrolls internally */}
       <PageScroll>

@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Plus, Bot, RefreshCw } from "lucide-react";
-import { Page, PageHeader, PageTabStrip } from "@/components/layout/page";
+import { Page, PageTabStrip } from "@/components/layout/page";
 import { JobList } from "@/components/jobs/job-list";
 import { JobDialog } from "@/components/jobs/job-dialog";
 import { AgentJobList } from "@/components/jobs/agent-job-list";
@@ -71,9 +71,6 @@ export default function JobsPage() {
 
   return (
     <Page>
-      {/* Header — pinned, never scrolls */}
-      <PageHeader title="Jobs" description="Automated tasks and AI agents" />
-
       {/* Tabs — strip pinned, content scrolls internally */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center justify-between gap-2">

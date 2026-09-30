@@ -10,7 +10,18 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getTagColor, collectTags } from "@/lib/email/tags";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Mail, Search, Star, CheckCheck, RefreshCw, Loader2, ChevronDown, X } from "lucide-react";
+import {
+  Mail,
+  Search,
+  Star,
+  CheckCheck,
+  RefreshCw,
+  Loader2,
+  ChevronDown,
+  X,
+  Plus,
+  MailPlus,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,6 +83,8 @@ interface EmailListPanelProps {
   onLoadMore: () => void;
   onSyncAll: () => void;
   onMarkAllRead: () => void;
+  onCompose: () => void;
+  onAddAccount: () => void;
 }
 
 export function EmailListPanel({
@@ -98,6 +111,8 @@ export function EmailListPanel({
   onLoadMore,
   onSyncAll,
   onMarkAllRead,
+  onCompose,
+  onAddAccount,
 }: EmailListPanelProps) {
   const isMobile = useIsMobile();
   const router = useRouter();
@@ -196,6 +211,23 @@ export function EmailListPanel({
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
             )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-full"
+            onClick={onAddAccount}
+            title="Add account"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            className="liquid-glass-accent h-7 w-7 rounded-full"
+            onClick={onCompose}
+            title="Compose"
+          >
+            <MailPlus className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>

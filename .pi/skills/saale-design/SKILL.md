@@ -146,12 +146,18 @@ body **never scrolls**. Pages must use the shared layout components in
 `src/components/layout/page.tsx` — never build a page root by hand:
 
 ```tsx
-import { Page, PageHeader, PageScroll, PageTabStrip } from "@/components/layout/page";
+import { Page, PageToolbar, PageScroll, PageTabStrip } from "@/components/layout/page";
 
 export default function MyPage() {
   return (
     <Page>
-      <PageHeader title="My Page" description="What it does" actions={<Button>Act</Button>} />
+      <PageToolbar title="My Page">
+        {/* icon-only on mobile, label at md: */}
+        <Button size="icon" className="h-8 w-8 md:h-9 md:w-auto md:px-3" onClick={...}>
+          <Plus className="h-4 w-4" />
+          <span className="hidden md:inline">New Item</span>
+        </Button>
+      </PageToolbar>
       <PageScroll>
         {/* tall content scrolls here — the ONLY scroll region */}
       </PageScroll>
@@ -162,7 +168,10 @@ export default function MyPage() {
 
 Rules:
 
-- **Header pinned** — `PageHeader` is `shrink-0`; actions (buttons) never scroll away.
+- **No title/subtitle headers** — two-line title+description rows are wasted vertical space.
+  A page may pin at most a compact **one-line header**: title left, actions right, no subtitle.
+  Pages without actions start straight at their content.
+- **Actions pinned** — `PageToolbar` is `shrink-0`; actions (buttons) never scroll away.
 - **Content scrolls inside `PageScroll`** (`min-h-0 flex-1 overflow-y-auto`) — the
   only scrollable region on the page.
 - **Tab pages** — put the strip in `PageTabStrip` (pinned, swipe-scrollable,

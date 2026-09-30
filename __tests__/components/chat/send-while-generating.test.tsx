@@ -127,6 +127,9 @@ function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
   if (url === `/api/chat/sessions/${SESSION_ID}`) {
     return Promise.resolve(json({ session: { title: "Test chat" } }));
   }
+  if (url === "/api/chat/sessions") {
+    return Promise.resolve(json({ sessions: [] }));
+  }
   if (url === "/api/jobs") return Promise.resolve(json({ jobs: [] }));
 
   return Promise.resolve(json({}));
@@ -134,7 +137,14 @@ function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
 
 /** Render the chat and hand back the SSE connection it opened. */
 async function mountStream(): Promise<MockEventSource> {
-  render(<ChatInterface sessionId={SESSION_ID} temporaryMode={false} />);
+  render(
+    <ChatInterface
+      sessionId={SESSION_ID}
+      temporaryMode={false}
+      onTemporaryChange={() => {}}
+      onNewChat={() => {}}
+    />,
+  );
   await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
   return MockEventSource.instances[0]!;
 }

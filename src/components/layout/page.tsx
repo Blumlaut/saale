@@ -1,6 +1,5 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { GlassPanel } from "@/components/ui/glass-panel";
 
 /**
  * Page — root wrapper for every dashboard/admin page.
@@ -9,8 +8,12 @@ import { GlassPanel } from "@/components/ui/glass-panel";
  * construction:
  *
  *   <Page>              flex h-full min-h-0 flex-col gap-4
- *     <PageHeader />    shrink-0  (pinned, never scrolls away)
+ *     <PageToolbar />   shrink-0  (optional pinned action row, never scrolls away)
  *     <PageScroll />    min-h-0 flex-1 overflow-y-auto  (the ONLY scroll region)
+ *
+ * Pages have NO title/subtitle header — the nav already names the page, so
+ * the header row was pure waste. If the page has actions that must stay
+ * visible, pin them in <PageToolbar>; otherwise start straight at the content.
  *
  * The shell is `h-dvh overflow-hidden` — the body never scrolls. Content
  * taller than the viewport must live inside <PageScroll>. Do NOT use
@@ -25,40 +28,27 @@ export function Page({ className, children, ...props }: React.ComponentProps<"di
 }
 
 /**
- * PageHeader — pinned page header. Stays visible while <PageScroll> content
- * scrolls. Pass actions (buttons) so interactive elements never scroll away.
+ * PageToolbar — compact one-line page header: title left, actions right.
+ * No subtitle — the nav already explains what the page is for. Stays visible
+ * while <PageScroll> content scrolls; holds the buttons that must not scroll
+ * away ("New X", Save, status chips).
  */
-export function PageHeader({
+export function PageToolbar({
   title,
-  description,
-  icon,
-  actions,
   className,
+  children,
   ...props
-}: React.ComponentProps<"header"> & {
-  title: React.ReactNode;
-  description?: React.ReactNode;
-  icon?: React.ReactNode;
-  actions?: React.ReactNode;
-}) {
+}: React.ComponentProps<"div"> & { title: string }) {
   return (
-    <header
-      className={cn("flex shrink-0 items-center justify-between gap-3", className)}
+    <div
+      className={cn("flex shrink-0 items-center justify-between gap-2 px-2 md:px-0", className)}
       {...props}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        {icon && <GlassPanel className="rounded-xl p-2">{icon}</GlassPanel>}
-        <div className="min-w-0">
-          <h1 className="truncate text-lg leading-tight font-semibold tracking-tight md:text-2xl">
-            {title}
-          </h1>
-          {description && (
-            <p className="text-muted-foreground mt-1 truncate text-xs md:text-sm">{description}</p>
-          )}
-        </div>
-      </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-    </header>
+      <h1 className="text-muted-foreground min-w-0 truncate text-sm font-semibold md:text-base">
+        {title}
+      </h1>
+      <div className="flex shrink-0 items-center gap-1.5 md:gap-2">{children}</div>
+    </div>
   );
 }
 
