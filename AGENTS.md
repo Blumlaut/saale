@@ -121,37 +121,43 @@ try {
 - **All scrolling is internal to panels.** Pages use `h-full flex flex-col` with `flex-1 min-h-0 overflow-y-auto` on the scrollable region.
 - **Interactive elements (input bars, toolbars, action buttons) must always be visible.** Pin them with `shrink-0` in a flex column — never let them scroll out of view.
 - **Never use `h-dvh`, `h-screen`, or `calc(100vh - X)` inside page components.** The dashboard layout handles viewport sizing; pages use `h-full` to fill their allocated space.
-- **The flex containment chain:** `h-full` (page) → `flex flex-col` → optional action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scrollable area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
-- **No title/subtitle headers.** Two-line title+description rows are wasted vertical space. A page may pin at most a compact **one-line header** — title left, actions right, no subtitle (`PageToolbar`); action buttons are icon-only on mobile, label at `md:`. Pages without actions start straight at the content.
+- **The flex containment chain:** `h-full` (page) → `flex flex-col` → optional pinned action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scrollable area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
+
+### No page titles — the content owns the toolbar
+
+- **Pages never render a page title.** The nav already names the page; repeating it wastes vertical space (worst on mobile) and looks decorative. This includes the old two-line title+description headers AND bare title+action rows.
+- **List/content pages are a single full-height panel** (`GlassPanel className="flex h-full flex-col overflow-hidden border-0"`) whose **first row is the toolbar** (`shrink-0 border-b px-4 py-2`): actions right-aligned, icon-only on mobile, label at `md:`. The body scrolls internally (`flex-1 min-h-0 overflow-y-auto`); the page is `<Page className="gap-0">` with the panel in a `min-h-0 flex-1` wrapper.
+- **Functional context may sit on the toolbar's left** — a date range, an account switcher, a search field. Never a bare page name.
+- **Tab pages:** the `PageTabStrip` row IS the toolbar; actions go to its right (Jobs pattern).
+- **Form pages** with a scrollable body pin a slim `<PageToolbar>` row instead (status + Save, right-aligned, no title).
+
+```tsx
+// ✅ GOOD — list page: one panel, first row is the toolbar
+<Page className="gap-0">
+  <div className="min-h-0 flex-1">
+    <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
+      <div className="flex shrink-0 items-center justify-end border-b px-4 py-2">
+        <Button size="icon" className="h-8 w-8 md:w-auto md:px-3" onClick={...}>
+          <Plus className="h-4 w-4" />
+          <span className="hidden md:inline">New Task</span>
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">{/* list */}</div>
+    </GlassPanel>
+  </div>
+</Page>
+
+// ❌ BAD — page title text, floating action rows, content clipped with no scroll
+```
 
 ### Use the shared Page components (required)
 
 New pages **must** be built from `src/components/layout/page.tsx` — do not hand-roll the flex chain:
 
 - `<Page>` — root wrapper (`flex h-full min-h-0 flex-col gap-4`).
-- `<PageToolbar title="...">` — compact one-line page header (title left, actions right, no subtitle); stays visible while content scrolls. Omit it entirely if the page has no actions.
+- `<PageToolbar>` — pinned slim action row for form pages (status + Save, right-aligned, no title).
 - `<PageScroll>` — the ONLY scrollable content region (`min-h-0 flex-1 overflow-y-auto`).
 - `<PageTabStrip>` — pinned, swipe-scrollable tab strip with hidden scrollbar (for `Tabs` pages).
-
-```tsx
-// ✅ GOOD — the pattern every page uses
-<Page>
-  <PageToolbar title="Tasks">
-    <Button size="icon" className="h-8 w-8 md:h-9 md:w-auto md:px-3" onClick={...}>
-      <Plus className="h-4 w-4" />
-      <span className="hidden md:inline">New Task</span>
-    </Button>
-  </PageToolbar>
-  <PageScroll>{/* tall content scrolls here */}</PageScroll>
-</Page>
-
-// ❌ BAD — input scrolls out of view / content clipped with no scroll
-<div className="flex flex-col">
-  <div>Header</div>
-  <div>Messages</div>
-  <div>Input bar</div>  {/* gets pushed off-screen */}
-</div>
-```
 
 Tab pages: strip goes in `<PageTabStrip>`, tab content gets `className="min-h-0 flex-1 overflow-y-auto"`. Never add `w-full` to a `TabsList` (triggers squeeze and overlap). Grid items holding lists need `min-w-0` so nowrap text truncates instead of widening the page.
 

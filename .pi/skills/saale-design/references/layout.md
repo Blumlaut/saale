@@ -2,9 +2,17 @@
 
 ## Dashboard Shell
 
-The dashboard is a **fixed-height app shell** — `h-dvh overflow-hidden` on the root. The body/viewport **never scrolls**; all scrolling is internal to panels. Pages are built from the shared `Page` components (`src/components/layout/page.tsx`): `Page`, `PageToolbar`, `PageScroll`, `PageTabStrip`. Pages have **no title/subtitle header** — a two-line title+description row is wasted space. At most a compact one-line header (title left, actions right, no subtitle) via `PageToolbar`; pages without actions start straight at their content.
+The dashboard is a **fixed-height app shell** — `h-dvh overflow-hidden` on the root. The body/viewport **never scrolls**; all scrolling is internal to panels. Pages are built from the shared `Page` components (`src/components/layout/page.tsx`): `Page`, `PageToolbar`, `PageScroll`, `PageTabStrip`.
 
-The flex containment chain: `h-full` (page) → `flex flex-col` → optional action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scroll area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
+The flex containment chain: `h-full` (page) → `flex flex-col` → optional pinned action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scroll area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
+
+### No page titles — the content owns the toolbar
+
+Pages never render a page title (no title text, no subtitle, no title+action rows) — the nav already names the page and the row is wasted space. Instead:
+
+- **List/content pages:** a single full-height `GlassPanel` (`flex h-full flex-col overflow-hidden border-0`) in a `<Page className="gap-0">` → `min-h-0 flex-1` wrapper. Its **first row is the toolbar** (`shrink-0 border-b px-4 py-2`): actions right-aligned (icon-only on mobile, label at `md:`), functional context (date range, account switcher, search) on the left — never a bare page name. The body scrolls internally (`flex-1 min-h-0 overflow-y-auto`).
+- **Tab pages:** the `PageTabStrip` row IS the toolbar; actions go to its right.
+- **Form pages:** a pinned slim `<PageToolbar>` row (status + Save, right-aligned, no title) above `<PageScroll>`.
 
 ### Structure
 
@@ -128,6 +136,7 @@ All spacing follows the 4px rhythm (Tailwind default scale):
 | Mistake                    | Fix                                       |
 | -------------------------- | ----------------------------------------- |
 | `h-dvh`/`h-screen` in a page | The shell owns viewport height — use `h-full` |
+| Page title / title+action row | Content owns the toolbar — no title text at all |
 | Page-level `overflow-y-auto` | Use `<PageScroll>` — the only scroll region |
 | Edge-to-edge panels        | Add page margins (`p-6`)                  |
 | 3+ column grid             | Reduce to 1 or 2 columns                  |

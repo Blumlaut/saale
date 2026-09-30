@@ -78,8 +78,8 @@ export default function AdminSettingsPage() {
 
   return (
     <Page>
-      {/* Header — compact one-line, pinned */}
-      <PageToolbar title="Settings">
+      {/* Pinned action row — status + Save, no title */}
+      <PageToolbar>
         {saveStatus === "success" && (
           <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
             <CheckCircle className="h-3.5 w-3.5" /> Saved

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
+import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
+import { Page } from "@/components/layout/page";
 import {
   Dialog,
   DialogContent,
@@ -188,127 +188,124 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <Page>
-      {/* Header — compact one-line, pinned */}
-      <PageToolbar title="Users">
-        {saveStatus === "success" && (
-          <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-            <CheckCircle className="h-3.5 w-3.5" /> Saved
-          </span>
-        )}
-        {saveStatus === "error" && (
-          <span className="text-destructive flex items-center gap-1 text-xs">
-            <AlertCircle className="h-3.5 w-3.5" /> Error
-          </span>
-        )}
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus className="mr-1 h-3.5 w-3.5" /> Add
-        </Button>
-      </PageToolbar>
-
-      {/* Scrollable content */}
-      <PageScroll>
-        <div className="space-y-6">
-          {/* Search */}
-          <div className="flex gap-2">
-            <Input
-              placeholder="Search by email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
-            />
-            {search && (
-              <Button variant="ghost" size="sm" onClick={() => setSearch("")}>
-                Clear
-              </Button>
+    <Page className="gap-0">
+      {/* User list — fills height, owns its toolbar (search + add) */}
+      <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
+        <div className="border-border/30 flex shrink-0 items-center gap-2 border-b px-4 py-2">
+          <Input
+            placeholder="Search by email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 min-w-0 flex-1 md:max-w-sm"
+          />
+          {search && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 shrink-0"
+              onClick={() => setSearch("")}
+            >
+              Clear
+            </Button>
+          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {saveStatus === "success" && (
+              <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                <CheckCircle className="h-3.5 w-3.5" /> Saved
+              </span>
             )}
+            {saveStatus === "error" && (
+              <span className="text-destructive flex items-center gap-1 text-xs">
+                <AlertCircle className="h-3.5 w-3.5" /> Error
+              </span>
+            )}
+            <Button
+              variant="default"
+              size="icon"
+              className="h-8 w-8 md:w-auto md:px-3"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden md:inline">Add</span>
+            </Button>
           </div>
-
-          {/* Users list */}
-          <GlassPanel>
-            <GlassPanelContent className="p-0">
-              {users.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Users className="text-muted-foreground/50 mb-3 h-8 w-8" />
-                  <p className="text-sm font-medium">No users found</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    {search ? "Try a different search term" : "Add a user to get started"}
-                  </p>
-                </div>
-              ) : (
-                users.map((user, i) => (
-                  <div key={user.id}>
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <div className="bg-muted/50 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold">
-                        {(user.name ?? user.email)[0]?.toUpperCase() ?? "?"}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium">{user.name ?? "—"}</span>
-                          {user.role === "admin" && (
-                            <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
-                              admin
-                            </Badge>
-                          )}
-                          {user.banned && (
-                            <Badge
-                              variant="destructive"
-                              className="rounded-full px-1.5 text-[10px]"
-                            >
-                              banned
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="text-muted-foreground truncate text-xs">{user.email}</span>
-                      </div>
-                      <div className="flex shrink-0 gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleImpersonate(user)}
-                          disabled={impersonating === user.id || user.role === "admin"}
-                          title={
-                            user.role === "admin"
-                              ? "Cannot impersonate admins"
-                              : "Impersonate this user"
-                          }
-                        >
-                          {impersonating === user.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <UserCog className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => openEdit(user)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive h-8 w-8"
-                          onClick={() => openDelete(user)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                    {i < users.length - 1 && <Separator className="px-4" />}
-                  </div>
-                ))
-              )}
-            </GlassPanelContent>
-            {users.length > 0 && (
-              <GlassPanelHeader title={`${users.length} user${users.length !== 1 ? "s" : ""}`} />
-            )}
-          </GlassPanel>
         </div>
-      </PageScroll>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {users.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+              <Users className="text-muted-foreground/50 mb-3 h-8 w-8" />
+              <p className="text-sm font-medium">No users found</p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                {search ? "Try a different search term" : "Add a user to get started"}
+              </p>
+            </div>
+          ) : (
+            users.map((user, i) => (
+              <div key={user.id}>
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="bg-muted/50 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold">
+                    {(user.name ?? user.email)[0]?.toUpperCase() ?? "?"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{user.name ?? "—"}</span>
+                      {user.role === "admin" && (
+                        <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
+                          admin
+                        </Badge>
+                      )}
+                      {user.banned && (
+                        <Badge variant="destructive" className="rounded-full px-1.5 text-[10px]">
+                          banned
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-muted-foreground truncate text-xs">{user.email}</span>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleImpersonate(user)}
+                      disabled={impersonating === user.id || user.role === "admin"}
+                      title={
+                        user.role === "admin"
+                          ? "Cannot impersonate admins"
+                          : "Impersonate this user"
+                      }
+                    >
+                      {impersonating === user.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <UserCog className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => openEdit(user)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive h-8 w-8"
+                      onClick={() => openDelete(user)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                {i < users.length - 1 && <Separator className="px-4" />}
+              </div>
+            ))
+          )}
+        </div>
+      </GlassPanel>
 
       {/* Create dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
