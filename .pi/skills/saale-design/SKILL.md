@@ -146,34 +146,43 @@ body **never scrolls**. Pages must use the shared layout components in
 `src/components/layout/page.tsx` — never build a page root by hand:
 
 ```tsx
-import { Page, PageToolbar, PageScroll, PageTabStrip } from "@/components/layout/page";
-
-export default function MyPage() {
-  return (
-    <Page>
-      <PageToolbar title="My Page">
-        {/* icon-only on mobile, label at md: */}
-        <Button size="icon" className="h-8 w-8 md:h-9 md:w-auto md:px-3" onClick={...}>
+// List/content page — single full-height panel, first row is the toolbar
+<Page className="gap-0">
+  <div className="min-h-0 flex-1">
+    <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
+      {/* toolbar: functional context left, actions right (icon-only mobile) */}
+      <div className="flex shrink-0 items-center justify-end border-b px-4 py-2">
+        <Button size="icon" className="h-8 w-8 md:w-auto md:px-3" onClick={...}>
           <Plus className="h-4 w-4" />
           <span className="hidden md:inline">New Item</span>
         </Button>
-      </PageToolbar>
-      <PageScroll>
-        {/* tall content scrolls here — the ONLY scroll region */}
-      </PageScroll>
-    </Page>
-  );
-}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* list scrolls here — the ONLY scroll region */}
+      </div>
+    </GlassPanel>
+  </div>
+</Page>
+
+// Form page — pinned slim action row (status + Save), no title
+<Page>
+  <PageToolbar>
+    <Button size="sm" onClick={...}>Save</Button>
+  </PageToolbar>
+  <PageScroll>{/* form scrolls here */}</PageScroll>
+</Page>
 ```
 
 Rules:
 
-- **No title/subtitle headers** — two-line title+description rows are wasted vertical space.
-  A page may pin at most a compact **one-line header**: title left, actions right, no subtitle.
-  Pages without actions start straight at their content.
-- **Actions pinned** — `PageToolbar` is `shrink-0`; actions (buttons) never scroll away.
-- **Content scrolls inside `PageScroll`** (`min-h-0 flex-1 overflow-y-auto`) — the
-  only scrollable region on the page.
+- **No page titles** — the nav already names the page. No title text, no subtitle,
+  no title+action rows. Empty space is wasted space.
+- **The content owns the toolbar** — a list page's first panel row holds the actions
+  (right-aligned, icon-only on mobile, label at `md:`). Functional context (date
+  range, account switcher, search) may sit on the left — never a bare page name.
+- **Actions pinned** — the toolbar row is `shrink-0`; actions never scroll away.
+- **Content scrolls inside its panel** (`min-h-0 flex-1 overflow-y-auto`) or inside
+  `PageScroll` for form pages — the only scrollable region on the page.
 - **Tab pages** — put the strip in `PageTabStrip` (pinned, swipe-scrollable,
   hidden scrollbar) and the tab content in `PageScroll`:
   `<Tabs className="flex min-h-0 flex-1 flex-col">` + `<TabsContent className="min-h-0 flex-1 overflow-y-auto">`.

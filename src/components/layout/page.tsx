@@ -8,12 +8,12 @@ import { cn } from "@/lib/utils";
  * construction:
  *
  *   <Page>              flex h-full min-h-0 flex-col gap-4
- *     <PageToolbar />   shrink-0  (optional pinned action row, never scrolls away)
+ *     <PageToolbar />   shrink-0  (form pages only — pinned status + Save row)
  *     <PageScroll />    min-h-0 flex-1 overflow-y-auto  (the ONLY scroll region)
  *
- * Pages have NO title/subtitle header — the nav already names the page, so
- * the header row was pure waste. If the page has actions that must stay
- * visible, pin them in <PageToolbar>; otherwise start straight at the content.
+ * Pages have NO title anywhere — the nav already names the page. List/content
+ * pages start straight at a single full-height panel whose first row is the
+ * toolbar (actions right-aligned); see the layout rules in AGENTS.md.
  *
  * The shell is `h-dvh overflow-hidden` — the body never scrolls. Content
  * taller than the viewport must live inside <PageScroll>. Do NOT use
@@ -28,26 +28,18 @@ export function Page({ className, children, ...props }: React.ComponentProps<"di
 }
 
 /**
- * PageToolbar — compact one-line page header: title left, actions right.
- * No subtitle — the nav already explains what the page is for. Stays visible
- * while <PageScroll> content scrolls; holds the buttons that must not scroll
- * away ("New X", Save, status chips).
+ * PageToolbar — pinned slim action row for form pages (status + Save) that
+ * have no natural spot in the content. Right-aligned, never titled.
+ * List/content pages don't use this — their first panel owns the toolbar row
+ * instead (see the layout rules in AGENTS.md).
  */
-export function PageToolbar({
-  title,
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"div"> & { title: string }) {
+export function PageToolbar({ className, children, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("flex shrink-0 items-center justify-between gap-2 px-2 md:px-0", className)}
+      className={cn("flex shrink-0 items-center justify-end gap-2 px-2 md:px-0", className)}
       {...props}
     >
-      <h1 className="text-muted-foreground min-w-0 truncate text-sm font-semibold md:text-base">
-        {title}
-      </h1>
-      <div className="flex shrink-0 items-center gap-1.5 md:gap-2">{children}</div>
+      {children}
     </div>
   );
 }
