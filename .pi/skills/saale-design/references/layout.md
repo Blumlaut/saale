@@ -2,9 +2,9 @@
 
 ## Dashboard Shell
 
-The dashboard is a **fixed-height app shell** — `h-dvh overflow-hidden` on the root. The body/viewport **never scrolls**; all scrolling is internal to panels. Pages are built from the shared `Page` components (`src/components/layout/page.tsx`): `Page`, `PageHeader`, `PageScroll`, `PageTabStrip`.
+The dashboard is a **fixed-height app shell** — `h-dvh overflow-hidden` on the root. The body/viewport **never scrolls**; all scrolling is internal to panels. Pages are built from the shared `Page` components (`src/components/layout/page.tsx`): `Page`, `PageToolbar`, `PageScroll`, `PageTabStrip`. Pages have **no title/subtitle header** — a two-line title+description row is wasted space. At most a compact one-line header (title left, actions right, no subtitle) via `PageToolbar`; pages without actions start straight at their content.
 
-The flex containment chain: `h-full` (page) → `flex flex-col` → header (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scroll area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
+The flex containment chain: `h-full` (page) → `flex flex-col` → optional action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scroll area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
 
 ### Structure
 

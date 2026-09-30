@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2 } from "lucide-react";
-import { Page, PageHeader, PageScroll } from "@/components/layout/page";
+import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskForm } from "@/components/tasks/task-form";
 import { TaskChatDialog } from "@/components/tasks/task-chat-dialog";
@@ -118,22 +118,18 @@ export default function TasksPage() {
 
   return (
     <Page>
-      {/* Header — pinned, never scrolls */}
-      <PageHeader
-        title="Tasks"
-        description="Action items and reminders"
-        actions={
-          <Button
-            variant="default"
-            size="icon"
-            className="h-8 w-8 md:h-9 md:w-auto md:px-3"
-            onClick={() => setShowForm(true)}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden md:inline">New Task</span>
-          </Button>
-        }
-      />
+      {/* Header — compact one-line, pinned */}
+      <PageToolbar title="Tasks">
+        <Button
+          variant="default"
+          size="icon"
+          className="h-8 w-8 md:h-9 md:w-auto md:px-3"
+          onClick={() => setShowForm(true)}
+        >
+          <Plus className="h-4 w-4" />
+          <span className="hidden md:inline">New Task</span>
+        </Button>
+      </PageToolbar>
 
       {/* Task list — scrolls internally */}
       <PageScroll>

@@ -3,14 +3,30 @@
 import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
+import { MobileSessionSheet } from "./mobile-session-sheet";
+import { TemporaryToggle } from "./temporary-toggle";
 import { createChatSession } from "@/lib/chat-session";
 import { MessageSquarePlus, Ghost } from "lucide-react";
 
-export function ChatEmptyState({ temporaryMode }: { temporaryMode: boolean }) {
+interface ChatEmptyStateProps {
+  temporaryMode: boolean;
+  onTemporaryChange: (checked: boolean) => void;
+}
+
+export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptyStateProps) {
   const router = useRouter();
 
   return (
-    <GlassPanel className="flex flex-1 flex-col border-0">
+    <GlassPanel className="flex flex-1 flex-col overflow-hidden border-0">
+      {/* Compact control row — session list (mobile) + temporary mode */}
+      <div className="border-border/30 flex items-center gap-1.5 border-b px-2 py-1.5 md:px-4">
+        <div className="shrink-0 md:hidden">
+          <MobileSessionSheet />
+        </div>
+        <div className="ml-auto">
+          <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
+        </div>
+      </div>
       <GlassPanelContent className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="bg-accent mb-4 flex h-16 w-16 items-center justify-center rounded-2xl">
@@ -28,9 +44,12 @@ export function ChatEmptyState({ temporaryMode }: { temporaryMode: boolean }) {
           )}
           <Button
             className="liquid-glass-accent mt-6"
-            onClick={async () => {
-              const session = await createChatSession({ temporary: temporaryMode });
-              router.push(`/dashboard/chat/${session.id}`);
+            onClick={() => {
+              createChatSession({ temporary: temporaryMode })
+                .then((session) => router.push(`/dashboard/chat/${session.id}`))
+                .catch((err) => {
+                  console.error("Failed to create chat session:", err);
+                });
             }}
           >
             <MessageSquarePlus className="mr-2 h-4 w-4" />

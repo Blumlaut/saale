@@ -1,9 +1,12 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
-import { Loader2, Settings2, ChevronDown, Ghost, Pencil } from "lucide-react";
+import { MobileSessionSheet } from "./mobile-session-sheet";
+import { TemporaryToggle } from "./temporary-toggle";
+import { Loader2, Settings2, ChevronDown, Ghost, Pencil, MessageSquarePlus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,8 +29,15 @@ interface ChatHeaderProps {
   onSaveTitle: (title: string) => void;
   onModelChange: (value: string) => void;
   onThinkingChange: (value: string) => void;
+  onTemporaryChange: (checked: boolean) => void;
+  onNewChat: () => void;
 }
 
+/**
+ * The single chat toolbar: session title, temporary mode, sharing, model &
+ * thinking level, and a new-chat action. There is no separate page header —
+ * this row is the page header.
+ */
 export function ChatHeader({
   sessionTitle,
   editingTitle,
@@ -43,12 +53,19 @@ export function ChatHeader({
   onSaveTitle,
   onModelChange,
   onThinkingChange,
+  onTemporaryChange,
+  onNewChat,
 }: ChatHeaderProps) {
   const [provider, ...modelParts] = modelId.split("/");
   const modelName = modelParts.join("/");
 
   return (
-    <div className="border-border/30 flex items-center gap-2 border-b px-4 py-3 md:px-5 md:py-3">
+    <div className="border-border/30 flex items-center gap-1.5 border-b px-2 py-2 md:gap-2 md:px-4 md:py-2.5">
+      {/* Mobile: session list */}
+      <div className="shrink-0 md:hidden">
+        <MobileSessionSheet activeSessionId={sessionId} />
+      </div>
+
       {/* Editable session title */}
       {editingTitle ? (
         <Input
@@ -75,8 +92,8 @@ export function ChatHeader({
         </button>
       )}
       {temporaryMode && (
-        // Redundant on mobile — the page header's ghost toggle already shows
-        // the session's temporary state, and the label overflows narrow rows.
+        // Redundant on mobile — the toggle icon already shows the state, and
+        // the label overflows narrow rows.
         <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:flex">
           <Ghost className="h-3 w-3" />
           temporary
@@ -86,8 +103,9 @@ export function ChatHeader({
 
       <ShareButton sessionId={sessionId} />
 
-      {/* Model & thinking selectors — inline on desktop, dropdown on mobile */}
-      <div className="ml-auto flex items-center gap-1">
+      {/* Temporary mode, model & thinking selectors, new chat */}
+      <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
+        <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
         <div className="hidden items-center gap-1 md:flex">
           <ModelPicker value={modelId} onChange={onModelChange} />
           <ThinkingSelector
@@ -120,6 +138,14 @@ export function ChatHeader({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        <Button
+          className="liquid-glass-accent flex h-8 w-8 shrink-0 items-center gap-1.5 rounded-full md:h-9 md:w-auto md:px-3"
+          size="icon"
+          onClick={onNewChat}
+        >
+          <MessageSquarePlus className="h-4 w-4" />
+          <span className="hidden md:inline">New Chat</span>
+        </Button>
       </div>
     </div>
   );

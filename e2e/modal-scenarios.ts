@@ -388,7 +388,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "chat · session list sheet",
     path: "/dashboard/chat",
-    sources: ["src/app/dashboard/chat/layout.tsx"],
+    sources: ["src/components/chat/mobile-session-sheet.tsx"],
     open: (page) => click(page, '[data-slot="sheet-trigger"]'),
   },
   {

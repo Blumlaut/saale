@@ -32,9 +32,13 @@ import { useChatStream } from "./use-chat-stream";
 export function ChatInterface({
   sessionId,
   temporaryMode,
+  onTemporaryChange,
+  onNewChat,
 }: {
   sessionId: string;
   temporaryMode: boolean;
+  onTemporaryChange: (checked: boolean) => void;
+  onNewChat: () => void;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -644,6 +648,8 @@ export function ChatInterface({
           onSaveTitle={saveTitle}
           onModelChange={setModelId}
           onThinkingChange={setThinkingLevel}
+          onTemporaryChange={onTemporaryChange}
+          onNewChat={onNewChat}
         />
 
         <div className="flex min-h-0 flex-1 flex-col">

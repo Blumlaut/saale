@@ -51,7 +51,7 @@ describe("Inbox sync button", () => {
 
   it("syncs only the selected account when one is active", async () => {
     mockSearchParams = new URLSearchParams({ accountId: "acc-1" });
-    render(<Inbox />);
+    render(<Inbox onCompose={vi.fn()} onAddAccount={vi.fn()} />);
 
     const syncButton = await screen.findByRole("button", { name: "Sync" });
     fireEvent.click(syncButton);
@@ -65,7 +65,7 @@ describe("Inbox sync button", () => {
   });
 
   it("syncs all accounts when no account is selected", async () => {
-    render(<Inbox />);
+    render(<Inbox onCompose={vi.fn()} onAddAccount={vi.fn()} />);
 
     const syncButton = await screen.findByRole("button", { name: "Sync" });
     fireEvent.click(syncButton);
@@ -87,7 +87,7 @@ describe("Inbox sync button", () => {
     });
     const syncCalls = () => mockFetchJson.mock.calls.filter(([url]) => url === "/api/email/sync");
 
-    render(<Inbox />);
+    render(<Inbox onCompose={vi.fn()} onAddAccount={vi.fn()} />);
     const syncButton = await screen.findByRole("button", { name: "Sync" });
 
     fireEvent.click(syncButton);

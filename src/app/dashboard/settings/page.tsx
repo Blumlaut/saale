@@ -2,10 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Page, PageHeader, PageTabStrip } from "@/components/layout/page";
+import { Page, PageTabStrip } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
 import {
-  Settings as SettingsIcon,
   Mail,
   Bot,
   Palette,
@@ -74,13 +73,6 @@ export default function SettingsPage() {
 
   return (
     <Page>
-      {/* Header — pinned, never scrolls */}
-      <PageHeader
-        title="Settings"
-        description="Configure your AI models, integrations, email accounts, and preferences"
-        icon={<SettingsIcon className="text-muted-foreground h-4 w-4 md:h-5 md:w-5" />}
-      />
-
       <Tabs defaultValue="ai" className="flex min-h-0 flex-1 flex-col">
         {/* Tab strip — pinned, swipe-scrollable, no visible scrollbar */}
         <PageTabStrip className="pb-1">

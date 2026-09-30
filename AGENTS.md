@@ -121,21 +121,27 @@ try {
 - **All scrolling is internal to panels.** Pages use `h-full flex flex-col` with `flex-1 min-h-0 overflow-y-auto` on the scrollable region.
 - **Interactive elements (input bars, toolbars, action buttons) must always be visible.** Pin them with `shrink-0` in a flex column — never let them scroll out of view.
 - **Never use `h-dvh`, `h-screen`, or `calc(100vh - X)` inside page components.** The dashboard layout handles viewport sizing; pages use `h-full` to fill their allocated space.
-- **The flex containment chain:** `h-full` (page) → `flex flex-col` → header (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scrollable area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
+- **The flex containment chain:** `h-full` (page) → `flex flex-col` → optional action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scrollable area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
+- **No title/subtitle headers.** Two-line title+description rows are wasted vertical space. A page may pin at most a compact **one-line header** — title left, actions right, no subtitle (`PageToolbar`); action buttons are icon-only on mobile, label at `md:`. Pages without actions start straight at the content.
 
 ### Use the shared Page components (required)
 
 New pages **must** be built from `src/components/layout/page.tsx` — do not hand-roll the flex chain:
 
 - `<Page>` — root wrapper (`flex h-full min-h-0 flex-col gap-4`).
-- `<PageHeader title description icon actions>` — pinned header; actions never scroll away.
+- `<PageToolbar title="...">` — compact one-line page header (title left, actions right, no subtitle); stays visible while content scrolls. Omit it entirely if the page has no actions.
 - `<PageScroll>` — the ONLY scrollable content region (`min-h-0 flex-1 overflow-y-auto`).
 - `<PageTabStrip>` — pinned, swipe-scrollable tab strip with hidden scrollbar (for `Tabs` pages).
 
 ```tsx
 // ✅ GOOD — the pattern every page uses
 <Page>
-  <PageHeader title="Tasks" actions={<Button>New Task</Button>} />
+  <PageToolbar title="Tasks">
+    <Button size="icon" className="h-8 w-8 md:h-9 md:w-auto md:px-3" onClick={...}>
+      <Plus className="h-4 w-4" />
+      <span className="hidden md:inline">New Task</span>
+    </Button>
+  </PageToolbar>
   <PageScroll>{/* tall content scrolls here */}</PageScroll>
 </Page>
 
