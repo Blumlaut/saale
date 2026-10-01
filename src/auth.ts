@@ -8,6 +8,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, twoFactor } from "better-auth/plugins";
 import { prisma } from "@/lib/db";
+import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -42,6 +43,14 @@ export const auth = betterAuth({
               data: { role: "admin" },
             });
           }
+        },
+      },
+      update: {
+        // Sign out every device that never passed the 2FA challenge when the
+        // user enables two-factor; the enabling browser is re-issued a session
+        // by the plugin immediately afterwards.
+        after: async (user, context) => {
+          await revokeSessionsOnTwoFactorEnable(user, context);
         },
       },
     },
