@@ -563,12 +563,12 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "admin · models dialogs",
     path: "/admin/models",
     sources: ["src/app/admin/models/page.tsx"],
-    skip: "requires an admin role — the shared e2e user is a regular user (see mobile-overflow.spec.ts)",
+    skip: "not automated yet — the admin overlays need their own `open` steps",
   },
   {
     name: "admin · user dialogs",
     path: "/admin/users",
     sources: ["src/app/admin/users/page.tsx"],
-    skip: "requires an admin role — the shared e2e user is a regular user (see mobile-overflow.spec.ts)",
+    skip: "not automated yet — the admin overlays need their own `open` steps",
   },
 ];
