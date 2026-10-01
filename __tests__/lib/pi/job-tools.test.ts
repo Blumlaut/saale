@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Shared mock queue instance — the real scheduling helpers in @/lib/queue
 // call `new Queue(...)`, so the mock must return the same instance every time.
-const { mockAdd, mockRemoveJobScheduler } = vi.hoisted(() => ({
+const { mockAdd, mockRemoveJobScheduler, mockUpsertJobScheduler } = vi.hoisted(() => ({
   mockAdd: vi.fn(),
   mockRemoveJobScheduler: vi.fn(),
+  mockUpsertJobScheduler: vi.fn(),
 }));
 
 // Mock prisma
@@ -34,7 +35,11 @@ vi.mock("@/lib/db", () => ({
 // Mock the queue instance (no real Redis in tests)
 vi.mock("bullmq", () => ({
   Queue: vi.fn().mockImplementation(function MockQueue() {
-    return { add: mockAdd, removeJobScheduler: mockRemoveJobScheduler };
+    return {
+      add: mockAdd,
+      removeJobScheduler: mockRemoveJobScheduler,
+      upsertJobScheduler: mockUpsertJobScheduler,
+    };
   }),
 }));
 
@@ -77,6 +82,7 @@ describe("createJobTools", () => {
     vi.clearAllMocks();
     mockAdd.mockResolvedValue({});
     mockRemoveJobScheduler.mockResolvedValue(undefined);
+    mockUpsertJobScheduler.mockResolvedValue({});
     mockTaskRun.create.mockResolvedValue({ id: "run-1" });
 
     const tools = createJobTools(userId);
@@ -209,21 +215,17 @@ describe("createJobTools", () => {
       const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
       expect(text.created).toBe(true);
 
-      expect(mockAdd).toHaveBeenCalledWith(
-        "execute",
-        expect.objectContaining({
-          cronExpression: "0 */6 * * *",
-          taskId: "job-new",
-          type: "summarization",
-        }),
-        expect.objectContaining({
-          jobId: "scheduled-job-new",
-          repeat: expect.objectContaining({
-            pattern: "0 */6 * * *",
-            tz: "UTC",
-            key: "scheduled-job-new",
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "scheduled-job-new",
+        { pattern: "0 */6 * * *", tz: "UTC" },
+        {
+          name: "execute",
+          data: expect.objectContaining({
+            cronExpression: "0 */6 * * *",
+            taskId: "job-new",
+            type: "summarization",
           }),
-        }),
+        },
       );
     });
 
@@ -246,7 +248,7 @@ describe("createJobTools", () => {
         enabled: false,
       });
 
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
 
     it("rejects unknown job types", async () => {
@@ -285,10 +287,13 @@ describe("createJobTools", () => {
         data: { enabled: true },
       });
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
-      expect(mockAdd).toHaveBeenCalledWith(
-        "execute",
-        expect.objectContaining({ taskId: "job-1" }),
-        expect.objectContaining({ jobId: "scheduled-job-1" }),
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "scheduled-job-1",
+        expect.objectContaining({ pattern: "0 */6 * * *" }),
+        expect.objectContaining({
+          name: "execute",
+          data: expect.objectContaining({ taskId: "job-1" }),
+        }),
       );
     });
 
@@ -376,7 +381,8 @@ describe("createJobTools", () => {
 
       // Scheduler should be removed and re-added
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
-      expect(mockAdd).toHaveBeenCalled();
+      // Scheduler should be removed and re-added
+      expect(mockUpsertJobScheduler).toHaveBeenCalled();
     });
 
     it("updates cron expression and re-schedules", async () => {
@@ -398,15 +404,15 @@ describe("createJobTools", () => {
       });
 
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
-      expect(mockAdd).toHaveBeenCalledWith(
-        "execute",
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "scheduled-job-1",
+        { pattern: "*/30 * * * *", tz: "UTC" },
         expect.objectContaining({
-          cronExpression: "*/30 * * * *",
-          taskId: "job-1",
-        }),
-        expect.objectContaining({
-          jobId: "scheduled-job-1",
-          repeat: expect.objectContaining({ pattern: "*/30 * * * *" }),
+          name: "execute",
+          data: expect.objectContaining({
+            cronExpression: "*/30 * * * *",
+            taskId: "job-1",
+          }),
         }),
       );
     });
@@ -475,7 +481,7 @@ describe("createJobTools", () => {
 
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
       // Should NOT re-add scheduler when disabled
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
   });
 

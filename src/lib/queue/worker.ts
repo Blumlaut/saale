@@ -1,31 +1,29 @@
 /* eslint-disable no-console */
 import "dotenv/config";
 import type { Job, Processor } from "bullmq";
-import { createWorker, getQueue, scheduleAllAgentDefinitions, scheduleAllJobs } from "@/lib/queue";
+import {
+  createWorker,
+  scheduleAllAgentDefinitions,
+  scheduleAllJobs,
+  scheduleOrphanCleanup,
+} from "@/lib/queue";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { registerAllWebhooks } from "@/lib/telegram";
 
 /** How often to scan for orphaned image files (30 min) */
-const ORPHAN_CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
+const ORPHAN_CLEANUP_INTERVAL_MINUTES = 30;
 
 /** URL of the Next.js app (for job execution via API) */
 const APP_URL = process.env.WORKER_APP_URL ?? "http://localhost:3000";
 /** Shared secret for worker → app authentication */
 const WORKER_API_KEY = process.env.WORKER_API_KEY ?? "";
 
-async function scheduleOrphanCleanup(): Promise<void> {
-  const queue = getQueue();
-  await queue.add(
-    "cleanup_orphaned_images",
-    {},
-    {
-      jobId: "cleanup-orphaned-images",
-      repeat: {
-        pattern: `*/${Math.round(ORPHAN_CLEANUP_INTERVAL_MS / 60_000)} * * * *`,
-        tz: "UTC",
-      },
-    },
-  );
+/** Register the orphan cleanup scheduler, reporting pruned v5 repeatable jobs. */
+async function registerOrphanCleanup(): Promise<void> {
+  const removed = await scheduleOrphanCleanup(ORPHAN_CLEANUP_INTERVAL_MINUTES);
+  for (const id of removed) {
+    console.log(`[worker] Removed legacy repeatable job ${id}`);
+  }
 }
 
 /**
@@ -136,7 +134,7 @@ async function main() {
 
   await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
   await retryUntilSuccess("Schedule agent definitions", scheduleAllAgentDefinitions);
-  await retryUntilSuccess("Schedule orphan cleanup", scheduleOrphanCleanup);
+  await retryUntilSuccess("Schedule orphan cleanup", registerOrphanCleanup);
   await retryUntilSuccess("Register Telegram webhooks", registerAllWebhooks);
 
   process.on("SIGINT", async () => {

@@ -95,8 +95,9 @@ export function queueTaskSchedulerId(jobId: string): string {
 }
 
 /**
- * Schedule a QueueTask as a repeatable BullMQ "execute" job.
- * Only schedules when the job is enabled and its config has a cronExpression.
+ * Schedule a QueueTask as a BullMQ job scheduler — the v6 replacement for
+ * repeatable jobs. Only schedules when the job is enabled and its config has a
+ * cronExpression.
  */
 export async function scheduleQueueTask(job: {
   id: string;
@@ -110,17 +111,10 @@ export async function scheduleQueueTask(job: {
   const config = JSON.parse(job.config) as Record<string, unknown>;
   if (!config.cronExpression) return;
 
-  await getQueue().add(
-    "execute",
-    { ...config, taskId: job.id, type: job.type, modelId: job.modelId },
-    {
-      jobId: queueTaskSchedulerId(job.id),
-      repeat: {
-        pattern: config.cronExpression as string,
-        tz: "UTC",
-        key: queueTaskSchedulerId(job.id),
-      },
-    },
+  await getQueue().upsertJobScheduler(
+    queueTaskSchedulerId(job.id),
+    { pattern: config.cronExpression as string, tz: "UTC" },
+    { name: "execute", data: { ...config, taskId: job.id, type: job.type, modelId: job.modelId } },
   );
 }
 
@@ -137,9 +131,8 @@ export async function unscheduleQueueTask(jobId: string): Promise<void> {
 /**
  * (Re)sync a QueueTask's schedule with its current state.
  * Removes the existing scheduler, then re-adds one if the job is enabled and
- * its config has a cronExpression. Use after create/update — this also covers
- * cron changes, which BullMQ won't apply to an existing scheduler with the
- * same jobId.
+ * its config has a cronExpression. Use after create/update: removing first is
+ * what turns a disabled or cron-less job back into "not scheduled".
  */
 export async function syncQueueTaskSchedule(job: {
   id: string;
@@ -214,7 +207,7 @@ export function agentSchedulerId(definitionId: string): string {
 }
 
 /**
- * Schedule a single agent definition as a repeatable BullMQ job.
+ * Schedule a single agent definition as a BullMQ job scheduler.
  * Only schedules when the definition is enabled and has a cron expression.
  *
  * @param definition - The definition's id, enabled flag, and cron expression
@@ -226,19 +219,10 @@ export async function scheduleAgentDefinition(definition: {
 }): Promise<void> {
   if (!definition.enabled || !definition.cronExpression) return;
 
-  const queue = getQueue();
-  const schedulerId = agentSchedulerId(definition.id);
-  await queue.add(
-    "agent_execute",
-    { definitionId: definition.id },
-    {
-      jobId: schedulerId,
-      repeat: {
-        pattern: definition.cronExpression,
-        tz: "UTC",
-        key: schedulerId,
-      },
-    },
+  await getQueue().upsertJobScheduler(
+    agentSchedulerId(definition.id),
+    { pattern: definition.cronExpression, tz: "UTC" },
+    { name: "agent_execute", data: { definitionId: definition.id } },
   );
 }
 
@@ -286,4 +270,80 @@ export async function scheduleAllAgentDefinitions(): Promise<void> {
       );
     }
   }
+}
+
+// ─── Orphaned image cleanup ─────────────────────────────────────────────────
+
+/** Job scheduler id of the orphaned-image cleanup. */
+export const ORPHAN_CLEANUP_SCHEDULER_ID = "cleanup-orphaned-images";
+
+/** Job name the orphaned-image cleanup scheduler enqueues. */
+export const ORPHAN_CLEANUP_JOB_NAME = "cleanup_orphaned_images";
+
+/**
+ * Register the orphaned-image cleanup job scheduler.
+ *
+ * @param intervalMinutes - How often to scan for orphaned image files
+ * @returns Scheduler ids removed while cleaning up legacy repeatable jobs
+ */
+export async function scheduleOrphanCleanup(intervalMinutes: number): Promise<string[]> {
+  const queue = getQueue();
+  const removed = await removeLegacyRepeatableJobs(
+    queue,
+    ORPHAN_CLEANUP_JOB_NAME,
+    ORPHAN_CLEANUP_SCHEDULER_ID,
+  );
+
+  await queue.upsertJobScheduler(
+    ORPHAN_CLEANUP_SCHEDULER_ID,
+    { pattern: `*/${intervalMinutes} * * * *`, tz: "UTC" },
+    { name: ORPHAN_CLEANUP_JOB_NAME, data: {} },
+  );
+
+  return removed;
+}
+
+/**
+ * Remove BullMQ v5 repeatable jobs that v6 treats as job schedulers of their own.
+ *
+ * v5 stored repeatable jobs in the same ZSET that v6 reads as job schedulers.
+ * Entries created with an explicit `repeat.key` keep working — the key is the
+ * scheduler id, so `removeJobScheduler` still finds it — but a keyless one got
+ * an md5 key that v6 adopts as a separate scheduler, firing alongside the
+ * scheduler that replaced it. Filtering by job name and keeping the current
+ * scheduler id makes this idempotent.
+ *
+ * @returns The scheduler ids that were removed
+ */
+async function removeLegacyRepeatableJobs(
+  queue: Queue,
+  jobName: string,
+  keepSchedulerId: string,
+): Promise<string[]> {
+  let schedulers;
+  try {
+    schedulers = await queue.getJobSchedulers();
+  } catch (err) {
+    console.error(`Failed to list BullMQ job schedulers while pruning ${jobName}:`, err);
+    return [];
+  }
+
+  const removed: string[] = [];
+  for (const scheduler of schedulers) {
+    if (scheduler.name !== jobName) continue;
+
+    // The repeat-set member is the scheduler id: `getJobSchedulers()` reports it
+    // as `key` (bullmq 6 leaves `id` unset) and that is what removal takes.
+    const schedulerId = scheduler.key;
+    if (schedulerId === keepSchedulerId) continue;
+
+    try {
+      await queue.removeJobScheduler(schedulerId);
+      removed.push(schedulerId);
+    } catch (err) {
+      console.error(`Failed to remove legacy BullMQ repeatable job ${schedulerId}:`, err);
+    }
+  }
+
+  return removed;
 }

@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Shared mock queue instance — `getQueue()` must return the same instance
-// every call so assertions can observe `add`/`removeJobScheduler`.
-const { mockAdd, mockRemoveJobScheduler } = vi.hoisted(() => ({
-  mockAdd: vi.fn(),
-  mockRemoveJobScheduler: vi.fn(),
-}));
+// every call so assertions can observe `add`/`upsertJobScheduler`.
+const { mockAdd, mockRemoveJobScheduler, mockUpsertJobScheduler, mockGetJobSchedulers } =
+  vi.hoisted(() => ({
+    mockAdd: vi.fn(),
+    mockRemoveJobScheduler: vi.fn(),
+    mockUpsertJobScheduler: vi.fn(),
+    mockGetJobSchedulers: vi.fn(),
+  }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -21,7 +24,12 @@ vi.mock("@/lib/db", () => ({
 // Mock the queue instance (no real Redis in tests)
 vi.mock("bullmq", () => ({
   Queue: vi.fn().mockImplementation(function MockQueue() {
-    return { add: mockAdd, removeJobScheduler: mockRemoveJobScheduler };
+    return {
+      add: mockAdd,
+      removeJobScheduler: mockRemoveJobScheduler,
+      upsertJobScheduler: mockUpsertJobScheduler,
+      getJobSchedulers: mockGetJobSchedulers,
+    };
   }),
 }));
 
@@ -53,6 +61,8 @@ describe("QueueTask scheduling", () => {
     vi.clearAllMocks();
     mockAdd.mockResolvedValue({});
     mockRemoveJobScheduler.mockResolvedValue(undefined);
+    mockUpsertJobScheduler.mockResolvedValue({});
+    mockGetJobSchedulers.mockResolvedValue([]);
     mockTaskRunCreate.mockResolvedValue({ id: "run-1" });
   });
 
@@ -63,28 +73,28 @@ describe("QueueTask scheduling", () => {
   });
 
   describe("scheduleQueueTask", () => {
-    it("adds a repeatable execute job with cron pattern, config and model", async () => {
+    it("registers an execute job scheduler with cron pattern, config and model", async () => {
       await scheduleQueueTask(scheduledJob);
 
-      expect(mockAdd).toHaveBeenCalledWith(
-        "execute",
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "scheduled-job-1",
+        { pattern: "0 15 * * *", tz: "UTC" },
         {
-          cronExpression: "0 15 * * *",
-          accountId: "acc-1",
-          taskId: "job-1",
-          type: "summarization",
-          modelId: "anthropic:claude-sonnet",
-        },
-        {
-          jobId: "scheduled-job-1",
-          repeat: { pattern: "0 15 * * *", tz: "UTC", key: "scheduled-job-1" },
+          name: "execute",
+          data: {
+            cronExpression: "0 15 * * *",
+            accountId: "acc-1",
+            taskId: "job-1",
+            type: "summarization",
+            modelId: "anthropic:claude-sonnet",
+          },
         },
       );
     });
 
     it("does nothing when the job is disabled", async () => {
       await scheduleQueueTask({ ...scheduledJob, enabled: false });
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
 
     it("does nothing when the config has no cron expression", async () => {
@@ -92,7 +102,7 @@ describe("QueueTask scheduling", () => {
         ...scheduledJob,
         config: JSON.stringify({ accountId: "acc-1" }),
       });
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
   });
 
@@ -113,16 +123,16 @@ describe("QueueTask scheduling", () => {
       await syncQueueTaskSchedule(scheduledJob);
 
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
-      expect(mockAdd).toHaveBeenCalledWith(
-        "execute",
-        expect.objectContaining({ taskId: "job-1" }),
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "scheduled-job-1",
+        expect.objectContaining({ pattern: "0 15 * * *" }),
         expect.objectContaining({
-          jobId: "scheduled-job-1",
-          repeat: expect.objectContaining({ pattern: "0 15 * * *" }),
+          name: "execute",
+          data: expect.objectContaining({ taskId: "job-1" }),
         }),
       );
       expect(mockRemoveJobScheduler.mock.invocationCallOrder[0]!).toBeLessThan(
-        mockAdd.mock.invocationCallOrder[0]!,
+        mockUpsertJobScheduler.mock.invocationCallOrder[0]!,
       );
     });
 
@@ -130,7 +140,7 @@ describe("QueueTask scheduling", () => {
       await syncQueueTaskSchedule({ ...scheduledJob, enabled: false });
 
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("scheduled-job-1");
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
   });
 
@@ -187,19 +197,21 @@ describe("QueueTask scheduling", () => {
       await scheduleAllJobs();
 
       expect(mockQueueTaskFindMany).toHaveBeenCalled();
-      expect(mockAdd).toHaveBeenCalledTimes(2);
-      expect(mockAdd).toHaveBeenCalledWith(
-        "execute",
-        expect.objectContaining({ taskId: "job-1" }),
+      expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(2);
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "scheduled-job-1",
+        expect.objectContaining({ pattern: "0 15 * * *" }),
         expect.objectContaining({
-          repeat: expect.objectContaining({ pattern: "0 15 * * *" }),
+          name: "execute",
+          data: expect.objectContaining({ taskId: "job-1" }),
         }),
       );
-      expect(mockAdd).toHaveBeenCalledWith(
-        "execute",
-        expect.objectContaining({ taskId: "job-2" }),
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "scheduled-job-2",
+        expect.objectContaining({ pattern: "0 8 * * 1" }),
         expect.objectContaining({
-          repeat: expect.objectContaining({ pattern: "0 8 * * 1" }),
+          name: "execute",
+          data: expect.objectContaining({ taskId: "job-2" }),
         }),
       );
     });
@@ -222,16 +234,16 @@ describe("QueueTask scheduling", () => {
         },
       ]);
 
-      mockAdd.mockRejectedValueOnce(new Error("redis down"));
+      mockUpsertJobScheduler.mockRejectedValueOnce(new Error("redis down"));
 
       await expect(scheduleAllJobs()).resolves.toBeUndefined();
 
       // Second job still scheduled despite first failing
-      expect(mockAdd).toHaveBeenCalledTimes(2);
-      expect(mockAdd).toHaveBeenLastCalledWith(
-        "execute",
-        expect.objectContaining({ taskId: "job-2" }),
+      expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(2);
+      expect(mockUpsertJobScheduler).toHaveBeenLastCalledWith(
+        "scheduled-job-2",
         expect.anything(),
+        expect.objectContaining({ data: expect.objectContaining({ taskId: "job-2" }) }),
       );
     });
   });
