@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Shared mock queue instance — `getQueue()` must return the same instance
-// every call so assertions can observe `add`/`removeJobScheduler`.
-const { mockAdd, mockRemoveJobScheduler } = vi.hoisted(() => ({
-  mockAdd: vi.fn(),
-  mockRemoveJobScheduler: vi.fn(),
-}));
+// every call so assertions can observe `upsertJobScheduler`.
+const { mockAdd, mockRemoveJobScheduler, mockUpsertJobScheduler, mockGetJobSchedulers } =
+  vi.hoisted(() => ({
+    mockAdd: vi.fn(),
+    mockRemoveJobScheduler: vi.fn(),
+    mockUpsertJobScheduler: vi.fn(),
+    mockGetJobSchedulers: vi.fn(),
+  }));
 
 // Mock Prisma — factory must be self-contained (hoisted to top of file)
 vi.mock("@/lib/db", () => ({
@@ -20,7 +23,12 @@ vi.mock("@/lib/db", () => ({
 vi.mock("bullmq", () => ({
   Queue: vi.fn().mockImplementation(function MockQueue() {
     // `new Queue(...)` must return the same shared mocks every time
-    return { add: mockAdd, removeJobScheduler: mockRemoveJobScheduler };
+    return {
+      add: mockAdd,
+      removeJobScheduler: mockRemoveJobScheduler,
+      upsertJobScheduler: mockUpsertJobScheduler,
+      getJobSchedulers: mockGetJobSchedulers,
+    };
   }),
 }));
 
@@ -41,6 +49,8 @@ describe("agent definition scheduling", () => {
     vi.clearAllMocks();
     mockAdd.mockResolvedValue({});
     mockRemoveJobScheduler.mockResolvedValue(undefined);
+    mockUpsertJobScheduler.mockResolvedValue({});
+    mockGetJobSchedulers.mockResolvedValue([]);
   });
 
   describe("agentSchedulerId", () => {
@@ -51,30 +61,23 @@ describe("agent definition scheduling", () => {
   });
 
   describe("scheduleAgentDefinition", () => {
-    it("adds a repeatable agent_execute job with the cron pattern", async () => {
+    it("registers an agent_execute job scheduler with the cron pattern", async () => {
       await scheduleAgentDefinition({
         id: "def-1",
         enabled: true,
         cronExpression: "0 15 * * *",
       });
 
-      expect(mockAdd).toHaveBeenCalledWith(
-        "agent_execute",
-        { definitionId: "def-1" },
-        {
-          jobId: "agent-scheduled-def-1",
-          repeat: {
-            pattern: "0 15 * * *",
-            tz: "UTC",
-            key: "agent-scheduled-def-1",
-          },
-        },
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "agent-scheduled-def-1",
+        { pattern: "0 15 * * *", tz: "UTC" },
+        { name: "agent_execute", data: { definitionId: "def-1" } },
       );
     });
 
     it("does nothing when the definition has no cron expression", async () => {
       await scheduleAgentDefinition({ id: "def-1", enabled: true, cronExpression: null });
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
 
     it("does nothing when the definition is disabled", async () => {
@@ -83,7 +86,7 @@ describe("agent definition scheduling", () => {
         enabled: false,
         cronExpression: "0 15 * * *",
       });
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
   });
 
@@ -108,16 +111,17 @@ describe("agent definition scheduling", () => {
       });
 
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("agent-scheduled-def-1");
-      expect(mockAdd).toHaveBeenCalledWith(
-        "agent_execute",
-        { definitionId: "def-1" },
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "agent-scheduled-def-1",
+        expect.objectContaining({ pattern: "0 9 * * *" }),
         expect.objectContaining({
-          repeat: expect.objectContaining({ pattern: "0 9 * * *" }),
+          name: "agent_execute",
+          data: { definitionId: "def-1" },
         }),
       );
-      // remove must happen before add (BullMQ won't update an existing scheduler)
+      // remove must happen before re-registering (sync clears first, then adds)
       expect(mockRemoveJobScheduler.mock.invocationCallOrder[0]!).toBeLessThan(
-        mockAdd.mock.invocationCallOrder[0]!,
+        mockUpsertJobScheduler.mock.invocationCallOrder[0]!,
       );
     });
 
@@ -129,7 +133,7 @@ describe("agent definition scheduling", () => {
       });
 
       expect(mockRemoveJobScheduler).toHaveBeenCalledWith("agent-scheduled-def-1");
-      expect(mockAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
   });
 
@@ -144,20 +148,16 @@ describe("agent definition scheduling", () => {
       await scheduleAllAgentDefinitions();
 
       expect(mockAgentDefinitionFindMany).toHaveBeenCalled();
-      expect(mockAdd).toHaveBeenCalledTimes(2);
-      expect(mockAdd).toHaveBeenCalledWith(
-        "agent_execute",
-        { definitionId: "def-1" },
-        expect.objectContaining({
-          repeat: expect.objectContaining({ pattern: "0 15 * * *" }),
-        }),
+      expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(2);
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "agent-scheduled-def-1",
+        expect.objectContaining({ pattern: "0 15 * * *" }),
+        expect.objectContaining({ name: "agent_execute", data: { definitionId: "def-1" } }),
       );
-      expect(mockAdd).toHaveBeenCalledWith(
-        "agent_execute",
-        { definitionId: "def-2" },
-        expect.objectContaining({
-          repeat: expect.objectContaining({ pattern: "0 8 * * 1" }),
-        }),
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        "agent-scheduled-def-2",
+        expect.objectContaining({ pattern: "0 8 * * 1" }),
+        expect.objectContaining({ name: "agent_execute", data: { definitionId: "def-2" } }),
       );
     });
 
@@ -168,16 +168,16 @@ describe("agent definition scheduling", () => {
       ]);
 
       mockRemoveJobScheduler.mockRejectedValueOnce(new Error("boom"));
-      mockAdd.mockRejectedValueOnce(new Error("redis down"));
+      mockUpsertJobScheduler.mockRejectedValueOnce(new Error("redis down"));
 
       await expect(scheduleAllAgentDefinitions()).resolves.toBeUndefined();
 
       // Second definition still scheduled despite first failing
-      expect(mockAdd).toHaveBeenCalledTimes(2);
-      expect(mockAdd).toHaveBeenLastCalledWith(
-        "agent_execute",
-        { definitionId: "def-2" },
+      expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(2);
+      expect(mockUpsertJobScheduler).toHaveBeenLastCalledWith(
+        "agent-scheduled-def-2",
         expect.anything(),
+        expect.objectContaining({ data: { definitionId: "def-2" } }),
       );
     });
   });
