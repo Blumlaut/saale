@@ -90,6 +90,29 @@ export function findRewindEntry(
 }
 
 /**
+ * Move the transcript's leaf so the next prompt replaces `entry`.
+ */
+async function rewindLeafBefore(session: AgentSession, entry: SessionMessageEntry): Promise<void> {
+  const { sessionManager } = session;
+
+  if (sessionManager.getLeafId() !== entry.id) {
+    await session.navigateTree(entry.id);
+    return;
+  }
+
+  // Nothing was recorded after the entry, so it is still the leaf and
+  // navigating to it would be a no-op.
+  if (entry.parentId) {
+    await session.navigateTree(entry.parentId);
+  } else {
+    // The first message has no parent entry to navigate to — reset the leaf
+    // directly and resync the agent's state from the (now empty) projection.
+    sessionManager.resetLeaf();
+    session.refreshContext();
+  }
+}
+
+/**
  * Rewind the session so the next prompt replaces the edited message.
  *
  * Returns false when the transcript holds no entry for it (e.g. it was never
@@ -101,24 +124,38 @@ export async function rewindSessionToMessage(
 ): Promise<boolean> {
   const entry = findRewindEntry(transcriptUserMessages(session), target);
   if (!entry) return false;
+  await rewindLeafBefore(session, entry);
+  return true;
+}
 
-  const { sessionManager } = session;
+/**
+ * Rewind a transcript that ends with the very message about to be prompted.
+ *
+ * A run that dies mid-flight (process restart, crash, killed container) leaves
+ * its prompt in the transcript but never a reply. The recovery path re-prompts
+ * that message, and `session.prompt()` always appends — so without this the
+ * model reads the same request twice and the transcript grows a duplicate turn.
+ * Rewinding first makes the re-prompt replace the abandoned entry.
+ *
+ * The test is deliberately conservative: the transcript's newest user entry
+ * must BE the leaf (nothing was recorded after it, so its run never replied)
+ * and carry exactly this text. A prompt whose reply was recorded always has
+ * entries after it, and a different message never matches — so a live
+ * conversation is never rewritten on a guess.
+ *
+ * @param target.content - The stored content of the message about to be prompted.
+ * @returns true when the transcript was rewound.
+ */
+export async function rewindDuplicatePrompt(
+  session: AgentSession,
+  target: { content: string },
+): Promise<boolean> {
+  const entries = transcriptUserMessages(session);
+  const last = entries[entries.length - 1];
+  if (!last || messageText(last) !== target.content) return false;
+  if (session.sessionManager.getLeafId() !== last.id) return false;
 
-  if (sessionManager.getLeafId() === entry.id) {
-    // Nothing was recorded after the edited message (its reply never landed),
-    // so it is still the leaf and navigating to it would be a no-op.
-    if (entry.parentId) {
-      await session.navigateTree(entry.parentId);
-    } else {
-      // The first message has no parent entry to navigate to — reset the leaf
-      // directly and resync the agent's state from the (now empty) projection.
-      sessionManager.resetLeaf();
-      session.refreshContext();
-    }
-    return true;
-  }
-
-  await session.navigateTree(entry.id);
+  await rewindLeafBefore(session, last);
   return true;
 }
 

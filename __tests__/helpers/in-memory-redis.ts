@@ -104,6 +104,7 @@ export interface MemoryRedisClient {
   zadd(key: string, score: number, member: string): Promise<number>;
   zremrangebyrank(key: string, start: number, stop: number): Promise<number>;
   zrangebyscore(key: string, min: number | string, max: number | string): Promise<string[]>;
+  zrange(key: string, start: number, stop: number): Promise<string[]>;
   zrevrange(key: string, start: number, stop: number, withScores?: string): Promise<string[]>;
   zcard(key: string): Promise<number>;
   // scan / mget
@@ -255,6 +256,21 @@ function createClient(): MemoryRedisClient {
         .filter(([, score]) => score >= minScore && score <= maxScore)
         .sort((a, b) => a[1] - b[1])
         .map(([member]) => member);
+    },
+
+    async zrange(key, start, stop) {
+      const entry = getEntry(key);
+      if (entry?.kind !== "zset") return [];
+      const sorted = [...entry.members.entries()].sort((a, b) => a[1] - b[1]);
+      const len = sorted.length;
+      const norm = (i: number): number => (i < 0 ? Math.max(len + i, 0) : Math.min(i, len - 1));
+      const lo = norm(start);
+      const hi = norm(stop);
+      const out: string[] = [];
+      for (let i = lo; i <= hi && i < len; i++) {
+        out.push(sorted[i]![0]);
+      }
+      return out;
     },
 
     async zrevrange(key, start, stop, withScores) {
@@ -411,14 +427,22 @@ export async function isRateLimited(key: string): Promise<boolean> {
 }
 
 const ACTIVE_SESSION_PREFIX = "active_sessions:";
-const ACTIVE_SESSION_TTL_SECONDS = 600;
+const ACTIVE_SESSION_KEY_PREFIX = "chat:gen_active:";
+const ACTIVE_SESSION_INDEX_TTL_SECONDS = 600;
+const ACTIVE_SESSION_TTL_SECONDS = 30;
+
+export const ACTIVE_SESSION_HEARTBEAT_MS = 10_000;
+
+const activeSessionKey = (userId: string, sessionId: string) =>
+  `${ACTIVE_SESSION_KEY_PREFIX}${userId}:${sessionId}`;
 
 export async function registerActiveSession(userId: string, sessionId: string): Promise<void> {
   try {
     const redis = getRedis();
     const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
     await redis.sadd(key, sessionId);
-    await redis.expire(key, ACTIVE_SESSION_TTL_SECONDS);
+    await redis.expire(key, ACTIVE_SESSION_INDEX_TTL_SECONDS);
+    await redis.set(activeSessionKey(userId, sessionId), "1", "EX", ACTIVE_SESSION_TTL_SECONDS);
   } catch (err) {
     console.error("Failed to register active session:", err);
   }
@@ -427,8 +451,7 @@ export async function registerActiveSession(userId: string, sessionId: string): 
 export async function isSessionActive(userId: string, sessionId: string): Promise<boolean> {
   try {
     const redis = getRedis();
-    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    return (await redis.sismember(key, sessionId)) === 1;
+    return (await redis.get(activeSessionKey(userId, sessionId))) !== null;
   } catch (err) {
     console.error("Failed to check active session:", err);
     return false;
@@ -438,8 +461,8 @@ export async function isSessionActive(userId: string, sessionId: string): Promis
 export async function unregisterActiveSession(userId: string, sessionId: string): Promise<void> {
   try {
     const redis = getRedis();
-    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    await redis.srem(key, sessionId);
+    await redis.srem(`${ACTIVE_SESSION_PREFIX}${userId}`, sessionId);
+    await redis.del(activeSessionKey(userId, sessionId));
   } catch (err) {
     console.error("Failed to unregister active session:", err);
   }
@@ -448,39 +471,13 @@ export async function unregisterActiveSession(userId: string, sessionId: string)
 export async function getActiveSessions(userId: string): Promise<Set<string>> {
   try {
     const redis = getRedis();
-    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    const members = await redis.smembers(key);
-    return new Set(members);
+    const members = await redis.smembers(`${ACTIVE_SESSION_PREFIX}${userId}`);
+    if (members.length === 0) return new Set();
+    const heartbeats = await redis.mget(members.map((id) => activeSessionKey(userId, id)));
+    return new Set(members.filter((_, index) => heartbeats[index] != null));
   } catch (err) {
     console.error("Failed to get active sessions:", err);
     return new Set();
-  }
-}
-
-const GEN_START_PREFIX = "chat:gen_start:";
-
-export async function markGenerationStart(sessionId: string): Promise<void> {
-  try {
-    const redis = getRedis();
-    await redis.set(
-      `${GEN_START_PREFIX}${sessionId}`,
-      Date.now().toString(),
-      "EX",
-      ACTIVE_SESSION_TTL_SECONDS,
-    );
-  } catch (err) {
-    console.error("Failed to mark generation start:", err);
-  }
-}
-
-export async function getGenerationStartedAt(sessionId: string): Promise<number | null> {
-  try {
-    const redis = getRedis();
-    const value = await redis.get(`${GEN_START_PREFIX}${sessionId}`);
-    return value ? parseInt(value, 10) : null;
-  } catch (err) {
-    console.error("Failed to read generation start:", err);
-    return null;
   }
 }
 

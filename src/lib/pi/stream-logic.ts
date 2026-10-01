@@ -26,42 +26,39 @@ export type StreamAction =
  * - `lastMessage` — latest DB message (or undefined for an empty chat)
  * - `hasAssistantAfterLastUser` — an assistant message was saved after the
  *   last user message (the response already exists)
- * - `isGenerating` — a generation is registered in Redis (any process)
- * - `generationStartedAt` — epoch ms when the current generation started
+ * - `isGenerating` — a generation is registered AND its liveness heartbeat is
+ *   fresh in Redis (any process). A crashed process's flag expires within
+ *   seconds, so this means a generation is genuinely running somewhere.
  * - `poolLastPromptedMessageId` — the message this process already prompted
  *   (in-process in-flight guard)
  * - `pendingPromptMessageId` — the message the POST /messages route wants the
  *   SSE connection to prompt (the "claim")
- * - `bufferHasDone` / `bufferHasEvents` — state of the Redis event buffer
- *
- * A generation is considered "stale" when it has been registered for longer
- * than the grace period without producing a single buffered event — e.g. the
- * client died right after POST /messages, or a worker crashed mid-run. In
- * that case we take over and prompt, so sessions don't hang forever.
+ * - `bufferHasDone` — the buffer holds a finished run's terminal event
+ * - `queueHeld` — the user pressed Stop on this session and has not sent
+ *   anything since (see redis.ts). Stop means "nothing more until I say so",
+ *   so an unanswered message must not be re-prompted by a reconnect — that
+ *   would silently restart the run the user just cancelled.
  */
 export function decideStreamAction(params: {
   lastMessage: DbMessage | undefined;
   hasAssistantAfterLastUser: boolean;
   isGenerating: boolean;
-  generationStartedAt: number | null;
   poolLastPromptedMessageId: string | null;
   pendingPromptMessageId: string | null;
   bufferHasDone: boolean;
-  bufferHasEvents: boolean;
-  staleGraceMs?: number;
+  queueHeld: boolean;
 }): StreamAction {
-  const grace = params.staleGraceMs ?? 90_000;
-  const generationActive =
-    params.isGenerating &&
-    !(
-      params.generationStartedAt != null &&
-      Date.now() - params.generationStartedAt > grace &&
-      !params.bufferHasEvents
-    );
+  const generationActive = params.isGenerating;
 
   const last = params.lastMessage;
 
   if (last && last.role === "user") {
+    // The user stopped this session: nothing more until they send again. A
+    // stopped run whose message is still unanswered must not be prompted
+    // again — neither by a reconnect nor by a page load.
+    if (params.queueHeld) {
+      return { type: "done", reason: "session stopped by user" };
+    }
     // Already prompting this exact message in this process — just observe.
     if (params.poolLastPromptedMessageId === last.id) {
       return { type: "observe", reason: "already prompted in this process" };
@@ -82,8 +79,10 @@ export function decideStreamAction(params: {
     if (params.bufferHasDone) {
       return { type: "observe", reason: "done event already buffered" };
     }
-    // Unanswered user message and nothing running: we own the prompt
-    // (covers recovery from a crashed POST, and stale generations).
+    // Unanswered user message and nothing running: we own the prompt. This
+    // covers recovery — a message whose run never started (the client died
+    // right after POST /messages) and one whose run died mid-flight, which
+    // liveness now reports as inactive within seconds.
     return { type: "prompt", reason: "unanswered user message" };
   }
 
@@ -93,6 +92,45 @@ export function decideStreamAction(params: {
     return { type: "observe", reason: "generation in progress" };
   }
   return { type: "done", reason: "idle conversation" };
+}
+
+/**
+ * What a connection watching someone else's generation should do next.
+ *
+ * - `recover` — the generation is gone (its liveness heartbeat expired and no
+ *   process is running it): settle the clients and reconnect so the session is
+ *   re-decided and the unanswered message is resumed.
+ * - `stop` — the run finished on its own; its clients already settled, so
+ *   there is nothing left to watch.
+ * - `keep-watching` — it is still running (here or elsewhere).
+ */
+export type StaleGenerationAction = "recover" | "stop" | "keep-watching";
+
+/**
+ * Decide what to do about the generation this connection is observing.
+ *
+ * A connection that observed a generation it does not own (another tab, the
+ * Telegram worker) has no other way to learn that the owning process died
+ * mid-run: the buffered events replay as if it were still going, and the
+ * server's own heartbeat keeps the transport quietly alive. The stream route
+ * polls this and acts on the answer.
+ *
+ * Two guards keep the recovery from misfiring:
+ * - a terminal buffered event means the run finished on its own, and
+ * - `localRunInFlight` means this process is the one running it, so a missed
+ *   heartbeat must never let a watcher declare it dead.
+ */
+export function decideStaleGenerationAction(params: {
+  /** Whether the generation's liveness heartbeat is still fresh in Redis. */
+  isActiveElsewhere: boolean;
+  /** Whether this process has a run of its own in flight. */
+  localRunInFlight: boolean;
+  /** Whether the newest buffered stream event ended a run (done/error). */
+  bufferTailIsTerminal: boolean;
+}): StaleGenerationAction {
+  if (params.bufferTailIsTerminal) return "stop";
+  if (params.localRunInFlight || params.isActiveElsewhere) return "keep-watching";
+  return "recover";
 }
 
 /**

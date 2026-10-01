@@ -41,7 +41,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { publishQueueUpdate } from "@/lib/chat/queue";
-import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
+import {
+  ACTIVE_SESSION_HEARTBEAT_MS,
+  registerActiveSession,
+  unregisterActiveSession,
+} from "@/lib/redis";
 import { clearSessionAbort, wasSessionAbortRequested } from "./abort-request";
 import { readContextUsage } from "./context-usage";
 import { normalizeToolResult } from "./message-replay";
@@ -203,12 +207,10 @@ export function createSessionEventTracker(
 
   // ── Activity heartbeat: align the Redis active-flag with Pi's REAL state ──
   // `session.isStreaming` is Pi's ground truth. Events are only a proxy for
-  // it, and a long tool call that emits nothing would let the flag's TTL
-  // expire mid-run (drift) — the 409 guard would stop blocking sends while
-  // Pi is genuinely busy, and the stale-generation logic could misfire.
-  // While Pi streams, refresh the flag periodically so Saale's view never
-  // drifts from Pi's.
-  const ACTIVE_SESSION_HEARTBEAT_MS = 30_000;
+  // it, and a long tool call that emits nothing would let the flag's short
+  // liveness TTL expire mid-run — the 409 guard would stop blocking sends
+  // while Pi is genuinely busy, and a watcher would take the session for dead.
+  // While Pi streams, refresh the flag on a cadence well inside that TTL.
   let activityTimer: ReturnType<typeof setInterval> | null = null;
   const startActivityHeartbeat = () => {
     if (activityTimer) return;

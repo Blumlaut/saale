@@ -466,13 +466,23 @@ export function ChatInterface({
     // Stop means "nothing more until I say so": the server pauses the send
     // queue, so queued messages wait for an explicit send/push.
     setQueuePaused(true);
-    fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" }).catch((err) => {
-      console.error("Failed to call stop endpoint:", err);
-    });
-    // Keep the SSE connection open — the server aborts the agent, the
-    // tracker publishes `done`, and this tab (plus every other observer)
-    // reloads the final DB state.
-  }, [sessionId]);
+    // Settle through the server's own decision rather than waiting for an
+    // abort this process may not own: when the run is already dead (Saale
+    // restarted mid-generation) or owned by another process, nothing will
+    // ever publish the `done` this client is waiting for. Reconnecting makes
+    // the server re-decide with the flags cleared — a stopped session is told
+    // `done`, and one whose run is still aborting delivers the tracker's own
+    // `done` on the new connection.
+    void fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" })
+      .catch((err) => {
+        console.error("Failed to call stop endpoint:", err);
+      })
+      .finally(() => {
+        if (!mountedRef.current) return;
+        disconnect();
+        connect();
+      });
+  }, [sessionId, connect, disconnect]);
 
   const handleCompact = useCallback(() => {
     setIsCompacting(true);

@@ -33,7 +33,7 @@ import {
   type ProcessedFile,
   type TelegramFileInfo,
 } from "./files";
-import { registerActiveSession, markGenerationStart } from "@/lib/redis";
+import { registerActiveSession } from "@/lib/redis";
 import { resetSessionEvents, subscribeSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
@@ -219,11 +219,9 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   }
 
   // 5. Register active session and start recurring typing indicator.
-  //    Also record when the generation started (used to detect stale
-  //    generations) and clear the session event buffer so no stale events
-  //    from previous runs are replayed to web observers.
+  //    Also clear the session event buffer so no stale events from previous
+  //    runs are replayed to web observers.
   await registerActiveSession(userId, sessionId);
-  await markGenerationStart(sessionId);
   await resetSessionEvents(sessionId);
   const stopTyping = startTypingIndicator(encryptedToken, telegramChatId);
 

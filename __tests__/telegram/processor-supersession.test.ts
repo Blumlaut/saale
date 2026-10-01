@@ -128,7 +128,6 @@ vi.mock("@/lib/telegram/files", () => ({
 
 vi.mock("@/lib/redis", () => ({
   registerActiveSession: vi.fn().mockResolvedValue(undefined),
-  markGenerationStart: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/pi/session-events", () => ({

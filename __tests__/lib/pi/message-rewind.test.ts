@@ -7,6 +7,7 @@ import type {
 import {
   applyPendingHistoryRewind,
   findRewindEntry,
+  rewindDuplicatePrompt,
   rewindSessionToMessage,
   transcriptUserMessages,
 } from "@/lib/pi/message-rewind";
@@ -201,6 +202,53 @@ describe("rewindSessionToMessage", () => {
 
     expect(rewound).toBe(true);
     expect(navigateTree).toHaveBeenCalledWith("u2");
+  });
+});
+
+describe("rewindDuplicatePrompt", () => {
+  it("rewinds an abandoned prompt left at the end of the transcript", async () => {
+    // The run died (restart, crash) after its prompt was recorded and never
+    // replied, so recovering it would otherwise send the same message twice.
+    const branch = [userEntry("u1", "ALPHA", null), userEntry("u2", "BETA", "u1")];
+    const { session, navigateTree } = fakeSession(branch, "u2");
+
+    const rewound = await rewindDuplicatePrompt(session, { content: "BETA" });
+
+    expect(rewound).toBe(true);
+    expect(navigateTree).toHaveBeenCalledWith("u1");
+  });
+
+  it("leaves a transcript whose last user message was answered", async () => {
+    const { session, navigateTree } = fakeSession(twoTurnBranch(), "a2");
+
+    expect(await rewindDuplicatePrompt(session, { content: "BETA" })).toBe(false);
+    expect(navigateTree).not.toHaveBeenCalled();
+  });
+
+  it("does not rewind a different message that happens to share the text", async () => {
+    // A brand-new prompt that repeats an earlier one: the transcript's newest
+    // user entry is a different message, so appending is correct.
+    const { session, navigateTree } = fakeSession(twoTurnBranch(), "a2");
+
+    expect(await rewindDuplicatePrompt(session, { content: "ALPHA" })).toBe(false);
+    expect(navigateTree).not.toHaveBeenCalled();
+  });
+
+  it("resets the leaf when the abandoned prompt is the first message", async () => {
+    const branch = [userEntry("u1", "ALPHA", null)];
+    const { session, navigateTree, sessionManager, refreshContext } = fakeSession(branch, "u1");
+
+    expect(await rewindDuplicatePrompt(session, { content: "ALPHA" })).toBe(true);
+    expect(navigateTree).not.toHaveBeenCalled();
+    expect(sessionManager.resetLeaf).toHaveBeenCalled();
+    expect(refreshContext).toHaveBeenCalled();
+  });
+
+  it("does nothing for an empty transcript", async () => {
+    const { session, navigateTree } = fakeSession([], null);
+
+    expect(await rewindDuplicatePrompt(session, { content: "ALPHA" })).toBe(false);
+    expect(navigateTree).not.toHaveBeenCalled();
   });
 });
 
