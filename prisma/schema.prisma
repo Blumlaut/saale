@@ -23,6 +23,8 @@ model User {
   banned        Boolean   @default(false)
   banReason     String?   @db.Text
   banExpires    DateTime?
+  // Two-factor plugin field
+  twoFactorEnabled Boolean @default(false)
   accounts      Account[]
   sessions      Session[]
   chatSessions  ChatSession[]
@@ -39,7 +41,26 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  twoFactors    TwoFactor[]
+
   @@map("user")
+}
+
+// better-auth two-factor plugin (TOTP) — managed via the plugin, never
+// write secrets/backup codes directly.
+model TwoFactor {
+  id                    String    @id @default(cuid())
+  userId                String
+  secret                String
+  backupCodes           String
+  verified              Boolean   @default(true)
+  failedVerificationCount Int     @default(0)
+  lockedUntil           DateTime?
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([secret])
+  @@map("twoFactor")
 }
 
 model Account {

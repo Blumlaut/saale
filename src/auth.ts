@@ -6,7 +6,7 @@
 import "dotenv/config";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { admin } from "better-auth/plugins";
+import { admin, twoFactor } from "better-auth/plugins";
 import { prisma } from "@/lib/db";
 
 export const auth = betterAuth({
@@ -50,6 +50,9 @@ export const auth = betterAuth({
     admin({
       defaultRole: "user",
       adminRoles: ["admin"],
+    }),
+    twoFactor({
+      issuer: "Saale",
     }),
   ],
 });

@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import {
+  Shield,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
+  ShieldCheck,
+  Smartphone,
+  KeyRound,
+  PowerOff,
+} from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { TwoFactorDialog, type TwoFactorDialogMode } from "@/components/auth/two-factor-dialog";
+import { Badge } from "@/components/ui/badge";
 
 interface FormData {
   currentPassword: string;
@@ -28,6 +39,27 @@ export function AccountTab() {
   } = useForm<FormData>();
 
   const newPassword = watch("newPassword");
+
+  // Two-factor status — read from the session, refreshed after each dialog
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean | null>(null);
+  const [twoFactorDialog, setTwoFactorDialog] = useState<TwoFactorDialogMode | null>(null);
+
+  const refreshTwoFactor = useCallback(async () => {
+    try {
+      const { data: session, error } = await authClient.getSession();
+      if (error) {
+        console.error("Failed to fetch session for 2FA status:", error);
+        return;
+      }
+      setTwoFactorEnabled(Boolean(session?.user?.twoFactorEnabled));
+    } catch (err) {
+      console.error("Failed to fetch session for 2FA status:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshTwoFactor();
+  }, [refreshTwoFactor]);
 
   // Auto-clear status
   useEffect(() => {
@@ -161,6 +193,67 @@ export function AccountTab() {
             </div>
           </form>
         </div>
+
+        {/* Two-factor section */}
+        <div className="liquid-glass-inner space-y-5 rounded-2xl border-0 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h4 className="text-sm font-medium">Two-Factor Authentication</h4>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                Confirm sign-in with a code from an authenticator app
+              </p>
+            </div>
+            {twoFactorEnabled === true ? (
+              <Badge className="gap-1 text-emerald-600 dark:text-emerald-400">
+                <ShieldCheck className="h-3 w-3" />
+                Enabled
+              </Badge>
+            ) : twoFactorEnabled === false ? (
+              <Badge variant="secondary">Disabled</Badge>
+            ) : null}
+          </div>
+
+          {twoFactorEnabled !== null && (
+            <div className="flex flex-wrap gap-2">
+              {twoFactorEnabled ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTwoFactorDialog("backup-codes")}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Backup codes
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setTwoFactorDialog("disable")}
+                  >
+                    <PowerOff className="h-3.5 w-3.5" />
+                    Turn off
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" onClick={() => setTwoFactorDialog("enable")}>
+                  <Smartphone className="h-3.5 w-3.5" />
+                  Set up two-factor
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {twoFactorDialog && (
+          <TwoFactorDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setTwoFactorDialog(null);
+            }}
+            mode={twoFactorDialog}
+            onStateChange={refreshTwoFactor}
+          />
+        )}
       </GlassPanelContent>
     </GlassPanel>
   );
