@@ -182,6 +182,34 @@
   }
 }
 
+/* ===== Installed-app safe areas =====
+
+The root layout requests `viewport-fit=cover`, so an installed app paints under
+notches, the status bar and the home indicator. These paddings add the device
+insets on top of the shell's own spacing. `env()` resolves to 0 in a normal
+browser tab, so the values below degrade to exactly the previous padding. */
+
+/* Desktop shell: 1.25rem / 1.5rem, matching the old `md:p-5 lg:p-6`. */
+.app-shell-padding {
+  --shell-padding: 1.25rem;
+  padding: calc(var(--shell-padding) + env(safe-area-inset-top))
+    calc(var(--shell-padding) + env(safe-area-inset-right))
+    calc(var(--shell-padding) + env(safe-area-inset-bottom))
+    calc(var(--shell-padding) + env(safe-area-inset-left));
+}
+
+@media (min-width: 1024px) {
+  .app-shell-padding {
+    --shell-padding: 1.5rem;
+  }
+}
+
+/* Mobile shell: 1rem, with bottom clearance for the fixed bottom nav. */
+.mobile-shell-content {
+  padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right))
+    calc(5rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
+}
+
 /* ===== Scrollable tab strips =====
 
 Tab strips (TabsList inside overflow-x-auto) must stay swipe-scrollable but
