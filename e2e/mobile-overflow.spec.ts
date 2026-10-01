@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page } from "@playwright/test";
 
 import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
 
@@ -137,72 +137,61 @@ async function measureLayout(page: Page): Promise<LayoutViolations> {
   });
 }
 
+/**
+ * The app-shell contract for one route: the route must actually render (not a
+ * crashed shell) and every layout rule below must hold.
+ */
+async function assertRoute(
+  browser: Browser,
+  path: string,
+  viewport: { width: number; height: number },
+): Promise<void> {
+  const ctx = await browser.newContext({ viewport, storageState: session!.storageState });
+  const page = await ctx.newPage();
+
+  try {
+    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(400); // settle lazy transitions / polling
+
+    // A shell that throws in render still satisfies every measurement below —
+    // the error boundary is a well-behaved full-height panel. That is how
+    // /admin/* shipped broken (missing sidebar provider → 500), so assert the
+    // route itself rendered, and that nothing bounced us elsewhere.
+    expect(response?.status(), `${path}: responded ${response?.status()}`).toBeLessThan(400);
+    expect(page.url(), `${path}: landed on ${page.url()}`).toContain(path);
+    await expect(page.getByText("Something went wrong")).toHaveCount(0);
+
+    const v = await measureLayout(page);
+
+    expect(v.documentOverflow, `${path}: document overflows horizontally`).toBe(false);
+    expect(
+      v.offenders,
+      `${path}: elements extend past viewport: ${v.offenders.join(", ")}`,
+    ).toEqual([]);
+    expect(v.squeezedTabStrips, `${path}: tab strip triggers are squeezed/overlapping`).toBe(0);
+    expect(v.bodyScrolls, `${path}: body scrolls — content must scroll inside a panel`).toBe(false);
+    expect(
+      v.lastElementReachable,
+      `${path}: last interactive element (${v.lastElementLabel}) unreachable — page lacks an internal scroll container`,
+    ).toBe(true);
+  } finally {
+    await ctx.close();
+  }
+}
+
 test.describe("mobile layout guardrails", () => {
   test.beforeAll(async ({ browser, request }) => {
-    // Creates the shared user, seeds stress data and logs in once.
+    // Creates the shared user, grants it the admin role, seeds stress data and
+    // logs in once.
     session = await bootstrapSession(browser, request);
   });
 
   for (const { name, width, height } of VIEWPORTS) {
-    for (const path of DASHBOARD_PAGES) {
+    for (const path of [...DASHBOARD_PAGES, ...ADMIN_PAGES]) {
       test(`${path} @ ${name}`, async ({ browser }) => {
         test.skip(!session, "login failed");
-        const ctx = await browser.newContext({
-          viewport: { width, height },
-          storageState: session!.storageState,
-        });
-        const page = await ctx.newPage();
-        await page.goto(path, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => {});
-        await page.waitForTimeout(400); // settle lazy transitions / polling
-
-        const v = await measureLayout(page);
-        await ctx.close();
-
-        expect(v.documentOverflow, `${path}: document overflows horizontally`).toBe(false);
-        expect(
-          v.offenders,
-          `${path}: elements extend past viewport: ${v.offenders.join(", ")}`,
-        ).toEqual([]);
-        expect(v.squeezedTabStrips, `${path}: tab strip triggers are squeezed/overlapping`).toBe(0);
-        expect(v.bodyScrolls, `${path}: body scrolls — content must scroll inside a panel`).toBe(
-          false,
-        );
-        expect(
-          v.lastElementReachable,
-          `${path}: last interactive element (${v.lastElementLabel}) unreachable — page lacks an internal scroll container`,
-        ).toBe(true);
-      });
-    }
-
-    for (const path of ADMIN_PAGES) {
-      test(`${path} @ ${name}`, async ({ browser }) => {
-        test.skip(!session?.isAdmin, "e2e user is not an admin — skipping admin page");
-        const ctx = await browser.newContext({
-          viewport: { width, height },
-          storageState: session!.storageState,
-        });
-        const page = await ctx.newPage();
-        await page.goto(path, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => {});
-        await page.waitForTimeout(400);
-
-        const v = await measureLayout(page);
-        await ctx.close();
-
-        expect(v.documentOverflow, `${path}: document overflows horizontally`).toBe(false);
-        expect(
-          v.offenders,
-          `${path}: elements extend past viewport: ${v.offenders.join(", ")}`,
-        ).toEqual([]);
-        expect(v.squeezedTabStrips, `${path}: tab strip triggers are squeezed/overlapping`).toBe(0);
-        expect(v.bodyScrolls, `${path}: body scrolls — content must scroll inside a panel`).toBe(
-          false,
-        );
-        expect(
-          v.lastElementReachable,
-          `${path}: last interactive element (${v.lastElementLabel}) unreachable — page lacks an internal scroll container`,
-        ).toBe(true);
+        await assertRoute(browser, path, { width, height });
       });
     }
   }

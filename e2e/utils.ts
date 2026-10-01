@@ -138,15 +138,60 @@ export interface E2ESession {
 }
 
 /**
- * Create the e2e user (if needed), log in, seed stress data and capture the
- * session. Seeding runs through the logged-in context — API routes are
- * user-scoped and reject unauthenticated requests.
+ * Grant the shared e2e user the admin role.
+ *
+ * Only the first account in a database becomes admin (see the `user.create`
+ * hook in `src/auth.ts`), and no API can promote the first admin — the better-auth
+ * admin endpoints require an admin session. So the suite grants the role itself,
+ * against the database the app under test reads.
+ *
+ * This exists because the admin routes were skipped on any database where a
+ * human had signed up first: `/admin/models` shipped a crashing shell that no
+ * test ever loaded.
+ *
+ * @throws when the database is unreachable or has no e2e user — pointing
+ * `BASE_URL` at an app whose database this isn't means no admin coverage, which
+ * must be a failure rather than a silent skip.
+ */
+async function grantAdminRole(): Promise<void> {
+  // Loaded lazily: this module is also imported by unit tests, which have no
+  // business booting a database client.
+  await import("dotenv/config");
+  const { PrismaClient } = await import("@prisma/client");
+  const { PrismaPg } = await import("@prisma/adapter-pg");
+
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("e2e: DATABASE_URL is not set — the admin routes cannot be covered without it");
+  }
+
+  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  try {
+    const updated = await prisma.user.updateMany({
+      where: { email: E2E_EMAIL },
+      data: { role: "admin" },
+    });
+    if (updated.count === 0) {
+      throw new Error(
+        `e2e: no ${E2E_EMAIL} row in ${connectionString} — is DATABASE_URL the database of the app under test?`,
+      );
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/**
+ * Create the e2e user (if needed), grant it the admin role, log in, seed stress
+ * data and capture the session. Seeding runs through the logged-in context —
+ * API routes are user-scoped and reject unauthenticated requests.
  */
 export async function bootstrapSession(
   browser: Browser,
   request: APIRequestContext,
 ): Promise<E2ESession> {
   await ensureUser(request);
+  await grantAdminRole();
 
   const ctx = await browser.newContext({ viewport: { width: 375, height: 667 } });
   const page = await ctx.newPage();
@@ -155,8 +200,6 @@ export async function bootstrapSession(
   await seedStressData(page.request);
   await ensureLocalCalendarAccount(page.request);
 
-  // Detect the admin role so admin-only tests can skip gracefully (existing
-  // databases where a different user owns the admin role).
   const role = await page.evaluate(async () => {
     const res = await fetch("/api/auth/get-session");
     if (!res.ok) return null;
