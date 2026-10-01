@@ -80,6 +80,9 @@ export function AccountTab() {
     const { error } = await authClient.changePassword({
       currentPassword: data.currentPassword,
       newPassword: data.newPassword,
+      // Signs out every other device and re-issues this one, so a leaked
+      // password on another device can't keep the attacker signed in.
+      revokeOtherSessions: true,
     });
 
     setLoading(false);
@@ -112,7 +115,8 @@ export function AccountTab() {
           <div>
             <h4 className="text-sm font-medium">Change Password</h4>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              Update your password to keep your account secure
+              Update your password to keep your account secure — your other devices will be signed
+              out
             </p>
           </div>
 
