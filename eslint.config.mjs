@@ -1,7 +1,11 @@
+import { createRequire } from "node:module";
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import prettier from "eslint-plugin-prettier/recommended";
+
+const require = createRequire(import.meta.url);
+const reactVersion = require("react/package.json").version;
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -15,6 +19,14 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "prisma/generated/**",
   ]),
+  {
+    // eslint-config-next sets `settings.react.version: "detect"`, which makes
+    // eslint-plugin-react call `context.getFilename()` — an API ESLint 10
+    // removed — so every lint run crashes. Handing it the installed React
+    // version skips detection entirely; read it from the package so the pin
+    // can't go stale.
+    settings: { react: { version: reactVersion } },
+  },
   {
     rules: {
       // --- Existing ---
