@@ -2,15 +2,18 @@
 
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Label } from "@/components/ui/label";
-import { InstallAppCard } from "@/components/pwa/install-app-card";
 import { Palette } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
+import { InstallAppCard } from "@/components/pwa/install-app-card";
+import { SidebarNavEditor } from "../components/sidebar-nav-editor";
 
 export function AppearanceTab() {
   const { theme, setTheme } = useTheme();
+  const { entries, saving, error, save, reset } = useSidebarNav();
 
   return (
-    <>
+    <div className="space-y-6">
       <GlassPanel>
         <GlassPanelContent className="space-y-6">
           <div>
@@ -46,7 +49,15 @@ export function AppearanceTab() {
         </GlassPanelContent>
       </GlassPanel>
 
+      <SidebarNavEditor
+        entries={entries}
+        saving={saving}
+        error={error}
+        onChange={save}
+        onReset={reset}
+      />
+
       <InstallAppCard />
-    </>
+    </div>
   );
 }

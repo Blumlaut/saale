@@ -13,11 +13,35 @@ nav.sidebar-nav (sticky top-6 h-fit w-56 shrink-0)
       ├─ Brand row: ChevronRight (orange) + "Saale" + NotificationBell
       ├─ Separator
       ├─ Search button (ghost, w-full, ⌘K kbd) → portal dropdown (liquid-glass, rounded-xl)
-      └─ Nav items (space-y-1): Chat, Calendar, Tasks, Jobs, Infrastructure, Settings (+ Admin for admins)
+      └─ Nav items (space-y-0.5): the user's visible items, in the user's order (+ Admin for admins)
 └─ Console footer (mt-4 border-t px-3 pt-3)
    ├─ Row: console-label "Sale v0.1.0" (version in font-mono normal-case) + theme toggle icon button
    └─ Orange tick: div.bg-primary.h-0.5.w-8.rounded-full
 ```
+
+### Nav Items Come From the Registry
+
+`src/lib/navigation/sidebar-nav.ts` is the single source of truth for ids, routes,
+labels, and the default order. The desktop sidebar, the mobile bottom bar, and the
+settings editor all resolve items through it:
+
+- `SIDEBAR_NAV_ITEMS` — registry in default order (id, href, label, `mobileLabel`).
+- `useSidebarNav()` (`src/components/providers/sidebar-nav-provider.tsx`) — the
+  user's layout: `entries` (every item, in order, with `hidden`) and `visibleItems`.
+- Icons live in the client-only `src/components/layout/sidebar-nav-icons.ts`,
+  typed `Record<SidebarNavItemId, LucideIcon>` so a new id must get an icon.
+- The stored layout is `AppSettings.sidebarItems` — an ordered `[{ id, hidden }]`
+  array served by `/api/settings/sidebar-nav`. It is always **resolved against the
+  registry** (unknown ids dropped, ids added later appended visible, an all-hidden
+  layout falls back to the default), so nav items can change without a migration.
+- **Never hardcode a nav list in a component.** Add the item to the registry, give
+  it an icon, and it shows up in the sidebar, the bottom bar, and the settings
+  editor automatically.
+- Users reorder (drag, or ↑/↓ on touch) and hide items in **Settings → Appearance
+  → Sidebar** (`src/app/dashboard/settings/components/sidebar-nav-editor.tsx`); at
+  least one item must stay visible — enforced in the editor and the API.
+- Mail is the one item with extra behaviour: it is a `<button>` that expands into
+  the user's accounts instead of a plain link.
 
 ### Nav Item States
 

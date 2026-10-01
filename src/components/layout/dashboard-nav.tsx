@@ -7,6 +7,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
 import { useClickOutside } from "@/hooks/use-click-outside";
+import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
+import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
+import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sidebar-nav";
 import type { EmailAccount } from "@/types/shared";
 import { Separator } from "@/components/ui/separator";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
@@ -15,11 +18,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  MessageSquare,
   Mail,
-  ListTodo,
-  Calendar,
-  Settings,
   Shield,
   ChevronRight,
   ChevronDown,
@@ -28,19 +27,8 @@ import {
   Search,
   X,
   Loader2,
-  CheckSquare,
-  Server,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-
-const navItems = [
-  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
-  { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
-  { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/dashboard/jobs", label: "Jobs", icon: ListTodo },
-  { href: "/dashboard/infra", label: "Infrastructure", icon: Server },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
-];
 
 const adminNavItem = { href: "/admin/models", label: "Admin", icon: Shield };
 
@@ -67,6 +55,7 @@ export function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const { visibleItems } = useSidebarNav();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -180,7 +169,83 @@ export function DashboardNav() {
     }
   };
 
-  const isMailActive = pathname === "/dashboard/mail" || pathname.startsWith("/dashboard/mail/");
+  /* Mail's nav item expands into the user's accounts instead of navigating directly. */
+  const renderMailItem = (item: SidebarNavItem) => (
+    <div key={item.id}>
+      <button
+        onClick={() => {
+          if (emailAccounts.length > 0) {
+            setMailExpanded((prev) => !prev);
+          } else {
+            router.push(item.href);
+          }
+        }}
+        className={navItemClass(isSidebarNavActive(item.href, pathname), "w-full")}
+      >
+        <Mail className="h-4 w-4" />
+        {item.label}
+        {emailAccounts.length > 0 && (
+          <span className="ml-auto">
+            {mailExpanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </span>
+        )}
+      </button>
+
+      {/* Expanded email accounts */}
+      {mailExpanded && emailAccounts.length > 0 && (
+        <div className="mt-0.5 space-y-0.5 pl-4">
+          {/* All Mail */}
+          <Link
+            href="/dashboard/mail"
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
+              pathname === "/dashboard/mail"
+                ? "bg-accent text-foreground font-medium"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+            )}
+          >
+            All Mail
+          </Link>
+
+          {emailLoading ? (
+            <div className="px-3 py-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" />
+            </div>
+          ) : (
+            emailAccounts.map((acc) => {
+              const shortName = acc.email.split("@")[0];
+              const domain = acc.email.split("@")[1] ?? "";
+
+              return (
+                <Link
+                  key={acc.id}
+                  href={`/dashboard/mail?accountId=${acc.id}`}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
+                    pathname === "/dashboard/mail" &&
+                      new URLSearchParams(window.location.search).get("accountId") === acc.id
+                      ? "bg-accent text-foreground font-medium"
+                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  )}
+                >
+                  <div className="bg-muted/50 flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold">
+                    {acc.email[0]?.toUpperCase() ?? "?"}
+                  </div>
+                  <span className="truncate">{shortName}</span>
+                  <span className="text-muted-foreground/50">@{domain}</span>
+                  {!acc.enabled && <span className="ml-auto text-[9px] opacity-50">off</span>}
+                </Link>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
@@ -283,116 +348,23 @@ export function DashboardNav() {
             </div>
           </div>
 
-          {/* Nav Items */}
+          {/* Nav Items — order and visibility come from the user's layout */}
           <div className="space-y-0.5">
-            {/* Chat */}
-            {navItems
-              .filter((item) => item.href === "/dashboard/chat")
-              .map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-                const Icon = item.icon;
+            {visibleItems.map((item) => {
+              const Icon = SIDEBAR_NAV_ICONS[item.id];
+              if (item.id === "mail") return renderMailItem(item);
 
-                return (
-                  <Link key={item.href} href={item.href} className={navItemClass(isActive)}>
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-
-            {/* Mail with expandable accounts */}
-            <div>
-              <button
-                onClick={() => {
-                  if (emailAccounts.length > 0) {
-                    setMailExpanded((prev) => !prev);
-                  } else {
-                    router.push("/dashboard/mail");
-                  }
-                }}
-                className={navItemClass(isMailActive, "w-full")}
-              >
-                <Mail className="h-4 w-4" />
-                Mail
-                {emailAccounts.length > 0 && (
-                  <span className="ml-auto">
-                    {mailExpanded ? (
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    )}
-                  </span>
-                )}
-              </button>
-
-              {/* Expanded email accounts */}
-              {mailExpanded && emailAccounts.length > 0 && (
-                <div className="mt-0.5 space-y-0.5 pl-4">
-                  {/* All Mail */}
-                  <Link
-                    href="/dashboard/mail"
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
-                      pathname === "/dashboard/mail"
-                        ? "bg-accent text-foreground font-medium"
-                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                    )}
-                  >
-                    All Mail
-                  </Link>
-
-                  {emailLoading ? (
-                    <div className="px-3 py-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    </div>
-                  ) : (
-                    emailAccounts.map((acc) => {
-                      const shortName = acc.email.split("@")[0];
-                      const domain = acc.email.split("@")[1] ?? "";
-
-                      return (
-                        <Link
-                          key={acc.id}
-                          href={`/dashboard/mail?accountId=${acc.id}`}
-                          className={cn(
-                            "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
-                            pathname === "/dashboard/mail" &&
-                              new URLSearchParams(window.location.search).get("accountId") ===
-                                acc.id
-                              ? "bg-accent text-foreground font-medium"
-                              : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                          )}
-                        >
-                          <div className="bg-muted/50 flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold">
-                            {acc.email[0]?.toUpperCase() ?? "?"}
-                          </div>
-                          <span className="truncate">{shortName}</span>
-                          <span className="text-muted-foreground/50">@{domain}</span>
-                          {!acc.enabled && (
-                            <span className="ml-auto text-[9px] opacity-50">off</span>
-                          )}
-                        </Link>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Remaining nav items (Jobs, Settings) */}
-            {navItems
-              .filter((item) => item.href !== "/dashboard/chat")
-              .map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-                const Icon = item.icon;
-
-                return (
-                  <Link key={item.href} href={item.href} className={navItemClass(isActive)}>
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className={navItemClass(isSidebarNavActive(item.href, pathname))}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
 
             {/* Admin link — shown only to admin users */}
             {isAdmin && (
