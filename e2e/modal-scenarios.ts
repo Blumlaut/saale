@@ -542,6 +542,22 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     skip: "requires a connected IMAP/SMTP account",
   },
 
+  {
+    name: "settings · two-factor setup",
+    path: SETTINGS,
+    sources: ["src/components/auth/two-factor-dialog.tsx"],
+    open: async (page) => {
+      await openSettingsTab(page, "Account");
+      await click(page, 'button:has-text("Set up two-factor")');
+    },
+  },
+  {
+    name: "settings · two-factor disable / backup codes",
+    path: SETTINGS,
+    sources: ["src/components/auth/two-factor-dialog.tsx"],
+    skip: "only reachable once a user has enabled 2FA, which the shared e2e account never does",
+  },
+
   // ── Admin ─────────────────────────────────────────────────────────────────
   {
     name: "admin · models dialogs",

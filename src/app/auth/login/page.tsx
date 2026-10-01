@@ -6,15 +6,148 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { AlertCircle, ChevronRight } from "lucide-react";
+import { AlertCircle, ChevronRight, KeyRound, ShieldCheck } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { isTotpCode } from "@/lib/auth/totp";
+
+const DASHBOARD_URL = "/dashboard/chat";
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-full px-4 py-2.5 text-sm">
+      <AlertCircle className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 break-words">{message}</span>
+    </div>
+  );
+}
+
+function TwoFactorForm({ onVerified }: { onVerified: () => void }) {
+  const [mode, setMode] = useState<"totp" | "backup">("totp");
+  const [code, setCode] = useState("");
+  const [trustDevice, setTrustDevice] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const valid = mode === "totp" ? isTotpCode(code) : code.trim().length > 0;
+    if (!valid) {
+      setError(
+        mode === "totp"
+          ? "Enter the 6-digit code from your authenticator app"
+          : "Enter a backup code",
+      );
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const { error } =
+      mode === "totp"
+        ? await authClient.twoFactor.verifyTotp({
+            code,
+            trustDevice: trustDevice || undefined,
+          })
+        : await authClient.twoFactor.verifyBackupCode({ code: code.trim() });
+    setLoading(false);
+    if (error) {
+      setError(error.message || "Invalid code");
+      return;
+    }
+    onVerified();
+  };
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div className="flex items-center justify-center gap-2 text-sm">
+        <ShieldCheck className="h-4 w-4" />
+        Enter your verification code
+      </div>
+
+      {error && <ErrorBanner message={error} />}
+
+      {mode === "totp" ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="totp-code">Authenticator code</Label>
+            <Input
+              id="totp-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              className="font-mono tracking-[0.5em]"
+            />
+          </div>
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+            <Checkbox
+              checked={trustDevice}
+              onCheckedChange={(checked) => setTrustDevice(Boolean(checked))}
+            />
+            Remember this device for 30 days
+          </label>
+        </>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="backup-code">Backup code</Label>
+          <Input
+            id="backup-code"
+            autoComplete="off"
+            placeholder="xxxxx-xxxxx"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="font-mono"
+          />
+        </div>
+      )}
+
+      <Button type="submit" className="w-full" disabled={loading}>
+        {loading ? "Verifying..." : "Verify"}
+      </Button>
+
+      <p className="text-muted-foreground text-center text-sm">
+        {mode === "totp" ? (
+          <Button
+            type="button"
+            variant="link"
+            className="gap-1 p-0"
+            onClick={() => {
+              setMode("backup");
+              setCode("");
+              setError("");
+            }}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Use a backup code instead
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="link"
+            className="p-0"
+            onClick={() => {
+              setMode("totp");
+              setCode("");
+              setError("");
+            }}
+          >
+            Back to authenticator code
+          </Button>
+        )}
+      </p>
+    </form>
+  );
+}
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const { register, handleSubmit } = useForm<{ email: string; password: string }>();
 
   const onError = searchParams?.get("error");
@@ -22,14 +155,19 @@ function LoginForm() {
     setError(onError);
   }
 
+  const finishSignIn = () => {
+    router.push(DASHBOARD_URL);
+    router.refresh();
+  };
+
   const onSubmit = handleSubmit(async (data: { email: string; password: string }) => {
     setLoading(true);
     setError("");
 
-    const { error } = await authClient.signIn.email({
+    const { data: result, error } = await authClient.signIn.email({
       email: data.email,
       password: data.password,
-      callbackURL: "/dashboard/chat",
+      callbackURL: DASHBOARD_URL,
     });
 
     setLoading(false);
@@ -39,8 +177,15 @@ function LoginForm() {
       return;
     }
 
-    router.push("/dashboard/chat");
-    router.refresh();
+    // When the user has 2FA enabled, the sign-in response is replaced with a
+    // two-factor redirect payload (not part of the client's response type).
+    const twoFactorRedirect = (result as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect;
+    if (twoFactorRedirect) {
+      setNeedsTwoFactor(true);
+      return;
+    }
+
+    finishSignIn();
   });
 
   return (
@@ -52,51 +197,54 @@ function LoginForm() {
             <ChevronRight className="text-primary h-6 w-6" />
             <span className="text-2xl font-bold tracking-tight">Saale</span>
           </div>
-          <p className="text-muted-foreground text-sm">Sign in to your account</p>
+          <p className="text-muted-foreground text-sm">
+            {needsTwoFactor ? "Two-factor authentication required" : "Sign in to your account"}
+          </p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={onSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-full px-4 py-2.5 text-sm">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
-            </div>
-          )}
+        {needsTwoFactor ? (
+          <TwoFactorForm onVerified={finishSignIn} />
+        ) : (
+          <>
+            {/* Form */}
+            <form onSubmit={onSubmit} className="space-y-4">
+              {error && <ErrorBanner message={error} />}
 
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              autoComplete="email"
-              {...register("email")}
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  {...register("email")}
+                />
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              {...register("password")}
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  {...register("password")}
+                />
+              </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Signing in..." : "Sign in"}
+              </Button>
+            </form>
 
-        {/* Sign up link */}
-        <p className="text-muted-foreground text-center text-sm">
-          Don&apos;t have an account?{" "}
-          <Button variant="link" className="p-0" onClick={() => router.push("/auth/register")}>
-            Sign up
-          </Button>
-        </p>
+            {/* Sign up link */}
+            <p className="text-muted-foreground text-center text-sm">
+              Don&apos;t have an account?{" "}
+              <Button variant="link" className="p-0" onClick={() => router.push("/auth/register")}>
+                Sign up
+              </Button>
+            </p>
+          </>
+        )}
       </GlassPanelContent>
     </GlassPanel>
   );
