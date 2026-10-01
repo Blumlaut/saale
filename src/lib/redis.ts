@@ -64,34 +64,66 @@ export async function isRateLimited(key: string): Promise<boolean> {
 // ─── Active Session Tracking ────────────────────────────────────────────────
 
 /**
- * Redis-backed active session tracking.
+ * Redis-backed active session tracking, with liveness.
  *
- * Stores session IDs that have an active agent generation, keyed by user.
- * Key format: `active_sessions:{userId}` (Redis SET of session IDs)
- * TTL: 10 minutes (auto-cleanup for stale entries)
+ * A chat generation runs in whichever process owns the pooled agent (the web
+ * process, or the worker running Telegram agents). Every other process — and
+ * every connected SSE client — has to know whether it is still running.
+ *
+ * Liveness is carried by a short-TTL heartbeat key per session, refreshed by
+ * the session event tracker while Pi streams:
+ *
+ *   `chat:gen_active:{userId}:{sessionId}` — TTL ACTIVE_SESSION_TTL_SECONDS
+ *
+ * The short TTL is the crash detector. A process that dies mid-generation
+ * (deploy, restart, OOM) simply stops refreshing, so the session reads as
+ * inactive seconds later. The flag used to live for ten minutes with no
+ * refresh, which meant a restarted Saale kept believing in a generation that
+ * no longer existed: clients replayed a frozen stream forever, and Stop could
+ * not settle them (see the stream route's stale-generation supervisor).
+ *
+ * `active_sessions:{userId}` is only an index for enumerating a user's
+ * sessions; every candidate is verified against its own heartbeat key, so a
+ * dead session's lingering membership is never reported as active.
  */
 
 const ACTIVE_SESSION_PREFIX = "active_sessions:";
-const ACTIVE_SESSION_TTL_SECONDS = 600;
+const ACTIVE_SESSION_KEY_PREFIX = "chat:gen_active:";
+const ACTIVE_SESSION_INDEX_TTL_SECONDS = 600;
 
-/** Register a session as active (has a running agent). */
+/** How long a generation's heartbeat stays valid — the crash-detection window. */
+export const ACTIVE_SESSION_TTL_SECONDS = 30;
+
+/**
+ * How often the running generation refreshes its heartbeat.
+ *
+ * Must stay well inside {@link ACTIVE_SESSION_TTL_SECONDS}: the flag has to
+ * survive a couple of missed beats (a busy event loop, a slow Redis round
+ * trip) without ever letting a live generation look dead to the recovery path.
+ */
+export const ACTIVE_SESSION_HEARTBEAT_MS = 10_000;
+
+const activeSessionKey = (userId: string, sessionId: string) =>
+  `${ACTIVE_SESSION_KEY_PREFIX}${userId}:${sessionId}`;
+
+/** Register a session as active (has a running agent), or refresh its heartbeat. */
 export async function registerActiveSession(userId: string, sessionId: string): Promise<void> {
   try {
     const redis = getRedis();
-    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    await redis.sadd(key, sessionId);
-    await redis.expire(key, ACTIVE_SESSION_TTL_SECONDS);
+    const indexKey = `${ACTIVE_SESSION_PREFIX}${userId}`;
+    await redis.sadd(indexKey, sessionId);
+    await redis.expire(indexKey, ACTIVE_SESSION_INDEX_TTL_SECONDS);
+    await redis.set(activeSessionKey(userId, sessionId), "1", "EX", ACTIVE_SESSION_TTL_SECONDS);
   } catch (err) {
     console.error("Failed to register active session:", err);
   }
 }
 
-/** Check if a session is active (has a running agent). */
+/** Check if a session is active (has a running agent, refreshed within the TTL). */
 export async function isSessionActive(userId: string, sessionId: string): Promise<boolean> {
   try {
     const redis = getRedis();
-    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    return (await redis.sismember(key, sessionId)) === 1;
+    return (await redis.get(activeSessionKey(userId, sessionId))) !== null;
   } catch (err) {
     console.error("Failed to check active session:", err);
     return false;
@@ -102,20 +134,21 @@ export async function isSessionActive(userId: string, sessionId: string): Promis
 export async function unregisterActiveSession(userId: string, sessionId: string): Promise<void> {
   try {
     const redis = getRedis();
-    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    await redis.srem(key, sessionId);
+    await redis.srem(`${ACTIVE_SESSION_PREFIX}${userId}`, sessionId);
+    await redis.del(activeSessionKey(userId, sessionId));
   } catch (err) {
     console.error("Failed to unregister active session:", err);
   }
 }
 
-/** Get all active session IDs for a user. */
+/** Get all active session IDs for a user (index members whose heartbeat is still live). */
 export async function getActiveSessions(userId: string): Promise<Set<string>> {
   try {
     const redis = getRedis();
-    const key = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    const members = await redis.smembers(key);
-    return new Set(members);
+    const members = await redis.smembers(`${ACTIVE_SESSION_PREFIX}${userId}`);
+    if (members.length === 0) return new Set();
+    const heartbeats = await redis.mget(members.map((id) => activeSessionKey(userId, id)));
+    return new Set(members.filter((_, index) => heartbeats[index] != null));
   } catch (err) {
     console.error("Failed to get active sessions:", err);
     return new Set();
@@ -183,46 +216,6 @@ export async function isSessionBusy(userId: string, sessionId: string): Promise<
     isCompactionInProgress(sessionId),
   ]);
   return active || compacting;
-}
-
-// ─── Generation Start Tracking ───────────────────────────────────────────────
-
-/**
- * Redis-backed "when did the current generation start" tracking.
- *
- * Used to detect stale generations: if a session is registered as active but
- * has produced no buffered events for a long time (e.g. the client died right
- * after POST /messages), a new SSE connection takes over and prompts instead
- * of waiting forever.
- */
-
-const GEN_START_PREFIX = "chat:gen_start:";
-
-/** Record when a generation started for a session. */
-export async function markGenerationStart(sessionId: string): Promise<void> {
-  try {
-    const redis = getRedis();
-    await redis.set(
-      `${GEN_START_PREFIX}${sessionId}`,
-      Date.now().toString(),
-      "EX",
-      ACTIVE_SESSION_TTL_SECONDS,
-    );
-  } catch (err) {
-    console.error("Failed to mark generation start:", err);
-  }
-}
-
-/** Get the epoch-ms timestamp when the current generation started (or null). */
-export async function getGenerationStartedAt(sessionId: string): Promise<number | null> {
-  try {
-    const redis = getRedis();
-    const value = await redis.get(`${GEN_START_PREFIX}${sessionId}`);
-    return value ? parseInt(value, 10) : null;
-  } catch (err) {
-    console.error("Failed to read generation start:", err);
-    return null;
-  }
 }
 
 // ─── Pending Prompt Claim ────────────────────────────────────────────────────

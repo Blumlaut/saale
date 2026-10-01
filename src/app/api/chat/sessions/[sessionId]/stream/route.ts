@@ -3,10 +3,9 @@ import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   claimPendingPrompt,
-  getGenerationStartedAt,
   getPendingPrompt,
+  isSendQueueHeld,
   isSessionActive,
-  markGenerationStart,
   registerActiveSession,
   unregisterActiveSession,
 } from "@/lib/redis";
@@ -17,18 +16,27 @@ import { createAndPool, get as getPoolEntry, getDispatcher, getPoolKey } from "@
 import { createChatAgentSession, loadChatUserSettings } from "@/lib/pi/chat-session-factory";
 import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
-import { applyPendingHistoryRewind } from "@/lib/pi/message-rewind";
-import { decideStreamAction, type DbMessage, type StreamAction } from "@/lib/pi/stream-logic";
-import { getBufferedEvents } from "@/lib/pi/sse-buffer";
+import { applyPendingHistoryRewind, rewindDuplicatePrompt } from "@/lib/pi/message-rewind";
+import {
+  decideStaleGenerationAction,
+  decideStreamAction,
+  type DbMessage,
+  type StreamAction,
+} from "@/lib/pi/stream-logic";
+import {
+  getBufferedEvents,
+  getLastBufferedEvent,
+  isTerminalBufferedEvent,
+} from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
+import { clearActiveToolState } from "@/lib/chat/active-tool-state";
 import {
   claimNextQueuedMessage,
   countQueuedMessages,
   publishQueueUpdate,
   restoreQueuedMessage,
 } from "@/lib/chat/queue";
-import { isSendQueueHeld } from "@/lib/redis";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
 import {
   createToolApprovalGate,
@@ -56,6 +64,18 @@ const SSE_HEADERS = {
  * Last-Event-ID reconnection or the replay dedupe.
  */
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+/**
+ * How often a connection observing someone else's generation checks that it is
+ * still alive.
+ *
+ * The generation's liveness heartbeat (see redis.ts) expires within seconds of
+ * the owning process dying, and this poll converts that into a re-decision: the
+ * clients are settled, the connection closes, the browser reconnects, and the
+ * fresh request resumes the unanswered message. Together they bound a restart's
+ * freeze to well under a minute.
+ */
+const STALE_GENERATION_POLL_MS = 10_000;
 
 /**
  * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
@@ -142,16 +162,15 @@ export async function GET(
   });
   const lastMessage = messages[messages.length - 1];
 
-  const [isGenerating, generationStartedAt, pendingPromptMessageId, bufferedEvents, queuedCount] =
+  const [isGenerating, pendingPromptMessageId, bufferedEvents, queuedCount, queueHeld] =
     await Promise.all([
       isSessionActive(authResult.userId, sessionId),
-      getGenerationStartedAt(sessionId),
       getPendingPrompt(sessionId),
       getBufferedEvents(sessionId, lastEventId),
       countQueuedMessages(sessionId),
+      isSendQueueHeld(sessionId),
     ]);
-  const bufferHasDone = bufferedEvents.some((e) => e.event === "done" || e.event === "error");
-  const bufferHasEvents = bufferedEvents.length > 0;
+  const bufferHasDone = bufferedEvents.some(isTerminalBufferedEvent);
 
   // Did the last user message already receive a response?
   let hasAssistantAfterLastUser = false;
@@ -178,11 +197,10 @@ export async function GET(
     lastMessage: lastMessageForDecision,
     hasAssistantAfterLastUser,
     isGenerating,
-    generationStartedAt,
     poolLastPromptedMessageId: pooled?.lastPromptedMessageId ?? null,
     pendingPromptMessageId,
     bufferHasDone,
-    bufferHasEvents,
+    queueHeld,
   });
   log("decision", `${action.type} (${action.reason}), lastEventId=${lastEventId}`);
 
@@ -233,9 +251,25 @@ export async function GET(
   let heartbeat: SseHeartbeat | null = null;
   let streamClosed = false;
 
+  // ── Stale-generation supervisor ───────────────────────────────────────
+  // A connection that decided to observe a generation it does not own (another
+  // tab, the Telegram worker) has no other way to learn that its owner died:
+  // the buffered events replay as if it were still running, and this server's
+  // heartbeats keep the transport quietly alive. Polling the generation's
+  // liveness key turns that into a re-decision — settle the clients, close,
+  // and let the browser's reconnect resume the unanswered message.
+  let supervisorTimer: ReturnType<typeof setInterval> | null = null;
+  const stopSupervisor = () => {
+    if (supervisorTimer) {
+      clearInterval(supervisorTimer);
+      supervisorTimer = null;
+    }
+  };
+
   const closeStream = () => {
     if (streamClosed) return;
     streamClosed = true;
+    stopSupervisor();
     heartbeat?.stop();
     if (streamController) {
       try {
@@ -320,6 +354,14 @@ export async function GET(
     entry.promptInFlight = true;
     entry.lastPromptedMessageId = target.id;
 
+    // A run that died mid-flight (restart, crash) left its prompt in the
+    // transcript with no reply, and this recovery is about to re-prompt it:
+    // rewind first so the prompt replaces that entry instead of appending a
+    // second copy of the same message (see message-rewind.ts).
+    if (await rewindDuplicatePrompt(entry.session, { content: target.content })) {
+      log("rewind", `transcript already held message ${target.id} — rewound before it`);
+    }
+
     // An edited message still has the history its edit deleted in the agent
     // transcript — rewind it, or the prompt lands as a brand new message after
     // the old conversation (see message-rewind.ts).
@@ -328,10 +370,16 @@ export async function GET(
       log("rewind", `${rewind} for message ${target.id}`);
     }
 
+    // This run starts with no tool in flight. A previous run that died left
+    // its tool bookkeeping in the DB — clearing it keeps a refresh from
+    // showing a phantom "Running …" until this run's first tool starts.
+    await clearActiveToolState(sessionId, authResult.userId).catch((err) => {
+      console.error(`Failed to clear stale active tool state for ${sessionId}:`, err);
+    });
+
     // Signal the generation to other connections, then clear stale buffered
     // events from previous runs.
     await registerActiveSession(authResult.userId, sessionId);
-    await markGenerationStart(sessionId);
     await resetSessionEvents(sessionId);
 
     // A previous run's tracker may still be publishing `done` and
@@ -463,6 +511,58 @@ export async function GET(
   // ── SSE stream ────────────────────────────────────────────────────────
   const dispatcher = getDispatcher(sessionId);
 
+  /**
+   * Watch a generation this connection does not own, and recover it if it dies.
+   *
+   * This is the restart case: Saale is redeployed (or crashes) while a run is
+   * streaming, so the run is gone but its clients are still connected, replay
+   * a frozen partial stream, and would wait forever — the transport itself
+   * looks perfectly healthy. Once the generation's liveness heartbeat is gone
+   * and this process has no run of its own, settle every client and close the
+   * stream: the browser reconnects, the fresh request re-decides with the dead
+   * generation off the books, and the unanswered message is prompted again.
+   *
+   * The buffered `done` check keeps a normally finished run from looking dead
+   * — its client already settled from the replay.
+   */
+  const startGenerationSupervisor = () => {
+    if (supervisorTimer) return;
+    supervisorTimer = setInterval(() => {
+      void (async () => {
+        try {
+          const local = getPoolEntry(poolKey);
+          const bufferTail = await getLastBufferedEvent(sessionId);
+          const next = decideStaleGenerationAction({
+            isActiveElsewhere: await isSessionActive(authResult.userId, sessionId),
+            localRunInFlight: local?.promptInFlight === true || local?.session.isStreaming === true,
+            bufferTailIsTerminal: bufferTail !== null && isTerminalBufferedEvent(bufferTail),
+          });
+          // The run this connection was waiting on finished on its own — its
+          // clients already settled from that event (or it is still running,
+          // here or elsewhere).
+          if (next === "keep-watching") return;
+          if (next === "stop") {
+            stopSupervisor();
+            return;
+          }
+
+          log("supervisor", "observed generation is gone — settling clients and reconnecting");
+          stopSupervisor();
+          // Nothing is running, so nothing is running a tool: drop the
+          // bookkeeping the dead run left behind before clients reload.
+          await clearActiveToolState(sessionId, authResult.userId).catch((err) => {
+            console.error(`Failed to clear stale active tool state for ${sessionId}:`, err);
+          });
+          if (streamController) dispatcher.emitLocal(streamController, "done", {});
+          closeStream();
+        } catch (err) {
+          console.error(`Generation supervisor failed for session ${sessionId}:`, err);
+        }
+      })();
+    }, STALE_GENERATION_POLL_MS);
+    supervisorTimer.unref?.();
+  };
+
   const stream = new ReadableStream({
     start(controller) {
       streamController = controller;
@@ -519,7 +619,14 @@ export async function GET(
           // next, in order.
           if (action.type === "prompt" && pendingRun) {
             void dispatchRun(pendingRun).then(drainQueueSafely);
+            return;
           }
+
+          // ── Observe: waiting on a generation owned elsewhere ──────────
+          // This is where a restart strands clients — the run is replayed as
+          // if it were still going, so watch it and recover (see
+          // startGenerationSupervisor).
+          if (action.type === "observe") startGenerationSupervisor();
         })
         .catch((err) => {
           console.error("Failed to subscribe stream:", err);

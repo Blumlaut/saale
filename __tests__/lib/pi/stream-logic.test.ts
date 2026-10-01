@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  decideStaleGenerationAction,
   decideStreamAction,
   formatSseEvent,
   extractCumulativeText,
@@ -16,11 +17,10 @@ describe("decideStreamAction", () => {
   const base = {
     hasAssistantAfterLastUser: false,
     isGenerating: false,
-    generationStartedAt: null,
     poolLastPromptedMessageId: null,
     pendingPromptMessageId: null,
     bufferHasDone: false,
-    bufferHasEvents: false,
+    queueHeld: false,
   };
 
   describe("pending user message", () => {
@@ -55,10 +55,49 @@ describe("decideStreamAction", () => {
         ...base,
         lastMessage: userMsg,
         isGenerating: true,
-        generationStartedAt: Date.now(),
       });
       expect(action.type).toBe("observe");
       expect(action.reason).toBe("generation in progress");
+    });
+
+    it("prompts an unanswered message once the generation is gone", () => {
+      // A crashed run's liveness heartbeat expires; the flag is no longer
+      // registered, so the next connection owns the prompt and resumes it.
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: userMsg,
+        isGenerating: false,
+        bufferHasDone: false,
+      });
+      expect(action.type).toBe("prompt");
+      expect(action.reason).toBe("unanswered user message");
+    });
+
+    it("does not resume a message the user stopped", () => {
+      // Stop means "nothing more until I say so": re-prompting on a reconnect
+      // would silently restart the run the user just cancelled.
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: userMsg,
+        queueHeld: true,
+      });
+      expect(action.type).toBe("done");
+      expect(action.reason).toBe("session stopped by user");
+    });
+
+    it("settles a stopped session even while a run is still registered", () => {
+      // Stop, then reconnect: the user's intent wins over a flag that another
+      // process (a worker whose run this connection cannot abort) is still
+      // refreshing. The client settles now and picks the run up again on its
+      // next stream event.
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: userMsg,
+        queueHeld: true,
+        isGenerating: true,
+      });
+      expect(action.type).toBe("done");
+      expect(action.reason).toBe("session stopped by user");
     });
 
     it("reports done when the message already has a response", () => {
@@ -89,39 +128,6 @@ describe("decideStreamAction", () => {
       });
       expect(action.type).toBe("observe");
     });
-
-    it("prompts to take over a stale generation (registered but silent)", () => {
-      const action = decideStreamAction({
-        ...base,
-        lastMessage: userMsg,
-        isGenerating: true,
-        generationStartedAt: Date.now() - 120_000, // older than the 90s grace
-        bufferHasEvents: false,
-      });
-      expect(action.type).toBe("prompt");
-    });
-
-    it("observes a slow generation that is still within the grace period", () => {
-      const action = decideStreamAction({
-        ...base,
-        lastMessage: userMsg,
-        isGenerating: true,
-        generationStartedAt: Date.now() - 10_000,
-        bufferHasEvents: false,
-      });
-      expect(action.type).toBe("observe");
-    });
-
-    it("does not take over a stale generation that produced events", () => {
-      const action = decideStreamAction({
-        ...base,
-        lastMessage: userMsg,
-        isGenerating: true,
-        generationStartedAt: Date.now() - 120_000,
-        bufferHasEvents: true,
-      });
-      expect(action.type).toBe("observe");
-    });
   });
 
   describe("no pending user message", () => {
@@ -141,10 +147,47 @@ describe("decideStreamAction", () => {
         ...base,
         lastMessage: assistantMsg,
         isGenerating: true,
-        generationStartedAt: Date.now(),
       });
       expect(action.type).toBe("observe");
     });
+  });
+});
+
+describe("decideStaleGenerationAction", () => {
+  const base = {
+    isActiveElsewhere: false,
+    localRunInFlight: false,
+    bufferTailIsTerminal: false,
+  };
+
+  it("recovers a generation nothing is running any more", () => {
+    // The restart case: the owning process died, so its liveness heartbeat is
+    // gone and no local run is in flight.
+    expect(decideStaleGenerationAction(base)).toBe("recover");
+  });
+
+  it("stops watching once the run finished on its own", () => {
+    // A buffered done means every client already settled — closing the stream
+    // here would only add a pointless reconnect.
+    expect(decideStaleGenerationAction({ ...base, bufferTailIsTerminal: true })).toBe("stop");
+  });
+
+  it("keeps watching a run another process is streaming", () => {
+    expect(decideStaleGenerationAction({ ...base, isActiveElsewhere: true })).toBe("keep-watching");
+  });
+
+  it("keeps watching this process's own run even without a heartbeat", () => {
+    expect(decideStaleGenerationAction({ ...base, localRunInFlight: true })).toBe("keep-watching");
+  });
+
+  it("stops watching a finished run even while another one is registered", () => {
+    expect(
+      decideStaleGenerationAction({
+        ...base,
+        bufferTailIsTerminal: true,
+        isActiveElsewhere: true,
+      }),
+    ).toBe("stop");
   });
 });
 

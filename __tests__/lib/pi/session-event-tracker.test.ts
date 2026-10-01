@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ACTIVE_SESSION_HEARTBEAT_MS, ACTIVE_SESSION_TTL_SECONDS } from "@/lib/redis";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -16,10 +17,17 @@ vi.mock("@/lib/pi/session-events", () => ({
 
 const mockRegisterActiveSession = vi.fn();
 const mockUnregisterActiveSession = vi.fn();
-vi.mock("@/lib/redis", () => ({
-  registerActiveSession: (...args: unknown[]) => mockRegisterActiveSession(...args),
-  unregisterActiveSession: (...args: unknown[]) => mockUnregisterActiveSession(...args),
-}));
+vi.mock("@/lib/redis", async () => {
+  // The heartbeat cadence is the real module's contract (see redis.ts); only
+  // the Redis calls are stubbed.
+  const actual = await vi.importActual<typeof import("@/lib/redis")>("@/lib/redis");
+  return {
+    ACTIVE_SESSION_HEARTBEAT_MS: actual.ACTIVE_SESSION_HEARTBEAT_MS,
+    ACTIVE_SESSION_TTL_SECONDS: actual.ACTIVE_SESSION_TTL_SECONDS,
+    registerActiveSession: (...args: unknown[]) => mockRegisterActiveSession(...args),
+    unregisterActiveSession: (...args: unknown[]) => mockUnregisterActiveSession(...args),
+  };
+});
 
 const mockChatSessionUpdate = vi.fn();
 const mockChatMessageDeleteMany = vi.fn();
@@ -275,15 +283,20 @@ describe("createSessionEventTracker", () => {
       expect(mockRegisterActiveSession).not.toHaveBeenCalled();
 
       // A long silent tool call emits no events; the heartbeat (driven by
-      // Pi's session.isStreaming) must keep refreshing the flag.
-      vi.advanceTimersByTime(30_000);
+      // Pi's session.isStreaming) must keep refreshing the flag, several times
+      // inside the liveness TTL so a live run can never look dead.
+      const beats = Math.floor(
+        (ACTIVE_SESSION_TTL_SECONDS * 1000 - 1) / ACTIVE_SESSION_HEARTBEAT_MS,
+      );
+      expect(beats).toBeGreaterThanOrEqual(2);
+      vi.advanceTimersByTime(ACTIVE_SESSION_HEARTBEAT_MS * (beats + 1));
       expect(mockRegisterActiveSession).toHaveBeenCalledWith("u1", "s1");
-      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(1);
+      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(beats + 1);
 
       // Once Pi actually stops streaming, the flag stops being refreshed.
       (session as unknown as { isStreaming: boolean }).isStreaming = false;
-      vi.advanceTimersByTime(60_000);
-      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(ACTIVE_SESSION_HEARTBEAT_MS * 6);
+      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(beats + 1);
     } finally {
       vi.useRealTimers();
     }

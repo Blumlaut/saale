@@ -70,6 +70,16 @@ export async function bufferEvent(
 }
 
 /**
+ * Event names that end a run — a client settles on them.
+ */
+const TERMINAL_EVENT_NAMES = new Set(["done", "error"]);
+
+/** Whether a buffered event ends a run (its clients settle on it). */
+export function isTerminalBufferedEvent(event: BufferedEvent): boolean {
+  return TERMINAL_EVENT_NAMES.has(event.event);
+}
+
+/**
  * Get all buffered events with ID greater than lastEventId.
  * Returns events in order (oldest first).
  */
@@ -100,6 +110,27 @@ export async function getBufferedEvents(
   } catch (err) {
     console.error("Failed to read SSE buffer:", err);
     return [];
+  }
+}
+
+/**
+ * Get the most recently buffered event, or null when nothing is buffered.
+ *
+ * Used as a cheap liveness/state probe by recovery paths (the stream route's
+ * stale-generation supervisor) that only care whether the newest event ended a
+ * run — not about the backlog behind it.
+ */
+export async function getLastBufferedEvent(sessionId: string): Promise<BufferedEvent | null> {
+  try {
+    const redis = getRedis();
+    const raw = await redis.zrange(`${BUFFER_KEY_PREFIX}${sessionId}`, -1, "-1");
+    if (!raw.length) return null;
+    const value = raw[0];
+    if (typeof value !== "string") return null;
+    return JSON.parse(value) as BufferedEvent;
+  } catch (err) {
+    console.error("Failed to read the last SSE buffer event:", err);
+    return null;
   }
 }
 
