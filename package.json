@@ -27,6 +27,7 @@
     "prepare": "prisma generate",
     "check": "npm run lint && npm run typecheck && npm run format:check && npm run test:run",
     "dup": "jscpd src/",
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "postinstall": "node scripts/fix-esm-exports.js",
     "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml watch",
     "docker:prod": "docker compose up"

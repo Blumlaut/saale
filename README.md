@@ -15,6 +15,7 @@ Saale connects your email, calendar, AI chat, and background automation into a s
 - **Sandboxed Bash** — Optional Docker-isolated terminal (open-terminal) for code execution, file operations, and data processing
 - **File Workspace** — Per-user file storage with read/write/edit tools; supports images when bash is enabled
 - **Unified Search** — Search across chat history, email, and calendar in one interface
+- **Installable App** — Web app manifest, generated icon set, offline fallback page, and a safe-area-aware shell for home-screen installs
 - **Per-User Isolation** — Every database query and file operation is scoped to the authenticated user
 
 ## Tech Stack
@@ -106,6 +107,9 @@ npm run db:studio    # Prisma GUI
 # Tests
 npm test             # Vitest unit tests
 npm run test:e2e     # Playwright E2E tests
+
+# PWA
+npm run pwa:icons    # Regenerate the icon set from the brand mark
 ```
 
 ### Docker
@@ -161,6 +165,22 @@ npm run docker:prod
 ```
 
 The base compose file defaults to the `production` build target — a minimal standalone Next.js server with no dev tools.
+
+## Installable App (PWA)
+
+The dashboard ships a web app manifest (`src/app/manifest.ts`), a generated icon
+set (`public/icons`), and a service worker (`public/sw.js`) that precaches
+`/offline` and serves it whenever a navigation fails.
+
+- **Installing requires HTTPS** (or `localhost`). TLS terminates at the nginx
+  proxy, and `BETTER_AUTH_URL` must match that origin or sign-in is rejected as
+  an invalid origin.
+- **The service worker never caches navigations or `/api/` responses.** The
+  dashboard is authenticated and live-data: a cached page would serve one user's
+  mail and chat state to the next session on a shared device. Only the offline
+  fallback page and content-hashed `/_next/static/*` assets are cached.
+- Icons are generated from `src/lib/pwa/brand.json`; run `npm run pwa:icons`
+  after changing the palette or the mark.
 
 ## Open Terminal (Sandboxed Execution)
 

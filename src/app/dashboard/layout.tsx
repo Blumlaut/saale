@@ -24,7 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* App shell — fixed to viewport, all scrolling is internal to panels */}
       <div className="dashboard-layout h-dvh overflow-hidden">
         {/* Desktop layout: sidebar + main, flex chain fills viewport */}
-        <div className="hidden h-full gap-6 overflow-hidden p-4 md:flex md:p-5 lg:p-6">
+        <div className="app-shell-padding hidden h-full gap-6 overflow-hidden md:flex">
           <DashboardNav />
           <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {/* Impersonation banner — always visible, never scrolls */}
@@ -41,7 +41,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
         {/* Mobile layout: full-width content + bottom nav */}
         <div className="mobile-shell md:hidden">
-          <main className="flex flex-col overflow-hidden p-4 pb-20">
+          <main className="mobile-shell-content flex flex-col overflow-hidden">
             {/* Impersonation banner — always visible, never scrolls */}
             <ImpersonationBanner />
             {/* Page wrapper — flex-1 fills remaining space */}

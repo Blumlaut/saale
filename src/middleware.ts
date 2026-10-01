@@ -67,11 +67,21 @@ export async function middleware(request: NextRequest) {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https:",
+      // The offline service worker and the web app manifest are same-origin.
+      "worker-src 'self'",
+      "manifest-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
     ].join("; "),
   );
+
+  // An installed client keeps its service worker until the script changes, so
+  // it must never be served from a stale cache.
+  if (pathname === "/sw.js") {
+    response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    response.headers.set("Content-Type", "application/javascript; charset=utf-8");
+  }
 
   return response;
 }
