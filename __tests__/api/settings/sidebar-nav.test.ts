@@ -1,0 +1,213 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+
+const mockRequireSession = vi.fn();
+const mockFindUnique = vi.fn();
+const mockUpsert = vi.fn();
+
+vi.mock("@/lib/auth", () => ({
+  requireSession: (...args: unknown[]) => mockRequireSession(...args),
+}));
+
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    appSettings: {
+      findUnique: (...args: unknown[]) => mockFindUnique(...args),
+      upsert: (...args: unknown[]) => mockUpsert(...args),
+    },
+  },
+}));
+
+import { GET, PATCH } from "@/app/api/settings/sidebar-nav/route";
+
+const USER_ID = "user-1";
+
+function auth() {
+  mockRequireSession.mockResolvedValue({ ok: true, user: { id: USER_ID } });
+}
+
+function patch(body: unknown) {
+  return new NextRequest("http://localhost/api/settings/sidebar-nav", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+}
+
+interface UpsertArgs {
+  where: { userId: string };
+  create: Record<string, unknown>;
+  update: Record<string, unknown>;
+}
+
+/** The arguments of the last `prisma.appSettings.upsert` call. */
+function lastUpsert(): UpsertArgs {
+  const args = mockUpsert.mock.calls.at(-1)?.[0] as UpsertArgs | undefined;
+  if (!args) throw new Error("prisma.appSettings.upsert was not called");
+  return args;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  auth();
+  mockUpsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => create);
+});
+
+describe("GET /api/settings/sidebar-nav", () => {
+  it("requires a session", async () => {
+    mockRequireSession.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const res = await GET();
+
+    expect(res.status).toBe(401);
+    expect(mockFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns the default layout when the user has no settings row", async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.items.map((item: { id: string }) => item.id)).toEqual([
+      "chat",
+      "mail",
+      "calendar",
+      "tasks",
+      "jobs",
+      "infra",
+      "settings",
+    ]);
+    expect(body.items.every((item: { hidden: boolean }) => !item.hidden)).toBe(true);
+  });
+
+  it("scopes the lookup to the authenticated user", async () => {
+    mockFindUnique.mockResolvedValue({ sidebarItems: [{ id: "chat", hidden: false }] });
+
+    await GET();
+
+    expect(mockFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER_ID } }),
+    );
+  });
+
+  it("resolves a stored layout against the registry", async () => {
+    mockFindUnique.mockResolvedValue({
+      sidebarItems: [
+        { id: "settings", hidden: false },
+        { id: "retired-page", hidden: false },
+        { id: "mail", hidden: true },
+      ],
+    });
+
+    const res = await GET();
+    const { items } = await res.json();
+
+    expect(items[0]).toEqual({ id: "settings", hidden: false });
+    expect(items.map((item: { id: string }) => item.id)).not.toContain("retired-page");
+    expect(items.find((item: { id: string }) => item.id === "mail").hidden).toBe(true);
+  });
+});
+
+describe("PATCH /api/settings/sidebar-nav", () => {
+  it("persists a reordered, partly hidden layout", async () => {
+    const items = [
+      { id: "tasks", hidden: false },
+      { id: "chat", hidden: false },
+      { id: "settings", hidden: false },
+    ];
+
+    const res = await PATCH(patch({ items }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: USER_ID },
+        create: expect.objectContaining({ userId: USER_ID, sidebarItems: expect.any(Array) }),
+        update: { sidebarItems: expect.any(Array) },
+      }),
+    );
+
+    const written = lastUpsert().update.sidebarItems as { id: string }[];
+    expect(written.slice(0, 2).map((entry) => entry.id)).toEqual(["tasks", "chat"]);
+    // Registry items the layout doesn't mention come back visible, appended.
+    expect(body.items.map((item: { id: string }) => item.id)).toHaveLength(7);
+    expect(body.items.at(-1)).toEqual({ id: "infra", hidden: false });
+  });
+
+  it("clears the column when items is null", async () => {
+    const res = await PATCH(patch({ items: null }));
+
+    expect(res.status).toBe(200);
+    const written = lastUpsert();
+    expect(written.create.sidebarItems).toBe(Prisma.DbNull);
+    expect(written.update.sidebarItems).toBe(Prisma.DbNull);
+    expect((await res.json()).items).toHaveLength(7);
+  });
+
+  it("rejects an unknown item id", async () => {
+    const res = await PATCH(patch({ items: [{ id: "secrets", hidden: false }] }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid sidebar layout");
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate items", async () => {
+    const res = await PATCH(
+      patch({
+        items: [
+          { id: "chat", hidden: false },
+          { id: "chat", hidden: true },
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a layout that hides every item", async () => {
+    const items = ["chat", "mail", "calendar", "tasks", "jobs", "infra", "settings"].map((id) => ({
+      id,
+      hidden: true,
+    }));
+
+    const res = await PATCH(patch({ items }));
+
+    expect(res.status).toBe(400);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects hidden flags that are not booleans", async () => {
+    const res = await PATCH(patch({ items: [{ id: "chat", hidden: "yes" }] }));
+
+    expect(res.status).toBe(400);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects bodies that aren't a layout", async () => {
+    for (const body of [{}, { items: "chat" }, { items: [1, 2, 3] }, "not json"]) {
+      mockUpsert.mockClear();
+      const res = await PATCH(patch(body));
+
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(mockUpsert).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects a layout longer than the item registry", async () => {
+    const items = Array.from({ length: 8 }, () => ({ id: "chat", hidden: false }));
+
+    const res = await PATCH(patch({ items }));
+
+    expect(res.status).toBe(400);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+});

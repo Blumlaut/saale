@@ -3,31 +3,25 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Calendar, ListTodo, Mail, MessageSquare, Settings, Server } from "lucide-react";
-
-const navItems = [
-  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
-  { href: "/dashboard/mail", label: "Mail", icon: Mail },
-  { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
-  { href: "/dashboard/jobs", label: "Jobs", icon: ListTodo },
-  { href: "/dashboard/infra", label: "Servers", icon: Server },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
-];
+import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
+import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
+import { isSidebarNavActive } from "@/lib/navigation/sidebar-nav";
 
 export function MobileNav() {
   const pathname = usePathname();
+  const { visibleItems } = useSidebarNav();
 
   return (
     <nav className="border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
-      {/* flex-1 + min-w-0 keeps 6 items on 320px screens; truncate is a safety net */}
+      {/* flex-1 + min-w-0 keeps every item on a 320px screen; truncate is a safety net */}
       <div className="flex h-14 items-center px-1">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-          const Icon = item.icon;
+        {visibleItems.map((item) => {
+          const isActive = isSidebarNavActive(item.href, pathname);
+          const Icon = SIDEBAR_NAV_ICONS[item.id];
 
           return (
             <Link
-              key={item.href}
+              key={item.id}
               href={item.href}
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 transition-colors",
@@ -46,7 +40,7 @@ export function MobileNav() {
                   isActive && "text-foreground",
                 )}
               >
-                {item.label}
+                {item.mobileLabel ?? item.label}
               </span>
             </Link>
           );
