@@ -9,6 +9,11 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, twoFactor } from "better-auth/plugins";
 import { prisma } from "@/lib/db";
 import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
+import {
+  SESSION_EXPIRES_IN_SECONDS,
+  SESSION_REFRESH_WINDOW_SECONDS,
+  isSecureCookie,
+} from "@/lib/auth/session-config";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -24,13 +29,14 @@ export const auth = betterAuth({
   advanced: {
     defaultCookieAttributes: {
       sameSite: "strict" as const,
-      secure: process.env.NODE_ENV === "production",
+      secure: isSecureCookie(),
     },
   },
-  // Session settings
+  // Session settings — one year, sliding: activity older than the refresh
+  // window resets the expiry to the full TTL (see session-config.ts).
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // refresh every day
+    expiresIn: SESSION_EXPIRES_IN_SECONDS,
+    updateAge: SESSION_REFRESH_WINDOW_SECONDS,
   },
   databaseHooks: {
     user: {
