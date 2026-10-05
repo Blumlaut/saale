@@ -6,7 +6,7 @@ import {
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
-import { createSystemPromptLoader } from "@/lib/pi/processing-state";
+import { createSystemPromptLoader, startSessionExtensions } from "@/lib/pi/processing-state";
 import { createSessionSettings } from "@/lib/pi/settings";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
@@ -202,6 +202,8 @@ export async function executeAgentRun(
     resourceLoader: await createSystemPromptLoader(systemPrompt, process.cwd()),
     ...thinkingLevelOption(definition.thinkingLevel),
   });
+
+  await startSessionExtensions(session);
 
   // Run state
   const state: RunState = {

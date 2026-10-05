@@ -123,6 +123,16 @@ describe("createSystemPromptLoader", () => {
     expect(loader.getSkills().skills).toEqual([]);
     expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
     expect(loader.getPrompts().prompts).toEqual([]);
-    expect(loader.getExtensions().extensions).toEqual([]);
+  });
+
+  it("loads only Saale's own extensions, never the host's", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "saale-loader-"));
+    const loader = await createSystemPromptLoader("test prompt", dir);
+
+    // Exactly one extension — Saale's inline codemode. Discovery of the host's
+    // Pi directory is off, so nothing from the machine can be loaded.
+    const extensions = loader.getExtensions().extensions;
+    expect(extensions).toHaveLength(1);
+    expect(extensions[0]?.path).toContain("inline");
   });
 });

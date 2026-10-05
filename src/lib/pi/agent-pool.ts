@@ -229,6 +229,26 @@ export function getPoolKeys(): string[] {
 }
 
 /**
+ * Drop every pooled session belonging to one user and dispose its agents.
+ *
+ * The agent's model, tools and extensions (the user's MCP servers among them)
+ * are fixed when the session is built, so changing a user-wide setting means
+ * rebuilding. Sessions with a run in flight are left alone — disposing one
+ * aborts the run — and pick up the change the next time they are rebuilt.
+ */
+export async function evictUserSessions(userId: string): Promise<number> {
+  const prefix = `${userId}:`;
+  const keys = [...pool.keys()].filter(
+    (key) => key.startsWith(prefix) && !pool.get(key)?.promptInFlight,
+  );
+
+  for (const key of keys) {
+    await remove(key);
+  }
+  return keys.length;
+}
+
+/**
  * Clear the entire pool and dispose all agents (exported for testing).
  */
 export async function clearPool(): Promise<void> {

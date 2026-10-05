@@ -39,9 +39,9 @@ import {
 } from "@/lib/chat/queue";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
 import {
+  createChatApprovalEmitter,
   createToolApprovalGate,
   getPendingApprovals,
-  type ApprovalRequest,
 } from "@/lib/pi/tool-approval-gate";
 
 const SSE_HEADERS = {
@@ -115,22 +115,15 @@ export async function GET(
   // ── User settings (system prompt + tool policies) ─────────────────────
   const userSettings = await loadChatUserSettings(authResult.userId);
 
-  // Approval wrapper — publishes approval requests on the session event bus
-  // so every connected client (in any process) sees them.
+  // Approval channel — publishes approval requests on the session event bus
+  // so every connected client (in any process) sees them. Shared by the tool
+  // wrapper and the MCP tool gate.
+  const emitApprovalRequest = createChatApprovalEmitter(sessionId);
   const approvalWrapper = createToolApprovalGate({
     userId: authResult.userId,
     sessionId,
     toolPolicies: userSettings.toolPolicies,
-    emitApprovalRequest: (req: ApprovalRequest) => {
-      publishSessionEvent(sessionId, "tool_approval_request", {
-        toolCallId: req.toolCallId,
-        toolName: req.toolName,
-        args: req.args,
-        expiresAt: new Date(req.expiresAt).toISOString(),
-      }).catch((err) => {
-        console.error("Failed to publish approval request:", err);
-      });
-    },
+    emitApprovalRequest,
   });
 
   const log = (tag: string, ...args: unknown[]) =>
@@ -339,7 +332,9 @@ export async function GET(
           ? { model: { provider: modelProvider, name: modelName } }
           : {}),
         customInstructions: userSettings.customInstructions,
+        toolPolicies: userSettings.toolPolicies,
         wrapTool: approvalWrapper,
+        emitApprovalRequest,
       });
     });
 

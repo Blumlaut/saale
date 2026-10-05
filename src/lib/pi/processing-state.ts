@@ -1,9 +1,15 @@
 import {
   DefaultResourceLoader,
+  createCodemodeExtension,
   getAgentDir,
+  type AgentSession,
+  type ExtensionFactory,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
+import { createUserMcpExtension } from "@/lib/mcp/servers";
+import { createMcpToolPolicyExtension } from "./mcp-tool-policy";
 import { createSessionSettings } from "./settings";
+import type { ApprovalRequest } from "./tool-approval-gate";
 
 /**
  * Identity and response-style rules — always present, independent of tools.
@@ -82,16 +88,73 @@ export function buildAgentSystemPrompt(options: {
  * Discovery (extensions, skills, prompt templates, themes, context files) is
  * disabled — Saale builds its own prompts and runs headless — along with the
  * host's Pi settings (see `createSessionSettings`).
+ *
+ * For sessions that can call tools, use `createAgentResourceLoader` (this is
+ * its no-tools form) so codemode and the user's MCP servers are loaded.
  */
 export async function createSystemPromptLoader(
   prompt: string,
   cwd: string,
 ): Promise<ResourceLoader> {
+  return createAgentResourceLoader({ prompt, cwd });
+}
+
+/** Extensions every Saale session loads. */
+function baseExtensionFactories(): ExtensionFactory[] {
+  // Saale runs `codemode` by default: the model can write a short script that
+  // calls several tools in parallel and reduces the results, which keeps both
+  // the prompt and the transcript smaller than issuing every call itself. It is
+  // also how MCP tools are reached (`codemode` is their default exposure).
+  return [createCodemodeExtension()];
+}
+
+export interface AgentResourceOptions {
+  prompt: string;
+  cwd: string;
+  /** Per-user MCP servers plus the approval channel that gates their calls. */
+  mcp?: {
+    userId: string;
+    /** ChatSession/agent session id used on approval cards. */
+    sessionId: string;
+    toolPolicies: Record<string, string> | null | undefined;
+    emitApprovalRequest: (request: ApprovalRequest) => void;
+  };
+}
+
+/**
+ * Build a resource loader for a session that can call tools.
+ *
+ * Adds the extensions Saale runs (codemode) and, when the caller supplies an
+ * MCP context, the user's servers and the gate that enforces their approval
+ * policies.
+ */
+export async function createAgentResourceLoader(
+  options: AgentResourceOptions,
+): Promise<ResourceLoader> {
+  const extensionFactories = baseExtensionFactories();
+
+  if (options.mcp) {
+    const mcp = await createUserMcpExtension(options.mcp.userId);
+    if (mcp) {
+      extensionFactories.push(
+        mcp.extension,
+        createMcpToolPolicyExtension({
+          userId: options.mcp.userId,
+          sessionId: options.mcp.sessionId,
+          serverPolicies: mcp.policies,
+          toolPolicies: options.mcp.toolPolicies,
+          emitApprovalRequest: options.mcp.emitApprovalRequest,
+        }),
+      );
+    }
+  }
+
   const loader = new DefaultResourceLoader({
-    cwd,
+    cwd: options.cwd,
     agentDir: getAgentDir(),
     settingsManager: createSessionSettings(),
-    systemPrompt: prompt,
+    systemPrompt: options.prompt,
+    extensionFactories,
     noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
@@ -100,4 +163,22 @@ export async function createSystemPromptLoader(
   });
   await loader.reload();
   return loader;
+}
+
+/** Extension-provided tools every Saale session runs. */
+export const DEFAULT_EXTENSION_TOOLS = ["codemode"];
+
+/**
+ * Start a session's extensions and enable the tools Saale runs with them.
+ *
+ * Pi emits `session_start` only from `bindExtensions()`; without this call the
+ * extensions never activate — the user's MCP servers never connect and Pi's
+ * `codemode` tool (registered inactive) is never enabled. It must run once per
+ * session, after `createAgentSession`.
+ */
+export async function startSessionExtensions(session: AgentSession): Promise<void> {
+  await session.bindExtensions({});
+  const active = session.getActiveToolNames();
+  const missing = DEFAULT_EXTENSION_TOOLS.filter((name) => !active.includes(name));
+  if (missing.length > 0) session.setActiveToolsByName([...active, ...missing]);
 }

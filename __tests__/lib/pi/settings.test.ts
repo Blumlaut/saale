@@ -111,6 +111,9 @@ describe("session settings", () => {
     expect(loader.getSystemPrompt()).toBe("You are Saale.");
     expect(loader.getSkills().skills).toEqual([]);
     expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
-    expect(loader.getExtensions().extensions).toEqual([]);
+    // Saale's own inline extensions load (codemode); the host's do not.
+    expect(loader.getExtensions().extensions.every((extension) =>
+      extension.path.includes("inline"),
+    )).toBe(true);
   });
 });

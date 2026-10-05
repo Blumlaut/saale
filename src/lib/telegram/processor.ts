@@ -22,7 +22,12 @@ import { createApprovalCardTracker } from "./approval-cards";
 import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
-import { buildAgentSystemPrompt, createSystemPromptLoader } from "@/lib/pi/processing-state";
+import {
+  buildAgentSystemPrompt,
+  createAgentResourceLoader,
+  createSystemPromptLoader,
+  startSessionExtensions,
+} from "@/lib/pi/processing-state";
 import { withChatLock } from "./chat-lock";
 import { createSessionSettings } from "@/lib/pi/settings";
 import { createTerminalScopedTools } from "@/lib/pi/session";
@@ -314,22 +319,26 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     return undefined;
   });
 
+  // Approval channel — a card in the Telegram chat. Shared by the tool wrapper
+  // and the MCP tool gate.
+  const emitApprovalRequest = (request: ApprovalRequest) => {
+    sendTelegramApprovalRequest(userId, request)
+      .then((cardId) => {
+        if (cardId) {
+          cardTracker.track(request.toolCallId, cardId);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to send Telegram approval request:", err);
+      });
+  };
+
   // Build the approval wrapper — every tool goes through the gate
   const approvalWrapper = createToolApprovalGate({
     userId,
     sessionId,
     toolPolicies,
-    emitApprovalRequest: (request: ApprovalRequest) => {
-      sendTelegramApprovalRequest(userId, request)
-        .then((cardId) => {
-          if (cardId) {
-            cardTracker.track(request.toolCallId, cardId);
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to send Telegram approval request:", err);
-        });
-    },
+    emitApprovalRequest,
   });
 
   const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
@@ -352,12 +361,15 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,
-    resourceLoader: await createSystemPromptLoader(
-      baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE,
-      sessionDir,
-    ),
+    resourceLoader: await createAgentResourceLoader({
+      prompt: baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE,
+      cwd: sessionDir,
+      mcp: { userId, sessionId, toolPolicies, emitApprovalRequest },
+    }),
     ...thinkingLevelOption(definition.thinkingLevel),
   });
+
+  await startSessionExtensions(session);
 
   // Mark the run as running — startedAt is when the agent actually starts
   // (the run record was created earlier as "pending").
