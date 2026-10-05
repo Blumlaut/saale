@@ -9,6 +9,9 @@
  * bound, or when the loader ignores the user's servers.
  */
 
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   DefaultResourceLoader,
@@ -131,6 +134,96 @@ describe("MCP servers in an agent session", () => {
         expect(fake.streamRequests).toBe(0);
       } finally {
         session.dispose();
+      }
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "never sends the host's shared OAuth credentials",
+    async () => {
+      const hostServer = await startFakeMcpServer({
+        requireToken: "operator-token",
+        challenge:
+          'Bearer realm="mcp", resource_metadata="http://127.0.0.1/.well-known/oauth-protected-resource"',
+        tools: [],
+      });
+      // An agent directory whose `mcp-auth.json` holds a sign-in the *operator*
+      // (or another tenant with the same name and URL) performed with the Pi
+      // CLI. Saale cannot complete a sign-in, so it must never present them.
+      const agentDir = await mkdtemp(join(tmpdir(), "saale-mcp-oauth-"));
+      const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+      process.env.PI_CODING_AGENT_DIR = agentDir;
+      const serverUrl = String(new URL(hostServer.url));
+      await writeFile(
+        join(agentDir, "mcp-auth.json"),
+        JSON.stringify({
+          [`mcp__hostauth|${serverUrl}`]: {
+            serverUrl,
+            tokens: { access_token: "operator-token", token_type: "Bearer" },
+          },
+        }),
+      );
+
+      mockFindMany.mockResolvedValue([
+        {
+          id: "srv-2",
+          userId: USER_ID,
+          name: "hostauth",
+          url: hostServer.url,
+          description: "",
+          encryptedToken: null,
+          toolPolicy: "ask",
+          enabled: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+
+      try {
+        const mcp = await createUserMcpExtension(USER_ID);
+        const loader = new DefaultResourceLoader({
+          cwd: "/tmp",
+          agentDir: "/tmp/saale-mcp-session-test",
+          settingsManager: SettingsManager.inMemory({}),
+          systemPrompt: "verify",
+          extensionFactories: [createCodemodeExtension(), mcp!.extension],
+          noExtensions: true,
+          noSkills: true,
+          noPromptTemplates: true,
+          noThemes: true,
+          noContextFiles: true,
+        });
+        await loader.reload();
+
+        const { session } = await createAgentSession({
+          sessionManager: SessionManager.inMemory("/tmp"),
+          modelRuntime: await ModelRuntime.create({
+            credentials: new InMemoryCredentialStore(),
+            modelsPath: null,
+          }),
+          noTools: "builtin",
+          resourceLoader: loader,
+        });
+
+        try {
+          await startSessionExtensions(session);
+          for (let attempt = 0; attempt < 40; attempt++) {
+            if (hostServer.requests.length > 0) break;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          const sent = hostServer.requests.map((request) => request.authorization);
+          expect(sent.length).toBeGreaterThan(0);
+          expect(sent).not.toContain("Bearer operator-token");
+          expect(session.getCallableToolNames().filter((n) => n.startsWith("mcp__"))).toEqual([]);
+        } finally {
+          session.dispose();
+        }
+      } finally {
+        if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+        else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+        await hostServer.close();
+        await rm(agentDir, { recursive: true, force: true });
       }
     },
     TIMEOUT_MS,
