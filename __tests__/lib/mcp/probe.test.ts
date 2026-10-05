@@ -50,6 +50,29 @@ describe("probeMcpServer", () => {
     });
   });
 
+  it("names OAuth as the reason when the server advertises it", async () => {
+    fake = await startFakeMcpServer({
+      requireToken: "some-token",
+      challenge:
+        'Bearer realm="mcp", resource_metadata="http://127.0.0.1:1/.well-known/oauth-protected-resource"',
+    });
+
+    const message = await probeMcpServer({ url: fake.url }).catch((err) => describeProbeError(err));
+    expect(message).toContain("401");
+    expect(message).toContain("OAuth");
+    expect(message).toContain("access token");
+  });
+
+  it("keeps a plain 401 a token problem", async () => {
+    fake = await startFakeMcpServer({ requireToken: "some-token" });
+
+    const message = await probeMcpServer({ url: fake.url, token: "wrong" }).catch((err) =>
+      describeProbeError(err),
+    );
+    expect(message).toContain("401");
+    expect(message).not.toContain("OAuth");
+  });
+
   it("fails when nothing is listening", async () => {
     await expect(probeMcpServer({ url: "http://127.0.0.1:1/api/mcp" })).rejects.toThrow();
   });
