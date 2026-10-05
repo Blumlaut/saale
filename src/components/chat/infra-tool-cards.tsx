@@ -31,6 +31,8 @@ const MAX_OUTPUT = 80;
 const MAX_MACHINE = 20;
 const MAX_PATH = 48;
 const MAX_PREVIEW = 100;
+/** Diff lines shown in the edit card before it scrolls. */
+const MAX_DIFF_LINES = 40;
 
 /**
  * Structured metadata embedded in infra tool results.
@@ -83,6 +85,27 @@ interface InfraWriteFileMeta {
   machineName: string;
   path: string;
   ok: boolean;
+}
+
+interface InfraReadFileMeta {
+  type: "infra_read_file";
+  machineId: string;
+  machineName: string;
+  path: string;
+  truncated: boolean;
+  totalLines?: number;
+  preview: string;
+  imageMimeType?: string;
+}
+
+interface InfraEditFileMeta {
+  type: "infra_edit_file";
+  machineId: string;
+  machineName: string;
+  path: string;
+  replacements: number;
+  firstChangedLine?: number;
+  diff: string;
 }
 
 interface InfraNotesGetMeta {
@@ -139,7 +162,9 @@ type InfraMeta =
   | InfraWriteFileMeta
   | InfraNotesGetMeta
   | InfraNotesUpsertMeta
-  | InfraNotesDeleteMeta;
+  | InfraNotesDeleteMeta
+  | InfraReadFileMeta
+  | InfraEditFileMeta;
 
 /**
  * Extract _saaleInfraMeta from a tool result string.
@@ -602,6 +627,128 @@ function InfraWriteFileCard({
   );
 }
 
+// ─── infra_read_file ────────────────────────────────────────────────
+
+function InfraReadFileCard({
+  meta,
+  toolCall,
+}: {
+  meta: InfraReadFileMeta;
+  toolCall: ToolCallData;
+}) {
+  const machineName = truncate(meta.machineName, MAX_MACHINE);
+  const path = truncate(meta.path, MAX_PATH);
+  const preview = truncate(meta.preview, MAX_PREVIEW);
+
+  return (
+    <div className="liquid-glass-inner rounded-xl">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <FileText className="text-muted-foreground h-3 w-3" />
+        <span className="text-xs font-medium">
+          {meta.imageMimeType ? "Read image" : "Read file"}
+        </span>
+        <span className="text-muted-foreground font-mono text-xs">{path}</span>
+        <StatusBadge
+          toolCall={toolCall}
+          icon={<CheckCircle className="mr-1 h-2.5 w-2.5" />}
+          label="read"
+        />
+      </div>
+
+      <div className="border-border/30 border-t px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <Server className="text-muted-foreground/60 h-3 w-3" />
+          <span className="text-muted-foreground text-[11px]">{machineName}</span>
+          {meta.totalLines !== undefined && !meta.truncated && (
+            <span className="text-muted-foreground/60 text-[10px]">
+              {meta.totalLines} line{meta.totalLines !== 1 ? "s" : ""}
+            </span>
+          )}
+          {meta.truncated && (
+            <Badge variant="secondary" className="rounded px-1 py-0 text-[10px] font-normal">
+              truncated
+            </Badge>
+          )}
+        </div>
+        {preview && !meta.imageMimeType && (
+          <p className="text-muted-foreground/70 mt-1.5 line-clamp-2 font-mono text-[11px] leading-relaxed">
+            {preview}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── infra_edit_file ────────────────────────────────────────────────
+
+function InfraEditFileCard({
+  meta,
+  toolCall,
+}: {
+  meta: InfraEditFileMeta;
+  toolCall: ToolCallData;
+}) {
+  const machineName = truncate(meta.machineName, MAX_MACHINE);
+  const path = truncate(meta.path, MAX_PATH);
+  const diffLines = meta.diff ? meta.diff.split("\n") : [];
+  const visibleLines = diffLines.slice(0, MAX_DIFF_LINES);
+
+  return (
+    <div className="liquid-glass-inner rounded-xl">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <PenLine className="text-muted-foreground h-3 w-3" />
+        <span className="text-xs font-medium">Edited file</span>
+        <span className="text-muted-foreground font-mono text-xs">{path}</span>
+        <StatusBadge
+          toolCall={toolCall}
+          icon={<CheckCircle className="mr-1 h-2.5 w-2.5" />}
+          label={`${meta.replacements} edit${meta.replacements !== 1 ? "s" : ""}`}
+        />
+      </div>
+
+      {visibleLines.length > 0 && (
+        <div className="border-border/30 border-t px-3 py-2">
+          <div className="bg-muted max-h-40 overflow-auto rounded-lg px-2.5 py-1.5 font-mono text-[11px] leading-relaxed">
+            {visibleLines.map((line, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "whitespace-pre",
+                  line.startsWith("+") && "text-green-700 dark:text-green-400/80",
+                  line.startsWith("-") && "text-red-700 dark:text-red-400/80",
+                  !line.startsWith("+") && !line.startsWith("-") && "text-muted-foreground",
+                )}
+              >
+                {line}
+              </div>
+            ))}
+          </div>
+
+          {diffLines.length > visibleLines.length && (
+            <p className="text-muted-foreground/60 mt-1 text-[10px]">
+              {diffLines.length - visibleLines.length} more line
+              {diffLines.length - visibleLines.length !== 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="border-border/30 border-t px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <Server className="text-muted-foreground/60 h-3 w-3" />
+          <span className="text-muted-foreground text-[11px]">{machineName}</span>
+          {meta.firstChangedLine !== undefined && (
+            <span className="text-muted-foreground/60 text-[10px]">
+              line {meta.firstChangedLine}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── infra_notes_get ────────────────────────────────────────────────
 
 function InfraNotesGetCard({
@@ -762,6 +909,10 @@ export function InfraToolCard({ toolCall }: { toolCall: ToolCallData }) {
       return <InfraRemoveMachineCard meta={meta} toolCall={toolCall} />;
     case "infra_write_file":
       return <InfraWriteFileCard meta={meta} toolCall={toolCall} />;
+    case "infra_read_file":
+      return <InfraReadFileCard meta={meta} toolCall={toolCall} />;
+    case "infra_edit_file":
+      return <InfraEditFileCard meta={meta} toolCall={toolCall} />;
     case "infra_notes_get":
       return <InfraNotesGetCard meta={meta} toolCall={toolCall} />;
     case "infra_notes_upsert":

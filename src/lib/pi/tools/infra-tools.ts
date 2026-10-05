@@ -1,14 +1,141 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import {
+  createEditToolDefinition,
+  createReadToolDefinition,
+  defineTool,
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  type EditOperations,
+  type ReadOperations,
+  type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+// Remote paths are POSIX whatever the host platform is, so never resolve them
+// with the platform-sensitive `path` helpers.
+import { posix } from "path";
+import { Type, type Static } from "typebox";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-import { executeCommand, writeFile as sftpWriteFile, generateSshKeyPair } from "@/lib/infra/client";
+import { detectImageMimeTypeFromBuffer, IMAGE_SNIFF_BYTES } from "@/lib/image-sniff";
+import {
+  createDirectory,
+  executeCommand,
+  readFileHead,
+  readFileRaw,
+  statFile,
+  writeFile as sftpWriteFile,
+  generateSshKeyPair,
+} from "@/lib/infra/client";
+
+/**
+ * Base the SDK's file tools resolve paths against when they are handed no tool
+ * context. Remote paths are rejected unless absolute, so this is only ever a
+ * fallback — a host session cwd must never leak into a remote path.
+ */
+const REMOTE_ROOT = "/";
+
+/** Max characters of an edit diff embedded in the tool result. */
+const MAX_DIFF_CHARS = 4000;
+
+/** Max characters of a file preview embedded in the read result. */
+const MAX_FILE_PREVIEW_CHARS = 200;
+
+/**
+ * Bound a diff so one large edit cannot flood the transcript. The model made
+ * the edits — the diff is for the user, and the first screen is what matters.
+ */
+function truncateDiff(diff: string): string {
+  if (diff.length <= MAX_DIFF_CHARS) return diff;
+  return `${diff.slice(0, MAX_DIFF_CHARS)}\n\u2026 [diff truncated at ${MAX_DIFF_CHARS} characters]`;
+}
 
 /**
  * Create infrastructure tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's machines.
  */
 export function createInfraTools(userId: string): ToolDefinition[] {
+  // ─── Remote file operations (SFTP) ────────────────────────────────────
+  //
+  // `infra_read_file` and `infra_edit_file` are Pi's own read and edit tools
+  // with SFTP operations: the SDK exposes `ReadOperations`/`EditOperations`
+  // for exactly this ("delegate file reading/editing to remote systems (for
+  // example SSH)"), so line/byte truncation, offset paging, image handling,
+  // exact and fuzzy text matching, uniqueness checks, BOM and line-ending
+  // preservation and diff generation all stay in the SDK.
+  //
+  // Pi hands the operations an absolute path and nothing else, so the target
+  // machine travels through this closure. Both tools are declared
+  // `executionMode: "sequential"`, which stops their calls from overlapping,
+  // and the closure is per-session, so separate sessions cannot collide.
+  let activeMachineId: string | null = null;
+
+  const activeMachineOrThrow = (): string => {
+    if (!activeMachineId) {
+      throw new Error("No remote machine selected");
+    }
+    return activeMachineId;
+  };
+
+  /** SFTP `access`: the file must exist and be a regular file. */
+  const accessRemoteFile = async (absolutePath: string): Promise<void> => {
+    const stats = await statFile(activeMachineOrThrow(), userId, absolutePath).catch((err) => {
+      // The SDK renders a bare SFTP status code for a missing path, which
+      // tells the model nothing useful.
+      console.error(`Failed to stat ${absolutePath} on the remote machine:`, err);
+      throw new Error(`${absolutePath} does not exist or cannot be read`);
+    });
+
+    if (stats.type !== "file") {
+      throw new Error(`${absolutePath} is a directory, not a file`);
+    }
+  };
+
+  const readRemoteFile = (absolutePath: string): Promise<Buffer> =>
+    readFileRaw(activeMachineOrThrow(), userId, absolutePath);
+
+  const readOperations: ReadOperations = {
+    readFile: readRemoteFile,
+    access: accessRemoteFile,
+    detectImageMimeType: async (absolutePath) => {
+      const head = await readFileHead(
+        activeMachineOrThrow(),
+        userId,
+        absolutePath,
+        IMAGE_SNIFF_BYTES,
+      );
+      return detectImageMimeTypeFromBuffer(head);
+    },
+  };
+
+  const editOperations: EditOperations = {
+    readFile: readRemoteFile,
+    writeFile: async (absolutePath, content) => {
+      await sftpWriteFile(activeMachineOrThrow(), userId, absolutePath, content);
+    },
+    access: accessRemoteFile,
+  };
+
+  const remoteReadTool = createReadToolDefinition(REMOTE_ROOT, { operations: readOperations });
+  const remoteEditTool = createEditToolDefinition(REMOTE_ROOT, { operations: editOperations });
+
+  const readParameters = Type.Object({
+    id: Type.String({ description: "Machine ID." }),
+    // Pi's own `path`/`offset`/`limit` schemas, so their guidance stays in one place.
+    path: remoteReadTool.parameters.properties.path,
+    offset: remoteReadTool.parameters.properties.offset,
+    limit: remoteReadTool.parameters.properties.limit,
+  });
+
+  const editParameters = Type.Object({
+    id: Type.String({ description: "Machine ID." }),
+    path: remoteEditTool.parameters.properties.path,
+    edits: remoteEditTool.parameters.properties.edits,
+  });
+
+  // Pi's argument shim repairs `edits` sent as a JSON string or as a single
+  // object, and otherwise returns the arguments untouched — so the extra `id`
+  // field survives it even though its declared return type does not mention it.
+  const prepareEditArguments = remoteEditTool.prepareArguments as
+    ((args: unknown) => Static<typeof editParameters>) | undefined;
+
   return [
     // ─── infra_list_machines ─────────────────────────────────────────────
 
@@ -329,13 +456,89 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       },
     }),
 
+    // ─── infra_read_file ─────────────────────────────────────────────────
+
+    defineTool({
+      name: "infra_read_file",
+      label: "Read Remote File",
+      description: `Read a file from a remote machine over SFTP. Supports text files and images (jpg, png, gif, webp) — images are sent as attachments. Text output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first); use offset/limit for larger files. Read a file before \`infra_edit_file\`: edits are matched against the file's exact current content.`,
+      ...(remoteReadTool.promptSnippet ? { promptSnippet: remoteReadTool.promptSnippet } : {}),
+      ...(remoteReadTool.promptGuidelines
+        ? { promptGuidelines: remoteReadTool.promptGuidelines }
+        : {}),
+      parameters: readParameters,
+      ...(remoteReadTool.constrainedSampling
+        ? { constrainedSampling: remoteReadTool.constrainedSampling }
+        : {}),
+      executionMode: "sequential",
+      execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+        const machine = await prisma.infraMachine.findFirst({
+          where: { id: params.id, userId },
+          select: { id: true, name: true },
+        });
+
+        if (!machine) {
+          throw new Error(`Machine ${params.id} not found`);
+        }
+
+        // The SDK resolves a relative path against the session's cwd, which is
+        // a host path — that would silently read a path that is meaningless on
+        // the remote machine. Remote paths are absolute by contract.
+        if (!params.path.startsWith("/")) {
+          throw new Error(
+            `path must be absolute (got "${params.path}"). A remote path is resolved on the machine, not in Saale's workspace.`,
+          );
+        }
+
+        activeMachineId = params.id;
+
+        const read = await remoteReadTool.execute(
+          toolCallId,
+          {
+            path: params.path,
+            ...(params.offset !== undefined ? { offset: params.offset } : {}),
+            ...(params.limit !== undefined ? { limit: params.limit } : {}),
+          },
+          signal,
+          onUpdate,
+          ctx,
+        );
+
+        const content = read.content ?? [];
+        const image = content.find((block) => block.type === "image");
+        const text = content.find((block) => block.type === "text");
+        const truncation = read.details?.truncation;
+
+        // Structured metadata for UI rendering (read file card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_read_file" as const,
+            machineId: params.id,
+            machineName: machine.name,
+            path: params.path,
+            truncated: truncation?.truncated ?? false,
+            totalLines: truncation?.totalLines,
+            preview: (text?.type === "text" ? text.text : "").slice(0, MAX_FILE_PREVIEW_CHARS),
+            imageMimeType: image?.type === "image" ? image.mimeType : undefined,
+          },
+        };
+
+        return {
+          // Pi's blocks are kept intact — an image read is an attachment, not
+          // something to stringify. The metadata rides along as one more block.
+          content: [...content, { type: "text" as const, text: `\n${JSON.stringify(infraMeta)}` }],
+          details: read.details,
+        };
+      },
+    }),
+
     // ─── infra_write_file ────────────────────────────────────────────────
 
     defineTool({
       name: "infra_write_file",
       label: "Write Remote File",
       description:
-        "Write content to a file on a remote machine via SFTP. Creates parent directories if needed.",
+        "Write content to a file on a remote machine via SFTP, replacing the file's entire contents. Creates parent directories if needed. For a change to part of an existing file, use `infra_edit_file` instead — sending the whole file back is expensive and risks dropping everything you did not mean to touch.",
       parameters: Type.Object({
         id: Type.String({ description: "Machine ID." }),
         path: Type.String({
@@ -353,6 +556,13 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
         if (!machine) {
           throw new Error(`Machine ${params.id} not found`);
+        }
+
+        // SFTP's write does not create parent directories (Pi's own write tool
+        // does, and this tool promises the same).
+        const parentDir = posix.dirname(params.path);
+        if (parentDir !== "." && parentDir !== "/") {
+          await createDirectory(params.id, userId, parentDir);
         }
 
         const result = await sftpWriteFile(params.id, userId, params.path, params.content);
@@ -385,6 +595,91 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             },
           ],
           details: { ok: result.ok },
+        };
+      },
+    }),
+
+    // ─── infra_edit_file ────────────────────────────────────────────────
+
+    defineTool({
+      name: "infra_edit_file",
+      label: "Edit Remote File",
+      description:
+        "Edit a file on a remote machine with exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the file's current content — read it with `infra_read_file` first. When changing several places in one file, send one call with multiple entries in edits[] instead of several calls. Prefer this over `infra_write_file` for any change to an existing file.",
+      // The prompt guidance Pi ships with its edit tool, minus its TUI
+      // renderers — a headless host never draws them.
+      ...(remoteEditTool.promptSnippet ? { promptSnippet: remoteEditTool.promptSnippet } : {}),
+      ...(remoteEditTool.promptGuidelines
+        ? { promptGuidelines: remoteEditTool.promptGuidelines }
+        : {}),
+      parameters: editParameters,
+      ...(prepareEditArguments ? { prepareArguments: prepareEditArguments } : {}),
+      ...(remoteEditTool.constrainedSampling
+        ? { constrainedSampling: remoteEditTool.constrainedSampling }
+        : {}),
+      executionMode: "sequential",
+      execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+        const machine = await prisma.infraMachine.findFirst({
+          where: { id: params.id, userId },
+          select: { id: true, name: true },
+        });
+
+        if (!machine) {
+          throw new Error(`Machine ${params.id} not found`);
+        }
+
+        // The SDK resolves a relative path against the session's cwd, which is
+        // a host path — that would silently target a path that is meaningless
+        // on the remote machine. Remote paths are absolute by contract.
+        if (!params.path.startsWith("/")) {
+          throw new Error(
+            `path must be absolute (got "${params.path}"). A remote path is resolved on the machine, not in Saale's workspace.`,
+          );
+        }
+
+        activeMachineId = params.id;
+
+        const edited = await remoteEditTool.execute(
+          toolCallId,
+          { path: params.path, edits: params.edits },
+          signal,
+          onUpdate,
+          ctx,
+        );
+
+        const diff = truncateDiff(edited.details?.diff ?? "");
+
+        // Structured metadata for UI rendering (edit file card)
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_edit_file" as const,
+            machineId: params.id,
+            machineName: machine.name,
+            path: params.path,
+            replacements: params.edits.length,
+            firstChangedLine: edited.details?.firstChangedLine,
+            diff,
+          },
+        };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                JSON.stringify(
+                  {
+                    machine: machine.name,
+                    path: params.path,
+                    replacements: params.edits.length,
+                    diff,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
+            },
+          ],
+          details: edited.details,
         };
       },
     }),

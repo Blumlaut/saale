@@ -31,7 +31,11 @@ vi.mock("@/lib/crypto", () => ({
 // Mock infra client
 vi.mock("@/lib/infra/client", () => ({
   executeCommand: vi.fn(),
+  readFileRaw: vi.fn(),
+  readFileHead: vi.fn(),
   writeFile: vi.fn(),
+  statFile: vi.fn(),
+  createDirectory: vi.fn(),
   generateSshKeyPair: vi.fn(() => ({
     privateKey:
       "-----BEGIN OPENSSH PRIVATE KEY-----\nmock-private-key\n-----END OPENSSH PRIVATE KEY-----",
@@ -81,6 +85,14 @@ const parseResult = (text: string): any => {
   return JSON.parse(text.slice(0, endIdx + 1));
 };
 
+// Helper to extract the `_saaleInfraMeta` block from a tool result text
+const parseMeta = (text: string): Record<string, unknown> => {
+  const metaIdx = text.indexOf('{"_saaleInfraMeta"');
+  if (metaIdx === -1) throw new Error("no _saaleInfraMeta in result text");
+  return (JSON.parse(text.slice(metaIdx)) as { _saaleInfraMeta: Record<string, unknown> })
+    ._saaleInfraMeta;
+};
+
 // Shared context for tool lookups
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ctx: any = {};
@@ -97,25 +109,29 @@ describe("createInfraTools", () => {
     ctx.addMachine = tools.find((t: { name: string }) => t.name === "infra_add_machine")!;
     ctx.removeMachine = tools.find((t: { name: string }) => t.name === "infra_remove_machine")!;
     ctx.exec = tools.find((t: { name: string }) => t.name === "infra_exec")!;
+    ctx.readFile = tools.find((t: { name: string }) => t.name === "infra_read_file")!;
     ctx.writeFile = tools.find((t: { name: string }) => t.name === "infra_write_file")!;
+    ctx.editFile = tools.find((t: { name: string }) => t.name === "infra_edit_file")!;
     ctx.notesList = tools.find((t: { name: string }) => t.name === "infra_notes_list")!;
     ctx.notesGet = tools.find((t: { name: string }) => t.name === "infra_notes_get")!;
     ctx.notesUpsert = tools.find((t: { name: string }) => t.name === "infra_notes_upsert")!;
     ctx.notesDelete = tools.find((t: { name: string }) => t.name === "infra_notes_delete")!;
   });
 
-  it("returns all 9 expected tools", () => {
+  it("returns all 11 expected tools", () => {
     const names = ctx.tools.map((t: { name: string }) => t.name);
     expect(names).toContain("infra_list_machines");
     expect(names).toContain("infra_add_machine");
     expect(names).toContain("infra_remove_machine");
     expect(names).toContain("infra_exec");
+    expect(names).toContain("infra_read_file");
     expect(names).toContain("infra_write_file");
+    expect(names).toContain("infra_edit_file");
     expect(names).toContain("infra_notes_list");
     expect(names).toContain("infra_notes_get");
     expect(names).toContain("infra_notes_upsert");
     expect(names).toContain("infra_notes_delete");
-    expect(names).toHaveLength(9);
+    expect(names).toHaveLength(11);
   });
 
   // Tool descriptions are prompt surface for every session type (chat, Telegram
@@ -546,7 +562,148 @@ describe("createInfraTools", () => {
     });
   });
 
+  describe("infra_read_file", () => {
+    /** The text of the (single) text block Pi's read tool returned. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resultText = (result: any): string =>
+      (result.content as { type: string; text?: string }[])
+        .filter((block) => block.type === "text")
+        .map((block) => block.text ?? "")
+        .join("");
+
+    const FILE = "server {\n  listen 80;\n  root /var/www;\n}\n";
+
+    beforeEach(() => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ id: "m1", name: "prod-web" });
+      vi.mocked(client.statFile).mockResolvedValue({
+        type: "file",
+        size: FILE.length,
+        modified: new Date("2025-01-01"),
+      });
+      // Head sniff: not an image.
+      vi.mocked(client.readFileHead).mockResolvedValue(Buffer.from("server {", "utf8"));
+      vi.mocked(client.readFileRaw).mockResolvedValue(Buffer.from(FILE, "utf8"));
+    });
+
+    it("returns the file content Pi read from the machine", async () => {
+      const result = await callExecute(ctx.readFile.execute, {
+        id: "m1",
+        path: "/etc/nginx/nginx.conf",
+      });
+
+      expect(resultText(result)).toContain("  listen 80;");
+      expect(client.readFileRaw).toHaveBeenCalledWith("m1", "user-123", "/etc/nginx/nginx.conf");
+      expect(client.statFile).toHaveBeenCalledWith("m1", "user-123", "/etc/nginx/nginx.conf");
+      expect(parseMeta(resultText(result))).toMatchObject({
+        type: "infra_read_file",
+        machineName: "prod-web",
+        path: "/etc/nginx/nginx.conf",
+        truncated: false,
+        preview: FILE.slice(0, 200),
+      });
+    });
+
+    it("pages through a large file with offset and limit", async () => {
+      const lines = Array.from({ length: 5 }, (_, i) => `line ${i + 1}`);
+      vi.mocked(client.readFileRaw).mockResolvedValue(Buffer.from(lines.join("\n"), "utf8"));
+
+      const result = await callExecute(ctx.readFile.execute, {
+        id: "m1",
+        path: "/var/log/app.log",
+        offset: 2,
+        limit: 2,
+      });
+      const text = resultText(result);
+
+      expect(text).toContain("line 2");
+      expect(text).toContain("line 3");
+      expect(text).not.toContain("line 1\n");
+      expect(text).not.toContain("line 4");
+      expect(text).toContain("2 more lines in file. Use offset=4 to continue.");
+    });
+
+    it("reports truncation for a file over the line limit", async () => {
+      const lines = Array.from({ length: 2100 }, (_, i) => `line ${i + 1}`);
+      vi.mocked(client.readFileRaw).mockResolvedValue(Buffer.from(lines.join("\n"), "utf8"));
+
+      const result = await callExecute(ctx.readFile.execute, {
+        id: "m1",
+        path: "/var/log/huge.log",
+      });
+      const text = resultText(result);
+
+      expect(text).toContain("Use offset=");
+      expect(parseMeta(text)).toMatchObject({
+        type: "infra_read_file",
+        machineName: "prod-web",
+        path: "/var/log/huge.log",
+        truncated: true,
+        totalLines: 2100,
+      });
+    });
+
+    it("sends a remote image as an attachment", async () => {
+      // 1x1 PNG, the same fixture the attachment tests use.
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        "base64",
+      );
+      vi.mocked(client.readFileHead).mockResolvedValue(png);
+      vi.mocked(client.readFileRaw).mockResolvedValue(png);
+
+      const result = await callExecute(ctx.readFile.execute, {
+        id: "m1",
+        path: "/var/www/logo.png",
+      });
+
+      const content = result.content as { type: string; mimeType?: string }[];
+      expect(content).toEqual(
+        expect.arrayContaining([expect.objectContaining({ type: "image", mimeType: "image/png" })]),
+      );
+      expect(resultText(result)).toContain("Read image file [image/png]");
+      expect(parseMeta(resultText(result))).toMatchObject({
+        type: "infra_read_file",
+        imageMimeType: "image/png",
+      });
+      expect(client.readFileHead).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/var/www/logo.png",
+        expect.any(Number),
+      );
+    });
+
+    it("rejects a relative path instead of resolving it against the host", async () => {
+      await expect(
+        callExecute(ctx.readFile.execute, { id: "m1", path: "etc/nginx/nginx.conf" }),
+      ).rejects.toThrow(/path must be absolute/);
+      expect(client.readFileRaw).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing file as missing, not as an SFTP status code", async () => {
+      vi.mocked(client.statFile).mockRejectedValue(
+        Object.assign(new Error("No such file"), { code: 2 }),
+      );
+
+      await expect(
+        callExecute(ctx.readFile.execute, { id: "m1", path: "/etc/gone.conf" }),
+      ).rejects.toThrow(/\/etc\/gone\.conf does not exist or cannot be read/);
+      expect(client.readFileRaw).not.toHaveBeenCalled();
+    });
+
+    it("throws when machine not found", async () => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
+
+      await expect(
+        callExecute(ctx.readFile.execute, { id: "nonexistent", path: "/etc/hosts" }),
+      ).rejects.toThrow("Machine nonexistent not found");
+      expect(client.readFileRaw).not.toHaveBeenCalled();
+    });
+  });
+
   describe("infra_write_file", () => {
+    const FILE = "server {\n  listen 80;\n}\n";
+
     it("writes file via SFTP", async () => {
       vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
         id: "m1",
@@ -570,6 +727,48 @@ describe("createInfraTools", () => {
       );
     });
 
+    it("creates the parent directory before writing", async () => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
+        id: "m1",
+        name: "prod-web",
+      });
+      vi.mocked(client.writeFile).mockResolvedValue({ ok: true });
+
+      await callExecute(ctx.writeFile.execute, {
+        id: "m1",
+        path: "/etc/new/nested/conf.d/app.conf",
+        content: FILE,
+      });
+
+      expect(client.createDirectory).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/etc/new/nested/conf.d",
+      );
+      expect(client.writeFile).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/etc/new/nested/conf.d/app.conf",
+        FILE,
+      );
+    });
+
+    it("does not try to create a root-level parent", async () => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
+        id: "m1",
+        name: "prod-web",
+      });
+      vi.mocked(client.writeFile).mockResolvedValue({ ok: true });
+
+      await callExecute(ctx.writeFile.execute, {
+        id: "m1",
+        path: "/app.conf",
+        content: FILE,
+      });
+
+      expect(client.createDirectory).not.toHaveBeenCalled();
+    });
+
     it("throws when machine not found", async () => {
       vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
 
@@ -580,6 +779,202 @@ describe("createInfraTools", () => {
           content: "hello",
         }),
       ).rejects.toThrow("Machine nonexistent not found");
+      expect(client.writeFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("infra_edit_file", () => {
+    const CONF = "server {\n  listen 80;\n  root /var/www;\n}\n";
+
+    beforeEach(() => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({
+        id: "m1",
+        name: "prod-web",
+      });
+      vi.mocked(client.statFile).mockResolvedValue({
+        type: "file",
+        size: CONF.length,
+        modified: new Date("2025-01-01"),
+      });
+      vi.mocked(client.readFileRaw).mockResolvedValue(Buffer.from(CONF, "utf8"));
+      vi.mocked(client.writeFile).mockResolvedValue({ ok: true });
+    });
+
+    it("replaces matching text and writes the whole file back", async () => {
+      const result = await callExecute(ctx.editFile.execute, {
+        id: "m1",
+        path: "/etc/nginx/nginx.conf",
+        edits: [{ oldText: "listen 80;", newText: "listen 8080;" }],
+      });
+      const raw = (result.content[0] as { type: string; text: string }).text;
+
+      expect(client.writeFile).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/etc/nginx/nginx.conf",
+        "server {\n  listen 8080;\n  root /var/www;\n}\n",
+      );
+
+      const text = parseResult(raw);
+      expect(text.machine).toBe("prod-web");
+      expect(text.replacements).toBe(1);
+      expect(text.diff).toMatch(/^-.*listen 80;/m);
+      expect(text.diff).toMatch(/^\+.*listen 8080;/m);
+      expect(parseMeta(raw)).toMatchObject({
+        type: "infra_edit_file",
+        machineName: "prod-web",
+        path: "/etc/nginx/nginx.conf",
+        replacements: 1,
+      });
+    });
+
+    it("reads the file untruncated so the write-back cannot lose the tail", async () => {
+      await callExecute(ctx.editFile.execute, {
+        id: "m1",
+        path: "/etc/nginx/nginx.conf",
+        edits: [{ oldText: "root /var/www;", newText: "root /srv/www;" }],
+      });
+
+      expect(client.readFileRaw).toHaveBeenCalledWith("m1", "user-123", "/etc/nginx/nginx.conf");
+      // A truncated read would be written back as a truncated file.
+      expect(vi.mocked(client.writeFile).mock.calls[0]?.[3]).toContain("root /srv/www;\n}\n");
+    });
+
+    it("applies several edits from one call against the original content", async () => {
+      await callExecute(ctx.editFile.execute, {
+        id: "m1",
+        path: "/etc/nginx/nginx.conf",
+        edits: [
+          { oldText: "listen 80;", newText: "listen 8080;" },
+          { oldText: "root /var/www;", newText: "root /srv/www;" },
+        ],
+      });
+
+      expect(client.writeFile).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/etc/nginx/nginx.conf",
+        "server {\n  listen 8080;\n  root /srv/www;\n}\n",
+      );
+    });
+
+    it("preserves CRLF line endings", async () => {
+      const crlf = "key=value\r\nother=1\r\n";
+      vi.mocked(client.readFileRaw).mockResolvedValue(Buffer.from(crlf, "utf8"));
+
+      await callExecute(ctx.editFile.execute, {
+        id: "m1",
+        path: "/etc/app.conf",
+        edits: [{ oldText: "other=1", newText: "other=2" }],
+      });
+
+      expect(client.writeFile).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/etc/app.conf",
+        "key=value\r\nother=2\r\n",
+      );
+    });
+
+    it("rejects text that is not unique in the file", async () => {
+      vi.mocked(client.readFileRaw).mockResolvedValue(
+        Buffer.from("a = 1;\nb = 1;\na = 1;\n", "utf8"),
+      );
+
+      await expect(
+        callExecute(ctx.editFile.execute, {
+          id: "m1",
+          path: "/etc/app.conf",
+          edits: [{ oldText: "a = 1;", newText: "a = 2;" }],
+        }),
+      ).rejects.toThrow(/2 occurrences/);
+      expect(client.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("rejects oldText that does not appear in the file", async () => {
+      await expect(
+        callExecute(ctx.editFile.execute, {
+          id: "m1",
+          path: "/etc/nginx/nginx.conf",
+          edits: [{ oldText: "listen 9999;", newText: "listen 8080;" }],
+        }),
+      ).rejects.toThrow(/Could not find the exact text/);
+      expect(client.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("rejects a relative path instead of resolving it against the host", async () => {
+      await expect(
+        callExecute(ctx.editFile.execute, {
+          id: "m1",
+          path: "etc/nginx/nginx.conf",
+          edits: [{ oldText: "listen 80;", newText: "listen 8080;" }],
+        }),
+      ).rejects.toThrow(/path must be absolute/);
+      expect(client.statFile).not.toHaveBeenCalled();
+      expect(client.readFileRaw).not.toHaveBeenCalled();
+    });
+
+    it("rejects a path that is a directory", async () => {
+      vi.mocked(client.statFile).mockResolvedValue({
+        type: "directory",
+        size: 4096,
+        modified: new Date("2025-01-01"),
+      });
+
+      await expect(
+        callExecute(ctx.editFile.execute, {
+          id: "m1",
+          path: "/etc/nginx",
+          edits: [{ oldText: "listen 80;", newText: "listen 8080;" }],
+        }),
+      ).rejects.toThrow(/is a directory, not a file/);
+      expect(client.readFileRaw).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing file as missing, not as an SFTP status code", async () => {
+      vi.mocked(client.statFile).mockRejectedValue(
+        Object.assign(new Error("No such file"), { code: 2 }),
+      );
+
+      await expect(
+        callExecute(ctx.editFile.execute, {
+          id: "m1",
+          path: "/etc/gone.conf",
+          edits: [{ oldText: "a", newText: "b" }],
+        }),
+      ).rejects.toThrow(/\/etc\/gone\.conf does not exist or cannot be read/);
+      expect(client.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("throws when machine not found", async () => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
+
+      await expect(
+        callExecute(ctx.editFile.execute, {
+          id: "nonexistent",
+          path: "/etc/nginx/nginx.conf",
+          edits: [{ oldText: "listen 80;", newText: "listen 8080;" }],
+        }),
+      ).rejects.toThrow("Machine nonexistent not found");
+      expect(client.readFileRaw).not.toHaveBeenCalled();
+    });
+
+    it("scopes the machine lookup to the authenticated user", async () => {
+      await callExecute(ctx.editFile.execute, {
+        id: "m1",
+        path: "/etc/nginx/nginx.conf",
+        edits: [{ oldText: "listen 80;", newText: "listen 8080;" }],
+      });
+
+      expect(mockInfraMachine.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "m1", userId: "user-123" },
+        }),
+      );
+    });
+
+    it("edits sequentially so the machine hand-off cannot be interleaved", () => {
+      expect(ctx.editFile.executionMode).toBe("sequential");
     });
   });
 
