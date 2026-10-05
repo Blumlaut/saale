@@ -16,7 +16,7 @@ import { isStreamingMessage, makeStreamingMessage } from "./message-factories";
  */
 
 export type StreamAction =
-  | { type: "turn_start"; turnId: string }
+  | { type: "turn_start"; turnId: string; startedAt?: string }
   | { type: "token"; turnId: string; text: string }
   | { type: "thinking"; turnId: string; thinking: string }
   | {
@@ -68,7 +68,13 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
     case "turn_start":
       return {
         ...state,
-        messages: ensureTurnMessage(state.messages, action.turnId, state.rootMessageId),
+        messages: ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, {
+          // The server's turn start is the live bubble's conversation
+          // position, so a message delivered into the turn mid-run (a
+          // steered "send now") sorts after it. Without it the bubble is
+          // ordered by the browser clock, which the merge cannot trust.
+          ...(action.startedAt ? { createdAt: action.startedAt } : {}),
+        }),
       };
 
     case "token":

@@ -40,6 +40,22 @@ describe("decideStreamAction", () => {
       expect(action.reason).toBe("prompt claimed by message POST");
     });
 
+    it('prompts the message a "send now" claimed, even though it registered a run', () => {
+      // Pushing a queued message on a stopped chat releases the queue hold,
+      // claims the message, and registers the session so the reconnect prompts
+      // it. The claim must win over the generation flag it just set — treat
+      // that as "a run is already going", and the chat never resumes (the
+      // message sits in the conversation unanswered).
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: userMsg,
+        isGenerating: true,
+        pendingPromptMessageId: "msg-1",
+      });
+      expect(action.type).toBe("prompt");
+      expect(action.reason).toBe("prompt claimed by message POST");
+    });
+
     it("observes when this process already prompted the message", () => {
       const action = decideStreamAction({
         ...base,

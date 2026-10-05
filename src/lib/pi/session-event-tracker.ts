@@ -24,7 +24,8 @@
  * fired more than once, double-compacts the session.
  *
  * Stream protocol (turnId-based):
- *  - `turn_start { turnId }` — a new assistant turn begins
+ *  - `turn_start { turnId, startedAt }` — a new assistant turn begins, at the
+ *    server's timestamp for it (what the turn's DB row is stamped with too)
  *  - `token { turnId, text }` / `thinking { turnId, thinking }` — cumulative
  *  - `tool_start { turnId, toolCallId, toolName, args }`
  *  - `tool_update { turnId, toolCallId, partialResult }` — live progress from
@@ -86,6 +87,10 @@ export function createSessionEventTracker(
   // ── Turn state ───────────────────────────────────────────────────────────
   let turnIndex = 0;
   let currentTurnId: string | null = null;
+  // When the current assistant turn began. The row it becomes is written at
+  // turn_end (after its tools ran), but its place in the conversation is here
+  // — see `saveAssistantMessage`'s `createdAt`.
+  let currentTurnStartedAt: Date | null = null;
   let currentTurnText = "";
   let currentTurnThinking = "";
   let rootMessageId: string | null = null;
@@ -130,9 +135,17 @@ export function createSessionEventTracker(
 
   /** Start a new turn: generate a turnId and announce it on the bus. */
   const startTurn = (): string => {
+    // The SDK's `turn_start` event records when the turn really began; the
+    // fallback covers a turn whose start event was missed (a replay).
+    currentTurnStartedAt ??= new Date();
     if (!currentTurnId) {
       currentTurnId = crypto.randomUUID();
-      publishSessionEvent(sessionId, "turn_start", { turnId: currentTurnId }).catch((err) => {
+      publishSessionEvent(sessionId, "turn_start", {
+        turnId: currentTurnId,
+        // Clients order the live turn by this, so a message delivered into
+        // the run mid-turn sorts after it instead of above it.
+        startedAt: currentTurnStartedAt.toISOString(),
+      }).catch((err) => {
         console.error("Failed to publish turn_start:", err);
       });
     }
@@ -255,6 +268,15 @@ export function createSessionEventTracker(
             console.error("Failed to reset session events:", err);
           });
         startActivityHeartbeat();
+        break;
+      }
+
+      // ── Turn start: the assistant turn begins here, before its first
+      //    token. Its row is only written at turn_end — stamping the row
+      //    with the turn's start is what keeps the conversation in the order
+      //    the turns actually happened in. ──
+      case "turn_start": {
+        currentTurnStartedAt = new Date();
         break;
       }
 
@@ -484,6 +506,7 @@ export function createSessionEventTracker(
           thinking: currentTurnThinking || undefined,
           toolCalls: turnToolCalls.length > 0 ? turnToolCalls : undefined,
           parentMessageId: rootMessageId,
+          createdAt: currentTurnStartedAt ?? undefined,
         });
         lastTurnSavePromise = turnSavePromise;
         lastTurnId = turnId;
@@ -669,6 +692,7 @@ export function createSessionEventTracker(
                     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
                     messageId: existingMessageId,
                     errorMessage,
+                    createdAt: currentTurnStartedAt ?? undefined,
                   }).then((msg) => ({ msg, existingMessageId }));
                 })
                 .then(({ msg, existingMessageId }) => {

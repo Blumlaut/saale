@@ -98,6 +98,11 @@ let releaseSend: (() => void) | null;
 /** Same, for a manual compaction whose summarization is still running. */
 let holdCompact: boolean;
 let releaseCompact: (() => void) | null;
+/** The server's view: the conversation, and what is still waiting in the queue. */
+let conversation: ReturnType<typeof dbMessage>[];
+let queued: ReturnType<typeof dbMessage>[];
+/** Bumped per delivery so a pushed message sorts after the live turn. */
+let deliveryClock = 0;
 
 function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input.toString();
@@ -109,13 +114,31 @@ function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
         ? { ok: true, queued: true, message: dbMessage("db-queued", "just asking") }
         : { ok: true, queued: false, message: dbMessage("db-sent", "just asking") };
 
+    // The server keeps what it accepted, so a reload can read it back.
+    if (sendResponse === "queued") queued = [...queued, dbMessage("db-queued", "just asking")];
+    else conversation = [...conversation, dbMessage("db-sent", "just asking")];
+
     if (!holdSend) return Promise.resolve(json(body));
     return new Promise<Response>((resolve) => {
       releaseSend = () => resolve(json(body));
     });
   }
+  if (url.startsWith(`/api/chat/sessions/${SESSION_ID}/queue/`) && method === "POST") {
+    // "Send now": the message leaves the queue and enters the conversation.
+    const delivered = queued.map((message) => ({
+      ...message,
+      // Delivered after the turn above began (00:00:05) — as the server
+      // stamps it.
+      createdAt: `2026-01-01T00:00:${30 + ++deliveryClock}.000Z`,
+    }));
+    queued = [];
+    conversation = [...conversation, ...delivered];
+    return Promise.resolve(json({ ok: true, delivered: true, mode: "steered" }));
+  }
   if (url === `/api/chat/sessions/${SESSION_ID}/messages`) {
-    return Promise.resolve(json({ messages: [], queuedMessages: [], session: { id: SESSION_ID } }));
+    return Promise.resolve(
+      json({ messages: conversation, queuedMessages: queued, session: { id: SESSION_ID } }),
+    );
   }
   if (url === `/api/chat/sessions/${SESSION_ID}/compact` && method === "POST") {
     const body = { compacted: true, tokensBefore: 1000 };
@@ -149,10 +172,15 @@ async function mountStream(): Promise<MockEventSource> {
   return MockEventSource.instances[0]!;
 }
 
-/** Start a live generation: a streaming assistant turn. */
+/**
+ * Start a live generation: a streaming assistant turn.
+ *
+ * The server announces each turn with its start time — the client orders the
+ * live bubble by it, so messages delivered into the run land after it.
+ */
 function startGeneration(stream: MockEventSource) {
   act(() => {
-    stream.emit("turn_start", { turnId: "turn-1" });
+    stream.emit("turn_start", { turnId: "turn-1", startedAt: "2026-01-01T00:00:05.000Z" });
     stream.emit("token", { turnId: "turn-1", text: "Working on it" });
   });
 }
@@ -185,6 +213,9 @@ beforeEach(() => {
   releaseSend = null;
   holdCompact = false;
   releaseCompact = null;
+  conversation = [];
+  queued = [];
+  deliveryClock = 0;
 });
 
 afterEach(() => {
@@ -236,6 +267,29 @@ describe("sending while Pi is generating", () => {
     await waitFor(() => expect(screen.getByText("just asking")).toBeInTheDocument());
     expect(screen.queryByRole("group", { name: "Queued messages" })).toBeNull();
     expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  it("shows a pushed queued message below the turn it steers into", async () => {
+    const stream = await mountStream();
+    startGeneration(stream);
+    expect(await screen.findByText("Working on it")).toBeInTheDocument();
+
+    sendFromComposer("just asking");
+    await waitFor(() => expect(within(queueStrip()).getByText("just asking")).toBeInTheDocument());
+
+    // "Send now" steers the message into the running turn. The turn it
+    // interrupted began before the message, so it must stay above it — even
+    // though the turn's own row doesn't exist yet.
+    fireEvent.click(screen.getByRole("button", { name: "Send this message now" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("group", { name: "Queued messages" })).toBeNull(),
+    );
+    const liveTurn = await screen.findByText("Working on it");
+    const pushed = screen.getByText("just asking");
+    expect(
+      liveTurn.compareDocumentPosition(pushed) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 

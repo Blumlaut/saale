@@ -28,6 +28,49 @@ describe("mergeMessagesWithLive", () => {
     expect(merged.map((m) => m.id)).toEqual(["db-1", "streaming-abc", "temp-123"]);
   });
 
+  it("keeps a live turn above a message delivered into it mid-run", () => {
+    // "Send now" on a queued message steers it into the agent: the live turn
+    // started BEFORE it, so the snapshot (which holds the delivered message
+    // and not yet the turn's own row) must not push it above the live bubble.
+    const db = [
+      makeMessage({ id: "db-prompt", createdAt: "2026-01-01T00:00:00.000Z" }),
+      makeMessage({ id: "db-steered", createdAt: "2026-01-01T00:00:30.000Z" }),
+    ];
+    const prev = [
+      makeMessage({ id: "db-prompt", createdAt: "2026-01-01T00:00:00.000Z" }),
+      makeMessage({
+        id: "streaming-turn-1",
+        role: "assistant",
+        content: "Working",
+        createdAt: "2026-01-01T00:00:05.000Z",
+      }),
+    ];
+
+    const merged = mergeMessagesWithLive(db, prev);
+
+    expect(merged.map((m) => m.id)).toEqual(["db-prompt", "streaming-turn-1", "db-steered"]);
+  });
+
+  it("never sorts an optimistic message below the reply it follows", () => {
+    // The optimistic copy carries the browser clock: a clock behind the
+    // server's must not move the just-sent message above older messages.
+    const db = [
+      makeMessage({ id: "db-reply", role: "assistant", createdAt: "2030-01-01T00:00:00.000Z" }),
+      makeMessage({
+        id: "streaming-turn-2",
+        role: "assistant",
+        createdAt: "2030-01-01T00:00:01.000Z",
+      }),
+    ];
+    const prev = [
+      makeMessage({ id: "temp-1", role: "user", createdAt: "2026-01-01T00:00:00.000Z" }),
+    ];
+
+    const merged = mergeMessagesWithLive(db, prev);
+
+    expect(merged.map((m) => m.id)).toEqual(["db-reply", "streaming-turn-2", "temp-1"]);
+  });
+
   it("preserves the optimistic temp user message when the snapshot is stale", () => {
     // Stale snapshot: fetched BEFORE the POST /messages commit, so it lacks
     // the just-sent user message. The optimistic temp copy must survive,

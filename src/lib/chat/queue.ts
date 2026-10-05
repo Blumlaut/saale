@@ -16,7 +16,9 @@ import {
  * excluded from the conversation (see `listQueuedMessages` callers) until it
  * is delivered, and rendered in the composer's queue strip instead. Delivery
  * is server-side (see the chat stream route's drain), so queued messages are
- * answered even when no client is connected.
+ * answered even when no client is connected — and it is delivery that takes
+ * the message into the conversation, `createdAt` included (see
+ * `claimQueuedMessage`).
  */
 
 /** Send queue cap per session — a runaway client can't queue forever. */
@@ -64,11 +66,16 @@ export async function publishQueueUpdate(sessionId: string): Promise<void> {
  *
  * Atomic conditional update: returns false when the message was already
  * delivered or cancelled, so callers never act on a stale queue entry twice.
+ *
+ * Delivering the message is what puts it in the conversation, so the delivery
+ * time becomes its position there. The queue-time `createdAt` is when the user
+ * typed it — before the turns of the run it waited behind were saved — so
+ * keeping it would sort the message into the middle of that run's reply.
  */
 export async function claimQueuedMessage(sessionId: string, messageId: string): Promise<boolean> {
   const claimed = await prisma.chatMessage.updateMany({
     where: { id: messageId, sessionId, queuedAt: { not: null } },
-    data: { queuedAt: null },
+    data: { queuedAt: null, createdAt: new Date() },
   });
   return claimed.count === 1;
 }

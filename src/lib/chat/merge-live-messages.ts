@@ -17,13 +17,31 @@ import { isStreamingMessage, isTempUserMessage } from "./message-factories";
  * the "sent message flashes, then the Start a conversation placeholder"
  * regression.
  *
+ * Ordering: the merge keeps the server's conversation order (`createdAt`) and
+ * slots the live turns into it. A live turn carries the server's turn start
+ * (see `turn_start`), which is also the timestamp its DB row gets, so a
+ * message delivered into the run mid-turn — a queued message pushed with "send
+ * now", steered into the agent — lands after the turn it interrupted instead
+ * of above it. Appending live turns blindly would show exactly that inversion
+ * to anyone watching (and a reload mid-run would keep showing it).
+ *
+ * Optimistic user messages are exempt from the ordering: their timestamp comes
+ * from the browser clock, and a clock that lags the server's must never place
+ * a just-sent message above the reply it follows. They always render last,
+ * which is where a message the user just submitted belongs.
+ *
  * Temp messages with other roles (e.g. the compaction placeholder) are NOT
  * preserved: those flows manage their own optimistic state and replacing it
  * with the DB copy on success is the intended outcome.
  */
 export function mergeMessagesWithLive(dbMessages: Message[], prevMessages: Message[]): Message[] {
-  return [
-    ...dbMessages,
-    ...prevMessages.filter((m) => isStreamingMessage(m) || isTempUserMessage(m)),
-  ];
+  const live = prevMessages.filter((m) => isStreamingMessage(m) || isTempUserMessage(m));
+  const ordered = [...dbMessages, ...live.filter(isStreamingMessage)].sort(byCreatedAt);
+  return [...ordered, ...live.filter(isTempUserMessage)];
+}
+
+function byCreatedAt(a: Message, b: Message): number {
+  // `|| 0`: an unparseable timestamp sorts first instead of poisoning the
+  // comparison with NaN.
+  return (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0);
 }
