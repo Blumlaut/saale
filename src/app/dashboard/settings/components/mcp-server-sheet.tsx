@@ -14,7 +14,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertCircle, CheckCircle, Loader2, PlugZap } from "lucide-react";
-import { validateMcpServerName, validateMcpUrl, type McpToolPolicy } from "@/lib/mcp/shared";
+import {
+  normalizeMcpServerName,
+  validateMcpServerName,
+  validateMcpUrl,
+  type McpToolPolicy,
+} from "@/lib/mcp/shared";
 import type { McpServer, McpServerInput, McpTestResult } from "@/hooks/use-mcp-servers";
 
 /** One policy per server: the default for every tool it contributes. */
@@ -51,8 +56,26 @@ export function McpServerSheet({
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  /** Which input a validation message belongs to, rendered under it. */
+  const [fieldError, setFieldError] = useState<{ field: "name" | "url"; message: string } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<McpTestResult | null>(null);
+
+  /**
+   * Result of folding what the user typed into a name Pi accepts. Folding
+   * happens when the field is left rather than on every keystroke: a fold that
+   * drops trailing separators would swallow the space in "HA Admin" before it
+   * could become an underscore, and re-writing the value mid-edit moves the
+   * caret.
+   */
+  const foldedName = normalizeMcpServerName(name);
+
+  /** Clear the message under a field once the user edits it again. */
+  const clearFieldError = (field: "name" | "url") => {
+    setFieldError((current) => (current?.field === field ? null : current));
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -63,18 +86,20 @@ export function McpServerSheet({
     setToolPolicy(server?.toolPolicy ?? "ask");
     setEnabled(server?.enabled ?? true);
     setError(null);
+    setFieldError(null);
     setTestResult(null);
   }, [open, server]);
 
   const handleTest = useCallback(async () => {
     const urlError = validateMcpUrl(url.trim());
     if (urlError) {
-      setError(urlError);
+      setFieldError({ field: "url", message: urlError });
       return;
     }
 
     setTesting(true);
     setError(null);
+    setFieldError(null);
     setTestResult(null);
     try {
       // An unchanged stored token is represented by an empty field: let the
@@ -91,25 +116,26 @@ export function McpServerSheet({
   }, [onTest, server, token, url]);
 
   const handleSave = useCallback(async () => {
-    const trimmedName = name.trim();
+    const normalizedName = normalizeMcpServerName(name);
     const trimmedUrl = url.trim();
 
-    const nameError = validateMcpServerName(trimmedName);
+    const nameError = validateMcpServerName(normalizedName);
     if (nameError) {
-      setError(nameError);
+      setFieldError({ field: "name", message: nameError });
       return;
     }
     const urlError = validateMcpUrl(trimmedUrl);
     if (urlError) {
-      setError(urlError);
+      setFieldError({ field: "url", message: urlError });
       return;
     }
 
     setSaving(true);
     setError(null);
+    setFieldError(null);
     try {
       await onSave({
-        name: trimmedName,
+        name: normalizedName,
         url: trimmedUrl,
         description: description.trim(),
         toolPolicy,
@@ -155,28 +181,43 @@ export function McpServerSheet({
               <Label className="text-sm">Name</Label>
               <Input
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  clearFieldError("name");
+                }}
+                onBlur={() => setName(foldedName)}
                 placeholder="homeassistant"
                 autoComplete="off"
               />
-              <p className="text-muted-foreground text-xs">
-                Names this server&apos;s tools, for example{" "}
-                <span className="break-all">{`mcp__${name.trim() || "homeassistant"}__HassTurnOn`}</span>
-              </p>
+              {fieldError?.field === "name" ? (
+                <p className="text-destructive text-xs">{fieldError.message}</p>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  Names this server&apos;s tools. Spaces and punctuation become underscores, e.g.{" "}
+                  <span className="break-all">{`mcp__${foldedName || "homeassistant"}__HassTurnOn`}</span>
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
               <Label className="text-sm">Endpoint URL</Label>
               <Input
                 value={url}
-                onChange={(event) => setUrl(event.target.value)}
+                onChange={(event) => {
+                  setUrl(event.target.value);
+                  clearFieldError("url");
+                }}
                 placeholder="https://homeassistant.local:8123/api/mcp"
                 autoComplete="off"
                 spellCheck={false}
               />
-              <p className="text-muted-foreground text-xs">
-                A streamable HTTP MCP endpoint. Stdio servers (a local command) are not supported.
-              </p>
+              {fieldError?.field === "url" ? (
+                <p className="text-destructive text-xs">{fieldError.message}</p>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  A streamable HTTP MCP endpoint. Stdio servers (a local command) are not supported.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
