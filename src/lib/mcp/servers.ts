@@ -25,7 +25,9 @@ import {
   type LoadedMcpConfig,
   type McpServerConfig,
   type McpServerEntry,
+  type McpTransportFactory,
 } from "@earendil-works/pi-coding-agent";
+import { StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { isMcpToolPolicy, mcpNameKey, type McpToolPolicy } from "./shared";
@@ -127,6 +129,31 @@ export async function getMcpLogPath(userId: string): Promise<string> {
   return path.join(dir, "mcp.log");
 }
 
+/**
+ * Transport for a user's server: streamable HTTP, without Pi's long-lived
+ * server-to-client stream.
+ *
+ * Pi opens that GET stream by default to receive server-initiated
+ * notifications. Pooled sessions are evicted with `session.dispose()`, which
+ * does *not* emit `session_shutdown` — the MCP extension only closes its
+ * connections there — so a session with the default transport would leave one
+ * open stream per configured server behind for the life of the process. The
+ * price is that a server whose tool list changes is only re-read on the next
+ * connect (a config change already rebuilds the session).
+ */
+const createUserMcpTransport: McpTransportFactory = (entry, _cwd, authProvider) => {
+  const config = entry.config;
+  if (!("url" in config)) {
+    throw new Error(`MCP server "${entry.name}" must be configured with a URL`);
+  }
+  return new StreamableHttpTransport({
+    url: config.url,
+    ...(config.headers ? { headers: config.headers } : {}),
+    ...(authProvider ? { authProvider } : {}),
+    openGetStream: false,
+  });
+};
+
 export interface UserMcpExtension {
   extension: ExtensionFactory;
   policies: Record<string, McpToolPolicy>;
@@ -149,6 +176,7 @@ export async function createUserMcpExtension(userId: string): Promise<UserMcpExt
   const extension = createMcpExtension({
     // Pi asks the loader once, at session start.
     loadConfig: (): LoadedMcpConfig => ({ servers: entries, errors: [] }),
+    createTransport: createUserMcpTransport,
     logPath,
     // There is no `/mcp` overlay in a hosted app, so an OAuth sign-in cannot be
     // completed. Refuse loudly instead of hanging: the settings page's
