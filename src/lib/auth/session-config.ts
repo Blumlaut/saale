@@ -1,3 +1,5 @@
+import type { BetterAuthOptions } from "better-auth";
+
 /**
  * Session lifetime tuning, kept in one place so `src/auth.ts` and the tests
  * can't drift apart.
@@ -23,4 +25,25 @@ export function isSecureCookie(): boolean {
   const url = (process.env.BETTER_AUTH_URL ?? "").trim();
   if (url) return url.toLowerCase().startsWith("https://");
   return process.env.NODE_ENV === "production";
+}
+
+type CookieAttributes = NonNullable<
+  NonNullable<BetterAuthOptions["advanced"]>["defaultCookieAttributes"]
+>;
+
+/**
+ * Attributes better-auth applies to every cookie it writes, session cookie
+ * included.
+ *
+ * `sameSite` must stay `"lax"` (better-auth's own default) rather than
+ * `"strict"`: launching an installed app is a cross-site top-level navigation,
+ * and a Strict cookie is withheld on it. The app would then read no session on
+ * every cold start and bounce the user back to the login screen. Lax still
+ * withholds the cookie from cross-site subrequests and state-changing requests,
+ * so it keeps the CSRF protection Strict was reached for.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie#samesitesamesite-value
+ */
+export function sessionCookieAttributes(): CookieAttributes {
+  return { sameSite: "lax", secure: isSecureCookie() };
 }
