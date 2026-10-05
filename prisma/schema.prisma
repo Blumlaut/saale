@@ -38,6 +38,7 @@ model User {
   telegramAccounts   TelegramAccount[]
   githubAccounts     GitHubAccount[]
   infraMachines      InfraMachine[]
+  mcpServers         McpServer[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -714,6 +715,33 @@ model InfraMachine {
   @@unique([userId, name])
   @@index([userId])
   @@map("InfraMachine")
+}
+
+// ─── MCP Servers ───────────────────────────────────────────────
+
+/// Model Context Protocol servers the agent connects to for this user.
+/// Only streamable HTTP endpoints are stored — see src/lib/mcp/servers.ts.
+model McpServer {
+  id             String   @id @default(cuid())
+  userId         String
+  /// Server name; names the tools it contributes (`mcp__<name>__<tool>`).
+  name           String   @db.VarChar(64)
+  /// Streamable HTTP endpoint, e.g. https://homeassistant.local:8123/api/mcp
+  url            String   @db.Text
+  /// One-line summary of what the server offers, shown to the model.
+  description    String   @default("")
+  /// Bearer token sent as the Authorization header (AES-256-GCM via lib/crypto).
+  encryptedToken String?  @db.Text
+  /// How this server's tool calls are approved: "ask" | "allow" | "off".
+  toolPolicy     String   @default("ask")
+  enabled        Boolean  @default(true)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("McpServer")
 }
 
 /// Agent-maintained notes about a machine.
