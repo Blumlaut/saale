@@ -236,8 +236,18 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
   transport every evicted session would leak one open stream per server for the
   life of the process. The trade-off: a server whose tool list changes is
   re-read on the next connect, not mid-session.
-- OAuth sign-in is unsupported (no browser flow in a headless app): the loader
-  overrides `openUrl` to log, and the connection test reports it. Use a token.
+- **OAuth servers are unsupported, and the host's sign-ins must stay out of
+  reach.** Saale authenticates with the token the user stored. Pi's OAuth
+  sign-in needs a browser, a loopback callback, and the `/mcp` overlay, none of
+  which a hosted web app has, so the loader overrides `openUrl` to log and a
+  token-less HTTP server just gets a 401 (the settings test explains it).
+  `createUserMcpTransport` therefore drops Pi's `authProvider` entirely: its
+  credentials live in `<agent directory>/mcp-auth.json`, a *host-wide* file
+  shared by the operator's Pi CLI and every tenant and keyed by server name and
+  URL, so a session would otherwise silently present a sign-in the user never
+  made. Adding OAuth later means `McpOAuthProvider` from
+  `@earendil-works/pi-mcp/oauth` with Saale's own redirect URI and a per-user
+  store — not re-enabling the default provider.
 - **Interactive sessions only.** `createAgentResourceLoader` connects MCP for
   web chat and Telegram, which can both present an approval card. Unattended
   agent jobs pass no `mcp` context: they have no approval channel, so an `ask`

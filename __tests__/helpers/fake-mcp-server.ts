@@ -25,6 +25,8 @@ export interface FakeMcpServer {
 export interface FakeMcpServerOptions {
   /** When set, requests without this bearer token get a 401. */
   requireToken?: string;
+  /** `WWW-Authenticate` sent with a 401, for servers that advertise OAuth. */
+  challenge?: string;
   tools?: FakeMcpTool[];
   serverName?: string;
   serverVersion?: string;
@@ -45,7 +47,10 @@ export async function startFakeMcpServer(
     if (req.method === "GET") streamRequests++;
 
     if (options.requireToken && authorization !== `Bearer ${options.requireToken}`) {
-      res.writeHead(401, { "content-type": "application/json" });
+      res.writeHead(401, {
+        "content-type": "application/json",
+        ...(options.challenge ? { "www-authenticate": options.challenge } : {}),
+      });
       res.end(JSON.stringify({ error: "unauthorized" }));
       return;
     }

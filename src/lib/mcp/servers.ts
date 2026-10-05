@@ -119,17 +119,24 @@ export async function getMcpLogPath(userId: string): Promise<string> {
 
 /**
  * Transport for a user's server: streamable HTTP, without Pi's long-lived
- * server-to-client stream.
+ * server-to-client stream and without Pi's OAuth provider.
  *
- * Pi opens that GET stream by default to receive server-initiated
+ * The GET stream: Pi opens it by default to receive server-initiated
  * notifications. Pooled sessions are evicted with `session.dispose()`, which
  * does *not* emit `session_shutdown` — the MCP extension only closes its
  * connections there — so a session with the default transport would leave one
  * open stream per configured server behind for the life of the process. The
  * price is that a server whose tool list changes is only re-read on the next
  * connect (a config change already rebuilds the session).
+ *
+ * The auth provider: Saale authenticates with the token the user stored, and
+ * cannot complete the interactive sign-in Pi's provider exists for. Pi reads
+ * that provider's credentials from `<agent directory>/mcp-auth.json` — a
+ * *host-wide* file shared by the operator's Pi CLI and every tenant, keyed by
+ * server name and URL — so a session would silently use a sign-in the user
+ * never made. Better a plain 401 the settings page explains.
  */
-const createUserMcpTransport: McpTransportFactory = (entry, _cwd, authProvider) => {
+const createUserMcpTransport: McpTransportFactory = (entry) => {
   const config = entry.config;
   if (!("url" in config)) {
     throw new Error(`MCP server "${entry.name}" must be configured with a URL`);
@@ -137,7 +144,6 @@ const createUserMcpTransport: McpTransportFactory = (entry, _cwd, authProvider) 
   return new StreamableHttpTransport({
     url: config.url,
     ...(config.headers ? { headers: config.headers } : {}),
-    ...(authProvider ? { authProvider } : {}),
     openGetStream: false,
   });
 };
