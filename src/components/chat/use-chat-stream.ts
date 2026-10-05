@@ -33,7 +33,8 @@ const WATCHDOG_TICK_MS = 15_000;
  * (loading flags, approvals, sidebar markers, DB reloads).
  *
  * Server events:
- * - `turn_start { turnId }` — create a streaming message for the turn
+ * - `turn_start { turnId, startedAt }` — create a streaming message for the
+ *   turn, positioned by the server's turn start
  * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end` — update
  *   the turn (tool_update carries live partial output from a running tool)
  * - `turn_end { turnId }` — finalize the turn (safety net for final token)
@@ -230,8 +231,14 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   // ── Turn lifecycle: all state changes go through the reducer ──────────
   eventSource.addEventListener("turn_start", (event: MessageEvent) => {
     markLoading();
-    const parsed = parseEvent<{ turnId: string }>(event.data);
-    if (parsed) dispatch({ type: "turn_start", turnId: parsed.turnId });
+    const parsed = parseEvent<{ turnId: string; startedAt?: string }>(event.data);
+    if (parsed) {
+      dispatch({
+        type: "turn_start",
+        turnId: parsed.turnId,
+        ...(parsed.startedAt !== undefined ? { startedAt: parsed.startedAt } : {}),
+      });
+    }
   });
 
   eventSource.addEventListener("token", (event: MessageEvent) => {

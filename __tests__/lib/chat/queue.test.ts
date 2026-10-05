@@ -93,7 +93,9 @@ describe("claimNextQueuedMessage", () => {
     );
     expect(mockUpdateMany).toHaveBeenCalledWith({
       where: { id: "msg-older", sessionId: SESSION_ID, queuedAt: { not: null } },
-      data: { queuedAt: null },
+      // Delivered: out of the queue, and positioned by the delivery — the
+      // turns of the run it waited behind were saved after it was typed.
+      data: { queuedAt: null, createdAt: expect.any(Date) },
     });
   });
 
@@ -156,6 +158,32 @@ describe("claimQueuedMessage", () => {
 
     expect(await claimQueuedMessage(SESSION_ID, "msg-1")).toBe(true);
     expect(await claimQueuedMessage(SESSION_ID, "msg-1")).toBe(false);
+  });
+
+  it("stamps the delivery as the message's conversation position", async () => {
+    // The queue-time createdAt is when the user typed the message — before the
+    // reply it waited behind was saved. Delivery is what puts it in the
+    // conversation, so the delivery time has to win.
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+    const before = Date.now();
+
+    await claimQueuedMessage(SESSION_ID, "msg-1");
+
+    const { data } = mockUpdateMany.mock.calls[0]![0] as {
+      data: { queuedAt: null; createdAt: Date };
+    };
+    expect(data.queuedAt).toBeNull();
+    expect(data.createdAt.getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  it("leaves a message somebody else already delivered untouched", async () => {
+    mockUpdateMany.mockResolvedValue({ count: 0 });
+
+    expect(await claimQueuedMessage(SESSION_ID, "msg-1")).toBe(false);
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { id: "msg-1", sessionId: SESSION_ID, queuedAt: { not: null } },
+      data: { queuedAt: null, createdAt: expect.any(Date) },
+    });
   });
 });
 

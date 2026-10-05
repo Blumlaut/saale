@@ -19,6 +19,15 @@ export interface SaveAssistantMessageInput {
   messageId?: string | undefined;
   /** Provider error when the turn failed — drives the UI's error notice. */
   errorMessage?: string | null | undefined;
+  /**
+   * When the turn began — the row's conversation position. Defaults to now.
+   *
+   * A turn's row is only written at `turn_end`, but its place in the
+   * conversation is where the turn started: a message delivered into the run
+   * mid-turn (a steered "send now") belongs after this turn, and stamping the
+   * row with its save time would sort that message above it.
+   */
+  createdAt?: Date | undefined;
 }
 
 /**
@@ -31,8 +40,16 @@ export interface SaveAssistantMessageInput {
 export async function saveAssistantMessage(
   input: SaveAssistantMessageInput,
 ): Promise<{ id: string }> {
-  const { sessionId, content, thinking, toolCalls, parentMessageId, messageId, errorMessage } =
-    input;
+  const {
+    sessionId,
+    content,
+    thinking,
+    toolCalls,
+    parentMessageId,
+    messageId,
+    errorMessage,
+    createdAt,
+  } = input;
 
   const data = {
     content,
@@ -55,6 +72,7 @@ export async function saveAssistantMessage(
       role: "assistant",
       ...data,
       parentMessageId: parentMessageId || null,
+      ...(createdAt ? { createdAt } : {}),
     },
   });
 }

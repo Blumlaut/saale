@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { streamReducer, type StreamState } from "@/lib/chat/stream-reducer";
 import type { Message } from "@/components/chat/types";
 
@@ -21,6 +21,10 @@ function msg(overrides: Partial<Message> & { id: string }): Message {
 
 const empty = state();
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("streamReducer", () => {
   it("turn_start creates a streaming message", () => {
     const next = streamReducer(empty, { type: "turn_start", turnId: "t1" });
@@ -30,6 +34,30 @@ describe("streamReducer", () => {
       role: "assistant",
       content: "",
     });
+  });
+
+  it("turn_start adopts the server's turn start as the bubble's position", () => {
+    const startedAt = "2026-01-01T00:00:42.000Z";
+    const next = streamReducer(empty, { type: "turn_start", turnId: "t1", startedAt });
+
+    expect(next.messages[0]!.createdAt).toBe(startedAt);
+    // Re-delivered on reconnect: same position, not a fresh one.
+    expect(
+      streamReducer(next, { type: "turn_start", turnId: "t1", startedAt }).messages[0],
+    ).toEqual(next.messages[0]);
+  });
+
+  it("turn_start without a server start falls back to the browser clock", () => {
+    // A trimmed-buffer replay can create the bubble from a later event; there
+    // is no server timestamp to adopt, so the browser's is the best guess.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:42.000Z"));
+      const next = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+      expect(next.messages[0]!.createdAt).toBe("2026-01-01T00:00:42.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("token without a preceding turn_start creates the message (buffer replay)", () => {
