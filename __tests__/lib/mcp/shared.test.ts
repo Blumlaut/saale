@@ -3,6 +3,7 @@ import {
   isMcpToolPolicy,
   mcpNameKey,
   mcpServerFromToolName,
+  normalizeMcpServerName,
   toMcpServerView,
   validateMcpServerName,
   validateMcpUrl,
@@ -25,6 +26,46 @@ describe("MCP server names", () => {
   it("treats dashes and underscores as the same name, like Pi does", () => {
     expect(mcpNameKey("Home-Assistant")).toBe("home_assistant");
     expect(mcpNameKey("home_assistant")).toBe("home_assistant");
+  });
+});
+
+describe("normalizeMcpServerName", () => {
+  it("folds a label the user typed into a name Pi accepts", () => {
+    expect(normalizeMcpServerName("Local Figma")).toBe("local_figma");
+    expect(normalizeMcpServerName("GitHub")).toBe("github");
+    expect(normalizeMcpServerName("  Home Assistant 2  ")).toBe("home_assistant_2");
+    for (const name of ["local_figma", "github", "home_assistant_2"]) {
+      expect(validateMcpServerName(name)).toBeNull();
+    }
+  });
+
+  it("collapses separator runs, which Pi would read as one character", () => {
+    expect(normalizeMcpServerName("home__assistant")).toBe("home_assistant");
+    expect(normalizeMcpServerName("home - assistant")).toBe("home_assistant");
+    expect(normalizeMcpServerName("home_-_assistant")).toBe("home_assistant");
+    expect(normalizeMcpServerName("--edge--")).toBe("edge");
+  });
+
+  it("cuts to the accepted length without leaving a trailing separator", () => {
+    expect(normalizeMcpServerName("a".repeat(70))).toBe("a".repeat(64));
+
+    const atTheEdge = `${"a".repeat(63)} b`;
+    const cut = normalizeMcpServerName(atTheEdge);
+    expect(cut).toBe("a".repeat(63));
+    expect(validateMcpServerName(cut)).toBeNull();
+  });
+
+  it("folds to nothing when the input has no usable character", () => {
+    expect(normalizeMcpServerName("")).toBe("");
+    expect(normalizeMcpServerName("   ")).toBe("");
+    expect(normalizeMcpServerName("!!!")).toBe("");
+    expect(normalizeMcpServerName("---")).toBe("");
+  });
+
+  it("is idempotent, so an already-stored name round-trips unchanged", () => {
+    for (const name of ["local_figma", "github", "home_assistant_2", "edge"]) {
+      expect(normalizeMcpServerName(name)).toBe(name);
+    }
   });
 });
 
