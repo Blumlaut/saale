@@ -48,6 +48,8 @@ uploads/
 *.tsbuildinfo
 .cache/
 .pi-subagents/artifacts/
+# Pi rewrites its subagent config on every session; it is tool state, not project config.
+.pi/subagents.json
 
 # Generated reports
 jscpd-report.html/
