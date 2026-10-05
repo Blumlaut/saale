@@ -5,6 +5,7 @@ import {
   SESSION_EXPIRES_IN_SECONDS,
   SESSION_REFRESH_WINDOW_SECONDS,
   isSecureCookie,
+  sessionCookieAttributes,
 } from "@/lib/auth/session-config";
 
 const DAY_SECONDS = 60 * 60 * 24;
@@ -55,6 +56,28 @@ describe("isSecureCookie", () => {
   ] as const)("falls back to NODE_ENV when no URL is set (%s)", (nodeEnv, expected) => {
     setEnv(undefined, nodeEnv);
     expect(isSecureCookie()).toBe(expected);
+  });
+});
+
+describe("sessionCookieAttributes", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    Object.assign(process.env, originalEnv);
+  });
+
+  it("stays sendable when an installed app is launched", () => {
+    // A cold start of an installed app is a cross-site top-level navigation.
+    // SameSite=Strict is withheld on it, which signs the user out on every
+    // launch — the whole point of keeping this cookie Lax.
+    expect(sessionCookieAttributes().sameSite).toBe("lax");
+  });
+
+  it.each([
+    ["https://saale.example.com", true],
+    ["http://192.168.1.10:3630", false],
+  ])("derives the Secure flag from the served scheme (%s)", (url, expected) => {
+    vi.stubEnv("BETTER_AUTH_URL", url);
+    expect(sessionCookieAttributes().secure).toBe(expected);
   });
 });
 

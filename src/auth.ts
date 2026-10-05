@@ -12,7 +12,7 @@ import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
 import {
   SESSION_EXPIRES_IN_SECONDS,
   SESSION_REFRESH_WINDOW_SECONDS,
-  isSecureCookie,
+  sessionCookieAttributes,
 } from "@/lib/auth/session-config";
 
 export const auth = betterAuth({
@@ -27,10 +27,7 @@ export const auth = betterAuth({
   socialProviders: {},
   // Security settings
   advanced: {
-    defaultCookieAttributes: {
-      sameSite: "strict" as const,
-      secure: isSecureCookie(),
-    },
+    defaultCookieAttributes: sessionCookieAttributes(),
   },
   // Session settings — one year, sliding: activity older than the refresh
   // window resets the expiry to the full TTL (see session-config.ts).

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { ensureUser, login } from "./utils";
+
 /**
  * PWA installability + offline fallback, against the real server.
  *
@@ -166,5 +168,51 @@ test.describe("service worker", () => {
 
     const cached = await cachedPathnames(page);
     expect(cached.filter((path) => path.startsWith("/api/"))).toEqual([]);
+  });
+});
+
+test.describe("installed app session", () => {
+  /**
+   * Launching an installed app is a top-level navigation started from outside
+   * the app's site — that is how the OS hands the `start_url` to the browser.
+   * A `SameSite=Strict` session cookie is withheld on such a navigation, so the
+   * app boots on the login screen even though the user never signed out; a
+   * cookie without `Max-Age` dies when the app closes just the same. Both
+   * properties are checked here, on the cookie the real server hands out.
+   */
+  test("a cold start keeps the signed-in session", async ({ page, context, baseURL, request }) => {
+    await ensureUser(request);
+    await login(page);
+
+    const session = (await context.cookies()).find((cookie) =>
+      cookie.name.includes("session_token"),
+    );
+    expect(session, "signing in should issue a session cookie").toBeTruthy();
+    // Strict is withheld on the launch navigation above; Lax is sent.
+    expect(session!.sameSite).toBe("Lax");
+    expect(session!.httpOnly).toBe(true);
+    const daysLeft = (session!.expires * 1000 - Date.now()) / 86_400_000;
+    expect(daysLeft).toBeGreaterThan(300);
+
+    const app = new URL(baseURL!);
+    test.skip(
+      !["localhost", "127.0.0.1"].includes(app.hostname),
+      `${app.hostname} has no second loopback host to launch the app from`,
+    );
+
+    // The launch document sits on another site, so the navigation it starts is
+    // cross-site — cookies for localhost are not sent to it.
+    const launcher = new URL(app);
+    launcher.hostname = app.hostname === "localhost" ? "127.0.0.1" : "localhost";
+    const launch = await page.goto(launcher.origin).catch((error: unknown) => {
+      console.error(`cold start needs ${launcher.origin} to serve the app:`, error);
+      return null;
+    });
+    expect(launch?.ok(), `${launcher.origin} should serve the app`).toBe(true);
+
+    await page.evaluate((target) => {
+      window.location.href = target;
+    }, app.href);
+    await page.waitForURL(/\/dashboard\//, { timeout: 20_000 });
   });
 });
