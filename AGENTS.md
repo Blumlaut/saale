@@ -10,6 +10,17 @@ See `.pi/skills/database-migrations/SKILL.md` for the full workflow, rules, and 
 
 **Never touch:** `prisma.config.mjs` (handles env loading — changing it breaks deployments).
 
+### UI & Layout
+
+Any UI work (pages, panels, forms, lists, modals, buttons, inputs, styling) **must** load `.pi/skills/saale-design/SKILL.md` first — it holds the full console design system plus rules, examples, and the reference files. Non-negotiable invariants:
+
+- **Fixed app shell** — the body/viewport NEVER scrolls. Pages use `h-full flex flex-col` with internal scroll regions (`flex-1 min-h-0 overflow-y-auto`); toolbars/action rows are pinned with `shrink-0` and never scroll away. Never `h-dvh`/`h-screen`/`calc(100vh - X)` inside page components.
+- **No page titles** — the nav already names the page. List pages are a single full-height panel whose first row is the toolbar (actions right, icon-only on mobile; functional context left — never a bare page name).
+- **Pages are built from `src/components/layout/page.tsx`** (`Page`, `PageToolbar`, `PageScroll`, `PageTabStrip`) — never hand-roll the flex chain. No `w-full` on `TabsList`; grid items holding lists need `min-w-0`.
+- **Overlays never scroll horizontally** — long unbreakable values wrap (`break-all` / `whitespace-pre-wrap`) or scroll in their *own* `overflow-x-auto` box. No bare `grid` in overlays (declare `grid-cols-1` first). Register every new overlay in `e2e/modal-scenarios.ts`.
+- **`liquid-glass` is baked into `GlassPanel` and all overlay components** — never add it manually; use `liquid-glass-inner` for nested content areas, `liquid-glass-pill`/`liquid-glass-accent` for buttons/badges/toggles.
+- `e2e/mobile-overflow.spec.ts`, `e2e/modal-overflow.spec.ts`, and `__tests__/overlay-coverage.test.ts` enforce all of this at 375px and 320px — a regression fails CI.
+
 ## Investigate Before Using
 
 - **Never assume an API, method, or type exists.** Always inspect the actual source, docs, or type declarations before writing code that depends on a library's API.
@@ -20,11 +31,7 @@ See `.pi/skills/database-migrations/SKILL.md` for the full workflow, rules, and 
 ## Commits
 
 - Every change **must** be committed before moving on.
-- Commit messages: **max 50 chars**, imperative mood, descriptive.
-  - ✅ `add prisma schema for users and sessions`
-  - ✅ `fix auth redirect loop on login`
-  - ❌ `update stuff`
-  - ❌ `fix bug in the authentication module that was causing issues`
+- Commit messages: **max 50 chars**, imperative mood, descriptive (e.g. ✅ `add prisma schema for users and sessions`, ❌ `update stuff`).
 - Group related changes into a single commit. No atomic-one-line commits.
 - Run `npm run check` (lint + typecheck + format + tests) **before committing**. Nothing lands broken.
 
@@ -47,64 +54,26 @@ See `.pi/skills/database-migrations/SKILL.md` for the full workflow, rules, and 
 ## Never Swallow Errors
 
 - **Every `catch` block must log the error.** No empty `catch {}`, no `.catch(() => {})`, no `// silently fail`.
-- Use `console.error("descriptive context:", err)` at minimum. The context string must identify *what* failed, not just repeat the error message.
-- Fire-and-forget promises (`.catch(...)`) must still log — the error is swallowed from the caller but must appear in logs for debugging.
-- The only exception is intentional early-exit guards (e.g., `if (!condition) return;`), which are not error handling.
-
-### Examples
+- Use `console.error("descriptive context:", err)` at minimum — the context identifies *what* failed, not just the message.
+- Fire-and-forget promises (`.catch(...)`) must still log.
+- Intentional early-exit guards (`if (!condition) return;`) are not error handling and need no log.
 
 ```ts
 // ❌ BAD — error silently disappears
 await fetch(url).catch(() => {});
 
-try {
-  parse(data);
-} catch {
-  // skip malformed
-}
-
 // ✅ GOOD — error logged with context
 await fetch(url).catch((err) => {
   console.error("Failed to fetch config:", err);
 });
-
-try {
-  parse(data);
-} catch (err) {
-  console.error("Malformed config data:", err);
-}
 ```
 
 ## No Nested Interactive Elements
 
-- **Never nest `<button>` inside `<button>`, `<a>` inside `<button>`, or `<button>` inside `<a>`.** This causes hydration errors in Next.js and is invalid HTML.
-- base-ui primitives (`PopoverTrigger`, `DropdownMenuTrigger`, `SheetTrigger`, `DialogTrigger`) render as `<button>` by default. **Never wrap a `<Button>` component inside them** — use a styled `<span>` or `<div>` instead.
-- `<Link>` renders as `<a>`. Never wrap a `<Button>` inside `<Link>` — use the Button's `onClick` directly instead.
-- When in doubt, inspect the rendered DOM (DevTools) to verify no nested interactive elements exist.
-
-### Examples
-
-```tsx
-// ❌ BAD — PopoverTrigger renders as <button>, Button also renders as <button>
-<PopoverTrigger>
-  <Button>Open</Button>
-</PopoverTrigger>
-
-// ✅ GOOD — use a styled <span> inside triggers
-<PopoverTrigger>
-  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded hover:bg-white/10">
-    Open
-  </span>
-</PopoverTrigger>
-
-// ❌ BAD — <Link> renders as <a>, <Button> as <button>
-<Link href="/path">
-  <Button>Go</Button>
-</Link>
-
-// ✅ GOOD — use Button onClick directly
-<Button onClick={() => router.push("/path")}>Go</Button>
-```
+- **Never nest `<button>` inside `<button>`, `<a>` inside `<button>`, or `<button>` inside `<a>`.** Hydration errors in Next.js, invalid HTML.
+- base-ui primitives (`PopoverTrigger`, `DropdownMenuTrigger`, `SheetTrigger`, `DialogTrigger`) render as `<button>` by default — **never wrap a `<Button>` inside them**; use a styled `<span>` or `<div>` instead.
+- `<Link>` renders as `<a>` — never wrap a `<Button>` inside `<Link>`; use the Button's `onClick` directly.
+- When in doubt, inspect the rendered DOM to verify no nested interactive elements exist.
 
 ## Mobile-First Layouts
 
@@ -115,144 +84,24 @@ try {
 - **Horizontal scrollable areas** must have `overflow-x-auto` and `-webkit-overflow-scrolling: touch`.
 - When in doubt, preview at `375px` width (iPhone SE) before committing.
 
-## No External Scroll (App Shell)
-
-- **The dashboard is a fixed-height app shell** (`h-dvh overflow-hidden`). The body/viewport NEVER scrolls.
-- **All scrolling is internal to panels.** Pages use `h-full flex flex-col` with `flex-1 min-h-0 overflow-y-auto` on the scrollable region.
-- **Interactive elements (input bars, toolbars, action buttons) must always be visible.** Pin them with `shrink-0` in a flex column — never let them scroll out of view.
-- **Never use `h-dvh`, `h-screen`, or `calc(100vh - X)` inside page components.** The dashboard layout handles viewport sizing; pages use `h-full` to fill their allocated space.
-- **The flex containment chain:** `h-full` (page) → `flex flex-col` → optional pinned action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scrollable area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
-
-### No page titles — the content owns the toolbar
-
-- **Pages never render a page title.** The nav already names the page; repeating it wastes vertical space (worst on mobile) and looks decorative. This includes the old two-line title+description headers AND bare title+action rows.
-- **List/content pages are a single full-height panel** (`GlassPanel className="flex h-full flex-col overflow-hidden border-0"`) whose **first row is the toolbar** (`shrink-0 border-b px-4 py-2`): actions right-aligned, icon-only on mobile, label at `md:`. The body scrolls internally (`flex-1 min-h-0 overflow-y-auto`); the page is `<Page className="gap-0">` with the panel in a `min-h-0 flex-1` wrapper.
-- **Functional context may sit on the toolbar's left** — a date range, an account switcher, a search field. Never a bare page name.
-- **Tab pages:** the `PageTabStrip` row IS the toolbar; actions go to its right (Jobs pattern).
-- **Form pages** with a scrollable body pin a slim `<PageToolbar>` row instead (status + Save, right-aligned, no title).
-
-```tsx
-// ✅ GOOD — list page: one panel, first row is the toolbar
-<Page className="gap-0">
-  <div className="min-h-0 flex-1">
-    <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-      <div className="flex shrink-0 items-center justify-end border-b px-4 py-2">
-        <Button size="icon" className="h-8 w-8 md:w-auto md:px-3" onClick={...}>
-          <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">New Task</span>
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">{/* list */}</div>
-    </GlassPanel>
-  </div>
-</Page>
-
-// ❌ BAD — page title text, floating action rows, content clipped with no scroll
-```
-
-### Use the shared Page components (required)
-
-New pages **must** be built from `src/components/layout/page.tsx` — do not hand-roll the flex chain:
-
-- `<Page>` — root wrapper (`flex h-full min-h-0 flex-col gap-4`).
-- `<PageToolbar>` — pinned slim action row for form pages (status + Save, right-aligned, no title).
-- `<PageScroll>` — the ONLY scrollable content region (`min-h-0 flex-1 overflow-y-auto`).
-- `<PageTabStrip>` — pinned, swipe-scrollable tab strip with hidden scrollbar (for `Tabs` pages).
-
-Tab pages: strip goes in `<PageTabStrip>`, tab content gets `className="min-h-0 flex-1 overflow-y-auto"`. Never add `w-full` to a `TabsList` (triggers squeeze and overlap). Grid items holding lists need `min-w-0` so nowrap text truncates instead of widening the page.
-
-`e2e/mobile-overflow.spec.ts` enforces the whole contract at 375px and 320px — if a page regresses (horizontal overflow, squeezed tabs, body scroll, unreachable content), CI fails.
-
-## Modals Must Fit Their Bounds
-
-- **An open overlay never scrolls horizontally.** Long unbreakable values (SSH keys, tokens, URLs, IDs, hosts) must wrap (`break-all` / `whitespace-pre-wrap`) or scroll inside their *own* `overflow-x-auto` box — never widen the modal.
-- **Never put a bare `grid` in an overlay.** An implicit `auto` track is sized by its items' min-content, so `grid gap-2 sm:grid-cols-2` blows out the modal; always declare the mobile track first (`grid-cols-1 gap-2 sm:grid-cols-2`).
-- **`min-w-0` on the element that can be squeezed** (flex/grid item wrapping nowrap or `truncate` content), not just on an ancestor.
-- `DialogContent` / `AlertDialogContent` already apply `grid-cols-1 *:min-w-0`, so a child's min-content can't stretch a modal — do not remove those classes.
-- **Register every new overlay in `e2e/modal-scenarios.ts`** (a scenario, or an entry with a documented `skip` reason). `e2e/modal-overflow.spec.ts` opens each one at 375px and 320px and asserts the contract; `__tests__/overlay-coverage.test.ts` fails when an overlay isn't registered, and also fails on bare grids inside overlays.
-
-```tsx
-// ❌ BAD — nowrap value in a flex row widens the dialog
-<div className="flex items-center gap-2">
-  <pre className="flex-1 overflow-x-auto whitespace-nowrap">{publicKey}</pre>
-</div>
-
-// ✅ GOOD — value wraps, row can shrink
-<div className="flex min-w-0 items-start gap-2">
-  <pre className="min-w-0 flex-1 break-all whitespace-pre-wrap">{publicKey}</pre>
-</div>
-```
-
-## Unified Glass Panels
-
-- **All panels use liquid glass by default.** The `GlassPanel` component applies `glass-panel liquid-glass` automatically.
-- **Never add `liquid-glass` manually to `GlassPanel`** — it's baked in.
-- **All overlay surfaces include `liquid-glass` by default:** `DialogContent`, `AlertDialogContent`, `SheetContent`, `PopoverContent`, `DropdownMenuContent`, `SelectContent`, `TabsList`.
-- **Never add `liquid-glass` manually to overlay components** — it's baked into the base UI components.
-- For nested content areas inside panels, use `liquid-glass-inner` on a plain `<div>`.
-- For buttons/badges/toggles, use `liquid-glass-pill` or `liquid-glass-accent`.
-
-### Examples
-
-```tsx
-// ✅ GOOD — GlassPanel has liquid-glass automatically
-<GlassPanel>
-  <GlassPanelContent>Content</GlassPanelContent>
-</GlassPanel>
-
-// ✅ GOOD — remove border when needed
-<GlassPanel className="border-0">
-  <GlassPanelContent>Content</GlassPanelContent>
-</GlassPanel>
-
-// ❌ BAD — liquid-glass is redundant on GlassPanel
-<GlassPanel className="liquid-glass border-0 bg-transparent">
-  <GlassPanelContent>Content</GlassPanelContent>
-</GlassPanel>
-
-// ✅ GOOD — SheetContent has liquid-glass automatically
-<SheetContent className="flex w-full flex-col p-0 sm:w-[440px]">
-  {children}
-</SheetContent>
-
-// ❌ BAD — liquid-glass is redundant on SheetContent
-<SheetContent className="liquid-glass flex w-full flex-col border-0 bg-transparent p-0">
-  {children}
-</SheetContent>
-```
-
 ## User Isolation
 
-- **Every database query must be scoped to the authenticated user.** No exceptions.
-- All API routes, AI tools, and background jobs operate on behalf of a specific user. Data leakage between users is a critical bug.
+- **Every database query must be scoped to the authenticated user.** No exceptions. Data leakage between users is a critical bug.
 - **Prisma queries:** always include `userId` in `where` clauses. Never trust IDs alone — an attacker can guess or enumerate IDs from another user.
 - **Raw SQL:** use `Prisma.sql` template tags (parameterized), never `$queryRawUnsafe` with string interpolation.
 - **AI tools:** the `userId` is injected via closure in tool factories (`createXxxTools(userId)`). Every query inside must use this `userId`.
 - **Background jobs:** use `task.userId` from the resolved task record. Never assume the job runner context implies a user.
-- **Bulk updates/deletes:** include `userId` in the `where` clause even when operating on IDs fetched earlier in the same function (defense in depth).
-
-### Examples
+- **Bulk updates/deletes:** include `userId` in `where` even when operating on IDs fetched earlier in the same function (defense in depth).
 
 ```ts
 // ❌ BAD — ID-only filter, no user scope
-await prisma.memory.updateMany({
-  where: { id: { in: memoryIds } },
-  data: { accessCount: { increment: 1 } },
-});
+await prisma.memory.updateMany({ where: { id: { in: memoryIds } }, data: { accessCount: { increment: 1 } } });
 
 // ✅ GOOD — userId guard on every query
-await prisma.memory.updateMany({
-  where: { id: { in: memoryIds }, userId },
-  data: { accessCount: { increment: 1 } },
-});
+await prisma.memory.updateMany({ where: { id: { in: memoryIds }, userId }, data: { accessCount: { increment: 1 } } });
 
-// ❌ BAD — raw SQL with string interpolation
-prisma.$queryRawUnsafe(`SELECT * FROM Memory WHERE userId = ${userId}`);
-
-// ✅ GOOD — parameterized via Prisma.sql
-prisma.$queryRaw`
-  SELECT * FROM Memory WHERE userId = ${userId}
-`;
+// ❌ BAD — prisma.$queryRawUnsafe(`SELECT * FROM Memory WHERE userId = ${userId}`)
+// ✅ GOOD — prisma.$queryRaw`SELECT * FROM Memory WHERE userId = ${userId}`
 ```
 
 ## No Hardcoded Values
@@ -268,32 +117,6 @@ prisma.$queryRaw`
 - **Never duplicate logic.** If two routes (or a route and a background job) do the same thing (DB writes, email sends, state updates), extract it into a shared helper in `src/lib/`.
 - **Prefer named helper functions over inline logic.** A `saveCompactionMessage()` in `src/lib/chat/` is better than the same Prisma call copy-pasted into three different files.
 - **When adding logic to a route, ask: "will this be needed elsewhere?"** If yes (or if it's more than a trivial one-liner), extract it first.
-
-### Examples
-
-```ts
-// ❌ BAD — DB logic duplicated inline in a route
-export async function POST(request: NextRequest) {
-  // ... auth, validation ...
-  await prisma.chatMessage.create({
-    data: { sessionId, role: "compaction", content: summary, /* ... */ },
-  });
-  return NextResponse.json({ ok: true });
-}
-
-// ✅ GOOD — extracted helper used by any caller
-// src/lib/chat/compaction.ts
-export async function saveCompactionMessage({ sessionId, summary, tokensBefore }) {
-  await prisma.chatMessage.create({ data: { sessionId, role: "compaction", /* ... */ } });
-}
-
-// src/app/api/chat/sessions/[id]/compact/route.ts
-export async function POST(request: NextRequest) {
-  // ... auth, validation ...
-  await saveCompactionMessage({ sessionId, summary, tokensBefore });
-  return NextResponse.json({ ok: true });
-}
-```
 
 ## Architecture
 
