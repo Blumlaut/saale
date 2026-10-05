@@ -6,7 +6,7 @@
  */
 
 import { generateKeyPairSync } from "crypto";
-import type { Client as SSH2Client, SFTPWrapper } from "ssh2";
+import type { Client as SSH2Client, SFTPWrapper, Stats } from "ssh2";
 import { NodeSSH } from "node-ssh";
 import sshpk from "sshpk";
 import { prisma } from "@/lib/db";
@@ -46,13 +46,14 @@ export interface ExecResult {
   truncated: boolean;
 }
 
-export interface SftpReadResult {
-  content: string;
-  truncated: boolean;
-}
-
 export interface SftpListEntry {
   name: string;
+  type: "file" | "directory";
+  size: number;
+  modified: Date;
+}
+
+export interface SftpStatResult {
   type: "file" | "directory";
   size: number;
   modified: Date;
@@ -230,6 +231,96 @@ function sftpWrite(sftp: SFTPWrapper, path: string, content: string): Promise<vo
 }
 
 /**
+ * Stat a path via SFTP.
+ */
+function sftpStat(sftp: SFTPWrapper, path: string): Promise<Stats> {
+  return new Promise((resolve, reject) => {
+    sftp.stat(path, (err, stats) => {
+      if (err) reject(err);
+      else resolve(stats);
+    });
+  });
+}
+
+/**
+ * Create a single directory via SFTP.
+ */
+function sftpMkdir(sftp: SFTPWrapper, dirPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    sftp.mkdir(dirPath, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+/**
+ * Stat a path via SFTP, resolving `null` when it does not exist.
+ *
+ * A missing path is this probe's answer, not a failure, so the error is turned
+ * into `null` at the callback rather than thrown and caught.
+ */
+function sftpTryStat(sftp: SFTPWrapper, path: string): Promise<Stats | null> {
+  return new Promise((resolve) => {
+    sftp.stat(path, (err, stats) => {
+      if (err) resolve(null);
+      else resolve(stats);
+    });
+  });
+}
+
+/**
+ * Create a directory and any missing parents.
+ *
+ * SFTP's mkdir is not recursive, so walk down one segment at a time. An
+ * ancestor that already exists is the desired end state, not a failure.
+ */
+async function sftpMkdirRecursive(sftp: SFTPWrapper, dirPath: string): Promise<void> {
+  const segments = dirPath.split("/").filter(Boolean);
+  let current = dirPath.startsWith("/") ? "" : ".";
+
+  for (const segment of segments) {
+    current = `${current}/${segment}`;
+    try {
+      await sftpMkdir(sftp, current);
+    } catch (err) {
+      // Only an existing directory is acceptable; permissions, read-only
+      // filesystems and I/O errors must surface.
+      if (!(await sftpTryStat(sftp, current))) {
+        throw err;
+      }
+    }
+  }
+}
+
+/**
+ * Read the first `maxBytes` of a file via SFTP.
+ */
+function sftpReadHead(sftp: SFTPWrapper, path: string, maxBytes: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    sftp.open(path, "r", (openErr, handle) => {
+      if (openErr) {
+        reject(openErr);
+        return;
+      }
+
+      const buffer = Buffer.alloc(maxBytes);
+      sftp.read(handle, buffer, 0, maxBytes, 0, (readErr, bytesRead) => {
+        sftp.close(handle, (closeErr) => {
+          if (readErr) {
+            reject(readErr);
+          } else if (closeErr) {
+            reject(closeErr);
+          } else {
+            resolve(buffer.subarray(0, bytesRead));
+          }
+        });
+      });
+    });
+  });
+}
+
+/**
  * List directory via SFTP.
  */
 function sftpListDir(sftp: SFTPWrapper, path: string): Promise<SftpListEntry[]> {
@@ -368,23 +459,87 @@ export async function testConnection(
 }
 
 /**
- * Read a file from a remote machine via SFTP.
+ * Read the first `maxBytes` of a file on a remote machine via SFTP.
+ *
+ * Image detection only needs the file's header. Reading it separately keeps a
+ * text read from pulling the whole file down twice.
  */
-export async function readFile(
+export async function readFileHead(
   machineId: string,
   userId: string,
   filePath: string,
-  maxBytes: number = MAX_OUTPUT_BYTES,
-): Promise<SftpReadResult> {
+  maxBytes: number,
+): Promise<Buffer> {
   const { ssh, disconnect } = await connect(machineId, userId);
 
   try {
     const sftp = await getSftp(ssh);
-    const buffer = await sftpRead(sftp, filePath);
-    const text = buffer.toString("utf8");
-    const { text: truncated, truncated: isTruncated } = truncateOutput(text, maxBytes);
+    return await sftpReadHead(sftp, filePath, maxBytes);
+  } finally {
+    disconnect();
+  }
+}
 
-    return { content: truncated, truncated: isTruncated };
+/**
+ * Read a file from a remote machine via SFTP, in full.
+ *
+ * Callers that hand the content back to the remote machine (editing) must use
+ * this rather than the truncating {@link readFile} — writing a truncated copy
+ * back would destroy the rest of the file.
+ */
+export async function readFileRaw(
+  machineId: string,
+  userId: string,
+  filePath: string,
+): Promise<Buffer> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    const sftp = await getSftp(ssh);
+    return await sftpRead(sftp, filePath);
+  } finally {
+    disconnect();
+  }
+}
+
+/**
+ * Stat a path on a remote machine via SFTP.
+ */
+export async function statFile(
+  machineId: string,
+  userId: string,
+  filePath: string,
+): Promise<SftpStatResult> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    const sftp = await getSftp(ssh);
+    const stats = await sftpStat(sftp, filePath);
+
+    return {
+      type: stats.isDirectory() ? "directory" : "file",
+      size: stats.size,
+      modified: new Date(stats.mtime * 1000),
+    };
+  } finally {
+    disconnect();
+  }
+}
+
+/**
+ * Create a directory (and any missing parents) on a remote machine via SFTP.
+ */
+export async function createDirectory(
+  machineId: string,
+  userId: string,
+  dirPath: string,
+): Promise<{ ok: boolean }> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    const sftp = await getSftp(ssh);
+    await sftpMkdirRecursive(sftp, dirPath);
+    return { ok: true };
   } finally {
     disconnect();
   }

@@ -449,12 +449,28 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     summaryTemplate: "Running {command} on {machineName}",
   },
   {
+    name: "infra_read_file",
+    label: "Read Remote File",
+    description: "Read a file from a remote machine",
+    category: "infra",
+    defaultPolicy: "allow",
+    summaryTemplate: "Reading {path} on {machineName}",
+  },
+  {
     name: "infra_write_file",
     label: "Write Remote File",
     description: "Write content to a file on a remote machine",
     category: "infra",
     defaultPolicy: "ask",
     summaryTemplate: "Writing to {path} on {machineName}",
+  },
+  {
+    name: "infra_edit_file",
+    label: "Edit Remote File",
+    description: "Edit a file on a remote machine with targeted replacements",
+    category: "infra",
+    defaultPolicy: "ask",
+    summaryTemplate: "Editing {path} on {machineName}",
   },
   {
     name: "infra_notes_delete",

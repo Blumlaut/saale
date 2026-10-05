@@ -102,6 +102,105 @@ describe("ToolCallView", () => {
     expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
   });
 
+  it("renders an InfraEditFileCard with the diff and replacement count (happy path)", () => {
+    const meta = {
+      _saaleInfraMeta: {
+        type: "infra_edit_file",
+        machineId: "m1",
+        machineName: "prod-web-01",
+        path: "/etc/nginx/nginx.conf",
+        replacements: 2,
+        firstChangedLine: 2,
+        diff: "-2   listen 80;\n+2   listen 8080;\n-3   root /var/www;\n+3   root /srv/www;",
+      },
+    };
+    const result = `{\n "machine": "prod-web-01",\n "replacements": 2\n}\n${JSON.stringify(meta)}`;
+
+    render(<ToolCallView toolCall={makeToolCall({ name: "infra_edit_file", result })} />);
+
+    expect(screen.getByText("Edited file")).toBeInTheDocument();
+    expect(screen.getByText("/etc/nginx/nginx.conf")).toBeInTheDocument();
+    expect(screen.getByText("2 edits")).toBeInTheDocument();
+    expect(screen.getByText("prod-web-01")).toBeInTheDocument();
+    expect(screen.getByText("line 2")).toBeInTheDocument();
+    expect(screen.getByText("-2 listen 80;")).toHaveClass("text-red-700");
+    expect(screen.getByText("+2 listen 8080;")).toHaveClass("text-green-700");
+  });
+
+  it("summarises a long diff instead of rendering every line (edge case)", () => {
+    const diffLines = Array.from({ length: 45 }, (_, i) => `+${i + 1} line ${i + 1}`);
+    const meta = {
+      _saaleInfraMeta: {
+        type: "infra_edit_file",
+        machineId: "m1",
+        machineName: "prod-web-01",
+        path: "/etc/app.conf",
+        replacements: 45,
+        diff: diffLines.join("\n"),
+      },
+    };
+
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({ name: "infra_edit_file", result: JSON.stringify(meta) })}
+      />,
+    );
+
+    expect(screen.getByText("+40 line 40")).toBeInTheDocument();
+    expect(screen.queryByText("+41 line 41")).not.toBeInTheDocument();
+    expect(screen.getByText("5 more lines")).toBeInTheDocument();
+  });
+
+  it("renders an InfraReadFileCard and flags truncated output", () => {
+    const meta = {
+      _saaleInfraMeta: {
+        type: "infra_read_file",
+        machineId: "m1",
+        machineName: "prod-web-01",
+        path: "/var/log/huge.log",
+        truncated: true,
+        totalLines: 9800,
+        preview: "2025-01-01 boot: started",
+      },
+    };
+
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({ name: "infra_read_file", result: JSON.stringify(meta) })}
+      />,
+    );
+
+    expect(screen.getByText("Read file")).toBeInTheDocument();
+    expect(screen.getByText("/var/log/huge.log")).toBeInTheDocument();
+    expect(screen.getByText("truncated")).toBeInTheDocument();
+    expect(screen.getByText(/2025-01-01 boot/)).toBeInTheDocument();
+    // A truncated read must not claim a complete line count.
+    expect(screen.queryByText("9800 lines")).not.toBeInTheDocument();
+  });
+
+  it("labels a remote image read and shows no text preview", () => {
+    const meta = {
+      _saaleInfraMeta: {
+        type: "infra_read_file",
+        machineId: "m1",
+        machineName: "prod-web-01",
+        path: "/var/www/logo.png",
+        truncated: false,
+        preview: "Read image file [image/png]",
+        imageMimeType: "image/png",
+      },
+    };
+
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({ name: "infra_read_file", result: JSON.stringify(meta) })}
+      />,
+    );
+
+    expect(screen.getByText("Read image")).toBeInTheDocument();
+    expect(screen.queryByText(/Read image file/)).not.toBeInTheDocument();
+  });
+
   it("renders nothing for web_search when the result has no structured meta (edge case)", () => {
     render(
       <ToolCallView

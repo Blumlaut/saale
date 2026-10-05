@@ -1,7 +1,7 @@
 // Set env before importing crypto module
 process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 
 // Mock prisma
 vi.mock("@/lib/db", () => ({
@@ -27,7 +27,16 @@ vi.mock("node-ssh", () => ({
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import { NodeSSH } from "node-ssh";
-import { truncateOutput, resolveConnectionConfig, generateSshKeyPair } from "@/lib/infra/client";
+import {
+  truncateOutput,
+  resolveConnectionConfig,
+  generateSshKeyPair,
+  createDirectory,
+  statFile,
+  readFileRaw,
+  readFileHead,
+  writeFile,
+} from "@/lib/infra/client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockInfraMachine = db.prisma.infraMachine as any;
@@ -315,5 +324,195 @@ describe("generateSshKeyPair", () => {
     // Should be valid base64
     const decoded = Buffer.from(base64Data, "base64");
     expect(decoded.length).toBeGreaterThan(0);
+  });
+});
+
+describe("SFTP file operations", () => {
+  const machine = {
+    id: "machine-1",
+    userId: "user-1",
+    name: "test-server",
+    host: "10.0.0.1",
+    port: 22,
+    username: "deploy",
+    authMethod: "key",
+    encryptedKey: "encrypted:-----BEGIN RSA PRIVATE KEY-----",
+    encryptedPass: null,
+    passPhrase: null,
+  };
+
+  interface FakeSftp {
+    mkdir: ReturnType<typeof vi.fn>;
+    stat: ReturnType<typeof vi.fn>;
+    readFile: ReturnType<typeof vi.fn>;
+    writeFile: ReturnType<typeof vi.fn>;
+    open: ReturnType<typeof vi.fn>;
+    read: ReturnType<typeof vi.fn>;
+    close: ReturnType<typeof vi.fn>;
+  }
+
+  /**
+   * Stand up a NodeSSH whose SFTP session behaves like a real remote
+   * filesystem holding `existingPaths`, and record what it is asked to do.
+   */
+  function setupSftp(existingPaths: string[], fileContent = "") {
+    const existing = new Set(existingPaths);
+    const createdDirs: string[] = [];
+    const written: { path: string; content: string }[] = [];
+
+    const sftp: FakeSftp = {
+      mkdir: vi.fn((dirPath: string, cb: (err?: Error) => void) => {
+        if (existing.has(dirPath)) {
+          // Real servers report an existing directory as a plain SFTP failure.
+          cb(Object.assign(new Error("Failure"), { code: 4 }));
+          return;
+        }
+        existing.add(dirPath);
+        createdDirs.push(dirPath);
+        cb();
+      }),
+      stat: vi.fn((statPath: string, cb: (err: Error | undefined, stats?: unknown) => void) => {
+        if (!existing.has(statPath)) {
+          cb(Object.assign(new Error("No such file"), { code: 2 }));
+          return;
+        }
+        cb(undefined, {
+          isDirectory: () => true,
+          isFile: () => false,
+          size: 42,
+          mtime: 1_700_000_000,
+        });
+      }),
+      readFile: vi.fn((_path: string, cb: (err: Error | undefined, data?: Buffer) => void) => {
+        cb(undefined, Buffer.from(fileContent, "utf8"));
+      }),
+      writeFile: vi.fn(
+        (writePath: string, content: string, _enc: string, cb: (err?: Error) => void) => {
+          written.push({ path: writePath, content });
+          cb();
+        },
+      ),
+      open: vi.fn((_openPath: string, _flags: string, cb: (err?: Error, handle?: Buffer) => void) =>
+        cb(undefined, Buffer.from("handle")),
+      ),
+      read: vi.fn(
+        (
+          _handle: Buffer,
+          buffer: Buffer,
+          offset: number,
+          length: number,
+          position: number,
+          cb: (err?: Error, bytesRead?: number) => void,
+        ) => {
+          const source = Buffer.from(fileContent, "utf8");
+          const chunk = source.subarray(position, position + length);
+          chunk.copy(buffer, offset);
+          cb(undefined, chunk.length);
+        },
+      ),
+      close: vi.fn((_handle: Buffer, cb: (err?: Error) => void) => cb()),
+    };
+
+    (NodeSSH as unknown as Mock).mockImplementation(function () {
+      return {
+        connect: vi.fn().mockResolvedValue(undefined),
+        requestSFTP: vi.fn().mockResolvedValue(sftp),
+        dispose: vi.fn(),
+      };
+    });
+
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(machine);
+
+    return { sftp, createdDirs, written };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("creates every missing parent, in order", async () => {
+    const { createdDirs } = setupSftp(["/"]);
+
+    await createDirectory("machine-1", "user-1", "/etc/new/nested/conf.d");
+
+    expect(createdDirs).toEqual(["/etc", "/etc/new", "/etc/new/nested", "/etc/new/nested/conf.d"]);
+  });
+
+  it("does not fail when ancestors already exist", async () => {
+    const { createdDirs } = setupSftp(["/", "/etc", "/etc/new"]);
+
+    await createDirectory("machine-1", "user-1", "/etc/new/conf.d");
+
+    expect(createdDirs).toEqual(["/etc/new/conf.d"]);
+  });
+
+  it("is a no-op for the root directory", async () => {
+    const { sftp } = setupSftp(["/"]);
+
+    await createDirectory("machine-1", "user-1", "/");
+
+    expect(sftp.mkdir).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a mkdir failure that is not an existing directory", async () => {
+    const { sftp } = setupSftp([]);
+    const denied = Object.assign(new Error("Permission denied"), { code: 3 });
+    sftp.mkdir.mockImplementation((_path: string, cb: (err?: Error) => void) => cb(denied));
+
+    await expect(createDirectory("machine-1", "user-1", "/root/secret")).rejects.toThrow(
+      "Permission denied",
+    );
+  });
+
+  it("stats a remote path", async () => {
+    setupSftp(["/etc/nginx.conf"]);
+
+    const stats = await statFile("machine-1", "user-1", "/etc/nginx.conf");
+
+    expect(stats.type).toBe("directory");
+    expect(stats.size).toBe(42);
+    expect(stats.modified.getTime()).toBe(1_700_000_000 * 1000);
+  });
+
+  it("throws when the path does not exist", async () => {
+    setupSftp([]);
+
+    await expect(statFile("machine-1", "user-1", "/etc/gone.conf")).rejects.toThrow("No such file");
+  });
+
+  it("reads a file without truncating it", async () => {
+    const big = "x".repeat(120_000);
+    setupSftp(["/var/log/big.log"], big);
+
+    const buffer = await readFileRaw("machine-1", "user-1", "/var/log/big.log");
+
+    expect(buffer.toString("utf8")).toHaveLength(120_000);
+  });
+
+  it("reads only the requested header bytes", async () => {
+    const { sftp } = setupSftp(["/var/log/big.log"], "PNG-header-and-more");
+
+    const head = await readFileHead("machine-1", "user-1", "/var/log/big.log", 9);
+
+    expect(head.toString("utf8")).toBe("PNG-heade");
+    expect(sftp.close).toHaveBeenCalled();
+  });
+
+  it("writes content through SFTP", async () => {
+    const { written } = setupSftp(["/tmp"]);
+
+    await writeFile("machine-1", "user-1", "/tmp/app.conf", "key = value\n");
+
+    expect(written).toEqual([{ path: "/tmp/app.conf", content: "key = value\n" }]);
+  });
+
+  it("scopes the connection to the authenticated user", async () => {
+    setupSftp(["/etc/nginx.conf"]);
+
+    await statFile("machine-1", "user-1", "/etc/nginx.conf");
+
+    expect(mockInfraMachine.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "machine-1", userId: "user-1" } }),
+    );
   });
 });
