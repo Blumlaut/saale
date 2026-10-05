@@ -238,6 +238,11 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
   re-read on the next connect, not mid-session.
 - OAuth sign-in is unsupported (no browser flow in a headless app): the loader
   overrides `openUrl` to log, and the connection test reports it. Use a token.
+- **Interactive sessions only.** `createAgentResourceLoader` connects MCP for
+  web chat and Telegram, which can both present an approval card. Unattended
+  agent jobs pass no `mcp` context: they have no approval channel, so an `ask`
+  server could only block, and running third-party tools unattended is not a
+  decision this code makes for the user.
 
 ```ts
 const resourceLoader = await createAgentResourceLoader({

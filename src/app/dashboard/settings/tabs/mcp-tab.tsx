@@ -98,8 +98,8 @@ export function McpTab() {
                 MCP servers
               </h3>
               <p className="text-muted-foreground mt-1 text-sm">
-                Connect Model Context Protocol servers. Their tools are available to every chat and
-                job, so connecting a server is all it takes.
+                Connect Model Context Protocol servers. Their tools are available in every
+                conversation, so connecting a server is all it takes.
               </p>
             </div>
             <Button size="sm" className="shrink-0" aria-label="Add server" onClick={openAdd}>
