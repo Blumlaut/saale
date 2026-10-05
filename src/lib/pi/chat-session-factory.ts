@@ -4,6 +4,7 @@ import { getSessionDir } from "./agent-pool";
 import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
+import type { ApprovalRequest } from "./tool-approval-gate";
 import type { ToolConfig } from "./tool-categories";
 
 /**
@@ -64,11 +65,19 @@ export interface CreateChatAgentSessionOptions {
   /** Resolved model; falls back to the user's default chat model when omitted. */
   model?: { provider: string; name: string } | undefined;
   customInstructions: string | null;
+  /** Per-tool approval policies (`AppSettings.toolPolicies`). */
+  toolPolicies: Record<string, string> | null | undefined;
   /**
    * Wraps every resolved tool. Always pass the approval gate — tools resolved
    * without it execute without the user's approval policy.
    */
   wrapTool: (tool: ToolDefinition) => ToolDefinition;
+  /**
+   * Approval channel for MCP tool calls. MCP tools are registered by Pi's MCP
+   * extension after the session exists, so they never pass through `wrapTool`;
+   * their gate publishes through this instead (`lib/pi/mcp-tool-policy.ts`).
+   */
+  emitApprovalRequest: (request: ApprovalRequest) => void;
 }
 
 /**
@@ -98,6 +107,9 @@ export async function createChatAgentSession(
     ...(model ? { modelProvider: model.provider, modelName: model.name } : {}),
     ...(chatSession.thinkingLevel ? { thinkingLevel: chatSession.thinkingLevel } : {}),
     wrapTool: options.wrapTool,
+    emitApprovalRequest: options.emitApprovalRequest,
+    toolPolicies: options.toolPolicies,
+    mcp: true,
     systemPrompt: buildAgentSystemPrompt({
       customInstructions: options.customInstructions,
       toolConfig,

@@ -79,7 +79,8 @@ export function ToolsTab({
                 Toggle a category on/off to enable or disable it by default. Expand a category to
                 configure per-tool approval policies. <b>Allow</b> — runs automatically. <b>Auto</b>{" "}
                 — auto-approves safe commands, asks for risky ones (infra exec only). <b>Ask</b> —
-                requires your approval. <b>Block</b> — never runs.
+                requires your approval. <b>Block</b> — never runs. Tools from an MCP server follow
+                their server&apos;s approval setting in the MCP tab.
               </p>
             </div>
           </div>

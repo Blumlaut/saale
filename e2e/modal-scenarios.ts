@@ -29,6 +29,8 @@ export interface ModalScenario {
 const MACHINE_DIALOG = "src/components/infra/machine-dialog.tsx";
 const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
 const MEMORIES_TAB = "src/app/dashboard/settings/tabs/memories-tab.tsx";
+const MCP_TAB = "src/app/dashboard/settings/tabs/mcp-tab.tsx";
+const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
 const SETTINGS = "/dashboard/settings";
 
 /** Realistic ED25519 public key — the content that used to widen the dialog. */
@@ -121,6 +123,30 @@ async function mockMachineNotes(page: Page) {
             title: NOTE_TITLE,
             content: NOTE_CONTENT,
             category: "runbook",
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        ],
+      },
+    });
+  });
+}
+
+/** One configured MCP server, with a URL and description long enough to matter on a phone. */
+async function mockMcpServers(page: Page) {
+  await page.route(/\/api\/mcp\/servers(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      json: {
+        servers: [
+          {
+            id: "e2e-mcp",
+            name: "homeassistant",
+            url: "https://homeassistant.local:8123/api/mcp",
+            description: "Control the smart home",
+            toolPolicy: "ask",
+            enabled: true,
+            hasToken: true,
             createdAt: NOW,
             updatedAt: NOW,
           },
@@ -449,6 +475,26 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsTab(page, "Integrations");
       await click(page, 'button:has-text("Add Integration")');
+    },
+  },
+  {
+    name: "settings · add mcp server",
+    path: SETTINGS,
+    sources: [MCP_SHEET],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsTab(page, "MCP");
+      await click(page, '[aria-label="Add server"]');
+    },
+  },
+  {
+    name: "settings · remove mcp server confirmation",
+    path: SETTINGS,
+    sources: [MCP_TAB],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsTab(page, "MCP");
+      await click(page, '[aria-label="Remove homeassistant"]');
     },
   },
   {

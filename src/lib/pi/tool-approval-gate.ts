@@ -370,17 +370,21 @@ export async function getPendingApprovals(sessionId: string): Promise<ApprovalRe
 
 /**
  * Wait for user approval and return the result.
- * Shared helper to avoid code duplication.
+ *
+ * Shared by the tool wrapper (built-in and Saale tools) and by the MCP tool
+ * policy extension, which gates tools registered by Pi's MCP extension instead
+ * of wrapped at session creation.
  */
-async function doWaitForApproval(
-  toolCallId: string,
-  toolName: string,
-  userId: string,
-  sessionId: string,
-  args: Record<string, unknown>,
-  emitApprovalRequest: (request: ApprovalRequest) => void,
-  signal?: AbortSignal,
-): Promise<ApprovalOutcome> {
+export async function requestToolApproval(options: {
+  toolCallId: string;
+  toolName: string;
+  userId: string;
+  sessionId: string;
+  args: Record<string, unknown>;
+  emitApprovalRequest: (request: ApprovalRequest) => void;
+  signal?: AbortSignal | undefined;
+}): Promise<ApprovalOutcome> {
+  const { toolCallId, toolName, userId, sessionId, args, emitApprovalRequest, signal } = options;
   const request: ApprovalRequest = {
     toolCallId,
     toolName,
@@ -459,15 +463,15 @@ export function wrapWithApprovalGate(
           : { safety: "risky", reason: "no command provided" };
 
         if (classification.safety === "risky") {
-          const outcome = await doWaitForApproval(
+          const outcome = await requestToolApproval({
             toolCallId,
-            tool.name,
+            toolName: tool.name,
             userId,
             sessionId,
-            params as Record<string, unknown>,
+            args: params as Record<string, unknown>,
             emitApprovalRequest,
             signal,
-          );
+          });
 
           if (outcome === "aborted") {
             throw new Error(TOOL_ABORT_MESSAGE);
@@ -483,15 +487,15 @@ export function wrapWithApprovalGate(
 
       // Policy: "ask" — wait for user approval
       if (policy === "ask") {
-        const outcome = await doWaitForApproval(
+        const outcome = await requestToolApproval({
           toolCallId,
-          tool.name,
+          toolName: tool.name,
           userId,
           sessionId,
-          params as Record<string, unknown>,
+          args: params as Record<string, unknown>,
           emitApprovalRequest,
           signal,
-        );
+        });
 
         if (outcome === "aborted") {
           throw new Error(TOOL_ABORT_MESSAGE);
@@ -540,4 +544,22 @@ export function createToolApprovalGate(options: {
       getPolicy,
       options.emitApprovalRequest,
     );
+}
+
+/**
+ * Approval emitter for a chat session: publishes the request on the session
+ * event bus, so every connected client — in any process — shows the approval
+ * card (the web UI, Telegram, an agent's own channel).
+ */
+export function createChatApprovalEmitter(sessionId: string): (request: ApprovalRequest) => void {
+  return (request) => {
+    publishSessionEvent(sessionId, "tool_approval_request", {
+      toolCallId: request.toolCallId,
+      toolName: request.toolName,
+      args: request.args,
+      expiresAt: new Date(request.expiresAt).toISOString(),
+    }).catch((err) => {
+      console.error("Failed to publish approval request:", err);
+    });
+  };
 }

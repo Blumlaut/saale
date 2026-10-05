@@ -38,6 +38,9 @@ vi.mock("@/lib/pi/session", () => ({
 
 vi.mock("@/lib/pi/processing-state", () => ({
   createSystemPromptLoader: vi.fn().mockResolvedValue({}),
+  // Extensions are not part of this lifecycle test; the executor only has to
+  // start them, which is asserted in agent-extensions.test.ts.
+  startSessionExtensions: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({

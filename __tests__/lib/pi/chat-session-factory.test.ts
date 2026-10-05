@@ -90,21 +90,29 @@ describe("chat session factory", () => {
     it("forwards the approval gate, prompt, model and tool config", async () => {
       const gate = (tool: ToolDefinition) => ({ ...tool, gated: true });
       const wrapTool = vi.fn(gate);
+      const emitApprovalRequest = vi.fn();
 
       const created = await createChatAgentSession({
         userId: "user-1",
         sessionId: "chat-1",
         chatSession: CHAT,
         customInstructions: "Be brief.",
+        toolPolicies: { bash: "ask" },
         wrapTool,
+        emitApprovalRequest,
       });
 
       expect(created.sessionDir).toBe("/tmp/saale-test-uploads/pi_sessions/user-1/chat-1");
       expect(mockCreatePersistentSession).toHaveBeenCalledTimes(1);
       const options = mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>;
 
-      // The gate is what enforces tool policies — it must reach the session.
+      // The gate is what enforces tool policies — it must reach the session,
+      // and MCP tools (registered after the session exists) need the same
+      // policies plus an approval channel of their own.
       expect(options.wrapTool).toBe(wrapTool);
+      expect(options.emitApprovalRequest).toBe(emitApprovalRequest);
+      expect(options.toolPolicies).toEqual({ bash: "ask" });
+      expect(options.mcp).toBe(true);
       expect(options.modelProvider).toBe("anthropic");
       expect(options.modelName).toBe("claude-sonnet-4-5");
       expect(options.thinkingLevel).toBe("high");
@@ -127,7 +135,9 @@ describe("chat session factory", () => {
         },
         model: { provider: "openai", name: "gpt-6" },
         customInstructions: null,
+        toolPolicies: null,
         wrapTool: (tool) => tool,
+        emitApprovalRequest: vi.fn(),
       });
 
       const options = mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>;
@@ -145,7 +155,9 @@ describe("chat session factory", () => {
         sessionId: "chat-3",
         chatSession: { ...CHAT, thinkingLevel: "default" },
         customInstructions: null,
+        toolPolicies: null,
         wrapTool: (tool) => tool,
+        emitApprovalRequest: vi.fn(),
       });
 
       const options = mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>;

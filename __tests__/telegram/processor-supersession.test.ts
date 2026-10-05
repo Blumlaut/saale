@@ -110,6 +110,8 @@ vi.mock("@/lib/chat/compaction", () => ({
 vi.mock("@/lib/pi/processing-state", () => ({
   buildAgentSystemPrompt: vi.fn(() => "system prompt"),
   createSystemPromptLoader: vi.fn().mockResolvedValue({}),
+  createAgentResourceLoader: vi.fn().mockResolvedValue({}),
+  startSessionExtensions: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/pi/settings", () => ({

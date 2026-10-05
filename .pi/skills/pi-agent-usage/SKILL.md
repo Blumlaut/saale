@@ -164,8 +164,11 @@ export async function createChatAgentSession(options: {
   chatSession: ChatSessionModelConfig;  // model, thinking level, tool config
   model?: { provider: string; name: string }; // omitted → user's default chat model
   customInstructions: string | null;
+  toolPolicies: Record<string, string> | null | undefined;
   /** The approval gate. Omitting it runs every tool unapproved. */
   wrapTool: (tool: ToolDefinition) => ToolDefinition;
+  /** Approval channel for MCP tool calls (see MCP below). */
+  emitApprovalRequest: (request: ApprovalRequest) => void;
 }): Promise<{ session: AgentSession; sessionDir: string }>;
 ```
 
@@ -173,7 +176,70 @@ Build the gate with `createToolApprovalGate({ userId, sessionId, toolPolicies,
 emitApprovalRequest })` (`src/lib/pi/tool-approval-gate.ts`) — it resolves each
 tool's policy and wraps `wrapWithApprovalGate`, which is the only thing that
 enforces the user's policies. Tools wrapped without it execute unapproved, so
-`createChatAgentSession` requires it.
+`createChatAgentSession` requires it. For web chat, build the emitter with
+`createChatApprovalEmitter(sessionId)` (publishes on the session event bus);
+Telegram has its own (a card in the chat).
+
+### Starting a session's extensions
+
+`createAgentSession` does **not** emit `session_start`. Pi emits it from
+`session.bindExtensions()`, and that is where extensions connect and register
+their tools — so a session that is never bound has no MCP servers and no
+`codemode` tool (registered inactive). Call `startSessionExtensions(session)`
+(`src/lib/pi/processing-state.ts`) once after creating any session whose loader
+includes extensions: it binds, then activates `codemode`.
+
+### Codemode (on by default)
+
+Saale runs Pi's `codemode` tool in every session that can call tools. The model
+writes a short JavaScript script that calls tools through `ctx.executeTool()`,
+which means **nested calls still go through Saale's approval gate** — the tools
+it calls are the wrapped definitions in the session's registry, not raw ones.
+
+- The extension comes from `createAgentResourceLoader()`; the tool is registered
+  inactive and `startSessionExtensions()` activates it.
+- Do **not** activate it through `defaultTools` in `createSessionSettings()`:
+  Saale passes `noTools: "builtin"`, which makes Pi ignore `defaultTools`, and
+  naming Pi's built-in tools would activate the *host's* file/shell tools when
+  Open Terminal is not configured.
+- `noTools: "builtin"` still activates extension-registered tools that Saale
+  supplies through `customTools` — that is how `read`/`bash`/`edit`/`write` and
+  the Saale tool categories remain active.
+
+## MCP servers (per user)
+
+`src/lib/mcp/` holds the whole feature: `shared.ts` (client-safe rules),
+`servers.ts` (DB → Pi config), `probe.ts` (connection test).
+
+- **Config lives in the database, not `mcp.json`.** `createUserMcpExtension(userId)`
+  loads the user's enabled servers and passes them to `createMcpExtension({
+  loadConfig })`. Never let the MCP extension read the host's Pi directory: it
+  belongs to whoever installed Pi on the machine.
+- **HTTP only.** A stdio server is a command Pi spawns in the Saale process, so
+  user-configured commands would run with the app host's environment and
+  privileges. Users configure a URL plus an optional bearer token.
+- **Exposure is always `codemode`.** MCP tools stay out of the model's tool
+  declarations and are reached from codemode scripts, which Saale enables
+  anyway — a server with hundreds of tools does not bloat every prompt.
+- **MCP tools must be gated.** They are registered *after* the session is built,
+  so `wrapTool` never sees them. `createMcpToolPolicyExtension()` (an inline
+  extension on `tool_call`) applies the user's per-tool policy, then the
+  server's policy, then `ask`. Wire it wherever `createAgentResourceLoader` is
+  called with an `mcp` context, and pass the same approval channel the session's
+  tool gate uses.
+- **A config change must evict the user's pooled chats** (`evictUserSessions`)
+  — a pooled session's extensions are fixed at creation.
+- OAuth sign-in is unsupported (no browser flow in a headless app): the loader
+  overrides `openUrl` to log, and the connection test reports it. Use a token.
+
+```ts
+const resourceLoader = await createAgentResourceLoader({
+  prompt, cwd: sessionDir,
+  mcp: { userId, sessionId, toolPolicies, emitApprovalRequest },
+});
+const { session } = await createAgentSession({ /* … */ resourceLoader });
+await startSessionExtensions(session);
+```
 
 #### Changing a chat's settings
 
@@ -340,6 +406,10 @@ message following the old conversation.
 | Setting `session.agent.state.systemPrompt` or private `_baseSystemPrompt` | Removed in pi v0.86 (read-only derived property) | Use `createSystemPromptLoader` at session creation |
 | Assigning `session.agent.state.messages` | Since pi v0.87 the provider context comes from the `SessionManager` projection — the assignment compiles but no longer affects future requests | Navigate with `session.navigateTree()`; for direct `sessionManager` mutations call `session.refreshContext()` after |
 | `noTools: "builtin"` for text-only tasks | Heavier than needed | Use `noTools: "all"` |
+| Activating `codemode` via `defaultTools` while passing `noTools` | Pi ignores `defaultTools` when `noTools` is set, and naming built-in tools would activate the *host's* file/shell tools | `startSessionExtensions(session)` after `createAgentSession` |
+| Never calling `session.bindExtensions()` | Extensions never get `session_start`: no MCP connections, no codemode activation | `startSessionExtensions(session)` |
+| Gating MCP tools by wrapping them | They are registered after the session is built, so `wrapTool` never sees them — `ask`/`off` would be ignored | `createMcpToolPolicyExtension()` on `tool_call` |
+| Letting the MCP extension read the host's `mcp.json` / `mcp-auth.json` | Config and credentials belong to the machine's Pi install, not to a tenant | `createUserMcpExtension(userId)` with `loadConfig`; override `logPath`/`openUrl`/`updateConfig` |
 | No timeout on non-streaming calls | Can hang indefinitely | Always add a timeout (5min default) |
 | Returning `{ isError: true }` from a tool | Pi's agent loop hardcodes `isError: false` for non-throwing results, so the failure reaches the model and the UI as a successful call | `throw new Error("…")` — the loop turns it into a flagged error result with the message |
 | Omitting `settingsManager` from `createAgentSession` | Pi then reads the *host's* `~/.pi/agent/settings.json`: thinking level, compaction budget, retries, image blocking, proxy, and a `packages` list it resolves (npm install!) on every session creation | Pass `createSessionSettings()` (`src/lib/pi/settings.ts`) |

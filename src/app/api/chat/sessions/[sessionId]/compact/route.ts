@@ -8,8 +8,7 @@ import {
   loadChatUserSettings,
   resolveChatModel,
 } from "@/lib/pi/chat-session-factory";
-import { createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
-import { publishSessionEvent } from "@/lib/pi/session-events";
+import { createChatApprovalEmitter, createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
 import { clearCompactionInProgress, markCompactionInProgress } from "@/lib/redis";
 
 /**
@@ -52,20 +51,12 @@ export async function POST(
   // session into the pool, and tools are only gated when the agent is built.
   const poolKey = getPoolKey(authResult.userId, sessionId);
   const userSettings = await loadChatUserSettings(authResult.userId);
+  const emitApprovalRequest = createChatApprovalEmitter(sessionId);
   const approvalWrapper = createToolApprovalGate({
     userId: authResult.userId,
     sessionId,
     toolPolicies: userSettings.toolPolicies,
-    emitApprovalRequest: (req) => {
-      publishSessionEvent(sessionId, "tool_approval_request", {
-        toolCallId: req.toolCallId,
-        toolName: req.toolName,
-        args: req.args,
-        expiresAt: new Date(req.expiresAt).toISOString(),
-      }).catch((err) => {
-        console.error("Failed to publish approval request:", err);
-      });
-    },
+    emitApprovalRequest,
   });
 
   const pooled = await createAndPool(poolKey, () =>
@@ -75,7 +66,9 @@ export async function POST(
       chatSession,
       model,
       customInstructions: userSettings.customInstructions,
+      toolPolicies: userSettings.toolPolicies,
       wrapTool: approvalWrapper,
+      emitApprovalRequest,
     }),
   );
 

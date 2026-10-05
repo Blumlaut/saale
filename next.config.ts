@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
     "@earendil-works/pi-ai",
     "@earendil-works/pi-coding-agent",
     "@earendil-works/pi-agent-core",
+    // MCP client used for the settings connection test.
+    "@earendil-works/pi-mcp",
     // Native bindings for image processing
     "sharp",
   ],
