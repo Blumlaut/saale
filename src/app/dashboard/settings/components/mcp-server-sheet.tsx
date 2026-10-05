@@ -250,7 +250,7 @@ export function McpServerSheet({
               <div className="min-w-0 space-y-0.5">
                 <Label className="text-sm">Enabled</Label>
                 <p className="text-muted-foreground text-xs">
-                  Connect this server to your chats and jobs.
+                  Connect this server to your conversations.
                 </p>
               </div>
               <Switch checked={enabled} onCheckedChange={setEnabled} />
