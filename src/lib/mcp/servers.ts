@@ -32,18 +32,6 @@ import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { isMcpToolPolicy, mcpNameKey, type McpToolPolicy } from "./shared";
 
-export {
-  isMcpToolPolicy,
-  MCP_TOOL_POLICIES,
-  MCP_TOOL_PREFIX,
-  mcpNameKey,
-  mcpServerFromToolName,
-  toMcpServerView,
-  validateMcpServerName,
-  validateMcpUrl,
-} from "./shared";
-export type { McpServerView, McpToolPolicy } from "./shared";
-
 /** The row shape the Pi-config builder needs. */
 export interface McpServerRow {
   name: string;
