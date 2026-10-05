@@ -6,7 +6,7 @@
  * reports the tools the server offers.
  */
 
-import { McpClient, StreamableHttpTransport } from "@earendil-works/pi-mcp";
+import { McpAuthRequiredError, McpClient, StreamableHttpTransport } from "@earendil-works/pi-mcp";
 
 /** Handshake and tool listing must not hang a settings request. */
 const PROBE_TIMEOUT_MS = 15_000;
@@ -27,10 +27,28 @@ export function describeProbeError(err: unknown): string {
   if (err instanceof Error) {
     // The MCP client wraps HTTP failures; the status is the actionable part.
     const status = (err as { status?: unknown }).status;
-    if (typeof status === "number") return `${err.message} (HTTP ${status})`;
+    if (typeof status === "number") {
+      const message = `${err.message} (HTTP ${status})`;
+      return isOAuthChallenge(err)
+        ? `${message}. This server asks clients to sign in with OAuth, which Saale does not support: use an access token instead.`
+        : message;
+    }
     return err.message;
   }
   return String(err);
+}
+
+/**
+ * Whether a 401 points at OAuth rather than a bad token: an RFC 9728 bearer
+ * challenge advertising the resource's metadata. Such a server has no token to
+ * mistype, so "check your token" would send the user the wrong way.
+ */
+function isOAuthChallenge(err: Error): boolean {
+  return (
+    err instanceof McpAuthRequiredError &&
+    /bearer/i.test(err.wwwAuthenticate ?? "") &&
+    /resource_metadata=/i.test(err.wwwAuthenticate ?? "")
+  );
 }
 
 /**
