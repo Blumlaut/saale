@@ -229,6 +229,13 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
   tool gate uses.
 - **A config change must evict the user's pooled chats** (`evictUserSessions`)
   — a pooled session's extensions are fixed at creation.
+- **No server-to-client stream** (`createTransport` → `openGetStream: false`).
+  Pi opens a long-lived GET stream per server by default, but a pooled session
+  is evicted with `session.dispose()`, which does *not* emit `session_shutdown`
+  — the MCP extension only closes its connections there. With the default
+  transport every evicted session would leak one open stream per server for the
+  life of the process. The trade-off: a server whose tool list changes is
+  re-read on the next connect, not mid-session.
 - OAuth sign-in is unsupported (no browser flow in a headless app): the loader
   overrides `openUrl` to log, and the connection test reports it. Use a token.
 
