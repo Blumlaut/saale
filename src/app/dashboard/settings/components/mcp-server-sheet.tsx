@@ -227,7 +227,11 @@ export function McpServerSheet({
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) =>
+                      POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "Ask"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {POLICY_OPTIONS.map((option) => (
