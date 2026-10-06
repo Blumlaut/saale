@@ -50,17 +50,23 @@ Pages never render a page title (no title text, no subtitle, no title+action row
 ### Full-Bleed Views (the exception)
 
 A view that *is* the window — currently only **chat** — opts out of the page
-margin: its layout root carries `.full-bleed` and the shell drops the gutter
-(see `globals.css`). The panels inside lose their radius (`rounded-none`) so
-the surface runs edge to edge instead of sitting in a window of dead space.
+margin **on phones**: its layout root carries `.full-bleed` and the shell drops
+the gutter (see `globals.css`). The panels inside lose their radius
+(`rounded-none md:rounded-2xl`) so the surface runs edge to edge instead of
+sitting in a window of dead space, and the composer ends exactly at the bottom
+nav instead of leaving a band above it.
 
-The navigation is *not* bleeding: on desktop the floating sidebar keeps its
-margin and the page bleeds around it, and on phones the bottom nav keeps its
-clearance (`3.5rem`). Full-bleed is for viewport views (streams, conversations,
-canvases) — list, form and settings pages keep the standard page margins.
+**Desktop keeps the console gutter and the rounded panels.** A wide window has
+room for the floating nav *and* the view, and a rounded card that touches the
+window edge shows the page background in its corner nooks — so the view is a
+card on desktop and a viewport on a phone. The nav never bleeds either way; on
+phones the bottom nav keeps its clearance (`3.5rem`).
 
-`e2e/chat-full-bleed.spec.ts` asserts the chat view reaches the window edges,
-so an accidental re-introduced gutter fails CI.
+Full-bleed is for phone viewport views (streams, conversations, canvases) —
+list, form and settings pages keep the standard page margins everywhere.
+
+`e2e/chat-full-bleed.spec.ts` asserts both states — phones flush and square,
+desktop inset with rounded panels — so a regression fails CI.
 
 ## Panel Layout
 
@@ -153,7 +159,7 @@ All spacing follows the 4px rhythm (Tailwind default scale):
 | `h-dvh`/`h-screen` in a page | The shell owns viewport height — use `h-full` |
 | Page title / title+action row | Content owns the toolbar — no title text at all |
 | Page-level `overflow-y-auto` | Use `<PageScroll>` — the only scroll region |
-| Edge-to-edge panels        | Add page margins (`p-6`) — unless the view is full-bleed (chat) |
+| Edge-to-edge panels        | Add page margins (`p-6`) — unless the view is full-bleed on phones (chat) |
 | 3+ column grid             | Reduce to 1 or 2 columns                  |
 | `w-full` on content panels | Use `max-w-3xl` or similar                |
 | Inconsistent gaps          | Use `gap-6` between panels always         |

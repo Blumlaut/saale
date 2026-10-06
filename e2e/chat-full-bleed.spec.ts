@@ -3,12 +3,15 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
 import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
 
 /**
- * Chat full-bleed guardrail.
+ * Chat viewport guardrail.
  *
- * The chat view owns the window (`.full-bleed` in globals.css) instead of
- * floating as a card inside the shell gutter. That gutter is what made a phone
- * show a "window" of dead space around an otherwise edge-to-edge app, so the
- * layout is asserted directly rather than left to review.
+ * On phones the chat view owns the whole window (`.full-bleed` in globals.css)
+ * instead of floating as a card inside the shell gutter — that gutter is what
+ * made a phone show a "window" of dead space around an otherwise edge-to-edge
+ * app. Desktop keeps the console gutter and its rounded panels: there is room
+ * for both the floating navigation and the view.
+ *
+ * Both states are asserted directly rather than left to review.
  */
 
 let session: E2ESession | null = null;
@@ -52,6 +55,7 @@ async function measure(page: Page) {
     const composer = document.querySelector('button[aria-label="Send message"]');
     return {
       surface: panels[0] ? rect(panels[0]) : null,
+      radius: panels[0] ? parseFloat(getComputedStyle(panels[0]).borderRadius) : 0,
       nav: nav ? rect(nav) : null,
       composer: composer ? rect(composer) : null,
       viewportWidth: window.innerWidth,
@@ -92,7 +96,8 @@ test.describe("chat full-bleed layout", () => {
       const { ctx, page } = await openChat(browser, { width, height });
 
       try {
-        const { surface, nav, composer, viewportWidth, viewportHeight } = await measure(page);
+        const { surface, radius, nav, composer, viewportWidth, viewportHeight } =
+          await measure(page);
 
         expect(surface, "no chat surface rendered").not.toBeNull();
         expect(surface!.top, "gutter above the chat view").toBeLessThanOrEqual(1);
@@ -100,6 +105,9 @@ test.describe("chat full-bleed layout", () => {
           1,
         );
         expect(surface!.left, "gutter left of the chat view").toBeLessThanOrEqual(1);
+        // A full-bleed surface is square, or its corners would show the page
+        // background in the nook of the window edge.
+        expect(radius, "the full-bleed chat surface is rounded").toBe(0);
 
         // The bottom nav is fixed over the shell, so the composer has to end
         // above it — a full-bleed view must not hand its input row to the nav.
@@ -116,18 +124,23 @@ test.describe("chat full-bleed layout", () => {
     });
   }
 
-  test("desktop bleeds the page but keeps the nav floating", async ({ browser }) => {
+  test("desktop keeps the console gutter and rounded panels", async ({ browser }) => {
     test.skip(!sessionId, "could not create a chat session");
     const { ctx, page } = await openChat(browser, { width: 1280, height: 800 });
 
     try {
-      const { surface, nav, viewportWidth } = await measure(page);
+      const { surface, radius, nav, viewportWidth, viewportHeight } = await measure(page);
 
-      expect(surface!.top, "gutter above the chat view").toBeLessThanOrEqual(1);
-      expect(viewportWidth - surface!.right, "gutter right of the chat view").toBeLessThanOrEqual(
+      // The chat is a card on desktop: spacing from every window edge and
+      // rounded corners. Only phones are edge to edge.
+      expect(surface!.top, "no spacing above the chat view").toBeGreaterThan(1);
+      expect(surface!.left, "no spacing left of the chat view").toBeGreaterThan(1);
+      expect(viewportWidth - surface!.right, "no spacing right of the chat view").toBeGreaterThan(
         1,
       );
-      // The page bleeds to the edges; the navigation keeps its own margin.
+      expect(viewportHeight - surface!.bottom, "no spacing below the chat view").toBeGreaterThan(1);
+      expect(radius, "the desktop chat surface lost its radius").toBeGreaterThan(0);
+      // The navigation keeps its own floating margin.
       expect(nav, "no sidebar nav rendered").not.toBeNull();
       expect(nav!.top, "the floating nav lost its margin").toBeGreaterThan(1);
       expect(nav!.left, "the floating nav lost its margin").toBeGreaterThan(1);

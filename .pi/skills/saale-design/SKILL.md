@@ -193,9 +193,9 @@ Rules:
   `min-w-0 lg:col-span-2`) so nowrap text truncates instead of blowing the grid
   track wider than the viewport.
 - **Full-bleed views** — a view that *is* the window (chat) marks its layout root
-  `full-bleed`: the shell gutter is dropped so it runs to the window edges on
-  phones and desktop (the floating nav keeps its margin), and its panels are
-  square. Don't add page padding or radius back. See
+  `full-bleed`: on phones the shell gutter is dropped so it runs to the window
+  edges and its panels are square. Desktop keeps the console gutter and rounded
+  panels — there is room for the floating nav and the view. See
   [references/layout.md](references/layout.md).
 - **Row actions survive touch** — never hide an action behind hover only; use
   `ROW_ACTION` from `@/lib/utils`, which stays visible for coarse pointers. See

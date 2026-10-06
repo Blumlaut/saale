@@ -636,7 +636,7 @@ export function ChatInterface({
 
   return (
     <>
-      <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0">
+      <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
         <ChatHeader
           sessionTitle={sessionTitle}
           editingTitle={editingTitle}
