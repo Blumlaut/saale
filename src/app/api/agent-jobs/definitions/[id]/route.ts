@@ -9,6 +9,7 @@ import {
   RESERVED_AGENT_NAME_ERROR,
   SYSTEM_MANAGED_ERROR,
 } from "@/lib/agent-jobs/system-managed";
+import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 
 /**
  * GET /api/agent-jobs/definitions/:id — Get a single definition
@@ -39,6 +40,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       outputChannel: definition.outputChannel,
       outputChannelId: definition.outputChannelId,
       cronExpression: definition.cronExpression,
+      runAt: definition.runAt?.toISOString() ?? null,
       lastRunAt: definition.lastRunAt?.toISOString(),
       enabled: definition.enabled,
       systemManaged: definition.systemManaged,
@@ -80,6 +82,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     outputChannel,
     outputChannelId,
     cronExpression,
+    runAt,
     enabled,
   } = body;
 
@@ -88,6 +91,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (modelId !== undefined) {
     const raw = modelId || null;
     resolvedModelId = raw?.includes("/") ? raw.replace("/", ":") : raw;
+  }
+
+  // One-off `runAt` and cron are mutually exclusive. Parse both supplied
+  // values first, then let a non-null runAt win over cron (and vice versa).
+  let nextRunAt = existing.runAt;
+  let nextCron = existing.cronExpression;
+  try {
+    if (runAt !== undefined) nextRunAt = normalizeRunAt(runAt);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 400 });
+  }
+  if (cronExpression !== undefined) nextCron = cronExpression || null;
+  if (runAt !== undefined && nextRunAt) {
+    nextCron = null;
+  } else if (nextCron) {
+    nextRunAt = null;
   }
 
   // The Telegram chat agent name is reserved — renaming to it would silently
@@ -110,18 +129,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         : {}),
       ...(outputChannel !== undefined ? { outputChannel: outputChannel || null } : {}),
       ...(outputChannelId !== undefined ? { outputChannelId: outputChannelId || null } : {}),
-      ...(cronExpression !== undefined ? { cronExpression: cronExpression || null } : {}),
+      ...(cronExpression !== undefined || runAt !== undefined
+        ? { cronExpression: nextCron, runAt: nextRunAt }
+        : {}),
       ...(enabled !== undefined ? { enabled } : {}),
     },
   });
 
-  // Resync the BullMQ repeatable job: BullMQ does not update an existing
-  // scheduler with the same jobId, so remove first, then re-add if scheduled.
+  // Resync the BullMQ schedule: BullMQ does not update an existing scheduler
+  // with the same jobId, so remove first, then re-add if scheduled.
   await unscheduleAgentDefinition(updated.id);
-  if (updated.enabled && updated.cronExpression) {
+  if (updated.enabled && (updated.runAt || updated.cronExpression)) {
     await scheduleAgentDefinition(updated).catch((err) => {
       console.error(
-        `Failed to re-schedule agent definition ${updated.id} (${updated.cronExpression}):`,
+        `Failed to re-schedule agent definition ${updated.id} (${updated.runAt?.toISOString() ?? updated.cronExpression}):`,
         err,
       );
     });
@@ -140,6 +161,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       outputChannel: updated.outputChannel,
       outputChannelId: updated.outputChannelId,
       cronExpression: updated.cronExpression,
+      runAt: updated.runAt?.toISOString() ?? null,
       lastRunAt: updated.lastRunAt?.toISOString(),
       enabled: updated.enabled,
       systemManaged: updated.systemManaged,

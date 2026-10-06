@@ -168,10 +168,15 @@ test.describe("sidebar customization", () => {
     const mobilePage = await mobile.newPage();
     await mobilePage.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
 
+    // Admins get the Admin item appended to the bar — it's not part of the layout.
+    const me = (await (await mobile.request.get("/api/auth/get-session")).json()) as {
+      user?: { role?: string };
+    };
+    const expectedLabels = ["Chat", "Calendar", "Tasks", "Jobs", "Servers", "Settings"];
+    if (me.user?.role === "admin") expectedLabels.push("Admin");
+
     // The bar renders the default layout until the stored one arrives — poll.
-    await expect
-      .poll(() => mobileNavLabels(mobilePage))
-      .toEqual(["Chat", "Calendar", "Tasks", "Jobs", "Servers", "Settings"]);
+    await expect.poll(() => mobileNavLabels(mobilePage)).toEqual(expectedLabels);
     await mobile.close();
   });
 
@@ -244,12 +249,19 @@ test.describe("sidebar customization", () => {
     const chatSwitch = page.getByRole("switch", { name: "Show Chat in the sidebar" });
     await expect(chatSwitch).toBeDisabled();
     await expect(page.getByRole("switch", { name: "Show Mail in the sidebar" })).toBeEnabled();
+    // Settings itself can never be hidden — it's the only place the layout is edited.
+    await expect(page.getByRole("switch", { name: "Show Settings in the sidebar" })).toBeDisabled();
 
-    // The server refuses a layout that hides everything, too.
-    const rejected = await ctx.request.patch("/api/settings/sidebar-nav", {
+    // The server coerces hidden pinned items back to visible, too.
+    const coerced = await ctx.request.patch("/api/settings/sidebar-nav", {
       data: { items: [{ id: "chat", hidden: true }] },
     });
-    expect(rejected.status()).toBe(400);
+    expect(coerced.status()).toBe(200);
+    const { items: coercedItems } = (await coerced.json()) as {
+      items: { id: string; hidden: boolean }[];
+    };
+    expect(coercedItems.find((item) => item.id === "settings")?.hidden).toBe(false);
+    expect(coercedItems.find((item) => item.id === "chat")?.hidden).toBe(true);
     await expect(chatSwitch).toBeDisabled();
 
     await ctx.close();

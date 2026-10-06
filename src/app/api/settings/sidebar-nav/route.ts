@@ -14,8 +14,8 @@ const sidebarNavEntrySchema = z.object({
 const patchBodySchema = z.object({
   /**
    * Ordered layout. `null` clears the customization (default order, everything
-   * visible). At least one item must stay visible — a sidebar with nothing in it
-   * leaves no way back into the app.
+   * visible). Any item may be flagged hidden — normalization forces the pinned
+   * ones (Settings) back to visible, so the sidebar can never end up empty.
    */
   items: z
     .array(sidebarNavEntrySchema)
@@ -23,10 +23,6 @@ const patchBodySchema = z.object({
     .refine(
       (items) => new Set(items.map((item) => item.id)).size === items.length,
       "duplicate sidebar items",
-    )
-    .refine(
-      (items) => items.some((item) => !item.hidden) || items.length === 0,
-      "at least one sidebar item must stay visible",
     )
     .nullable(),
 });

@@ -49,6 +49,7 @@ export interface AgentJobDefinition {
   outputChannel: string | null;
   outputChannelId: string | null;
   cronExpression: string | null;
+  runAt: string | null;
   lastRunAt: string | null;
   enabled: boolean;
   systemManaged: boolean;

@@ -39,7 +39,10 @@ settings editor all resolve items through it:
   editor automatically.
 - Users reorder (drag, or ↑/↓ on touch) and hide items in **Settings → Appearance
   → Sidebar** (`src/app/dashboard/settings/components/sidebar-nav-editor.tsx`); at
-  least one item must stay visible — enforced in the editor and the API.
+  least one non-pinned item must stay visible. Pinned ids
+  (`PINNED_SIDEBAR_NAV_IDS` — today just `settings`) can never be hidden: the
+  toggle is disabled in the editor and `normalizeSidebarNav` force-reveals them,
+  so hiding Settings can't lock a user out of the editor.
 - Mail is the one item with extra behaviour: it is a `<button>` that expands into
   the user's accounts instead of a plain link.
 
@@ -89,7 +92,9 @@ Reproduce this pattern for other "console identity" moments: `console-label` + s
 - **Icons:** `h-4 w-4`, `gap-2` to label
 - **Items:** sentence case, `text-sm`
 - **Search:** ghost button with `⌘K` kbd; results dropdown portals out of the panel (overflow-hidden) as a `liquid-glass rounded-xl shadow-2xl` surface
-- **Admin item:** only rendered for admin users, same styling
+- **Admin item:** only rendered for admin users, same styling, always last — it is
+  not part of the user's layout and can't be reordered or hidden (the bottom bar
+  appends it the same way)
 
 ## Mobile Navigation
 
@@ -109,9 +114,14 @@ On < 768px the sidebar is replaced by a **flat fixed bottom bar** (`src/componen
 ```
 
 - **Flat `bg-card` + `border-t`** — no blur, no frosted glass
-- **6 equal-width items** (`flex-1 min-w-0`) that fit 320px screens
+- **6 equal-width items** (`flex-1 min-w-0`) that fit 320px screens (8 still fit —
+  verified at 320px in `e2e/mobile-content-fit.spec.ts`)
+- **Route-aware:** on app pages it shows the user's visible layout, with an extra
+  **Admin** item appended for admins (`useIsAdmin` from `@/hooks/use-is-admin`);
+  inside `/admin/*` it mirrors `ADMIN_NAV_ITEMS` (from `@/components/admin/admin-nav`)
+  plus a **Dashboard** item as the way back to the app
 - **Active:** orange icon (`text-primary` + heavier stroke)
-- **Labels:** 10px, truncated as a safety net
+- **Labels:** 10px (9px below 360px), truncated as a safety net
 - Pages must leave bottom padding for the bar (`pb-14 md:pb-0` pattern / the app shell handles it)
 
 ## Breadcrumbs

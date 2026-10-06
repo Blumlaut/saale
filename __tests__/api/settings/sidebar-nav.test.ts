@@ -173,16 +173,21 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
-  it("rejects a layout that hides every item", async () => {
+  it("keeps pinned items visible when the layout hides every item", async () => {
     const items = ["chat", "mail", "calendar", "tasks", "jobs", "infra", "settings"].map((id) => ({
       id,
       hidden: true,
     }));
 
     const res = await PATCH(patch({ items }));
+    const body = await res.json();
 
-    expect(res.status).toBe(400);
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(body.items.find((item: { id: string }) => item.id === "settings").hidden).toBe(false);
+
+    // The stored layout is coerced too — only the pinned item survives.
+    const written = lastUpsert().update.sidebarItems as { id: string; hidden: boolean }[];
+    expect(written.filter((entry) => !entry.hidden).map((entry) => entry.id)).toEqual(["settings"]);
   });
 
   it("rejects hidden flags that are not booleans", async () => {

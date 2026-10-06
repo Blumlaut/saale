@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { scheduleAgentDefinition } from "@/lib/queue";
 import { isReservedAgentName, RESERVED_AGENT_NAME_ERROR } from "@/lib/agent-jobs/system-managed";
+import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 
 /**
  * GET /api/agent-jobs/definitions — List user's agent job definitions
@@ -28,6 +29,7 @@ export async function GET() {
       outputChannel: true,
       outputChannelId: true,
       cronExpression: true,
+      runAt: true,
       lastRunAt: true,
       enabled: true,
       systemManaged: true,
@@ -65,6 +67,7 @@ export async function GET() {
         outputChannel: string | null;
         outputChannelId: string | null;
         cronExpression: string | null;
+        runAt: Date | null;
         lastRunAt: Date | null;
         enabled: boolean;
         systemManaged: boolean;
@@ -83,6 +86,7 @@ export async function GET() {
         outputChannel: d.outputChannel,
         outputChannelId: d.outputChannelId,
         cronExpression: d.cronExpression,
+        runAt: d.runAt?.toISOString() ?? null,
         lastRunAt: d.lastRunAt?.toISOString(),
         enabled: d.enabled,
         systemManaged: d.systemManaged,
@@ -114,6 +118,7 @@ export async function POST(request: NextRequest) {
     outputChannel,
     outputChannelId,
     cronExpression,
+    runAt,
     enabled,
   } = body;
 
@@ -126,6 +131,17 @@ export async function POST(request: NextRequest) {
   if (isReservedAgentName(name)) {
     return NextResponse.json({ error: RESERVED_AGENT_NAME_ERROR }, { status: 400 });
   }
+
+  let resolvedRunAt: Date | null;
+  try {
+    resolvedRunAt = normalizeRunAt(runAt);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 400 });
+  }
+
+  // One-off `runAt` and cron are mutually exclusive: a one-off job has no
+  // recurring schedule, and a cron job has no single run time.
+  const resolvedCron = resolvedRunAt ? null : cronExpression || null;
 
   // Normalize modelId format
   const rawModelId = modelId || null;
@@ -143,16 +159,17 @@ export async function POST(request: NextRequest) {
       thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
       outputChannel: outputChannel || null,
       outputChannelId: outputChannelId || null,
-      cronExpression: cronExpression || null,
+      cronExpression: resolvedCron,
+      runAt: resolvedRunAt,
       enabled: enabled !== false,
     },
   });
 
-  // Register the repeatable BullMQ job if the definition is scheduled
-  if (definition.enabled && definition.cronExpression) {
+  // Register the BullMQ schedule if the definition has one
+  if (definition.enabled && (definition.runAt || definition.cronExpression)) {
     await scheduleAgentDefinition(definition).catch((err) => {
       console.error(
-        `Failed to schedule agent definition ${definition.id} (${definition.cronExpression}):`,
+        `Failed to schedule agent definition ${definition.id} (${definition.runAt?.toISOString() ?? definition.cronExpression}):`,
         err,
       );
     });
@@ -171,6 +188,7 @@ export async function POST(request: NextRequest) {
       outputChannel: definition.outputChannel,
       outputChannelId: definition.outputChannelId,
       cronExpression: definition.cronExpression,
+      runAt: definition.runAt?.toISOString() ?? null,
       lastRunAt: definition.lastRunAt?.toISOString(),
       enabled: definition.enabled,
       systemManaged: false,
