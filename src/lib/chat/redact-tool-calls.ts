@@ -109,6 +109,8 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   infra_read_file: { text: "Read a file on a server" },
   infra_write_file: { text: "Wrote a file on a server" },
   infra_edit_file: { text: "Edited a file on a server" },
+  infra_download_file: { text: "Downloaded a file from a server" },
+  infra_upload_file: { text: "Uploaded a file to a server" },
   infra_notes_list: {
     text: "Listed server notes",
     count: { field: "count", one: "note", many: "notes" },

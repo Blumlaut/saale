@@ -54,6 +54,8 @@ const MEMORY_PROMPT = `You have a persistent memory system. If the user referenc
 const INFRA_PROMPT = `Infrastructure notes:
 You can manage the user's registered machines over SSH. Each machine has a set of notes: the durable record of what that machine is right now — services, paths, configuration, quirks and credentials. Read them (\`infra_notes_list\`) before you inspect or change a machine; they are the source of truth, not a scratchpad.
 
+Files move between a machine and your workspace with \`infra_download_file\` (into the workspace, where the local file tools can read and change them) and \`infra_upload_file\` (back to the machine). Use them for binary files and files too large to read as text.
+
 When you write or update a note:
 - Record only facts you have verified are true now. Never record plans, intentions, TODOs, proposals or "we should…" — if it is not in place yet, it is not a note.
 - Record stable facts, not values that move on their own: ephemeral addresses, process IDs, free-disk figures, raw command output, or a version mid-upgrade. Capture the durable truth underneath — "nginx serves :80 on the docker network", not the output of the command that revealed it.

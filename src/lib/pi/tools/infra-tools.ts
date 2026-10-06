@@ -18,12 +18,23 @@ import { detectImageMimeTypeFromBuffer, IMAGE_SNIFF_BYTES } from "@/lib/image-sn
 import {
   createDirectory,
   executeCommand,
+  formatBytes,
+  MAX_TRANSFER_BYTES,
+  readFileForTransfer,
   readFileHead,
   readFileRaw,
   statFile,
   writeFile as sftpWriteFile,
+  writeFileBuffer,
   generateSshKeyPair,
 } from "@/lib/infra/client";
+import {
+  getTerminalHomeDir,
+  isConfigured as isTerminalConfigured,
+  listDirectory as terminalListDirectory,
+  readFileBinary as terminalReadFileBinary,
+  uploadFile as terminalUploadFile,
+} from "@/lib/terminal/client";
 
 /**
  * Base the SDK's file tools resolve paths against when they are handed no tool
@@ -45,6 +56,52 @@ const MAX_FILE_PREVIEW_CHARS = 200;
 function truncateDiff(diff: string): string {
   if (diff.length <= MAX_DIFF_CHARS) return diff;
   return `${diff.slice(0, MAX_DIFF_CHARS)}\n\u2026 [diff truncated at ${MAX_DIFF_CHARS} characters]`;
+}
+
+/**
+ * The local workspace a download lands in — the only filesystem on this side
+ * that the agent's file tools can read and edit. It lives in the Open Terminal
+ * container, so a transfer without a configured terminal has nowhere to go.
+ */
+function requireWorkspace(userId: string): string {
+  if (!isTerminalConfigured()) {
+    throw new Error(
+      "File transfer needs the Terminal workspace, which is not configured for this installation.",
+    );
+  }
+  return getTerminalHomeDir(userId);
+}
+
+/**
+ * Resolve a workspace path to the absolute path the agent's file tools use.
+ * A relative path resolves against the workspace root; anything that escapes
+ * that root is refused — a transfer must never touch another part of the
+ * container.
+ */
+function resolveWorkspacePath(homeDir: string, path: string): string {
+  const resolved = posix.normalize(path.startsWith("/") ? path : posix.join(homeDir, path));
+  if (resolved !== homeDir && !resolved.startsWith(`${homeDir}/`)) {
+    throw new Error(`"${path}" is outside the workspace (${homeDir})`);
+  }
+  return resolved;
+}
+
+/**
+ * Stat a workspace file through Open Terminal. The API has no stat endpoint,
+ * so this reads the parent listing and picks the entry out of it — enough to
+ * reject a directory or an oversize file before its bytes are fetched.
+ */
+async function statWorkspaceFile(userId: string, absolutePath: string): Promise<{ size: number }> {
+  const listing = await terminalListDirectory(posix.dirname(absolutePath), { userId });
+  const entry = listing.entries.find((item) => item.name === posix.basename(absolutePath));
+
+  if (!entry) {
+    throw new Error(`${absolutePath} does not exist in the workspace`);
+  }
+  if (entry.type !== "file") {
+    throw new Error(`${absolutePath} is a directory, not a file`);
+  }
+  return { size: entry.size };
 }
 
 /**
@@ -680,6 +737,173 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             },
           ],
           details: edited.details,
+        };
+      },
+    }),
+
+    // ─── infra_download_file ──────────────────────────────────────────────
+
+    defineTool({
+      name: "infra_download_file",
+      label: "Download Remote File",
+      description: `Download a file from a remote machine into the agent workspace over SFTP, so it can be inspected and changed with the local file tools. Use this instead of \`infra_read_file\` for binary files, files too large to read as text, or anything that will be edited and sent back with \`infra_upload_file\`. The destination defaults to the file's name at the workspace root, and an existing file there is overwritten. Files over ${formatBytes(MAX_TRANSFER_BYTES)} are refused.`,
+      parameters: Type.Object({
+        id: Type.String({ description: "Machine ID." }),
+        path: Type.String({
+          description: "Absolute path of the file on the remote machine.",
+        }),
+        dest: Type.Optional(
+          Type.String({
+            description:
+              "Workspace path to write to, relative to the workspace root (or absolute inside it). Default: the remote file's name at the workspace root.",
+          }),
+        ),
+      }),
+      execute: async (_toolCallId, params) => {
+        const machine = await prisma.infraMachine.findFirst({
+          where: { id: params.id, userId },
+          select: { id: true, name: true },
+        });
+
+        if (!machine) {
+          throw new Error(`Machine ${params.id} not found`);
+        }
+
+        if (!params.path.startsWith("/")) {
+          throw new Error(
+            `path must be absolute (got "${params.path}"). A remote path is resolved on the machine, not in Saale's workspace.`,
+          );
+        }
+
+        const homeDir = requireWorkspace(userId);
+        const dest = resolveWorkspacePath(
+          homeDir,
+          params.dest?.trim() || posix.basename(params.path),
+        );
+
+        const { buffer, size } = await readFileForTransfer(params.id, userId, params.path);
+        const written = await terminalUploadFile(posix.basename(dest), buffer, {
+          directory: posix.dirname(dest),
+          userId,
+        });
+
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_download_file" as const,
+            machineId: params.id,
+            machineName: machine.name,
+            path: params.path,
+            localPath: written.path,
+            size,
+          },
+        };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                JSON.stringify(
+                  {
+                    machine: machine.name,
+                    remotePath: params.path,
+                    localPath: written.path,
+                    size,
+                    downloaded: true,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
+            },
+          ],
+          details: { localPath: written.path, size },
+        };
+      },
+    }),
+
+    // ─── infra_upload_file ───────────────────────────────────────────────
+
+    defineTool({
+      name: "infra_upload_file",
+      label: "Upload File",
+      description: `Upload a file from the agent workspace to a remote machine over SFTP, replacing the destination file and creating parent directories as needed. Use this to send back a file changed locally after \`infra_download_file\`, or to deliver an artifact the model produced. Files over ${formatBytes(MAX_TRANSFER_BYTES)} are refused.`,
+      parameters: Type.Object({
+        id: Type.String({ description: "Machine ID." }),
+        path: Type.String({
+          description: "Absolute destination path for the file on the remote machine.",
+        }),
+        source: Type.String({
+          description:
+            "Workspace path of the file to upload, relative to the workspace root (or absolute inside it).",
+        }),
+      }),
+      execute: async (_toolCallId, params) => {
+        const machine = await prisma.infraMachine.findFirst({
+          where: { id: params.id, userId },
+          select: { id: true, name: true },
+        });
+
+        if (!machine) {
+          throw new Error(`Machine ${params.id} not found`);
+        }
+
+        if (!params.path.startsWith("/")) {
+          throw new Error(
+            `path must be absolute (got "${params.path}"). A remote path is resolved on the machine, not in Saale's workspace.`,
+          );
+        }
+
+        const homeDir = requireWorkspace(userId);
+        const source = resolveWorkspacePath(homeDir, params.source);
+
+        const { size } = await statWorkspaceFile(userId, source);
+        if (size > MAX_TRANSFER_BYTES) {
+          throw new Error(
+            `${source} is ${formatBytes(size)}, over the ${formatBytes(MAX_TRANSFER_BYTES)} transfer limit`,
+          );
+        }
+
+        const file = await terminalReadFileBinary(source, { userId });
+
+        // SFTP's write does not create parent directories (Pi's own write tool
+        // does, and this tool promises the same).
+        const parentDir = posix.dirname(params.path);
+        if (parentDir !== "." && parentDir !== "/") {
+          await createDirectory(params.id, userId, parentDir);
+        }
+
+        const result = await writeFileBuffer(params.id, userId, params.path, file.buffer);
+
+        const infraMeta = {
+          _saaleInfraMeta: {
+            type: "infra_upload_file" as const,
+            machineId: params.id,
+            machineName: machine.name,
+            path: params.path,
+            localPath: source,
+            size: result.size,
+          },
+        };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                JSON.stringify(
+                  {
+                    machine: machine.name,
+                    localPath: source,
+                    remotePath: params.path,
+                    size: result.size,
+                    uploaded: result.ok,
+                  },
+                  null,
+                  2,
+                ) + `\n${JSON.stringify(infraMeta)}`,
+            },
+          ],
+          details: { remotePath: params.path, size: result.size },
         };
       },
     }),
