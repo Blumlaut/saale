@@ -22,6 +22,7 @@ import {
   CheckSquare,
   Bot,
   Server,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -125,6 +126,16 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     icon: Server,
     defaultEnabled: true,
     defaultExposure: "codemode",
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    description: "Read and change Saale settings and preferences",
+    icon: SlidersHorizontal,
+    defaultEnabled: true,
+    // Two small tools, and the point of the feature is that the agent can
+    // configure itself without being told where to look — so keep them declared.
+    defaultExposure: "direct",
   },
 ];
 

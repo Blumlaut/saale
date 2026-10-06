@@ -1,10 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { SIDEBAR_NAV_ITEM_IDS, normalizeSidebarNav } from "@/lib/navigation/sidebar-nav";
+import { applyUserSettingsPatch, SettingsError } from "@/lib/settings/update";
 
 const sidebarNavEntrySchema = z.object({
   id: z.enum(SIDEBAR_NAV_ITEM_IDS),
@@ -44,6 +44,10 @@ export async function GET() {
 
 /**
  * PATCH /api/settings/sidebar-nav — Save the user's sidebar layout
+ *
+ * The layout lands in `AppSettings.sidebarItems` through the settings registry,
+ * so this route never writes the table directly and the value is normalized the
+ * same way `settings_set("sidebar.<item>.hidden", …)` normalizes it.
  */
 export async function PATCH(request: NextRequest) {
   const authResult = await requireSession();
@@ -55,19 +59,18 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid sidebar layout" }, { status: 400 });
   }
 
-  const { items } = parsed.data;
-  // null clears the column; normalization drops unknown/duplicate ids so a stale
-  // client can't persist a layout the nav can't render.
-  const sidebarItems: Prisma.InputJsonValue | typeof Prisma.DbNull =
-    items === null
-      ? Prisma.DbNull
-      : normalizeSidebarNav(items).map((entry) => ({ id: entry.id, hidden: entry.hidden }));
-
-  const settings = await prisma.appSettings.upsert({
-    where: { userId: authResult.user.id },
-    create: { userId: authResult.user.id, sidebarItems },
-    update: { sidebarItems },
-  });
-
-  return NextResponse.json({ items: normalizeSidebarNav(settings.sidebarItems) });
+  try {
+    // `null` clears the column; the registry drops unknown/duplicate ids so a
+    // stale client can't persist a layout the nav can't render.
+    const settings = await applyUserSettingsPatch(authResult.user.id, {
+      sidebarItems: parsed.data.items,
+    });
+    return NextResponse.json({ items: normalizeSidebarNav(settings.sidebarItems) });
+  } catch (err) {
+    if (err instanceof SettingsError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    console.error("Failed to save sidebar navigation layout:", err);
+    return NextResponse.json({ error: "Failed to save sidebar layout" }, { status: 500 });
+  }
 }

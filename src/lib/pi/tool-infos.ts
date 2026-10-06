@@ -527,6 +527,25 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultPolicy: "ask",
     summaryTemplate: "Removing machine {name}",
   },
+
+  // ── Settings ──────────────────────────────────────────────────────
+  {
+    name: "settings_list",
+    label: "List Settings",
+    description: "List Saale settings and their current values",
+    category: "settings",
+    defaultPolicy: "allow",
+  },
+  {
+    name: "settings_set",
+    label: "Change Setting",
+    description: "Change one Saale setting",
+    category: "settings",
+    // Changing a setting is consequential — it can widen the agent's own
+    // permissions or rewrite the prompt. Ask unless the user opts out.
+    defaultPolicy: "ask",
+    summaryTemplate: "Changing setting {key}",
+  },
 ];
 
 /** Group tools by category key. */
