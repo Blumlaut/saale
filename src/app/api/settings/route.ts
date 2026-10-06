@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
+import { normalizeToolExposure, toolExposureEquals } from "@/lib/pi/tool-exposure";
+import { evictUserSessions } from "@/lib/pi/agent-pool";
 import type { AppSettings } from "@prisma/client";
 
 /** Fields that may be updated via PATCH /api/settings. */
@@ -17,6 +19,7 @@ const ALLOWED_FIELDS = new Set([
   "disabledModels",
   "defaultToolConfig",
   "toolPolicies",
+  "toolExposure",
 ]);
 
 /** Serialize AppSettings to the shape sent to the frontend. */
@@ -32,6 +35,7 @@ function serializeSettings(settings: AppSettings) {
     disabledModels: settings.disabledModels,
     defaultToolConfig: settings.defaultToolConfig,
     toolPolicies: settings.toolPolicies,
+    toolExposure: normalizeToolExposure(settings.toolExposure),
   };
 }
 
@@ -83,6 +87,19 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  // Exposure is JSON from a client: keep only known categories/exposures, and
+  // drop `direct` entries so the stored row stays sparse.
+  let exposureChanged = false;
+  if ("toolExposure" in updateData) {
+    const normalized = normalizeToolExposure(updateData.toolExposure);
+    updateData.toolExposure = normalized;
+    const current = await prisma.appSettings.findUnique({
+      where: { userId: authResult.user.id },
+      select: { toolExposure: true },
+    });
+    exposureChanged = !toolExposureEquals(normalizeToolExposure(current?.toolExposure), normalized);
+  }
+
   const settings = await prisma.appSettings.upsert({
     where: { userId: authResult.user.id },
     create: {
@@ -91,6 +108,11 @@ export async function PATCH(request: NextRequest) {
     },
     update: updateData,
   });
+
+  // A pooled chat's tool loadout is fixed when its agent is built, so a change
+  // to exposure only reaches a chat that is already open once its session is
+  // rebuilt. Sessions with a run in flight are left alone.
+  if (exposureChanged) await evictUserSessions(authResult.user.id);
 
   return NextResponse.json({ settings: serializeSettings(settings) });
 }

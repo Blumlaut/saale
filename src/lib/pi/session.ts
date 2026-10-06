@@ -10,7 +10,7 @@ import { getTerminalHomeDir } from "@/lib/terminal/client";
 import { getGitHubEnv } from "@/lib/github";
 import { buildModelRuntime } from "./models";
 import { resolveTools } from "./tool-registry";
-import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "./tool-categories";
+import { DEFAULT_TOOL_CONFIG, type ToolConfig, type ToolExposureConfig } from "./tool-categories";
 
 // Re-export for consumers
 export type { ToolConfig };
@@ -71,6 +71,8 @@ export async function buildSessionDeps(options: {
   sessionId: string;
   customTools: ToolDefinition[];
   toolConfig: ToolConfig | null | undefined;
+  /** Per-category exposure (`AppSettings.toolExposure`). */
+  toolExposure?: ToolExposureConfig | null | undefined;
   modelProvider: string | undefined;
   modelName: string | undefined;
   /** Optional wrapper applied to every resolved tool (e.g. approval gate). */
@@ -90,6 +92,7 @@ export async function buildSessionDeps(options: {
   const resolvedTools = await resolveTools(options.userId, options.sessionId, enabled, {
     createTerminalScopedTools,
     ...(options.wrapTool ? { wrapWithApproval: options.wrapTool } : {}),
+    ...(options.toolExposure ? { exposure: options.toolExposure } : {}),
   });
   allCustomTools.push(...resolvedTools);
 

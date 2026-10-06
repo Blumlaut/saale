@@ -1,6 +1,7 @@
 import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { ToolConfig, ToolCategoryKey } from "./tool-categories";
+import type { ToolConfig, ToolCategoryKey, ToolExposureConfig } from "./tool-categories";
 import { TOOL_CATEGORIES } from "./tool-categories";
+import { findToolInfo } from "./tool-infos";
 import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
 import { withAbortSignal } from "./tool-abort";
 import { createChatSearchTool, createShowFileTool } from "./tools/chat-tools";
@@ -98,6 +99,10 @@ export function getAllToolInfos(): ToolInfo[] {
  *
  * @param options.wrapWithApproval - Optional wrapper to apply to each resolved tool.
  *   Receives the tool, userId, sessionId, policy lookup, and approval emitter.
+ * @param options.exposure - Per-category exposure (`AppSettings.toolExposure`).
+ *   Categories set to `codemode`/`deferred` are registered but not declared to
+ *   the model; codemode scripts reach them through the tool registry. Absent =
+ *   `direct` (every tool declared), which is the default.
  */
 export async function resolveTools(
   userId: string,
@@ -115,6 +120,8 @@ export async function resolveTools(
     }>;
     /** Optional approval gate wrapper. When provided, every tool is wrapped. */
     wrapWithApproval?: (tool: ToolDefinition) => ToolDefinition;
+    /** How each category's tools reach the model. */
+    exposure?: ToolExposureConfig | null | undefined;
   },
 ): Promise<ToolDefinition[]> {
   const tools: ToolDefinition[] = [];
@@ -154,12 +161,18 @@ export async function resolveTools(
     }
   }
 
+  // ── Hide categories the user put behind codemode ────────────────────
+  // Exposure is how Pi decides whether a tool is declared to the model or only
+  // reachable from a codemode script; the gate and abort wrappers below both
+  // spread the definition, so it survives them.
+  const exposed = options.exposure ? applyToolExposure(tools, options.exposure) : tools;
+
   // ── Make every tool call cancellable ────────────────────────────────
   // Pi awaits tool execution and only checks the abort signal between tool
   // calls, so a Stop that arrives during a tool would otherwise not take effect
   // until that tool finishes. Applied before the approval wrapper, whose own
   // wait already honours the signal.
-  const abortable = tools.map(withAbortSignal);
+  const abortable = exposed.map(withAbortSignal);
 
   // ── Apply approval gate wrapper (if provided) ───────────────────────
   if (options.wrapWithApproval) {
@@ -167,4 +180,23 @@ export async function resolveTools(
   }
 
   return abortable;
+}
+
+/**
+ * Set each tool's Pi exposure from its category's setting.
+ *
+ * The category comes from the shared catalog (`tool-infos.ts`) rather than the
+ * loop that produced the tool, because a category's tools are not always built
+ * together: `show_file` ships with the terminal bundle but belongs to
+ * "Chat history". Tools missing from the catalog stay `direct`.
+ */
+function applyToolExposure(
+  tools: ToolDefinition[],
+  exposure: ToolExposureConfig,
+): ToolDefinition[] {
+  return tools.map((tool) => {
+    const category = findToolInfo(tool.name)?.category;
+    const level = category ? exposure[category] : undefined;
+    return level && level !== "direct" ? { ...tool, exposure: level } : tool;
+  });
 }

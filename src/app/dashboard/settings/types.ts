@@ -1,7 +1,8 @@
 // Re-export shared types
 export type { EmailAccount } from "@/types/shared";
-import type { ToolConfig } from "@/lib/pi/tool-categories";
+import type { ToolConfig, ToolExposureConfig } from "@/lib/pi/tool-categories";
 export type { ToolConfig };
+export type { ToolExposureConfig };
 import type { ToolPolicy } from "@/lib/pi/tool-infos";
 export type { ToolPolicy };
 
@@ -21,6 +22,7 @@ export interface UserSettings {
   disabledModels: string[] | null; // Array of "provider:modelId" strings
   defaultToolConfig: ToolConfig | null;
   toolPolicies: Record<string, ToolPolicy> | null;
+  toolExposure: ToolExposureConfig | null;
 }
 
 export interface ConfiguredProvider {

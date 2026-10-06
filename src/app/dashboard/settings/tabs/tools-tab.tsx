@@ -14,9 +14,15 @@ import {
 } from "@/components/ui/select";
 import { Wrench, Info, ChevronDown, ChevronRight } from "lucide-react";
 import { SaveFooter } from "../components/save-footer";
-import type { UserSettings, ToolConfig } from "../types";
+import type { UserSettings, ToolConfig, ToolExposureConfig } from "../types";
 import type { ToolPolicy } from "@/lib/pi/tool-infos";
-import { DEFAULT_TOOL_CONFIG, TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
+import {
+  DEFAULT_TOOL_CONFIG,
+  DEFAULT_TOOL_EXPOSURE,
+  TOOL_CATEGORIES,
+  TOOL_EXPOSURES,
+  type ToolExposure,
+} from "@/lib/pi/tool-categories";
 import { getToolsByCategory, getDefaultPolicy } from "@/lib/pi/tool-infos";
 
 interface ToolsTabProps {
@@ -27,6 +33,11 @@ interface ToolsTabProps {
   onSave: () => Promise<void>;
 }
 
+/** Exposure option descriptions, for the selected value's hint line. */
+const exposureDescriptions = Object.fromEntries(
+  TOOL_EXPOSURES.map((option) => [option.value, option.description]),
+) as Record<ToolExposure, string>;
+
 export function ToolsTab({
   settings,
   onSettingsChange,
@@ -36,6 +47,7 @@ export function ToolsTab({
 }: ToolsTabProps) {
   const toolConfig = (settings?.defaultToolConfig ?? DEFAULT_TOOL_CONFIG) as Required<ToolConfig>;
   const toolPolicies = (settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>;
+  const toolExposure = (settings?.toolExposure ?? {}) as ToolExposureConfig;
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const toggleExpanded = useCallback((key: string) => {
@@ -60,6 +72,22 @@ export function ToolsTab({
     });
   };
 
+  const handleExposureChange = (categoryKey: string, level: ToolExposure) => {
+    if (!settings) return;
+    // `direct` is the default, so it is stored as absence — the row stays
+    // sparse and only holds categories moved behind codemode.
+    const next: ToolExposureConfig = { ...toolExposure };
+    if (level === DEFAULT_TOOL_EXPOSURE) {
+      delete next[categoryKey as keyof ToolExposureConfig];
+    } else {
+      next[categoryKey as keyof ToolExposureConfig] = level;
+    }
+    onSettingsChange({
+      ...settings,
+      toolExposure: Object.keys(next).length > 0 ? next : null,
+    });
+  };
+
   return (
     <div className="space-y-6">
       <GlassPanel>
@@ -71,13 +99,18 @@ export function ToolsTab({
               Tools
             </h3>
             <p className="text-muted-foreground mt-1 text-sm">
-              Configure which tools are enabled and how they are approved.
+              Configure which tools are enabled, how they reach the model, and how they are
+              approved.
             </p>
             <div className="liquid-glass-inner mt-3 flex items-start gap-2 rounded-xl border-0 px-4 py-3">
               <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
               <p className="text-muted-foreground text-xs">
                 Toggle a category on/off to enable or disable it by default. Expand a category to
-                configure per-tool approval policies. <b>Allow</b> — runs automatically. <b>Auto</b>{" "}
+                choose how its tools reach the model and configure per-tool approval policies.{" "}
+                <b>Always available</b> — the model sees the tools on every message.{" "}
+                <b>Via codemode</b> — hidden from the model; it writes a short script to call them.{" "}
+                <b>Search only</b> — hidden until found with a tool search. The last two save
+                context on categories you rarely use. <b>Allow</b> — runs automatically. <b>Auto</b>{" "}
                 — auto-approves safe commands, asks for risky ones (infra exec only). <b>Ask</b> —
                 requires your approval. <b>Block</b> — never runs. Tools from an MCP server follow
                 their server&apos;s approval setting in the MCP tab.
@@ -94,6 +127,7 @@ export function ToolsTab({
                 const enabled = !!toolConfig[category.key];
                 const isExpanded = !!expanded[category.key];
                 const tools = getToolsByCategory(category.key);
+                const exposure = toolExposure[category.key] ?? DEFAULT_TOOL_EXPOSURE;
                 const Icon = category.icon;
 
                 return (
@@ -149,6 +183,32 @@ export function ToolsTab({
 
                     {isExpanded && tools.length > 0 && (
                       <div className="pb-3 pl-7">
+                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                          <div className="min-w-0">
+                            <Label className="text-sm">Availability</Label>
+                            <p className="text-muted-foreground text-xs">
+                              {exposureDescriptions[exposure]}
+                            </p>
+                          </div>
+                          <Select
+                            value={exposure}
+                            onValueChange={(value) => {
+                              if (value) handleExposureChange(category.key, value as ToolExposure);
+                            }}
+                          >
+                            <SelectTrigger className="w-full shrink-0 sm:w-40">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent align="end">
+                              {TOOL_EXPOSURES.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
                         <div className="space-y-1.5">
                           {tools.map((tool) => {
                             const policy = toolPolicies[tool.name] ?? getDefaultPolicy(tool.name);

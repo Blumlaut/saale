@@ -5,7 +5,8 @@ import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
 import type { ApprovalRequest } from "./tool-approval-gate";
-import type { ToolConfig } from "./tool-categories";
+import type { ToolConfig, ToolExposureConfig } from "./tool-categories";
+import { normalizeToolExposure } from "./tool-exposure";
 
 /**
  * The single place a chat session's Pi agent is created.
@@ -23,17 +24,20 @@ export interface ChatUserSettings {
   customInstructions: string | null;
   /** Per-tool approval policies, keyed by tool name. */
   toolPolicies: Record<string, string> | null;
+  /** Per-category exposure — how each category's tools reach the model. */
+  toolExposure: ToolExposureConfig | null;
 }
 
 /** Load the user settings that shape a chat agent session. */
 export async function loadChatUserSettings(userId: string): Promise<ChatUserSettings> {
   const settings = await prisma.appSettings.findUnique({
     where: { userId },
-    select: { agentCustomInstructions: true, toolPolicies: true },
+    select: { agentCustomInstructions: true, toolPolicies: true, toolExposure: true },
   });
   return {
     customInstructions: settings?.agentCustomInstructions ?? null,
     toolPolicies: (settings?.toolPolicies as Record<string, string> | null) ?? null,
+    toolExposure: normalizeToolExposure(settings?.toolExposure),
   };
 }
 
@@ -67,6 +71,8 @@ export interface CreateChatAgentSessionOptions {
   customInstructions: string | null;
   /** Per-tool approval policies (`AppSettings.toolPolicies`). */
   toolPolicies: Record<string, string> | null | undefined;
+  /** Per-category exposure (`AppSettings.toolExposure`). */
+  toolExposure: ToolExposureConfig | null | undefined;
   /**
    * Wraps every resolved tool. Always pass the approval gate — tools resolved
    * without it execute without the user's approval policy.
@@ -104,6 +110,7 @@ export async function createChatAgentSession(
     sessionDir,
     customTools: [],
     toolConfig,
+    toolExposure: options.toolExposure,
     ...(model ? { modelProvider: model.provider, modelName: model.name } : {}),
     ...(chatSession.thinkingLevel ? { thinkingLevel: chatSession.thinkingLevel } : {}),
     wrapTool: options.wrapTool,

@@ -11,6 +11,7 @@ import { resolveTools } from "@/lib/pi/tool-registry";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
+import { normalizeToolExposure } from "@/lib/pi/tool-exposure";
 import {
   createToolApprovalGate,
   type ApprovalRequest,
@@ -283,7 +284,12 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   // Telegram are reachable by the agent's file tools)
   const userSettings = await prisma.appSettings.findUnique({
     where: { userId },
-    select: { defaultToolConfig: true, agentCustomInstructions: true, toolPolicies: true },
+    select: {
+      defaultToolConfig: true,
+      agentCustomInstructions: true,
+      toolPolicies: true,
+      toolExposure: true,
+    },
   });
   const userToolConfig = (userSettings?.defaultToolConfig as Record<string, boolean>) ?? {};
   const defToolConfig = (definition.toolConfig as Record<string, boolean>) ?? {};
@@ -344,6 +350,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
     createTerminalScopedTools,
     wrapWithApproval: approvalWrapper,
+    exposure: normalizeToolExposure(userSettings?.toolExposure),
   });
 
   const sessionManager = SessionManager.continueRecent(sessionDir, sessionDir);
@@ -881,7 +888,7 @@ async function runTelegramCompaction(params: CompactTelegramSessionParams): Prom
   // 3. Build tool config
   const userSettings = await prisma.appSettings.findUnique({
     where: { userId },
-    select: { defaultToolConfig: true, agentCustomInstructions: true },
+    select: { defaultToolConfig: true, agentCustomInstructions: true, toolExposure: true },
   });
   const userToolConfig = (userSettings?.defaultToolConfig as Record<string, boolean>) ?? {};
   const defToolConfig = (definition?.toolConfig as Record<string, boolean>) ?? {};
@@ -901,6 +908,7 @@ async function runTelegramCompaction(params: CompactTelegramSessionParams): Prom
 
   const allCustomTools = await resolveTools(userId, "compact", resolvedToolConfig, {
     createTerminalScopedTools,
+    exposure: normalizeToolExposure(userSettings?.toolExposure),
   });
 
   // Build system prompt
