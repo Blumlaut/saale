@@ -67,6 +67,7 @@ export async function POST(
       model,
       customInstructions: userSettings.customInstructions,
       toolPolicies: userSettings.toolPolicies,
+      toolExposure: userSettings.toolExposure,
       wrapTool: approvalWrapper,
       emitApprovalRequest,
     }),

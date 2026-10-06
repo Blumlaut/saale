@@ -70,7 +70,8 @@ vi.mock("@/lib/pi/thinking-levels", () => ({
   thinkingLevelOption: vi.fn(() => ({})),
 }));
 
-vi.mock("@/lib/pi/tool-categories", () => ({
+vi.mock("@/lib/pi/tool-categories", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/pi/tool-categories")>()),
   DEFAULT_TOOL_CONFIG: {},
 }));
 

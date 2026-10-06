@@ -8,6 +8,7 @@ import {
 import { createAgentResourceLoader, startSessionExtensions } from "./processing-state";
 import { createSessionSettings } from "./settings";
 import { buildSessionDeps, type ToolConfig } from "./session";
+import type { ToolExposureConfig } from "./tool-categories";
 import { thinkingLevelOption } from "./thinking-levels";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
@@ -26,6 +27,7 @@ import type { ApprovalRequest } from "./tool-approval-gate";
  * @param options.sessionDir - Directory for Pi's JSONL session files (pi_sessions/{userId}/{sessionId}/)
  * @param options.customTools - Additional custom tools to register
  * @param options.toolConfig - Tool category configuration
+ * @param options.toolExposure - Per-category exposure (how tools reach the model)
  * @param options.modelProvider - Model provider (e.g., "anthropic")
  * @param options.modelName - Model name (e.g., "claude-sonnet-4-5")
  * @param options.thinkingLevel - Thinking level for the model
@@ -41,6 +43,8 @@ export async function createPersistentSession(options: {
   sessionDir: string; // pi_sessions/{userId}/{sessionId}/
   customTools: ToolDefinition[];
   toolConfig?: ToolConfig;
+  /** Per-category exposure (`AppSettings.toolExposure`). */
+  toolExposure?: ToolExposureConfig | null | undefined;
   modelProvider?: string;
   modelName?: string;
   thinkingLevel?: string;
@@ -62,6 +66,7 @@ export async function createPersistentSession(options: {
     sessionId: options.sessionId,
     customTools: options.customTools,
     toolConfig: options.toolConfig,
+    toolExposure: options.toolExposure,
     modelProvider: options.modelProvider,
     modelName: options.modelName,
     ...(options.wrapTool ? { wrapTool: options.wrapTool } : {}),

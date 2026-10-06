@@ -10,6 +10,7 @@ import { createSystemPromptLoader, startSessionExtensions } from "@/lib/pi/proce
 import { createSessionSettings } from "@/lib/pi/settings";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
+import { loadToolExposure } from "@/lib/pi/tool-exposure";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
@@ -185,6 +186,7 @@ export async function executeAgentRun(
 
   const allCustomTools = await resolveTools(userId, runId, resolvedToolConfig, {
     createTerminalScopedTools,
+    exposure: await loadToolExposure(userId),
   });
 
   const systemPrompt =

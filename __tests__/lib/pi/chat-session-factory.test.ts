@@ -47,20 +47,28 @@ describe("chat session factory", () => {
     mockFindUnique.mockResolvedValue({
       agentCustomInstructions: "Be brief.",
       toolPolicies: { bash: "ask" },
+      toolExposure: { email: "codemode", jobs: "direct", not_a_category: "deferred" },
     });
   });
 
   describe("loadChatUserSettings", () => {
-    it("returns the stored instructions and tool policies", async () => {
+    it("returns the stored instructions, tool policies and exposure", async () => {
       const settings = await loadChatUserSettings("user-1");
       expect(settings.customInstructions).toBe("Be brief.");
       expect(settings.toolPolicies).toEqual({ bash: "ask" });
+      // Unknown categories and `direct` (the default) are dropped on read so a
+      // hand-edited row can never smuggle an invalid exposure into a session.
+      expect(settings.toolExposure).toEqual({ email: "codemode" });
     });
 
     it("returns nulls when the user has no settings row", async () => {
       mockFindUnique.mockResolvedValue(null);
       const settings = await loadChatUserSettings("user-2");
-      expect(settings).toEqual({ customInstructions: null, toolPolicies: null });
+      expect(settings).toEqual({
+        customInstructions: null,
+        toolPolicies: null,
+        toolExposure: null,
+      });
     });
   });
 
@@ -98,6 +106,7 @@ describe("chat session factory", () => {
         chatSession: CHAT,
         customInstructions: "Be brief.",
         toolPolicies: { bash: "ask" },
+        toolExposure: { email: "deferred" },
         wrapTool,
         emitApprovalRequest,
       });
@@ -112,6 +121,7 @@ describe("chat session factory", () => {
       expect(options.wrapTool).toBe(wrapTool);
       expect(options.emitApprovalRequest).toBe(emitApprovalRequest);
       expect(options.toolPolicies).toEqual({ bash: "ask" });
+      expect(options.toolExposure).toEqual({ email: "deferred" });
       expect(options.mcp).toBe(true);
       expect(options.modelProvider).toBe("anthropic");
       expect(options.modelName).toBe("claude-sonnet-4-5");
@@ -136,6 +146,7 @@ describe("chat session factory", () => {
         model: { provider: "openai", name: "gpt-6" },
         customInstructions: null,
         toolPolicies: null,
+        toolExposure: null,
         wrapTool: (tool) => tool,
         emitApprovalRequest: vi.fn(),
       });
@@ -156,6 +167,7 @@ describe("chat session factory", () => {
         chatSession: { ...CHAT, thinkingLevel: "default" },
         customInstructions: null,
         toolPolicies: null,
+        toolExposure: null,
         wrapTool: (tool) => tool,
         emitApprovalRequest: vi.fn(),
       });

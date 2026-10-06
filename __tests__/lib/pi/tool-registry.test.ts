@@ -442,4 +442,84 @@ describe("resolveTools", () => {
     expect(names.filter((n) => n === "bash")).toHaveLength(1);
     expect(names.filter((n) => n === "read")).toHaveLength(1);
   });
+
+  describe("tool exposure", () => {
+    const exposureOf = (tools: ToolDefinition[], name: string) =>
+      (tools.find((t) => t.name === name) as { exposure?: string } | undefined)?.exposure;
+
+    const ALL_ON: Required<ToolConfig> = {
+      terminal: true,
+      email: true,
+      jobs: true,
+      calendar: true,
+      chatSearch: true,
+      web: true,
+      memory: true,
+      tasks: true,
+      agentJobs: true,
+      infra: true,
+    };
+
+    it("leaves tools direct when no exposure is configured", async () => {
+      const tools = await resolveTools(userId, sessionId, ALL_ON, options);
+      expect(exposureOf(tools, "mail_send")).toBeUndefined();
+      expect(exposureOf(tools, "web_search")).toBeUndefined();
+    });
+
+    it("applies an exposure to every tool of its category only", async () => {
+      const tools = await resolveTools(userId, sessionId, ALL_ON, {
+        ...options,
+        exposure: { email: "codemode", infra: "deferred" },
+      });
+
+      expect(exposureOf(tools, "mail_accounts")).toBe("codemode");
+      expect(exposureOf(tools, "mail_read")).toBe("codemode");
+      expect(exposureOf(tools, "infra_exec")).toBe("deferred");
+      // Untouched categories stay declared to the model.
+      expect(exposureOf(tools, "web_search")).toBeUndefined();
+      expect(exposureOf(tools, "job_list")).toBeUndefined();
+    });
+
+    it("follows a tool's catalog category, not the bundle it is built with", async () => {
+      // show_file is built alongside the terminal tools but belongs to the
+      // "Chat history" category — its exposure has to follow the category the
+      // user actually configured.
+      vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+      const tools = await resolveTools(userId, sessionId, ALL_ON, {
+        ...options,
+        exposure: { terminal: "codemode", chatSearch: "deferred" },
+      });
+
+      expect(exposureOf(tools, "bash")).toBe("codemode");
+      expect(exposureOf(tools, "read")).toBe("codemode");
+      expect(exposureOf(tools, "show_file")).toBe("deferred");
+      expect(exposureOf(tools, "chat_search")).toBe("deferred");
+    });
+
+    it("leaves tools missing from the catalog direct", async () => {
+      vi.mocked(createWebTools).mockReturnValueOnce([
+        { name: "not_in_catalog" } as unknown as ToolDefinition,
+      ]);
+      const tools = await resolveTools(userId, sessionId, ALL_ON, {
+        ...options,
+        exposure: { web: "codemode" },
+      });
+
+      expect(exposureOf(tools, "not_in_catalog")).toBeUndefined();
+    });
+
+    it("survives the wrappers applied after resolution", async () => {
+      // The approval gate and abort race both spread the definition; a spread
+      // that dropped `exposure` would silently retake the context budget.
+      const gate = (tool: ToolDefinition) => ({ ...tool, gated: true });
+      const tools = await resolveTools(userId, sessionId, ALL_ON, {
+        ...options,
+        wrapWithApproval: gate,
+        exposure: { email: "codemode" },
+      });
+
+      expect(exposureOf(tools, "mail_list")).toBe("codemode");
+      expect(tools.find((t) => t.name === "mail_list")).toHaveProperty("gated", true);
+    });
+  });
 });
