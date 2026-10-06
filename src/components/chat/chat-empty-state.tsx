@@ -17,7 +17,7 @@ export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptySt
   const router = useRouter();
 
   return (
-    <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0">
+    <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
       {/* Compact control row — session list (mobile) + temporary mode */}
       <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-1.5 md:px-4">
         <div className="shrink-0 md:hidden">

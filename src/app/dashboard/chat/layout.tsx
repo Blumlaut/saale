@@ -62,7 +62,8 @@ export default function ChatLayout({ children: _children }: { children: React.Re
 
   return (
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
-      {/* Content: sidebar + main — the view owns the window (no outer gutter) */}
+      {/* Content: sidebar + main — edge to edge on phones, console gutter on
+          desktop (see `.full-bleed` in globals.css) */}
       <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
         {/* Sidebar — desktop only */}
         <div className="hidden w-64 shrink-0 md:block">
