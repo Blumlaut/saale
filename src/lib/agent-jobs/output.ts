@@ -68,10 +68,7 @@ export async function buildAgentOutputHandler(params: {
         // context) before the API call — fire-and-forget, the recording must
         // not delay or block delivery.
         recordTelegramJobOutput({ userId, telegramChatId: chatId, content }).catch((err) => {
-          console.error(
-            `[agent-jobs] Failed to record Telegram output in chat ${chatId}:`,
-            err,
-          );
+          console.error(`[agent-jobs] Failed to record Telegram output in chat ${chatId}:`, err);
         });
 
         sendTelegramMessage(account.encryptedToken, chatId, content).catch((err) => {

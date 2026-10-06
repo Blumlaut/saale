@@ -260,7 +260,12 @@ describe("agent definition scheduling", () => {
       vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
 
       mockAgentDefinitionFindMany.mockResolvedValue([
-        { id: "def-1", enabled: true, cronExpression: null, runAt: new Date("2026-01-01T02:00:00Z") },
+        {
+          id: "def-1",
+          enabled: true,
+          cronExpression: null,
+          runAt: new Date("2026-01-01T02:00:00Z"),
+        },
       ]);
 
       await scheduleAllAgentDefinitions();

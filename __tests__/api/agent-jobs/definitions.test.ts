@@ -110,6 +110,53 @@ describe("System-managed agent definitions", () => {
         }),
       );
     });
+
+    it("stores a one-off runAt as a Date and leaves cron null", async () => {
+      authAs("user-1");
+      mockAgentDefinition.create.mockResolvedValue({
+        id: "def-1",
+        name: "Reminder",
+        prompt: "Remind me",
+        outputChannel: "telegram",
+        outputChannelId: null,
+        cronExpression: null,
+        runAt: new Date("2026-05-01T15:00:00Z"),
+        lastRunAt: null,
+        enabled: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const response = await createDefinition(
+        jsonRequest("http://localhost/api/agent-jobs/definitions", {
+          name: "Reminder",
+          prompt: "Remind me",
+          runAt: "2026-05-01T15:00:00Z",
+          cronExpression: "0 9 * * *",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const call = mockAgentDefinition.create.mock.calls[0]![0];
+      expect(call.data.runAt).toEqual(new Date("2026-05-01T15:00:00Z"));
+      // runAt wins over cron — one-off and recurring are mutually exclusive
+      expect(call.data.cronExpression).toBeNull();
+    });
+
+    it("rejects an invalid runAt", async () => {
+      authAs("user-1");
+
+      const response = await createDefinition(
+        jsonRequest("http://localhost/api/agent-jobs/definitions", {
+          name: "Reminder",
+          prompt: "Remind me",
+          runAt: "whenever",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(mockAgentDefinition.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("PATCH /api/agent-jobs/definitions/:id", () => {
@@ -198,6 +245,90 @@ describe("System-managed agent definitions", () => {
 
       expect(response.status).toBe(200);
       expect(mockAgentDefinition.update).toHaveBeenCalled();
+    });
+
+    it("sets a one-off runAt and clears the cron expression", async () => {
+      authAs("user-1");
+      mockAgentDefinition.findFirst.mockResolvedValue({
+        id: "def-1",
+        userId: "user-1",
+        systemManaged: false,
+        modelId: null,
+        cronExpression: "0 9 * * *",
+        runAt: null,
+      });
+      mockAgentDefinition.update.mockResolvedValue({
+        id: "def-1",
+        name: "Reminder",
+        prompt: "Remind me",
+        systemPrompt: null,
+        toolConfig: null,
+        modelId: null,
+        thinkingLevel: "off",
+        outputChannel: null,
+        outputChannelId: null,
+        cronExpression: null,
+        runAt: new Date("2026-05-01T15:00:00Z"),
+        lastRunAt: null,
+        enabled: true,
+        systemManaged: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const response = await patchDefinition(
+        jsonRequest(
+          "http://localhost/api/agent-jobs/definitions/def-1",
+          { runAt: "2026-05-01T15:00:00Z" },
+          "PATCH",
+        ),
+        { params: Promise.resolve({ id: "def-1" }) },
+      );
+
+      expect(response.status).toBe(200);
+      const call = mockAgentDefinition.update.mock.calls[0]![0];
+      expect(call.data.runAt).toEqual(new Date("2026-05-01T15:00:00Z"));
+      expect(call.data.cronExpression).toBeNull();
+    });
+
+    it("clears runAt with an empty string", async () => {
+      authAs("user-1");
+      mockAgentDefinition.findFirst.mockResolvedValue({
+        id: "def-1",
+        userId: "user-1",
+        systemManaged: false,
+        modelId: null,
+        cronExpression: null,
+        runAt: new Date("2026-05-01T15:00:00Z"),
+      });
+      mockAgentDefinition.update.mockResolvedValue({
+        id: "def-1",
+        name: "Reminder",
+        description: null,
+        prompt: "Remind me",
+        systemPrompt: null,
+        toolConfig: null,
+        modelId: null,
+        thinkingLevel: "off",
+        outputChannel: null,
+        outputChannelId: null,
+        cronExpression: null,
+        runAt: null,
+        lastRunAt: null,
+        enabled: true,
+        systemManaged: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const response = await patchDefinition(
+        jsonRequest("http://localhost/api/agent-jobs/definitions/def-1", { runAt: "" }, "PATCH"),
+        { params: Promise.resolve({ id: "def-1" }) },
+      );
+
+      expect(response.status).toBe(200);
+      const call = mockAgentDefinition.update.mock.calls[0]![0];
+      expect(call.data.runAt).toBeNull();
     });
   });
 

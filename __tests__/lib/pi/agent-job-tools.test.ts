@@ -277,6 +277,48 @@ describe("createAgentJobTools", () => {
         }),
       });
     });
+
+    it("schedules a one-off runAt job and ignores a cron expression", async () => {
+      const runAt = new Date("2026-05-01T15:00:00Z");
+      const createdDef = {
+        id: "def-once",
+        name: "Reminder",
+        prompt: "Remind me to stretch",
+        outputChannel: "telegram",
+        outputChannelId: null,
+        cronExpression: null,
+        runAt,
+        enabled: true,
+        createdAt: new Date(),
+      };
+      mockAgentDefinition.create.mockResolvedValue(createdDef);
+
+      await callExecute(tool.execute, {
+        name: "Reminder",
+        prompt: "Remind me to stretch",
+        outputChannel: "telegram",
+        runAt: "2026-05-01T15:00:00Z",
+        cronExpression: "0 9 * * *",
+      });
+
+      // runAt wins: the stored definition has no recurring schedule
+      expect(mockAgentDefinition.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ runAt, cronExpression: null }),
+      });
+      expect(queue.scheduleAgentDefinition).toHaveBeenCalledWith(createdDef);
+    });
+
+    it("rejects an invalid runAt without creating the definition", async () => {
+      await expect(
+        callExecute(tool.execute, {
+          name: "Reminder",
+          prompt: "Remind me",
+          runAt: "not-a-date",
+        }),
+      ).rejects.toThrow(/Invalid runAt/);
+
+      expect(mockAgentDefinition.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("agent_job_update", () => {
@@ -441,6 +483,58 @@ describe("createAgentJobTools", () => {
       expect(mockAgentDefinition.update).toHaveBeenCalledWith({
         where: { id: "def-1" },
         data: { name: "New Name" },
+      });
+    });
+
+    it("sets a one-off runAt and clears the cron expression", async () => {
+      const runAt = new Date("2026-05-01T15:00:00Z");
+      const existingDef = {
+        id: "def-1",
+        userId,
+        enabled: true,
+        cronExpression: "0 9 * * *",
+        runAt: null,
+        updatedAt: new Date(),
+      };
+      const updatedDef = {
+        ...existingDef,
+        cronExpression: null,
+        runAt,
+      };
+      mockAgentDefinition.findFirst.mockResolvedValue(existingDef);
+      mockAgentDefinition.update.mockResolvedValue(updatedDef);
+
+      await callExecute(tool.execute, { id: "def-1", runAt: "2026-05-01T15:00:00Z" });
+
+      expect(mockAgentDefinition.update).toHaveBeenCalledWith({
+        where: { id: "def-1" },
+        data: expect.objectContaining({ cronExpression: null, runAt }),
+      });
+      expect(queue.unscheduleAgentDefinition).toHaveBeenCalledWith("def-1");
+      expect(queue.scheduleAgentDefinition).toHaveBeenCalledWith(updatedDef);
+    });
+
+    it("clears a one-off runAt when the cron expression is set", async () => {
+      const existingDef = {
+        id: "def-1",
+        userId,
+        enabled: true,
+        cronExpression: null,
+        runAt: new Date("2026-05-01T15:00:00Z"),
+        updatedAt: new Date(),
+      };
+      mockAgentDefinition.findFirst.mockResolvedValue(existingDef);
+      mockAgentDefinition.update.mockResolvedValue({
+        ...existingDef,
+        cronExpression: "0 9 * * *",
+        runAt: null,
+      });
+
+      await callExecute(tool.execute, { id: "def-1", cronExpression: "0 9 * * *" });
+
+      expect(mockAgentDefinition.update).toHaveBeenCalledWith({
+        where: { id: "def-1" },
+        data: expect.objectContaining({ cronExpression: "0 9 * * *", runAt: null }),
       });
     });
   });

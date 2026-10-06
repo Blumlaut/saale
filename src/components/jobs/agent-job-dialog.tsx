@@ -456,25 +456,23 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
           </div>
 
           {/* Schedule */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="agent-schedule-mode">
-                Schedule <span className="text-muted-foreground">(optional)</span>
-              </Label>
-              <Select
-                value={scheduleMode}
-                onValueChange={(v) => setScheduleMode((v ?? "none") as ScheduleMode)}
-              >
-                <SelectTrigger id="agent-schedule-mode" className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Manual only</SelectItem>
-                  <SelectItem value="cron">Recurring (cron)</SelectItem>
-                  <SelectItem value="once">Run once at…</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="agent-schedule-mode">
+              Schedule <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <Select
+              value={scheduleMode}
+              onValueChange={(v) => setScheduleMode((v ?? "none") as ScheduleMode)}
+            >
+              <SelectTrigger id="agent-schedule-mode" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Manual only</SelectItem>
+                <SelectItem value="cron">Recurring (cron)</SelectItem>
+                <SelectItem value="once">Run once at…</SelectItem>
+              </SelectContent>
+            </Select>
 
             {scheduleMode === "cron" && (
               <div className="space-y-2">
@@ -501,8 +499,8 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
                   onChange={(e) => setRunAt(e.target.value)}
                 />
                 <p className="text-muted-foreground text-xs">
-                  Runs once at this local time, then clears. Use Telegram as the output channel
-                  for reminders.
+                  Runs once at this local time, then clears. Use Telegram as the output channel for
+                  reminders.
                 </p>
               </div>
             )}
