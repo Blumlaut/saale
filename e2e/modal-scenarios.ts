@@ -40,6 +40,10 @@ const SSH_PUBLIC_KEY =
 
 const NOW = "2026-01-01T09:00:00.000Z";
 
+/** A valid 1×1 PNG — just enough for the lightbox to have a real image to show. */
+const PNG_1X1 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 const MEMORY_TITLE =
   "A very long memory title that must wrap instead of widening the dialog on small screens";
 const MEMORY_CONTENT =
@@ -490,6 +494,46 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await gotoChatSession(page, await ensureChatSession(page));
       await click(page, '[data-slot="dialog-trigger"]');
+    },
+  },
+  {
+    name: "chat · image lightbox",
+    path: "/dashboard/chat",
+    sources: ["src/components/chat/image-lightbox.tsx"],
+    open: async (page) => {
+      // Dedicated session: the shared one may be busy while other scenarios
+      // post into it, and a busy session queues the message out of the list.
+      const res = await page.request.post("/api/chat/sessions", {
+        data: { title: "Modal layout guardrail chat lightbox" },
+      });
+      const body = (await res.json()) as { session?: { id?: string } };
+      if (!body.session?.id)
+        throw new Error(`failed to create lightbox chat session: ${res.status()}`);
+      const sessionId = body.session.id;
+
+      // Block the SSE stream in the browser: the seeded message sets a pending
+      // prompt, and a real stream connection would claim it and start an agent
+      // run the guardrail doesn't need.
+      await page.route(/\/api\/chat\/sessions\/[^/]+\/stream/, (route) =>
+        route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }),
+      );
+
+      const form = new FormData();
+      form.append("content", "e2e lightbox fixture");
+      form.append(
+        "files",
+        new File([Buffer.from(PNG_1X1, "base64")], "e2e-lightbox.png", { type: "image/png" }),
+      );
+      const sent = await page.request.post(`/api/chat/sessions/${sessionId}/messages`, {
+        multipart: form,
+      });
+      if (!sent.ok())
+        throw new Error(
+          `failed to seed lightbox message: ${sent.status()} ${await sent.text()}`,
+        );
+
+      await gotoChatSession(page, sessionId);
+      await click(page, 'button[aria-label="View e2e-lightbox.png"]');
     },
   },
   {

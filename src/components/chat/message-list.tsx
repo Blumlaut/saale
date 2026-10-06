@@ -4,6 +4,7 @@ import { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { LightboxImage } from "./image-lightbox";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
@@ -398,12 +399,12 @@ function UserMessageItem({
               {attachmentViews.map(({ att, isImage, url }) =>
                 isImage ? (
                   url ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
-                    <img
+                    <LightboxImage
                       key={att.id}
                       src={url}
                       alt={att.fileName}
-                      className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
+                      wrapperClassName="max-w-[60%]"
+                      className="ring-border/50 h-24 w-auto rounded-xl object-cover ring-1"
                     />
                   ) : (
                     <div
@@ -480,12 +481,12 @@ function UserMessageItem({
             {attachmentViews.map(({ att, isImage, url }) =>
               isImage ? (
                 url ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- dynamic user uploads served via API
-                  <img
+                  <LightboxImage
                     key={att.id}
                     src={url}
                     alt={att.fileName}
-                    className="ring-border/50 h-24 w-auto max-w-[60%] rounded-xl object-cover ring-1"
+                    wrapperClassName="max-w-[60%]"
+                    className="ring-border/50 h-24 w-auto rounded-xl object-cover ring-1"
                   />
                 ) : (
                   <div
