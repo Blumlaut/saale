@@ -255,7 +255,7 @@ function SearchResultCard({ title, url, engine }: { title: string; url: string; 
         </div>
       </div>
 
-      <ExternalLink className="text-muted-foreground/50 h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+      <ExternalLink className="text-muted-foreground/50 h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 any-pointer-coarse:opacity-100" />
     </a>
   );
 }

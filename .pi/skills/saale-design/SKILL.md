@@ -192,9 +192,17 @@ Rules:
 - Grid items containing lists/tables need `min-w-0` (`lg:col-span-2` →
   `min-w-0 lg:col-span-2`) so nowrap text truncates instead of blowing the grid
   track wider than the viewport.
+- **Full-bleed views** — a view that *is* the window (chat) marks its layout root
+  `full-bleed`: the shell gutter is dropped so it runs to the window edges on
+  phones and desktop (the floating nav keeps its margin), and its panels are
+  square. Don't add page padding or radius back. See
+  [references/layout.md](references/layout.md).
+- **Row actions survive touch** — never hide an action behind hover only; use
+  `ROW_ACTION` from `@/lib/utils`, which stays visible for coarse pointers. See
+  [references/lists.md](references/lists.md).
 
-The e2e suite (`e2e/mobile-overflow.spec.ts`) enforces all of this at 375px and
-320px — a page that regresses fails CI.
+The e2e suite (`e2e/mobile-overflow.spec.ts`, `e2e/chat-full-bleed.spec.ts`)
+enforces all of this at 375px and 320px — a page that regresses fails CI.
 
 Overlays follow the same rule inside their own box: `e2e/modal-overflow.spec.ts`
 opens every registered modal at both widths and fails if one scrolls horizontally

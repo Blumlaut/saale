@@ -6,10 +6,16 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn, ROW_ACTION } from "@/lib/utils";
 import { fetchJson, deleteJson } from "@/lib/http";
 import { splitSessionsByActivity } from "@/lib/chat/session-recency";
-import { Trash2, Loader2, Ghost, GitBranch, ChevronRight } from "lucide-react";
+import { Trash2, Loader2, Ghost, GitBranch, ChevronRight, MoreVertical } from "lucide-react";
 
 interface ChatSession {
   id: string;
@@ -48,7 +54,7 @@ function SessionRow({ session, active, deleting, onOpen, onDelete }: SessionRowP
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+        "group relative flex items-center gap-1 rounded-lg py-2 pr-1 pl-3 text-sm transition-colors duration-150",
         active ? "bg-accent/70" : "hover:bg-accent/60",
       )}
     >
@@ -77,19 +83,33 @@ function SessionRow({ session, active, deleting, onOpen, onDelete }: SessionRowP
           {session.temporary && " · auto-delete"}
         </div>
       </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(session.id);
-        }}
-        disabled={deleting}
-      >
-        {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-        <span className="sr-only">Delete {session.title}</span>
-      </Button>
+      {/* Delete lives behind the row menu: a permanent one-tap delete next to
+          every row is too easy to hit while scrolling. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={(triggerProps) => (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={cn("shrink-0", ROW_ACTION)}
+              {...triggerProps}
+            >
+              {deleting ? <Loader2 className="animate-spin" /> : <MoreVertical />}
+              <span className="sr-only">Actions for {session.title}</span>
+            </Button>
+          )}
+        />
+        <DropdownMenuContent align="end" className="min-w-40">
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={deleting}
+            onClick={() => onDelete(session.id)}
+          >
+            <Trash2 />
+            Delete chat
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -164,7 +184,7 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
   );
 
   return (
-    <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
+    <GlassPanel className="flex h-full flex-col overflow-hidden rounded-none border-0">
       {/* Header */}
       <div className="border-border/30 flex items-center border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Conversations</h2>

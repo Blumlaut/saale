@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, ROW_ACTION } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -119,7 +119,12 @@ export function TaskItem({
           {/* Actions menu */}
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <span className="text-muted-foreground hover:bg-accent/60 inline-flex h-6 w-6 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100">
+              <span
+                className={cn(
+                  ROW_ACTION,
+                  "text-muted-foreground hover:bg-accent/60 inline-flex h-6 w-6 items-center justify-center rounded",
+                )}
+              >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </span>
             </DropdownMenuTrigger>

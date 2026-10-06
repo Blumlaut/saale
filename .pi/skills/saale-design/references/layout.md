@@ -47,6 +47,21 @@ Pages never render a page title (no title text, no subtitle, no title+action row
 <main className="mx-auto max-w-[1600px] p-4 md:p-5 lg:p-6">{/* floating panels */}</main>
 ```
 
+### Full-Bleed Views (the exception)
+
+A view that *is* the window — currently only **chat** — opts out of the page
+margin: its layout root carries `.full-bleed` and the shell drops the gutter
+(see `globals.css`). The panels inside lose their radius (`rounded-none`) so
+the surface runs edge to edge instead of sitting in a window of dead space.
+
+The navigation is *not* bleeding: on desktop the floating sidebar keeps its
+margin and the page bleeds around it, and on phones the bottom nav keeps its
+clearance (`3.5rem`). Full-bleed is for viewport views (streams, conversations,
+canvases) — list, form and settings pages keep the standard page margins.
+
+`e2e/chat-full-bleed.spec.ts` asserts the chat view reaches the window edges,
+so an accidental re-introduced gutter fails CI.
+
 ## Panel Layout
 
 ### Single Column (Default)
@@ -138,7 +153,7 @@ All spacing follows the 4px rhythm (Tailwind default scale):
 | `h-dvh`/`h-screen` in a page | The shell owns viewport height — use `h-full` |
 | Page title / title+action row | Content owns the toolbar — no title text at all |
 | Page-level `overflow-y-auto` | Use `<PageScroll>` — the only scroll region |
-| Edge-to-edge panels        | Add page margins (`p-6`)                  |
+| Edge-to-edge panels        | Add page margins (`p-6`) — unless the view is full-bleed (chat) |
 | 3+ column grid             | Reduce to 1 or 2 columns                  |
 | `w-full` on content panels | Use `max-w-3xl` or similar                |
 | Inconsistent gaps          | Use `gap-6` between panels always         |
