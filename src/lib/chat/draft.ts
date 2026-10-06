@@ -3,9 +3,10 @@
  * message survives navigation, a reload, or a browser restart.
  *
  * Stored per session, so switching chats never drags a draft into the wrong
- * conversation, and shared across tabs (the `storage` event syncs them).
- * Attachments are not persisted: File objects cannot be serialized, and the
- * composer keeps them in memory only.
+ * conversation. A session's draft is read when it is opened; open composers
+ * are not live-synced across tabs, so a second tab cannot rewrite the text
+ * you are typing. Attachments are not persisted: File objects cannot be
+ * serialized, and the composer keeps them in memory only.
  */
 
 const DRAFT_PREFIX = "saale:chat-draft:";

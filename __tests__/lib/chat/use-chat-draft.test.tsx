@@ -140,28 +140,36 @@ describe("useChatDraft", () => {
     expect(window.localStorage.getItem(draftStorageKey("session-b"))).toBeNull();
   });
 
-  it("adopts a draft edited in another tab", () => {
+  it("does not let another tab overwrite the text being typed", () => {
+    // Regression: a second tab on the same chat used to live-sync its draft
+    // into this composer, replacing whatever was already typed here.
     const { result } = renderHook(() => useChatDraft("session-a"));
+
+    act(() => {
+      result.current.setDraft("my own sentence");
+    });
 
     act(() => {
       store("from the other tab", 2);
       window.dispatchEvent(new StorageEvent("storage", { key: draftStorageKey("session-a") }));
     });
 
-    expect(result.current.draft).toBe("from the other tab");
+    expect(result.current.draft).toBe("my own sentence");
   });
 
-  it("ignores storage events for other sessions", () => {
-    const { result } = renderHook(() => useChatDraft("session-a"));
+  it("adopts a draft another tab wrote when the chat is opened", () => {
+    window.localStorage.setItem(
+      draftStorageKey("session-b"),
+      JSON.stringify({ text: "written elsewhere", updatedAt: 2 }),
+    );
 
-    act(() => {
-      window.localStorage.setItem(
-        draftStorageKey("session-b"),
-        JSON.stringify({ text: "other chat", updatedAt: 2 }),
-      );
-      window.dispatchEvent(new StorageEvent("storage", { key: draftStorageKey("session-b") }));
+    const { result, rerender } = renderHook(({ id }) => useChatDraft(id), {
+      initialProps: { id: "session-a" },
     });
-
     expect(result.current.draft).toBe("");
+
+    rerender({ id: "session-b" });
+
+    expect(result.current.draft).toBe("written elsewhere");
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { draftStorageKey, loadDraft, saveDraft } from "@/lib/chat/draft";
+import { loadDraft, saveDraft } from "@/lib/chat/draft";
 
 /**
  * Per-session composer draft, persisted to localStorage.
@@ -18,6 +18,10 @@ import { draftStorageKey, loadDraft, saveDraft } from "@/lib/chat/draft";
  *    never write an empty or stale value over the stored text.
  *  - The unmount flush writes the session and value that were current at the
  *    time, not whatever the hook is being switched to.
+ *
+ * Storage is read only when the session changes (opening a chat), never while
+ * a draft is being edited. Watching `storage` events here would let a second
+ * tab on the same chat replace the text mid-sentence.
  */
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -27,7 +31,8 @@ export function useChatDraft(sessionId: string) {
   /** Session whose stored draft the current `draft` value was loaded for. */
   const [loadedForSession, setLoadedForSession] = useState<string | null>(null);
 
-  // Load (and re-load when the session changes).
+  // Load (and re-load when the session changes). This is the only point at
+  // which a draft written elsewhere is adopted.
   useEffect(() => {
     setDraft(loadDraft(sessionId));
     setLoadedForSession(sessionId);
@@ -52,16 +57,6 @@ export function useChatDraft(sessionId: string) {
       if (!latest.loaded) return;
       saveDraft(latest.sessionId, latest.draft);
     };
-  }, [sessionId]);
-
-  // Another tab editing the same session's draft.
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== null && event.key !== draftStorageKey(sessionId)) return;
-      setDraft(loadDraft(sessionId));
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
   }, [sessionId]);
 
   const updateDraft = useCallback((text: string) => setDraft(text), []);
