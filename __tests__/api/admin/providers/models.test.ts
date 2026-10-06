@@ -6,7 +6,9 @@ vi.mock("@/app/api/admin/settings/auth", () => ({
 }));
 
 vi.mock("@/lib/pi/models", () => ({
-  buildGlobalModelRuntime: vi.fn(),
+  // The admin list uses the unfiltered builder: it has to show models that are
+  // currently switched off so they can be switched back on.
+  buildAdminModelList: vi.fn(),
 }));
 
 import * as adminAuth from "@/app/api/admin/settings/auth";
@@ -28,7 +30,7 @@ function model(overrides: Record<string, unknown> = {}) {
 
 /** Stub the global runtime build with the models and provider names to report. */
 function stubRuntime(models: ReturnType<typeof model>[], names: Record<string, string> = {}) {
-  vi.mocked(piModels.buildGlobalModelRuntime).mockResolvedValue({
+  vi.mocked(piModels.buildAdminModelList).mockResolvedValue({
     models,
     modelRuntime: {
       getProvider: (id: string) => (names[id] ? { id, name: names[id] } : undefined),
@@ -55,7 +57,7 @@ describe("GET /api/admin/providers/models", () => {
     const response = await GET();
 
     expect(response.status).toBe(401);
-    expect(piModels.buildGlobalModelRuntime).not.toHaveBeenCalled();
+    expect(piModels.buildAdminModelList).not.toHaveBeenCalled();
   });
 
   it("groups the global configuration's models by provider", async () => {
@@ -113,6 +115,19 @@ describe("GET /api/admin/providers/models", () => {
     const body = await (await GET()).json();
 
     expect(body.providers[0].name).toBe("some-new-provider");
+  });
+
+  it("lists models of a provider that is switched off", async () => {
+    // Re-enabling a model means finding it here first: this endpoint must not
+    // apply the availability filter the user-facing one applies.
+    stubRuntime([model({ provider: "groq", id: "llama" })], { groq: "Groq" });
+
+    const body = await (await GET()).json();
+
+    expect(body.models.groq).toEqual([
+      { id: "llama", name: "Claude Sonnet", reasoning: true, vision: true },
+    ]);
+    expect(piModels.buildAdminModelList).toHaveBeenCalled();
   });
 
   it("returns an empty listing when the global configuration has no models", async () => {
