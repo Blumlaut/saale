@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
 import {
   parseStoredToolCalls,
   redactStoredToolCalls,
@@ -302,5 +303,67 @@ describe("redactStoredToolCalls", () => {
   it("returns null when there is nothing to store", () => {
     expect(redactStoredToolCalls(null)).toBeNull();
     expect(redactStoredToolCalls("[]")).toBeNull();
+  });
+});
+
+/**
+ * Guards that keep redaction true for tools that do not exist yet.
+ *
+ * Both sweeps read `ALL_TOOL_INFOS`, the catalog the UI and the tool registry
+ * are built from, so a tool added there is covered the moment it lands — no
+ * one has to remember this file.
+ */
+describe("catalog coverage", () => {
+  /** Deliberately distinctive: if this survives, something copied a value out. */
+  const CANARY = "9f3a2b7c-quarantine";
+
+  const poisoned: RedactableToolCall = {
+    id: "tc-canary",
+    name: "unknown",
+    args: { filePath: `/home/blumlaut/${CANARY}.flac`, query: CANARY },
+    result: withMeta(`ffprobe ${CANARY}`, {
+      _saaleInfraMeta: {
+        type: "infra_exec",
+        machineName: "cloud-prod-environment",
+        command: `rm -rf /lancache/${CANARY}`,
+        output: CANARY,
+      },
+    }),
+    isError: true,
+  };
+
+  it("has a hand-written summary for every tool in the catalog", () => {
+    const generic = ALL_TOOL_INFOS.map((info) => info.name).filter(
+      (name) => summarizeToolCallForShare(name, undefined) === "Ran a tool",
+    );
+
+    expect(
+      generic,
+      `Add a SUMMARY_RULES entry for each of these in src/lib/chat/redact-tool-calls.ts:\n` +
+        generic.map((name) => `  - ${name}`).join("\n"),
+    ).toEqual([]);
+  });
+
+  it("drops args, results and errors for every tool in the catalog (default-deny)", () => {
+    for (const { name } of ALL_TOOL_INFOS) {
+      const [redacted] = redactToolCallsForShare([{ ...poisoned, name }]);
+
+      expect(redacted?.name, name).toBe(name);
+      expect(redacted?.args, name).toEqual({});
+      expect(redacted?.result, name).toBeUndefined();
+      expect(redacted?.error, name).toBeUndefined();
+      expect(JSON.stringify(redacted), name).not.toContain(CANARY);
+      expect(JSON.stringify(redacted), name).not.toContain("cloud-prod-environment");
+      expect(redacted?.redacted, name).toBeTruthy();
+    }
+  });
+
+  it("is default-deny for a tool that is not in the catalog at all", () => {
+    const [redacted] = redactToolCallsForShare([{ ...poisoned, name: "some_future_tool" }]);
+
+    expect(redacted?.args).toEqual({});
+    expect(redacted?.result).toBeUndefined();
+    expect(redacted?.redacted).toBe("Ran a tool");
+    expect(JSON.stringify(redacted)).not.toContain(CANARY);
   });
 });

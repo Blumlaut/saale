@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ToolCallView } from "@/components/chat/tool-call-view";
+import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
 import type { ToolCallData } from "@/components/chat/types";
 
 function makeToolCall(overrides: Partial<ToolCallData>): ToolCallData {
@@ -308,5 +309,59 @@ describe("ToolCallView with a redacted tool call", () => {
     expect(screen.getByText("Shared a file")).toBeInTheDocument();
     expect(screen.queryByText(/secret\.flac/)).not.toBeInTheDocument();
     expect(screen.queryByText("Backup")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The render half of the guard.
+ *
+ * Driven by `ALL_TOOL_INFOS`, so a tool added to the catalog — and the card
+ * that goes with it — is covered as soon as it lands. The payload carries the
+ * poisoned args and result a leak would have to come from, plus the `redacted`
+ * field the share endpoints set.
+ */
+describe("redacted rendering across the tool catalog", () => {
+  const CANARY = "9f3a2b7c-quarantine";
+
+  function poisonedCall(name: string): ToolCallData {
+    return makeToolCall({
+      name,
+      status: "error",
+      args: {
+        filePath: `/home/blumlaut/${CANARY}.flac`,
+        command: `curl -H "Authorization: ${CANARY}" https://cloud-prod-environment/`,
+      },
+      result:
+        `ffprobe output\n{"_saaleInfraMeta":{"type":"infra_exec",` +
+        `"machineName":"cloud-prod-environment","path":"/lancache/${CANARY}"}}\n${CANARY}`,
+      error: `command failed: /home/blumlaut/${CANARY}.flac`,
+      redacted: `summary for ${name}`,
+    });
+  }
+
+  it("shows the summary and nothing else for every tool in the catalog", () => {
+    for (const { name } of ALL_TOOL_INFOS) {
+      const { container, unmount } = render(<ToolCallView toolCall={poisonedCall(name)} />);
+
+      expect(container.textContent, name).toContain(`summary for ${name}`);
+      expect(container.textContent, name).not.toContain(CANARY);
+      expect(container.textContent, name).not.toContain("cloud-prod-environment");
+      expect(container.textContent, name).not.toContain("/lancache");
+      expect(container.textContent, name).not.toContain("/home/blumlaut");
+
+      // Inert: nothing to expand, download or fetch for a public reader.
+      expect(container.querySelectorAll("button"), name).toHaveLength(0);
+      expect(container.querySelectorAll("a"), name).toHaveLength(0);
+
+      unmount();
+    }
+  });
+
+  it("renders the redacted card without an accordion to open (edge case)", () => {
+    const { container } = render(<ToolCallView toolCall={poisonedCall("bash")} />);
+
+    // The generic card for an unknown tool would render an expandable row.
+    expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
+    expect(container.querySelector("pre")).toBeNull();
   });
 });
