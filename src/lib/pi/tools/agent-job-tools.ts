@@ -364,8 +364,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           } catch (err) {
             throw new Error((err as Error).message);
           }
-          if (params.cronExpression !== undefined)
-            nextCron = params.cronExpression || null;
+          if (params.cronExpression !== undefined) nextCron = params.cronExpression || null;
           if (params.runAt !== undefined && nextRunAt) {
             nextCron = null;
           } else if (nextCron) {

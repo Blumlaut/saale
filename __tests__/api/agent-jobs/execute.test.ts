@@ -8,6 +8,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     agentDefinition: {
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -27,6 +28,8 @@ import { POST } from "@/app/api/agent-jobs/execute/route";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockAgentDefinitionFindUnique = vi.mocked(prisma.agentDefinition.findUnique as any);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockAgentDefinitionUpdate = vi.mocked(prisma.agentDefinition.update as any);
 
 function makeRequest(definitionId?: string, key = "test-worker-secret") {
   return new NextRequest("http://localhost/api/agent-jobs/execute", {
@@ -130,5 +133,35 @@ describe("POST /api/agent-jobs/execute", () => {
 
     const body = await response.json();
     expect(body.error).toBe("no model configured");
+  });
+
+  it("consumes a one-off schedule by clearing runAt after dispatch", async () => {
+    mockAgentDefinitionFindUnique.mockResolvedValue({
+      id: "def-1",
+      enabled: true,
+      userId: "user-1",
+      runAt: new Date("2026-01-01T09:00:00Z"),
+    });
+    mockAgentDefinitionUpdate.mockResolvedValue({});
+
+    const response = await POST(makeRequest("def-1"));
+    expect(response.status).toBe(200);
+
+    expect(mockAgentDefinitionUpdate).toHaveBeenCalledWith({
+      where: { id: "def-1" },
+      data: { runAt: null },
+    });
+  });
+
+  it("leaves runAt untouched for a recurring definition", async () => {
+    mockAgentDefinitionFindUnique.mockResolvedValue({
+      id: "def-1",
+      enabled: true,
+      userId: "user-1",
+      runAt: null,
+    });
+
+    await POST(makeRequest("def-1"));
+    expect(mockAgentDefinitionUpdate).not.toHaveBeenCalled();
   });
 });

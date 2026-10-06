@@ -28,6 +28,11 @@ vi.mock("@/lib/telegram/chats", () => ({
   resolveDefaultTelegramChat: (...args: unknown[]) => mockResolveDefaultTelegramChat(...args),
 }));
 
+const mockRecordTelegramJobOutput = vi.fn();
+vi.mock("@/lib/telegram/outbound", () => ({
+  recordTelegramJobOutput: (...args: unknown[]) => mockRecordTelegramJobOutput(...args),
+}));
+
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -40,6 +45,7 @@ describe("buildAgentOutputHandler", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRecordTelegramJobOutput.mockResolvedValue(undefined);
   });
 
   it("returns undefined when no output channel is set", async () => {
@@ -163,6 +169,13 @@ describe("buildAgentOutputHandler", () => {
         BigInt("119075844"),
         "Job finished — here is the report",
       );
+    });
+
+    // The outbound message is recorded so a reply to it has context.
+    expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({
+      userId,
+      telegramChatId: BigInt("119075844"),
+      content: "Job finished — here is the report",
     });
   });
 
