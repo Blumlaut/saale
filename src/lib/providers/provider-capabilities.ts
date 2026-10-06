@@ -25,7 +25,7 @@ import { definesProviderModels } from "@/lib/providers/config";
 export function rejectUnconfigurableProvider(provider: unknown): string | null {
   if (typeof provider !== "string" || provider.length === 0) return "provider is required";
   if (!definesProviderModels(provider)) {
-    return "Model capabilities can only be set for providers whose models Saale discovers (OpenAI-compatible, OpenRouter, Together, Fireworks, Hugging Face)";
+    return "Model capabilities can only be set for the OpenAI-compatible endpoint — Pi's catalog describes every other provider's models";
   }
   return null;
 }

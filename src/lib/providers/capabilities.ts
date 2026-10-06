@@ -1,6 +1,6 @@
 /**
- * Per-model capabilities for providers whose model list Saale builds itself
- * (a self-hosted OpenAI-compatible endpoint, or a discoverable catalog).
+ * Per-model capabilities for the one provider whose model list Saale builds
+ * itself: a self-hosted OpenAI-compatible endpoint.
  *
  * Pi's catalog answers this for every hosted model it knows, but a model that is
  * only ever served by the user's own endpoint has no catalog entry — and a
