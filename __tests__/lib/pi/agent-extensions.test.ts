@@ -21,16 +21,34 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { createAgentResourceLoader, startSessionExtensions } from "@/lib/pi/processing-state";
-import { createAgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  createAgentSession,
+  ModelRuntime,
+  SessionManager,
+  type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 
 /** A runtime that never reads the host's Pi credentials. */
 async function modelRuntime() {
   return ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null });
 }
 
+/** A minimal custom tool with a given exposure. */
+function customTool(name: string, exposure?: ToolDefinition["exposure"]): ToolDefinition {
+  return {
+    name,
+    label: name,
+    description: `${name} does a thing`,
+    parameters: Type.Object({}),
+    ...(exposure ? { exposure } : {}),
+    execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
+  } as ToolDefinition;
+}
+
 /** A session with a real codemode extension, built like Saale builds one. */
-async function buildSession() {
+async function buildSession(customTools: ToolDefinition[] = []) {
   const resourceLoader = await createAgentResourceLoader({
     prompt: "You are a test.",
     cwd: "/tmp/saale-ext-test",
@@ -39,6 +57,7 @@ async function buildSession() {
     sessionManager: SessionManager.inMemory("/tmp/saale-ext-test"),
     modelRuntime: await modelRuntime(),
     noTools: "builtin",
+    customTools,
     resourceLoader,
   });
   return session;
@@ -90,6 +109,31 @@ describe("agent extensions", () => {
       const once = session.getActiveToolNames();
       await startSessionExtensions(session);
       expect(session.getActiveToolNames()).toEqual(once);
+    } finally {
+      session.dispose();
+    }
+  });
+
+  it("keeps codemode-exposure tools callable but out of the model's declarations", async () => {
+    // The whole point of tool exposure: a codemode/deferred tool must be a real
+    // registered tool a script can call, and must not be declared to the model.
+    // Verified against the real SDK, not just the flags Saale sets.
+    const session = await buildSession([
+      customTool("direct_tool"),
+      customTool("codemode_tool", "codemode"),
+      customTool("deferred_tool", "deferred"),
+    ]);
+    try {
+      await startSessionExtensions(session);
+
+      const declared = session.getActiveToolNames();
+      expect(declared).toContain("direct_tool");
+      expect(declared).not.toContain("codemode_tool");
+      expect(declared).not.toContain("deferred_tool");
+
+      const callable = session.getCallableToolNames();
+      expect(callable).toContain("codemode_tool");
+      expect(callable).toContain("deferred_tool");
     } finally {
       session.dispose();
     }
