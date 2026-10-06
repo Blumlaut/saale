@@ -48,9 +48,9 @@ function customTool(name: string, exposure?: ToolDefinition["exposure"]): ToolDe
 }
 
 /** A session with a real codemode extension, built like Saale builds one. */
-async function buildSession(customTools: ToolDefinition[] = []) {
+async function buildSession(customTools: ToolDefinition[] = [], prompt = "You are a test.") {
   const resourceLoader = await createAgentResourceLoader({
-    prompt: "You are a test.",
+    prompt,
     cwd: "/tmp/saale-ext-test",
   });
   const { session } = await createAgentSession({
@@ -134,6 +134,30 @@ describe("agent extensions", () => {
       const callable = session.getCallableToolNames();
       expect(callable).toContain("codemode_tool");
       expect(callable).toContain("deferred_tool");
+    } finally {
+      session.dispose();
+    }
+  });
+
+  it("keeps our custom prompt and adds no Pi default sections", async () => {
+    // Pi treats a custom prompt differently: the custom text becomes the
+    // preamble and the tools/rules/docs sections are skipped. Hidden tools must
+    // therefore be reachable through codemode's own declaration instead.
+    const session = await buildSession([customTool("codemode_tool", "codemode")], "You are Saale.");
+    try {
+      await startSessionExtensions(session);
+
+      const prompt = session.systemPrompt;
+      expect(prompt).toContain("You are Saale.");
+      expect(prompt).not.toContain("expert coding assistant");
+      expect(prompt).not.toContain("<tools>");
+      expect(prompt).not.toContain("<rules>");
+      expect(prompt).not.toContain("<docs>");
+      expect(prompt).toContain("<cwd>");
+
+      // The codemode declaration the request carries lists what scripts reach.
+      const codemode = session.agent.state.tools.find((tool) => tool.name === "codemode");
+      expect(codemode?.description).toContain("codemode_tool");
     } finally {
       session.dispose();
     }
