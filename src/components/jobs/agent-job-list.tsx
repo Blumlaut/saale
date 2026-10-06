@@ -25,6 +25,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
+import { formatToolArgs } from "@/components/chat/tool-args";
 import type { AgentJobDefinition, AgentJobRun } from "@/types/shared";
 
 const cronExamples: Record<string, string> = {
@@ -562,8 +563,8 @@ function RunMessagesDialog({
                               </Badge>
                             )}
                           </div>
-                          <pre className="text-muted-foreground mt-1 overflow-x-auto">
-                            {JSON.stringify(tc.args, null, 2)}
+                          <pre className="bg-muted overflow-x-auto rounded-lg p-2 text-xs break-words whitespace-pre-wrap">
+                            {formatToolArgs(tc.args)}
                           </pre>
                           {tc.result !== undefined && tc.result !== "" && (
                             <pre className="mt-1 overflow-x-auto">→ {tc.result}</pre>

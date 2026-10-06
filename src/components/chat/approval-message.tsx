@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Shield, Check, X, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatToolArgs } from "./tool-args";
 import type { ApprovalData } from "./types";
 
 interface ApprovalMessageProps {
@@ -54,10 +55,13 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
     }
   };
 
-  const argsPreview = Object.entries(approval.args)
-    .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
-    .slice(0, 3)
-    .join("\n");
+  // A short preview: the first few arguments, strings verbatim so a
+  // multi-line command is readable.
+  const argsPreview = formatToolArgs(approval.args, {
+    maxEntries: 3,
+    indent: 0,
+    separator: "\n",
+  });
 
   // Resolved state — compact single line
   if (status === "done") {
@@ -114,7 +118,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
         <div className="border-border/30 border-t">
           {argsPreview && (
             <div className="px-3 py-2">
-              <pre className="bg-muted rounded-lg p-2 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
+              <pre className="bg-muted rounded-lg p-2 text-xs leading-relaxed break-words whitespace-pre-wrap">
                 {argsPreview}
               </pre>
             </div>

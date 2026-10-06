@@ -2,13 +2,15 @@
 
 import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Wrench, CheckCircle, AlertCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Wrench, ChevronDown, ChevronRight } from "lucide-react";
 import { FileCard } from "./file-card";
 import { WebSearchCard, WebFetchCard } from "./web-tool-cards";
 import { MailToolCard } from "./mail-tool-cards";
 import { CalendarToolCard } from "./calendar-tool-cards";
 import { InfraToolCard } from "./infra-tool-cards";
+import { CodemodeToolCard } from "./codemode-tool-card";
+import { ToolStatusBadge } from "./tool-status-badge";
+import { formatToolArgs } from "./tool-args";
 import type { ToolCallData } from "./types";
 
 /**
@@ -21,6 +23,8 @@ import type { ToolCallData } from "./types";
 export const ToolCallView = memo(function ToolCallView({ toolCall }: { toolCall: ToolCallData }) {
   return toolCall.name === "show_file" ? (
     <ShowFileCard toolCall={toolCall} />
+  ) : toolCall.name === "codemode" ? (
+    <CodemodeToolCard toolCall={toolCall} />
   ) : toolCall.name === "web_search" ? (
     <WebSearchCard toolCall={toolCall} />
   ) : toolCall.name === "web_fetch" ? (
@@ -122,22 +126,7 @@ function GenericToolCall({ toolCall }: { toolCall: ToolCallData }) {
         )}
         <Wrench className="text-muted-foreground h-3 w-3" />
         <span className="text-xs font-medium">{toolCall.name}</span>
-        <Badge
-          variant="secondary"
-          className={cn(
-            "ml-auto rounded-full px-1.5 py-0 text-[10px]",
-            toolCall.status === "running" && "bg-yellow-500/10 text-yellow-600",
-            toolCall.status === "completed" && "bg-green-500/10 text-green-600",
-            (toolCall.status === "error" || toolCall.error) && "bg-red-500/10 text-red-600",
-          )}
-        >
-          {toolCall.status === "running" && <Loader2 className="mr-1 h-2.5 w-2.5 animate-spin" />}
-          {toolCall.status === "completed" && <CheckCircle className="mr-1 h-2.5 w-2.5" />}
-          {(toolCall.status === "error" || toolCall.error) && (
-            <AlertCircle className="mr-1 h-2.5 w-2.5" />
-          )}
-          {toolCall.status || (toolCall.error ? "error" : "done")}
-        </Badge>
+        <ToolStatusBadge toolCall={toolCall} />
       </button>
 
       {expanded && (
@@ -146,8 +135,8 @@ function GenericToolCall({ toolCall }: { toolCall: ToolCallData }) {
             <div className="text-muted-foreground text-xs">
               <span className="font-medium">Arguments:</span>
             </div>
-            <pre className="bg-muted overflow-x-auto rounded-lg p-2 text-xs dark:bg-white/5">
-              {JSON.stringify(toolCall.args, null, 2)}
+            <pre className="bg-muted overflow-x-auto rounded-lg p-2 text-xs break-words whitespace-pre-wrap">
+              {formatToolArgs(toolCall.args)}
             </pre>
             {toolCall.result && (
               <>
@@ -156,10 +145,8 @@ function GenericToolCall({ toolCall }: { toolCall: ToolCallData }) {
                 </div>
                 <pre
                   className={cn(
-                    "overflow-x-auto rounded-lg p-2 text-xs",
-                    toolCall.error
-                      ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                      : "bg-accent/70",
+                    "overflow-x-auto rounded-lg p-2 text-xs break-words whitespace-pre-wrap",
+                    toolCall.error ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-muted",
                   )}
                 >
                   {toolCall.result.slice(0, 1000)}

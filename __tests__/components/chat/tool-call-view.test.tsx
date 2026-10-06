@@ -95,10 +95,52 @@ describe("ToolCallView", () => {
     fireEvent.click(screen.getByRole("button", { name: /custom_tool/ }));
 
     expect(screen.getByText("Arguments:")).toBeInTheDocument();
-    expect(screen.getByText(/\{\s*"foo": "bar"\s*\}/)).toBeInTheDocument();
+    expect(screen.getByText("foo: bar")).toBeInTheDocument();
 
     // Collapses again on second click
     fireEvent.click(screen.getByRole("button", { name: /custom_tool/ }));
+    expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
+  });
+
+  it("renders multi-line argument values with real newlines (edge case)", () => {
+    // JSON.stringify escapes newlines, so the old renderer showed a literal
+    // backslash-n for every multi-line command or script.
+    const { container } = render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "custom_tool",
+          args: { command: "git fetch\n  && git status" },
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /custom_tool/ }));
+    const pre = container.querySelector("pre");
+    expect(pre?.textContent).toBe("command: git fetch\n  && git status");
+    expect(pre?.textContent).not.toContain("\\n");
+  });
+
+  it("renders a codemode script with the tools it calls (reloaded transcript)", () => {
+    // Only the codemode call is in the assistant message, so after a reload the
+    // card has to tell the user what the script reached from the script itself.
+    const code =
+      "const mails = await tools.mail_list({ folder: 'INBOX' });\nconst web = await tools.web_search({ query: 'x' });\nreturn [mails, web];";
+
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "codemode",
+          args: { code },
+          result: "Script completed\n2 emails",
+        })}
+      />,
+    );
+
+    // Distinct label from the raw tool name — the header says what it is.
+    expect(screen.getByText("Script")).toBeInTheDocument();
+    expect(screen.getAllByText(/List Emails/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Web Search/).length).toBeGreaterThan(0);
+    // The generic arguments dump is not used for a script.
     expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
   });
 
