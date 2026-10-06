@@ -316,7 +316,13 @@ model AdminSettings {
   signupsEnabled         Boolean  @default(true)
   globalModelProvider    String   @default("")
   globalModelName        String   @default("")
-  /// Per-provider enabled models: { "anthropic": { "enabled": true, "models": ["claude-sonnet-4-20250514", ...] } }
+  /// Per-provider availability, keyed by provider id:
+  ///   { "anthropic": { "enabled": false } }                      — provider off
+  ///   { "openai": { "enabled": true, "models": ["gpt-5"] } }     — allowlist
+  ///   { "groq": { "enabled": true } }                            — no restriction
+  /// An empty `models` list means the same as no list: the admin's provider
+  /// switch (`enabled`) is what turns a provider off, so saving a list without
+  /// touching a provider cannot switch it off by accident.
   globalProviderModels   Json?
   updatedAt              DateTime @updatedAt
 
