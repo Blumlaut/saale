@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Download, Image as ImageIcon, FileText, File, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LightboxImage } from "./image-lightbox";
 
 interface FileCardProps {
   filePath: string;
@@ -113,10 +114,10 @@ export function FileCard({
       {/* Image preview */}
       {isImage && imageUrl && !imageError && (
         <div className="border-border/30 border-b">
-          {/* eslint-disable-next-line @next/next/no-img-element -- dynamic workspace file */}
-          <img
+          <LightboxImage
             src={imageUrl}
             alt={fileName}
+            wrapperClassName="w-full"
             className="h-auto max-h-64 w-full bg-black/5 object-contain"
           />
         </div>
