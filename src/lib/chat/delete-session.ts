@@ -1,0 +1,60 @@
+/**
+ * Deleting a chat — shared by the delete route (the sidebar action, the
+ * sendBeacon on tab close) and the `chat_delete` tool, so a chat removed by an
+ * agent is cleaned up exactly like one removed from the UI.
+ *
+ * Order of operations:
+ * 1. Verify ownership (`userId` in the query — an id-only delete would let a
+ *    guessed id remove another user's chat)
+ * 2. Delete attachment files from disk (fails fast, leaving the DB intact)
+ * 3. Delete the session row (cascade removes messages + attachment records)
+ * 4. Release the pooled agent and Pi's transcript directory
+ */
+
+import fs from "fs/promises";
+import { prisma } from "@/lib/db";
+import { deleteAllImages } from "@/lib/image-attachment";
+import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
+
+/** The deleted chat's title, for a confirmation message. */
+export interface DeletedChat {
+  title: string;
+}
+
+/**
+ * Delete one of a user's chats and everything that belongs to it.
+ *
+ * @throws when the chat does not exist or is not owned by the user.
+ */
+export async function deleteChatSession(userId: string, sessionId: string): Promise<DeletedChat> {
+  const session = await prisma.chatSession.findFirst({
+    where: { id: sessionId, userId },
+    select: { title: true },
+  });
+  if (!session) throw new Error(`Chat not found: ${sessionId}`);
+
+  const messages = await prisma.chatMessage.findMany({
+    where: { sessionId, session: { userId } },
+    include: { attachments: true },
+  });
+  const storagePaths = messages.flatMap((m) => m.attachments.map((a) => a.storagePath));
+
+  // Files first: a failure here leaves the DB intact for a retry.
+  if (storagePaths.length > 0) {
+    await deleteAllImages(userId, storagePaths);
+  }
+
+  // `userId` in the where clause as defense in depth, even though ownership was
+  // already checked above.
+  await prisma.chatSession.deleteMany({ where: { id: sessionId, userId } });
+
+  // Dispose the pooled agent, then remove Pi's JSONL transcript directory.
+  await remove(getPoolKey(userId, sessionId));
+  try {
+    await fs.rm(getSessionDir(userId, sessionId), { recursive: true, force: true });
+  } catch (err) {
+    console.error(`Failed to clean up session files for ${sessionId}:`, err);
+  }
+
+  return { title: session.title };
+}

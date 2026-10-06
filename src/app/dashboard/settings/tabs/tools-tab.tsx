@@ -74,13 +74,14 @@ export function ToolsTab({
 
   const handleExposureChange = (categoryKey: string, level: ToolExposure) => {
     if (!settings) return;
-    // `direct` is the default, so it is stored as absence — the row stays
-    // sparse and only holds categories moved behind codemode.
+    // Each category's registry default is stored as absence, so the row only
+    // holds categories the user actually changed.
     const next: ToolExposureConfig = { ...toolExposure };
-    if (level === DEFAULT_TOOL_EXPOSURE) {
-      delete next[categoryKey as keyof ToolExposureConfig];
+    const key = categoryKey as keyof ToolExposureConfig;
+    if (level === DEFAULT_TOOL_EXPOSURE[key]) {
+      delete next[key];
     } else {
-      next[categoryKey as keyof ToolExposureConfig] = level;
+      next[key] = level;
     }
     onSettingsChange({
       ...settings,
@@ -127,7 +128,8 @@ export function ToolsTab({
                 const enabled = !!toolConfig[category.key];
                 const isExpanded = !!expanded[category.key];
                 const tools = getToolsByCategory(category.key);
-                const exposure = toolExposure[category.key] ?? DEFAULT_TOOL_EXPOSURE;
+                const exposure =
+                  toolExposure[category.key] ?? DEFAULT_TOOL_EXPOSURE[category.key] ?? "direct";
                 const Icon = category.icon;
 
                 return (

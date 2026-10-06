@@ -6,16 +6,12 @@ import {
   getPendingPrompt,
   isSendQueueHeld,
   isSessionActive,
-  registerActiveSession,
   unregisterActiveSession,
 } from "@/lib/redis";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { readImageAsBase64 } from "@/lib/image-attachment";
 import type { ImageContent } from "@/lib/pi/message-replay";
-import { createAndPool, get as getPoolEntry, getDispatcher, getPoolKey } from "@/lib/pi/agent-pool";
-import { createChatAgentSession, loadChatUserSettings } from "@/lib/pi/chat-session-factory";
-import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
-import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
+import { get as getPoolEntry, getDispatcher, getPoolKey } from "@/lib/pi/agent-pool";
 import { applyPendingHistoryRewind, rewindDuplicatePrompt } from "@/lib/pi/message-rewind";
 import {
   decideStaleGenerationAction,
@@ -29,8 +25,13 @@ import {
   isTerminalBufferedEvent,
 } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
-import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
+import {
+  beginChatRun,
+  dispatchChatRun,
+  ensureChatAgent,
+  type PooledChatSession,
+} from "@/lib/chat/agent-run";
 import {
   claimNextQueuedMessage,
   countQueuedMessages,
@@ -38,11 +39,7 @@ import {
   restoreQueuedMessage,
 } from "@/lib/chat/queue";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
-import {
-  createChatApprovalEmitter,
-  createToolApprovalGate,
-  getPendingApprovals,
-} from "@/lib/pi/tool-approval-gate";
+import { getPendingApprovals } from "@/lib/pi/tool-approval-gate";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -95,7 +92,7 @@ const STALE_GENERATION_POLL_MS = 10_000;
  *
  * Emits: turn_start, token, thinking, tool_start, tool_end, turn_end,
  * message_saved, token_usage, compaction_start, compaction_end, done, error,
- * tool_approval_request, queue_update
+ * tool_approval_request, queue_update, messages_changed
  */
 export async function GET(
   request: NextRequest,
@@ -112,19 +109,7 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  // ── User settings (system prompt + tool policies) ─────────────────────
-  const userSettings = await loadChatUserSettings(authResult.userId);
-
-  // Approval channel — publishes approval requests on the session event bus
-  // so every connected client (in any process) sees them. Shared by the tool
-  // wrapper and the MCP tool gate.
-  const emitApprovalRequest = createChatApprovalEmitter(sessionId);
-  const approvalWrapper = createToolApprovalGate({
-    userId: authResult.userId,
-    sessionId,
-    toolPolicies: userSettings.toolPolicies,
-    emitApprovalRequest,
-  });
+  // ── User settings are loaded per run by `ensureChatAgent` ─────────────
 
   const log = (tag: string, ...args: unknown[]) =>
     // eslint-disable-next-line no-console
@@ -285,7 +270,7 @@ export async function GET(
   }
 
   interface PreparedRun {
-    entry: Awaited<ReturnType<typeof createAndPool>>;
+    entry: PooledChatSession;
     target: PromptTarget;
     images: ImageContent[];
   }
@@ -321,25 +306,17 @@ export async function GET(
    * caller must not claim work it cannot deliver.
    */
   const prepareRun = async (target: PromptTarget): Promise<PreparedRun | null> => {
-    const existingPoolEntry = getPoolEntry(poolKey);
-    const entry = await createAndPool(poolKey, async () => {
-      log("pool", "miss — creating new agent");
-      return createChatAgentSession({
-        userId: authResult.userId,
-        sessionId,
-        chatSession,
-        ...(modelProvider && modelName
-          ? { model: { provider: modelProvider, name: modelName } }
-          : {}),
-        customInstructions: userSettings.customInstructions,
-        toolPolicies: userSettings.toolPolicies,
-        toolExposure: userSettings.toolExposure,
-        wrapTool: approvalWrapper,
-        emitApprovalRequest,
-      });
+    const { entry, existedAlready } = await ensureChatAgent({
+      userId: authResult.userId,
+      sessionId,
+      chatSession,
+      ...(modelProvider && modelName
+        ? { model: { provider: modelProvider, name: modelName } }
+        : {}),
+      log,
     });
 
-    if (existingPoolEntry) {
+    if (existedAlready) {
       log("pool", `hit — lastPromptedMessageId=${entry.lastPromptedMessageId}`);
     }
 
@@ -366,23 +343,9 @@ export async function GET(
       log("rewind", `${rewind} for message ${target.id}`);
     }
 
-    // This run starts with no tool in flight. A previous run that died left
-    // its tool bookkeeping in the DB — clearing it keeps a refresh from
-    // showing a phantom "Running …" until this run's first tool starts.
-    await clearActiveToolState(sessionId, authResult.userId).catch((err) => {
-      console.error(`Failed to clear stale active tool state for ${sessionId}:`, err);
-    });
-
-    // Signal the generation to other connections, then clear stale buffered
-    // events from previous runs.
-    await registerActiveSession(authResult.userId, sessionId);
-    await resetSessionEvents(sessionId);
-
-    // A previous run's tracker may still be publishing `done` and
-    // unsubscribing. Wait for it: wiring a fresh tracker mid-teardown would
-    // leave this run unpersisted (and double-publish its events).
-    await waitForPersistenceTeardown(sessionId);
-    wireSessionPersistence(sessionId, authResult.userId, entry.session);
+    // Publish the generation, clear stale buffered events, and wire DB
+    // persistence — shared with the `chat_respond` tool's server-side runs.
+    await beginChatRun({ userId: authResult.userId, sessionId, session: entry.session });
 
     const images = await loadPromptImages(target.attachments);
     log("prompt", `claimed prompt for message ${target.id}`);
@@ -401,34 +364,15 @@ export async function GET(
    * resolution because it comes from the session's resource loader.
    */
   const dispatchRun = async (run: PreparedRun): Promise<boolean> => {
-    log("prompt", `sending prompt, message.id=${run.target.id}`);
-    try {
-      // A manual /compact can still be holding the session when a message
-      // arrives — Pi rejects a prompt while compaction runs, so wait it out
-      // and submit again rather than failing the message.
-      await submitDeferringToCompaction(run.entry.session, () =>
-        run.images.length > 0
-          ? run.entry.session.prompt(run.target.content, { images: run.images })
-          : run.entry.session.prompt(run.target.content),
-      );
-      run.entry.promptInFlight = false;
-      log("prompt", "session.prompt() settled");
-      return true;
-    } catch (err) {
-      run.entry.promptInFlight = false;
-      run.entry.lastPromptedMessageId = null;
-      console.error("session.prompt() failed:", err);
-      unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
-      // Notify connected clients, then clear the buffer so a later connect can
-      // retry the prompt instead of replaying the error.
-      publishSessionEvent(sessionId, "error", {
-        message: err instanceof Error ? err.message : String(err),
-      }).catch(console.error);
-      publishSessionEvent(sessionId, "done", {}).catch(console.error);
-      resetSessionEvents(sessionId).catch(console.error);
-      closeStream();
-      return false;
-    }
+    return dispatchChatRun({
+      userId: authResult.userId,
+      sessionId,
+      entry: run.entry,
+      content: run.target.content,
+      images: run.images,
+      log,
+      onRunFailed: closeStream,
+    });
   };
 
   /**

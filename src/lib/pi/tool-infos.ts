@@ -63,6 +63,16 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     category: "terminal",
     defaultPolicy: "auto",
   },
+  {
+    name: "show_file",
+    label: "Show File",
+    description: "Show a file as an attachment",
+    // Ships with the terminal bundle (it reads through Open Terminal) and is
+    // only available when terminal is configured, so it belongs to this
+    // category — which also keeps it declared rather than behind codemode.
+    category: "terminal",
+    defaultPolicy: "allow",
+  },
 
   // ── Chat ──────────────────────────────────────────────────────────
   {
@@ -73,11 +83,25 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultPolicy: "allow",
   },
   {
-    name: "show_file",
-    label: "Show File",
-    description: "Show a file as an attachment",
+    name: "chat_respond",
+    label: "Respond in Chat",
+    description: "Send a message into a chat and get its reply",
     category: "chatSearch",
-    defaultPolicy: "allow",
+    defaultPolicy: "ask",
+  },
+  {
+    name: "chat_create",
+    label: "Start Chat",
+    description: "Start a new chat and get its reply",
+    category: "chatSearch",
+    defaultPolicy: "ask",
+  },
+  {
+    name: "chat_delete",
+    label: "Delete Chat",
+    description: "Permanently delete a chat and its messages",
+    category: "chatSearch",
+    defaultPolicy: "ask",
   },
 
   // ── Email ─────────────────────────────────────────────────────────

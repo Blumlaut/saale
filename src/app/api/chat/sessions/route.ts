@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
+import { createChatSessionRow } from "@/lib/chat/create-session";
 import { getActiveSessions } from "@/lib/redis";
 
 /**
@@ -56,22 +57,13 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { title, temporary, modelProvider, modelName, thinkingLevel, toolConfig } = body;
 
-  // Sanitize title: strip null bytes, limit length
-  const sanitizedTitle = (title || "New Chat").replace(/\0/g, "").slice(0, 50);
-
-  const id = crypto.randomUUID();
-
-  const chatSession = await prisma.chatSession.create({
-    data: {
-      id,
-      userId: authResult.user.id,
-      title: sanitizedTitle,
-      temporary: !!temporary,
-      modelProvider,
-      modelName,
-      thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
-      toolConfig,
-    },
+  const chatSession = await createChatSessionRow(authResult.user.id, {
+    title,
+    temporary: !!temporary,
+    modelProvider,
+    modelName,
+    thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
+    toolConfig,
   });
 
   return NextResponse.json({

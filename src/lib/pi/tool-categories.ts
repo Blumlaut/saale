@@ -35,6 +35,8 @@ export interface ToolCategory {
   icon: LucideIcon;
   /** Enabled by default for new users */
   defaultEnabled: boolean;
+  /** How the category's tools reach the model unless the user changes it. */
+  defaultExposure: ToolExposure;
 }
 
 /**
@@ -48,6 +50,9 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Run commands and manage files in a sandboxed workspace",
     icon: Terminal,
     defaultEnabled: false,
+    // The core working tools: always declared, the model must reach for them
+    // without a discovery step.
+    defaultExposure: "direct",
   },
   {
     key: "email",
@@ -55,6 +60,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Access and manage email accounts",
     icon: Mail,
     defaultEnabled: true,
+    defaultExposure: "codemode",
   },
   {
     key: "jobs",
@@ -62,6 +68,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Manage scheduled background jobs",
     icon: ListTodo,
     defaultEnabled: true,
+    defaultExposure: "codemode",
   },
   {
     key: "calendar",
@@ -69,13 +76,15 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Access and manage calendar events",
     icon: Calendar,
     defaultEnabled: true,
+    defaultExposure: "codemode",
   },
   {
     key: "chatSearch",
     label: "Chat history",
-    description: "Search through past conversations",
+    description: "Search, respond in, and delete conversations",
     icon: History,
     defaultEnabled: true,
+    defaultExposure: "codemode",
   },
   {
     key: "web",
@@ -83,6 +92,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Search and fetch web content",
     icon: Globe,
     defaultEnabled: true,
+    defaultExposure: "direct",
   },
   {
     key: "memory",
@@ -90,6 +100,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Search persistent AI memories",
     icon: Brain,
     defaultEnabled: true,
+    defaultExposure: "direct",
   },
   {
     key: "tasks",
@@ -97,6 +108,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Create and manage tasks and to-dos",
     icon: CheckSquare,
     defaultEnabled: true,
+    defaultExposure: "codemode",
   },
   {
     key: "agentJobs",
@@ -104,6 +116,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Manage custom agent job definitions and runs",
     icon: Bot,
     defaultEnabled: true,
+    defaultExposure: "codemode",
   },
   {
     key: "infra",
@@ -111,6 +124,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Manage remote machines via SSH",
     icon: Server,
     defaultEnabled: false,
+    defaultExposure: "codemode",
   },
 ];
 
@@ -141,11 +155,21 @@ export const DEFAULT_TOOL_CONFIG: Record<ToolCategoryKey, boolean> = Object.from
  */
 export type ToolExposure = "direct" | "codemode" | "deferred";
 
-/** Per-category exposure. Sparse — an absent key means `direct`. */
+/** Per-category exposure. Sparse — an absent key means the category default. */
 export type ToolExposureConfig = Partial<Record<ToolCategoryKey, ToolExposure>>;
 
-/** Exposure used for any category without an explicit setting. */
-export const DEFAULT_TOOL_EXPOSURE: ToolExposure = "direct";
+/**
+ * Exposure used for a category the user has not changed.
+ *
+ * Saale hides the niche tool sets behind codemode by default: a chat that only
+ * needs memory and the web should not pay for the email, jobs, calendar and
+ * infra catalogs on every request. The three `direct` categories are the ones
+ * an ordinary conversation reaches for most — flipping them to codemode would
+ * make the common case slower (a script per lookup) to save context it uses.
+ */
+export const DEFAULT_TOOL_EXPOSURE: Record<ToolCategoryKey, ToolExposure> = Object.fromEntries(
+  TOOL_CATEGORIES.map((c) => [c.key, c.defaultExposure]),
+) as Record<ToolCategoryKey, ToolExposure>;
 
 /** Display metadata for the exposure selector, in preference order. */
 export const TOOL_EXPOSURES: Array<{

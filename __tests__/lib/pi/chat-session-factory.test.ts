@@ -56,9 +56,10 @@ describe("chat session factory", () => {
       const settings = await loadChatUserSettings("user-1");
       expect(settings.customInstructions).toBe("Be brief.");
       expect(settings.toolPolicies).toEqual({ bash: "ask" });
-      // Unknown categories and `direct` (the default) are dropped on read so a
-      // hand-edited row can never smuggle an invalid exposure into a session.
-      expect(settings.toolExposure).toEqual({ email: "codemode" });
+      // Unknown categories are dropped and entries at a category's default are
+      // stored as absence, so a hand-edited row can never smuggle an invalid
+      // exposure into a session.
+      expect(settings.toolExposure).toEqual({ jobs: "direct" });
     });
 
     it("returns nulls when the user has no settings row", async () => {
