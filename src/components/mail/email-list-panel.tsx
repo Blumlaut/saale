@@ -201,7 +201,7 @@ export function EmailListPanel({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 rounded-full"
+            className="h-8 w-8 rounded-full"
             onClick={onSyncAll}
             disabled={syncing}
             title={activeAccount ? "Sync account" : "Sync all accounts"}
@@ -215,7 +215,7 @@ export function EmailListPanel({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 rounded-full"
+            className="h-8 w-8 rounded-full"
             onClick={onAddAccount}
             title="Add account"
           >
@@ -223,7 +223,7 @@ export function EmailListPanel({
           </Button>
           <Button
             size="icon"
-            className="liquid-glass-accent h-7 w-7 rounded-full"
+            className="liquid-glass-accent h-8 w-8 rounded-full"
             onClick={onCompose}
             title="Compose"
           >

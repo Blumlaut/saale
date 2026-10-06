@@ -15,7 +15,15 @@ import {
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { fetchJson, deleteJson } from "@/lib/http";
 import { splitSessionsByActivity } from "@/lib/chat/session-recency";
-import { Trash2, Loader2, Ghost, GitBranch, ChevronRight, MoreVertical } from "lucide-react";
+import {
+  Trash2,
+  Loader2,
+  Ghost,
+  GitBranch,
+  ChevronRight,
+  MoreVertical,
+  MessageSquarePlus,
+} from "lucide-react";
 
 interface ChatSession {
   id: string;
@@ -114,7 +122,13 @@ function SessionRow({ session, active, deleting, onOpen, onDelete }: SessionRowP
   );
 }
 
-export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }) {
+export function SessionSidebar({
+  activeSessionId,
+  onNewChat,
+}: {
+  activeSessionId?: string;
+  onNewChat?: () => void;
+}) {
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,6 +203,19 @@ export function SessionSidebar({ activeSessionId }: { activeSessionId?: string }
       <div className="border-border/30 flex items-center border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Conversations</h2>
       </div>
+
+      {/* New chat — mobile sheet only (the desktop header owns its own action) */}
+      {onNewChat && (
+        <div className="border-border/30 border-b p-2">
+          <Button
+            className="liquid-glass-accent h-9 w-full justify-center gap-2 rounded-lg"
+            onClick={onNewChat}
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            New Chat
+          </Button>
+        </div>
+      )}
 
       {/* Session list */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

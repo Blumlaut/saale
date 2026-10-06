@@ -399,7 +399,7 @@ export function AiModelsTab({
                                   />
 
                                   <div className="min-w-0 flex-1 text-left">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
                                       <span
                                         className={cn(
                                           "truncate text-sm",
@@ -409,56 +409,60 @@ export function AiModelsTab({
                                       >
                                         {model.name}
                                       </span>
-                                      <Badge
-                                        variant="outline"
-                                        className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
-                                      >
-                                        {model.providerName}
-                                      </Badge>
-                                      {model.reasoning && (
+                                      <div className="flex flex-wrap items-center gap-1.5">
                                         <Badge
-                                          variant="secondary"
-                                          className="shrink-0 rounded-full"
+                                          variant="outline"
+                                          className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
                                         >
-                                          <Sparkles className="mr-0.5 h-3 w-3" />
-                                          Reasoning
+                                          {model.providerName}
                                         </Badge>
-                                      )}
-                                      {/* Where Saale defines the models, the badge is
-                                          the control: clicking it records vision. */}
-                                      {model.vision &&
-                                        (configurableProviders.has(providerKey) ? (
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="xs"
-                                            className="h-5 shrink-0 gap-1 rounded-full px-1.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400"
-                                            title="This model sees images — click to turn that off"
-                                            disabled={savingVision === `${providerKey}:${model.id}`}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleToggleVision(providerKey, model.id, false);
-                                            }}
-                                          >
-                                            {savingVision === `${providerKey}:${model.id}` ? (
-                                              <Loader2 className="h-3 w-3 animate-spin" />
-                                            ) : (
-                                              <Eye className="h-3 w-3" />
-                                            )}
-                                            Vision
-                                          </Button>
-                                        ) : (
+                                        {model.reasoning && (
                                           <Badge
-                                            variant="outline"
-                                            className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                            variant="secondary"
+                                            className="shrink-0 rounded-full"
                                           >
-                                            <Eye className="mr-0.5 h-3 w-3" />
-                                            Vision
+                                            <Sparkles className="mr-0.5 h-3 w-3" />
+                                            Reasoning
                                           </Badge>
-                                        ))}
-                                      {disabled && (
-                                        <EyeOff className="text-muted-foreground h-3 w-3 shrink-0" />
-                                      )}
+                                        )}
+                                        {/* Where Saale defines the models, the badge is
+                                            the control: clicking it records vision. */}
+                                        {model.vision &&
+                                          (configurableProviders.has(providerKey) ? (
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="xs"
+                                              className="h-5 shrink-0 gap-1 rounded-full px-1.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400"
+                                              title="This model sees images — click to turn that off"
+                                              disabled={
+                                                savingVision === `${providerKey}:${model.id}`
+                                              }
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleToggleVision(providerKey, model.id, false);
+                                              }}
+                                            >
+                                              {savingVision === `${providerKey}:${model.id}` ? (
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                              ) : (
+                                                <Eye className="h-3 w-3" />
+                                              )}
+                                              Vision
+                                            </Button>
+                                          ) : (
+                                            <Badge
+                                              variant="outline"
+                                              className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
+                                            >
+                                              <Eye className="mr-0.5 h-3 w-3" />
+                                              Vision
+                                            </Badge>
+                                          ))}
+                                        {disabled && (
+                                          <EyeOff className="text-muted-foreground h-3 w-3 shrink-0" />
+                                        )}
+                                      </div>
                                     </div>
                                     {model.contextWindow && model.contextWindow > 0 && (
                                       <span className="text-muted-foreground text-xs">
@@ -467,35 +471,39 @@ export function AiModelsTab({
                                     )}
                                   </div>
 
-                                  {isSelected && !disabled && (
-                                    <CheckCircle className="text-primary h-4 w-4 shrink-0" />
-                                  )}
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    {isSelected && !disabled && (
+                                      <CheckCircle className="text-primary h-4 w-4 shrink-0" />
+                                    )}
 
-                                  {/* A text-only model can be told to take images
-                                      where the endpoint is silent about it. */}
-                                  {!model.vision && configurableProviders.has(providerKey) && (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon-xs"
-                                      className="text-muted-foreground/60 shrink-0 hover:text-emerald-600 dark:hover:text-emerald-400"
-                                      title="Mark this model as able to see images"
-                                      disabled={savingVision === `${providerKey}:${model.id}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleToggleVision(providerKey, model.id, true);
-                                      }}
-                                    >
-                                      <Eye className="h-3.5 w-3.5" />
-                                    </Button>
-                                  )}
+                                    {/* A text-only model can be told to take images
+                                        where the endpoint is silent about it. */}
+                                    {!model.vision && configurableProviders.has(providerKey) && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-xs"
+                                        className="text-muted-foreground/60 shrink-0 hover:text-emerald-600 dark:hover:text-emerald-400"
+                                        title="Mark this model as able to see images"
+                                        disabled={savingVision === `${providerKey}:${model.id}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleToggleVision(providerKey, model.id, true);
+                                        }}
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
 
-                                  <Switch
-                                    checked={!disabled}
-                                    onCheckedChange={() => handleToggleModel(providerKey, model.id)}
-                                    className="scale-75 data-unchecked:opacity-50"
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
+                                    <Switch
+                                      checked={!disabled}
+                                      onCheckedChange={() =>
+                                        handleToggleModel(providerKey, model.id)
+                                      }
+                                      className="scale-75 data-unchecked:opacity-50"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
                                 </div>
                               );
                             })}

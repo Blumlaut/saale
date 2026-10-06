@@ -36,7 +36,7 @@ export function MobileNav() {
               />
               <span
                 className={cn(
-                  "max-w-full truncate text-[10px] font-medium",
+                  "max-w-full truncate text-[10px] font-medium tracking-tight max-[360px]:text-[9px]",
                   isActive && "text-foreground",
                 )}
               >
