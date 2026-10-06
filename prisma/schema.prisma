@@ -561,6 +561,8 @@ model AgentDefinition {
 
   /// Cron expression for scheduled runs (null = manual/LLM-triggered only)
   cronExpression String?
+  /// One-off run time — fires once, then cleared (takes precedence over cronExpression)
+  runAt          DateTime?
   /// When the definition was last executed (by schedule or manually)
   lastRunAt      DateTime?
 
@@ -574,6 +576,7 @@ model AgentDefinition {
 
   @@index([userId, enabled])
   @@index([userId, cronExpression])
+  @@index([userId, runAt])
   @@map("AgentDefinition")
 }
 

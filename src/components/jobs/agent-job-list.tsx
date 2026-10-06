@@ -16,6 +16,7 @@ import {
   Bot,
   Pencil,
   Calendar,
+  CalendarClock,
   MessageSquare,
   Settings,
   ChevronRight,
@@ -252,6 +253,12 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                         )}
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+                        {job.runAt && (
+                          <span className="flex items-center gap-1">
+                            <CalendarClock className="h-3 w-3" />
+                            Once {new Date(job.runAt).toLocaleString()}
+                          </span>
+                        )}
                         {job.cronExpression && (
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />

@@ -2,26 +2,59 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { Home, Shield, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
-import { isSidebarNavActive } from "@/lib/navigation/sidebar-nav";
+import { ADMIN_NAV_ITEMS } from "@/components/admin/admin-nav";
+import { useIsAdmin } from "@/hooks/use-is-admin";
 
+interface MobileNavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+function isItemActive(href: string, pathname: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * The mobile bottom bar. On app pages it mirrors the user's sidebar layout
+ * (admins get the Admin item appended); inside the admin panel it mirrors the
+ * admin sidebar and swaps in a Dashboard item as the way back to the app.
+ */
 export function MobileNav() {
   const pathname = usePathname();
   const { visibleItems } = useSidebarNav();
+  const isAdmin = useIsAdmin();
+  const inAdminPanel = pathname.startsWith("/admin");
+
+  const items: MobileNavItem[] = inAdminPanel
+    ? [
+        ...ADMIN_NAV_ITEMS.map(({ href, label, icon }) => ({ href, label, icon })),
+        { href: "/dashboard/chat", label: "Dashboard", icon: Home },
+      ]
+    : [
+        ...visibleItems.map((item) => ({
+          href: item.href,
+          label: item.mobileLabel ?? item.label,
+          icon: SIDEBAR_NAV_ICONS[item.id],
+        })),
+        ...(isAdmin ? [{ href: "/admin/models", label: "Admin", icon: Shield }] : []),
+      ];
 
   return (
     <nav className="border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
       {/* flex-1 + min-w-0 keeps every item on a 320px screen; truncate is a safety net */}
       <div className="flex h-14 items-center px-1">
-        {visibleItems.map((item) => {
-          const isActive = isSidebarNavActive(item.href, pathname);
-          const Icon = SIDEBAR_NAV_ICONS[item.id];
+        {items.map((item) => {
+          const isActive = isItemActive(item.href, pathname);
+          const Icon = item.icon;
 
           return (
             <Link
-              key={item.id}
+              key={item.href}
               href={item.href}
               className={cn(
                 "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 transition-colors",
@@ -40,7 +73,7 @@ export function MobileNav() {
                   isActive && "text-foreground",
                 )}
               >
-                {item.mobileLabel ?? item.label}
+                {item.label}
               </span>
             </Link>
           );

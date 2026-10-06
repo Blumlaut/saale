@@ -42,6 +42,23 @@ const TELEGRAM_AUTO = "auto";
 /** Select sentinel: show the manual chat ID input. */
 const TELEGRAM_MANUAL = "manual";
 
+type ScheduleMode = "none" | "cron" | "once";
+
+/** Format an ISO timestamp as a local `datetime-local` input value. */
+function toLocalInputValue(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** Parse a local `datetime-local` input value into an ISO timestamp. */
+function fromLocalInputValue(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error("Invalid date/time");
+  return date.toISOString();
+}
+
 export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobDialogProps) {
   const isEditMode = !!job;
 
@@ -64,6 +81,8 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
   } | null>(null);
   const [telegramChatsLoading, setTelegramChatsLoading] = useState(false);
   const [cronExpression, setCronExpression] = useState("");
+  const [runAt, setRunAt] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("none");
   const [enabled, setEnabled] = useState(true);
   const [toolConfig, setToolConfig] = useState<Record<string, boolean>>({});
 
@@ -85,6 +104,8 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
     setTelegramChats([]);
     setTelegramDefaultChat(null);
     setCronExpression("");
+    setRunAt("");
+    setScheduleMode("none");
     setEnabled(true);
     setToolConfig({});
     setError("");
@@ -107,6 +128,8 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
       setManualChatId(job.outputChannelId ?? "");
       setTelegramChatSelection(job.outputChannelId ? job.outputChannelId : TELEGRAM_AUTO);
       setCronExpression(job.cronExpression ?? "");
+      setRunAt(job.runAt ? toLocalInputValue(job.runAt) : "");
+      setScheduleMode(job.runAt ? "once" : job.cronExpression ? "cron" : "none");
       setEnabled(job.enabled);
       setToolConfig(job.toolConfig ?? {});
     } else {
@@ -187,8 +210,25 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
       resolvedOutputChannelId = outputChannelId.trim() || undefined;
     }
 
+    if (scheduleMode === "once" && !runAt) {
+      setError("Choose a date and time for the one-off run");
+      return;
+    }
+
     setLoading(true);
     setError("");
+
+    // Send both schedule fields explicitly (empty clears) so switching modes
+    // on an existing job actually removes the old schedule.
+    let resolvedRunAt = "";
+    try {
+      if (scheduleMode === "once") resolvedRunAt = fromLocalInputValue(runAt);
+    } catch (err) {
+      setError((err as Error).message);
+      setLoading(false);
+      return;
+    }
+    const resolvedCron = scheduleMode === "cron" ? cronExpression.trim() : "";
 
     try {
       const payload = {
@@ -201,7 +241,8 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
         thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
         outputChannel: outputChannel || undefined,
         outputChannelId: resolvedOutputChannelId,
-        cronExpression: cronExpression.trim() || undefined,
+        cronExpression: resolvedCron,
+        runAt: resolvedRunAt,
         enabled,
       };
 
@@ -415,20 +456,56 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
           </div>
 
           {/* Schedule */}
-          <div className="space-y-2">
-            <Label htmlFor="agent-cron">
-              Cron Schedule <span className="text-muted-foreground">(optional)</span>
-            </Label>
-            <Input
-              id="agent-cron"
-              value={cronExpression}
-              onChange={(e) => setCronExpression(e.target.value)}
-              placeholder="0 9 * * *"
-            />
-            <p className="text-muted-foreground text-xs">
-              Examples: <code className="bg-muted/50 rounded px-1">0 9 * * *</code> (daily at 9am),{" "}
-              <code className="bg-muted/50 rounded px-1">0 */6 * * *</code> (every 6 hours)
-            </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="agent-schedule-mode">
+                Schedule <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Select
+                value={scheduleMode}
+                onValueChange={(v) => setScheduleMode((v ?? "none") as ScheduleMode)}
+              >
+                <SelectTrigger id="agent-schedule-mode" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Manual only</SelectItem>
+                  <SelectItem value="cron">Recurring (cron)</SelectItem>
+                  <SelectItem value="once">Run once at…</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {scheduleMode === "cron" && (
+              <div className="space-y-2">
+                <Input
+                  id="agent-cron"
+                  value={cronExpression}
+                  onChange={(e) => setCronExpression(e.target.value)}
+                  placeholder="0 9 * * *"
+                />
+                <p className="text-muted-foreground text-xs">
+                  Examples: <code className="bg-muted/50 rounded px-1">0 9 * * *</code> (daily at
+                  9am), <code className="bg-muted/50 rounded px-1">0 */6 * * *</code> (every 6
+                  hours)
+                </p>
+              </div>
+            )}
+
+            {scheduleMode === "once" && (
+              <div className="space-y-2">
+                <Input
+                  id="agent-run-at"
+                  type="datetime-local"
+                  value={runAt}
+                  onChange={(e) => setRunAt(e.target.value)}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Runs once at this local time, then clears. Use Telegram as the output channel
+                  for reminders.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Tool Access */}

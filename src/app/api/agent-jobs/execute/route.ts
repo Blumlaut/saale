@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   const definition = await prisma.agentDefinition.findUnique({
     where: { id: definitionId },
-    select: { id: true, enabled: true, userId: true },
+    select: { id: true, enabled: true, userId: true, runAt: true },
   });
 
   if (!definition || !definition.enabled) {
@@ -56,6 +56,19 @@ export async function POST(request: NextRequest) {
       definitionId,
       userId: definition.userId,
     });
+
+    // A one-off schedule is consumed by this run — clearing runAt stops the
+    // delayed job from being re-added on the next worker restart.
+    if (definition.runAt) {
+      await prisma.agentDefinition
+        .update({ where: { id: definitionId }, data: { runAt: null } })
+        .catch((err) => {
+          console.error(
+            `[api/agent-jobs/execute] Failed to clear runAt for definition ${definitionId}:`,
+            err,
+          );
+        });
+    }
 
     return NextResponse.json({ success: true, runId: run.id });
   } catch (err) {

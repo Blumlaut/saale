@@ -103,6 +103,17 @@ describe("SidebarNavEditor", () => {
     expect(next.find((entry) => entry.id === "chat")?.hidden).toBe(false);
   });
 
+  it("keeps the pinned Settings item from being hidden", () => {
+    const { onChange } = renderEditor();
+
+    const settingsSwitch = screen.getByRole("switch", { name: "Show Settings in the sidebar" });
+    expect(settingsSwitch).toHaveAttribute("data-disabled");
+    expect(settingsSwitch).toHaveAttribute("aria-disabled", "true");
+    expect(settingsSwitch).toBeChecked();
+    fireEvent.click(settingsSwitch);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("disables reset for the default layout", () => {
     renderEditor();
 

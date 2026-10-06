@@ -10,6 +10,16 @@
  * dropped and ids added later show up by default.
  */
 
+/**
+ * Items a user cannot hide. Settings is the only place the sidebar itself is
+ * edited — hiding it would lock a user out of it.
+ */
+export const PINNED_SIDEBAR_NAV_IDS = ["settings"] as const satisfies readonly SidebarNavItemId[];
+
+export function isSidebarNavPinned(id: SidebarNavItemId): boolean {
+  return (PINNED_SIDEBAR_NAV_IDS as readonly string[]).includes(id);
+}
+
 /** Item ids in default display order. */
 export const SIDEBAR_NAV_ITEM_IDS = [
   "chat",
@@ -82,8 +92,8 @@ export function defaultSidebarNav(): SidebarNavEntry[] {
  * Resolve a stored layout into a complete, ordered entry list.
  *
  * Unknown ids and duplicates are dropped, items the layout doesn't mention are
- * appended in registry order (visible), and a layout that would hide everything
- * — which would leave no way back into the app — falls back to the default.
+ * appended in registry order (visible), and pinned items (Settings) are always
+ * forced back to visible — hiding them is not a valid layout.
  */
 export function normalizeSidebarNav(stored: unknown): SidebarNavEntry[] {
   const entries: SidebarNavEntry[] = [];
@@ -103,8 +113,9 @@ export function normalizeSidebarNav(stored: unknown): SidebarNavEntry[] {
     if (!seen.has(item.id)) entries.push({ id: item.id, hidden: false });
   }
 
-  if (entries.every((entry) => entry.hidden)) return defaultSidebarNav();
-  return entries;
+  return entries.map((entry) =>
+    isSidebarNavPinned(entry.id) ? { ...entry, hidden: false } : entry,
+  );
 }
 
 /** Whether a layout matches the default order with everything visible. */

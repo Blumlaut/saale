@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
+import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sidebar-nav";
 import type { EmailAccount } from "@/types/shared";
@@ -63,7 +64,7 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdmin = useIsAdmin();
   const searchRef = useRef<HTMLDivElement>(null);
   const [searchPosition, setSearchPosition] = useState<{ top: number; left: number } | null>(null);
 
@@ -93,17 +94,6 @@ export function DashboardNav() {
         setEmailLoading(false);
       })
       .catch(() => setEmailLoading(false));
-  }, []);
-
-  // Check if user is admin
-  useEffect(() => {
-    fetchJson<{ user?: { role?: string | null } }>("/api/auth/get-session")
-      .then((data) => {
-        setIsAdmin(data.user?.role === "admin");
-      })
-      .catch((err) => {
-        console.error("Failed to check admin status:", err);
-      });
   }, []);
 
   // Close search on Escape

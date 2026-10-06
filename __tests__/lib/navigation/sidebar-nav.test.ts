@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  PINNED_SIDEBAR_NAV_IDS,
   SIDEBAR_NAV_ITEMS,
   SIDEBAR_NAV_ITEM_IDS,
   defaultSidebarNav,
@@ -108,17 +109,21 @@ describe("normalizeSidebarNav", () => {
     expect(entries.at(-1)).toEqual({ id: "infra", hidden: false });
   });
 
-  it("reveals every item when the stored layout hides all of them", () => {
+  it("keeps pinned items visible even when the stored layout hides them", () => {
     const stored = SIDEBAR_NAV_ITEM_IDS.map((id) => ({ id, hidden: true }));
+    const entries = normalizeSidebarNav(stored);
 
-    expect(ids(normalizeSidebarNav(stored))).toEqual([...SIDEBAR_NAV_ITEM_IDS]);
-    expect(normalizeSidebarNav(stored).every((entry) => !entry.hidden)).toBe(true);
+    for (const id of PINNED_SIDEBAR_NAV_IDS) {
+      expect(entries.find((entry) => entry.id === id)?.hidden).toBe(false);
+    }
+    // The pinned items are the only visible ones — the sidebar is never empty.
+    expect(visibleIds(entries)).toEqual([...PINNED_SIDEBAR_NAV_IDS]);
   });
 
   it("keeps a layout that hides all but one item", () => {
     const stored = SIDEBAR_NAV_ITEM_IDS.map((id) => ({ id, hidden: id !== "chat" }));
 
-    expect(visibleIds(normalizeSidebarNav(stored))).toEqual(["chat"]);
+    expect(visibleIds(normalizeSidebarNav(stored))).toEqual(["chat", "settings"]);
   });
 });
 

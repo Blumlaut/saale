@@ -6,9 +6,16 @@ import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Bot, Users, Settings, ArrowLeft } from "lucide-react";
+import { ChevronRight, Bot, Users, Settings, ArrowLeft, type LucideIcon } from "lucide-react";
 
-const navItems = [
+export interface AdminNavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+/** The admin panel's nav items — shared by the desktop sidebar and the mobile bottom bar. */
+export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/models", label: "Models", icon: Bot },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/settings", label: "Settings", icon: Settings },
@@ -37,7 +44,7 @@ export function AdminNav() {
 
           {/* Nav Items */}
           <div className="space-y-0.5">
-            {navItems.map((item) => {
+            {ADMIN_NAV_ITEMS.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
               const Icon = item.icon;
 

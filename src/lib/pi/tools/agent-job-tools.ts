@@ -8,6 +8,7 @@ import {
   RESERVED_AGENT_NAME_ERROR,
   SYSTEM_MANAGED_ERROR,
 } from "@/lib/agent-jobs/system-managed";
+import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 
 /**
  * Create agent job tools with userId injection for user isolation.
@@ -49,6 +50,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
             outputChannel: true,
             outputChannelId: true,
             cronExpression: true,
+            runAt: true,
             lastRunAt: true,
             enabled: true,
             _count: { select: { runs: true } },
@@ -74,6 +76,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
                     outputChannel: d.outputChannel,
                     outputChannelId: d.outputChannelId,
                     cronExpression: d.cronExpression,
+                    runAt: d.runAt?.toISOString() ?? null,
                     lastRunAt: d.lastRunAt?.toISOString(),
                     enabled: d.enabled,
                     runCount: d._count.runs,
@@ -153,7 +156,13 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         cronExpression: Type.Optional(
           Type.String({
             description:
-              "Cron expression for scheduled runs (e.g., '0 9 * * *' for daily at 9am). Null for manual-only jobs.",
+              "Cron expression for recurring runs (e.g., '0 9 * * *' for daily at 9am). Null for manual-only jobs. Mutually exclusive with runAt.",
+          }),
+        ),
+        runAt: Type.Optional(
+          Type.String({
+            description:
+              "ISO 8601 timestamp for a one-off run (e.g. '2026-10-07T15:00:00Z'). The job runs once at that time — use this for reminders. Mutually exclusive with cronExpression.",
           }),
         ),
       }),
@@ -168,6 +177,14 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           ? rawModelId.replace("/", ":")
           : rawModelId;
 
+        let runAt: Date | null;
+        try {
+          runAt = normalizeRunAt(params.runAt);
+        } catch (err) {
+          throw new Error((err as Error).message);
+        }
+        const cronExpression = runAt ? null : params.cronExpression || null;
+
         const definition = await prisma.agentDefinition.create({
           data: {
             userId,
@@ -179,15 +196,16 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
             modelId: resolvedModelId,
             outputChannel: params.outputChannel || null,
             outputChannelId: params.outputChannelId || null,
-            cronExpression: params.cronExpression || null,
+            cronExpression,
+            runAt,
           },
         });
 
-        // Register the repeatable BullMQ job if the definition is scheduled
-        if (definition.enabled && definition.cronExpression) {
+        // Register the BullMQ schedule if the definition has one
+        if (definition.enabled && (definition.runAt || definition.cronExpression)) {
           await scheduleAgentDefinition(definition).catch((err) => {
             console.error(
-              `Failed to schedule agent definition ${definition.id} (${definition.cronExpression}):`,
+              `Failed to schedule agent definition ${definition.id} (${definition.runAt?.toISOString() ?? definition.cronExpression}):`,
               err,
             );
           });
@@ -211,6 +229,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
                     outputChannel: definition.outputChannel,
                     outputChannelId: definition.outputChannelId,
                     cronExpression: definition.cronExpression,
+                    runAt: definition.runAt?.toISOString() ?? null,
                     enabled: definition.enabled,
                     createdAt: definition.createdAt.toISOString(),
                   },
@@ -293,6 +312,12 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
             description: "Cron expression. Pass empty string to clear.",
           }),
         ),
+        runAt: Type.Optional(
+          Type.String({
+            description:
+              "ISO 8601 timestamp for a one-off run. Pass empty string to clear. Mutually exclusive with cronExpression.",
+          }),
+        ),
         enabled: Type.Optional(
           Type.Boolean({
             description: "Enable or disable the job.",
@@ -331,8 +356,24 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         if (params.outputChannel !== undefined) data.outputChannel = params.outputChannel || null;
         if (params.outputChannelId !== undefined)
           data.outputChannelId = params.outputChannelId || null;
-        if (params.cronExpression !== undefined)
-          data.cronExpression = params.cronExpression || null;
+        if (params.cronExpression !== undefined || params.runAt !== undefined) {
+          let nextRunAt = definition.runAt;
+          let nextCron = definition.cronExpression;
+          try {
+            if (params.runAt !== undefined) nextRunAt = normalizeRunAt(params.runAt);
+          } catch (err) {
+            throw new Error((err as Error).message);
+          }
+          if (params.cronExpression !== undefined)
+            nextCron = params.cronExpression || null;
+          if (params.runAt !== undefined && nextRunAt) {
+            nextCron = null;
+          } else if (nextCron) {
+            nextRunAt = null;
+          }
+          data.cronExpression = nextCron;
+          data.runAt = nextRunAt;
+        }
         if (params.enabled !== undefined) data.enabled = params.enabled;
 
         const updated = await prisma.agentDefinition.update({
@@ -340,13 +381,13 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           data,
         });
 
-        // Resync the BullMQ repeatable job: BullMQ does not update an existing
+        // Resync the BullMQ schedule: BullMQ does not update an existing
         // scheduler with the same jobId, so remove first, then re-add if scheduled.
         await unscheduleAgentDefinition(updated.id);
-        if (updated.enabled && updated.cronExpression) {
+        if (updated.enabled && (updated.runAt || updated.cronExpression)) {
           await scheduleAgentDefinition(updated).catch((err) => {
             console.error(
-              `Failed to re-schedule agent definition ${updated.id} (${updated.cronExpression}):`,
+              `Failed to re-schedule agent definition ${updated.id} (${updated.runAt?.toISOString() ?? updated.cronExpression}):`,
               err,
             );
           });
@@ -370,6 +411,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
                     outputChannel: updated.outputChannel,
                     outputChannelId: updated.outputChannelId,
                     cronExpression: updated.cronExpression,
+                    runAt: updated.runAt?.toISOString() ?? null,
                     enabled: updated.enabled,
                     updatedAt: updated.updatedAt.toISOString(),
                   },

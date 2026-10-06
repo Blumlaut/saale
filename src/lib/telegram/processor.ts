@@ -82,6 +82,36 @@ Telegram-specific guidelines:
 - Avoid excessive formatting — keep it clean and readable on mobile.`;
 
 /**
+ * Guidance for the agent when the user quote-replies to an earlier message.
+ *
+ * Telegram includes the full replied-to message, so the agent gets the exact
+ * context even when the original was sent by a job (which lives outside the
+ * chat's Pi session) or before a session rollover.
+ */
+interface QuotedMessageContext {
+  messageId: number;
+  text: string;
+  fromBot: boolean;
+  fromName: string;
+}
+
+/** Longest quoted message replayed into the prompt — Telegram caps messages at 4096. */
+const MAX_QUOTED_CHARS = 2000;
+
+function buildQuotedContext(quoted: QuotedMessageContext | undefined): string | null {
+  if (!quoted) return null;
+  const truncated =
+    quoted.text.length > MAX_QUOTED_CHARS
+      ? `${quoted.text.slice(0, MAX_QUOTED_CHARS)}…`
+      : quoted.text;
+  const source = quoted.fromBot ? "you (the assistant)" : `the user's contact ${quoted.fromName}`;
+  return (
+    `[The user is quote-replying to message #${quoted.messageId} in this Telegram chat, ` +
+    `sent by ${source}]:\n<quoted_message>\n${truncated}\n</quoted_message>`
+  );
+}
+
+/**
  * Process an incoming Telegram message.
  *
  * Uses a file-based persistent Pi session so the agent has full conversation
@@ -127,6 +157,8 @@ interface ProcessTelegramMessageParams {
   fileInfo?: TelegramFileInfo | undefined;
   messageThreadId?: number | undefined;
   replyToMessageId?: number | undefined;
+  /** The message the user quote-replied to, when they used Telegram's reply feature. */
+  replyToQuoted?: QuotedMessageContext | undefined;
 }
 
 /** The body of `processTelegramMessage`, run exclusively per chat. */
@@ -139,6 +171,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     messageCaption,
     fileInfo,
     replyToMessageId,
+    replyToQuoted,
     onSessionCreated,
     messageSeq,
     donePromise,
@@ -190,6 +223,11 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     const filePromptText = buildFilePromptText(processedFile, messageCaption);
     promptText = promptText ? `${promptText}\n${filePromptText}` : filePromptText;
   }
+
+  // The agent prompt adds any quote-reply context; the stored user message
+  // stays the user's own text so the web UI mirrors the Telegram thread.
+  const quotedContext = buildQuotedContext(replyToQuoted);
+  const agentPrompt = quotedContext ? `${quotedContext}\n\n${promptText}` : promptText;
 
   // 3. Save the user message to the chat session (for WebUI visibility)
   await saveUserMessage(sessionId, promptText);
@@ -262,7 +300,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
       definitionId: definition.id,
       userId,
       status: "pending",
-      prompt: promptText,
+      prompt: agentPrompt,
       systemPrompt: definition.systemPrompt,
       modelId,
       outputChannel: "telegram",
@@ -634,7 +672,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
           const promptOptions = processedFile?.imageData
             ? { images: [processedFile.imageData] }
             : undefined;
-          session.prompt(promptText, promptOptions).catch((err) => {
+          session.prompt(agentPrompt, promptOptions).catch((err) => {
             idleTimeout.clear();
             unsubscribe();
             reject(err);

@@ -206,18 +206,48 @@ export function agentSchedulerId(definitionId: string): string {
   return `${AGENT_SCHEDULER_PREFIX}${definitionId}`;
 }
 
-/**
- * Schedule a single agent definition as a BullMQ job scheduler.
- * Only schedules when the definition is enabled and has a cron expression.
- *
- * @param definition - The definition's id, enabled flag, and cron expression
- */
-export async function scheduleAgentDefinition(definition: {
+/** BullMQ job id for an agent definition's one-off (runAt) execution. */
+export function agentOnceJobId(definitionId: string): string {
+  return `agent-once-${definitionId}`;
+}
+
+/** The scheduling-relevant fields of an AgentDefinition. */
+export interface AgentSchedule {
   id: string;
   enabled: boolean;
   cronExpression: string | null;
-}): Promise<void> {
-  if (!definition.enabled || !definition.cronExpression) return;
+  runAt: Date | null;
+}
+
+/**
+ * Schedule a single agent definition.
+ *
+ * A one-off `runAt` takes precedence over the recurring cron expression: the
+ * run is enqueued as a delayed BullMQ job that fires once. Re-adding with the
+ * same jobId is a no-op while it is still queued, so a restart does not
+ * duplicate it; a past `runAt` fires immediately (catch-up after downtime).
+ *
+ * @param definition - The definition's id, enabled flag, and schedule fields
+ */
+export async function scheduleAgentDefinition(definition: AgentSchedule): Promise<void> {
+  if (!definition.enabled) return;
+
+  if (definition.runAt) {
+    const delay = Math.max(0, definition.runAt.getTime() - Date.now());
+    await getQueue().add(
+      "agent_execute",
+      { definitionId: definition.id },
+      {
+        jobId: agentOnceJobId(definition.id),
+        delay,
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
+    );
+    return;
+  }
+
+  if (!definition.cronExpression) return;
 
   await getQueue().upsertJobScheduler(
     agentSchedulerId(definition.id),
@@ -226,7 +256,7 @@ export async function scheduleAgentDefinition(definition: {
   );
 }
 
-/** Remove the BullMQ repeatable scheduler for an agent definition. */
+/** Remove both the recurring scheduler and any pending one-off job. */
 export async function unscheduleAgentDefinition(definitionId: string): Promise<void> {
   const schedulerId = agentSchedulerId(definitionId);
   await getQueue()
@@ -234,30 +264,34 @@ export async function unscheduleAgentDefinition(definitionId: string): Promise<v
     .catch((err) => {
       console.error(`Failed to remove agent definition scheduler ${schedulerId}:`, err);
     });
+
+  const jobId = agentOnceJobId(definitionId);
+  await getQueue()
+    .remove(jobId)
+    .catch((err) => {
+      console.error(`Failed to remove agent one-off job ${jobId}:`, err);
+    });
 }
 
 /**
  * (Re)sync an agent definition's schedule with its current state.
- * Removes any existing scheduler, then re-adds one if the definition is
- * enabled and has a cron expression. Use after create/update.
+ * Removes any existing scheduler/job, then re-adds one if the definition is
+ * enabled and has a one-off run time or a cron expression. Use after
+ * create/update.
  */
-export async function syncAgentDefinitionSchedule(definition: {
-  id: string;
-  enabled: boolean;
-  cronExpression: string | null;
-}): Promise<void> {
+export async function syncAgentDefinitionSchedule(definition: AgentSchedule): Promise<void> {
   await unscheduleAgentDefinition(definition.id);
   await scheduleAgentDefinition(definition);
 }
 
 /**
- * Schedule all agent definitions with cron expressions into BullMQ.
+ * Schedule all agent definitions with a schedule into BullMQ.
  * Call on worker startup. Also removes stale schedulers for definitions
- * that are disabled or no longer have a cron expression.
+ * that are disabled or no longer have a schedule.
  */
 export async function scheduleAllAgentDefinitions(): Promise<void> {
   const definitions = await prisma.agentDefinition.findMany({
-    select: { id: true, enabled: true, cronExpression: true },
+    select: { id: true, enabled: true, cronExpression: true, runAt: true },
   });
 
   for (const definition of definitions) {

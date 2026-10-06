@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import {
   isDefaultSidebarNav,
+  isSidebarNavPinned,
   moveSidebarNavEntry,
   sidebarNavItem,
   type SidebarNavEntry,
@@ -43,8 +44,12 @@ export function SidebarNavEditor({
 
   useEffect(() => setDraft(entries), [entries]);
 
-  const visibleCount = draft.filter((entry) => !entry.hidden).length;
   const customized = !isDefaultSidebarNav(entries);
+  // Pinned items (Settings) are always visible, so the "last visible" guard only
+  // counts the items a user can actually hide.
+  const visibleNonPinnedCount = draft.filter(
+    (entry) => !entry.hidden && !isSidebarNavPinned(entry.id),
+  ).length;
 
   const commit = (next: SidebarNavEntry[]) => {
     setDraft(next);
@@ -114,7 +119,8 @@ export function SidebarNavEditor({
           {draft.map((entry, index) => {
             const item = sidebarNavItem(entry.id);
             const Icon = SIDEBAR_NAV_ICONS[entry.id];
-            const isLastVisible = !entry.hidden && visibleCount === 1;
+            const isPinned = isSidebarNavPinned(entry.id);
+            const isLastVisible = !entry.hidden && !isPinned && visibleNonPinnedCount === 1;
 
             return (
               <Fragment key={entry.id}>
@@ -157,11 +163,15 @@ export function SidebarNavEditor({
 
                   <Switch
                     checked={!entry.hidden}
-                    disabled={isLastVisible}
+                    disabled={isPinned || isLastVisible}
                     onCheckedChange={(checked) => setHidden(entry.id, !checked)}
                     aria-label={`Show ${item.label} in the sidebar`}
                     title={
-                      isLastVisible ? "At least one sidebar item must stay visible" : undefined
+                      isPinned
+                        ? "Settings can't be hidden — it's the only place this layout is edited"
+                        : isLastVisible
+                          ? "At least one sidebar item must stay visible"
+                          : undefined
                     }
                   />
                 </div>
