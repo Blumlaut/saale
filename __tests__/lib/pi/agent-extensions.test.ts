@@ -43,8 +43,8 @@ function customTool(name: string, exposure?: ToolDefinition["exposure"]): ToolDe
     description: `${name} does a thing`,
     parameters: Type.Object({}),
     ...(exposure ? { exposure } : {}),
-    execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
-  } as ToolDefinition;
+    execute: async () => ({ content: [{ type: "text" as const, text: "ok" }], details: {} }),
+  } as unknown as ToolDefinition;
 }
 
 /** A session with a real codemode extension, built like Saale builds one. */

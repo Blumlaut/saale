@@ -36,7 +36,8 @@ vi.mock("@/lib/pi/session", () => ({
   createTerminalScopedTools: vi.fn().mockReturnValue([]),
 }));
 
-vi.mock("@/lib/pi/processing-state", () => ({
+vi.mock("@/lib/pi/processing-state", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/pi/processing-state")>()),
   createSystemPromptLoader: vi.fn().mockResolvedValue({}),
   // Extensions are not part of this lifecycle test; the executor only has to
   // start them, which is asserted in agent-extensions.test.ts.
@@ -52,6 +53,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 import { createAgentSession } from "@earendil-works/pi-coding-agent";
 import { executeAgentRun } from "@/lib/agent-jobs/executor";
+import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 
 // ─── Fake session ────────────────────────────────────────────────────────────
 
@@ -174,6 +176,38 @@ describe("executeAgentRun — provider failures", () => {
     expect(fake.session.prompt).toHaveBeenCalledWith("summarise my inbox", {
       expandPromptTemplates: false,
     });
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+  });
+
+  it("tells a job without its own system prompt how to reach hidden tools", async () => {
+    const fake = setup();
+    const result = await startRun(fake);
+
+    // Job sessions resolve tools with the user's exposure too, so a job must
+    // know that the tools it needs may be reachable only from codemode.
+    const prompt = String(vi.mocked(createSystemPromptLoader).mock.calls[0]?.[0] ?? "");
+    expect(prompt).toContain("You are an AI assistant executing an automated job");
+    expect(prompt).toContain("Tool use:");
+    expect(prompt).toContain("searchTools");
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+  });
+
+  it("leaves a job's own system prompt alone", async () => {
+    const fake = setup();
+    const result = track(
+      executeAgentRun(
+        "run-1",
+        { ...DEFINITION, systemPrompt: "Custom job instructions." },
+        "user-1",
+      ),
+    );
+    await flush();
+
+    expect(vi.mocked(createSystemPromptLoader).mock.calls[0]?.[0]).toBe("Custom job instructions.");
 
     fake.emit({ type: "agent_settled" });
     await result.promise;

@@ -14,6 +14,17 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("persistent memory system");
   });
 
+  it("always tells the model how to reach hidden tools", () => {
+    // Pi's own "use codemode to batch calls" guideline lives in the default
+    // system prompt, which a custom prompt replaces — so Saale states it here.
+    for (const config of [undefined, {}, { terminal: false, memory: false }]) {
+      const prompt = buildAgentSystemPrompt(config ? { toolConfig: config } : {});
+      expect(prompt).toContain("Tool use:");
+      expect(prompt).toContain("tools.<name>");
+      expect(prompt).toContain("searchTools");
+    }
+  });
+
   it("includes custom instructions when provided", () => {
     const prompt = buildAgentSystemPrompt({
       customInstructions: "Always respond in Spanish.",
@@ -34,6 +45,9 @@ describe("buildAgentSystemPrompt", () => {
   it("includes terminal instruction when terminal tool is enabled", () => {
     const prompt = buildAgentSystemPrompt({ toolConfig: { terminal: true } });
     expect(prompt).toContain("A Terminal is available");
+    // The file-tool usage rules Pi keeps in its own rules section.
+    expect(prompt).toContain("`read` rather than cat/sed");
+    expect(prompt).toContain("edits[].oldText` must match the file exactly");
   });
 
   it("skips terminal instruction when terminal tool is disabled", () => {
