@@ -1,13 +1,14 @@
 /**
- * Token limits for providers whose models are defined by Saale (self-hosted
- * OpenAI-compatible endpoints and discoverable catalogs).
+ * Token limits for the providers whose models are defined by Saale (the
+ * self-hosted OpenAI-compatible endpoint; every other provider's models come
+ * from Pi's catalog, which states their limits).
  *
  * Pi sends a model's `maxTokens` as the request's `max_tokens`, clamped to its
  * `contextWindow`. Providers reject an out-of-range request outright — DeepSeek
  * answers `400 Invalid max_tokens value, the valid range of max_tokens is
  * [1, 393216]` — so these values must describe the real endpoint, never a
- * guess. Neither is discoverable from `/models`, so they are stored per
- * provider and set by the user (see `provider_api_key`).
+ * guess. Neither can be read from an OpenAI-compatible endpoint, so they are
+ * stored per provider and set by the user (see `provider_api_key`).
  */
 
 import { definesProviderModels } from "./config";
@@ -63,7 +64,7 @@ export function parseProviderLimits(
   if ((contextWindow !== null || maxOutputTokens !== null) && !definesProviderModels(provider)) {
     return {
       error:
-        "Model limits can only be configured for OpenAI-compatible providers (OpenAI-compatible, OpenRouter, Together, Fireworks, Hugging Face)",
+        "Model limits can only be configured for the OpenAI-compatible endpoint — Pi's catalog states every other provider's limits",
     };
   }
 

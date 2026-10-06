@@ -1,15 +1,20 @@
-import { prisma } from "@/lib/db";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+
 import { decrypt } from "@/lib/crypto";
-import { DISCOVERABLE_PROVIDERS, getProviderBaseUrl } from "@/lib/providers/config";
-import { limitFields, type ProviderModelLimits } from "@/lib/providers/limits";
+import { prisma } from "@/lib/db";
 import {
   parseModelCapabilityMap,
   resolveModelInput,
   configuredVision,
   type ModelCapabilityMap,
 } from "@/lib/providers/capabilities";
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { CUSTOM_PROVIDER_ID, CUSTOM_PROVIDER_LABEL } from "@/lib/providers/config";
+import {
+  createProviderCredentialStore,
+  type ProviderScope,
+} from "@/lib/providers/credential-store";
+import { limitFields, type ProviderModelLimits } from "@/lib/providers/limits";
+import { createModelsStore, refreshModelCatalogInBackground } from "@/lib/providers/models-store";
 
 interface ProviderModelConfig {
   enabled: boolean;
@@ -114,7 +119,7 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
 }
 
 /**
- * A model definition for an id returned by a provider's `/models` endpoint.
+ * A model definition for an id returned by an OpenAI-compatible endpoint.
  *
  * Pi's `registerProvider` **replaces** a provider's model list — the extension's
  * `models` are composed over the catalog, not merged into it
@@ -127,9 +132,12 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
  * cost plus Pi's default limits hide the real context window.
  *
  * A catalog hit is therefore used verbatim; only genuinely unknown ids (a model
- * newer than the installed Pi catalog) fall back to conservative values — and a
- * recorded capability wins over both, because the endpoint that serves the model
+ * Pi has never heard of) fall back to conservative values — and a recorded
+ * capability wins over both, because the endpoint that serves the model
  * (or the person running it) knows better than the catalog does.
+ *
+ * Only Saale's own OpenAI-compatible endpoint goes through this path: every
+ * provider Pi defines is served by Pi's catalog, with all of its metadata.
  */
 function defineDiscoveredModel(
   runtime: ModelRuntime,
@@ -169,9 +177,9 @@ function defineDiscoveredModel(
 /**
  * Register a provider from its `/models` listing.
  *
- * Shared by the tenant runtime and the admin model browser so both see the same
- * models: the admin route used to duplicate this (with its own base URLs and
- * hardcoded limits), so a fix here would silently miss the admin page.
+ * Used for Saale's own OpenAI-compatible endpoint, whose models Pi cannot know.
+ * The admin model browser registers the global endpoint the same way, so both
+ * see the same models.
  *
  * @returns The model ids the provider listed (empty when discovery failed).
  */
@@ -206,125 +214,94 @@ export async function registerDiscoveredModels(
 }
 
 /**
- * Build a ModelRuntime for a user, with discovered models.
- * Merges global (admin) + user-scoped providers (user keys take priority).
- * Returns the runtime and a flat list of models for UI select options.
- * Models are filtered by global admin config (if any).
+ * Register the scope's OpenAI-compatible endpoint, if it has one.
+ *
+ * Its API key goes through `setRuntimeApiKey` rather than the credential store:
+ * Pi has no auth flow for an endpoint it does not know, and the limits and
+ * per-model capabilities Saale records are what describe its models.
  */
-export async function buildModelRuntime(userId: string) {
-  const globalConfig = await getGlobalModelConfig();
-
-  const keySelect = {
-    provider: true,
-    encryptedKey: true,
+async function registerCustomEndpoint(modelRuntime: ModelRuntime, scope: ProviderScope) {
+  const userId = scope.kind === "global" ? null : scope.userId;
+  const select = {
     baseUrl: true,
+    encryptedKey: true,
     contextWindow: true,
     maxOutputTokens: true,
     modelCapabilities: true,
-  };
+  } as const;
 
-  // Fetch global providers (userId = null)
-  const globalKeys = await prisma.providerApiKey.findMany({
-    where: { userId: null },
-    select: keySelect,
-  });
+  // There is one endpoint per scope, and the global scope has no compound-unique
+  // lookup (Prisma types `userId_provider.userId` as non-null).
+  const row = await (userId === null
+    ? prisma.providerApiKey.findFirst({
+        where: { userId: null, provider: CUSTOM_PROVIDER_ID },
+        select,
+      })
+    : prisma.providerApiKey.findUnique({
+        where: { userId_provider: { userId, provider: CUSTOM_PROVIDER_ID } },
+        select,
+      }));
 
-  // Fetch user-scoped providers (user keys override global ones)
-  const userKeys = await prisma.providerApiKey.findMany({
-    where: { userId },
-    select: keySelect,
-  });
+  const baseUrl = row?.baseUrl;
+  if (!baseUrl) return [];
 
-  // Merge: global keys as base, user keys override by provider
-  const mergedMap = new Map<
-    string,
-    { provider: string; encryptedKey: string; baseUrl: string | null } & ProviderModelLimits & {
-        /** The raw `ProviderApiKey.modelCapabilities` column — parsed below. */
-        modelCapabilities: unknown;
-      }
-  >();
-  for (const key of globalKeys) {
-    mergedMap.set(key.provider, key);
+  let apiKey: string | undefined;
+  try {
+    apiKey = decrypt(row.encryptedKey) || undefined;
+  } catch (err) {
+    // A key that cannot be decrypted still leaves the endpoint usable (a local
+    // server needs none), so report it and continue.
+    console.error(`Failed to decrypt the ${CUSTOM_PROVIDER_LABEL} API key:`, err);
   }
-  for (const key of userKeys) {
-    mergedMap.set(key.provider, key);
-  }
-  const storedKeys = Array.from(mergedMap.values());
 
-  // Credentials come from the database only. `ModelRuntime.create()` would
-  // otherwise read the host's ~/.pi/agent/auth.json, models.json and
-  // models-store.json (SDK docs, "Credential priority"), handing every tenant
-  // the operator's provider keys and private endpoints — and writing fetched
-  // catalogs into the operator's Pi directory.
+  if (apiKey) {
+    await modelRuntime.setRuntimeApiKey(CUSTOM_PROVIDER_ID, apiKey);
+  }
+
+  return registerDiscoveredModels(modelRuntime, {
+    provider: CUSTOM_PROVIDER_ID,
+    baseUrl,
+    apiKey,
+    limits: { contextWindow: row.contextWindow, maxOutputTokens: row.maxOutputTokens },
+    capabilities: parseModelCapabilityMap(row.modelCapabilities),
+  });
+}
+
+/**
+ * Build the Pi model runtime for a credential scope, with every model that
+ * scope can call.
+ *
+ * Pi owns the providers, the models and the auth: its catalog describes each
+ * model, its credential store resolves each provider, and its catalog overlay
+ * keeps the lists current. Saale supplies storage for both stores and never
+ * enumerates a provider itself.
+ *
+ * Models are filtered by the global admin config (if any). `customTools` and
+ * sessions are the caller's business — this is only the model world.
+ */
+async function buildRuntime(scope: ProviderScope) {
+  const globalConfig = await getGlobalModelConfig();
+
   const modelRuntime = await ModelRuntime.create({
-    credentials: new InMemoryCredentialStore(),
+    // Credentials come from the database. `ModelRuntime.create()` would
+    // otherwise read the host's ~/.pi/agent/auth.json, models.json and
+    // models-store.json (SDK docs, "Credential priority"), handing every tenant
+    // the operator's provider keys, private endpoints and catalog cache.
+    credentials: createProviderCredentialStore(scope),
     modelsPath: null,
+    modelsStore: createModelsStore(),
+    // Answer this request from the cached catalog; the overlay that a fetch
+    // produces is picked up by the next runtime (see below).
+    allowModelNetwork: false,
   });
 
-  // Set runtime API keys on the model runtime. The decrypted keys are kept for
-  // the discovery pass below — the same provider key must not be decrypted (or
-  // its failure logged) twice.
-  const apiKeys = new Map<string, string>();
-  for (const key of storedKeys) {
-    try {
-      const decryptedKey = decrypt(key.encryptedKey);
-      if (decryptedKey) {
-        apiKeys.set(key.provider, decryptedKey);
-        await modelRuntime.setRuntimeApiKey(key.provider, decryptedKey);
-      }
-    } catch (err) {
-      console.error(`Failed to decrypt the API key for provider ${key.provider}:`, err);
-    }
-  }
+  const discovered = await registerCustomEndpoint(modelRuntime, scope);
 
-  // Track discovered models for the flat list
-  const discoveredModels: Array<{ provider: string; id: string; name: string }> = [];
+  // Detached, throttled, and skipped entirely under PI_OFFLINE: Pi publishes a
+  // per-provider catalog so a model that shipped after the installed package is
+  // still selectable.
+  refreshModelCatalogInBackground(modelRuntime);
 
-  for (const key of storedKeys) {
-    const limits: ProviderModelLimits = {
-      contextWindow: key.contextWindow,
-      maxOutputTokens: key.maxOutputTokens,
-    };
-    // Only providers whose models Saale registers can carry a capability map; the
-    // stored JSON is untrusted (hand-edited, or written by an older version).
-    const capabilities = parseModelCapabilityMap(key.modelCapabilities);
-
-    // Isolate per provider: a bad key, an unreachable endpoint or a rejected
-    // model definition must not take down every other provider.
-    try {
-      const decryptedKey = apiKeys.get(key.provider);
-
-      // A self-hosted OpenAI-compatible endpoint: discover from the URL the
-      // user configured.
-      const baseUrl =
-        key.provider === "custom"
-          ? key.baseUrl
-          : DISCOVERABLE_PROVIDERS.has(key.provider)
-            ? getProviderBaseUrl(key.provider)
-            : null;
-
-      if (baseUrl) {
-        const modelIds = await registerDiscoveredModels(modelRuntime, {
-          provider: key.provider,
-          baseUrl,
-          apiKey: decryptedKey,
-          limits,
-          capabilities,
-        });
-
-        for (const m of modelIds) {
-          discoveredModels.push({ provider: key.provider, id: m, name: m });
-        }
-      }
-    } catch (err) {
-      console.error(`Failed to register provider ${key.provider}:`, err);
-    }
-  }
-
-  // Get available models from the runtime. `reasoning`, `contextWindow` and
-  // `vision` come along: the pickers badge models with them, and dropping them
-  // here meant the UI received a bare {id, name} list (the fields are optional in
-  // the response type, so nothing failed — the badges just never appeared).
   const available = modelRuntime.getAvailableSnapshot();
   const allModels: AvailableModel[] = available.map((m) => ({
     provider: m.provider,
@@ -335,22 +312,33 @@ export async function buildModelRuntime(userId: string) {
     vision: m.input.includes("image"),
   }));
 
-  // Add discovered custom models (not already in built-in list)
+  // The custom endpoint's models are registered above; carry the ones the
+  // availability snapshot has not picked up yet.
   const knownIds = new Set(allModels.map((m) => `${m.provider}:${m.id}`));
-  for (const dm of discoveredModels) {
-    if (!knownIds.has(`${dm.provider}:${dm.id}`)) {
-      const model = modelRuntime.getModel(dm.provider, dm.id);
-      allModels.push({
-        ...dm,
-        reasoning: model?.reasoning ?? false,
-        contextWindow: model?.contextWindow,
-        vision: model?.input.includes("image") ?? false,
-      });
-    }
+  for (const id of discovered) {
+    if (knownIds.has(`${CUSTOM_PROVIDER_ID}:${id}`)) continue;
+    const model = modelRuntime.getModel(CUSTOM_PROVIDER_ID, id);
+    allModels.push({
+      provider: CUSTOM_PROVIDER_ID,
+      id,
+      name: model?.name ?? id,
+      reasoning: model?.reasoning ?? false,
+      contextWindow: model?.contextWindow,
+      vision: model?.input.includes("image") ?? false,
+    });
   }
 
-  // Apply global admin model filtering
   const filteredModels = allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
 
   return { modelRuntime, models: filteredModels };
+}
+
+/** Build the model runtime for one user, with every provider they can reach. */
+export function buildModelRuntime(userId: string) {
+  return buildRuntime({ kind: "user", userId });
+}
+
+/** Build the model runtime for the global (admin) provider configuration. */
+export function buildGlobalModelRuntime() {
+  return buildRuntime({ kind: "global" });
 }
