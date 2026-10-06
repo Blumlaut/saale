@@ -256,3 +256,57 @@ describe("ToolCallView", () => {
     expect(screen.queryByText("Searched")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * A redacted payload is what the share endpoints serve. Its args and result
+ * were stripped server-side, so the diversion to `RedactedToolCall` is the only
+ * thing standing between a public page and a card built for the owner's data.
+ */
+describe("ToolCallView with a redacted tool call", () => {
+  it("shows the tool label and the server-written summary, not the raw card", () => {
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "infra_exec",
+          status: "error",
+          redacted: "Ran a command in the terminal",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Execute Command")).toBeInTheDocument();
+    expect(screen.getByText("Ran a command in the terminal")).toBeInTheDocument();
+    // The owner's InfraExecCard header — proof the diversion happened.
+    expect(screen.queryByText("Executed")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the raw tool name when the tool is not in the catalog", () => {
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({ name: "some_future_tool", redacted: "Ran a tool" })}
+      />,
+    );
+
+    expect(screen.getByText("some_future_tool")).toBeInTheDocument();
+    expect(screen.getByText("Ran a tool")).toBeInTheDocument();
+  });
+
+  it("never reaches a dedicated card, even with args and a result present (edge case)", () => {
+    // Defence in depth: if redaction ever regressed and left data on the call,
+    // the dedicated card must still not be the one that renders.
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "show_file",
+          args: { filePath: "/legoshiba/cloud/music/Wolfgun/secret.flac", description: "Backup" },
+          result: "ok",
+          redacted: "Shared a file",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Shared a file")).toBeInTheDocument();
+    expect(screen.queryByText(/secret\.flac/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Backup")).not.toBeInTheDocument();
+  });
+});

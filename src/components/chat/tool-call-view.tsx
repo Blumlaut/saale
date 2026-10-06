@@ -4,6 +4,7 @@ import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Wrench, ChevronDown, ChevronRight } from "lucide-react";
 import { FileCard } from "./file-card";
+import { RedactedToolCall } from "./redacted-tool-call";
 import { WebSearchCard, WebFetchCard } from "./web-tool-cards";
 import { MailToolCard } from "./mail-tool-cards";
 import { CalendarToolCard } from "./calendar-tool-cards";
@@ -19,8 +20,14 @@ import type { ToolCallData } from "./types";
  *
  * Shared by the interactive chat (MessageList) and the read-only share
  * viewer so both render tool calls identically.
+ *
+ * Redacted share payloads are diverted to `RedactedToolCall` first. Their
+ * `args` and `result` were stripped server-side, so the cards below would read
+ * empty fields — and `ShowFileCard` would try to fetch a file — given a chance.
  */
 export const ToolCallView = memo(function ToolCallView({ toolCall }: { toolCall: ToolCallData }) {
+  if (toolCall.redacted) return <RedactedToolCall toolCall={toolCall} />;
+
   return toolCall.name === "show_file" ? (
     <ShowFileCard toolCall={toolCall} />
   ) : toolCall.name === "codemode" ? (

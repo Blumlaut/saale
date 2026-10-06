@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { redactStoredToolCalls } from "@/lib/chat/redact-tool-calls";
 import type { Prisma } from "@prisma/client";
 
 /**
@@ -8,6 +9,10 @@ import type { Prisma } from "@prisma/client";
  *
  * Requires authentication. Creates a new ChatSession with all messages copied.
  * Idempotent: if the user already has a copy (tracked via sourceShareToken), returns existing session.
+ *
+ * Tool calls are redacted on the way in. The copier is not the data owner, and
+ * without this the shared page's redaction would be bypassable by signing in
+ * and copying the chat to read the raw results here.
  */
 export async function POST(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -85,7 +90,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ to
             role: m.role,
             content: m.content,
             thinking: m.thinking,
-            toolCalls: m.toolCalls,
+            toolCalls: redactStoredToolCalls(m.toolCalls),
             parentMessageId: m.parentMessageId,
             // Preserve original timestamps
             createdAt: m.createdAt,

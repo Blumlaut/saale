@@ -112,8 +112,9 @@ export function ShareButton({ sessionId }: ShareButtonProps) {
         <DialogHeader>
           <DialogTitle>Share this chat</DialogTitle>
           <DialogDescription>
-            Anyone with the link can view this conversation. They can sign in to copy it to their
-            own account.
+            Anyone with the link can view this conversation. Tool details are hidden — commands,
+            file contents, mail and calendar entries are stripped from the shared page. Viewers can
+            sign in to copy it to their own account.
           </DialogDescription>
         </DialogHeader>
 

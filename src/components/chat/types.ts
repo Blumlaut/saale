@@ -5,6 +5,11 @@ export interface ToolCallData {
   status: "running" | "completed" | "error";
   result: string | undefined;
   error: string | undefined;
+  /**
+   * Safe one-line description set by the share endpoints in place of
+   * `args`/`result`. Present only on redacted public-share payloads.
+   */
+  redacted?: string;
 }
 
 export interface AttachmentData {

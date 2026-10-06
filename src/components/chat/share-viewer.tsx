@@ -60,6 +60,9 @@ export function ShareViewer({ token, sessionTitle, messages, isAuthenticated }: 
             </span>
           </div>
           <h1 className="mt-0.5 truncate text-base font-semibold md:text-lg">{sessionTitle}</h1>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            Tool details are hidden in shared chats
+          </p>
         </div>
         {isAuthenticated ? (
           <Button
