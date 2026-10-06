@@ -63,7 +63,7 @@ export function ChatHeader({
     <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-2 md:gap-2 md:px-4 md:py-2.5">
       {/* Mobile: session list */}
       <div className="shrink-0 md:hidden">
-        <MobileSessionSheet activeSessionId={sessionId} />
+        <MobileSessionSheet activeSessionId={sessionId} onNewChat={onNewChat} />
       </div>
 
       {/* Editable session title */}

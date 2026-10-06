@@ -354,7 +354,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "infra · add machine",
     path: "/dashboard/infra",
     sources: [MACHINE_DIALOG],
-    open: (page) => openMachineDialog(page, 'header button:has-text("Add Machine")'),
+    open: (page) => openMachineDialog(page, 'button:has-text("Add Machine")'),
   },
   {
     name: "infra · setup ssh key",
@@ -362,7 +362,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MACHINE_DIALOG],
     mock: mockMachineCreate,
     open: async (page) => {
-      await openMachineDialog(page, 'header button:has-text("Add Machine")');
+      await openMachineDialog(page, 'button:has-text("Add Machine")');
       await visible(page, "#infra-name").fill("e2e-machine");
       await visible(page, "#infra-host").fill("example.com");
       await visible(page, "#infra-username").fill("deploy");
@@ -400,7 +400,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "tasks · new task",
     path: "/dashboard/tasks",
     sources: ["src/components/tasks/task-form.tsx"],
-    open: (page) => click(page, 'header button:has-text("New Task")'),
+    open: (page) => click(page, 'button:has-text("New Task")'),
   },
   {
     name: "tasks · delete task confirmation",

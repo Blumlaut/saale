@@ -16,12 +16,20 @@ interface ChatEmptyStateProps {
 export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptyStateProps) {
   const router = useRouter();
 
+  const handleNewChat = () => {
+    createChatSession({ temporary: temporaryMode })
+      .then((session) => router.push(`/dashboard/chat/${session.id}`))
+      .catch((err) => {
+        console.error("Failed to create chat session:", err);
+      });
+  };
+
   return (
     <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
       {/* Compact control row — session list (mobile) + temporary mode */}
       <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-1.5 md:px-4">
         <div className="shrink-0 md:hidden">
-          <MobileSessionSheet />
+          <MobileSessionSheet onNewChat={handleNewChat} />
         </div>
         <div className="ml-auto">
           <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
@@ -42,16 +50,7 @@ export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptySt
               Temporary mode — chat will be deleted on close
             </span>
           )}
-          <Button
-            className="liquid-glass-accent mt-6"
-            onClick={() => {
-              createChatSession({ temporary: temporaryMode })
-                .then((session) => router.push(`/dashboard/chat/${session.id}`))
-                .catch((err) => {
-                  console.error("Failed to create chat session:", err);
-                });
-            }}
-          >
+          <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
             <MessageSquarePlus className="mr-2 h-4 w-4" />
             New Chat
           </Button>

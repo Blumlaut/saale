@@ -162,8 +162,8 @@ export default function CalendarPage() {
           <div className="min-w-0 flex-1">
             <GlassPanel>
               <GlassPanelContent className="space-y-4 p-4">
-                {/* Toolbar — wraps to two rows on narrow screens */}
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                {/* Toolbar — two rows on narrow screens, one on md+ */}
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
                       <ChevronLeft className="h-4 w-4" />
@@ -174,7 +174,7 @@ export default function CalendarPage() {
                     <Button variant="outline" size="sm" onClick={() => navigate(1)}>
                       <ChevronRight className="h-4 w-4" />
                     </Button>
-                    <h2 className="ml-2 min-w-0 truncate text-sm font-semibold md:text-base">
+                    <h2 className="min-w-0 truncate text-sm font-semibold md:text-base">
                       {formatDateRange()}
                     </h2>
                   </div>

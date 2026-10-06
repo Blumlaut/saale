@@ -9,7 +9,13 @@ import { SessionSidebar } from "./session-sidebar";
  * (SheetTrigger renders the button) so it can sit inside header rows without
  * nesting interactive elements.
  */
-export function MobileSessionSheet({ activeSessionId }: { activeSessionId?: string }) {
+export function MobileSessionSheet({
+  activeSessionId,
+  onNewChat,
+}: {
+  activeSessionId?: string;
+  onNewChat?: () => void;
+}) {
   return (
     <Sheet>
       <SheetTrigger aria-label="Open session list">
@@ -19,7 +25,10 @@ export function MobileSessionSheet({ activeSessionId }: { activeSessionId?: stri
       </SheetTrigger>
       <SheetContent side="left" className="w-4/5 max-w-[280px] p-0">
         <div className="h-full">
-          <SessionSidebar {...(activeSessionId ? { activeSessionId } : {})} />
+          <SessionSidebar
+            {...(activeSessionId ? { activeSessionId } : {})}
+            {...(onNewChat ? { onNewChat } : {})}
+          />
         </div>
       </SheetContent>
     </Sheet>
