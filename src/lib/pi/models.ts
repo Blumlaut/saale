@@ -56,11 +56,23 @@ async function getGlobalModelConfig() {
 }
 
 /**
- * Check if a model is allowed by the global config.
- * - If no global config exists, all models are allowed.
- * - If provider has an explicit model list, only those models are allowed.
- * - If provider has an empty model list, no models from it are allowed.
- * - If provider is not in config, all models from it are allowed.
+ * Whether the admin's global configuration allows a model.
+ *
+ * The admin stores one entry per provider they have configured:
+ *
+ * - `enabled: false` is the provider switch — every model of that provider is
+ *   off.
+ * - a non-empty `models` list is an allowlist.
+ * - anything else (no entry, or an entry without a model list) means "no
+ *   restriction".
+ *
+ * An *empty* list deliberately means the same as no list. It used to mean "all
+ * disabled", but the admin UI cannot tell an empty selection from a provider it
+ * simply saved without touching, so a single Save silently switched off every
+ * model of every provider the admin had not toggled — including a local
+ * endpoint's, which then also disappeared from the very list used to switch it
+ * back on. Turning a provider off is what the provider switch (`enabled`) is
+ * for.
  */
 function isModelAllowed(
   globalConfig: Record<string, ProviderModelConfig> | null,
@@ -72,21 +84,13 @@ function isModelAllowed(
   const providerConfig = globalConfig[provider];
   if (!providerConfig) return true; // not in config = allowed
 
-  // The admin's provider toggle. It used to be ignored, so switching a
-  // provider off left its models selectable.
   if (providerConfig.enabled === false) return false;
 
-  // If explicit model list, check membership
   if (providerConfig.models && providerConfig.models.length > 0) {
     return providerConfig.models.includes(modelId);
   }
 
-  // Empty list means all disabled
-  if (providerConfig.models && providerConfig.models.length === 0) {
-    return false;
-  }
-
-  return true; // no model list set = all allowed
+  return true;
 }
 
 /**
@@ -221,7 +225,6 @@ export async function registerDiscoveredModels(
  * per-model capabilities Saale records are what describe its models.
  */
 async function registerCustomEndpoint(modelRuntime: ModelRuntime, scope: ProviderScope) {
-  const userId = scope.kind === "global" ? null : scope.userId;
   const select = {
     baseUrl: true,
     encryptedKey: true,
@@ -230,17 +233,26 @@ async function registerCustomEndpoint(modelRuntime: ModelRuntime, scope: Provide
     modelCapabilities: true,
   } as const;
 
-  // There is one endpoint per scope, and the global scope has no compound-unique
-  // lookup (Prisma types `userId_provider.userId` as non-null).
-  const row = await (userId === null
-    ? prisma.providerApiKey.findFirst({
-        where: { userId: null, provider: CUSTOM_PROVIDER_ID },
-        select,
-      })
-    : prisma.providerApiKey.findUnique({
-        where: { userId_provider: { userId, provider: CUSTOM_PROVIDER_ID } },
-        select,
-      }));
+  // One endpoint per scope. A user's own endpoint wins; otherwise they inherit
+  // the global one, exactly as they inherit a provider credential — an admin's
+  // local endpoint is usable by everyone, and its models must be pickable for
+  // everyone.
+  const own =
+    scope.kind === "user"
+      ? await prisma.providerApiKey.findUnique({
+          where: { userId_provider: { userId: scope.userId, provider: CUSTOM_PROVIDER_ID } },
+          select,
+        })
+      : null;
+
+  // The global scope has no compound-unique lookup (Prisma types
+  // `userId_provider.userId` as non-null), so it reads the row by its columns.
+  const row =
+    own ??
+    (await prisma.providerApiKey.findFirst({
+      where: { userId: null, provider: CUSTOM_PROVIDER_ID },
+      select,
+    }));
 
   const baseUrl = row?.baseUrl;
   if (!baseUrl) return [];
@@ -267,6 +279,16 @@ async function registerCustomEndpoint(modelRuntime: ModelRuntime, scope: Provide
   });
 }
 
+/** How a runtime's model list is derived. */
+interface BuildRuntimeOptions {
+  /**
+   * Whether to drop models the admin switched off. The admin's own model list
+   * passes `false`: it has to show a switched-off model in order to switch it
+   * back on.
+   */
+  applyModelFilter?: boolean;
+}
+
 /**
  * Build the Pi model runtime for a credential scope, with every model that
  * scope can call.
@@ -279,7 +301,7 @@ async function registerCustomEndpoint(modelRuntime: ModelRuntime, scope: Provide
  * Models are filtered by the global admin config (if any). `customTools` and
  * sessions are the caller's business — this is only the model world.
  */
-async function buildRuntime(scope: ProviderScope) {
+async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions = {}) {
   const globalConfig = await getGlobalModelConfig();
 
   const modelRuntime = await ModelRuntime.create({
@@ -328,9 +350,12 @@ async function buildRuntime(scope: ProviderScope) {
     });
   }
 
-  const filteredModels = allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
+  const models =
+    options.applyModelFilter === false
+      ? allModels
+      : allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
 
-  return { modelRuntime, models: filteredModels };
+  return { modelRuntime, models };
 }
 
 /** Build the model runtime for one user, with every provider they can reach. */
@@ -341,4 +366,12 @@ export function buildModelRuntime(userId: string) {
 /** Build the model runtime for the global (admin) provider configuration. */
 export function buildGlobalModelRuntime() {
   return buildRuntime({ kind: "global" });
+}
+
+/**
+ * Build the global configuration's runtime for the admin's model list: every
+ * model the configuration can offer, including the ones currently switched off.
+ */
+export function buildAdminModelList() {
+  return buildRuntime({ kind: "global" }, { applyModelFilter: false });
 }
