@@ -8,9 +8,10 @@ import {
   upsertWhitelistDisplayName,
 } from "@/lib/telegram/processor";
 import type { TelegramFileInfo } from "@/lib/telegram/files";
-import { createBot, sendTelegramMessage } from "@/lib/telegram/client";
+import { buildUnauthorizedMessage, createBot, sendTelegramMessage } from "@/lib/telegram/client";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
 import { handleModelCallback, sendModelPicker } from "@/lib/telegram/model-selection";
+import { extractQuotedMessage } from "@/lib/telegram/reply-context";
 import { enableAutoApprove, disableAutoApprove, STFU_DURATION_MS } from "@/lib/pi/auto-approve";
 import {
   attachTelegramSession,
@@ -25,33 +26,6 @@ import {
  */
 function isCommand(text: string, command: string): boolean {
   return text === command || text.startsWith(`${command}@`) || text.startsWith(`${command} `);
-}
-
-/**
- * Extract the message a user is quote-replying to, if any.
- *
- * Telegram includes the full replied-to message, so this gives the agent the
- * exact context even when the original was sent by a job (which lives outside
- * the chat's Pi session) or before a session rollover.
- */
-function extractQuotedMessage(reply: unknown):
-  | { messageId: number; text: string; fromBot: boolean; fromName: string }
-  | undefined {
-  if (!reply || typeof reply !== "object") return undefined;
-  const r = reply as {
-    message_id?: number;
-    text?: string;
-    caption?: string;
-    from?: { first_name?: string; username?: string; is_bot?: boolean };
-  };
-  const text = r.text ?? r.caption;
-  if (!text || typeof r.message_id !== "number") return undefined;
-  return {
-    messageId: r.message_id,
-    text,
-    fromBot: r.from?.is_bot === true,
-    fromName: r.from?.first_name ?? r.from?.username ?? "unknown",
-  };
 }
 
 /**
@@ -248,13 +222,9 @@ export async function POST(
   if (!whitelisted) {
     const bot = createBot(account.encryptedToken);
     try {
-      await bot.api.sendMessage(
-        message.chat.id,
-        "You are not authorized to use this bot. Contact the owner to get access.",
-        {
-          parse_mode: "HTML",
-        },
-      );
+      await bot.api.sendMessage(message.chat.id, buildUnauthorizedMessage(telegramUserId), {
+        parse_mode: "HTML",
+      });
     } catch (err) {
       console.error("Failed to send rejection message:", err);
     }

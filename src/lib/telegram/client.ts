@@ -138,6 +138,15 @@ export async function findAccountByWebhookSecret(webhookSecret: string): Promise
 }
 
 /**
+ * Rejection message for non-whitelisted senders. Includes the sender's own
+ * Telegram user ID so the bot owner can whitelist themselves without an
+ * external lookup bot. Sent with parse_mode "HTML".
+ */
+export function buildUnauthorizedMessage(telegramUserId: bigint): string {
+  return `You are not authorized to use this bot.\n\nYour Telegram user ID: <code>${telegramUserId.toString()}</code>\n\nIf you own this bot, add that ID in Saale → Integrations → Telegram. Otherwise, ask the bot's owner to whitelist you.`;
+}
+
+/**
  * Send a message to a Telegram chat.
  * Handles splitting long messages into chunks (Telegram limit: 4096 chars).
  *

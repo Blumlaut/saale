@@ -43,6 +43,7 @@ import { registerActiveSession } from "@/lib/redis";
 import { resetSessionEvents, subscribeSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
+import { buildQuotedContext, type QuotedMessageContext } from "./reply-context";
 import {
   beginTelegramRun,
   clearTelegramRun,
@@ -51,6 +52,7 @@ import {
   wasTelegramSessionInterrupted,
 } from "./session-registry";
 import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
+import { TELEGRAM_FORMATTING_GUIDE, SAALE_SYSTEM_PROMPT } from "./prompt";
 
 /**
  * Idle timeout for Telegram agent runs. If the session produces no events
@@ -59,57 +61,6 @@ import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
  * NOT a cap on total run duration.
  */
 const AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
-
-/**
- * Shared Saale system prompt (matches the web chat stream endpoint).
- * Telegram-specific formatting guidance is appended below.
- */
-const SAALE_SYSTEM_PROMPT = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
-
-Guidelines:
-- Be concise and direct — get to the point without unnecessary preamble.
-- Write naturally, like a capable colleague, not a generic AI.
-- Use bullet points or short paragraphs when listing things.
-- When uncertain, say so briefly rather than guessing.
-- Match the user's tone and language preference.`;
-
-/** Telegram-specific formatting addendum */
-const TELEGRAM_FORMATTING_GUIDE = `
-
-Telegram-specific guidelines:
-- Keep messages readable at a glance — avoid long blocks of text.
-- Use HTML formatting: <b>bold</b>, <i>italic</i>, <code>code</code>, <pre>preformatted</pre>.
-- Avoid excessive formatting — keep it clean and readable on mobile.`;
-
-/**
- * Guidance for the agent when the user quote-replies to an earlier message.
- *
- * Telegram includes the full replied-to message, so the agent gets the exact
- * context even when the original was sent by a job (which lives outside the
- * chat's Pi session) or before a session rollover.
- */
-interface QuotedMessageContext {
-  messageId: number;
-  text: string;
-  fromBot: boolean;
-  fromName: string;
-}
-
-/** Longest quoted message replayed into the prompt — Telegram caps messages at 4096. */
-const MAX_QUOTED_CHARS = 2000;
-
-function buildQuotedContext(quoted: QuotedMessageContext | undefined): string | null {
-  if (!quoted) return null;
-  const truncated =
-    quoted.text.length > MAX_QUOTED_CHARS
-      ? `${quoted.text.slice(0, MAX_QUOTED_CHARS)}…`
-      : quoted.text;
-  const source = quoted.fromBot ? "you (the assistant)" : `the user's contact ${quoted.fromName}`;
-  return (
-    `[The user is quote-replying to message #${quoted.messageId} in this Telegram chat, ` +
-    `sent by ${source}]:\n<quoted_message>\n${truncated}\n</quoted_message>`
-  );
-}
 
 /**
  * Process an incoming Telegram message.
@@ -160,7 +111,6 @@ interface ProcessTelegramMessageParams {
   /** The message the user quote-replied to, when they used Telegram's reply feature. */
   replyToQuoted?: QuotedMessageContext | undefined;
 }
-
 /** The body of `processTelegramMessage`, run exclusively per chat. */
 async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise<void> {
   const {

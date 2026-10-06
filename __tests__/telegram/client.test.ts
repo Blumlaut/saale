@@ -23,7 +23,8 @@ import {
   splitMarkdownV2,
   splitPlainText,
 } from "@/lib/telegram/message-split";
-import { sendTelegramMessage } from "@/lib/telegram/client";
+import { buildUnauthorizedMessage, sendTelegramMessage } from "@/lib/telegram/client";
+import { TELEGRAM_FORMATTING_GUIDE } from "@/lib/telegram/prompt";
 
 // ─── Chunk validation helpers ────────────────────────────────────────────────
 
@@ -374,5 +375,35 @@ describe("sendTelegramMessage", () => {
         .join("")
         .replace(/\s+/g, ""),
     ).toBe(text.replace(/\s+/g, ""));
+  });
+});
+
+// ─── Unauthorized message ────────────────────────────────────────────────────
+
+describe("buildUnauthorizedMessage", () => {
+  it("includes the sender's Telegram user ID and whitelist guidance", () => {
+    const msg = buildUnauthorizedMessage(BigInt("8123456789"));
+    expect(msg).toContain("<code>8123456789</code>");
+    expect(msg).toContain("not authorized");
+    expect(msg).toContain("whitelist");
+  });
+
+  it("handles multi-digit IDs beyond JS safe integer range", () => {
+    const id = BigInt("9007199254740993"); // 2^53 + 1 — above Number.MAX_SAFE_INTEGER
+    const msg = buildUnauthorizedMessage(id);
+    // bigint toString must round-trip exactly, not via Number()
+    expect(msg).toContain("<code>9007199254740993</code>");
+  });
+});
+
+// ─── Formatting guide ────────────────────────────────────────────────────────
+
+describe("TELEGRAM_FORMATTING_GUIDE", () => {
+  it("instructs the model to use Markdown, not HTML", () => {
+    expect(TELEGRAM_FORMATTING_GUIDE).toContain("**bold**");
+    expect(TELEGRAM_FORMATTING_GUIDE).toMatch(/Never use HTML tags/);
+    // Regression: the old guide told the model to emit <b>/<i> tags, which the
+    // MarkdownV2 sender escapes and ships as literal text.
+    expect(TELEGRAM_FORMATTING_GUIDE).not.toMatch(/Use HTML formatting/);
   });
 });
