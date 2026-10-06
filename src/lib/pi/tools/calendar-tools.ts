@@ -2,6 +2,12 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { pushEventToCalDAV } from "@/lib/calendar/caldav";
+import {
+  defaultEventEnd,
+  resolveEventTimeUpdate,
+  resolveNewEventTimes,
+} from "@/lib/calendar/event-times";
+import { formatWallClock } from "@/lib/calendar/timezone";
 
 /**
  * Create calendar tools with userId injection for user isolation.
@@ -236,7 +242,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
       name: "calendar_create",
       label: "Create Event",
       description:
-        "Create a new calendar event. If the target calendar is CalDAV-synced, the event is pushed to the remote server.",
+        "Create a new calendar event. Times without an offset are read as wall-clock times in the given timeZone (UTC when none is given); times with an offset are stored as-is. If the target calendar is CalDAV-synced, the event is pushed to the remote server.",
       parameters: Type.Object({
         calendarId: Type.String({
           description: "Calendar ID to create the event in.",
@@ -245,11 +251,13 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           description: "Event title.",
         }),
         dtStart: Type.String({
-          description: "Start datetime (ISO 8601).",
+          description:
+            "Start datetime (ISO 8601). Without an offset it is wall-clock time in 'timeZone', e.g. '2026-01-15T09:00:00' with timeZone 'Europe/Athens'.",
         }),
         dtEnd: Type.Optional(
           Type.String({
-            description: "End datetime (ISO 8601). Defaults to start + 1 hour.",
+            description:
+              "End datetime (ISO 8601), read the same way as dtStart. Defaults to start + 1 hour.",
           }),
         ),
         description: Type.Optional(
@@ -264,12 +272,13 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         ),
         allDay: Type.Optional(
           Type.Boolean({
-            description: "Whether this is an all-day event.",
+            description: "Whether this is an all-day event (dates are stored as UTC dates).",
           }),
         ),
         timeZone: Type.Optional(
           Type.String({
-            description: "Timezone identifier (e.g. 'Europe/Berlin').",
+            description:
+              "IANA timezone the times are written in (e.g. 'Europe/Berlin'). Required for wall-clock times that are not UTC.",
           }),
         ),
         recurrenceRule: Type.Optional(
@@ -291,21 +300,24 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           throw new Error(`Calendar ${params.calendarId} not found`);
         }
 
-        const uid = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@saale`;
-        const dtStart = new Date(params.dtStart);
-        const dtEnd = params.dtEnd
-          ? new Date(params.dtEnd)
-          : new Date(dtStart.getTime() + 60 * 60 * 1000);
+        const times = resolveNewEventTimes({
+          dtStart: params.dtStart,
+          dtEnd: params.dtEnd ?? null,
+          timeZone: params.timeZone ?? null,
+          allDay: params.allDay ?? false,
+        });
+        const dtEnd = times.dtEnd ?? defaultEventEnd(times.dtStart);
 
+        const uid = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@saale`;
         const eventData = {
           uid,
           summary: params.summary,
           description: params.description ?? null,
           location: params.location ?? null,
-          dtStart,
+          dtStart: times.dtStart,
           dtEnd,
           allDay: params.allDay ?? false,
-          timeZone: params.timeZone ?? null,
+          timeZone: times.timeZone,
           recurrenceRule: params.recurrenceRule ?? null,
           status: null,
           transparency: null,
@@ -338,6 +350,10 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
                     summary: event.summary,
                     dtStart: event.dtStart.toISOString(),
                     dtEnd: event.dtEnd?.toISOString() ?? null,
+                    timeZone: event.timeZone,
+                    localStart: event.timeZone
+                      ? formatWallClock(event.dtStart, event.timeZone)
+                      : null,
                   },
                   caldavPush: caldavResult
                     ? caldavResult.success
@@ -360,7 +376,8 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
     defineTool({
       name: "calendar_update",
       label: "Update Event",
-      description: "Update an existing calendar event by its ID.",
+      description:
+        "Update an existing calendar event by its ID. Times without an offset are read as wall-clock times in the event's timeZone (pass one to anchor them elsewhere). Changing only timeZone keeps the local time and moves the event.",
       parameters: Type.Object({
         id: Type.String({
           description: "Event ID.",
@@ -372,12 +389,19 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         ),
         dtStart: Type.Optional(
           Type.String({
-            description: "New start datetime (ISO 8601).",
+            description:
+              "New start datetime (ISO 8601). Without an offset it is wall-clock time in 'timeZone', e.g. '2026-01-15T09:00:00'.",
           }),
         ),
         dtEnd: Type.Optional(
           Type.String({
-            description: "New end datetime (ISO 8601).",
+            description: "New end datetime (ISO 8601), read the same way as dtStart.",
+          }),
+        ),
+        timeZone: Type.Optional(
+          Type.String({
+            description:
+              "IANA timezone for the times (e.g. 'Europe/Berlin'). Pass an empty string to clear it. Changing it alone keeps the local time and moves the event.",
           }),
         ),
         description: Type.Optional(
@@ -402,14 +426,29 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           throw new Error(`Event ${params.id} not found`);
         }
 
+        const timeUpdate = resolveEventTimeUpdate(
+          {
+            dtStart: event.dtStart,
+            dtEnd: event.dtEnd,
+            timeZone: event.timeZone,
+            allDay: event.allDay,
+          },
+          {
+            dtStart: params.dtStart,
+            dtEnd: params.dtEnd,
+            timeZone: params.timeZone,
+            allDay: params.allDay,
+          },
+        );
+
         const updateData: Record<string, unknown> = {};
         if (params.summary !== undefined) updateData.summary = params.summary;
-        if (params.dtStart !== undefined) updateData.dtStart = new Date(params.dtStart);
-        if (params.dtEnd !== undefined)
-          updateData.dtEnd = params.dtEnd ? new Date(params.dtEnd) : null;
         if (params.description !== undefined) updateData.description = params.description;
         if (params.location !== undefined) updateData.location = params.location;
         if (params.allDay !== undefined) updateData.allDay = params.allDay;
+        if (timeUpdate.dtStart !== undefined) updateData.dtStart = timeUpdate.dtStart;
+        if (timeUpdate.dtEnd !== undefined) updateData.dtEnd = timeUpdate.dtEnd;
+        if (timeUpdate.timeZone !== undefined) updateData.timeZone = timeUpdate.timeZone;
 
         const updated = await prisma.calendarEvent.update({
           where: { id: params.id },
@@ -428,6 +467,10 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
                     summary: updated.summary,
                     dtStart: updated.dtStart.toISOString(),
                     dtEnd: updated.dtEnd?.toISOString() ?? null,
+                    timeZone: updated.timeZone,
+                    localStart: updated.timeZone
+                      ? formatWallClock(updated.dtStart, updated.timeZone)
+                      : null,
                   },
                 },
                 null,

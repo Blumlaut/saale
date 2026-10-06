@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parseICS } from "@/lib/calendar/ics-import";
+import { resolveNewEventTimes } from "@/lib/calendar/event-times";
 
 /**
  * GET /api/calendar/events — Fetch events with optional date range and calendar filters
@@ -131,6 +132,17 @@ export async function POST(request: NextRequest) {
 
   const uid = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@saale`;
 
+  let times;
+  try {
+    times = resolveNewEventTimes({ dtStart, dtEnd, timeZone, allDay });
+  } catch (err) {
+    console.error("Rejected event with invalid times:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Invalid event times" },
+      { status: 400 },
+    );
+  }
+
   const event = await prisma.calendarEvent.create({
     data: {
       calendarId,
@@ -138,10 +150,10 @@ export async function POST(request: NextRequest) {
       summary: summary ?? "(no title)",
       description: description ?? null,
       location: location ?? null,
-      dtStart: new Date(dtStart),
-      dtEnd: dtEnd ? new Date(dtEnd) : null,
+      dtStart: times.dtStart,
+      dtEnd: times.dtEnd,
       allDay: allDay ?? false,
-      timeZone: timeZone ?? null,
+      timeZone: times.timeZone,
       recurrenceRule: recurrenceRule ?? null,
       status: status ?? null,
       transparency: transparency ?? null,
@@ -157,6 +169,7 @@ export async function POST(request: NextRequest) {
       dtStart: event.dtStart.toISOString(),
       dtEnd: event.dtEnd?.toISOString() ?? null,
       allDay: event.allDay,
+      timeZone: event.timeZone,
       source: event.source,
     },
   });

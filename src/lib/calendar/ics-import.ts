@@ -1,5 +1,6 @@
 // @ts-expect-error -- ical has no TypeScript declarations
 import ical from "ical";
+import { formatLocalWallClock, isValidTimeZone, resolveEventDateTime } from "./timezone";
 
 export interface ParsedEvent {
   uid: string;
@@ -28,6 +29,22 @@ function extractString(val: unknown): string | null {
     return (val as { val: string }).val || null;
   }
   return null;
+}
+
+/**
+ * Read the TZID of a parsed datetime field. The `ical` parser keeps it on the
+ * Date it returns (`start.tz`), not in a `tzid` property.
+ */
+function extractTimeZone(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const tz = (value as { tz?: unknown }).tz;
+  if (typeof tz === "string" && tz) return tz;
+  const params = (value as { params?: unknown }).params;
+  const paramTz =
+    params && typeof params === "object"
+      ? extractString((params as Record<string, unknown>).TZID)
+      : null;
+  return paramTz;
 }
 
 /**
@@ -69,16 +86,18 @@ function extractEvent(vevent: Record<string, unknown>): ParsedEvent {
   const dtStart = vevent.start as Date | { year: number; month: number; day: number } | undefined;
   const dtEnd = vevent.end as Date | { year: number; month: number; day: number } | undefined;
 
-  // Determine if all-day from multiple signals:
+  // Detect all-day from multiple signals:
   // 1. ical returns { year, month, day } objects (no getTime)
   // 2. The raw dtstart has VALUE=DATE param
+  // 3. ical flags date-only values on the Date it returns
   const isDateObject = dtStart && typeof dtStart === "object" && !("getTime" in dtStart);
   const rawDtStart = vevent.dtstart as
     { params?: Record<string, unknown>; val?: unknown } | undefined;
   const hasValueDate =
     typeof rawDtStart?.params === "object" &&
     (rawDtStart.params.VALUE === "DATE" || rawDtStart.params.value === "DATE");
-  const allDay = !!isDateObject || !!hasValueDate;
+  const isDateOnly = (dtStart as { dateOnly?: boolean } | undefined)?.dateOnly === true;
+  const allDay = !!isDateObject || !!hasValueDate || isDateOnly;
 
   const startDate =
     isDateObject && dtStart && "year" in dtStart
@@ -95,6 +114,29 @@ function extractEvent(vevent: Record<string, unknown>): ParsedEvent {
         : null
     : null;
 
+  const rawTimeZone = extractTimeZone(vevent.start) ?? extractTimeZone(vevent.end);
+  const timeZone = rawTimeZone && isValidTimeZone(rawTimeZone) ? rawTimeZone : null;
+  if (rawTimeZone && !timeZone) {
+    console.warn(
+      `Unknown TZID "${rawTimeZone}" on imported event ${String(vevent.uid)}; keeping the parsed wall clock as UTC`,
+    );
+  }
+  if (allDay && timeZone) {
+    console.warn(
+      `Ignoring TZID "${timeZone}" on all-day event ${String(vevent.uid)}; all-day dates are stored as UTC dates`,
+    );
+  }
+
+  // All-day events are stored as UTC midnight of their calendar date; timed
+  // events are stored as the instant their timezone gives them. The parser read
+  // both on the machine's clock, so re-anchor from its local wall clock.
+  const normalizeDate = (date: Date | null): Date | null => {
+    if (!date) return null;
+    const wallClock = formatLocalWallClock(date);
+    if (allDay) return resolveEventDateTime(wallClock, { allDay: true });
+    return timeZone ? resolveEventDateTime(wallClock, { timeZone }) : date;
+  };
+
   return {
     uid: (vevent.uid as string) || generateUID(),
     summary: (vevent.summary as string) || "(no title)",
@@ -107,10 +149,10 @@ function extractEvent(vevent: Record<string, unknown>): ParsedEvent {
       typeof vevent.sequence === "number"
         ? vevent.sequence
         : parseInt(String(vevent.sequence), 10) || 0,
-    dtStart: startDate,
-    dtEnd: endDate,
+    dtStart: normalizeDate(startDate) ?? startDate,
+    dtEnd: normalizeDate(endDate),
     allDay: !!allDay,
-    timeZone: (vevent["tzid"] as string) || null,
+    timeZone: allDay ? null : timeZone,
     recurrenceRule: vevent.rrule ? (vevent.rrule as { toString: () => string }).toString() : null,
     alerts: parseAlerts(vevent),
   };
