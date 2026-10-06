@@ -31,6 +31,7 @@ const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
 const MEMORIES_TAB = "src/app/dashboard/settings/tabs/memories-tab.tsx";
 const MCP_TAB = "src/app/dashboard/settings/tabs/mcp-tab.tsx";
 const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
+const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
 const SETTINGS = "/dashboard/settings";
 
 /** Realistic ED25519 public key — the content that used to widen the dialog. */
@@ -133,6 +134,71 @@ async function mockMachineNotes(page: Page) {
 }
 
 /** One configured MCP server, with a URL and description long enough to matter on a phone. */
+/**
+ * The provider list and a sign-in in its most demanding state: a device code, an
+ * authorization URL long enough to wrap, and a prompt waiting to be answered.
+ */
+async function mockProviderSignIn(page: Page) {
+  await page.route(/\/api\/providers(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      json: {
+        providers: [],
+        availableProviders: [
+          {
+            id: "opencode",
+            name: "OpenCode Zen",
+            baseUrl: null,
+            methods: [{ type: "oauth", label: "Sign in with OpenCode", subscription: true }],
+            modelCount: 80,
+            modelsConfigurable: false,
+            custom: false,
+            configured: false,
+            source: null,
+            isGlobal: false,
+          },
+        ],
+      },
+    });
+  });
+  await page.route(/\/api\/providers\/login(\?|$)/, async (route) => {
+    if (route.request().method() === "DELETE") return route.fulfill({ json: { success: true } });
+    if (route.request().method() === "POST") return route.fulfill({ json: { id: "e2e-login" } });
+    return route.fulfill({
+      json: {
+        state: {
+          id: "e2e-login",
+          providerId: "opencode",
+          authType: "oauth",
+          status: "pending",
+          events: [
+            {
+              kind: "device_code",
+              userCode: "WDJB-MJHT",
+              verificationUri: "https://opencode.ai/auth/device",
+              expiresInSeconds: 900,
+            },
+            {
+              kind: "auth_url",
+              url: "https://opencode.ai/authorize?client_id=saale&response_type=code&redirect_uri=https%3A%2F%2Fopencode.ai%2Fcallback&code_challenge=averylongchallengevaluethatkeepsgoingandgoingandgoing&state=abcdefghijklmnopqrstuvwxyz0123456789",
+              instructions: "Complete sign-in in your browser.",
+            },
+          ],
+          prompt: {
+            kind: "manual_code",
+            seq: 1,
+            message: "Complete login in your browser, or paste the final redirect URL here:",
+            placeholder:
+              "http://127.0.0.1:1455/auth/callback?code=very-long-code-value&state=abcdef",
+          },
+          error: null,
+          updatedAt: NOW,
+        },
+      },
+    });
+  });
+}
+
 async function mockMcpServers(page: Page) {
   await page.route(/\/api\/mcp\/servers(\?|$)/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
@@ -478,6 +544,19 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "settings · connect provider",
+    path: SETTINGS,
+    sources: [PROVIDER_LOGIN_SHEET],
+    mock: mockProviderSignIn,
+    open: async (page) => {
+      await openSettingsTab(page, "AI & Models");
+      await click(page, 'button:has-text("Sign in")');
+      await page.locator(':text("Connect OpenCode Zen"):visible').first().waitFor({
+        timeout: 10_000,
+      });
+    },
+  },
+  {
     name: "settings · add mcp server",
     path: SETTINGS,
     sources: [MCP_SHEET],
@@ -605,12 +684,6 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
 
   // ── Admin ─────────────────────────────────────────────────────────────────
-  {
-    name: "admin · models dialogs",
-    path: "/admin/models",
-    sources: ["src/app/admin/models/page.tsx"],
-    skip: "not automated yet — the admin overlays need their own `open` steps",
-  },
   {
     name: "admin · user dialogs",
     path: "/admin/users",
