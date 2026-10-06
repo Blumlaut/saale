@@ -18,6 +18,25 @@ const DEFAULT_TIMEOUT = 30; // seconds
 const MAX_OUTPUT_BYTES = 50 * 1024; // 50 KB
 const CONNECT_TIMEOUT = 10000; // 10 seconds for SSH handshake
 
+/**
+ * Max bytes one workspace transfer (download or upload) may move.
+ *
+ * Both directions are buffered whole in the app's memory, so this is the
+ * guard that keeps a single call from exhausting the server. Override with
+ * `INFRA_TRANSFER_MAX_BYTES`.
+ */
+export const MAX_TRANSFER_BYTES = (() => {
+  const raw = Number(process.env.INFRA_TRANSFER_MAX_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? raw : 50 * 1024 * 1024;
+})();
+
+/** Human-readable byte count for transfer errors and tool descriptions. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
 // ─── Types ──────────────────────────────────────────────────────
 
 export interface GeneratedKeyPair {
@@ -224,6 +243,18 @@ function sftpRead(sftp: SFTPWrapper, path: string): Promise<Buffer> {
 function sftpWrite(sftp: SFTPWrapper, path: string, content: string): Promise<void> {
   return new Promise((resolve, reject) => {
     sftp.writeFile(path, content, "utf8", (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+/**
+ * Write raw bytes to a file via SFTP.
+ */
+function sftpWriteBuffer(sftp: SFTPWrapper, path: string, content: Buffer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    sftp.writeFile(path, content, (err) => {
       if (err) reject(err);
       else resolve();
     });
@@ -503,6 +534,40 @@ export async function readFileRaw(
 }
 
 /**
+ * Read a remote file for a transfer into the workspace.
+ *
+ * Stats before reading: a directory or a file the workspace cannot hold must
+ * be rejected before its bytes are pulled into the app's memory.
+ */
+export async function readFileForTransfer(
+  machineId: string,
+  userId: string,
+  filePath: string,
+  maxBytes: number = MAX_TRANSFER_BYTES,
+): Promise<{ buffer: Buffer; size: number }> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    const sftp = await getSftp(ssh);
+    const stats = await sftpStat(sftp, filePath);
+
+    if (stats.isDirectory()) {
+      throw new Error(`${filePath} is a directory, not a file`);
+    }
+    if (stats.size > maxBytes) {
+      throw new Error(
+        `${filePath} is ${formatBytes(stats.size)}, over the ${formatBytes(maxBytes)} transfer limit`,
+      );
+    }
+
+    const buffer = await sftpRead(sftp, filePath);
+    return { buffer, size: buffer.length };
+  } finally {
+    disconnect();
+  }
+}
+
+/**
  * Stat a path on a remote machine via SFTP.
  */
 export async function statFile(
@@ -560,6 +625,29 @@ export async function writeFile(
     const sftp = await getSftp(ssh);
     await sftpWrite(sftp, filePath, content);
     return { ok: true };
+  } finally {
+    disconnect();
+  }
+}
+
+/**
+ * Write raw bytes to a file on a remote machine via SFTP.
+ *
+ * Unlike {@link writeFile} this preserves arbitrary binary content, so it is
+ * the counterpart to {@link readFileForTransfer}.
+ */
+export async function writeFileBuffer(
+  machineId: string,
+  userId: string,
+  filePath: string,
+  content: Buffer,
+): Promise<{ ok: boolean; size: number }> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    const sftp = await getSftp(ssh);
+    await sftpWriteBuffer(sftp, filePath, content);
+    return { ok: true, size: content.length };
   } finally {
     disconnect();
   }

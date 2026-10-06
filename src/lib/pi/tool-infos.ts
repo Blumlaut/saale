@@ -497,6 +497,22 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     summaryTemplate: "Editing {path} on {machineName}",
   },
   {
+    name: "infra_download_file",
+    label: "Download Remote File",
+    description: "Download a file from a remote machine into the workspace",
+    category: "infra",
+    defaultPolicy: "allow",
+    summaryTemplate: "Downloading {path} from {machineName}",
+  },
+  {
+    name: "infra_upload_file",
+    label: "Upload File",
+    description: "Upload a file from the workspace to a remote machine",
+    category: "infra",
+    defaultPolicy: "ask",
+    summaryTemplate: "Uploading to {path} on {machineName}",
+  },
+  {
     name: "infra_notes_delete",
     label: "Delete Machine Note",
     description: "Delete a machine note",

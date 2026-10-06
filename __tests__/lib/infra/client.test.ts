@@ -35,7 +35,9 @@ import {
   statFile,
   readFileRaw,
   readFileHead,
+  readFileForTransfer,
   writeFile,
+  writeFileBuffer,
 } from "@/lib/infra/client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -355,10 +357,14 @@ describe("SFTP file operations", () => {
    * Stand up a NodeSSH whose SFTP session behaves like a real remote
    * filesystem holding `existingPaths`, and record what it is asked to do.
    */
-  function setupSftp(existingPaths: string[], fileContent = "") {
+  function setupSftp(
+    existingPaths: string[],
+    fileContent = "",
+    statResult: { isDirectory: boolean; size: number } = { isDirectory: true, size: 42 },
+  ) {
     const existing = new Set(existingPaths);
     const createdDirs: string[] = [];
-    const written: { path: string; content: string }[] = [];
+    const written: { path: string; content: string | Buffer }[] = [];
 
     const sftp: FakeSftp = {
       mkdir: vi.fn((dirPath: string, cb: (err?: Error) => void) => {
@@ -377,9 +383,9 @@ describe("SFTP file operations", () => {
           return;
         }
         cb(undefined, {
-          isDirectory: () => true,
-          isFile: () => false,
-          size: 42,
+          isDirectory: () => statResult.isDirectory,
+          isFile: () => !statResult.isDirectory,
+          size: statResult.size,
           mtime: 1_700_000_000,
         });
       }),
@@ -387,9 +393,17 @@ describe("SFTP file operations", () => {
         cb(undefined, Buffer.from(fileContent, "utf8"));
       }),
       writeFile: vi.fn(
-        (writePath: string, content: string, _enc: string, cb: (err?: Error) => void) => {
+        (
+          writePath: string,
+          content: string | Buffer,
+          encOrCb: string | ((err?: Error) => void),
+          maybeCb?: (err?: Error) => void,
+        ) => {
+          // ssh2's writeFile takes an optional encoding before the callback for
+          // string content; binary writes pass the callback third.
+          const cb = typeof encOrCb === "function" ? encOrCb : maybeCb;
           written.push({ path: writePath, content });
-          cb();
+          cb?.();
         },
       ),
       open: vi.fn((_openPath: string, _flags: string, cb: (err?: Error, handle?: Buffer) => void) =>
@@ -504,6 +518,48 @@ describe("SFTP file operations", () => {
     await writeFile("machine-1", "user-1", "/tmp/app.conf", "key = value\n");
 
     expect(written).toEqual([{ path: "/tmp/app.conf", content: "key = value\n" }]);
+  });
+
+  it("writes raw bytes through SFTP", async () => {
+    const { written } = setupSftp(["/tmp"]);
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+
+    const result = await writeFileBuffer("machine-1", "user-1", "/tmp/logo.png", bytes);
+
+    expect(result).toEqual({ ok: true, size: 6 });
+    expect(written).toEqual([{ path: "/tmp/logo.png", content: bytes }]);
+    // The bytes are preserved exactly, not re-encoded as text.
+    expect((written[0]!.content as Buffer).equals(bytes)).toBe(true);
+  });
+
+  it("reads a file for transfer and reports its size", async () => {
+    setupSftp(["/var/log/app.log"], "hello", { isDirectory: false, size: 5 });
+
+    const { buffer, size } = await readFileForTransfer("machine-1", "user-1", "/var/log/app.log");
+
+    expect(buffer.toString("utf8")).toBe("hello");
+    expect(size).toBe(5);
+  });
+
+  it("rejects a directory before reading it", async () => {
+    const { sftp } = setupSftp(["/var/log"], "", { isDirectory: true, size: 0 });
+
+    await expect(readFileForTransfer("machine-1", "user-1", "/var/log")).rejects.toThrow(
+      /is a directory, not a file/,
+    );
+    expect(sftp.readFile).not.toHaveBeenCalled();
+  });
+
+  it("refuses an oversize file before reading it", async () => {
+    const { sftp } = setupSftp(["/var/log/huge.log"], "xxxxxxxxxx", {
+      isDirectory: false,
+      size: 100,
+    });
+
+    await expect(
+      readFileForTransfer("machine-1", "user-1", "/var/log/huge.log", 10),
+    ).rejects.toThrow(/over the 10 bytes transfer limit/);
+    expect(sftp.readFile).not.toHaveBeenCalled();
   });
 
   it("scopes the connection to the authenticated user", async () => {

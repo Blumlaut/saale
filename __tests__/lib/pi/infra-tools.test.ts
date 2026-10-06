@@ -33,9 +33,13 @@ vi.mock("@/lib/infra/client", () => ({
   executeCommand: vi.fn(),
   readFileRaw: vi.fn(),
   readFileHead: vi.fn(),
+  readFileForTransfer: vi.fn(),
   writeFile: vi.fn(),
+  writeFileBuffer: vi.fn(),
   statFile: vi.fn(),
   createDirectory: vi.fn(),
+  MAX_TRANSFER_BYTES: 50 * 1024 * 1024,
+  formatBytes: (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)}MB`,
   generateSshKeyPair: vi.fn(() => ({
     privateKey:
       "-----BEGIN OPENSSH PRIVATE KEY-----\nmock-private-key\n-----END OPENSSH PRIVATE KEY-----",
@@ -43,10 +47,20 @@ vi.mock("@/lib/infra/client", () => ({
   })),
 }));
 
+// Mock terminal client (the agent workspace a transfer lands in)
+vi.mock("@/lib/terminal/client", () => ({
+  isConfigured: vi.fn(() => true),
+  getTerminalHomeDir: vi.fn(() => "/home/deploy"),
+  listDirectory: vi.fn(),
+  readFileBinary: vi.fn(),
+  uploadFile: vi.fn(),
+}));
+
 // Import mocks for assertions
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import * as client from "@/lib/infra/client";
+import * as terminal from "@/lib/terminal/client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockInfraMachine = db.prisma.infraMachine as any;
@@ -112,13 +126,15 @@ describe("createInfraTools", () => {
     ctx.readFile = tools.find((t: { name: string }) => t.name === "infra_read_file")!;
     ctx.writeFile = tools.find((t: { name: string }) => t.name === "infra_write_file")!;
     ctx.editFile = tools.find((t: { name: string }) => t.name === "infra_edit_file")!;
+    ctx.downloadFile = tools.find((t: { name: string }) => t.name === "infra_download_file")!;
+    ctx.uploadFile = tools.find((t: { name: string }) => t.name === "infra_upload_file")!;
     ctx.notesList = tools.find((t: { name: string }) => t.name === "infra_notes_list")!;
     ctx.notesGet = tools.find((t: { name: string }) => t.name === "infra_notes_get")!;
     ctx.notesUpsert = tools.find((t: { name: string }) => t.name === "infra_notes_upsert")!;
     ctx.notesDelete = tools.find((t: { name: string }) => t.name === "infra_notes_delete")!;
   });
 
-  it("returns all 11 expected tools", () => {
+  it("returns all 13 expected tools", () => {
     const names = ctx.tools.map((t: { name: string }) => t.name);
     expect(names).toContain("infra_list_machines");
     expect(names).toContain("infra_add_machine");
@@ -127,11 +143,13 @@ describe("createInfraTools", () => {
     expect(names).toContain("infra_read_file");
     expect(names).toContain("infra_write_file");
     expect(names).toContain("infra_edit_file");
+    expect(names).toContain("infra_download_file");
+    expect(names).toContain("infra_upload_file");
     expect(names).toContain("infra_notes_list");
     expect(names).toContain("infra_notes_get");
     expect(names).toContain("infra_notes_upsert");
     expect(names).toContain("infra_notes_delete");
-    expect(names).toHaveLength(11);
+    expect(names).toHaveLength(13);
   });
 
   // Tool descriptions are prompt surface for every session type (chat, Telegram
@@ -975,6 +993,249 @@ describe("createInfraTools", () => {
 
     it("edits sequentially so the machine hand-off cannot be interleaved", () => {
       expect(ctx.editFile.executionMode).toBe("sequential");
+    });
+  });
+
+  describe("infra_download_file", () => {
+    beforeEach(() => {
+      vi.mocked(terminal.isConfigured).mockReturnValue(true);
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ id: "m1", name: "prod-web" });
+      vi.mocked(client.readFileForTransfer).mockResolvedValue({
+        buffer: Buffer.from("server {}\n", "utf8"),
+        size: 11,
+      });
+      vi.mocked(terminal.uploadFile).mockImplementation(async (fileName, _content, options) => ({
+        path: `${options.directory}/${fileName}`,
+        size: 11,
+      }));
+    });
+
+    it("pulls a remote file into the workspace root by default", async () => {
+      const result = await callExecute(ctx.downloadFile.execute, {
+        id: "m1",
+        path: "/etc/nginx/nginx.conf",
+      });
+      const text = (result.content as { type: string; text: string }[])[0]!.text;
+
+      expect(client.readFileForTransfer).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/etc/nginx/nginx.conf",
+      );
+      expect(terminal.uploadFile).toHaveBeenCalledWith(
+        "nginx.conf",
+        expect.any(Buffer),
+        expect.objectContaining({ directory: "/home/deploy", userId: "user-123" }),
+      );
+      expect(parseResult(text)).toMatchObject({
+        machine: "prod-web",
+        remotePath: "/etc/nginx/nginx.conf",
+        localPath: "/home/deploy/nginx.conf",
+        size: 11,
+        downloaded: true,
+      });
+      expect(parseMeta(text)).toMatchObject({
+        type: "infra_download_file",
+        machineId: "m1",
+        machineName: "prod-web",
+        path: "/etc/nginx/nginx.conf",
+        localPath: "/home/deploy/nginx.conf",
+        size: 11,
+      });
+    });
+
+    it("writes to a nested destination when one is given", async () => {
+      await callExecute(ctx.downloadFile.execute, {
+        id: "m1",
+        path: "/var/log/app.log",
+        dest: "downloads/app.log",
+      });
+
+      expect(terminal.uploadFile).toHaveBeenCalledWith(
+        "app.log",
+        expect.any(Buffer),
+        expect.objectContaining({ directory: "/home/deploy/downloads" }),
+      );
+    });
+
+    it("rejects a relative remote path", async () => {
+      await expect(
+        callExecute(ctx.downloadFile.execute, { id: "m1", path: "etc/nginx.conf" }),
+      ).rejects.toThrow(/path must be absolute/);
+      expect(client.readFileForTransfer).not.toHaveBeenCalled();
+    });
+
+    it("refuses a destination that escapes the workspace", async () => {
+      await expect(
+        callExecute(ctx.downloadFile.execute, {
+          id: "m1",
+          path: "/etc/passwd",
+          dest: "../../etc/passwd-copy",
+        }),
+      ).rejects.toThrow(/outside the workspace/);
+      expect(client.readFileForTransfer).not.toHaveBeenCalled();
+    });
+
+    it("throws when the terminal workspace is not configured", async () => {
+      vi.mocked(terminal.isConfigured).mockReturnValue(false);
+
+      await expect(
+        callExecute(ctx.downloadFile.execute, { id: "m1", path: "/etc/hosts" }),
+      ).rejects.toThrow(/Terminal workspace/);
+      expect(client.readFileForTransfer).not.toHaveBeenCalled();
+    });
+
+    it("surfaces an oversize file from the transfer read", async () => {
+      vi.mocked(client.readFileForTransfer).mockRejectedValue(
+        new Error("/var/log/huge.log is 200.0MB, over the 50.0MB transfer limit"),
+      );
+
+      await expect(
+        callExecute(ctx.downloadFile.execute, { id: "m1", path: "/var/log/huge.log" }),
+      ).rejects.toThrow(/transfer limit/);
+      expect(terminal.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it("throws when machine not found", async () => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
+
+      await expect(
+        callExecute(ctx.downloadFile.execute, { id: "nope", path: "/etc/hosts" }),
+      ).rejects.toThrow("Machine nope not found");
+      expect(client.readFileForTransfer).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("infra_upload_file", () => {
+    beforeEach(() => {
+      vi.mocked(terminal.isConfigured).mockReturnValue(true);
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ id: "m1", name: "prod-web" });
+      vi.mocked(terminal.listDirectory).mockResolvedValue({
+        dir: "/home/deploy",
+        entries: [{ name: "report.txt", type: "file", size: 12, modified: 0 }],
+      });
+      vi.mocked(terminal.readFileBinary).mockResolvedValue({
+        path: "/home/deploy/report.txt",
+        mimeType: "text/plain",
+        buffer: Buffer.from("hello world\n", "utf8"),
+      });
+      vi.mocked(client.writeFileBuffer).mockResolvedValue({ ok: true, size: 12 });
+      vi.mocked(client.createDirectory).mockResolvedValue({ ok: true });
+    });
+
+    it("sends a workspace file to the machine, creating its parent", async () => {
+      const result = await callExecute(ctx.uploadFile.execute, {
+        id: "m1",
+        source: "report.txt",
+        path: "/var/www/report.txt",
+      });
+      const text = (result.content as { type: string; text: string }[])[0]!.text;
+
+      expect(terminal.readFileBinary).toHaveBeenCalledWith("/home/deploy/report.txt", {
+        userId: "user-123",
+      });
+      expect(client.createDirectory).toHaveBeenCalledWith("m1", "user-123", "/var/www");
+      expect(client.writeFileBuffer).toHaveBeenCalledWith(
+        "m1",
+        "user-123",
+        "/var/www/report.txt",
+        expect.any(Buffer),
+      );
+      expect(parseResult(text)).toMatchObject({
+        machine: "prod-web",
+        localPath: "/home/deploy/report.txt",
+        remotePath: "/var/www/report.txt",
+        size: 12,
+        uploaded: true,
+      });
+      expect(parseMeta(text)).toMatchObject({
+        type: "infra_upload_file",
+        machineId: "m1",
+        machineName: "prod-web",
+        path: "/var/www/report.txt",
+        localPath: "/home/deploy/report.txt",
+        size: 12,
+      });
+    });
+
+    it("does not try to create a root-level parent", async () => {
+      await callExecute(ctx.uploadFile.execute, {
+        id: "m1",
+        source: "report.txt",
+        path: "/report.txt",
+      });
+
+      expect(client.createDirectory).not.toHaveBeenCalled();
+      expect(client.writeFileBuffer).toHaveBeenCalled();
+    });
+
+    it("rejects a relative remote path", async () => {
+      await expect(
+        callExecute(ctx.uploadFile.execute, { id: "m1", source: "report.txt", path: "www/x" }),
+      ).rejects.toThrow(/path must be absolute/);
+      expect(client.writeFileBuffer).not.toHaveBeenCalled();
+    });
+
+    it("refuses a source that escapes the workspace", async () => {
+      await expect(
+        callExecute(ctx.uploadFile.execute, {
+          id: "m1",
+          source: "../../etc/shadow",
+          path: "/tmp/shadow",
+        }),
+      ).rejects.toThrow(/outside the workspace/);
+      expect(terminal.readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it("refuses a source that does not exist", async () => {
+      vi.mocked(terminal.listDirectory).mockResolvedValue({ dir: "/home/deploy", entries: [] });
+
+      await expect(
+        callExecute(ctx.uploadFile.execute, { id: "m1", source: "gone.txt", path: "/tmp/x" }),
+      ).rejects.toThrow(/does not exist in the workspace/);
+      expect(client.writeFileBuffer).not.toHaveBeenCalled();
+    });
+
+    it("refuses a source that is a directory", async () => {
+      vi.mocked(terminal.listDirectory).mockResolvedValue({
+        dir: "/home/deploy",
+        entries: [{ name: "stuff", type: "directory", size: 0, modified: 0 }],
+      });
+
+      await expect(
+        callExecute(ctx.uploadFile.execute, { id: "m1", source: "stuff", path: "/tmp/x" }),
+      ).rejects.toThrow(/is a directory, not a file/);
+      expect(client.writeFileBuffer).not.toHaveBeenCalled();
+    });
+
+    it("refuses a file over the transfer limit before reading it", async () => {
+      vi.mocked(terminal.listDirectory).mockResolvedValue({
+        dir: "/home/deploy",
+        entries: [{ name: "big.iso", type: "file", size: 200 * 1024 * 1024, modified: 0 }],
+      });
+
+      await expect(
+        callExecute(ctx.uploadFile.execute, { id: "m1", source: "big.iso", path: "/tmp/big.iso" }),
+      ).rejects.toThrow(/transfer limit/);
+      expect(terminal.readFileBinary).not.toHaveBeenCalled();
+    });
+
+    it("throws when the terminal workspace is not configured", async () => {
+      vi.mocked(terminal.isConfigured).mockReturnValue(false);
+
+      await expect(
+        callExecute(ctx.uploadFile.execute, { id: "m1", source: "report.txt", path: "/tmp/x" }),
+      ).rejects.toThrow(/Terminal workspace/);
+      expect(client.writeFileBuffer).not.toHaveBeenCalled();
+    });
+
+    it("throws when machine not found", async () => {
+      vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
+
+      await expect(
+        callExecute(ctx.uploadFile.execute, { id: "nope", source: "report.txt", path: "/tmp/x" }),
+      ).rejects.toThrow("Machine nope not found");
+      expect(client.writeFileBuffer).not.toHaveBeenCalled();
     });
   });
 

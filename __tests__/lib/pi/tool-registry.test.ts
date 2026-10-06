@@ -76,6 +76,8 @@ vi.mock("@/lib/pi/tools/infra-tools", () => ({
     { name: "infra_exec", userId },
     { name: "infra_read_file", userId },
     { name: "infra_write_file", userId },
+    { name: "infra_download_file", userId },
+    { name: "infra_upload_file", userId },
     { name: "infra_notes_list", userId },
     { name: "infra_notes_get", userId },
     { name: "infra_notes_upsert", userId },
@@ -316,8 +318,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 31
-    expect(tools).toHaveLength(31);
+    // email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(12) = 33
+    expect(tools).toHaveLength(33);
     expect(tools.map((t) => t.name)).toEqual([
       "mail_accounts",
       "mail_list",
@@ -346,6 +348,8 @@ describe("resolveTools", () => {
       "infra_exec",
       "infra_read_file",
       "infra_write_file",
+      "infra_download_file",
+      "infra_upload_file",
       "infra_notes_list",
       "infra_notes_get",
       "infra_notes_upsert",
@@ -370,8 +374,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 36
-    expect(tools).toHaveLength(36);
+    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(12) = 38
+    expect(tools).toHaveLength(38);
   });
 
   it("passes userId to all user-scoped factories", async () => {

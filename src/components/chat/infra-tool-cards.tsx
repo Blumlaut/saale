@@ -18,6 +18,8 @@ import {
   Trash2,
   FileText,
   PenLine,
+  Download,
+  Upload,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { ToolCallData } from "./types";
@@ -108,6 +110,24 @@ interface InfraEditFileMeta {
   diff: string;
 }
 
+interface InfraDownloadFileMeta {
+  type: "infra_download_file";
+  machineId: string;
+  machineName: string;
+  path: string;
+  localPath: string;
+  size: number;
+}
+
+interface InfraUploadFileMeta {
+  type: "infra_upload_file";
+  machineId: string;
+  machineName: string;
+  path: string;
+  localPath: string;
+  size: number;
+}
+
 interface InfraNotesGetMeta {
   type: "infra_notes_get";
   machineId: string;
@@ -164,7 +184,9 @@ type InfraMeta =
   | InfraNotesUpsertMeta
   | InfraNotesDeleteMeta
   | InfraReadFileMeta
-  | InfraEditFileMeta;
+  | InfraEditFileMeta
+  | InfraDownloadFileMeta
+  | InfraUploadFileMeta;
 
 /**
  * Extract _saaleInfraMeta from a tool result string.
@@ -205,6 +227,13 @@ function extractInfraMeta(result: string | undefined): InfraMeta | null {
 function truncate(str: string, max: number): string {
   if (!str) return "";
   return str.length > max ? str.slice(0, max - 1) + "…" : str;
+}
+
+/** Human-readable file size for the transfer cards. */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /**
@@ -749,6 +778,75 @@ function InfraEditFileCard({
   );
 }
 
+// ─── infra_download_file / infra_upload_file ────────────────────────
+
+function InfraTransferCard({
+  meta,
+  toolCall,
+  direction,
+}: {
+  meta: InfraDownloadFileMeta | InfraUploadFileMeta;
+  toolCall: ToolCallData;
+  direction: "download" | "upload";
+}) {
+  const machineName = truncate(meta.machineName, MAX_MACHINE);
+  const remotePath = truncate(meta.path, MAX_PATH);
+  const localPath = truncate(meta.localPath, MAX_PATH);
+  const downloading = direction === "download";
+
+  return (
+    <div className="liquid-glass-inner rounded-xl">
+      <div className="flex items-center gap-2 px-3 py-2">
+        {downloading ? (
+          <Download className="text-muted-foreground h-3 w-3" />
+        ) : (
+          <Upload className="text-muted-foreground h-3 w-3" />
+        )}
+        <span className="text-xs font-medium">{downloading ? "Downloaded" : "Uploaded"}</span>
+        <span className="text-muted-foreground font-mono text-xs">{remotePath}</span>
+        <StatusBadge
+          toolCall={toolCall}
+          icon={<CheckCircle className="mr-1 h-2.5 w-2.5" />}
+          label={formatSize(meta.size)}
+        />
+      </div>
+
+      <div className="border-border/30 border-t px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <Server className="text-muted-foreground/60 h-3 w-3" />
+          <span className="text-muted-foreground text-[11px]">{machineName}</span>
+        </div>
+        <div className="mt-1 flex items-center gap-1.5">
+          <FileText className="text-muted-foreground/60 h-3 w-3 shrink-0" />
+          <span className="text-muted-foreground/70 truncate font-mono text-[11px]">
+            {localPath}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfraDownloadFileCard({
+  meta,
+  toolCall,
+}: {
+  meta: InfraDownloadFileMeta;
+  toolCall: ToolCallData;
+}) {
+  return <InfraTransferCard meta={meta} toolCall={toolCall} direction="download" />;
+}
+
+function InfraUploadFileCard({
+  meta,
+  toolCall,
+}: {
+  meta: InfraUploadFileMeta;
+  toolCall: ToolCallData;
+}) {
+  return <InfraTransferCard meta={meta} toolCall={toolCall} direction="upload" />;
+}
+
 // ─── infra_notes_get ────────────────────────────────────────────────
 
 function InfraNotesGetCard({
@@ -913,6 +1011,10 @@ export function InfraToolCard({ toolCall }: { toolCall: ToolCallData }) {
       return <InfraReadFileCard meta={meta} toolCall={toolCall} />;
     case "infra_edit_file":
       return <InfraEditFileCard meta={meta} toolCall={toolCall} />;
+    case "infra_download_file":
+      return <InfraDownloadFileCard meta={meta} toolCall={toolCall} />;
+    case "infra_upload_file":
+      return <InfraUploadFileCard meta={meta} toolCall={toolCall} />;
     case "infra_notes_get":
       return <InfraNotesGetCard meta={meta} toolCall={toolCall} />;
     case "infra_notes_upsert":
