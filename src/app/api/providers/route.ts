@@ -1,120 +1,101 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-import { PROVIDERS, definesProviderModels } from "@/lib/providers/config";
+import { prisma } from "@/lib/db";
+import { buildModelRuntime } from "@/lib/pi/models";
+import { providerCatalog, type ProviderCatalogView } from "@/lib/providers/catalog";
+import { CUSTOM_PROVIDER_ID, definesProviderModels } from "@/lib/providers/config";
 import { parseProviderLimits } from "@/lib/providers/limits";
 import { detectAndStoreProviderCapabilities } from "@/lib/providers/provider-capabilities";
+import { fetchOpenAIModels } from "@/lib/pi/models";
+
+/** The columns the provider UI needs from a configured row. */
+const ROW_COLUMNS = {
+  id: true,
+  provider: true,
+  label: true,
+  baseUrl: true,
+  contextWindow: true,
+  maxOutputTokens: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 /**
- * Fetch models from an OpenAI-compatible /models endpoint.
- */
-async function fetchOpenAIModels(
-  baseUrl: string,
-  apiKey?: string,
-): Promise<{ models: string[]; error?: string }> {
-  const url = `${baseUrl.replace(/\/+$/, "")}/models`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      signal: AbortSignal.timeout(8000),
-    });
-
-    if (!res.ok) {
-      return {
-        models: [],
-        error: `HTTP ${res.status} from ${url}`,
-      };
-    }
-
-    const data = await res.json();
-    if (!data?.data?.length) {
-      return {
-        models: [],
-        error: "No models returned by server",
-      };
-    }
-
-    return {
-      models: data.data.map((m: { id: string }) => m.id).slice(0, 200),
-    };
-  } catch (err) {
-    return {
-      models: [],
-      error: `${(err as Error).message} (checking ${url})`,
-    };
-  }
-}
-
-/**
- * GET /api/providers — List user's configured providers (user-scoped only).
- * Also returns global providers so the UI can show inherited access.
+ * GET /api/providers — every provider Pi can talk to, and what this user has
+ * configured (their own credentials, and the global ones they inherit).
  */
 export async function GET() {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  // User-scoped providers (user can manage these)
-  const userKeys = await prisma.providerApiKey.findMany({
-    where: { userId: authResult.user.id },
-    select: {
-      id: true,
-      provider: true,
-      label: true,
-      baseUrl: true,
-      contextWindow: true,
-      maxOutputTokens: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-    orderBy: { provider: "asc" },
-  });
+  const userId = authResult.user.id;
 
-  // Global providers (read-only for users)
-  const globalKeys = await prisma.providerApiKey.findMany({
-    where: { userId: null },
-    select: {
-      provider: true,
-      label: true,
-      baseUrl: true,
-      contextWindow: true,
-      maxOutputTokens: true,
-    },
-    orderBy: { provider: "asc" },
-  });
+  const [userRows, globalRows, { modelRuntime }] = await Promise.all([
+    prisma.providerApiKey.findMany({
+      where: { userId },
+      select: ROW_COLUMNS,
+      orderBy: { provider: "asc" },
+    }),
+    prisma.providerApiKey.findMany({
+      where: { userId: null },
+      select: ROW_COLUMNS,
+      orderBy: { provider: "asc" },
+    }),
+    buildModelRuntime(userId),
+  ]);
 
-  const globalProviderIds = new Set(globalKeys.map((k) => k.provider));
+  const ownRows = new Map(userRows.map((row) => [row.provider, row]));
+  const inheritedRows = new Map(
+    globalRows.filter((row) => !ownRows.has(row.provider)).map((row) => [row.provider, row]),
+  );
+  const rowFor = (provider: string) => ownRows.get(provider) ?? inheritedRows.get(provider);
+
+  const availableProviders: ProviderCatalogView[] = providerCatalog(modelRuntime).map((entry) => {
+    const row = rowFor(entry.id);
+    // Saale's own endpoint is configured by its row, not by Pi's auth state: a
+    // local server needs no key, and an empty key still resolves.
+    const status = entry.custom
+      ? {
+          configured: row !== undefined,
+          source: row ? (ownRows.has(entry.id) ? "stored" : "global") : null,
+        }
+      : (() => {
+          const resolved = modelRuntime.getProviderAuthStatus(entry.id);
+          return { configured: resolved.configured, source: resolved.source ?? null };
+        })();
+
+    return {
+      ...entry,
+      configured: status.configured,
+      source: status.source,
+      isGlobal: !ownRows.has(entry.id) && inheritedRows.has(entry.id),
+    };
+  });
 
   return NextResponse.json({
-    providers: userKeys.map((k) => ({
-      ...k,
-      configured: true,
-      isGlobal: false,
-      displayName: PROVIDERS[k.provider as keyof typeof PROVIDERS]?.label ?? k.provider,
+    // The caller's own rows — Saale's own endpoint is configured from one.
+    // Which providers a user *inherits* is in `availableProviders.isGlobal`.
+    providers: userRows.map((row) => ({
+      ...row,
+      displayName: displayName(availableProviders, row.provider),
     })),
-    globalProviders: globalKeys.map((k) => ({
-      ...k,
-      configured: true,
-      isGlobal: true,
-      displayName: PROVIDERS[k.provider as keyof typeof PROVIDERS]?.label ?? k.provider,
-    })),
-    availableProviders: Object.entries(PROVIDERS).map(([key, val]) => ({
-      id: key,
-      name: val.label,
-      configured: userKeys.some((u) => u.provider === key) || globalProviderIds.has(key),
-      // Only providers whose models Saale defines itself can have their metadata
-      // (limits, capabilities) configured — Pi's catalog already knows the rest.
-      modelsConfigurable: definesProviderModels(key),
-    })),
+    availableProviders,
   });
 }
 
+function displayName(providers: ProviderCatalogView[], provider: string): string {
+  return providers.find((entry) => entry.id === provider)?.name ?? provider;
+}
+
 /**
- * POST /api/providers — Add or update a provider API key
+ * POST /api/providers — configure Saale's own OpenAI-compatible endpoint.
+ *
+ * Every other provider is configured by signing in to it
+ * (`POST /api/providers/login`), because Pi owns how those providers
+ * authenticate: it decides which value to ask for, and how to resolve it.
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();
@@ -123,8 +104,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { provider, apiKey, label, baseUrl } = body;
 
-  if (!provider) {
-    return NextResponse.json({ error: "provider is required" }, { status: 400 });
+  if (provider !== CUSTOM_PROVIDER_ID) {
+    return NextResponse.json(
+      {
+        error:
+          "Only the OpenAI-compatible endpoint is configured here — sign in to a provider instead",
+      },
+      { status: 400 },
+    );
   }
 
   // apiKey is optional for local servers
@@ -135,21 +122,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // For custom providers, baseUrl is required
-  if (provider === "custom" && (!baseUrl || typeof baseUrl !== "string" || baseUrl.length < 5)) {
+  if (!baseUrl || typeof baseUrl !== "string" || baseUrl.length < 5) {
     return NextResponse.json(
       { error: "Base URL is required for OpenAI-compatible providers" },
       { status: 400 },
     );
   }
 
-  // Encrypt the API key (use empty string if not provided)
-  const encryptedKey = encrypt(apiKey || "");
-
   const parsedLimits = parseProviderLimits(provider, body);
   if ("error" in parsedLimits) {
     return NextResponse.json({ error: parsedLimits.error }, { status: 400 });
   }
+
+  const encryptedKey = encrypt(apiKey || "");
 
   const key = await prisma.providerApiKey.upsert({
     where: {
@@ -163,39 +148,31 @@ export async function POST(request: NextRequest) {
       provider,
       encryptedKey,
       label: label || "",
-      baseUrl: provider === "custom" ? baseUrl : null,
+      baseUrl,
       ...parsedLimits.limits,
     },
     update: {
       encryptedKey,
       label: label || "",
-      baseUrl: provider === "custom" ? baseUrl : null,
+      baseUrl,
       ...parsedLimits.limits,
     },
   });
 
-  // For custom providers, try to discover models, and ask the endpoint what
-  // those models can do while we are here — an import is where Saale learns
-  // that a local vision model accepts images.
-  let discoveredModels: string[] = [];
-  let modelError: string | undefined;
+  // Importing the endpoint is where Saale learns its models, and asking what
+  // they can do is how it learns that a local vision model accepts images.
+  const discoveredModels = await fetchOpenAIModels(baseUrl, apiKey || undefined);
   let visionModels = 0;
 
-  if (provider === "custom" && baseUrl) {
-    const result = await fetchOpenAIModels(baseUrl, apiKey || undefined);
-    discoveredModels = result.models;
-    modelError = result.error;
-
-    if (discoveredModels.length > 0) {
-      const summary = await detectAndStoreProviderCapabilities({
-        keyId: key.id,
-        stored: key.modelCapabilities,
-        baseUrl,
-        apiKey: apiKey || undefined,
-        modelIds: discoveredModels,
-      });
-      visionModels = summary.visionModels;
-    }
+  if (discoveredModels.length > 0) {
+    const summary = await detectAndStoreProviderCapabilities({
+      keyId: key.id,
+      stored: key.modelCapabilities,
+      baseUrl,
+      apiKey: apiKey || undefined,
+      modelIds: discoveredModels,
+    });
+    visionModels = summary.visionModels;
   }
 
   return NextResponse.json({
@@ -205,16 +182,15 @@ export async function POST(request: NextRequest) {
     contextWindow: key.contextWindow,
     maxOutputTokens: key.maxOutputTokens,
     configured: true,
-    displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
+    displayName: definesProviderModels(provider) ? "OpenAI-compatible" : provider,
     discoveredModels,
     modelCount: discoveredModels.length,
     visionModels,
-    modelError,
   });
 }
 
 /**
- * PATCH /api/providers — Update a provider's model limits without touching its
+ * PATCH /api/providers — Update the endpoint's model limits without touching its
  * API key (so the UI never has to re-submit a stored credential).
  */
 export async function PATCH(request: NextRequest) {
@@ -224,7 +200,7 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json();
   const provider = body.provider;
 
-  if (!provider || typeof provider !== "string") {
+  if (provider !== CUSTOM_PROVIDER_ID) {
     return NextResponse.json({ error: "provider is required" }, { status: 400 });
   }
 
@@ -260,7 +236,10 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * DELETE /api/providers — Remove a provider API key
+ * DELETE /api/providers — Disconnect a provider.
+ *
+ * The row *is* the credential for a provider Pi authenticates (Saale's
+ * credential store reads it), so removing it signs the provider out.
  */
 export async function DELETE(request: NextRequest) {
   const authResult = await requireSession();

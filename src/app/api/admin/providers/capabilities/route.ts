@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { requireAdmin } from "../../settings/auth";
-import { getProviderBaseUrl } from "@/lib/providers/config";
 import { parseVisionEdit } from "@/lib/providers/capabilities";
 import {
   detectAndStoreProviderCapabilities,
@@ -80,7 +79,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Provider is not configured" }, { status: 404 });
   }
 
-  const baseUrl = provider === "custom" ? key.baseUrl : getProviderBaseUrl(provider);
+  const baseUrl = key.baseUrl;
   if (!baseUrl) {
     return NextResponse.json({ error: "Provider has no base URL to probe" }, { status: 400 });
   }
