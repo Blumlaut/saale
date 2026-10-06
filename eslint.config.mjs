@@ -80,6 +80,26 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    // Settings may only be written through the settings registry
+    // (`src/lib/settings/update.ts`). A direct mutation elsewhere would bypass
+    // the registry's validation, its scope checks, and the eviction of pooled
+    // agent sessions whose model/tools the setting feeds — so it is an error,
+    // not a review comment.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/settings/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...["appSettings", "adminSettings"].map((model) => ({
+          selector: `MemberExpression[object.property.name='${model}'][property.name=/^(create|createMany|update|updateMany|upsert|delete|deleteMany)$/]`,
+          message:
+            `Write ${model} through @/lib/settings/update (setSetting / applyUserSettingsPatch) ` +
+            `instead of prisma.${model} directly — otherwise the change skips the settings registry.`,
+        })),
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

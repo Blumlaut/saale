@@ -120,6 +120,13 @@ await prisma.memory.updateMany({ where: { id: { in: memoryIds }, userId }, data:
 - **Prefer named helper functions over inline logic.** A `saveCompactionMessage()` in `src/lib/chat/` is better than the same Prisma call copy-pasted into three different files.
 - **When adding logic to a route, ask: "will this be needed elsewhere?"** If yes (or if it's more than a trivial one-liner), extract it first.
 
+## Settings
+
+- **User and admin settings are declared once, in `src/lib/settings/properties.ts`** — key, columns, validation, and whether a change must rebuild pooled agent sessions (`apply: "sessions"`). The agent's `settings_list` / `settings_set` tools and the settings API routes all read that registry.
+- **Never write `prisma.appSettings` / `prisma.adminSettings` directly.** Go through `setSetting()` or `applyUserSettingsPatch()` / `applyAdminSettingsPatch()` in `src/lib/settings/update.ts`; ESLint rejects a direct write elsewhere, because it would skip the registry's validation, its scope check, and session eviction.
+- **A new tool category, purpose, tool or sidebar item needs no work here** — those properties are derived from `TOOL_CATEGORIES`, `MODEL_PURPOSES`, `ALL_TOOL_INFOS` and `SIDEBAR_NAV_ITEMS`. A new *column* needs one registry entry; `__tests__/lib/settings/properties.test.ts` fails CI if it is missed.
+- **Admin-scope properties are role-checked at write time**, not only in the tool: a non-admin must not be able to change global settings even if they reach the write path another way.
+
 ## Architecture
 
 - `src/app/` — Next.js routes and layouts

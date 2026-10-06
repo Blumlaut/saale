@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 const mockRequireSession = vi.fn();
 const mockFindUnique = vi.fn();
 const mockUpsert = vi.fn();
+const mockUpdate = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   requireSession: (...args: unknown[]) => mockRequireSession(...args),
@@ -15,8 +16,16 @@ vi.mock("@/lib/db", () => ({
     appSettings: {
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
       upsert: (...args: unknown[]) => mockUpsert(...args),
+      update: (...args: unknown[]) => mockUpdate(...args),
     },
   },
+}));
+
+// The route writes through the settings registry, which evicts pooled sessions
+// for session-affecting settings. Sidebar layout is not one of them, but the
+// module is imported either way — keep it out of the graph.
+vi.mock("@/lib/pi/agent-pool", () => ({
+  evictUserSessions: vi.fn().mockResolvedValue(0),
 }));
 
 import { GET, PATCH } from "@/app/api/settings/sidebar-nav/route";
@@ -35,23 +44,28 @@ function patch(body: unknown) {
   });
 }
 
-interface UpsertArgs {
+interface UpdateArgs {
   where: { userId: string };
-  create: Record<string, unknown>;
-  update: Record<string, unknown>;
+  data: Record<string, unknown>;
 }
 
-/** The arguments of the last `prisma.appSettings.upsert` call. */
-function lastUpsert(): UpsertArgs {
-  const args = mockUpsert.mock.calls.at(-1)?.[0] as UpsertArgs | undefined;
-  if (!args) throw new Error("prisma.appSettings.upsert was not called");
+/** The arguments of the last `prisma.appSettings.update` call. */
+function lastUpdate(): UpdateArgs {
+  const args = mockUpdate.mock.calls.at(-1)?.[0] as UpdateArgs | undefined;
+  if (!args) throw new Error("prisma.appSettings.update was not called");
   return args;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   auth();
-  mockUpsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => create);
+  mockUpsert.mockResolvedValue({ id: "settings-1", userId: USER_ID, sidebarItems: null });
+  mockUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+    id: "settings-1",
+    userId: USER_ID,
+    sidebarItems: null,
+    ...data,
+  }));
 });
 
 describe("GET /api/settings/sidebar-nav", () => {
@@ -126,15 +140,9 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(mockUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { userId: USER_ID },
-        create: expect.objectContaining({ userId: USER_ID, sidebarItems: expect.any(Array) }),
-        update: { sidebarItems: expect.any(Array) },
-      }),
-    );
+    expect(lastUpdate().where).toEqual({ userId: USER_ID });
 
-    const written = lastUpsert().update.sidebarItems as { id: string }[];
+    const written = lastUpdate().data.sidebarItems as { id: string }[];
     expect(written.slice(0, 2).map((entry) => entry.id)).toEqual(["tasks", "chat"]);
     // Registry items the layout doesn't mention come back visible, appended.
     expect(body.items.map((item: { id: string }) => item.id)).toHaveLength(7);
@@ -145,9 +153,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     const res = await PATCH(patch({ items: null }));
 
     expect(res.status).toBe(200);
-    const written = lastUpsert();
-    expect(written.create.sidebarItems).toBe(Prisma.DbNull);
-    expect(written.update.sidebarItems).toBe(Prisma.DbNull);
+    expect(lastUpdate().data.sidebarItems).toBe(Prisma.DbNull);
     expect((await res.json()).items).toHaveLength(7);
   });
 
@@ -156,7 +162,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
 
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("Invalid sidebar layout");
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects duplicate items", async () => {
@@ -170,7 +176,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     );
 
     expect(res.status).toBe(400);
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("keeps pinned items visible when the layout hides every item", async () => {
@@ -186,7 +192,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     expect(body.items.find((item: { id: string }) => item.id === "settings").hidden).toBe(false);
 
     // The stored layout is coerced too — only the pinned item survives.
-    const written = lastUpsert().update.sidebarItems as { id: string; hidden: boolean }[];
+    const written = lastUpdate().data.sidebarItems as { id: string; hidden: boolean }[];
     expect(written.filter((entry) => !entry.hidden).map((entry) => entry.id)).toEqual(["settings"]);
   });
 
@@ -194,16 +200,16 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     const res = await PATCH(patch({ items: [{ id: "chat", hidden: "yes" }] }));
 
     expect(res.status).toBe(400);
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects bodies that aren't a layout", async () => {
     for (const body of [{}, { items: "chat" }, { items: [1, 2, 3] }, "not json"]) {
-      mockUpsert.mockClear();
+      mockUpdate.mockClear();
       const res = await PATCH(patch(body));
 
       expect(res.status, JSON.stringify(body)).toBe(400);
-      expect(mockUpsert).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
     }
   });
 
@@ -213,6 +219,6 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     const res = await PATCH(patch({ items }));
 
     expect(res.status).toBe(400);
-    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

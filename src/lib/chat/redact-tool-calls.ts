@@ -158,6 +158,8 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   chat_respond: { text: "Sent a message to another chat" },
   chat_create: { text: "Started another chat" },
   chat_delete: { text: "Deleted another chat" },
+  settings_list: { text: "Listed settings" },
+  settings_set: { text: "Changed a setting" },
 };
 
 const UNKNOWN_TOOL_SUMMARY: SummaryRule = { text: "Ran a tool" };

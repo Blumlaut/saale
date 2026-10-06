@@ -1,26 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/db";
-import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
-import { normalizeToolExposure, toolExposureEquals } from "@/lib/pi/tool-exposure";
-import { evictUserSessions } from "@/lib/pi/agent-pool";
+import { normalizeToolExposure } from "@/lib/pi/tool-exposure";
+import { applyUserSettingsPatch, ensureUserSettings, SettingsError } from "@/lib/settings/update";
 import type { AppSettings } from "@prisma/client";
-
-/** Fields that may be updated via PATCH /api/settings. */
-const ALLOWED_FIELDS = new Set([
-  "defaultModelProvider",
-  "defaultModelName",
-  "defaultThinkingLevel",
-  "theme",
-  "agentCustomInstructions",
-  "emailWritingStyle",
-  "purposeModelOverrides",
-  "disabledModels",
-  "defaultToolConfig",
-  "toolPolicies",
-  "toolExposure",
-]);
 
 /** Serialize AppSettings to the shape sent to the frontend. */
 function serializeSettings(settings: AppSettings) {
@@ -46,73 +29,46 @@ export async function GET() {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  let settings = await prisma.appSettings.findUnique({
-    where: { userId: authResult.user.id },
-  });
-
-  // Create default settings if not exists
-  if (!settings) {
-    settings = await prisma.appSettings.create({
-      data: {
-        userId: authResult.user.id,
-      },
-    });
-  }
+  const settings = await ensureUserSettings(authResult.user.id);
 
   return NextResponse.json({ settings: serializeSettings(settings) });
 }
 
 /**
  * PATCH /api/settings — Update user settings
+ *
+ * The body is a column-keyed patch. It is validated and written through the
+ * settings registry (`applyUserSettingsPatch`), which is the only writer of
+ * `AppSettings` — so a value cannot reach the row without passing the same
+ * validation the agent's `settings_set` tool uses.
  */
 export async function PATCH(request: NextRequest) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const body = await request.json();
-
-  // Whitelist: only allow known fields (prevents arbitrary field injection)
-  const updateData: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body)) {
-    if (ALLOWED_FIELDS.has(key)) {
-      updateData[key] = value;
-    }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch (err) {
+    console.error("Failed to parse settings update body:", err);
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // An unknown level would silently mean "no thinking override" — store the
-  // fallback instead so the setting always reflects what a user chose.
-  if ("defaultThinkingLevel" in updateData) {
-    updateData.defaultThinkingLevel = normalizeThinkingLevelSetting(
-      updateData.defaultThinkingLevel,
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return NextResponse.json({ error: "Expected a settings object" }, { status: 400 });
+  }
+
+  try {
+    const settings = await applyUserSettingsPatch(
+      authResult.user.id,
+      body as Record<string, unknown>,
     );
+    return NextResponse.json({ settings: serializeSettings(settings) });
+  } catch (err) {
+    if (err instanceof SettingsError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    console.error("Failed to update settings:", err);
+    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
   }
-
-  // Exposure is JSON from a client: keep only known categories/exposures, and
-  // drop `direct` entries so the stored row stays sparse.
-  let exposureChanged = false;
-  if ("toolExposure" in updateData) {
-    const normalized = normalizeToolExposure(updateData.toolExposure);
-    updateData.toolExposure = normalized;
-    const current = await prisma.appSettings.findUnique({
-      where: { userId: authResult.user.id },
-      select: { toolExposure: true },
-    });
-    exposureChanged = !toolExposureEquals(normalizeToolExposure(current?.toolExposure), normalized);
-  }
-
-  const settings = await prisma.appSettings.upsert({
-    where: { userId: authResult.user.id },
-    create: {
-      userId: authResult.user.id,
-      ...updateData,
-    },
-    update: updateData,
-  });
-
-  // A pooled chat's tool loadout is fixed when its agent is built, so a change
-  // to exposure only reaches a chat that is already open once its session is
-  // rebuilt. Sessions with a run in flight are left alone.
-  if (exposureChanged) await evictUserSessions(authResult.user.id);
-
-  return NextResponse.json({ settings: serializeSettings(settings) });
 }

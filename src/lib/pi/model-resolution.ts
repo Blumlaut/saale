@@ -1,32 +1,8 @@
 import { prisma } from "@/lib/db";
+import { splitModelReference } from "./model-ref";
 
-/**
- * Split a `provider:modelId` (Saale's job format) or `provider/modelId` (Pi's
- * canonical form) reference.
- *
- * Only the FIRST separator is the provider boundary: model ids contain both
- * characters — `openrouter:anthropic/claude-sonnet-4`, `openai/gpt-5:exacto` —
- * so splitting on a later one, or rewriting the id's own separator, changes the
- * model identity and the runtime can no longer resolve it.
- *
- * @returns The provider and model id, or undefined when the reference carries no
- *   provider prefix (a bare model id is not resolvable on its own).
- */
-export function splitModelReference(
-  modelReference: string | null | undefined,
-): { provider: string; name: string } | undefined {
-  const reference = modelReference?.trim();
-  if (!reference) return undefined;
-
-  const separator = reference.search(/[:/]/);
-  if (separator <= 0) return undefined;
-
-  const provider = reference.slice(0, separator);
-  const name = reference.slice(separator + 1);
-  if (!provider || !name) return undefined;
-
-  return { provider, name };
-}
+// Re-exported so callers (and tests) reach the parser through this module.
+export { splitModelReference };
 
 /**
  * Resolve the model to use for a specific purpose.

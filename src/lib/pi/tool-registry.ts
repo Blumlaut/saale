@@ -13,6 +13,7 @@ import { createMemoryTools } from "./tools/memory-tools";
 import { createTaskTools } from "./tools/task-tools";
 import { createAgentJobTools } from "./tools/agent-job-tools";
 import { createInfraTools } from "./tools/infra-tools";
+import { createSettingsTools } from "@/lib/settings/tools";
 
 // ─── Tool Factory Registry ───────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   tasks: (userId) => createTaskTools(userId),
   agentJobs: (userId) => createAgentJobTools(userId),
   infra: (userId) => createInfraTools(userId),
+  settings: (userId) => createSettingsTools(userId),
 };
 
 // ─── Tool Resolution ─────────────────────────────────────────────────────────

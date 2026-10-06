@@ -528,9 +528,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
         multipart: form,
       });
       if (!sent.ok())
-        throw new Error(
-          `failed to seed lightbox message: ${sent.status()} ${await sent.text()}`,
-        );
+        throw new Error(`failed to seed lightbox message: ${sent.status()} ${await sent.text()}`);
 
       await gotoChatSession(page, sessionId);
       await click(page, 'button[aria-label="View e2e-lightbox.png"]');

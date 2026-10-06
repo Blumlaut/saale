@@ -1,7 +1,18 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "./auth";
-import { prisma } from "@/lib/db";
+import { applyAdminSettingsPatch, ensureAdminSettings, SettingsError } from "@/lib/settings/update";
+import type { AdminSettings } from "@prisma/client";
+
+/** Serialize AdminSettings to the shape sent to the frontend. */
+function serializeSettings(settings: AdminSettings) {
+  return {
+    signupsEnabled: settings.signupsEnabled,
+    globalModelProvider: settings.globalModelProvider,
+    globalModelName: settings.globalModelName,
+    globalProviderModels: settings.globalProviderModels,
+  };
+}
 
 /**
  * GET /api/admin/settings — Get admin settings
@@ -10,62 +21,44 @@ export async function GET() {
   const authResult = await requireAdmin();
   if (!authResult.ok) return authResult.response;
 
-  let settings = await prisma.adminSettings.findUnique({
-    where: { id: "global" },
-  });
+  const settings = await ensureAdminSettings();
 
-  // Create default settings if not exists
-  if (!settings) {
-    settings = await prisma.adminSettings.create({
-      data: { id: "global" },
-    });
-  }
-
-  return NextResponse.json({
-    settings: {
-      signupsEnabled: settings.signupsEnabled,
-      globalModelProvider: settings.globalModelProvider,
-      globalModelName: settings.globalModelName,
-      globalProviderModels: settings.globalProviderModels,
-    },
-  });
+  return NextResponse.json({ settings: serializeSettings(settings) });
 }
 
 /**
  * PATCH /api/admin/settings — Update admin settings
+ *
+ * Written through the settings registry (`applyAdminSettingsPatch`), which is
+ * the only writer of `AdminSettings` and re-checks that the caller is an admin.
  */
 export async function PATCH(request: NextRequest) {
   const authResult = await requireAdmin();
   if (!authResult.ok) return authResult.response;
 
-  const body = await request.json();
-
-  const allowedFields = new Set([
-    "signupsEnabled",
-    "globalModelProvider",
-    "globalModelName",
-    "globalProviderModels",
-  ]);
-
-  const updateData: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body)) {
-    if (allowedFields.has(key)) {
-      updateData[key] = value;
-    }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch (err) {
+    console.error("Failed to parse admin settings update body:", err);
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const settings = await prisma.adminSettings.upsert({
-    where: { id: "global" },
-    create: { id: "global", ...updateData },
-    update: updateData,
-  });
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return NextResponse.json({ error: "Expected a settings object" }, { status: 400 });
+  }
 
-  return NextResponse.json({
-    settings: {
-      signupsEnabled: settings.signupsEnabled,
-      globalModelProvider: settings.globalModelProvider,
-      globalModelName: settings.globalModelName,
-      globalProviderModels: settings.globalProviderModels,
-    },
-  });
+  try {
+    const settings = await applyAdminSettingsPatch(
+      authResult.user.id,
+      body as Record<string, unknown>,
+    );
+    return NextResponse.json({ settings: serializeSettings(settings) });
+  } catch (err) {
+    if (err instanceof SettingsError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    console.error("Failed to update admin settings:", err);
+    return NextResponse.json({ error: "Failed to update admin settings" }, { status: 500 });
+  }
 }
