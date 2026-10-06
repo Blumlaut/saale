@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { getProviderBaseUrl } from "@/lib/providers/config";
 import { parseVisionEdit } from "@/lib/providers/capabilities";
 import {
   detectAndStoreProviderCapabilities,
@@ -83,7 +82,7 @@ export async function POST(request: NextRequest) {
 
   // The stored base URL, never one from the request: this route must not become
   // a way to make the server issue requests to an arbitrary host.
-  const baseUrl = provider === "custom" ? key.baseUrl : getProviderBaseUrl(provider);
+  const baseUrl = key.baseUrl;
   if (!baseUrl) {
     return NextResponse.json({ error: "Provider has no base URL to probe" }, { status: 400 });
   }

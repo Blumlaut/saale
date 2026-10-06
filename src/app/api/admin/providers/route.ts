@@ -1,72 +1,75 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
 import { requireAdmin } from "../settings/auth";
-import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-import { PROVIDERS, definesProviderModels } from "@/lib/providers/config";
+import { prisma } from "@/lib/db";
+import { fetchOpenAIModels, buildGlobalModelRuntime } from "@/lib/pi/models";
+import { providerCatalog, type ProviderCatalogView } from "@/lib/providers/catalog";
+import { CUSTOM_PROVIDER_ID } from "@/lib/providers/config";
 import { parseProviderLimits } from "@/lib/providers/limits";
 import { detectAndStoreProviderCapabilities } from "@/lib/providers/provider-capabilities";
 
-/**
- * Fetch models from an OpenAI-compatible /models endpoint.
- */
-async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<string[]> {
-  const url = `${baseUrl.replace(/\/+$/, "")}/models`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!data?.data?.length) return [];
-    return data.data.map((m: { id: string }) => m.id).slice(0, 200);
-  } catch {
-    return [];
-  }
-}
+const ROW_COLUMNS = {
+  id: true,
+  provider: true,
+  label: true,
+  baseUrl: true,
+  contextWindow: true,
+  maxOutputTokens: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 /**
- * GET /api/admin/providers — List global providers
+ * GET /api/admin/providers — every provider Pi can talk to, and which of them
+ * the global configuration has credentials for.
  */
 export async function GET() {
   const authResult = await requireAdmin();
   if (!authResult.ok) return authResult.response;
 
-  const keys = await prisma.providerApiKey.findMany({
-    where: { userId: null },
-    select: {
-      id: true,
-      provider: true,
-      label: true,
-      baseUrl: true,
-      contextWindow: true,
-      maxOutputTokens: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-    orderBy: { provider: "asc" },
+  const [rows, { modelRuntime }] = await Promise.all([
+    prisma.providerApiKey.findMany({
+      where: { userId: null },
+      select: ROW_COLUMNS,
+      orderBy: { provider: "asc" },
+    }),
+    buildGlobalModelRuntime(),
+  ]);
+
+  const configuredIds = new Set(rows.map((row) => row.provider));
+
+  const availableProviders: ProviderCatalogView[] = providerCatalog(modelRuntime).map((entry) => {
+    const status = entry.custom
+      ? {
+          configured: configuredIds.has(entry.id),
+          source: configuredIds.has(entry.id) ? "stored" : null,
+        }
+      : (() => {
+          const resolved = modelRuntime.getProviderAuthStatus(entry.id);
+          return { configured: resolved.configured, source: resolved.source ?? null };
+        })();
+
+    return { ...entry, configured: status.configured, source: status.source, isGlobal: true };
   });
 
   return NextResponse.json({
-    providers: keys.map((k) => ({
-      ...k,
-      configured: true,
-      displayName: PROVIDERS[k.provider as keyof typeof PROVIDERS]?.label ?? k.provider,
+    providers: rows.map((row) => ({
+      ...row,
+      displayName:
+        availableProviders.find((entry) => entry.id === row.provider)?.name ?? row.provider,
     })),
-    availableProviders: Object.entries(PROVIDERS).map(([key, val]) => ({
-      id: key,
-      name: val.label,
-      modelsConfigurable: definesProviderModels(key),
-    })),
+    availableProviders,
   });
 }
 
 /**
- * POST /api/admin/providers — Add or update a global provider
+ * POST /api/admin/providers — configure the *global* OpenAI-compatible endpoint.
+ *
+ * Every other provider is configured by signing in to it
+ * (`POST /api/admin/providers/login`), because Pi owns how those providers
+ * authenticate.
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireAdmin();
@@ -75,8 +78,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { provider, apiKey, label, baseUrl } = body;
 
-  if (!provider) {
-    return NextResponse.json({ error: "provider is required" }, { status: 400 });
+  if (provider !== CUSTOM_PROVIDER_ID) {
+    return NextResponse.json(
+      {
+        error:
+          "Only the OpenAI-compatible endpoint is configured here — sign in to a provider instead",
+      },
+      { status: 400 },
+    );
   }
 
   if (apiKey && (typeof apiKey !== "string" || apiKey.length < 3)) {
@@ -86,37 +95,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (provider === "custom" && (!baseUrl || typeof baseUrl !== "string" || baseUrl.length < 5)) {
+  if (!baseUrl || typeof baseUrl !== "string" || baseUrl.length < 5) {
     return NextResponse.json(
       { error: "Base URL is required for OpenAI-compatible providers" },
       { status: 400 },
     );
   }
 
-  const encryptedKey = encrypt(apiKey || "");
-
   const parsedLimits = parseProviderLimits(provider, body);
   if ("error" in parsedLimits) {
     return NextResponse.json({ error: parsedLimits.error }, { status: 400 });
   }
 
-  // Upsert: find existing global provider or create new one
+  const encryptedKey = encrypt(apiKey || "");
+
   const existing = await prisma.providerApiKey.findFirst({
-    where: {
-      userId: null,
-      provider,
-    },
+    where: { userId: null, provider },
+    select: { id: true },
   });
 
   const key = existing
     ? await prisma.providerApiKey.update({
         where: { id: existing.id },
-        data: {
-          encryptedKey,
-          label: label || "",
-          baseUrl: provider === "custom" ? baseUrl : null,
-          ...parsedLimits.limits,
-        },
+        data: { encryptedKey, label: label || "", baseUrl, ...parsedLimits.limits },
       })
     : await prisma.providerApiKey.create({
         data: {
@@ -124,28 +125,23 @@ export async function POST(request: NextRequest) {
           provider,
           encryptedKey,
           label: label || "",
-          baseUrl: provider === "custom" ? baseUrl : null,
+          baseUrl,
           ...parsedLimits.limits,
         },
       });
 
-  // For custom providers, discover the model list and ask the endpoint what
-  // those models can do — an import is where Saale learns that a local vision
-  // model accepts images.
-  let discoveredModels: string[] = [];
+  const discoveredModels = await fetchOpenAIModels(baseUrl, apiKey || undefined);
   let visionModels = 0;
-  if (provider === "custom" && baseUrl) {
-    discoveredModels = await fetchOpenAIModels(baseUrl, apiKey || undefined);
 
-    if (discoveredModels.length > 0) {
-      const summary = await detectAndStoreProviderCapabilities({
-        keyId: key.id,
-        stored: key.modelCapabilities,
-        baseUrl,
-        apiKey: apiKey || undefined,
-      });
-      visionModels = summary.visionModels;
-    }
+  if (discoveredModels.length > 0) {
+    const summary = await detectAndStoreProviderCapabilities({
+      keyId: key.id,
+      stored: key.modelCapabilities,
+      baseUrl,
+      apiKey: apiKey || undefined,
+      modelIds: discoveredModels,
+    });
+    visionModels = summary.visionModels;
   }
 
   return NextResponse.json({
@@ -155,16 +151,13 @@ export async function POST(request: NextRequest) {
     contextWindow: key.contextWindow,
     maxOutputTokens: key.maxOutputTokens,
     configured: true,
-    displayName: PROVIDERS[key.provider as keyof typeof PROVIDERS]?.label ?? key.provider,
     discoveredModels,
     modelCount: discoveredModels.length,
     visionModels,
   });
 }
 
-/**
- * DELETE /api/admin/providers — Remove a global provider
- */
+/** DELETE /api/admin/providers — remove the global provider's credentials. */
 export async function DELETE(request: NextRequest) {
   const authResult = await requireAdmin();
   if (!authResult.ok) return authResult.response;
