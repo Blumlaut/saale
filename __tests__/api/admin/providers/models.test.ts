@@ -1,368 +1,123 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
-// Mock dependencies
-vi.mock("@/lib/auth", () => ({}));
-
-vi.mock("@/lib/db", () => ({
-  prisma: {
-    providerApiKey: {
-      findMany: vi.fn(),
-    },
-  },
-}));
-
-vi.mock("@/lib/crypto", () => ({
-  decrypt: vi.fn(),
-}));
-
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  ModelRuntime: {
-    create: vi.fn(),
-  },
-}));
-
 vi.mock("@/app/api/admin/settings/auth", () => ({
   requireAdmin: vi.fn(),
 }));
 
 vi.mock("@/lib/pi/models", () => ({
-  fetchOpenAIModels: vi.fn(),
+  buildGlobalModelRuntime: vi.fn(),
 }));
 
-import * as db from "@/lib/db";
-import * as crypto from "@/lib/crypto";
-import * as pi from "@earendil-works/pi-coding-agent";
 import * as adminAuth from "@/app/api/admin/settings/auth";
 import * as piModels from "@/lib/pi/models";
 import { GET } from "@/app/api/admin/providers/models/route";
 
+/** One model as `buildGlobalModelRuntime` reports it. */
+function model(overrides: Record<string, unknown> = {}) {
+  return {
+    provider: "anthropic",
+    id: "claude-sonnet",
+    name: "Claude Sonnet",
+    reasoning: true,
+    contextWindow: 200_000,
+    vision: true,
+    ...overrides,
+  };
+}
+
+/** Stub the global runtime build with the models and provider names to report. */
+function stubRuntime(models: ReturnType<typeof model>[], names: Record<string, string> = {}) {
+  vi.mocked(piModels.buildGlobalModelRuntime).mockResolvedValue({
+    models,
+    modelRuntime: {
+      getProvider: (id: string) => (names[id] ? { id, name: names[id] } : undefined),
+    },
+  } as never);
+}
+
 describe("GET /api/admin/providers/models", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
+      ok: true,
+      user: { id: "admin-1" },
+    } as never);
+    stubRuntime([]);
   });
 
-  /* ── Auth ── */
-
-  it("returns 401 when not authenticated as admin", async () => {
+  it("returns 401 when the caller is not an admin", async () => {
     vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
 
     const response = await GET();
+
     expect(response.status).toBe(401);
+    expect(piModels.buildGlobalModelRuntime).not.toHaveBeenCalled();
   });
 
-  /* ── Model listing ── */
-
-  it("returns models from global providers", async () => {
-    const mockModelRuntime = {
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([
-        {
-          provider: "anthropic",
-          id: "claude-sonnet-4",
-          name: "Claude Sonnet 4",
-          reasoning: false,
-          input: ["text", "image"],
-        },
-        {
-          provider: "openai",
-          id: "gpt-4o",
-          name: "GPT-4o",
-          reasoning: false,
-          input: ["text", "image"],
-        },
-      ]),
-      getProvider: vi.fn().mockImplementation((id: string) => ({
-        id,
-        name: id === "anthropic" ? "Anthropic" : "OpenAI",
-      })),
-      registerProvider: vi.fn(),
-    };
-
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
-      ok: true,
-      user: { id: "admin-1" },
-    });
-
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([
-      {
-        id: "key-1",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        userId: null,
-        provider: "anthropic",
-        encryptedKey: "encrypted-key",
-        label: "Anthropic Key",
-        baseUrl: null,
-        contextWindow: null,
-        maxOutputTokens: null,
-        modelCapabilities: null,
-      },
-    ]);
-
-    vi.mocked(crypto.decrypt).mockReturnValue("sk-ant-123");
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue(mockModelRuntime as never);
-
-    const response = await GET();
-    expect(response.status).toBe(200);
-
-    const body = await response.json();
-    expect(body.models.anthropic).toHaveLength(1);
-    expect(body.models.anthropic[0]).toMatchObject({
-      id: "claude-sonnet-4",
-      name: "Claude Sonnet 4",
-      reasoning: false,
-      vision: true,
-    });
-    expect(body.providers).toHaveLength(2);
-  });
-
-  it("reports the catalog's reasoning flag, not an id pattern", async () => {
-    const mockModelRuntime = {
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([
-        {
-          provider: "anthropic",
-          // A non-thinking model whose id happens to contain "r1": guessing from
-          // the id marked it as a reasoner and hid the real flag.
-          id: "claude-3.5-sonnet-r1",
-          name: "Claude Sonnet R1",
-          reasoning: false,
-          input: ["text"],
-        },
-        {
-          provider: "anthropic",
-          id: "claude-sonnet-4",
-          name: "Claude Sonnet 4",
-          reasoning: true,
-          input: ["text", "image"],
-        },
-      ]),
-      getProvider: vi.fn().mockReturnValue({
-        id: "anthropic",
-        name: "Anthropic",
-      }),
-      registerProvider: vi.fn(),
-    };
-
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
-      ok: true,
-      user: { id: "admin-1" },
-    });
-
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([
-      {
-        id: "key-1",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        userId: null,
-        provider: "anthropic",
-        encryptedKey: "encrypted-key",
-        label: "Anthropic Key",
-        baseUrl: null,
-        contextWindow: null,
-        maxOutputTokens: null,
-        modelCapabilities: null,
-      },
-    ]);
-
-    vi.mocked(crypto.decrypt).mockReturnValue("sk-ant-123");
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue(mockModelRuntime as never);
-
-    const response = await GET();
-    const body = await response.json();
-
-    const r1Model = body.models.anthropic.find((m: { id: string; reasoning: boolean }) =>
-      m.id.includes("r1"),
+  it("groups the global configuration's models by provider", async () => {
+    stubRuntime(
+      [
+        model(),
+        model({ provider: "groq", id: "llama", name: "Llama", reasoning: false, vision: false }),
+        model({ provider: "groq", id: "qwen", name: "Qwen", reasoning: true, vision: false }),
+      ],
+      { anthropic: "Anthropic", groq: "Groq" },
     );
-    expect(r1Model.reasoning).toBe(false);
 
-    const thinkingModel = body.models.anthropic.find(
-      (m: { id: string; reasoning: boolean }) => m.id === "claude-sonnet-4",
-    );
-    expect(thinkingModel.reasoning).toBe(true);
+    const body = await (await GET()).json();
+
+    expect(body.providers).toEqual([
+      { id: "anthropic", name: "Anthropic", modelCount: 1, modelsConfigurable: false },
+      { id: "groq", name: "Groq", modelCount: 2, modelsConfigurable: false },
+    ]);
+    expect(body.models.groq).toEqual([
+      { id: "llama", name: "Llama", reasoning: false, vision: false },
+      { id: "qwen", name: "Qwen", reasoning: true, vision: false },
+    ]);
   });
 
-  it("handles empty global providers", async () => {
-    const mockModelRuntime = {
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      getProvider: vi.fn(),
-      registerProvider: vi.fn(),
-    };
+  it("reports the catalog's flags rather than guessing them from the id", async () => {
+    // A model whose id contains "r1" used to be marked as a reasoner and every
+    // model used to be marked text-only.
+    stubRuntime([model({ id: "deepseek-r1-distill", reasoning: false, vision: true })]);
 
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
-      ok: true,
-      user: { id: "admin-1" },
-    });
+    const body = await (await GET()).json();
 
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([]);
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue(mockModelRuntime as never);
-
-    const response = await GET();
-    expect(response.status).toBe(200);
-
-    const body = await response.json();
-    expect(body.models).toEqual({});
-    expect(body.providers).toEqual([]);
+    expect(body.models.anthropic).toEqual([
+      { id: "deepseek-r1-distill", name: "Claude Sonnet", reasoning: false, vision: true },
+    ]);
   });
 
-  it("handles decryption failure gracefully", async () => {
-    const mockModelRuntime = {
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      getProvider: vi.fn(),
-      registerProvider: vi.fn(),
-    };
+  it("marks Saale's own endpoint as configurable", async () => {
+    stubRuntime([model({ provider: "custom", id: "local" })], { custom: "OpenAI-compatible" });
 
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
-      ok: true,
-      user: { id: "admin-1" },
-    });
+    const body = await (await GET()).json();
 
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([
+    expect(body.providers).toEqual([
       {
-        id: "key-1",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        userId: null,
-        provider: "anthropic",
-        encryptedKey: "corrupt",
-        label: "Anthropic Key",
-        baseUrl: null,
-        contextWindow: null,
-        maxOutputTokens: null,
-        modelCapabilities: null,
+        id: "custom",
+        name: "OpenAI-compatible",
+        modelCount: 1,
+        modelsConfigurable: true,
       },
     ]);
-
-    vi.mocked(crypto.decrypt).mockImplementation(() => {
-      throw new Error("Invalid encrypted data");
-    });
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue(mockModelRuntime as never);
-
-    const response = await GET();
-    expect(response.status).toBe(200);
   });
 
-  it("handles decryption errors without crashing", async () => {
-    const mockModelRuntime = {
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      getProvider: vi.fn(),
-      registerProvider: vi.fn(),
-    };
+  it("falls back to the provider id when the runtime has no name for it", async () => {
+    stubRuntime([model({ provider: "some-new-provider" })]);
 
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
-      ok: true,
-      user: { id: "admin-1" },
-    });
+    const body = await (await GET()).json();
 
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([
-      {
-        id: "key-1",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        userId: null,
-        provider: "anthropic",
-        encryptedKey: "bad",
-        label: "Anthropic Key",
-        baseUrl: null,
-        contextWindow: null,
-        maxOutputTokens: null,
-        modelCapabilities: null,
-      },
-    ]);
-
-    vi.mocked(crypto.decrypt).mockImplementation(() => {
-      throw new Error("Decryption failed");
-    });
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue(mockModelRuntime as never);
-
-    const response = await GET();
-    expect(response.status).toBe(200);
+    expect(body.providers[0].name).toBe("some-new-provider");
   });
 
-  it("uses provider name from runtime, falls back to id", async () => {
-    const mockModelRuntime = {
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([
-        {
-          provider: "custom",
-          id: "custom-model",
-          name: "Custom Model",
-          input: ["text"],
-        },
-      ]),
-      getProvider: vi.fn().mockReturnValue(undefined),
-      registerProvider: vi.fn(),
-    };
+  it("returns an empty listing when the global configuration has no models", async () => {
+    const body = await (await GET()).json();
 
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
-      ok: true,
-      user: { id: "admin-1" },
-    });
-
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([]);
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue(mockModelRuntime as never);
-
-    const response = await GET();
-    const body = await response.json();
-
-    const customProvider = body.providers.find((p: { id: string }) => p.id === "custom");
-    expect(customProvider.name).toBe("custom"); // fallback to id
-  });
-
-  it("deduplicates discovered models with built-in models", async () => {
-    const mockModelRuntime = {
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([
-        {
-          provider: "openrouter",
-          id: "anthropic/claude-sonnet-4",
-          name: "Anthropic: Claude Sonnet 4",
-          input: ["text", "image"],
-        },
-      ]),
-      getProvider: vi.fn().mockReturnValue({
-        id: "openrouter",
-        name: "OpenRouter",
-      }),
-      registerProvider: vi.fn(),
-    };
-
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
-      ok: true,
-      user: { id: "admin-1" },
-    });
-
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([
-      {
-        id: "key-1",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        userId: null,
-        provider: "openrouter",
-        encryptedKey: "key",
-        label: "OpenRouter Key",
-        baseUrl: null,
-        contextWindow: null,
-        maxOutputTokens: null,
-        modelCapabilities: null,
-      },
-    ]);
-
-    vi.mocked(crypto.decrypt).mockReturnValue("sk-or-123");
-    vi.mocked(piModels.fetchOpenAIModels).mockResolvedValue([
-      "anthropic/claude-sonnet-4", // same as built-in
-      "anthropic/claude-opus-4", // new
-    ]);
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue(mockModelRuntime as never);
-
-    const response = await GET();
-    expect(response.status).toBe(200);
+    expect(body).toEqual({ models: {}, providers: [] });
   });
 });

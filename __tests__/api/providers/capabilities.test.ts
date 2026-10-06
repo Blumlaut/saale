@@ -105,7 +105,7 @@ describe("PATCH /api/providers/capabilities", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("discover"),
+      error: expect.stringContaining("OpenAI-compatible"),
     });
     expect(db.prisma.providerApiKey.findUnique).not.toHaveBeenCalled();
   });
