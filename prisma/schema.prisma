@@ -15,6 +15,9 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   name          String?
+  // Login handle — better-auth username plugin (lowercase, unique, nullable
+  // only for rows that predate it).
+  username      String?   @unique
   email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?

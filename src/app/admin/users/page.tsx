@@ -17,6 +17,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { fetchJson, postJson } from "@/lib/http";
 import { authClient } from "@/lib/auth-client";
+import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
 import {
   Users,
   Loader2,
@@ -31,6 +32,7 @@ import {
 interface AdminUser {
   id: string;
   name: string;
+  username: string | null;
   email: string;
   role: string;
   banned: boolean | null;
@@ -45,7 +47,7 @@ export default function AdminUsersPage() {
 
   // Create user dialog
   const [showCreate, setShowCreate] = useState(false);
-  const [createName, setCreateName] = useState("");
+  const [createUsername, setCreateUsername] = useState("");
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createRole, setCreateRole] = useState<"user" | "admin">("user");
@@ -54,9 +56,12 @@ export default function AdminUsersPage() {
   // Edit user dialog
   const [showEdit, setShowEdit] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editName, setEditName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
   const [editRole, setEditRole] = useState<"user" | "admin">("user");
   const [editing, setEditing] = useState(false);
+
+  const createUsernameValid = isValidUsername(createUsername);
+  const editUsernameValid = isValidUsername(editUsername);
 
   // Delete confirm
   const [showDelete, setShowDelete] = useState(false);
@@ -91,17 +96,18 @@ export default function AdminUsersPage() {
   }, [saveStatus]);
 
   const handleCreate = async () => {
-    if (!createName || !createEmail || !createPassword) return;
+    if (!createUsernameValid || !createEmail || !createPassword) return;
     setCreating(true);
     try {
       await postJson("/api/auth/admin/create-user", {
-        name: createName,
+        name: createUsername.trim(),
         email: createEmail,
         password: createPassword,
         role: createRole,
+        data: { username: normalizeUsername(createUsername) },
       });
       setShowCreate(false);
-      setCreateName("");
+      setCreateUsername("");
       setCreateEmail("");
       setCreatePassword("");
       setCreateRole("user");
@@ -115,20 +121,24 @@ export default function AdminUsersPage() {
 
   const openEdit = (user: AdminUser) => {
     setEditUser(user);
-    setEditName(user.name ?? "");
+    setEditUsername(user.username ?? "");
     setEditRole((user.role ?? "user") as "user" | "admin");
     setShowEdit(true);
   };
 
   const handleEdit = async () => {
-    if (!editUser) return;
+    if (!editUser || !editUsernameValid) return;
     setEditing(true);
     try {
-      // Update name via admin update
-      await postJson("/api/auth/admin/update-user", {
-        userId: editUser.id,
-        data: { name: editName },
-      });
+      const username = normalizeUsername(editUsername);
+      // The handle is sent only when it actually changed: the username plugin
+      // rejects an unchanged handle on its own record as already taken.
+      if (username !== editUser.username) {
+        await postJson("/api/auth/admin/update-user", {
+          userId: editUser.id,
+          data: { username },
+        });
+      }
       // Set role
       await postJson("/api/auth/admin/set-role", {
         userId: editUser.id,
@@ -261,7 +271,9 @@ export default function AdminUsersPage() {
                         </Badge>
                       )}
                     </div>
-                    <span className="text-muted-foreground truncate text-xs">{user.email}</span>
+                    <span className="text-muted-foreground truncate text-xs">
+                      {user.username ? `@${user.username} · ${user.email}` : user.email}
+                    </span>
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <Button
@@ -315,12 +327,25 @@ export default function AdminUsersPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Name</Label>
+              <Label>Username</Label>
               <Input
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="Full name"
+                value={createUsername}
+                onChange={(e) => setCreateUsername(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="ada.lovelace"
+                aria-invalid={Boolean(createUsername) && !createUsernameValid}
               />
+              <p
+                className={
+                  createUsername && !createUsernameValid
+                    ? "text-destructive text-xs"
+                    : "text-muted-foreground text-xs"
+                }
+              >
+                {USERNAME_RULES}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Email</Label>
@@ -366,7 +391,10 @@ export default function AdminUsersPage() {
             <Button variant="ghost" onClick={() => setShowCreate(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={creating}>
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !createUsernameValid || !createEmail || !createPassword}
+            >
               {creating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
               Create
             </Button>
@@ -382,12 +410,25 @@ export default function AdminUsersPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Name</Label>
+              <Label>Username</Label>
               <Input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Full name"
+                value={editUsername}
+                onChange={(e) => setEditUsername(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="ada.lovelace"
+                aria-invalid={Boolean(editUsername) && !editUsernameValid}
               />
+              <p
+                className={
+                  editUsername && !editUsernameValid
+                    ? "text-destructive text-xs"
+                    : "text-muted-foreground text-xs"
+                }
+              >
+                {USERNAME_RULES}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
@@ -416,7 +457,7 @@ export default function AdminUsersPage() {
             <Button variant="ghost" onClick={() => setShowEdit(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEdit} disabled={editing}>
+            <Button onClick={handleEdit} disabled={editing || !editUsernameValid}>
               {editing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
               Save
             </Button>

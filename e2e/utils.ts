@@ -6,6 +6,7 @@ import type { APIRequestContext, Browser, BrowserContext, Page } from "@playwrig
  */
 
 export const E2E_EMAIL = "e2e-mobile@saale.local";
+export const E2E_USERNAME = "e2e-mobile";
 export const E2E_PASSWORD = "TestPass123!";
 
 /** Phone widths every guardrail runs at — see AGENTS.md "Mobile-First Layouts". */
@@ -19,7 +20,12 @@ export type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 /** Sign the shared e2e user up. An existing user is fine (any non-2xx is ignored). */
 export async function ensureUser(request: APIRequestContext): Promise<void> {
   await request.post("/api/auth/sign-up/email", {
-    data: { email: E2E_EMAIL, password: E2E_PASSWORD, name: "E2E Mobile" },
+    data: {
+      email: E2E_EMAIL,
+      password: E2E_PASSWORD,
+      name: E2E_USERNAME,
+      username: E2E_USERNAME,
+    },
   });
 }
 
@@ -114,7 +120,7 @@ async function ensureSeed(request: APIRequestContext, spec: SeedSpec): Promise<v
 /** Log the shared e2e user in and wait for the dashboard shell. */
 export async function login(page: Page): Promise<void> {
   await page.goto("/auth/login");
-  await page.fill('input[name="email"]', E2E_EMAIL);
+  await page.fill('input[name="username"]', E2E_USERNAME);
   await page.fill('input[name="password"]', E2E_PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForURL("**/dashboard/**", { timeout: 20_000 });
