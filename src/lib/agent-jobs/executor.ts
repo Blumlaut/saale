@@ -6,7 +6,11 @@ import {
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
-import { createSystemPromptLoader, startSessionExtensions } from "@/lib/pi/processing-state";
+import {
+  createSystemPromptLoader,
+  startSessionExtensions,
+  TOOLS_PROMPT,
+} from "@/lib/pi/processing-state";
 import { createSessionSettings } from "@/lib/pi/settings";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
@@ -191,7 +195,7 @@ export async function executeAgentRun(
 
   const systemPrompt =
     definition.systemPrompt ??
-    `You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.`;
+    `You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.\n\n${TOOLS_PROMPT}`;
 
   // Create agent session
   const { session } = await createAgentSession({

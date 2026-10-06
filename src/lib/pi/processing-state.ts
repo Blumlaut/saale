@@ -23,8 +23,20 @@ Guidelines:
 - When uncertain, say so briefly rather than guessing.
 - Match the user's tone and language preference.`;
 
+/**
+ * Capability: reaching the tools that are not declared directly.
+ *
+ * Most categories are hidden behind codemode by default, and Pi's own
+ * "use codemode to batch calls" guideline only exists in its default system
+ * prompt — which a custom prompt replaces. Without this, the model sees the
+ * `codemode` tool but is never told that the tools it needs are inside it.
+ */
+export const TOOLS_PROMPT = `Tool use:
+Not every tool is listed to you directly. Reach the rest by writing a short JavaScript script with the \`codemode\` tool — \`await tools.<name>({ ...args })\` — and batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. If a tool you need is not listed, find it with \`searchTools("what you need")\`. Only the script's output comes back to you.`;
+
 /** Capability: shell + files via the terminal tool. */
-const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. Files the user uploads in chat are placed in the \`uploads/\` directory of the working directory — read them from there when the user refers to an attached file.`;
+const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. Files the user uploads in chat are placed in the \`uploads/\` directory of the working directory — read them from there when the user refers to an attached file.
+Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes — each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.`;
 
 /** Capability: persistent memory. Defaults on. */
 const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, use \`memory_search\` to look it up before answering.`;
@@ -53,9 +65,9 @@ When you write or update a note:
  * Build the default agent system prompt for a chat session.
  *
  * Sections are composed in priority order: identity first, then the user's
- * own instructions, then one block per enabled capability. A capability block
- * appears only when its tools are actually available, so the prompt never
- * describes a tool the session cannot call.
+ * own instructions, then the instructions for the tools this session has.
+ * A capability block appears only when its tools are actually available, so the
+ * prompt never describes a tool the session cannot call.
  */
 export function buildAgentSystemPrompt(options: {
   customInstructions?: string | null | undefined;
@@ -67,6 +79,7 @@ export function buildAgentSystemPrompt(options: {
   const sections = [
     IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
+    TOOLS_PROMPT,
     toolConfig.terminal === true ? TERMINAL_PROMPT : null,
     // Memory is on unless explicitly disabled; terminal and infra default off.
     toolConfig.memory !== false ? MEMORY_PROMPT : null,
@@ -160,6 +173,10 @@ export async function createAgentResourceLoader(
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
+    // An empty list, not an omitted option: Pi otherwise *discovers*
+    // `<agentDir>/APPEND_SYSTEM.md`, which is `getAgentDir()` — the host's Pi
+    // directory. Its owner's text would be appended to every tenant's prompt.
+    appendSystemPrompt: [],
   });
   await loader.reload();
   return loader;
