@@ -355,6 +355,10 @@ model ProviderApiKey {
   userId         String?  // null = global provider, non-null = user-specific
   provider       String   // "anthropic" | "openai" | "google" | "custom" | ...
   encryptedKey   String   @db.Text
+  /// Encrypted Pi credential — `ApiKeyCredential` ({ key, env }) or
+  /// `OAuthCredential` (tokens) — for a provider whose auth flow Pi owns.
+  /// `encryptedKey` holds the key of an OpenAI-compatible endpoint only.
+  encryptedCredential String? @db.Text
   label          String   @default("") // optional label
   baseUrl        String?  // for custom OpenAI-compatible providers
   /// Output token cap for this provider's models. null = Pi's model default.
