@@ -148,7 +148,7 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
-  const { register, handleSubmit } = useForm<{ email: string; password: string }>();
+  const { register, handleSubmit } = useForm<{ username: string; password: string }>();
 
   const onError = searchParams?.get("error");
   if (onError) {
@@ -160,20 +160,23 @@ function LoginForm() {
     router.refresh();
   };
 
-  const onSubmit = handleSubmit(async (data: { email: string; password: string }) => {
+  const onSubmit = handleSubmit(async (data: { username: string; password: string }) => {
     setLoading(true);
     setError("");
 
-    const { data: result, error } = await authClient.signIn.email({
-      email: data.email,
-      password: data.password,
-      callbackURL: DASHBOARD_URL,
-    });
+    // One field, two handles: usernames never contain `@`, so an address typed
+    // here is an email — the fallback for accounts that have no username (or
+    // for people who know the address better).
+    const identifier = data.username.trim();
+    const credentials = { password: data.password, callbackURL: DASHBOARD_URL };
+    const { data: result, error } = identifier.includes("@")
+      ? await authClient.signIn.email({ email: identifier, ...credentials })
+      : await authClient.signIn.username({ username: identifier, ...credentials });
 
     setLoading(false);
 
     if (error) {
-      setError(error.message || "Invalid email or password");
+      setError(error.message || "Invalid username or password");
       return;
     }
 
@@ -211,16 +214,17 @@ function LoginForm() {
               {error && <ErrorBanner message={error} />}
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                {/* `username`, not `email`: mobile password managers only recognise a
-                    credential form — and therefore its password field — when the
-                    identifier carries the username hint. */}
+                <Label htmlFor="username">Username</Label>
+                {/* `autoComplete="username"` and the `username` field name are what
+                    password managers key on to offer the stored credential. */}
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
+                  id="username"
+                  placeholder="username or email"
                   autoComplete="username"
-                  {...register("email")}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  {...register("username")}
                 />
               </div>
 

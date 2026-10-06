@@ -10,9 +10,10 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { AlertCircle, CheckCircle, ChevronRight, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { fetchJson } from "@/lib/http";
+import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
 
 interface RegisterForm {
-  name: string;
+  username: string;
   email: string;
   password: string;
   confirmPassword: string;
@@ -27,6 +28,8 @@ export default function RegisterPage() {
   const { register, handleSubmit, watch } = useForm<RegisterForm>();
 
   const password = watch("password");
+  const usernameValue = watch("username");
+  const usernameInvalid = Boolean(usernameValue) && !isValidUsername(usernameValue);
 
   // Check if signups are enabled
   useEffect(() => {
@@ -40,6 +43,15 @@ export default function RegisterPage() {
     setError("");
     setSuccess("");
 
+    // The handle is the whole identity now — no separate full name. Store the
+    // typed form as the display name and the normalized one as the handle.
+    const username = normalizeUsername(data.username);
+    if (!isValidUsername(username)) {
+      setError(`That username does not fit: ${USERNAME_RULES}.`);
+      setLoading(false);
+      return;
+    }
+
     if (data.password !== data.confirmPassword) {
       setError("Passwords do not match");
       setLoading(false);
@@ -47,7 +59,8 @@ export default function RegisterPage() {
     }
 
     const { error } = await authClient.signUp.email({
-      name: data.name,
+      name: data.username.trim(),
+      username,
       email: data.email,
       password: data.password,
       callbackURL: "/dashboard/chat",
@@ -124,8 +137,24 @@ export default function RegisterPage() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" autoComplete="name" placeholder="Your name" {...register("name")} />
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="ada.lovelace"
+              aria-invalid={usernameInvalid}
+              {...register("username")}
+            />
+            <p
+              className={
+                usernameInvalid ? "text-destructive text-xs" : "text-muted-foreground text-xs"
+              }
+            >
+              {USERNAME_RULES}
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -134,7 +163,7 @@ export default function RegisterPage() {
               id="email"
               type="email"
               placeholder="you@example.com"
-              autoComplete="username"
+              autoComplete="email"
               {...register("email")}
             />
           </div>
