@@ -51,6 +51,7 @@ observes `compaction_start`/`compaction_end` and persists the summary.
 
 Use `session.agent.prompt(text, images)` ONLY for short one-shot jobs where
 post-run processing is irrelevant:
+
 - Queue jobs: `src/lib/queue/job-handler.ts` (`dispatchAiJob`)
 - Email drafts: `src/app/api/email/draft/route.ts`
 
@@ -97,15 +98,18 @@ replaces them.
 
 ### Prompt conventions by feature
 
-| Feature | Prompt style | Reference |
-|---------|-------------|-----------|
-| Chat | `buildAgentSystemPrompt()` (assistant + custom instructions + tools) | `src/app/api/chat/sessions/[sessionId]/stream/route.ts` |
-| Email draft | Task-specific, output-only rules | `src/app/api/email/draft/route.ts` |
-| Queue jobs | JSON-only, structured output | `src/lib/queue/job-handler.ts` |
+| Feature     | Prompt style                                                         | Reference                                               |
+| ----------- | -------------------------------------------------------------------- | ------------------------------------------------------- |
+| Chat        | `buildAgentSystemPrompt()` (assistant + custom instructions + tools) | `src/app/api/chat/sessions/[sessionId]/stream/route.ts` |
+| Email draft | Task-specific, output-only rules                                     | `src/app/api/email/draft/route.ts`                      |
+| Queue jobs  | JSON-only, structured output                                         | `src/lib/queue/job-handler.ts`                          |
 
 ## Model Runtime
 
-**Always use `buildModelRuntime(userId)` from `src/lib/pi/models`.** This creates a `ModelRuntime` with the user's configured providers and API keys — and only those.
+**Always use `buildModelRuntime(userId)` from `src/lib/pi/models`** (or
+`buildGlobalModelRuntime()` for the admin's global configuration). This creates a
+`ModelRuntime` whose providers, models and credentials are all Pi's — Saale adds
+none of its own except the OpenAI-compatible endpoint.
 
 ```ts
 import { buildModelRuntime } from "@/lib/pi/models";
@@ -113,14 +117,50 @@ import { buildModelRuntime } from "@/lib/pi/models";
 const { modelRuntime, models } = await buildModelRuntime(userId);
 ```
 
-**Never call `ModelRuntime.create()` bare.** Its defaults read the *host's*
-`~/.pi/agent/auth.json` and `models.json` (SDK docs, "Credential priority"), so
-a server running on a machine where the operator uses Pi would hand every tenant
-that operator's provider keys and private endpoints, and write fetched catalogs
-into the operator's Pi directory. `buildModelRuntime` passes
-`{ credentials: new InMemoryCredentialStore(), modelsPath: null }`; keep it that
-way. (Environment-provided keys — `ANTHROPIC_API_KEY` etc. — are still honoured
-by the SDK, so keep provider keys out of the app's environment too.)
+**Never call `ModelRuntime.create()` bare.** Its defaults read the _host's_
+`~/.pi/agent/auth.json`, `models.json` and `models-store.json` (SDK docs,
+"Credential priority"), so a server running on a machine where the operator uses
+Pi would hand every tenant that operator's provider keys, private endpoints and
+catalog cache. `buildModelRuntime` passes Saale's own stores:
+
+```ts
+{
+  credentials: createProviderCredentialStore(scope),  // src/lib/providers/credential-store.ts
+  modelsPath: null,
+  modelsStore: createModelsStore(),                   // src/lib/providers/models-store.ts (Redis)
+  allowModelNetwork: false,
+}
+```
+
+Keep it that way. (Environment-provided keys — `ANTHROPIC_API_KEY` etc. — are
+still honoured by the SDK, so keep provider keys out of the app's environment
+too.)
+
+### Providers, credentials and models are Pi's
+
+**Never add a provider, a model or an auth field to Saale.** Pi's runtime already
+knows every provider it can talk to, how each authenticates, and which models it
+serves; the settings UI lists `modelRuntime.getProviders()`
+(`src/lib/providers/catalog.ts`) and signs in through Pi's own flows
+(`src/lib/providers/login.ts`). A provider Pi gains appears in Saale with no
+change here.
+
+- **Credentials** live in `provider_api_key.encryptedCredential`, one encrypted
+  Pi `Credential` (`{ type: "api_key", key, env }` or an OAuth token set) per
+  provider per scope. `encryptedKey` is the OpenAI-compatible endpoint's key
+  only. A user reads their own credential and inherits the global one.
+- **Sign-in** runs Pi's `login(providerId, authType, interaction)` detached, with
+  the interaction transported over Redis so a browser can answer it. Browser-OAuth
+  flows bind a loopback callback on the _server_, which the user's browser cannot
+  reach — Pi's flows all offer a headless path (device code, copy code, or pasting
+  the final redirect URL), and its own instructions tell the user which.
+- **Model lists** come from Pi's catalog, plus the overlay Pi fetches from
+  `pi.dev` (cached in Redis, refreshed detached; `PI_OFFLINE` disables it —
+  Pi itself only consults that variable on `create()`).
+- **The one exception** is `custom`: an OpenAI-compatible endpoint Pi does not
+  know, registered with `registerProvider` (its key via `setRuntimeApiKey`) and
+  described by Saale's own limits and capability map. `definesProviderModels()`
+  in `src/lib/providers/config.ts` is true for it alone.
 
 ### Resolving a specific model
 
@@ -141,8 +181,8 @@ Anthropic and Mistral cap output well below their context windows too. When a
 request fails this way `stopReason` is `"error"` with empty content, which looks
 like a silent no-op rather than an error.
 
-For endpoints Pi's catalog can't describe (self-hosted, discoverable catalogs),
-the limits come from the user's provider config (`contextWindow` /
+For the OpenAI-compatible endpoint (the one provider Pi's catalog can't
+describe), the limits come from the user's provider config (`contextWindow` /
 `maxOutputTokens` on `provider_api_key`, applied via `limitFields()` in
 `src/lib/providers/limits.ts`). Never invent those numbers in code.
 
@@ -160,8 +200,8 @@ built — the stream route and `/compact` both call it, so they cannot drift:
 ```ts
 export async function createChatAgentSession(options: {
   userId: string;
-  sessionId: string;              // ChatSession.id
-  chatSession: ChatSessionModelConfig;  // model, thinking level, tool config
+  sessionId: string; // ChatSession.id
+  chatSession: ChatSessionModelConfig; // model, thinking level, tool config
   model?: { provider: string; name: string }; // omitted → user's default chat model
   customInstructions: string | null;
   toolPolicies: Record<string, string> | null | undefined;
@@ -200,7 +240,7 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
   inactive and `startSessionExtensions()` activates it.
 - Do **not** activate it through `defaultTools` in `createSessionSettings()`:
   Saale passes `noTools: "builtin"`, which makes Pi ignore `defaultTools`, and
-  naming Pi's built-in tools would activate the *host's* file/shell tools when
+  naming Pi's built-in tools would activate the _host's_ file/shell tools when
   Open Terminal is not configured.
 - `noTools: "builtin"` still activates extension-registered tools that Saale
   supplies through `customTools` — that is how `read`/`bash`/`edit`/`write` and
@@ -213,7 +253,7 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
 
 - **Config lives in the database, not `mcp.json`.** `createUserMcpExtension(userId)`
   loads the user's enabled servers and passes them to `createMcpExtension({
-  loadConfig })`. Never let the MCP extension read the host's Pi directory: it
+loadConfig })`. Never let the MCP extension read the host's Pi directory: it
   belongs to whoever installed Pi on the machine.
 - **HTTP only.** A stdio server is a command Pi spawns in the Saale process, so
   user-configured commands would run with the app host's environment and
@@ -221,7 +261,7 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
 - **Exposure is always `codemode`.** MCP tools stay out of the model's tool
   declarations and are reached from codemode scripts, which Saale enables
   anyway — a server with hundreds of tools does not bloat every prompt.
-- **MCP tools must be gated.** They are registered *after* the session is built,
+- **MCP tools must be gated.** They are registered _after_ the session is built,
   so `wrapTool` never sees them. `createMcpToolPolicyExtension()` (an inline
   extension on `tool_call`) applies the user's per-tool policy, then the
   server's policy, then `ask`. Wire it wherever `createAgentResourceLoader` is
@@ -231,7 +271,7 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
   — a pooled session's extensions are fixed at creation.
 - **No server-to-client stream** (`createTransport` → `openGetStream: false`).
   Pi opens a long-lived GET stream per server by default, but a pooled session
-  is evicted with `session.dispose()`, which does *not* emit `session_shutdown`
+  is evicted with `session.dispose()`, which does _not_ emit `session_shutdown`
   — the MCP extension only closes its connections there. With the default
   transport every evicted session would leak one open stream per server for the
   life of the process. The trade-off: a server whose tool list changes is
@@ -242,7 +282,7 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
   which a hosted web app has, so the loader overrides `openUrl` to log and a
   token-less HTTP server just gets a 401 (the settings test explains it).
   `createUserMcpTransport` therefore drops Pi's `authProvider` entirely: its
-  credentials live in `<agent directory>/mcp-auth.json`, a *host-wide* file
+  credentials live in `<agent directory>/mcp-auth.json`, a _host-wide_ file
   shared by the operator's Pi CLI and every tenant and keyed by server name and
   URL, so a session would otherwise silently present a sign-in the user never
   made. Adding OAuth later means `McpOAuthProvider` from
@@ -256,7 +296,8 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
 
 ```ts
 const resourceLoader = await createAgentResourceLoader({
-  prompt, cwd: sessionDir,
+  prompt,
+  cwd: sessionDir,
   mcp: { userId, sessionId, toolPolicies, emitApprovalRequest },
 });
 const { session } = await createAgentSession({ /* … */ resourceLoader });
@@ -281,7 +322,7 @@ const { session } = await createAgentSession({
   sessionManager: SessionManager.inMemory(),
   modelRuntime,
   settingsManager: createSessionSettings(), // never the host's ~/.pi/agent settings
-  noTools: "all",       // disable everything
+  noTools: "all", // disable everything
   model,
   customTools: [],
   resourceLoader: await createSystemPromptLoader(bespokePrompt, process.cwd()),
@@ -299,7 +340,7 @@ what the model supports.
 
 **`src/lib/pi/thinking-levels.ts` is the single source of truth** for the level
 list and for resolving a stored setting. `"default"` is Saale's extra setting:
-it means "no opinion", and it must resolve to *no* option so Pi keeps its own
+it means "no opinion", and it must resolve to _no_ option so Pi keeps its own
 level (the level recorded in the session file, the user's Pi setting, or Pi's
 built-in default).
 
@@ -417,26 +458,28 @@ message following the old conversation.
 
 ## Anti-Patterns
 
-| Anti-pattern | Why | Fix |
-|-------------|-----|-----------|
-| `session.agent.prompt()` for chat/Telegram | Bypasses SDK compaction, retry, `agent_settled` — treats a stopped run as finished | Use `session.prompt()` (with a system-prompt resource loader) |
-| Re-prompting an edited message without rewinding the transcript | The append-only transcript still holds the deleted history, so the model reads the edit as a new message | Rewind first — see "Message Editing (History Rewind)" |
-| Calling `session.compact()` on token thresholds / mid-run | Aborts the in-flight run; no in-flight guard → double compaction | Let the SDK auto-compact at run boundaries; only observe `compaction_*` events |
-| Treating `agent_end` as "done" | Run may continue after compaction/error retry | Emit `done` on `agent_settled` |
-| `getAvailable()[0]` for model | Grabs first model (could be an embedding model) | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings |
-| No custom systemPrompt | Pi base prompt has coding-agent noise | Always pass `resourceLoader: await createSystemPromptLoader(prompt, cwd)` |
-| Setting `session.agent.state.systemPrompt` or private `_baseSystemPrompt` | Removed in pi v0.86 (read-only derived property) | Use `createSystemPromptLoader` at session creation |
-| Assigning `session.agent.state.messages` | Since pi v0.87 the provider context comes from the `SessionManager` projection — the assignment compiles but no longer affects future requests | Navigate with `session.navigateTree()`; for direct `sessionManager` mutations call `session.refreshContext()` after |
-| `noTools: "builtin"` for text-only tasks | Heavier than needed | Use `noTools: "all"` |
-| Activating `codemode` via `defaultTools` while passing `noTools` | Pi ignores `defaultTools` when `noTools` is set, and naming built-in tools would activate the *host's* file/shell tools | `startSessionExtensions(session)` after `createAgentSession` |
-| Never calling `session.bindExtensions()` | Extensions never get `session_start`: no MCP connections, no codemode activation | `startSessionExtensions(session)` |
-| Gating MCP tools by wrapping them | They are registered after the session is built, so `wrapTool` never sees them — `ask`/`off` would be ignored | `createMcpToolPolicyExtension()` on `tool_call` |
-| Letting the MCP extension read the host's `mcp.json` / `mcp-auth.json` | Config and credentials belong to the machine's Pi install, not to a tenant | `createUserMcpExtension(userId)` with `loadConfig`; override `logPath`/`openUrl`/`updateConfig` |
-| No timeout on non-streaming calls | Can hang indefinitely | Always add a timeout (5min default) |
-| Returning `{ isError: true }` from a tool | Pi's agent loop hardcodes `isError: false` for non-throwing results, so the failure reaches the model and the UI as a successful call | `throw new Error("…")` — the loop turns it into a flagged error result with the message |
-| Omitting `settingsManager` from `createAgentSession` | Pi then reads the *host's* `~/.pi/agent/settings.json`: thinking level, compaction budget, retries, image blocking, proxy, and a `packages` list it resolves (npm install!) on every session creation | Pass `createSessionSettings()` (`src/lib/pi/settings.ts`) |
-| Passing `authStorage`/`modelRegistry` to `createAgentSession` | Deprecated API (pre-0.80.8) | Use `modelRuntime` instead |
-| Returning `null` exit code from custom `BashOperations` for killed/failed commands | pi v0.86 treats null as failure ("Command terminated without an exit code"), not partial success | Throw `Error("aborted")` / `Error("timeout:<secs>")` for abort/timeout; keep null only when no exit code exists (e.g. container cleaned up) |
+| Anti-pattern                                                                       | Why                                                                                                                                                                                                                                                       | Fix                                                                                                                                         |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hardcoding a provider list, a base URL, or a model catalog                         | Pi's runtime already knows every provider, how it authenticates and which models it serves; a hand-kept list drifts, and `registerProvider` _replaces_ a provider's model list, dropping the metadata Pi had (`thinkingLevelMap`, `compat`, input limits) | Read `modelRuntime.getProviders()`; authenticate through Pi's own `login()` flows (`src/lib/providers/login.ts`)                            |
+| Storing a provider's API key in a field Saale invents                              | Pi's credential is not always one key — Cloudflare needs an account and gateway id, Bedrock and Azure resolve ambient config, OAuth stores tokens that Pi refreshes                                                                                       | Let Pi produce the credential and store it whole (`encryptedCredential`, one encrypted `Credential` per provider)                           |
+| `session.agent.prompt()` for chat/Telegram                                         | Bypasses SDK compaction, retry, `agent_settled` — treats a stopped run as finished                                                                                                                                                                        | Use `session.prompt()` (with a system-prompt resource loader)                                                                               |
+| Re-prompting an edited message without rewinding the transcript                    | The append-only transcript still holds the deleted history, so the model reads the edit as a new message                                                                                                                                                  | Rewind first — see "Message Editing (History Rewind)"                                                                                       |
+| Calling `session.compact()` on token thresholds / mid-run                          | Aborts the in-flight run; no in-flight guard → double compaction                                                                                                                                                                                          | Let the SDK auto-compact at run boundaries; only observe `compaction_*` events                                                              |
+| Treating `agent_end` as "done"                                                     | Run may continue after compaction/error retry                                                                                                                                                                                                             | Emit `done` on `agent_settled`                                                                                                              |
+| `getAvailable()[0]` for model                                                      | Grabs first model (could be an embedding model)                                                                                                                                                                                                           | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings                                                                       |
+| No custom systemPrompt                                                             | Pi base prompt has coding-agent noise                                                                                                                                                                                                                     | Always pass `resourceLoader: await createSystemPromptLoader(prompt, cwd)`                                                                   |
+| Setting `session.agent.state.systemPrompt` or private `_baseSystemPrompt`          | Removed in pi v0.86 (read-only derived property)                                                                                                                                                                                                          | Use `createSystemPromptLoader` at session creation                                                                                          |
+| Assigning `session.agent.state.messages`                                           | Since pi v0.87 the provider context comes from the `SessionManager` projection — the assignment compiles but no longer affects future requests                                                                                                            | Navigate with `session.navigateTree()`; for direct `sessionManager` mutations call `session.refreshContext()` after                         |
+| `noTools: "builtin"` for text-only tasks                                           | Heavier than needed                                                                                                                                                                                                                                       | Use `noTools: "all"`                                                                                                                        |
+| Activating `codemode` via `defaultTools` while passing `noTools`                   | Pi ignores `defaultTools` when `noTools` is set, and naming built-in tools would activate the _host's_ file/shell tools                                                                                                                                   | `startSessionExtensions(session)` after `createAgentSession`                                                                                |
+| Never calling `session.bindExtensions()`                                           | Extensions never get `session_start`: no MCP connections, no codemode activation                                                                                                                                                                          | `startSessionExtensions(session)`                                                                                                           |
+| Gating MCP tools by wrapping them                                                  | They are registered after the session is built, so `wrapTool` never sees them — `ask`/`off` would be ignored                                                                                                                                              | `createMcpToolPolicyExtension()` on `tool_call`                                                                                             |
+| Letting the MCP extension read the host's `mcp.json` / `mcp-auth.json`             | Config and credentials belong to the machine's Pi install, not to a tenant                                                                                                                                                                                | `createUserMcpExtension(userId)` with `loadConfig`; override `logPath`/`openUrl`/`updateConfig`                                             |
+| No timeout on non-streaming calls                                                  | Can hang indefinitely                                                                                                                                                                                                                                     | Always add a timeout (5min default)                                                                                                         |
+| Returning `{ isError: true }` from a tool                                          | Pi's agent loop hardcodes `isError: false` for non-throwing results, so the failure reaches the model and the UI as a successful call                                                                                                                     | `throw new Error("…")` — the loop turns it into a flagged error result with the message                                                     |
+| Omitting `settingsManager` from `createAgentSession`                               | Pi then reads the _host's_ `~/.pi/agent/settings.json`: thinking level, compaction budget, retries, image blocking, proxy, and a `packages` list it resolves (npm install!) on every session creation                                                     | Pass `createSessionSettings()` (`src/lib/pi/settings.ts`)                                                                                   |
+| Passing `authStorage`/`modelRegistry` to `createAgentSession`                      | Deprecated API (pre-0.80.8)                                                                                                                                                                                                                               | Use `modelRuntime` instead                                                                                                                  |
+| Returning `null` exit code from custom `BashOperations` for killed/failed commands | pi v0.86 treats null as failure ("Command terminated without an exit code"), not partial success                                                                                                                                                          | Throw `Error("aborted")` / `Error("timeout:<secs>")` for abort/timeout; keep null only when no exit code exists (e.g. container cleaned up) |
 
 ## Custom BashOperations (Open Terminal)
 
@@ -450,7 +493,7 @@ signal failures through the SDK's conventions:
 
 Never swallow a `killCommand` failure — log it (repo rule: no swallowed errors).
 
-**Never forward the `env` the SDK hands `exec()`.** It is the *server's*
+**Never forward the `env` the SDK hands `exec()`.** It is the _server's_
 environment (`resolveSpawnContext` copies `process.env`), so passing it on ships
 `DATABASE_URL`, `ENCRYPTION_KEY` and `OPEN_TERMINAL_API_KEY` into the container,
 where any command the model runs can read them. Open Terminal merges what you
