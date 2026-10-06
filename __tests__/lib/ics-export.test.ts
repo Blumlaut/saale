@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { generateICS, generateICSBulk, type ICSExportEvent } from "@/lib/calendar/ics-export";
 
 const baseEvent: ICSExportEvent = {
@@ -101,6 +101,101 @@ describe("ics-export", () => {
       const event = { ...baseEvent, timeZone: "America/New_York" };
       const ics = generateICS(event);
       expect(ics).toContain("America/New_York");
+    });
+
+    it("writes the zone's wall clock for a timezone-aware event", () => {
+      const event = {
+        ...baseEvent,
+        dtStart: new Date("2026-01-15T07:00:00Z"),
+        dtEnd: new Date("2026-01-15T08:00:00Z"),
+        timeZone: "Europe/Athens",
+      };
+
+      const ics = generateICS(event);
+
+      expect(ics).toContain("DTSTART;TZID=Europe/Athens:20260115T090000");
+      expect(ics).toContain("DTEND;TZID=Europe/Athens:20260115T100000");
+    });
+
+    it("applies the offset in force on the event date", () => {
+      const event = {
+        ...baseEvent,
+        dtStart: new Date("2026-07-15T07:00:00Z"),
+        dtEnd: null,
+        timeZone: "Europe/Athens",
+      };
+
+      expect(generateICS(event)).toContain("DTSTART;TZID=Europe/Athens:20260715T100000");
+    });
+
+    it("writes UTC times without a TZID for a UTC event", () => {
+      const event = {
+        ...baseEvent,
+        dtStart: new Date("2026-01-15T09:00:00Z"),
+        dtEnd: null,
+        timeZone: "UTC",
+      };
+      const ics = generateICS(event);
+
+      expect(ics).toContain("DTSTART:20260115T090000Z");
+      expect(ics).not.toContain("TZID");
+    });
+
+    it("keeps the date of an all-day event in a negative-offset zone", () => {
+      const event = {
+        ...baseEvent,
+        allDay: true,
+        dtStart: new Date("2026-01-15T00:00:00Z"),
+        dtEnd: new Date("2026-01-16T00:00:00Z"),
+        timeZone: "America/New_York",
+      };
+
+      const ics = generateICS(event);
+
+      expect(ics).toContain("DTSTART;VALUE=DATE:20260115");
+      expect(ics).toContain("DTEND;VALUE=DATE:20260116");
+      expect(ics).not.toContain("TZID");
+    });
+
+    it("falls back to a UTC instant when the stored zone is not a zone", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const event = {
+        ...baseEvent,
+        dtStart: new Date("2026-01-15T09:00:00Z"),
+        dtEnd: null,
+        timeZone: "W. Europe Standard Time",
+      };
+
+      const ics = generateICS(event);
+
+      expect(ics).toContain("DTSTART:20260115T090000Z");
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("W. Europe Standard Time"));
+      warn.mockRestore();
+    });
+
+    it("has the same DTSTART no matter which timezone the machine runs in", () => {
+      const originalTimeZone = process.env.TZ;
+      const event = {
+        ...baseEvent,
+        dtStart: new Date("2026-01-15T07:00:00Z"),
+        dtEnd: null,
+        timeZone: "Europe/Athens",
+      };
+
+      try {
+        const results = ["UTC", "America/New_York", "Asia/Tokyo"].map((timeZone) => {
+          process.env.TZ = timeZone;
+          return /DTSTART;[^\r\n]*/.exec(generateICS(event))?.[0];
+        });
+
+        expect(results).toEqual([
+          "DTSTART;TZID=Europe/Athens:20260115T090000",
+          "DTSTART;TZID=Europe/Athens:20260115T090000",
+          "DTSTART;TZID=Europe/Athens:20260115T090000",
+        ]);
+      } finally {
+        process.env.TZ = originalTimeZone;
+      }
     });
   });
 

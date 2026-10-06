@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireCalendarEventOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { pushUpdateToCalDAV, pushDeleteToCalDAV } from "@/lib/calendar/caldav";
+import { resolveEventTimeUpdate } from "@/lib/calendar/event-times";
 import type { ICSExportEvent } from "@/lib/calendar/ics-export";
 
 /**
@@ -76,13 +77,36 @@ export async function PATCH(
   if (body.summary !== undefined) updateData.summary = body.summary;
   if (body.description !== undefined) updateData.description = body.description;
   if (body.location !== undefined) updateData.location = body.location;
-  if (body.dtStart !== undefined) updateData.dtStart = new Date(body.dtStart);
-  if (body.dtEnd !== undefined) updateData.dtEnd = body.dtEnd ? new Date(body.dtEnd) : null;
   if (body.allDay !== undefined) updateData.allDay = body.allDay;
-  if (body.timeZone !== undefined) updateData.timeZone = body.timeZone;
   if (body.recurrenceRule !== undefined) updateData.recurrenceRule = body.recurrenceRule;
   if (body.status !== undefined) updateData.status = body.status;
   if (body.transparency !== undefined) updateData.transparency = body.transparency;
+
+  try {
+    const timeUpdate = resolveEventTimeUpdate(
+      {
+        dtStart: event.dtStart,
+        dtEnd: event.dtEnd,
+        timeZone: event.timeZone,
+        allDay: event.allDay,
+      },
+      {
+        dtStart: body.dtStart,
+        dtEnd: body.dtEnd,
+        timeZone: body.timeZone,
+        allDay: body.allDay,
+      },
+    );
+    if (timeUpdate.dtStart !== undefined) updateData.dtStart = timeUpdate.dtStart;
+    if (timeUpdate.dtEnd !== undefined) updateData.dtEnd = timeUpdate.dtEnd;
+    if (timeUpdate.timeZone !== undefined) updateData.timeZone = timeUpdate.timeZone;
+  } catch (err) {
+    console.error(`Rejected update with invalid times for event ${eventId}:`, err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Invalid event times" },
+      { status: 400 },
+    );
+  }
 
   const updated = await prisma.calendarEvent.update({
     where: { id: eventId },
@@ -120,6 +144,7 @@ export async function PATCH(
       summary: updated.summary,
       dtStart: updated.dtStart.toISOString(),
       dtEnd: updated.dtEnd?.toISOString() ?? null,
+      timeZone: updated.timeZone,
       updatedAt: updated.updatedAt.toISOString(),
     },
   });

@@ -1,4 +1,5 @@
 import ical from "ical-generator";
+import { isValidTimeZone, toZonedDate } from "./timezone";
 
 export interface ICSExportEvent {
   uid: string;
@@ -17,7 +18,16 @@ export interface ICSExportEvent {
 /**
  * Default duration for events without an end time (1 hour).
  */
-const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
+export const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000;
+
+/**
+ * ical-generator serializes a TZDate on that zone's clock, so timezone-aware
+ * events keep their wall time regardless of the machine's own timezone. Plain
+ * dates are written as UTC instants.
+ */
+function toICalDate(date: Date, timeZone: string | null): Date {
+  return timeZone ? toZonedDate(date, timeZone) : date;
+}
 
 /**
  * Create a calendar instance with standard prodId.
@@ -38,14 +48,26 @@ export function addEventToCalendar(
   event: ICSExportEvent,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator return type is opaque
 ): any {
+  // All-day events are date-only (VALUE=DATE) and carry no TZID; an unknown
+  // zone would otherwise be written verbatim next to a wall clock nobody can
+  // resolve, so fall back to an absolute UTC time instead.
+  const timeZone =
+    !event.allDay && event.timeZone && isValidTimeZone(event.timeZone) ? event.timeZone : null;
+  if (!event.allDay && event.timeZone && !timeZone) {
+    console.warn(`Unknown timezone "${event.timeZone}" on event ${event.uid}; exporting it in UTC`);
+  }
+
   const icalEvent = cal.createEvent({
     id: event.uid,
-    start: event.dtStart,
-    end: event.dtEnd ?? new Date(event.dtStart.getTime() + DEFAULT_EVENT_DURATION_MS),
+    start: toICalDate(event.dtStart, timeZone),
+    end: toICalDate(
+      event.dtEnd ?? new Date(event.dtStart.getTime() + DEFAULT_EVENT_DURATION_MS),
+      timeZone,
+    ),
     summary: event.summary,
     description: event.description,
     location: event.location,
-    timezone: event.timeZone,
+    timezone: timeZone,
     allDay: event.allDay,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ical-generator enums are opaque
     status: event.status as any,
