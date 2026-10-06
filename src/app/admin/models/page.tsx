@@ -8,16 +8,16 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import {
+  fromGlobalProviderModels,
+  toGlobalProviderModels,
+  type ProviderModelConfig,
+} from "@/lib/admin/model-availability";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Bot, Key, Loader2, CheckCircle, AlertCircle, Search, Eye, ScanEye } from "lucide-react";
 import { ProviderConnections } from "@/components/providers/provider-connections";
 import type { AvailableModel, AvailableProvider } from "@/app/dashboard/settings/types";
-
-interface ProviderModelConfig {
-  enabled: boolean;
-  models?: string[];
-}
 
 interface AdminSettings {
   signupsEnabled: boolean;
@@ -87,17 +87,7 @@ export default function AdminModelsPage() {
       const data = await fetchJson<{ settings: AdminSettings }>("/api/admin/settings");
       setAdminSettings(data.settings);
 
-      // Initialize toggle states from admin settings
-      const providerModels = data.settings.globalProviderModels ?? {};
-      const models: Record<string, Set<string>> = {};
-
-      for (const [providerId, config] of Object.entries(providerModels)) {
-        if ((config as ProviderModelConfig).models) {
-          models[providerId] = new Set((config as ProviderModelConfig).models);
-        }
-      }
-
-      setModelEnabled(models);
+      setModelEnabled(fromGlobalProviderModels(data.settings.globalProviderModels));
     } finally {
       setSettingsLoading(false);
     }
@@ -161,13 +151,7 @@ export default function AdminModelsPage() {
     if (!adminSettings) return;
     setSaving(true);
 
-    const globalProviderModels: Record<string, ProviderModelConfig> = {};
-    for (const providerId of Object.keys(availableModels)) {
-      globalProviderModels[providerId] = {
-        enabled: true,
-        models: Array.from(modelEnabled[providerId] ?? []),
-      };
-    }
+    const globalProviderModels = toGlobalProviderModels(Object.keys(availableModels), modelEnabled);
 
     try {
       await patchJson("/api/admin/settings", {
