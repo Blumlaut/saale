@@ -87,6 +87,50 @@ className={cn(
 - For the main sidebar nav, the active state is the console treatment: dark fill + orange left tick (`border-l-2 border-primary`) — see `references/navigation.md`
 - No color shift on hover (just brightness)
 
+## Row Actions
+
+Actions that belong to a row (its ⋯ menu, a delete button) stay out of the
+way on pointer devices and reveal themselves on hover — but **a touch device
+can never hover**, so a hover-only action is unreachable on a phone. Use the
+shared `ROW_ACTION` class (`@/lib/utils`):
+
+```tsx
+import { cn, ROW_ACTION } from "@/lib/utils";
+
+<div className="group flex items-center gap-3 px-4 py-3">
+  {/* row content */}
+  <DropdownMenu>
+    <DropdownMenuTrigger
+      render={(triggerProps) => (
+        <Button variant="ghost" size="icon-sm" className={cn("shrink-0", ROW_ACTION)} {...triggerProps}>
+          <MoreVertical />
+          <span className="sr-only">Actions for {item.title}</span>
+        </Button>
+      )}
+    />
+    <DropdownMenuContent align="end">
+      <DropdownMenuItem variant="destructive" onClick={onDelete}>
+        <Trash2 />
+        Delete
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+</div>
+```
+
+`ROW_ACTION` = hidden, revealed on `group-hover` / `group-focus-within`, and
+**always visible when a coarse pointer exists** (`any-pointer-coarse:`).
+
+- **Destructive row actions go behind the row menu**, not on a bare always-
+  visible button next to every row — a permanent one-tap delete is too easy to
+  hit while scrolling.
+- **Named groups** (`group/message`, `group/col`) keep their own hover variant
+  and add `any-pointer-coarse:opacity-*` themselves.
+- **Inline actions on a message/card** (copy, edit, open-link hints) only need
+  the pointer variant added: `group-hover/message:opacity-70 any-pointer-coarse:opacity-70`.
+- A dimmed action (`opacity-60 hover:opacity-100`) is fine as-is — it is only
+  *louder* on hover, never hidden.
+
 ## Table
 
 For structured data that needs columns:
@@ -194,6 +238,7 @@ import { Button } from "@/components/ui/button";
 | Mistake                   | Fix                                   |
 | ------------------------- | ------------------------------------- |
 | No hover state on rows    | Add `hover:bg-accent/60`              |
+| Hover-only row action     | Use `ROW_ACTION` (`any-pointer-coarse:`) so touch can reach it |
 | Rows < 48px tall          | Increase padding                      |
 | No dividers between items | Add `<Separator>`                     |
 | 5+ column tables          | Reduce columns, add detail view       |

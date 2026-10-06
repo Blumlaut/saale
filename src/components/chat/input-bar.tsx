@@ -275,7 +275,7 @@ export function InputBar({
         </div>
       )}
 
-      <div className="liquid-glass-inner relative flex items-center gap-2 rounded-2xl border-0 px-3 py-2">
+      <div className="liquid-glass-inner relative flex items-center gap-2 rounded-none border-0 px-3 py-2">
         {/* Tools toggle button */}
         {hasToolToggle && (
           <DropdownMenu>

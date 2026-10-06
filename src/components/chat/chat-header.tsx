@@ -60,7 +60,7 @@ export function ChatHeader({
   const modelName = modelParts.join("/");
 
   return (
-    <div className="border-border/30 flex items-center gap-1.5 border-b px-2 py-2 md:gap-2 md:px-4 md:py-2.5">
+    <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-2 md:gap-2 md:px-4 md:py-2.5">
       {/* Mobile: session list */}
       <div className="shrink-0 md:hidden">
         <MobileSessionSheet activeSessionId={sessionId} />
@@ -88,7 +88,7 @@ export function ChatHeader({
           className="group/title hover:bg-accent/60 -ml-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-sm font-semibold transition-colors"
         >
           <span className="max-w-[140px] truncate md:max-w-[300px]">{sessionTitle || "Chat"}</span>
-          <Pencil className="text-muted-foreground h-3 w-3 opacity-0 transition-opacity group-hover/title:opacity-70" />
+          <Pencil className="text-muted-foreground h-3 w-3 opacity-0 transition-opacity group-hover/title:opacity-70 any-pointer-coarse:opacity-70" />
         </button>
       )}
       {temporaryMode && (

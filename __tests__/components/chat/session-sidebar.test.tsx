@@ -60,6 +60,11 @@ async function renderSidebar(activeSessionId?: string, expected = "Fresh chat") 
   return view;
 }
 
+/** Open a row's action menu (the ⋯ button lives behind a hover state on pointer devices). */
+async function revealRowActions(title: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Actions for ${title}` }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockSessions();
@@ -138,10 +143,22 @@ describe("SessionSidebar older chats", () => {
     await renderSidebar();
 
     fireEvent.click(screen.getByRole("button", { name: "Show older chats" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete Stale chat" }));
+    await revealRowActions("Stale chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
 
     await waitFor(() => expect(screen.queryByText("Stale chat")).not.toBeInTheDocument());
     expect(screen.getByText("Ancient chat")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/chat/sessions/s-stale", { method: "DELETE" });
+  });
+
+  it("offers every row's delete action without a hover state", async () => {
+    // Touch devices cannot hover, so the row action must exist in the DOM for
+    // every row (its CSS keeps it visible when there is no pointer).
+    await renderSidebar();
+
+    for (const title of ["Fresh chat", "Recent chat"]) {
+      const trigger = screen.getByRole("button", { name: `Actions for ${title}` });
+      expect(trigger).toHaveClass("any-pointer-coarse:opacity-100");
+    }
   });
 });

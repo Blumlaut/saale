@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
+import { cn, ROW_ACTION } from "@/lib/utils";
 import {
   Brain,
   Loader2,
@@ -319,7 +320,7 @@ export function MemoriesTab() {
                           render={(triggerProps) => (
                             <button
                               type="button"
-                              className="opacity-0 transition-opacity group-hover/col:opacity-100"
+                              className={cn(ROW_ACTION, "group-hover/col:opacity-100")}
                               {...triggerProps}
                             >
                               <MoreVertical className="h-3.5 w-3.5" />
@@ -470,7 +471,7 @@ export function MemoriesTab() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                          className={cn("h-7 w-7 shrink-0", ROW_ACTION)}
                           {...triggerProps}
                         >
                           <MoreVertical className="h-4 w-4" />

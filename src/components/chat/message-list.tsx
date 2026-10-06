@@ -519,7 +519,7 @@ function UserMessageItem({
           {onEdit && (
             <button
               onClick={startEditing}
-              className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover/message:opacity-70"
+              className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-focus-within/message:opacity-70 group-hover/message:opacity-70 any-pointer-coarse:opacity-70"
               aria-label="Edit message"
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -706,7 +706,7 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
               <CopyButton
                 text={copyText}
                 label="Copy response"
-                className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover/message:opacity-70"
+                className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-focus-within/message:opacity-70 group-hover/message:opacity-70 any-pointer-coarse:opacity-70"
               />
             )}
           </div>
