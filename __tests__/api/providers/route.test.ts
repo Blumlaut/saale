@@ -12,6 +12,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
   },
 }));
@@ -20,9 +21,17 @@ vi.mock("@/lib/crypto", () => ({
   encrypt: vi.fn((v: string) => `enc(${v})`),
 }));
 
+// The endpoint import (`fetchOpenAIModels`) stays real so the POST tests can
+// stub the HTTP listing; only the runtime build is replaced.
+vi.mock("@/lib/pi/models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/pi/models")>()),
+  buildModelRuntime: vi.fn(),
+}));
+
 import * as auth from "@/lib/auth";
 import * as db from "@/lib/db";
-import { POST, PATCH } from "@/app/api/providers/route";
+import * as piModels from "@/lib/pi/models";
+import { DELETE, GET, POST, PATCH } from "@/app/api/providers/route";
 
 const authed = () =>
   vi.mocked(auth.requireSession).mockResolvedValue({
@@ -58,6 +67,7 @@ describe("POST /api/providers", () => {
       encryptedKey: "enc()",
       label: "",
       baseUrl: "http://localhost:8080/v1",
+      encryptedCredential: null,
       contextWindow: null,
       maxOutputTokens: null,
       modelCapabilities: null,
@@ -170,6 +180,7 @@ describe("POST /api/providers", () => {
       encryptedKey: "enc()",
       label: "",
       baseUrl: "http://localhost:8080/v1",
+      encryptedCredential: null,
       contextWindow: null,
       maxOutputTokens: null,
       modelCapabilities: { "hand-set": { vision: true } },
@@ -207,6 +218,7 @@ describe("PATCH /api/providers", () => {
       userId: "user-1",
       provider: "custom",
       encryptedKey: "unchanged",
+      encryptedCredential: null,
       label: "",
       baseUrl: "http://localhost:8080/v1",
       contextWindow: 16384,
@@ -251,6 +263,7 @@ describe("PATCH /api/providers", () => {
       userId: "user-1",
       provider: "custom",
       encryptedKey: "unchanged",
+      encryptedCredential: null,
       label: "",
       baseUrl: null,
       contextWindow: null,
@@ -285,5 +298,181 @@ describe("PATCH /api/providers", () => {
 
     expect(response.status).toBe(401);
     expect(db.prisma.providerApiKey.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/providers", () => {
+  /** A Pi provider, as the runtime's catalog describes one. */
+  const piProvider = {
+    id: "cloudflare-ai-gateway",
+    name: "Cloudflare AI Gateway",
+    baseUrl: undefined,
+    auth: {
+      apiKey: { name: "Cloudflare API key" },
+      oauth: undefined,
+    },
+    getModels: () => new Array(54).fill({ id: "model" }),
+  };
+
+  const groqProvider = {
+    id: "groq",
+    name: "Groq",
+    baseUrl: "https://api.groq.com/openai/v1",
+    auth: { apiKey: { name: "Groq API key" }, oauth: undefined },
+    getModels: () => new Array(7).fill({ id: "model" }),
+  };
+
+  /** Registered by `registerProvider` once the user configures the endpoint. */
+  const customProvider = {
+    id: "custom",
+    name: "custom",
+    baseUrl: "http://localhost:8080/v1",
+    auth: { apiKey: { name: "api key" }, oauth: undefined },
+    getModels: () => [{ id: "local-model" }],
+  };
+
+  function stubRuntime(status: Record<string, { configured: boolean; source?: string }>) {
+    vi.mocked(piModels.buildModelRuntime).mockResolvedValue({
+      models: [],
+      modelRuntime: {
+        getProviders: () => [piProvider, groqProvider, customProvider],
+        getModels: (id?: string) => (id === "custom" ? [{ id: "local-model" }] : []),
+        getProviderAuthStatus: (id: string) => status[id] ?? { configured: false },
+      },
+    } as never);
+  }
+
+  const row = (overrides: Record<string, unknown>) => ({
+    id: "row-1",
+    provider: "custom",
+    label: "",
+    baseUrl: "http://localhost:8080/v1",
+    contextWindow: null,
+    maxOutputTokens: null,
+    createdAt: new Date("2026-01-01"),
+    updatedAt: new Date("2026-01-01"),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authed();
+    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([] as never);
+    stubRuntime({});
+  });
+
+  it("lists every provider Pi can talk to, with how it authenticates", async () => {
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const cloudflare = body.availableProviders.find(
+      (entry: { id: string }) => entry.id === "cloudflare-ai-gateway",
+    );
+
+    // Pi's name, Pi's model count, Pi's auth method — nothing hand-maintained.
+    expect(cloudflare).toMatchObject({
+      name: "Cloudflare AI Gateway",
+      modelCount: 54,
+      custom: false,
+      modelsConfigurable: false,
+      configured: false,
+      methods: [{ type: "api_key", label: "Cloudflare API key", subscription: false }],
+    });
+  });
+
+  it("appends Saale's own OpenAI-compatible endpoint to Pi's catalog", async () => {
+    const body = await (await GET()).json();
+
+    expect(body.availableProviders.at(-1)).toMatchObject({
+      id: "custom",
+      name: "OpenAI-compatible",
+      custom: true,
+      modelsConfigurable: true,
+    });
+    // The OpenRouter/Together-style duplication is gone: Pi's own catalog is
+    // the only source, so no provider appears twice.
+    const ids = body.availableProviders.map((entry: { id: string }) => entry.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("marks the endpoint configured from its row, not from Pi's auth state", async () => {
+    // A keyless local server is configured without any credential Pi could see.
+    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([row({})] as never);
+
+    const body = await (await GET()).json();
+    const custom = body.availableProviders.find((entry: { id: string }) => entry.id === "custom");
+
+    expect(custom).toMatchObject({ configured: true, source: "stored" });
+  });
+
+  it("reports a provider configured through Pi's credential store", async () => {
+    stubRuntime({ "cloudflare-ai-gateway": { configured: true, source: "stored" } });
+
+    const body = await (await GET()).json();
+    const cloudflare = body.availableProviders.find(
+      (entry: { id: string }) => entry.id === "cloudflare-ai-gateway",
+    );
+
+    expect(cloudflare).toMatchObject({ configured: true, source: "stored", isGlobal: false });
+  });
+
+  it("separates the user's credentials from the global ones they inherit", async () => {
+    vi.mocked(db.prisma.providerApiKey.findMany).mockImplementation((async (args: {
+      where: { userId: string | null };
+    }) =>
+      args.where.userId === null
+        ? [row({ id: "global-1", provider: "groq", label: "global groq" })]
+        : [row({ id: "user-1", provider: "custom" })]) as never);
+    stubRuntime({ groq: { configured: true, source: "stored" } });
+
+    const body = await (await GET()).json();
+
+    // The inherited provider is not in the caller's own rows…
+    expect(body.providers.map((entry: { provider: string }) => entry.provider)).toEqual(["custom"]);
+    // …but it is usable, and marked as an admin's.
+    const groq = body.availableProviders.find((entry: { id: string }) => entry.id === "groq");
+    expect(groq).toMatchObject({ configured: true, isGlobal: true });
+  });
+
+  it("requires authentication", async () => {
+    vi.mocked(auth.requireSession).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+
+    const response = await GET();
+
+    expect(response.status).toBe(401);
+    expect(piModels.buildModelRuntime).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/providers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authed();
+  });
+
+  it("removes the credential scoped to the authenticated user", async () => {
+    vi.mocked(db.prisma.providerApiKey.deleteMany).mockResolvedValue({ count: 1 } as never);
+
+    const response = await DELETE(
+      new NextRequest("http://localhost/api/providers?provider=anthropic", { method: "DELETE" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(db.prisma.providerApiKey.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", provider: "anthropic" },
+    });
+  });
+
+  it("requires a provider", async () => {
+    const response = await DELETE(
+      new NextRequest("http://localhost/api/providers", { method: "DELETE" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(db.prisma.providerApiKey.deleteMany).not.toHaveBeenCalled();
   });
 });

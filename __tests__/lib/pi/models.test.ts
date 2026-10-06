@@ -5,6 +5,8 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     providerApiKey: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
     adminSettings: {
       findUnique: vi.fn(),
@@ -15,7 +17,6 @@ vi.mock("@/lib/db", () => ({
 // Mock crypto
 vi.mock("@/lib/crypto", () => ({
   decrypt: vi.fn(),
-  encrypt: vi.fn(),
 }));
 
 // Mock ModelRuntime
@@ -25,23 +26,18 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   },
 }));
 
-// Mock fetchOpenAIModels - use importOriginal to keep actual exports
-vi.mock("@/lib/pi/models", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/pi/models")>();
-  return {
-    ...actual,
-    fetchOpenAIModels: vi.fn(),
-    isModelAllowed: vi.fn().mockReturnValue(true),
-  };
-});
+vi.mock("@/lib/providers/models-store", () => ({
+  createModelsStore: vi.fn(() => ({ kind: "models-store" })),
+  refreshModelCatalogInBackground: vi.fn(),
+}));
 
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import * as pi from "@earendil-works/pi-coding-agent";
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { buildModelRuntime } from "@/lib/pi/models";
+import * as modelsStore from "@/lib/providers/models-store";
+import { buildGlobalModelRuntime, buildModelRuntime } from "@/lib/pi/models";
 
-/** Stub the `/models` listing a provider returns. */
+/** Stub the `/models` listing an OpenAI-compatible endpoint returns. */
 function stubModelListing(ids: string[]): void {
   vi.stubGlobal(
     "fetch",
@@ -53,10 +49,31 @@ function stubModelListing(ids: string[]): void {
   );
 }
 
-/** URL of the last stubbed `/models` request. */
-function stubbedFetchUrl(): string | undefined {
-  const calls = vi.mocked(globalThis.fetch).mock.calls;
-  return calls.length > 0 ? String(calls[calls.length - 1]![0]) : undefined;
+/** One model as Pi's availability snapshot returns it. */
+function catalogModel(overrides: Record<string, unknown> = {}) {
+  return {
+    provider: "anthropic",
+    id: "claude-sonnet",
+    name: "Claude Sonnet",
+    reasoning: true,
+    contextWindow: 200_000,
+    input: ["text", "image"],
+    ...overrides,
+  };
+}
+
+/** The runtime the SDK would return, with only what Saale uses. */
+function stubRuntime(overrides: Record<string, unknown> = {}) {
+  const runtime = {
+    getAvailableSnapshot: vi.fn().mockReturnValue([]),
+    getModel: vi.fn(),
+    setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+    getProvider: vi.fn(),
+    registerProvider: vi.fn(),
+    ...overrides,
+  };
+  vi.mocked(pi.ModelRuntime.create).mockResolvedValue(runtime as never);
+  return runtime;
 }
 
 describe("buildModelRuntime", () => {
@@ -64,20 +81,16 @@ describe("buildModelRuntime", () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
 
-    // Default mocks
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([]);
+    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([] as never);
+    vi.mocked(db.prisma.providerApiKey.findFirst).mockResolvedValue(null as never);
+    vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(null as never);
     vi.mocked(db.prisma.adminSettings.findUnique).mockResolvedValue(null);
+    vi.mocked(crypto.decrypt).mockReturnValue("");
 
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
-      getModel: vi.fn(),
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getProvider: vi.fn(),
-      registerProvider: vi.fn(),
-    } as never);
+    stubRuntime();
   });
 
-  it("creates a ModelRuntime", async () => {
+  it("creates a runtime", async () => {
     const result = await buildModelRuntime("user-1");
 
     expect(pi.ModelRuntime.create).toHaveBeenCalled();
@@ -88,565 +101,258 @@ describe("buildModelRuntime", () => {
   // The SDK's default runtime reads the host's ~/.pi/agent/{auth,models}.json.
   // On a server those belong to whoever installed Pi there, so a default
   // runtime would serve tenants the operator's keys and private endpoints.
-  it("is built without the host's credential files", async () => {
+  it("is built without the host's credential or catalog files", async () => {
     await buildModelRuntime("user-1");
 
     const options = vi.mocked(pi.ModelRuntime.create).mock.calls[0]![0] as {
       credentials?: unknown;
       modelsPath?: unknown;
     };
-    expect(options.credentials).toBeInstanceOf(InMemoryCredentialStore);
+    expect(options.credentials).toMatchObject({
+      read: expect.any(Function),
+      list: expect.any(Function),
+      modify: expect.any(Function),
+      delete: expect.any(Function),
+    });
     expect(options.modelsPath).toBeNull();
   });
 
-  it("fetches global and user-scoped provider keys", async () => {
-    await buildModelRuntime("user-1");
-
-    expect(db.prisma.providerApiKey.findMany).toHaveBeenCalledTimes(2);
-    expect(db.prisma.providerApiKey.findMany).toHaveBeenCalledWith({
-      where: { userId: null },
-      select: {
-        provider: true,
-        encryptedKey: true,
-        baseUrl: true,
-        contextWindow: true,
-        maxOutputTokens: true,
-        modelCapabilities: true,
-      },
-    });
-    expect(db.prisma.providerApiKey.findMany).toHaveBeenCalledWith({
-      where: { userId: "user-1" },
-      select: {
-        provider: true,
-        encryptedKey: true,
-        baseUrl: true,
-        contextWindow: true,
-        maxOutputTokens: true,
-        modelCapabilities: true,
-      },
-    });
-  });
-
-  it("sets runtime API keys from stored keys", async () => {
-    vi.mocked(db.prisma.providerApiKey.findMany)
-      .mockResolvedValueOnce([
-        {
-          id: "key-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: null,
-          provider: "anthropic",
-          encryptedKey: "encrypted-anthropic-key",
-          label: "Anthropic",
-          baseUrl: null,
-          contextWindow: null,
-          maxOutputTokens: null,
-          modelCapabilities: null,
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: "key-2",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: "user-1",
-          provider: "openai",
-          encryptedKey: "encrypted-openai-key",
-          label: "OpenAI",
-          baseUrl: null,
-          contextWindow: null,
-          maxOutputTokens: null,
-          modelCapabilities: null,
-        },
-      ]);
-
-    vi.mocked(crypto.decrypt)
-      .mockReturnValueOnce("sk-ant-123")
-      .mockReturnValueOnce("sk-openai-456");
+  // Pi's own catalog refresh is what keeps a provider's model list current
+  // without shipping a new package; Saale answers from the cached overlay and
+  // refreshes it detached, so a fetch never delays a request.
+  it("reads the shared catalog cache and refreshes it in the background", async () => {
+    const runtime = stubRuntime();
 
     await buildModelRuntime("user-1");
 
-    expect(crypto.decrypt).toHaveBeenCalledTimes(2);
-    expect(crypto.decrypt).toHaveBeenCalledWith("encrypted-anthropic-key");
-    expect(crypto.decrypt).toHaveBeenCalledWith("encrypted-openai-key");
-  });
-
-  it("keeps Pi's catalog definition for a discovered model it knows", async () => {
-    // `registerProvider` REPLACES a provider's model list, and a definition only
-    // inherits api/baseUrl from the catalog entry it shadows — so a discovered
-    // id must carry the catalog's own flags, limits and cost.
-    const getModel = vi.fn().mockImplementation((provider: string, id: string) =>
-      provider === "openrouter" && id === "openai/gpt-5"
-        ? {
-            id,
-            name: "GPT-5",
-            api: "openai-responses",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 },
-            contextWindow: 400_000,
-            maxTokens: 128_000,
-          }
-        : undefined,
-    );
-    const registerProvider = vi.fn();
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
-      getModel,
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getProvider: vi.fn(),
-      registerProvider,
-    } as never);
-
-    vi.mocked(db.prisma.providerApiKey.findMany)
-      .mockResolvedValueOnce([
-        {
-          id: "key-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: null,
-          provider: "openrouter",
-          encryptedKey: "encrypted-key",
-          label: "OpenRouter",
-          baseUrl: null,
-          contextWindow: null,
-          maxOutputTokens: null,
-          modelCapabilities: null,
-        },
-      ])
-      .mockResolvedValueOnce([]);
-    vi.mocked(crypto.decrypt).mockReturnValue("sk-or-123");
-    // `buildModelRuntime` calls the real `fetchOpenAIModels`, so the listing is
-    // stubbed at the network boundary.
-    stubModelListing(["openai/gpt-5", "vendor/unknown-model"]);
-
-    await buildModelRuntime("user-1");
-
-    expect(stubbedFetchUrl()).toBe("https://openrouter.ai/api/v1/models");
-
-    const registration = registerProvider.mock.calls[0]![1] as {
-      models: Array<Record<string, unknown>>;
+    const options = vi.mocked(pi.ModelRuntime.create).mock.calls[0]![0] as {
+      modelsStore?: unknown;
+      allowModelNetwork?: unknown;
     };
-    expect(registration.models[0]).toMatchObject({
-      id: "openai/gpt-5",
-      reasoning: true,
-      input: ["text", "image"],
-      contextWindow: 400_000,
-      maxTokens: 128_000,
-      cost: { input: 1.25, output: 10 },
-    });
-
-    // An id the catalog does not know claims nothing it cannot do.
-    expect(registration.models[1]).toMatchObject({
-      id: "vendor/unknown-model",
-      reasoning: false,
-      input: ["text"],
-    });
+    expect(options.modelsStore).toEqual({ kind: "models-store" });
+    expect(options.allowModelNetwork).toBe(false);
+    expect(modelsStore.refreshModelCatalogInBackground).toHaveBeenCalledWith(runtime);
   });
 
-  it("claims image input for a model the provider recorded as vision-capable", async () => {
-    const registerProvider = vi.fn();
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
-      getModel: vi.fn().mockReturnValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getProvider: vi.fn(),
-      registerProvider,
-    } as never);
-
-    vi.mocked(db.prisma.providerApiKey.findMany)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: "key-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: "user-1",
-          provider: "custom",
-          encryptedKey: "encrypted-key",
-          label: "llama.cpp",
-          baseUrl: "http://localhost:8080/v1",
-          contextWindow: 32_768,
-          maxOutputTokens: 4_096,
-          // Written by detection (`/props` reported the projector) or by hand.
-          modelCapabilities: {
-            "Qwen3-VL-8B": { vision: true },
-            "Llama-3-8B": { vision: false },
-          },
-        },
-      ]);
-    vi.mocked(crypto.decrypt).mockReturnValue("local-key");
-    stubModelListing(["Qwen3-VL-8B", "Llama-3-8B", "never-heard-of-it"]);
-
-    await buildModelRuntime("user-1");
-
-    const registration = registerProvider.mock.calls[0]![1] as {
-      models: Array<Record<string, unknown>>;
-    };
-    // Without the flag Pi strips every image out of the request, and the model
-    // answers about a picture it never received.
-    expect(registration.models[0]).toMatchObject({
-      id: "Qwen3-VL-8B",
-      input: ["text", "image"],
+  it("carries what Pi's catalog knows about each model into the UI list", async () => {
+    stubRuntime({
+      getAvailableSnapshot: vi.fn().mockReturnValue([
+        catalogModel(),
+        catalogModel({
+          provider: "groq",
+          id: "llama",
+          name: "Llama",
+          reasoning: false,
+          input: ["text"],
+          contextWindow: 131_072,
+        }),
+      ]),
     });
-    expect(registration.models[1]).toMatchObject({ id: "Llama-3-8B", input: ["text"] });
-    // No answer anywhere: claim nothing the endpoint cannot do.
-    expect(registration.models[2]).toMatchObject({ id: "never-heard-of-it", input: ["text"] });
-  });
 
-  it("lets a configured capability overrule the catalog", async () => {
-    const getModel = vi.fn().mockImplementation((_provider: string, id: string) =>
-      id === "gpt-4o"
-        ? {
-            id,
-            name: "GPT-4o",
-            api: "openai-completions",
-            reasoning: false,
-            input: ["text", "image"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 128_000,
-            maxTokens: 16_384,
-          }
-        : undefined,
-    );
-    const registerProvider = vi.fn();
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
-      getModel,
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getProvider: vi.fn(),
-      registerProvider,
-    } as never);
+    const { models } = await buildModelRuntime("user-1");
 
-    vi.mocked(db.prisma.providerApiKey.findMany)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: "key-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: "user-1",
-          provider: "custom",
-          encryptedKey: "encrypted-key",
-          label: "proxy",
-          baseUrl: "http://localhost:8080/v1",
-          contextWindow: null,
-          maxOutputTokens: null,
-          // The endpoint serves gpt-4o without an image pipeline.
-          modelCapabilities: { "gpt-4o": { vision: false } },
-        },
-      ]);
-    vi.mocked(crypto.decrypt).mockReturnValue("local-key");
-    stubModelListing(["gpt-4o"]);
-
-    await buildModelRuntime("user-1");
-
-    const registration = registerProvider.mock.calls[0]![1] as {
-      models: Array<Record<string, unknown>>;
-    };
-    expect(registration.models[0]).toMatchObject({
-      id: "gpt-4o",
-      input: ["text"],
-      contextWindow: 128_000,
-    });
-  });
-
-  it("uses the user's limits for a model the catalog does not know", async () => {
-    const registerProvider = vi.fn();
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
-      getModel: vi.fn().mockReturnValue(undefined),
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getProvider: vi.fn(),
-      registerProvider,
-    } as never);
-
-    vi.mocked(db.prisma.providerApiKey.findMany)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: "key-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: "user-1",
-          provider: "custom",
-          encryptedKey: "encrypted-key",
-          label: "Self-hosted",
-          baseUrl: "https://llm.example.com/v1",
-          contextWindow: 32_768,
-          maxOutputTokens: 4_096,
-          modelCapabilities: null,
-        },
-      ]);
-    vi.mocked(crypto.decrypt).mockReturnValue("local-key");
-    stubModelListing(["my-model"]);
-
-    await buildModelRuntime("user-1");
-
-    expect(stubbedFetchUrl()).toBe("https://llm.example.com/v1/models");
-    const registration = registerProvider.mock.calls[0]![1] as {
-      models: Array<Record<string, unknown>>;
-    };
-    expect(registration.models[0]).toMatchObject({
-      id: "my-model",
-      contextWindow: 32_768,
-      maxTokens: 4_096,
-    });
-  });
-
-  it("user keys override global keys for the same provider", async () => {
-    vi.mocked(db.prisma.providerApiKey.findMany)
-      .mockResolvedValueOnce([
-        {
-          id: "key-1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: null,
-          provider: "anthropic",
-          encryptedKey: "global-key",
-          label: "Anthropic Global",
-          baseUrl: null,
-          contextWindow: null,
-          maxOutputTokens: null,
-          modelCapabilities: null,
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: "key-2",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          userId: "user-1",
-          provider: "anthropic",
-          encryptedKey: "user-key",
-          label: "Anthropic User",
-          baseUrl: null,
-          contextWindow: null,
-          maxOutputTokens: null,
-          modelCapabilities: null,
-        },
-      ]);
-
-    vi.mocked(crypto.decrypt)
-      .mockReturnValueOnce("sk-user-key") // user key takes priority
-      .mockReturnValueOnce("sk-global-key"); // global key (not used)
-
-    await buildModelRuntime("user-1");
-
-    // User key should be used, not global key
-    const modelRuntime = (await vi.mocked(pi.ModelRuntime.create).mock.results[0]!
-      .value) as Promise<unknown>;
-    await modelRuntime;
-  });
-
-  it("handles decryption errors gracefully", async () => {
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValueOnce([
+    expect(models).toEqual([
       {
-        id: "key-1",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        userId: null,
         provider: "anthropic",
-        encryptedKey: "corrupt",
-        label: "Corrupt Key",
-        baseUrl: null,
+        id: "claude-sonnet",
+        name: "Claude Sonnet",
+        reasoning: true,
+        contextWindow: 200_000,
+        vision: true,
+      },
+      {
+        provider: "groq",
+        id: "llama",
+        name: "Llama",
+        reasoning: false,
+        contextWindow: 131_072,
+        vision: false,
+      },
+    ]);
+  });
+
+  it("filters models with the admin's global configuration", async () => {
+    vi.mocked(db.prisma.adminSettings.findUnique).mockResolvedValue({
+      globalProviderModels: {
+        groq: { enabled: false },
+        openai: { enabled: true, models: ["gpt-5"] },
+      },
+    } as never);
+    stubRuntime({
+      getAvailableSnapshot: vi
+        .fn()
+        .mockReturnValue([
+          catalogModel({ provider: "groq", id: "llama" }),
+          catalogModel({ provider: "openai", id: "gpt-5" }),
+          catalogModel({ provider: "openai", id: "gpt-4" }),
+          catalogModel({ provider: "anthropic", id: "claude-sonnet" }),
+        ]),
+    });
+
+    const { models } = await buildModelRuntime("user-1");
+
+    // A disabled provider is gone, an allowlisted provider keeps only its list,
+    // and a provider the admin never mentioned stays available.
+    expect(models.map((m) => `${m.provider}:${m.id}`)).toEqual([
+      "openai:gpt-5",
+      "anthropic:claude-sonnet",
+    ]);
+  });
+
+  it("reads the user's own endpoint, not the global one", async () => {
+    await buildModelRuntime("user-1");
+
+    expect(db.prisma.providerApiKey.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId_provider: { userId: "user-1", provider: "custom" } },
+      }),
+    );
+  });
+
+  it("reads the global endpoint for the global runtime", async () => {
+    await buildGlobalModelRuntime();
+
+    expect(db.prisma.providerApiKey.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: null, provider: "custom" } }),
+    );
+  });
+
+  describe("Saale's OpenAI-compatible endpoint", () => {
+    /** The endpoint row every discovery test starts from. */
+    function stubEndpoint(overrides: Record<string, unknown> = {}) {
+      vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue({
+        baseUrl: "http://localhost:8080/v1",
+        encryptedKey: "enc(key-1)",
         contextWindow: null,
         maxOutputTokens: null,
         modelCapabilities: null,
-      },
-    ]);
+        ...overrides,
+      } as never);
+    }
 
-    vi.mocked(crypto.decrypt).mockImplementation(() => {
-      throw new Error("Decryption failed");
+    it("registers the endpoint's models, with the user's limits", async () => {
+      stubEndpoint({ contextWindow: 32_768, maxOutputTokens: 8_192 });
+      vi.mocked(crypto.decrypt).mockReturnValue("local-key");
+      stubModelListing(["local-model"]);
+      const runtime = stubRuntime();
+
+      await buildModelRuntime("user-1");
+
+      // The key goes to the runtime, since Pi has no auth flow for an endpoint
+      // it does not know.
+      expect(runtime.setRuntimeApiKey).toHaveBeenCalledWith("custom", "local-key");
+      expect(runtime.registerProvider).toHaveBeenCalledWith(
+        "custom",
+        expect.objectContaining({
+          baseUrl: "http://localhost:8080/v1",
+          models: [
+            expect.objectContaining({
+              id: "local-model",
+              contextWindow: 32_768,
+              maxTokens: 8_192,
+              reasoning: false,
+            }),
+          ],
+        }),
+      );
     });
 
-    const result = await buildModelRuntime("user-1");
+    it("keeps an unknown model conservative and a catalog hit verbatim", async () => {
+      stubEndpoint();
+      stubModelListing(["local-model", "claude-sonnet"]);
+      const runtime = stubRuntime({
+        getModel: vi.fn((provider: string, id: string) =>
+          id === "claude-sonnet"
+            ? catalogModel({ cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } })
+            : undefined,
+        ),
+      });
 
-    // Should not throw, should just skip the bad key
-    expect(result.modelRuntime).toBeDefined();
-  });
+      await buildModelRuntime("user-1");
 
-  it("returns empty models array when runtime has no available models", async () => {
-    const result = await buildModelRuntime("user-1");
+      const definition = vi.mocked(runtime.registerProvider).mock.calls[0]![1] as {
+        models: Record<string, unknown>[];
+      };
+      const unknown = definition.models.find((m) => m.id === "local-model")!;
+      // Pi knows nothing about it: claim nothing, and use Pi's default limits.
+      expect(unknown).toMatchObject({
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0 },
+        contextWindow: 128_000,
+        maxTokens: 16_384,
+      });
 
-    expect(result.models).toEqual([]);
-  });
-
-  it("returns models from runtime snapshot", async () => {
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
-      getModel: vi.fn(),
-      getAvailableSnapshot: vi.fn().mockReturnValue([
-        {
-          provider: "anthropic",
-          id: "claude-sonnet-4",
-          name: "Claude Sonnet 4",
-          input: ["text", "image"],
-        },
-        {
-          provider: "openai",
-          id: "gpt-4o",
-          name: "GPT-4o",
-          input: ["text"],
-        },
-      ]),
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getProvider: vi.fn(),
-      registerProvider: vi.fn(),
-    } as never);
-
-    const result = await buildModelRuntime("user-1");
-
-    expect(result.models).toHaveLength(2);
-    expect(result.models[0]).toMatchObject({
-      provider: "anthropic",
-      id: "claude-sonnet-4",
-      name: "Claude Sonnet 4",
-      vision: true,
-    });
-    expect(result.models[1]).toMatchObject({
-      provider: "openai",
-      id: "gpt-4o",
-      name: "GPT-4o",
-      vision: false,
-    });
-  });
-
-  it("fetches global admin config", async () => {
-    await buildModelRuntime("user-1");
-
-    expect(db.prisma.adminSettings.findUnique).toHaveBeenCalledWith({
-      where: { id: "global" },
-      select: { globalProviderModels: true },
-    });
-  });
-
-  it("uses user-specific userId for queries", async () => {
-    await buildModelRuntime("user-specific-456");
-
-    expect(db.prisma.providerApiKey.findMany).toHaveBeenCalledWith({
-      where: { userId: "user-specific-456" },
-      select: {
-        provider: true,
-        encryptedKey: true,
-        baseUrl: true,
-        contextWindow: true,
-        maxOutputTokens: true,
-        modelCapabilities: true,
-      },
-    });
-  });
-});
-
-describe("provider model limits", () => {
-  const customProviderRow = (limits: { contextWindow?: number; maxOutputTokens?: number }) => ({
-    id: "key-custom",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    userId: "user-1",
-    provider: "custom",
-    encryptedKey: "encrypted-key",
-    label: "Local llama.cpp",
-    baseUrl: "http://localhost:8080/v1",
-    contextWindow: limits.contextWindow ?? null,
-    maxOutputTokens: limits.maxOutputTokens ?? null,
-  });
-
-  let registerProvider: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    registerProvider = vi.fn();
-    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([]);
-    vi.mocked(db.prisma.adminSettings.findUnique).mockResolvedValue(null);
-    vi.mocked(pi.ModelRuntime.create).mockResolvedValue({
-      getModel: vi.fn(),
-      getAvailableSnapshot: vi.fn().mockReturnValue([]),
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      getProvider: vi.fn(),
-      registerProvider,
-    } as never);
-    vi.mocked(crypto.decrypt).mockReturnValue("local-key");
-  });
-
-  /** Serve a `/models` response so real discovery runs against a fake endpoint. */
-  const stubModelList = (ids: string[]) => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({ data: ids.map((id) => ({ id })) }),
-      })),
-    );
-  };
-
-  /** Models the runtime registered for `custom`, keyed by id. */
-  const registeredModels = () => {
-    const call = registerProvider.mock.calls.find(([provider]) => provider === "custom");
-    const models = call?.[1]?.models as
-      Array<{ id: string; contextWindow: number; maxTokens: number }> | undefined;
-    return models;
-  };
-
-  const withCustomProvider = (limits: { contextWindow?: number; maxOutputTokens?: number }) => {
-    vi.mocked(db.prisma.providerApiKey.findMany)
-      .mockResolvedValueOnce([]) // global providers
-      .mockResolvedValueOnce([customProviderRow(limits) as never]); // user providers
-  };
-
-  it("applies the configured context window and output cap to discovered models", async () => {
-    stubModelList(["llama-3.1-8b", "qwen3-32b"]);
-    withCustomProvider({ contextWindow: 32768, maxOutputTokens: 8192 });
-
-    await buildModelRuntime("user-1");
-
-    expect(registeredModels()).toEqual([
-      expect.objectContaining({ id: "llama-3.1-8b", contextWindow: 32768, maxTokens: 8192 }),
-      expect.objectContaining({ id: "qwen3-32b", contextWindow: 32768, maxTokens: 8192 }),
-    ]);
-  });
-
-  it("falls back to Pi's defaults when the user configured no limits", async () => {
-    stubModelList(["llama-3.1-8b"]);
-    withCustomProvider({});
-
-    await buildModelRuntime("user-1");
-
-    expect(registeredModels()).toEqual([
-      expect.objectContaining({ id: "llama-3.1-8b", contextWindow: 128000, maxTokens: 16384 }),
-    ]);
-  });
-
-  it("never invents an output cap larger than the provider configured", async () => {
-    stubModelList(["llama-3.1-8b"]);
-    withCustomProvider({ contextWindow: 131072, maxOutputTokens: 4096 });
-
-    await buildModelRuntime("user-1");
-
-    // pi sends maxTokens as the request's max_tokens and clamps it to
-    // contextWindow — raising it to the window is what 400s DeepSeek.
-    expect(registeredModels()?.[0]?.maxTokens).toBe(4096);
-  });
-
-  it("keeps one broken provider from breaking the whole runtime", async () => {
-    stubModelList(["llama-3.1-8b"]);
-    withCustomProvider({ contextWindow: 8192 });
-    registerProvider.mockImplementation(() => {
-      throw new Error("invalid provider config");
+      const known = definition.models.find((m) => m.id === "claude-sonnet")!;
+      expect(known).toMatchObject({
+        reasoning: true,
+        input: ["text", "image"],
+        cost: { input: 3, output: 15 },
+        contextWindow: 200_000,
+      });
     });
 
-    const result = await buildModelRuntime("user-1");
+    it("lets a recorded vision capability overrule the catalog", async () => {
+      stubEndpoint({ modelCapabilities: { "local-model": { vision: true } } });
+      stubModelListing(["local-model"]);
+      const runtime = stubRuntime();
 
-    expect(result.modelRuntime).toBeDefined();
-  });
+      await buildModelRuntime("user-1");
 
-  it("registers the custom provider even when discovery returns no models", async () => {
-    stubModelList([]);
-    withCustomProvider({ contextWindow: 8192, maxOutputTokens: 2048 });
+      const definition = vi.mocked(runtime.registerProvider).mock.calls[0]![1] as {
+        models: Record<string, unknown>[];
+      };
+      expect(definition.models[0]).toMatchObject({ input: ["text", "image"] });
+    });
 
-    await buildModelRuntime("user-1");
+    it("registers the endpoint even when its listing fails", async () => {
+      stubEndpoint();
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection refused")));
+      const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const runtime = stubRuntime();
 
-    const call = registerProvider.mock.calls.find(([provider]) => provider === "custom");
-    expect(call?.[1]).toMatchObject({ baseUrl: "http://localhost:8080/v1" });
-    expect(call?.[1]?.models).toBeUndefined();
+      await buildModelRuntime("user-1");
+
+      // No models, but the endpoint itself is registered, so a later import can
+      // fill it in.
+      expect(runtime.registerProvider).toHaveBeenCalledWith(
+        "custom",
+        expect.objectContaining({ baseUrl: "http://localhost:8080/v1" }),
+      );
+      expect(log).toHaveBeenCalled();
+      log.mockRestore();
+    });
+
+    it("keeps the endpoint usable when its key cannot be decrypted", async () => {
+      stubEndpoint();
+      vi.mocked(crypto.decrypt).mockImplementation(() => {
+        throw new Error("bad key");
+      });
+      stubModelListing(["local-model"]);
+      const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const runtime = stubRuntime();
+
+      const { models } = await buildModelRuntime("user-1");
+
+      // A local server needs no key — dropping the whole endpoint over one bad
+      // ciphertext would take its models away.
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to decrypt"),
+        expect.anything(),
+      );
+      expect(runtime.setRuntimeApiKey).not.toHaveBeenCalled();
+      expect(runtime.registerProvider).toHaveBeenCalled();
+      expect(models).toBeDefined();
+      log.mockRestore();
+    });
+
+    it("does nothing when no endpoint is configured", async () => {
+      const runtime = stubRuntime();
+
+      await buildModelRuntime("user-1");
+
+      expect(runtime.registerProvider).not.toHaveBeenCalled();
+      expect(runtime.setRuntimeApiKey).not.toHaveBeenCalled();
+    });
   });
 });

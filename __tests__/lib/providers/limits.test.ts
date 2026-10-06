@@ -94,14 +94,24 @@ describe("limitFields", () => {
 });
 
 describe("definesProviderModels", () => {
-  it("covers the providers whose models Saale defines itself", () => {
-    for (const provider of ["custom", "openrouter", "together", "fireworks", "huggingface"]) {
-      expect(definesProviderModels(provider)).toBe(true);
-    }
+  it("covers Saale's own OpenAI-compatible endpoint", () => {
+    expect(definesProviderModels("custom")).toBe(true);
   });
 
-  it("excludes catalog-backed providers", () => {
-    for (const provider of ["anthropic", "openai", "google", "deepseek", "groq"]) {
+  it("excludes every provider Pi's catalog describes", () => {
+    for (const provider of [
+      "anthropic",
+      "openai",
+      "google",
+      "deepseek",
+      "groq",
+      // These used to be discovered from their /models listing; Pi's catalog
+      // describes them now, so their limits are Pi's to state.
+      "openrouter",
+      "together",
+      "fireworks",
+      "huggingface",
+    ]) {
       expect(definesProviderModels(provider)).toBe(false);
     }
   });
