@@ -25,28 +25,6 @@ export interface UserSettings {
   toolExposure: ToolExposureConfig | null;
 }
 
-export interface ConfiguredProvider {
-  id: string;
-  provider: string;
-  label: string;
-  configured: boolean;
-  isGlobal: boolean;
-  displayName: string;
-  baseUrl?: string | null;
-  contextWindow?: number | null;
-  maxOutputTokens?: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ProviderInfo {
-  id: string;
-  name: string;
-  configured?: boolean;
-  /** Whether this provider's models are defined by Saale, so their metadata is configurable. */
-  modelsConfigurable?: boolean;
-}
-
 export interface AvailableModel {
   id: string;
   name: string;

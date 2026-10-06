@@ -7,36 +7,11 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { fetchJson, patchJson, postJson, deleteJson } from "@/lib/http";
+import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import {
-  Bot,
-  Key,
-  Loader2,
-  CheckCircle,
-  AlertCircle,
-  Plus,
-  Trash2,
-  Search,
-  Eye,
-  ScanEye,
-} from "lucide-react";
+import { Bot, Key, Loader2, CheckCircle, AlertCircle, Search, Eye, ScanEye } from "lucide-react";
+import { ProviderConnections } from "@/components/providers/provider-connections";
 import type { AvailableModel, AvailableProvider } from "@/app/dashboard/settings/types";
 
 interface ProviderModelConfig {
@@ -51,33 +26,8 @@ interface AdminSettings {
   globalProviderModels: Record<string, ProviderModelConfig> | null;
 }
 
-interface ConfiguredProvider {
-  id: string;
-  provider: string;
-  label: string;
-  configured: boolean;
-  displayName: string;
-  baseUrl?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export default function AdminModelsPage() {
   const [activeTab, setActiveTab] = useState<"providers" | "models">("providers");
-
-  // ─── Providers tab state ───
-  const [providers, setProviders] = useState<ConfiguredProvider[]>([]);
-  const [availableProviders, setAvailableProviders] = useState<
-    { id: string; name: string; modelsConfigurable?: boolean }[]
-  >([]);
-  const [providersLoading, setProvidersLoading] = useState(true);
-
-  // Add provider dialog
-  const [showAddProvider, setShowAddProvider] = useState(false);
-  const [addProvider, setAddProvider] = useState("");
-  const [addApiKey, setAddApiKey] = useState("");
-  const [addBaseUrl, setAddBaseUrl] = useState("");
-  const [adding, setAdding] = useState(false);
 
   // ─── Models tab state ───
   const [availableModels, setAvailableModels] = useState<Record<string, AvailableModel[]>>({});
@@ -97,7 +47,6 @@ export default function AdminModelsPage() {
 
   // ─── Capability (vision) status ───
   const [capabilityInfo, setCapabilityInfo] = useState<string | null>(null);
-  const [detecting, setDetecting] = useState<string | null>(null);
   const [savingVision, setSavingVision] = useState<string | null>(null);
 
   // Auto-clear save status
@@ -115,20 +64,6 @@ export default function AdminModelsPage() {
       return () => clearTimeout(timer);
     }
   }, [capabilityInfo]);
-
-  // ─── Load providers ───
-  const loadProviders = useCallback(async () => {
-    try {
-      const data = await fetchJson<{
-        providers: ConfiguredProvider[];
-        availableProviders: { id: string; name: string }[];
-      }>("/api/admin/providers");
-      setProviders(data.providers ?? []);
-      setAvailableProviders(data.availableProviders ?? []);
-    } finally {
-      setProvidersLoading(false);
-    }
-  }, []);
 
   // ─── Load models (global providers only) ───
   const loadModels = useCallback(async () => {
@@ -169,7 +104,7 @@ export default function AdminModelsPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadProviders(), loadModels(), loadSettings()]).catch((err) => {
+    Promise.all([loadModels(), loadSettings()]).catch((err) => {
       console.error("Failed to load admin model data:", err);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,38 +112,9 @@ export default function AdminModelsPage() {
 
   // ─── Provider actions ───
 
-  /** Whether a configured provider's per-model metadata is Saale's to record. */
+  /** Whether a provider's per-model metadata is Saale's to record. */
   const canConfigureModels = (provider: string) =>
-    availableProviders.find((p) => p.id === provider)?.modelsConfigurable === true;
-
-  /**
-   * Ask a global provider's endpoint what its models can do and store it.
-   *
-   * Same button as in the user's own settings: only llama.cpp's `/props`
-   * answers, so "no answer" has to be visible rather than read as "no vision".
-   */
-  const handleDetectCapabilities = async (provider: string) => {
-    setDetecting(provider);
-    try {
-      const data = await postJson<{
-        modelCount: number;
-        detected: number;
-        visionModels: number;
-        unprobed: number;
-      }>("/api/admin/providers/capabilities", { provider });
-      setCapabilityInfo(
-        data.detected === 0
-          ? "This endpoint reports no model capabilities — set vision per model instead"
-          : `${data.visionModels} of ${data.modelCount} models accept images` +
-              (data.unprobed > 0 ? ` (${data.unprobed} did not report)` : ""),
-      );
-      await loadModels();
-    } catch (err) {
-      console.error("Failed to detect global provider capabilities:", err);
-      setCapabilityInfo("Capability detection failed");
-    }
-    setDetecting(null);
-  };
+    modelProviders.find((p) => p.id === provider)?.modelsConfigurable === true;
 
   /** Record whether a global provider's model can see images. */
   const handleToggleVision = async (provider: string, modelId: string, vision: boolean) => {
@@ -222,37 +128,6 @@ export default function AdminModelsPage() {
       setCapabilityInfo("Could not save the model capability");
     }
     setSavingVision(null);
-  };
-
-  const handleAddProvider = async () => {
-    if (!addProvider) return;
-    setAdding(true);
-    try {
-      await postJson("/api/admin/providers", {
-        provider: addProvider,
-        apiKey: addApiKey || undefined,
-        baseUrl: addBaseUrl || undefined,
-      });
-      setShowAddProvider(false);
-      setAddProvider("");
-      setAddApiKey("");
-      setAddBaseUrl("");
-      setSaveStatus("success");
-      await Promise.all([loadProviders(), loadModels()]);
-    } catch {
-      setSaveStatus("error");
-    }
-    setAdding(false);
-  };
-
-  const handleRemoveProvider = async (providerId: string) => {
-    try {
-      await deleteJson(`/api/admin/providers?provider=${encodeURIComponent(providerId)}`);
-      setSaveStatus("success");
-      await Promise.all([loadProviders(), loadModels()]);
-    } catch {
-      setSaveStatus("error");
-    }
   };
 
   // ─── Model toggle actions ───
@@ -305,7 +180,7 @@ export default function AdminModelsPage() {
     setSaving(false);
   }, [adminSettings, availableModels, modelEnabled]);
 
-  const isLoading = providersLoading && modelsLoading && settingsLoading;
+  const isLoading = modelsLoading && settingsLoading;
 
   if (isLoading) {
     return (
@@ -314,8 +189,6 @@ export default function AdminModelsPage() {
       </div>
     );
   }
-
-  const configuredProviderIds = new Set(providers.map((p) => p.provider));
 
   return (
     <div className="flex h-full flex-col">
@@ -375,108 +248,12 @@ export default function AdminModelsPage() {
 
           {/* ─── Providers Tab ─── */}
           <TabsContent value="providers" className="space-y-6">
-            <GlassPanel>
-              <GlassPanelHeader
-                title="Configured Providers"
-                action={
-                  <Button variant="secondary" size="sm" onClick={() => setShowAddProvider(true)}>
-                    <Plus className="mr-1 h-3.5 w-3.5" /> Add
-                  </Button>
-                }
-              />
-              <GlassPanelContent className="p-0">
-                {providers.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <Key className="text-muted-foreground/50 mb-3 h-8 w-8" />
-                    <p className="text-sm font-medium">No global providers configured</p>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Add a provider to make its models available to all users
-                    </p>
-                  </div>
-                ) : (
-                  providers.map((prov, i) => (
-                    <div key={prov.id}>
-                      <div className="flex items-center justify-between px-4 py-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium">{prov.displayName}</span>
-                            {prov.provider === "custom" && prov.baseUrl && (
-                              <Badge
-                                variant="secondary"
-                                className="rounded-full px-1.5 text-[10px]"
-                              >
-                                custom
-                              </Badge>
-                            )}
-                            {canConfigureModels(prov.provider) && (
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                className="text-muted-foreground hover:text-foreground"
-                                title="Detect model capabilities (vision)"
-                                disabled={detecting === prov.provider}
-                                onClick={() => handleDetectCapabilities(prov.provider)}
-                              >
-                                {detecting === prov.provider ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <ScanEye className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                          <span className="text-muted-foreground truncate text-xs">
-                            {prov.provider}
-                            {prov.baseUrl ? ` — ${prov.baseUrl}` : ""}
-                          </span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive h-8 w-8"
-                          onClick={() => handleRemoveProvider(prov.provider)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                      {i < providers.length - 1 && <Separator className="px-4" />}
-                    </div>
-                  ))
-                )}
-              </GlassPanelContent>
-            </GlassPanel>
-
-            {/* Available but not configured */}
-            {availableProviders.filter((p) => !configuredProviderIds.has(p.id)).length > 0 && (
-              <GlassPanel>
-                <GlassPanelHeader title="Available Providers" />
-                <GlassPanelContent className="p-0">
-                  {availableProviders
-                    .filter((p) => !configuredProviderIds.has(p.id))
-                    .map((prov, i) => (
-                      <div key={prov.id}>
-                        <div className="flex items-center justify-between px-4 py-3">
-                          <span className="text-muted-foreground text-sm">{prov.name}</span>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              setAddProvider(prov.id);
-                              setShowAddProvider(true);
-                            }}
-                          >
-                            <Plus className="mr-1 h-3.5 w-3.5" /> Add
-                          </Button>
-                        </div>
-                        {i <
-                          availableProviders.filter((p) => !configuredProviderIds.has(p.id))
-                            .length -
-                            1 && <Separator className="px-4" />}
-                      </div>
-                    ))}
-                </GlassPanelContent>
-              </GlassPanel>
-            )}
+            <ProviderConnections
+              scope="global"
+              onChanged={() => {
+                void loadModels();
+              }}
+            />
           </TabsContent>
 
           {/* ─── Models Tab ─── */}
@@ -659,64 +436,6 @@ export default function AdminModelsPage() {
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* Add provider dialog */}
-      <Dialog open={showAddProvider} onOpenChange={setShowAddProvider}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add provider</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Provider</Label>
-              <Select value={addProvider} onValueChange={(v) => setAddProvider(v ?? "")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableProviders
-                    .filter((p) => !configuredProviderIds.has(p.id))
-                    .map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>
-                API Key <span className="text-muted-foreground">(optional for local servers)</span>
-              </Label>
-              <Input
-                value={addApiKey}
-                onChange={(e) => setAddApiKey(e.target.value)}
-                type="password"
-                placeholder="sk-..."
-              />
-            </div>
-            {addProvider === "custom" && (
-              <div className="space-y-2">
-                <Label>Base URL</Label>
-                <Input
-                  value={addBaseUrl}
-                  onChange={(e) => setAddBaseUrl(e.target.value)}
-                  placeholder="https://api.example.com/v1"
-                />
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowAddProvider(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddProvider} disabled={adding || !addProvider}>
-              {adding ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-              Add
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
