@@ -9,10 +9,12 @@ vi.mock("@/lib/terminal/client", () => ({
 
 // Mock tool factories
 vi.mock("@/lib/pi/tools/chat-tools", () => ({
-  createChatSearchTool: vi.fn((userId: string) => ({
-    name: "chat_search",
-    userId,
-  })),
+  createChatTools: vi.fn((userId: string) => [
+    { name: "chat_search", userId },
+    { name: "chat_respond", userId },
+    { name: "chat_create", userId },
+    { name: "chat_delete", userId },
+  ]),
   createShowFileTool: vi.fn((userId: string, _sessionId: string) => ({
     name: "show_file",
     userId,
@@ -314,8 +316,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 28
-    expect(tools).toHaveLength(28);
+    // email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 31
+    expect(tools).toHaveLength(31);
     expect(tools.map((t) => t.name)).toEqual([
       "mail_accounts",
       "mail_list",
@@ -328,6 +330,9 @@ describe("resolveTools", () => {
       "calendar_list",
       "calendar_create",
       "chat_search",
+      "chat_respond",
+      "chat_create",
+      "chat_delete",
       "web_search",
       "web_fetch",
       "memory_index",
@@ -365,8 +370,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(1) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 33
-    expect(tools).toHaveLength(33);
+    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(2) + tasks(2) + agentJobs(1) + infra(10) = 36
+    expect(tools).toHaveLength(36);
   });
 
   it("passes userId to all user-scoped factories", async () => {
@@ -460,30 +465,41 @@ describe("resolveTools", () => {
       infra: true,
     };
 
-    it("leaves tools direct when no exposure is configured", async () => {
+    it("applies each category's default when the user configured nothing", async () => {
+      vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
       const tools = await resolveTools(userId, sessionId, ALL_ON, options);
-      expect(exposureOf(tools, "mail_send")).toBeUndefined();
+      // Niche catalogs default to codemode — registered, reachable from a
+      // script, not declared on every request.
+      expect(exposureOf(tools, "mail_read")).toBe("codemode");
+      expect(exposureOf(tools, "infra_exec")).toBe("codemode");
+      expect(exposureOf(tools, "job_list")).toBe("codemode");
+      // The everyday tools stay declared.
       expect(exposureOf(tools, "web_search")).toBeUndefined();
+      expect(exposureOf(tools, "memory_search")).toBeUndefined();
+      expect(exposureOf(tools, "bash")).toBeUndefined();
+      expect(exposureOf(tools, "show_file")).toBeUndefined();
     });
 
-    it("applies an exposure to every tool of its category only", async () => {
+    it("lets a category override its default without touching the others", async () => {
       const tools = await resolveTools(userId, sessionId, ALL_ON, {
         ...options,
-        exposure: { email: "codemode", infra: "deferred" },
+        exposure: { email: "direct", infra: "deferred" },
       });
 
-      expect(exposureOf(tools, "mail_accounts")).toBe("codemode");
-      expect(exposureOf(tools, "mail_read")).toBe("codemode");
+      // email is pulled back in front of the model…
+      expect(exposureOf(tools, "mail_accounts")).toBeUndefined();
+      expect(exposureOf(tools, "mail_read")).toBeUndefined();
+      // …infra is hidden even from codemode's catalog…
       expect(exposureOf(tools, "infra_exec")).toBe("deferred");
-      // Untouched categories stay declared to the model.
+      // …and categories the user did not touch keep their default.
+      expect(exposureOf(tools, "job_list")).toBe("codemode");
       expect(exposureOf(tools, "web_search")).toBeUndefined();
-      expect(exposureOf(tools, "job_list")).toBeUndefined();
     });
 
-    it("follows a tool's catalog category, not the bundle it is built with", async () => {
-      // show_file is built alongside the terminal tools but belongs to the
-      // "Chat history" category — its exposure has to follow the category the
-      // user actually configured.
+    it("applies a category's exposure to every tool built for it", async () => {
+      // show_file ships with the terminal bundle rather than being built by the
+      // chat factory, so this is also a check that the category comes from the
+      // shared catalog and not from wherever the tool was constructed.
       vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
       const tools = await resolveTools(userId, sessionId, ALL_ON, {
         ...options,
@@ -492,8 +508,9 @@ describe("resolveTools", () => {
 
       expect(exposureOf(tools, "bash")).toBe("codemode");
       expect(exposureOf(tools, "read")).toBe("codemode");
-      expect(exposureOf(tools, "show_file")).toBe("deferred");
+      expect(exposureOf(tools, "show_file")).toBe("codemode");
       expect(exposureOf(tools, "chat_search")).toBe("deferred");
+      expect(exposureOf(tools, "chat_respond")).toBe("deferred");
     });
 
     it("leaves tools missing from the catalog direct", async () => {
@@ -515,11 +532,11 @@ describe("resolveTools", () => {
       const tools = await resolveTools(userId, sessionId, ALL_ON, {
         ...options,
         wrapWithApproval: gate,
-        exposure: { email: "codemode" },
+        exposure: { memory: "codemode" },
       });
 
-      expect(exposureOf(tools, "mail_list")).toBe("codemode");
-      expect(tools.find((t) => t.name === "mail_list")).toHaveProperty("gated", true);
+      expect(exposureOf(tools, "memory_search")).toBe("codemode");
+      expect(tools.find((t) => t.name === "memory_search")).toHaveProperty("gated", true);
     });
   });
 });

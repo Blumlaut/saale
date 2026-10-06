@@ -43,6 +43,8 @@ const WATCHDOG_TICK_MS = 15_000;
  * - `message_saved { turnId, messageId }` — swap temp ID with the DB ID
  * - `queue_update { messages }` — the send queue changed (a message was
  *   queued, edited, cancelled, or delivered)
+ * - `messages_changed` — the conversation changed outside this stream (a
+ *   tool posted a message into it) — reload from the DB
  * - `done` — reload messages from DB; keep watching for the next generation
  * - `error` — terminal: reload, close the connection
  *
@@ -380,6 +382,13 @@ function wireStreamListeners(opts: StreamListenerOpts) {
       if (parsed) opts.onQueueUpdate!(parsed.messages ?? []);
     });
   }
+
+  // ── Conversation changed outside this stream ──────────────────────────
+  // A tool posted a message into this chat (chat_respond), or started a run in
+  // it, without this client asking. The DB is the authority — reload.
+  eventSource.addEventListener("messages_changed", () => {
+    void opts.onReload();
+  });
 
   // ── Token usage ───────────────────────────────────────────────────────
   if (opts.onTokenUsage) {

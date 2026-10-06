@@ -1,10 +1,11 @@
 import fs from "fs/promises";
 import type { Stats } from "fs";
 import path from "path";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { deleteChatSession } from "@/lib/chat/delete-session";
 import * as terminal from "@/lib/terminal/client";
 
 const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
@@ -154,6 +155,163 @@ export function createChatSearchTool(userId: string) {
           },
         ],
         details: { count: results.length },
+      };
+    },
+  });
+}
+
+/**
+ * Create the chat tools: history search plus the two write operations on a
+ * chat — respond in it, and delete it.
+ *
+ * The write tools default to the `ask` approval policy (see `tool-infos.ts`):
+ * one starts an agent run in another conversation, the other destroys one.
+ *
+ * @param sessionId - The chat this tool set belongs to. `chat_respond` must
+ *   never target it: a session cannot be prompted while it is already running.
+ */
+export function createChatTools(userId: string, sessionId: string): ToolDefinition[] {
+  return [
+    createChatSearchTool(userId),
+    createChatRespondTool(userId, sessionId),
+    createChatCreateTool(userId, sessionId),
+    createChatDeleteTool(userId),
+  ];
+}
+
+/**
+ * Respond in another chat: post a message there as the user and run that
+ * chat's agent, returning its reply.
+ *
+ * The run happens server-side (see `respond-in-chat.ts`) — it does not need a
+ * client to be connected — and streams to any client that has the chat open.
+ * The import is dynamic on purpose: the run builder reaches back through
+ * `chat-session-factory` into this module (tools are resolved while a session
+ * is built), so a static import would close a module cycle at startup.
+ */
+export function createChatRespondTool(userId: string, callerSessionId: string) {
+  return defineTool({
+    name: "chat_respond",
+    label: "Respond in Chat",
+    description:
+      "Send a message into one of the user's other chats as the user, then " +
+      "wait for that chat's assistant to reply. Use the sessionId from " +
+      "chat_search. Runs that chat's agent — use it to hand work to another " +
+      "conversation or to keep a discussion going there.",
+    parameters: Type.Object({
+      sessionId: Type.String({
+        description: "Chat session ID to respond in, as returned by chat_search.",
+      }),
+      message: Type.String({
+        description: "The message to send to that chat.",
+      }),
+    }),
+    execute: async (
+      _toolCallId: string,
+      params: { sessionId: string; message: string },
+      signal: AbortSignal | undefined,
+    ) => {
+      const { respondInChat } = await import("@/lib/chat/respond-in-chat");
+      const result = await respondInChat({
+        userId,
+        sessionId: params.sessionId,
+        callerSessionId,
+        message: params.message,
+        signal,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Chat \"${result.title}\" replied:\n\n${result.reply || "(no reply)"}`,
+          },
+        ],
+        details: { sessionId: result.sessionId, title: result.title, reply: result.reply },
+      };
+    },
+  });
+}
+
+/**
+ * Start a new chat and take its first reply: create the chat, post the message
+ * as the user, and run its agent — the same server-side run as `chat_respond`.
+ *
+ * Both imports are dynamic for the same reason as `chat_respond`'s.
+ */
+export function createChatCreateTool(userId: string, callerSessionId: string) {
+  return defineTool({
+    name: "chat_create",
+    label: "Start Chat",
+    description:
+      "Start a new chat with a message and wait for the assistant's reply " +
+      "there. Use it to open a separate conversation for a task instead of " +
+      "doing the work in the current chat.",
+    parameters: Type.Object({
+      message: Type.String({ description: "The first message to send in the new chat." }),
+      title: Type.Optional(Type.String({ description: "Optional short title for the new chat." })),
+    }),
+    execute: async (
+      _toolCallId: string,
+      params: { message: string; title?: string },
+      signal: AbortSignal | undefined,
+    ) => {
+      const [{ createChatSessionRow }, { respondInChat }] = await Promise.all([
+        import("@/lib/chat/create-session"),
+        import("@/lib/chat/respond-in-chat"),
+      ]);
+
+      const session = await createChatSessionRow(userId, { title: params.title });
+      const result = await respondInChat({
+        userId,
+        sessionId: session.id,
+        callerSessionId,
+        message: params.message,
+        signal,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              `Started chat "${result.title}" (${result.sessionId}) — it replied:\n\n` +
+              (result.reply || "(no reply)"),
+          },
+        ],
+        details: { sessionId: result.sessionId, title: result.title, reply: result.reply },
+      };
+    },
+  });
+}
+
+/**
+ * Permanently delete one of the user's chats, with all of its messages and
+ * attachments. Delegates to the same helper the delete route uses.
+ */
+export function createChatDeleteTool(userId: string) {
+  return defineTool({
+    name: "chat_delete",
+    label: "Delete Chat",
+    description:
+      "Permanently delete one of the user's chats and all of its messages. " +
+      "This cannot be undone. Use the sessionId from chat_search.",
+    parameters: Type.Object({
+      sessionId: Type.String({
+        description: "Chat session ID, as returned by chat_search.",
+      }),
+    }),
+    execute: async (_toolCallId: string, params: { sessionId: string }) => {
+      const { title } = await deleteChatSession(userId, params.sessionId);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Deleted chat "${title}" (${params.sessionId}) and all of its messages.`,
+          },
+        ],
+        details: { sessionId: params.sessionId, title },
       };
     },
   });

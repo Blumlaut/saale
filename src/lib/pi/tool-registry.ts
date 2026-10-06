@@ -1,10 +1,10 @@
 import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolConfig, ToolCategoryKey, ToolExposureConfig } from "./tool-categories";
-import { TOOL_CATEGORIES } from "./tool-categories";
+import { DEFAULT_TOOL_EXPOSURE, TOOL_CATEGORIES } from "./tool-categories";
 import { findToolInfo } from "./tool-infos";
 import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
 import { withAbortSignal } from "./tool-abort";
-import { createChatSearchTool, createShowFileTool } from "./tools/chat-tools";
+import { createChatTools, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
@@ -18,9 +18,12 @@ import { createInfraTools } from "./tools/infra-tools";
 
 /**
  * Factory function that creates tools for a given category.
- * Some categories need userId for user isolation; others do not.
+ *
+ * `sessionId` is the session the tools are being resolved for — most
+ * categories ignore it, but a tool that acts on chats needs to know which
+ * chat it belongs to (a chat must not respond to itself).
  */
-type ToolFactory = (userId: string) => ToolDefinition[] | ToolDefinition;
+type ToolFactory = (userId: string, sessionId: string) => ToolDefinition[] | ToolDefinition;
 
 /**
  * Registry mapping tool category keys to their factory functions.
@@ -35,7 +38,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   email: (userId) => createMailTools(userId),
   jobs: (userId) => createJobTools(userId),
   calendar: (userId) => createCalendarTools(userId),
-  chatSearch: (userId) => createChatSearchTool(userId),
+  chatSearch: (userId, sessionId) => createChatTools(userId, sessionId),
   web: () => createWebTools(),
   memory: (userId) => createMemoryTools(userId),
   tasks: (userId) => createTaskTools(userId),
@@ -69,7 +72,7 @@ export function getAllToolInfos(): ToolInfo[] {
     { name: "bash", label: "Bash", description: "Execute shell commands" },
   ];
 
-  // Collect from all factories (using a dummy userId — we only need names/descriptions)
+  // Collect from all factories (using dummy ids — we only need names/descriptions)
   const allTools: ToolInfo[] = [...terminalTools];
 
   for (const category of TOOL_CATEGORIES) {
@@ -77,7 +80,7 @@ export function getAllToolInfos(): ToolInfo[] {
     const factory = TOOL_FACTORIES[category.key];
     if (!factory) continue;
 
-    const result = factory("dummy") as ToolDefinition[];
+    const result = factory("dummy", "dummy") as ToolDefinition[];
     const tools = Array.isArray(result) ? result : [result];
     for (const t of tools) {
       allTools.push({
@@ -100,9 +103,9 @@ export function getAllToolInfos(): ToolInfo[] {
  * @param options.wrapWithApproval - Optional wrapper to apply to each resolved tool.
  *   Receives the tool, userId, sessionId, policy lookup, and approval emitter.
  * @param options.exposure - Per-category exposure (`AppSettings.toolExposure`).
- *   Categories set to `codemode`/`deferred` are registered but not declared to
- *   the model; codemode scripts reach them through the tool registry. Absent =
- *   `direct` (every tool declared), which is the default.
+ *   Categories left at their default are resolved from `TOOL_CATEGORIES`;
+ *   `codemode`/`deferred` tools are registered but not declared to the model,
+ *   and codemode scripts reach them through the tool registry.
  */
 export async function resolveTools(
   userId: string,
@@ -151,7 +154,7 @@ export async function resolveTools(
     if (config[category.key]) {
       const factory = TOOL_FACTORIES[category.key];
       if (factory) {
-        const result = factory(userId);
+        const result = factory(userId, sessionId);
         if (Array.isArray(result)) {
           tools.push(...result);
         } else {
@@ -161,11 +164,12 @@ export async function resolveTools(
     }
   }
 
-  // ── Hide categories the user put behind codemode ────────────────────
+  // ── Put categories behind codemode ──────────────────────────────────
   // Exposure is how Pi decides whether a tool is declared to the model or only
   // reachable from a codemode script; the gate and abort wrappers below both
-  // spread the definition, so it survives them.
-  const exposed = options.exposure ? applyToolExposure(tools, options.exposure) : tools;
+  // spread the definition, so it survives them. Categories the user left alone
+  // keep their registry default.
+  const exposed = applyToolExposure(tools, options.exposure ?? {});
 
   // ── Make every tool call cancellable ────────────────────────────────
   // Pi awaits tool execution and only checks the abort signal between tool
@@ -183,7 +187,8 @@ export async function resolveTools(
 }
 
 /**
- * Set each tool's Pi exposure from its category's setting.
+ * Set each tool's Pi exposure from its category: the user's setting when they
+ * made one, otherwise the category's registry default.
  *
  * The category comes from the shared catalog (`tool-infos.ts`) rather than the
  * loop that produced the tool, because a category's tools are not always built
@@ -196,7 +201,9 @@ function applyToolExposure(
 ): ToolDefinition[] {
   return tools.map((tool) => {
     const category = findToolInfo(tool.name)?.category;
-    const level = category ? exposure[category] : undefined;
-    return level && level !== "direct" ? { ...tool, exposure: level } : tool;
+    if (!category) return tool;
+    const level = exposure[category] ?? DEFAULT_TOOL_EXPOSURE[category];
+    if (!level || level === "direct") return tool;
+    return { ...tool, exposure: level };
   });
 }

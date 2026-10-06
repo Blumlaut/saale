@@ -23,27 +23,30 @@ describe("normalizeToolExposure", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps known categories with a known exposure", () => {
-    expect(normalizeToolExposure({ email: "codemode", infra: "deferred" })).toEqual({
-      email: "codemode",
-      infra: "deferred",
+  it("keeps a category that differs from its default", () => {
+    // infra defaults to codemode, so `deferred` is the deviation worth storing.
+    expect(normalizeToolExposure({ infra: "deferred" })).toEqual({ infra: "deferred" });
+    // web defaults to direct, so `codemode` is the deviation.
+    expect(normalizeToolExposure({ web: "codemode", memory: "direct" })).toEqual({
+      web: "codemode",
     });
   });
 
-  it("drops unknown categories, unknown exposures and direct entries", () => {
+  it("drops unknown categories, unknown exposures and entries at the default", () => {
     expect(
       normalizeToolExposure({
-        email: "codemode",
-        jobs: "direct", // the default — stored as absence
+        email: "codemode", // email's default — stored as absence
+        web: "codemode", // a real deviation
+        jobs: "direct", // jobs defaults to codemode — a real deviation
         nope: "deferred", // not a category
-        web: "sometimes", // not an exposure
-        memory: 42,
+        memory: "sometimes", // not an exposure
+        calendar: 42,
       }),
-    ).toEqual({ email: "codemode" });
+    ).toEqual({ web: "codemode", jobs: "direct" });
   });
 
   it("returns null when nothing survives", () => {
-    expect(normalizeToolExposure({ jobs: "direct" })).toBeNull();
+    expect(normalizeToolExposure({ email: "codemode", infra: "codemode" })).toBeNull();
     expect(normalizeToolExposure({})).toBeNull();
   });
 
@@ -60,8 +63,8 @@ describe("loadToolExposure", () => {
   });
 
   it("reads and normalizes the user's stored exposure", async () => {
-    mockFindUnique.mockResolvedValue({ toolExposure: { email: "codemode", bogus: "x" } });
-    expect(await loadToolExposure("user-1")).toEqual({ email: "codemode" });
+    mockFindUnique.mockResolvedValue({ toolExposure: { email: "direct", bogus: "x" } });
+    expect(await loadToolExposure("user-1")).toEqual({ email: "direct" });
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { userId: "user-1" },
       select: { toolExposure: true },
@@ -80,8 +83,8 @@ describe("toolExposureEquals", () => {
     // a pooled chat has to be rebuilt; a reordered object is the same setting.
     expect(
       toolExposureEquals(
-        { email: "codemode", jobs: "deferred" },
-        { jobs: "deferred", email: "codemode" },
+        { web: "codemode", jobs: "deferred" },
+        { jobs: "deferred", web: "codemode" },
       ),
     ).toBe(true);
   });
@@ -93,10 +96,10 @@ describe("toolExposureEquals", () => {
   });
 
   it("detects added, removed and changed categories", () => {
-    expect(toolExposureEquals({ email: "codemode" }, { email: "codemode", jobs: "deferred" })).toBe(
+    expect(toolExposureEquals({ web: "codemode" }, { web: "codemode", jobs: "deferred" })).toBe(
       false,
     );
-    expect(toolExposureEquals({ email: "codemode" }, { email: "deferred" })).toBe(false);
-    expect(toolExposureEquals({ email: "codemode" }, null)).toBe(false);
+    expect(toolExposureEquals({ web: "codemode" }, { web: "deferred" })).toBe(false);
+    expect(toolExposureEquals({ web: "codemode" }, null)).toBe(false);
   });
 });

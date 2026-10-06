@@ -2,11 +2,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { deleteAllImages } from "@/lib/image-attachment";
-import { remove, get as getPooledSession, getPoolKey, getSessionDir } from "@/lib/pi/agent-pool";
+import { deleteChatSession } from "@/lib/chat/delete-session";
+import { remove, get as getPooledSession, getPoolKey } from "@/lib/pi/agent-pool";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { isPiThinkingLevel } from "@/lib/pi/thinking-levels";
-import fs from "fs/promises";
 
 /**
  * GET /api/chat/sessions/:sessionId — Get session details
@@ -173,11 +172,8 @@ async function syncPooledAgentSession(options: {
  * Delete a chat session and all its messages + attachments.
  * Used by both DELETE and sendBeacon (POST with _method=DELETE).
  *
- * Order of operations:
- * 1. Verify session ownership
- * 2. Fetch all attachment storage paths
- * 3. Delete image files from disk (fails fast if any deletion fails)
- * 4. Delete session from DB (cascade removes messages + attachment records)
+ * The work lives in `deleteChatSession` so the `chat_delete` tool removes a
+ * chat exactly the same way — files, DB rows, pooled agent and transcript.
  */
 async function deleteSession(request: NextRequest, params: Promise<{ sessionId: string }>) {
   const { sessionId } = await params;
@@ -185,48 +181,17 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
   const authResult = await requireChatSessionOwner(sessionId);
   if (!authResult.ok) return authResult.response;
 
-  // Fetch all attachment storage paths in a single query
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    include: { attachments: true },
-  });
-  const storagePaths = messages.flatMap((m) => m.attachments.map((a) => a.storagePath));
-
-  // Delete image files from disk — throws if any deletion fails
-  // Files are deleted BEFORE DB records so a failure leaves the DB intact for retry
-  if (storagePaths.length > 0) {
-    try {
-      await deleteAllImages(authResult.userId, storagePaths);
-    } catch (err) {
-      console.error(
-        `Failed to delete images for session ${sessionId}:`,
-        err instanceof Error ? err.message : err,
-      );
-      return NextResponse.json(
-        {
-          error: "Failed to delete attached images",
-          detail: err instanceof Error ? err.message : String(err),
-        },
-        { status: 500 },
-      );
-    }
-  }
-
-  // DB cascade (onDelete: Cascade) removes messages + attachment records
-  await prisma.chatSession.delete({
-    where: { id: sessionId },
-  });
-
-  // Clean up agent pool entry (disposes agent, removes from pool)
-  const poolKey = getPoolKey(authResult.userId, sessionId);
-  await remove(poolKey);
-
-  // Clean up session files on disk (Pi's JSONL session files)
-  const sessionDir = getSessionDir(authResult.userId, sessionId);
   try {
-    await fs.rm(sessionDir, { recursive: true, force: true });
+    await deleteChatSession(authResult.userId, sessionId);
   } catch (err) {
-    console.error(`Failed to clean up session files for ${sessionId}:`, err);
+    console.error(`Failed to delete chat session ${sessionId}:`, err);
+    return NextResponse.json(
+      {
+        error: "Failed to delete chat",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true });

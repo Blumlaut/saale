@@ -5,13 +5,14 @@
  * so it is normalized in both directions: unknown categories and exposures are
  * dropped on write, and whatever is in the row is validated again on read.
  *
- * `direct` is the default, so entries that say `direct` are omitted rather than
- * stored — the row stays sparse and only holds the categories the user moved
- * behind codemode.
+ * Every category has a default (`TOOL_CATEGORIES[].defaultExposure`), so only
+ * deviations from that default are stored — the row stays sparse and holds just
+ * the categories the user moved.
  */
 
 import { prisma } from "@/lib/db";
 import {
+  DEFAULT_TOOL_EXPOSURE,
   isToolExposure,
   TOOL_CATEGORIES,
   type ToolCategoryKey,
@@ -20,14 +21,15 @@ import {
 
 const CATEGORY_KEYS = new Set<string>(TOOL_CATEGORIES.map((c) => c.key));
 
-/** Keep only known categories and known exposures; drop `direct` (the default). */
+/** Keep only known categories and known exposures; drop entries at the default. */
 export function normalizeToolExposure(value: unknown): ToolExposureConfig | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
   const normalized: ToolExposureConfig = {};
   for (const [key, level] of Object.entries(value as Record<string, unknown>)) {
     if (!CATEGORY_KEYS.has(key)) continue;
-    if (!isToolExposure(level) || level === "direct") continue;
+    if (!isToolExposure(level)) continue;
+    if (level === DEFAULT_TOOL_EXPOSURE[key as ToolCategoryKey]) continue;
     normalized[key as ToolCategoryKey] = level;
   }
 
