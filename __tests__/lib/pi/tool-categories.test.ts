@@ -44,19 +44,9 @@ describe("tool categories", () => {
     }
   });
 
-  it("terminal is disabled by default", () => {
-    const terminal = getToolCategory("terminal");
-    expect(terminal).toBeDefined();
-    expect(terminal!.defaultEnabled).toBe(false);
-  });
-
-  it("terminal and infra are disabled by default, all others enabled", () => {
+  it("every category is enabled by default", () => {
     for (const category of TOOL_CATEGORIES) {
-      if (category.key === "terminal" || category.key === "infra") {
-        expect(category.defaultEnabled).toBe(false);
-      } else {
-        expect(category.defaultEnabled).toBe(true);
-      }
+      expect(category.defaultEnabled).toBe(true);
     }
   });
 });
@@ -74,8 +64,8 @@ describe("DEFAULT_TOOL_CONFIG", () => {
     }
   });
 
-  it("has terminal false and everything else true", () => {
-    expect(DEFAULT_TOOL_CONFIG.terminal).toBe(false);
+  it("has every category enabled", () => {
+    expect(DEFAULT_TOOL_CONFIG.terminal).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.email).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.jobs).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.calendar).toBe(true);
@@ -84,7 +74,7 @@ describe("DEFAULT_TOOL_CONFIG", () => {
     expect(DEFAULT_TOOL_CONFIG.memory).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.tasks).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.agentJobs).toBe(true);
-    expect(DEFAULT_TOOL_CONFIG.infra).toBe(false);
+    expect(DEFAULT_TOOL_CONFIG.infra).toBe(true);
   });
 });
 

@@ -49,7 +49,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     label: "Terminal",
     description: "Run commands and manage files in a sandboxed workspace",
     icon: Terminal,
-    defaultEnabled: false,
+    defaultEnabled: true,
     // The core working tools: always declared, the model must reach for them
     // without a discovery step.
     defaultExposure: "direct",
@@ -123,7 +123,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     label: "Infrastructure",
     description: "Manage remote machines via SSH",
     icon: Server,
-    defaultEnabled: false,
+    defaultEnabled: true,
     defaultExposure: "codemode",
   },
 ];
