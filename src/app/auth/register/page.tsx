@@ -125,22 +125,40 @@ export default function RegisterPage() {
 
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
-            <Input id="name" placeholder="Your name" {...register("name")} />
+            <Input id="name" autoComplete="name" placeholder="Your name" {...register("name")} />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" placeholder="you@example.com" {...register("email")} />
+            <Input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="username"
+              {...register("email")}
+            />
           </div>
 
+          {/* `new-password` on both fields so managers offer to generate a password
+              here instead of filling the stored one. */}
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" {...register("password")} />
+            <Input
+              id="password"
+              type="password"
+              autoComplete="new-password"
+              {...register("password")}
+            />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm password</Label>
-            <Input id="confirmPassword" type="password" {...register("confirmPassword")} />
+            <Input
+              id="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              {...register("confirmPassword")}
+            />
             {watch("confirmPassword") && watch("confirmPassword") !== password && (
               <p className="text-destructive text-xs">Passwords do not match</p>
             )}

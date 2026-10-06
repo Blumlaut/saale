@@ -212,11 +212,14 @@ function LoginForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
+                {/* `username`, not `email`: mobile password managers only recognise a
+                    credential form — and therefore its password field — when the
+                    identifier carries the username hint. */}
                 <Input
                   id="email"
                   type="email"
                   placeholder="you@example.com"
-                  autoComplete="email"
+                  autoComplete="username"
                   {...register("email")}
                 />
               </div>
