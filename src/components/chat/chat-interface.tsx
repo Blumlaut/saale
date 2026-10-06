@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList } from "./message-list";
 import { InputBar, type InputBarHandle } from "./input-bar";
+import { FileDropOverlay } from "./file-drop-overlay";
 import { QueuedMessages } from "./queued-messages";
 import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
+import { useFileDrop } from "@/hooks/use-file-drop";
 import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
 import {
   isTempMessage,
@@ -56,6 +58,12 @@ export function ChatInterface({
   const { draft, setDraft } = useChatDraft(sessionId);
   // Imperative access to the composer (quote insertion targets its caret).
   const inputBarRef = useRef<InputBarHandle>(null);
+  // Files dropped on the chat surface wait in the composer's pending strip,
+  // exactly like the paperclip and a pasted file.
+  const handleDroppedFiles = useCallback((files: File[]) => {
+    inputBarRef.current?.addFiles(files);
+  }, []);
+  const { isDragging, dropZoneProps } = useFileDrop(handleDroppedFiles);
 
   // Session state
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
@@ -635,7 +643,11 @@ export function ChatInterface({
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <>
+    <div
+      data-slot="chat-drop-zone"
+      className="relative flex min-h-0 flex-1 flex-col"
+      {...dropZoneProps}
+    >
       <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
         <ChatHeader
           sessionTitle={sessionTitle}
@@ -701,6 +713,8 @@ export function ChatInterface({
         isCompacting={isCompacting}
         onCompact={handleCompact}
       />
-    </>
+
+      {isDragging && <FileDropOverlay />}
+    </div>
   );
 }

@@ -39,6 +39,8 @@ interface PendingFile {
 /** Imperative API — the message list quotes a selection into the caret. */
 export interface InputBarHandle {
   insertQuote: (quote: string) => void;
+  /** Queue files for the next send — how the chat surface hands over a drop. */
+  addFiles: (files: File[]) => void;
 }
 
 interface InputBarProps {
@@ -105,8 +107,6 @@ export function InputBar({
     [value, onValueChange, autoResize],
   );
 
-  useImperativeHandle(ref, () => ({ insertQuote }), [insertQuote]);
-
   const hasToolToggle = onToggleTool !== undefined && toolConfig !== undefined;
 
   const canSend = value.trim().length > 0 || pendingFiles.length > 0;
@@ -156,6 +156,8 @@ export function InputBar({
     // Focus textarea after adding files
     textareaRef.current?.focus();
   }, []);
+
+  useImperativeHandle(ref, () => ({ insertQuote, addFiles }), [insertQuote, addFiles]);
 
   const removeFile = useCallback((index: number) => {
     setPendingFiles((prev) => {
