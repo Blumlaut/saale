@@ -18,12 +18,13 @@ import type { ToolCallData } from "./types";
  * Renders a tool call with the dedicated card for known tools, falling back
  * to a generic accordion for everything else.
  *
- * Shared by the interactive chat (MessageList) and the read-only share
- * viewer so both render tool calls identically.
+ * The owner's path: `MessageList` is the only caller. The share viewer renders
+ * `RedactedToolCall` directly, so a card added below can never reach a public
+ * page — `__tests__/share-redaction-coverage.test.ts` enforces that.
  *
- * Redacted share payloads are diverted to `RedactedToolCall` first. Their
- * `args` and `result` were stripped server-side, so the cards below would read
- * empty fields — and `ShowFileCard` would try to fetch a file — given a chance.
+ * The `redacted` check is a second line of defence for any other caller handed
+ * a share payload: it fires before a card below can read `args` or `result`
+ * (and before `ShowFileCard` can fetch a file).
  */
 export const ToolCallView = memo(function ToolCallView({ toolCall }: { toolCall: ToolCallData }) {
   if (toolCall.redacted) return <RedactedToolCall toolCall={toolCall} />;

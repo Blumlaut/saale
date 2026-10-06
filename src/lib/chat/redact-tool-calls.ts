@@ -50,6 +50,10 @@ interface SummaryRule {
 /**
  * One line per tool. Text is written by hand so nothing is copied out of a
  * result — only the optional count is read from the tool's own metadata.
+ *
+ * Every tool in `ALL_TOOL_INFOS` needs an entry; a test fails when a new tool
+ * lands without one, so the summary is always a decision rather than a fallback.
+ * (The fallback below still holds the line if one slips through.)
  */
 const SUMMARY_RULES: Record<string, SummaryRule> = {
   // Pi terminal built-ins
@@ -75,6 +79,7 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
     count: { field: "count", one: "match", many: "matches" },
   },
   mail_read: { text: "Read mail", count: { field: "count", one: "email", many: "emails" } },
+  mail_draft: { text: "Drafted mail" },
   mail_send: { text: "Sent mail" },
   mail_accounts: { text: "Listed mail accounts" },
   mail_folders: { text: "Listed mail folders" },
@@ -82,6 +87,7 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   mail_tag: { text: "Tagged mail" },
   mail_delete: { text: "Deleted mail" },
   mail_sync: { text: "Synced mail" },
+  calendar_list: { text: "Listed calendars" },
   calendar_upcoming: {
     text: "Checked the calendar",
     count: { field: "count", one: "event", many: "events" },
@@ -115,6 +121,7 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
     count: { field: "count", one: "memory", many: "memories" },
   },
   memory_index: { text: "Updated memory" },
+  memory_delete: { text: "Deleted memory" },
   model_list: { text: "Listed models" },
   task_create: { text: "Created a task" },
   task_update: { text: "Updated a task" },
