@@ -35,7 +35,7 @@ import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import * as pi from "@earendil-works/pi-coding-agent";
 import * as modelsStore from "@/lib/providers/models-store";
-import { buildGlobalModelRuntime, buildModelRuntime } from "@/lib/pi/models";
+import { buildAdminModelList, buildGlobalModelRuntime, buildModelRuntime } from "@/lib/pi/models";
 
 /** Stub the `/models` listing an OpenAI-compatible endpoint returns. */
 function stubModelListing(ids: string[]): void {
@@ -60,6 +60,25 @@ function catalogModel(overrides: Record<string, unknown> = {}) {
     input: ["text", "image"],
     ...overrides,
   };
+}
+
+/**
+ * The user's OpenAI-compatible endpoint row, as the runtime reads it.
+ * `stubEndpointRow()` with no argument means no endpoint at all.
+ */
+function stubEndpointRow(overrides?: Record<string, unknown>) {
+  vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(
+    (overrides === undefined
+      ? null
+      : {
+          baseUrl: "http://localhost:8080/v1",
+          encryptedKey: "enc(key-1)",
+          contextWindow: null,
+          maxOutputTokens: null,
+          modelCapabilities: null,
+          ...overrides,
+        }) as never,
+  );
 }
 
 /** The runtime the SDK would return, with only what Saale uses. */
@@ -199,14 +218,107 @@ describe("buildModelRuntime", () => {
     ]);
   });
 
-  it("reads the user's own endpoint, not the global one", async () => {
+  it("keeps every model of a provider whose entry holds no allowlist", async () => {
+    // The shape a Save used to write for providers nobody had toggled. It must
+    // mean "no restriction": reading it as "everything off" hid a local
+    // endpoint's models from every picker, and from the admin list that could
+    // switch them back on.
+    vi.mocked(db.prisma.adminSettings.findUnique).mockResolvedValue({
+      globalProviderModels: {
+        custom: { enabled: true, models: [] },
+        groq: { enabled: true },
+      },
+    } as never);
+    stubRuntime({
+      getAvailableSnapshot: vi
+        .fn()
+        .mockReturnValue([
+          catalogModel({ provider: "custom", id: "Qwen3-VL-8B" }),
+          catalogModel({ provider: "groq", id: "llama" }),
+        ]),
+    });
+
+    const { models } = await buildModelRuntime("user-1");
+
+    expect(models.map((m) => `${m.provider}:${m.id}`)).toEqual([
+      "custom:Qwen3-VL-8B",
+      "groq:llama",
+    ]);
+  });
+
+  it("lists models the admin switched off when building the admin's own list", async () => {
+    vi.mocked(db.prisma.adminSettings.findUnique).mockResolvedValue({
+      globalProviderModels: {
+        groq: { enabled: false },
+        openai: { enabled: true, models: ["gpt-5"] },
+      },
+    } as never);
+    stubRuntime({
+      getAvailableSnapshot: vi
+        .fn()
+        .mockReturnValue([
+          catalogModel({ provider: "groq", id: "llama" }),
+          catalogModel({ provider: "openai", id: "gpt-5" }),
+          catalogModel({ provider: "openai", id: "gpt-4" }),
+        ]),
+    });
+
+    // What a user can pick…
+    const user = await buildModelRuntime("user-1");
+    expect(user.models.map((m) => `${m.provider}:${m.id}`)).toEqual(["openai:gpt-5"]);
+
+    // …and what the admin page must show to be able to switch them back on.
+    const admin = await buildAdminModelList();
+    expect(admin.models.map((m) => `${m.provider}:${m.id}`)).toEqual([
+      "groq:llama",
+      "openai:gpt-5",
+      "openai:gpt-4",
+    ]);
+  });
+
+  it("prefers the user's own endpoint over the global one", async () => {
+    stubEndpointRow({ baseUrl: "http://user-host:8080/v1" });
+    vi.mocked(db.prisma.providerApiKey.findFirst).mockResolvedValue({
+      baseUrl: "http://global-host:8080/v1",
+    } as never);
+    stubModelListing(["local-model"]);
+    const runtime = stubRuntime();
+
     await buildModelRuntime("user-1");
 
-    expect(db.prisma.providerApiKey.findUnique).toHaveBeenCalledWith(
+    expect(runtime.registerProvider).toHaveBeenCalledWith(
+      "custom",
+      expect.objectContaining({ baseUrl: "http://user-host:8080/v1" }),
+    );
+  });
+
+  it("inherits the global endpoint for a user who has none of their own", async () => {
+    // An admin's local endpoint is usable by everyone, so its models have to be
+    // registered for everyone — reading only the user's own row hid them.
+    vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(null as never);
+    vi.mocked(db.prisma.providerApiKey.findFirst).mockResolvedValue({
+      baseUrl: "http://global-host:8080/v1",
+      encryptedKey: "enc()",
+      contextWindow: 4096,
+      maxOutputTokens: 1024,
+      modelCapabilities: null,
+    } as never);
+    stubModelListing(["local-model"]);
+    const runtime = stubRuntime();
+
+    const { models } = await buildModelRuntime("user-1");
+
+    expect(runtime.registerProvider).toHaveBeenCalledWith(
+      "custom",
       expect.objectContaining({
-        where: { userId_provider: { userId: "user-1", provider: "custom" } },
+        baseUrl: "http://global-host:8080/v1",
+        models: [
+          expect.objectContaining({ id: "local-model", contextWindow: 4096, maxTokens: 1024 }),
+        ],
       }),
     );
+    // …and the models reach the list the pickers render, not just the runtime.
+    expect(models.map((m) => `${m.provider}:${m.id}`)).toEqual(["custom:local-model"]);
   });
 
   it("reads the global endpoint for the global runtime", async () => {
@@ -218,20 +330,8 @@ describe("buildModelRuntime", () => {
   });
 
   describe("Saale's OpenAI-compatible endpoint", () => {
-    /** The endpoint row every discovery test starts from. */
-    function stubEndpoint(overrides: Record<string, unknown> = {}) {
-      vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue({
-        baseUrl: "http://localhost:8080/v1",
-        encryptedKey: "enc(key-1)",
-        contextWindow: null,
-        maxOutputTokens: null,
-        modelCapabilities: null,
-        ...overrides,
-      } as never);
-    }
-
     it("registers the endpoint's models, with the user's limits", async () => {
-      stubEndpoint({ contextWindow: 32_768, maxOutputTokens: 8_192 });
+      stubEndpointRow({ contextWindow: 32_768, maxOutputTokens: 8_192 });
       vi.mocked(crypto.decrypt).mockReturnValue("local-key");
       stubModelListing(["local-model"]);
       const runtime = stubRuntime();
@@ -258,7 +358,7 @@ describe("buildModelRuntime", () => {
     });
 
     it("keeps an unknown model conservative and a catalog hit verbatim", async () => {
-      stubEndpoint();
+      stubEndpointRow({});
       stubModelListing(["local-model", "claude-sonnet"]);
       const runtime = stubRuntime({
         getModel: vi.fn((provider: string, id: string) =>
@@ -293,7 +393,7 @@ describe("buildModelRuntime", () => {
     });
 
     it("lets a recorded vision capability overrule the catalog", async () => {
-      stubEndpoint({ modelCapabilities: { "local-model": { vision: true } } });
+      stubEndpointRow({ modelCapabilities: { "local-model": { vision: true } } });
       stubModelListing(["local-model"]);
       const runtime = stubRuntime();
 
@@ -306,7 +406,7 @@ describe("buildModelRuntime", () => {
     });
 
     it("registers the endpoint even when its listing fails", async () => {
-      stubEndpoint();
+      stubEndpointRow({});
       vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection refused")));
       const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
       const runtime = stubRuntime();
@@ -324,7 +424,7 @@ describe("buildModelRuntime", () => {
     });
 
     it("keeps the endpoint usable when its key cannot be decrypted", async () => {
-      stubEndpoint();
+      stubEndpointRow({});
       vi.mocked(crypto.decrypt).mockImplementation(() => {
         throw new Error("bad key");
       });
