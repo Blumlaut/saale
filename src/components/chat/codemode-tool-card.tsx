@@ -44,11 +44,11 @@ export const CodemodeToolCard = memo(function CodemodeToolCard({
         )}
         <Code2 className="text-muted-foreground h-3 w-3 shrink-0" />
         <span className="shrink-0 text-xs font-medium">Script</span>
-        <span className="text-muted-foreground min-w-0 truncate text-[11px]">
-          {calledTools.length > 0
-            ? calledTools.map(toolLabel).join(" · ")
-            : "runs tool calls in one step"}
-        </span>
+        {calledTools.length > 0 && (
+          <span className="text-muted-foreground min-w-0 truncate text-[11px]">
+            {calledTools.map(toolLabel).join(" · ")}
+          </span>
+        )}
         <ToolStatusBadge toolCall={toolCall} />
       </button>
 
