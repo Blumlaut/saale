@@ -5,8 +5,10 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     memory: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       groupBy: vi.fn(),
       updateMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
     $queryRaw: vi.fn(),
   },
@@ -58,6 +60,7 @@ describe("createMemoryTools", () => {
     const names = tools.map((t) => t.name);
     expect(names).toContain("memory_index");
     expect(names).toContain("memory_search");
+    expect(names).toContain("memory_delete");
   });
 
   describe("memory_index", () => {
@@ -296,6 +299,46 @@ describe("createMemoryTools", () => {
       });
 
       expect(mockQueryRaw).toHaveBeenCalled();
+    });
+  });
+
+  describe("memory_delete", () => {
+    it("deletes an owned memory and reports it", async () => {
+      const tools = createMemoryTools(userId);
+      const del = tools.find((t) => t.name === "memory_delete")!;
+
+      mockMemory.findFirst.mockResolvedValue({
+        id: "mem-1",
+        title: "User prefers dark mode",
+        collection: "preferences",
+      });
+      mockMemory.deleteMany.mockResolvedValue({ count: 1 });
+
+      const result = await callExecute(del.execute, { id: "mem-1" });
+      const text = JSON.parse((result.content[0] as { text: string }).text);
+
+      expect(text.deleted).toBe(true);
+      expect(text.id).toBe("mem-1");
+      expect(text.title).toBe("User prefers dark mode");
+      // Both the ownership read and the delete are scoped to the user.
+      expect(mockMemory.findFirst).toHaveBeenCalledWith({
+        where: { id: "mem-1", userId },
+        select: { id: true, title: true, collection: true },
+      });
+      expect(mockMemory.deleteMany).toHaveBeenCalledWith({ where: { id: "mem-1", userId } });
+    });
+
+    it("throws and deletes nothing when the memory is not the user's", async () => {
+      const tools = createMemoryTools(userId);
+      const del = tools.find((t) => t.name === "memory_delete")!;
+
+      // findFirst is user-scoped, so another user's memory reads as missing.
+      mockMemory.findFirst.mockResolvedValue(null);
+
+      await expect(callExecute(del.execute, { id: "someone-elses" })).rejects.toThrow(
+        "Memory someone-elses not found",
+      );
+      expect(mockMemory.deleteMany).not.toHaveBeenCalled();
     });
   });
 });

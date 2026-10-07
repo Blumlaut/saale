@@ -98,7 +98,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   {
     key: "memory",
     label: "Memory",
-    description: "Search persistent AI memories",
+    description: "Search and manage persistent AI memories",
     icon: Brain,
     defaultEnabled: true,
     defaultExposure: "direct",

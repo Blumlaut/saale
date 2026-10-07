@@ -231,5 +231,52 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         };
       },
     }),
+
+    // ─── memory_delete ──────────────────────────────────────────────────
+
+    defineTool({
+      name: "memory_delete",
+      label: "Delete Memory",
+      description:
+        "Permanently delete a memory by its ID. Get IDs from memory_search or memory_index.",
+      parameters: Type.Object({
+        id: Type.String({
+          description: "Memory ID to delete.",
+        }),
+      }),
+      execute: async (_toolCallId, params) => {
+        const memory = await prisma.memory.findFirst({
+          where: { id: params.id, userId },
+          select: { id: true, title: true, collection: true },
+        });
+
+        if (!memory) {
+          throw new Error(`Memory ${params.id} not found`);
+        }
+
+        // Defense in depth: scope the delete to the owner even though the
+        // record was fetched with the same guard.
+        await prisma.memory.deleteMany({ where: { id: params.id, userId } });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  deleted: true,
+                  id: memory.id,
+                  title: memory.title,
+                  collection: memory.collection,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { id: memory.id },
+        };
+      },
+    }),
   ];
 }
