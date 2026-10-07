@@ -1,6 +1,15 @@
 "use client";
 
-import { memo, useEffect, useRef, useState, useMemo, useCallback } from "react";
+import {
+  memo,
+  forwardRef,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+  useImperativeHandle,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -15,7 +24,7 @@ import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages } from "@/lib/chat/group-messages";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
-import { formatFileSize } from "@/lib/utils";
+import { formatFileSize, cn } from "@/lib/utils";
 import type { ApprovalData, Message, AttachmentData } from "./types";
 import {
   Loader2,
@@ -32,6 +41,11 @@ import {
   File as FileIcon,
   AlertTriangle,
 } from "lucide-react";
+
+export interface MessageListHandle {
+  /** Jump to the latest message and re-arm auto-scroll. */
+  enableAutoScroll: () => void;
+}
 
 interface MessageListProps {
   messages: Message[];
@@ -66,259 +80,307 @@ const WINDOW_GROWTH_GROUPS = 30;
  * would re-parse every message's markdown on each keystroke. Props are all
  * primitives or state objects that only change when the conversation does.
  */
-export const MessageList = memo(function MessageList({
-  messages,
-  isLoading,
-  isCompacting,
-  onEditMessage,
-  onSendMessage,
-  onQuoteSelection,
-  pendingApprovals = [],
-  onApprovalResolved,
-  sessionId,
-  activeTool,
-  retry,
-}: MessageListProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const [hasJobs, setHasJobs] = useState<boolean | null>(null);
+export const MessageList = memo(
+  forwardRef<MessageListHandle, MessageListProps>(function MessageList(
+    {
+      messages,
+      isLoading,
+      isCompacting,
+      onEditMessage,
+      onSendMessage,
+      onQuoteSelection,
+      pendingApprovals = [],
+      onApprovalResolved,
+      sessionId,
+      activeTool,
+      retry,
+    },
+    ref,
+  ) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const bottomRef = useRef<HTMLDivElement>(null);
+    const [isAtBottom, setIsAtBottom] = useState(true);
+    // Auto-scroll is armed until the user scrolls up away from the tail.
+    // Re-armed by scrolling back down, the jump-to-bottom button, and
+    // enableAutoScroll (send, approval). Kept separate from isAtBottom,
+    // which is purely scroll-derived and also selects the render window.
+    const [autoScroll, setAutoScroll] = useState(true);
+    const [hasJobs, setHasJobs] = useState<boolean | null>(null);
 
-  // Bump on every content change so the selection-quote button can re-check
-  // a selection after streaming tokens or a DB reload shift the layout.
-  const [selectionVersion, setSelectionVersion] = useState(0);
-  useEffect(() => {
-    setSelectionVersion((v) => v + 1);
-  }, [messages]);
+    // Bump on every content change so the selection-quote button can re-check
+    // a selection after streaming tokens or a DB reload shift the layout.
+    const [selectionVersion, setSelectionVersion] = useState(0);
+    useEffect(() => {
+      setSelectionVersion((v) => v + 1);
+    }, [messages]);
 
-  // Fetch job status to customize empty state suggestions
-  useEffect(() => {
-    if (messages.length === 0 && hasJobs === null) {
-      fetch("/api/jobs")
-        .then((res) => res.json())
-        .then((data) => setHasJobs(Array.isArray(data.jobs) && data.jobs.length > 0))
-        .catch((err) => {
-          console.error("Failed to fetch jobs for onboarding:", err);
-          setHasJobs(false);
-        });
-    }
-  }, [messages.length, hasJobs]);
+    // Fetch job status to customize empty state suggestions
+    useEffect(() => {
+      if (messages.length === 0 && hasJobs === null) {
+        fetch("/api/jobs")
+          .then((res) => res.json())
+          .then((data) => setHasJobs(Array.isArray(data.jobs) && data.jobs.length > 0))
+          .catch((err) => {
+            console.error("Failed to fetch jobs for onboarding:", err);
+            setHasJobs(false);
+          });
+      }
+    }, [messages.length, hasJobs]);
 
-  // Group consecutive assistant messages that share a parentMessageId
-  const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
+    // Group consecutive assistant messages that share a parentMessageId
+    const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
 
-  // ── Render window ────────────────────────────────────────────────────────
-  // `revealedFrom`: the user asked for earlier turns — that start stays frozen,
-  // so a reveal is never undone under a reader's feet.
-  // `pinnedStart`: the window held while they are scrolled away from the bottom.
-  const [revealedFrom, setRevealedFrom] = useState<number | null>(null);
-  const [pinnedStart, setPinnedStart] = useState<number | null>(null);
-  const tailStart = Math.max(0, groupedMessages.length - INITIAL_WINDOW_GROUPS);
-  const windowStart = revealedFrom ?? (isAtBottom ? tailStart : (pinnedStart ?? tailStart));
+    // ── Render window ────────────────────────────────────────────────────────
+    // `revealedFrom`: the user asked for earlier turns — that start stays frozen,
+    // so a reveal is never undone under a reader's feet.
+    // `pinnedStart`: the window held while they are scrolled away from the bottom.
+    const [revealedFrom, setRevealedFrom] = useState<number | null>(null);
+    const [pinnedStart, setPinnedStart] = useState<number | null>(null);
+    const tailStart = Math.max(0, groupedMessages.length - INITIAL_WINDOW_GROUPS);
+    const windowStart = revealedFrom ?? (isAtBottom ? tailStart : (pinnedStart ?? tailStart));
 
-  // Track scroll position — unlock auto-scroll when user scrolls up
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = distFromBottom <= THRESHOLD;
-    setIsAtBottom(atBottom);
-    // Reading back: pin the window where the user left it, so arriving turns
-    // only append below. Back at the bottom, follow the tail again.
-    setPinnedStart(atBottom ? null : windowStart);
-  }, [windowStart]);
+    // Track scroll position — arm/disarm auto-scroll with the scroll position
+    const handleScroll = useCallback(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const atBottom = distFromBottom <= THRESHOLD;
+      setIsAtBottom(atBottom);
+      setAutoScroll(atBottom);
+      // Reading back: pin the window where the user left it, so arriving turns
+      // only append below. Back at the bottom, follow the tail again.
+      setPinnedStart(atBottom ? null : windowStart);
+    }, [windowStart]);
 
-  const visibleGroups = windowStart > 0 ? groupedMessages.slice(windowStart) : groupedMessages;
-  const hiddenMessageCount = useMemo(
-    () =>
-      groupedMessages
-        .slice(0, windowStart)
-        .reduce(
-          (n, group) => n + (group.type === "assistant-group" ? group.messages.length : 1),
-          0,
-        ),
-    [groupedMessages, windowStart],
-  );
+    // Jump to the tail and re-arm auto-scroll (button click, send, approval).
+    const jumpToBottom = useCallback(() => {
+      const el = containerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+      // Set state directly too: a programmatic scroll may not emit a scroll
+      // event (e.g. already at the bottom), and the button must hide now.
+      setIsAtBottom(true);
+      setPinnedStart(null);
+      setAutoScroll(true);
+    }, []);
 
-  // Auto-scroll to bottom only while streaming and user is near the bottom (locked-in mode).
-  // When streaming, user can scroll up to "unlock" — scrolling back to bottom re-locks.
-  // Non-streaming message changes (DB reloads, edits) do NOT auto-scroll.
-  useEffect(() => {
-    if (isLoading && isAtBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, isLoading, isAtBottom]);
+    useImperativeHandle(ref, () => ({ enableAutoScroll: jumpToBottom }), [jumpToBottom]);
 
-  if (messages.length === 0) {
-    // While a generation is loading, never show the "Start a conversation"
-    // empty state — even a brief flash reads as a broken UI (e.g. during a
-    // race between a send and a DB reload, or while a queued message waits
-    // for Pi to finish). Show the loading indicator instead.
-    if (isLoading) {
+    const visibleGroups = windowStart > 0 ? groupedMessages.slice(windowStart) : groupedMessages;
+    const hiddenMessageCount = useMemo(
+      () =>
+        groupedMessages
+          .slice(0, windowStart)
+          .reduce(
+            (n, group) => n + (group.type === "assistant-group" ? group.messages.length : 1),
+            0,
+          ),
+      [groupedMessages, windowStart],
+    );
+
+    // Follow the tail on every content change while auto-scroll is armed.
+    // Scrolling up disarms it (reading position is preserved through reloads);
+    // the jump button, a send, or an approval re-arms it.
+    // Instant, not smooth — queued smooth scrolls lag a fast token stream,
+    // which is what made the old auto-scroll feel flaky.
+    useEffect(() => {
+      if (autoScroll) {
+        bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      }
+    }, [messages, autoScroll]);
+
+    if (messages.length === 0) {
+      // While a generation is loading, never show the "Start a conversation"
+      // empty state — even a brief flash reads as a broken UI (e.g. during a
+      // race between a send and a DB reload, or while a queued message waits
+      // for Pi to finish). Show the loading indicator instead.
+      if (isLoading) {
+        return (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">
+                {activeTool?.name ? (
+                  <>
+                    Running <span className="font-medium">{activeTool.name}</span>...
+                  </>
+                ) : (
+                  "Thinking..."
+                )}
+              </span>
+            </div>
+          </div>
+        );
+      }
+
+      const suggestions = [
+        ...(hasJobs === false
+          ? [
+              {
+                label: "✨ Create some jobs",
+                prompt:
+                  "Please create some jobs for my account, give them realistic execution times and if a model is required, try being efficient (i.e. prefer cheap/lightweight models for simple tasks, or non-thinking over thinking models)",
+              },
+            ]
+          : []),
+        {
+          label: "🔍 Search my emails",
+          prompt: "Search my emails for recent updates on my projects.",
+        },
+        {
+          label: "📂 List my files",
+          prompt: "Show me a list of my recently uploaded files.",
+        },
+      ];
+
       return (
         <div className="flex flex-1 items-center justify-center">
-          <div className="text-muted-foreground flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">
-              {activeTool?.name ? (
-                <>
-                  Running <span className="font-medium">{activeTool.name}</span>...
-                </>
-              ) : (
-                "Thinking..."
-              )}
-            </span>
+          <div className="max-w-md px-4 text-center">
+            <Bot className="text-muted-foreground/50 mx-auto h-12 w-12" />
+            <h3 className="mt-4 text-lg font-medium">Start a conversation</h3>
+            <p className="text-muted-foreground mt-1 mb-6 text-sm">
+              {hasJobs === false
+                ? "It looks like you don't have any jobs set up. Would you like me to create some for you?"
+                : "Ask anything — I can search emails, manage files, and run jobs."}
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {suggestions.map((s) => (
+                <Button
+                  key={s.label}
+                  variant="outline"
+                  size="sm"
+                  className="liquid-glass border-border bg-muted/50 hover:bg-accent/60"
+                  onClick={() => onSendMessage?.(s.prompt)}
+                >
+                  {s.label}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       );
     }
 
-    const suggestions = [
-      ...(hasJobs === false
-        ? [
-            {
-              label: "✨ Create some jobs",
-              prompt:
-                "Please create some jobs for my account, give them realistic execution times and if a model is required, try being efficient (i.e. prefer cheap/lightweight models for simple tasks, or non-thinking over thinking models)",
-            },
-          ]
-        : []),
-      {
-        label: "🔍 Search my emails",
-        prompt: "Search my emails for recent updates on my projects.",
-      },
-      {
-        label: "📂 List my files",
-        prompt: "Show me a list of my recently uploaded files.",
-      },
-    ];
+    // Check if the last message is a streaming message (streaming-* IDs)
+    const lastMsg = messages[messages.length - 1];
+    const isStreaming = isLoading && lastMsg?.role === "assistant" && isStreamingMessage(lastMsg);
 
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="max-w-md px-4 text-center">
-          <Bot className="text-muted-foreground/50 mx-auto h-12 w-12" />
-          <h3 className="mt-4 text-lg font-medium">Start a conversation</h3>
-          <p className="text-muted-foreground mt-1 mb-6 text-sm">
-            {hasJobs === false
-              ? "It looks like you don't have any jobs set up. Would you like me to create some for you?"
-              : "Ask anything — I can search emails, manage files, and run jobs."}
-          </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {suggestions.map((s) => (
-              <Button
-                key={s.label}
-                variant="outline"
-                size="sm"
-                className="liquid-glass border-border bg-muted/50 hover:bg-accent/60"
-                onClick={() => onSendMessage?.(s.prompt)}
-              >
-                {s.label}
-              </Button>
-            ))}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={containerRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
+          <div className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
+            {hiddenMessageCount > 0 && (
+              <div className="flex justify-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground text-xs"
+                  onClick={() => setRevealedFrom(Math.max(0, windowStart - WINDOW_GROWTH_GROUPS))}
+                >
+                  <History className="mr-1.5 h-3.5 w-3.5" />
+                  Show {hiddenMessageCount} earlier{" "}
+                  {hiddenMessageCount === 1 ? "message" : "messages"}
+                </Button>
+              </div>
+            )}
+            {visibleGroups.map((group) =>
+              group.type === "compaction" ? (
+                <CompactionMessage
+                  key={group.message.id}
+                  message={group.message}
+                  isCompacting={isCompacting ?? false}
+                />
+              ) : group.type === "user" ? (
+                <UserMessageItem
+                  key={group.message.id}
+                  message={group.message}
+                  {...(onEditMessage && { onEdit: onEditMessage })}
+                />
+              ) : (
+                /* Keyed by the turn's root message: a positional key would remount
+               every group whenever the window slides. */
+                <AssistantGroup
+                  key={group.messages[0]!.id}
+                  messages={group.messages}
+                  isStreaming={
+                    lastMsg?.id === group.messages[group.messages.length - 1]?.id && !!isStreaming
+                  }
+                />
+              ),
+            )}
+
+            {/* Inline tool approval requests */}
+            {pendingApprovals.length > 0 && sessionId && (
+              <div className="space-y-2">
+                {pendingApprovals.map((approval) => (
+                  <ApprovalMessage
+                    key={approval.toolCallId}
+                    sessionId={sessionId}
+                    approval={approval}
+                    onResolved={onApprovalResolved ?? (() => {})}
+                  />
+                ))}
+              </div>
+            )}
+
+            {isLoading && !isStreaming && (
+              <div className="text-muted-foreground flex items-center gap-2">
+                {retry ? (
+                  <AlertTriangle className="text-destructive h-4 w-4 shrink-0" />
+                ) : (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                )}
+                {retry ? (
+                  <span className="min-w-0 text-sm break-words">
+                    <span className="text-destructive font-medium">Provider error</span>{" "}
+                    <span>
+                      {formatProviderError(retry.errorMessage).message} — retrying ({retry.attempt}{" "}
+                      of {retry.maxAttempts})...
+                    </span>
+                  </span>
+                ) : activeTool?.name ? (
+                  <span className="text-sm">
+                    Running <span className="font-medium">{activeTool.name}</span>...
+                  </span>
+                ) : (
+                  <span className="text-sm">Thinking...</span>
+                )}
+              </div>
+            )}
+
+            <div ref={bottomRef} />
           </div>
+
+          {onQuoteSelection && (
+            <SelectionQuoteButton
+              containerRef={containerRef}
+              onQuote={onQuoteSelection}
+              version={selectionVersion}
+            />
+          )}
         </div>
+
+        {/* Jump to the tail — pinned to the message window, visible only while
+          reading earlier turns */}
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          aria-label="Jump to the latest message"
+          aria-hidden={isAtBottom}
+          tabIndex={isAtBottom ? -1 : 0}
+          title="Jump to the latest message"
+          onClick={jumpToBottom}
+          className={cn(
+            "absolute right-3 bottom-3 z-10 h-8 w-8 transition-opacity duration-150 md:right-4 md:bottom-4",
+            isAtBottom ? "pointer-events-none opacity-0" : "opacity-100",
+          )}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </Button>
       </div>
     );
-  }
-
-  // Check if the last message is a streaming message (streaming-* IDs)
-  const lastMsg = messages[messages.length - 1];
-  const isStreaming = isLoading && lastMsg?.role === "assistant" && isStreamingMessage(lastMsg);
-
-  return (
-    <div ref={containerRef} className="relative flex-1 overflow-y-auto" onScroll={handleScroll}>
-      <div className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
-        {hiddenMessageCount > 0 && (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-foreground text-xs"
-              onClick={() => setRevealedFrom(Math.max(0, windowStart - WINDOW_GROWTH_GROUPS))}
-            >
-              <History className="mr-1.5 h-3.5 w-3.5" />
-              Show {hiddenMessageCount} earlier {hiddenMessageCount === 1 ? "message" : "messages"}
-            </Button>
-          </div>
-        )}
-        {visibleGroups.map((group) =>
-          group.type === "compaction" ? (
-            <CompactionMessage
-              key={group.message.id}
-              message={group.message}
-              isCompacting={isCompacting ?? false}
-            />
-          ) : group.type === "user" ? (
-            <UserMessageItem
-              key={group.message.id}
-              message={group.message}
-              {...(onEditMessage && { onEdit: onEditMessage })}
-            />
-          ) : (
-            /* Keyed by the turn's root message: a positional key would remount
-               every group whenever the window slides. */
-            <AssistantGroup
-              key={group.messages[0]!.id}
-              messages={group.messages}
-              isStreaming={
-                lastMsg?.id === group.messages[group.messages.length - 1]?.id && !!isStreaming
-              }
-            />
-          ),
-        )}
-
-        {/* Inline tool approval requests */}
-        {pendingApprovals.length > 0 && sessionId && (
-          <div className="space-y-2">
-            {pendingApprovals.map((approval) => (
-              <ApprovalMessage
-                key={approval.toolCallId}
-                sessionId={sessionId}
-                approval={approval}
-                onResolved={onApprovalResolved ?? (() => {})}
-              />
-            ))}
-          </div>
-        )}
-
-        {isLoading && !isStreaming && (
-          <div className="text-muted-foreground flex items-center gap-2">
-            {retry ? (
-              <AlertTriangle className="text-destructive h-4 w-4 shrink-0" />
-            ) : (
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-            )}
-            {retry ? (
-              <span className="min-w-0 text-sm break-words">
-                <span className="text-destructive font-medium">Provider error</span>{" "}
-                <span>
-                  {formatProviderError(retry.errorMessage).message} — retrying ({retry.attempt} of{" "}
-                  {retry.maxAttempts})...
-                </span>
-              </span>
-            ) : activeTool?.name ? (
-              <span className="text-sm">
-                Running <span className="font-medium">{activeTool.name}</span>...
-              </span>
-            ) : (
-              <span className="text-sm">Thinking...</span>
-            )}
-          </div>
-        )}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {onQuoteSelection && (
-        <SelectionQuoteButton
-          containerRef={containerRef}
-          onQuote={onQuoteSelection}
-          version={selectionVersion}
-        />
-      )}
-    </div>
-  );
-});
+  }),
+);
 
 function UserMessageItem({
   message,

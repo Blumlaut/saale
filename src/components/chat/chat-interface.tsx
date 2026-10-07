@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { MessageList } from "./message-list";
+import { MessageList, type MessageListHandle } from "./message-list";
 import { InputBar, type InputBarHandle } from "./input-bar";
 import { FileDropOverlay } from "./file-drop-overlay";
 import { QueuedMessages } from "./queued-messages";
@@ -67,6 +67,8 @@ export function ChatInterface({
   const { draft, setDraft } = useChatDraft(sessionId);
   // Imperative access to the composer (quote insertion targets its caret).
   const inputBarRef = useRef<InputBarHandle>(null);
+  // Imperative access to the message list (jump to the tail on send).
+  const messageListRef = useRef<MessageListHandle>(null);
   // Files dropped on the chat surface wait in the composer's pending strip,
   // exactly like the paperclip and a pasted file.
   const handleDroppedFiles = useCallback((files: File[]) => {
@@ -318,6 +320,10 @@ export function ChatInterface({
         return;
       }
 
+      // Sending means the user wants the newest turn — jump to the tail and
+      // re-arm auto-scroll, even mid-read of earlier history.
+      messageListRef.current?.enableAutoScroll();
+
       const optimistic = makeTempUserMessage(content, files);
       // While the session is busy — Pi generating, or a compaction holding it —
       // the server queues the message (the composer's Queue button shows this
@@ -467,6 +473,7 @@ export function ChatInterface({
   const handleSendQueuedNow = useCallback(
     async (messageId: string) => {
       setSendingQueuedId(messageId);
+      messageListRef.current?.enableAutoScroll();
       try {
         const data = await postJson<{ delivered: boolean; mode?: "steered" | "prompt" }>(
           `/api/chat/sessions/${sessionId}/queue/${messageId}`,
@@ -767,6 +774,7 @@ export function ChatInterface({
 
         <div className="flex min-h-0 flex-1 flex-col">
           <MessageList
+            ref={messageListRef}
             messages={messages}
             isLoading={isLoading}
             isCompacting={isCompacting}

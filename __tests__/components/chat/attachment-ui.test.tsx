@@ -9,6 +9,8 @@ import type { Message } from "@/components/chat/types";
 
 // jsdom has no object URLs — stub the pair the InputBar uses for previews.
 beforeEach(() => {
+  // jsdom has no layout, so scrollIntoView does not exist.
+  Element.prototype.scrollIntoView = vi.fn();
   Object.defineProperty(URL, "createObjectURL", {
     value: vi.fn((file: File) => `blob:fake-${file.name}`),
     writable: true,

@@ -102,7 +102,7 @@ describe("MessageList render window", () => {
   it("holds the window in place while the reader is scrolled back", () => {
     const messages = transcript(40);
     const { container, rerender } = render(<MessageList messages={messages} />);
-    const scroller = container.firstElementChild as HTMLElement;
+    const scroller = container.querySelector<HTMLElement>(".overflow-y-auto")!;
 
     // jsdom reports zero layout, so fake a viewport scrolled into the history.
     Object.defineProperty(scroller, "scrollHeight", { value: 5000, configurable: true });
