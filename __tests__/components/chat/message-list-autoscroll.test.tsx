@@ -50,13 +50,18 @@ function scrollerOf(container: HTMLElement): HTMLElement {
   return container.querySelector<HTMLElement>(".overflow-y-auto")!;
 }
 
+/** Give the scroller a fake 500px viewport over `scrollHeight` px of content. */
+function setScroll(container: HTMLElement, scrollTop: number, scrollHeight = 5000): HTMLElement {
+  const scroller = scrollerOf(container);
+  Object.defineProperty(scroller, "scrollHeight", { value: scrollHeight, configurable: true });
+  Object.defineProperty(scroller, "clientHeight", { value: 500, configurable: true });
+  scroller.scrollTop = scrollTop;
+  return scroller;
+}
+
 /** Fake a viewport scrolled away from the tail and fire the scroll event. */
 function scrollUp(container: HTMLElement) {
-  const scroller = scrollerOf(container);
-  Object.defineProperty(scroller, "scrollHeight", { value: 5000, configurable: true });
-  Object.defineProperty(scroller, "clientHeight", { value: 500, configurable: true });
-  scroller.scrollTop = 0;
-  fireEvent.scroll(scroller);
+  fireEvent.scroll(setScroll(container, 0));
 }
 
 function jumpButton() {
@@ -85,6 +90,70 @@ describe("MessageList auto-scroll", () => {
 
     rerender(<MessageList messages={transcript(4)} isLoading />);
     expect(scrollSpy.mock.calls.length).toBe(afterScrollUp);
+  });
+
+  it("stops following the moment the user scrolls up mid-stream, not at the end", () => {
+    const { container, rerender } = render(<MessageList messages={transcript(2)} isLoading />);
+    const scroller = setScroll(container, 4500);
+    fireEvent.scroll(scroller);
+    const armed = scrollSpy.mock.calls.length;
+
+    fireEvent.wheel(scroller, { deltaY: -120 });
+
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scrollSpy.mock.calls.length).toBe(armed);
+  });
+
+  it("keeps following when the wheel points at the tail", () => {
+    const { container, rerender } = render(<MessageList messages={transcript(2)} isLoading />);
+    const scroller = setScroll(container, 4500);
+    fireEvent.scroll(scroller);
+    const armed = scrollSpy.mock.calls.length;
+
+    fireEvent.wheel(scroller, { deltaY: 120 });
+
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scrollSpy.mock.calls.length).toBeGreaterThan(armed);
+  });
+
+  it("stays armed when a wheel has nothing to scroll (short transcript)", () => {
+    const { container, rerender } = render(<MessageList messages={transcript(2)} isLoading />);
+    const scroller = setScroll(container, 0, 500);
+    fireEvent.scroll(scroller);
+    const armed = scrollSpy.mock.calls.length;
+
+    fireEvent.wheel(scroller, { deltaY: -120 });
+
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scrollSpy.mock.calls.length).toBeGreaterThan(armed);
+  });
+
+  it("never overrides a position the user moved without a scroll event yet", () => {
+    const { container, rerender } = render(<MessageList messages={transcript(2)} isLoading />);
+    const scroller = setScroll(container, 4500);
+    fireEvent.scroll(scroller);
+    const armed = scrollSpy.mock.calls.length;
+
+    // A scrollbar drag: the position moved, the scroll event is still pending.
+    scroller.scrollTop = 900;
+
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scrollSpy.mock.calls.length).toBe(armed);
+
+    // Disarmed for good, the way a delivered scroll event would leave it.
+    rerender(<MessageList messages={transcript(5)} isLoading />);
+    expect(scrollSpy.mock.calls.length).toBe(armed);
+  });
+
+  it("follows again once the user scrolls back down to the tail", () => {
+    const { container, rerender } = render(<MessageList messages={transcript(3)} isLoading />);
+    scrollUp(container);
+
+    fireEvent.scroll(setScroll(container, 4500));
+    const rearmed = scrollSpy.mock.calls.length;
+
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scrollSpy.mock.calls.length).toBeGreaterThan(rearmed);
   });
 
   it("hides the jump button at the bottom and shows it while reading history", () => {
