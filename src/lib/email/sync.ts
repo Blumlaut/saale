@@ -333,7 +333,42 @@ export async function syncEmailAccount(accountId: string): Promise<{
     // eslint-disable-next-line no-console -- debug logging for sync troubleshooting
     console.log(`[email-sync] Errors:`, errors);
   }
+
+  await recordSyncOutcome(accountId, errors);
+
   return { newMessages, updatedMessages, errors };
+}
+
+/** Longest error string kept on the account row — enough to identify the cause. */
+const MAX_SYNC_ERROR_LENGTH = 500;
+
+/**
+ * Persist the result of a sync attempt on the account.
+ *
+ * Without this an account pointing at a server that rejects its credentials is
+ * indistinguishable from an empty mailbox: the row says "0 messages", the
+ * refresh job keeps failing in the server log, and nothing tells the user.
+ */
+async function recordSyncOutcome(accountId: string, errors: string[]): Promise<void> {
+  try {
+    if (errors.length === 0) {
+      await prisma.emailAccount.update({
+        where: { id: accountId },
+        data: { lastSyncError: null, lastSyncErrorAt: null },
+      });
+      return;
+    }
+
+    await prisma.emailAccount.update({
+      where: { id: accountId },
+      data: {
+        lastSyncError: sanitizePostgresString(errors.join("; ").slice(0, MAX_SYNC_ERROR_LENGTH)),
+        lastSyncErrorAt: new Date(),
+      },
+    });
+  } catch (err) {
+    console.error(`Failed to record sync outcome for email account ${accountId}:`, err);
+  }
 }
 
 /**

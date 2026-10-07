@@ -51,8 +51,10 @@ export function EmailTab() {
     try {
       const data = await fetchJson<{ accounts: EmailAccount[] }>("/api/email/accounts");
       setEmailAccounts(data.accounts ?? []);
-    } catch {
-      // Ignore
+    } catch (err) {
+      // Logged, not swallowed: a failing endpoint used to render as "No email
+      // accounts connected", which reads like the user never added one.
+      console.error("Failed to load email accounts:", err);
     }
   };
 
@@ -104,8 +106,8 @@ export function EmailTab() {
     try {
       await patchJson(`/api/email/accounts/${accountId}`, { enabled });
       await loadAccounts();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error(`Failed to set email account ${accountId} enabled=${enabled}:`, err);
     }
   };
 
@@ -116,8 +118,8 @@ export function EmailTab() {
         emailAccounts.map((acc) => postJson(`/api/email/accounts/${acc.id}/sync`, {})),
       );
       await loadAccounts();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to sync all email accounts:", err);
     } finally {
       setActionLoading(null);
     }
@@ -190,7 +192,7 @@ export function EmailTab() {
                     key={account.id}
                     className="liquid-glass-inner flex items-center justify-between rounded-2xl border-0 p-4"
                   >
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium">{account.email}</p>
                         {!account.enabled && (
@@ -205,6 +207,18 @@ export function EmailTab() {
                           ? ` · Last synced ${new Date(account.lastSyncedAt).toLocaleString()}`
                           : " · Never synced"}
                       </p>
+                      {account.lastSyncError && (
+                        <p className="text-destructive mt-1 flex items-start gap-1.5 text-xs">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 break-words">
+                            Sync failed
+                            {account.lastSyncErrorAt
+                              ? ` (${new Date(account.lastSyncErrorAt).toLocaleString()})`
+                              : ""}
+                            : {account.lastSyncError}
+                          </span>
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-3">

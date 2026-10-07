@@ -233,6 +233,8 @@ model EmailAccount {
   encryptedPassword  String         @db.Text
   enabled            Boolean        @default(true)
   lastSyncedAt       DateTime?
+  lastSyncError      String?        // Why the last sync attempt failed, if it did
+  lastSyncErrorAt    DateTime?
   cachedFolders      Json?          // Array of folder names discovered from IMAP
   specialFolders     Json?          // { "\\Trash": "Trash", "\\Sent": "Sent", ... }
   messages           EmailMessage[]
