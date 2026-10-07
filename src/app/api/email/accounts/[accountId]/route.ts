@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireAccountOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { deleteMailboxRefreshJob, setMailboxRefreshJobEnabled } from "@/lib/email/auto-sync";
 import { encrypt } from "@/lib/crypto";
 
 /**
@@ -36,6 +37,11 @@ export async function PATCH(
     data: updateData,
   });
 
+  // Keep the mailbox refresh job in step with the account's enabled state
+  if (body.enabled !== undefined) {
+    await setMailboxRefreshJobEnabled(authResult.account.userId, accountId, updated.enabled);
+  }
+
   return NextResponse.json({
     account: {
       id: updated.id,
@@ -57,6 +63,8 @@ export async function DELETE(
 
   const authResult = await requireAccountOwner(accountId);
   if (!authResult.ok) return authResult.response;
+
+  await deleteMailboxRefreshJob(authResult.account.userId, accountId);
 
   await prisma.emailAccount.delete({
     where: { id: accountId },

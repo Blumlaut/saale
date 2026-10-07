@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
+import { createMailboxRefreshJob } from "@/lib/email/auto-sync";
 import { syncEmailAccount } from "@/lib/email/sync";
 
 /**
@@ -110,6 +111,9 @@ export async function POST(request: NextRequest) {
       encryptedPassword,
     },
   });
+
+  // Create the recurring mailbox refresh job for this account
+  await createMailboxRefreshJob(authResult.user.id, account.id);
 
   // Run initial full sync (lastSyncedAt is null, so syncEmailAccount does a full sync)
   const syncResult = await syncEmailAccount(account.id);
