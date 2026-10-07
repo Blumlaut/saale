@@ -4,6 +4,7 @@ import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand } from "./command-classifier";
 import { publishSessionEvent, subscribeSessionEvents } from "./session-events";
 import { getDefaultPolicy } from "./tool-infos";
+import { resolveApprovalSummary } from "./tool-approval-summary";
 import { TOOL_ABORT_MESSAGE } from "./tool-abort";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -70,6 +71,12 @@ export interface ApprovalRequest {
   sessionId: string;
   userId: string;
   args: Record<string, unknown>;
+  /**
+   * One-line "what is this call about" (ID-only references resolved against
+   * the user's own records). Optional: records written before this field
+   * existed have none, and the client re-derives one from the arguments.
+   */
+  summary?: string | null;
   createdAt: number;
   expiresAt: number;
   /** Present once the request has been decided (approved or denied). */
@@ -385,12 +392,19 @@ export async function requestToolApproval(options: {
   signal?: AbortSignal | undefined;
 }): Promise<ApprovalOutcome> {
   const { toolCallId, toolName, userId, sessionId, args, emitApprovalRequest, signal } = options;
+
+  // Resolve "what is this call about" before the card appears, so the user
+  // can judge the action from a single line (ID-only references are looked
+  // up against the user's own records). Never blocks the gate on failure.
+  const summary = await resolveApprovalSummary(userId, toolName, args);
+
   const request: ApprovalRequest = {
     toolCallId,
     toolName,
     sessionId,
     userId,
     args,
+    summary,
     createdAt: Date.now(),
     expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
   };
@@ -557,6 +571,7 @@ export function createChatApprovalEmitter(sessionId: string): (request: Approval
       toolCallId: request.toolCallId,
       toolName: request.toolName,
       args: request.args,
+      summary: request.summary ?? null,
       expiresAt: new Date(request.expiresAt).toISOString(),
     }).catch((err) => {
       console.error("Failed to publish approval request:", err);

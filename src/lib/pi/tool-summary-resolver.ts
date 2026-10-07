@@ -11,10 +11,11 @@ import { prisma } from "@/lib/db";
 export async function resolveToolSummary(
   toolName: string,
   args: Record<string, unknown>,
+  userId: string,
 ): Promise<string | null> {
   // Infra tools may need machine name resolution
   if (toolName.startsWith("infra_")) {
-    return resolveInfraSummary(toolName, args);
+    return resolveInfraSummary(toolName, args, userId);
   }
 
   const info = findToolInfo(toolName);
@@ -34,6 +35,7 @@ export async function resolveToolSummary(
 async function resolveInfraSummary(
   toolName: string,
   args: Record<string, unknown>,
+  userId: string,
 ): Promise<string | null> {
   const info = findToolInfo(toolName);
   if (!info?.summaryTemplate) return null;
@@ -44,8 +46,8 @@ async function resolveInfraSummary(
   if (needsMachineName) {
     const machineId = args.machineId ?? args.id;
     if (machineId && typeof machineId === "string") {
-      const machine = await prisma.infraMachine.findUnique({
-        where: { id: machineId },
+      const machine = await prisma.infraMachine.findFirst({
+        where: { id: machineId, userId },
         select: { name: true },
       });
 

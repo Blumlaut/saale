@@ -594,3 +594,349 @@ export function formatToolSummary(toolName: string, args: Record<string, unknown
 
   return resolveTemplate(info.summaryTemplate, args);
 }
+
+// ─── Tool action description (approval dialog) ────────────────────────────────
+
+/**
+ * Friendly labels for tool arguments, per tool.
+ * Args not listed here fall back to a humanized key ("dtStart" → "Dt start").
+ */
+export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
+  read: { path: "File" },
+  write: { path: "File", content: "Content" },
+  edit: { path: "File", edits: "Edits" },
+  bash: { command: "Command" },
+  show_file: { filePath: "File", description: "Note" },
+  codemode: { code: "Script" },
+  chat_respond: { sessionId: "Chat", message: "Message" },
+  chat_create: { message: "Message", title: "Title" },
+  chat_delete: { sessionId: "Chat" },
+  mail_send: {
+    to: "To",
+    subject: "Subject",
+    body: "Body",
+    bodyHtml: "HTML body",
+    replyTo: "Reply-to",
+    attachments: "Attachments",
+    accountId: "Account",
+  },
+  mail_draft: {
+    to: "To",
+    subject: "Subject",
+    body: "Body",
+    bodyHtml: "HTML body",
+    replyTo: "Reply-to",
+    attachments: "Attachments",
+    accountId: "Account",
+  },
+  mail_read: { ids: "Emails" },
+  mail_list: {
+    accountId: "Account",
+    folder: "Folder",
+    unread: "Unread only",
+    starred: "Starred only",
+    since: "Since",
+    until: "Until",
+    limit: "Limit",
+    offset: "Offset",
+  },
+  mail_search: { query: "Query", accountId: "Account", limit: "Limit" },
+  mail_tag: { ids: "Emails", addTags: "Add tags", removeTags: "Remove tags" },
+  mail_move: { ids: "Emails", folder: "To folder" },
+  mail_delete: { ids: "Emails" },
+  calendar_create: {
+    calendarId: "Calendar",
+    summary: "Title",
+    dtStart: "Starts",
+    dtEnd: "Ends",
+    location: "Location",
+    allDay: "All-day",
+    timeZone: "Time zone",
+    recurrenceRule: "Repeats",
+  },
+  calendar_update: {
+    id: "Event",
+    summary: "Title",
+    dtStart: "Starts",
+    dtEnd: "Ends",
+    location: "Location",
+    allDay: "All-day",
+    timeZone: "Time zone",
+  },
+  calendar_delete: { id: "Event" },
+  task_create: { title: "Title", priority: "Priority", dueDate: "Due", tags: "Tags" },
+  task_update: {
+    taskId: "Task",
+    title: "Title",
+    priority: "Priority",
+    dueDate: "Due",
+    tags: "Tags",
+    status: "Status",
+  },
+  task_delete: { taskId: "Task" },
+  job_create: { config: "Definition", modelId: "Model", enabled: "Enabled" },
+  job_update: { id: "Job", modelId: "Model", enabled: "Enabled", config: "Definition" },
+  job_enable: { id: "Job", enabled: "State" },
+  job_run: { id: "Job" },
+  job_logs: { id: "Job", limit: "Limit", status: "Status" },
+  job_delete: { id: "Job" },
+  agent_job_create: {
+    name: "Name",
+    prompt: "Prompt",
+    systemPrompt: "System prompt",
+    toolConfig: "Tools",
+    modelId: "Model",
+    outputChannel: "Output channel",
+    outputChannelId: "Channel ID",
+    cronExpression: "Schedule",
+    runAt: "Runs at",
+  },
+  agent_job_update: {
+    id: "Agent job",
+    name: "Name",
+    prompt: "Prompt",
+    systemPrompt: "System prompt",
+    toolConfig: "Tools",
+    modelId: "Model",
+    outputChannel: "Output channel",
+    outputChannelId: "Channel ID",
+    cronExpression: "Schedule",
+    runAt: "Runs at",
+    enabled: "Enabled",
+  },
+  agent_job_run: { id: "Agent job", prompt: "Prompt" },
+  agent_job_logs: { id: "Agent job", limit: "Limit", status: "Status" },
+  agent_job_run_messages: { runId: "Run" },
+  agent_job_delete: { id: "Agent job" },
+  infra_add_machine: {
+    name: "Name",
+    host: "Host",
+    port: "Port",
+    username: "User",
+    authMethod: "Auth method",
+    password: "Password",
+  },
+  infra_remove_machine: { id: "Machine" },
+  infra_exec: { id: "Machine", command: "Command", timeout: "Timeout", cwd: "Working dir" },
+  infra_read_file: { id: "Machine", path: "Path" },
+  infra_write_file: { id: "Machine", path: "Path", content: "Content" },
+  infra_edit_file: { id: "Machine", path: "Path", edits: "Edits" },
+  infra_download_file: { id: "Machine", path: "Path", dest: "Destination" },
+  infra_upload_file: { id: "Machine", path: "Path", source: "Source" },
+  infra_notes_list: { id: "Machine", category: "Category" },
+  infra_notes_get: { id: "Note" },
+  infra_notes_upsert: {
+    machineId: "Machine",
+    title: "Title",
+    content: "Content",
+    category: "Category",
+    id: "Note",
+  },
+  infra_notes_delete: { id: "Note" },
+  web_search: { query: "Query" },
+  web_fetch: { url: "URL" },
+  memory_index: { content: "Content" },
+  memory_search: { query: "Query", collection: "Collection", tags: "Tags", limit: "Limit" },
+  settings_list: { key: "Setting" },
+  settings_set: { key: "Setting", value: "New value" },
+};
+
+export interface ToolActionField {
+  key: string;
+  /** Friendly label (from TOOL_ARG_LABELS or a humanized key). */
+  label: string;
+  value: unknown;
+}
+
+export interface ToolAction {
+  toolName: string;
+  /** Friendly tool name, or the raw name for tools outside the catalog. */
+  label: string;
+  /** One-line "what it does" from the catalog; empty for unknown tools. */
+  description: string;
+  /**
+   * One-line headline of the concrete call ("Send email to a@b — \"Subj\""),
+   * or null when it cannot be derived from the arguments alone.
+   */
+  summary: string | null;
+  fields: ToolActionField[];
+  /** False for tools outside the catalog (e.g. MCP tools). */
+  known: boolean;
+}
+
+/** Humanize a camelCase/snake_case key: "dtStart" → "Dt Start". */
+export function humanizeKey(key: string): string {
+  const spaced = key.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
+ * Humanize an ISO date/datetime string.
+ *
+ * Datetimes at midnight ("date-only" values like due dates) print without a
+ * time. Returns null when the value is not an ISO date string.
+ */
+export function formatDateTimeValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(value)) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const dateOnly = date.toISOString().slice(11, 19) === "00:00:00";
+  const datePart = date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  if (dateOnly) return datePart;
+  return `${datePart}, ${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
+/** Join a short string list: "a, b" / "a, b and c" / "a, b and 2 more". */
+function joinList(values: string[], maxItems = 3): string {
+  if (values.length === 0) return "";
+  if (values.length <= maxItems) {
+    const rest = values.slice(0, -1).join(", ");
+    const last = values[values.length - 1];
+    return last ? `${rest ? rest + " and " : ""}${last}` : rest;
+  }
+  return `${values.slice(0, maxItems).join(", ")} and ${values.length - maxItems} more`;
+}
+
+type SummaryBuilder = (args: Record<string, unknown>) => string | null;
+
+/**
+ * Per-tool one-line summary builders for tools whose arguments alone make the
+ * call clear — mostly the tools that sit behind approval by default.
+ * Tools with a catalog `summaryTemplate` take precedence over these.
+ */
+const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
+  mail_send: (a) => {
+    const to = Array.isArray(a.to) ? a.to.filter((v): v is string => typeof v === "string") : [];
+    const subject = typeof a.subject === "string" ? a.subject : null;
+    if (to.length === 0 && !subject) return null;
+    return `Send email${to.length ? ` to ${joinList(to)}` : ""}${subject ? ` — \"${subject}\"` : ""}`;
+  },
+  mail_draft: (a) => {
+    const to = Array.isArray(a.to) ? a.to.filter((v): v is string => typeof v === "string") : [];
+    const subject = typeof a.subject === "string" ? a.subject : null;
+    if (to.length === 0 && !subject) return null;
+    return `Draft email${to.length ? ` to ${joinList(to)}` : ""}${subject ? ` — \"${subject}\"` : ""}`;
+  },
+  mail_delete: (a) => {
+    const count = Array.isArray(a.ids) ? a.ids.length : 0;
+    return count ? `Delete ${count} email${count === 1 ? "" : "s"}` : null;
+  },
+  mail_tag: (a) => {
+    const count = Array.isArray(a.ids) ? a.ids.length : 0;
+    return count ? `Tag ${count} email${count === 1 ? "" : "s"}` : null;
+  },
+  mail_move: (a) => {
+    const count = Array.isArray(a.ids) ? a.ids.length : 0;
+    if (!count) return null;
+    const folder = typeof a.folder === "string" ? a.folder : "";
+    return `Move ${count} email${count === 1 ? "" : "s"}${folder ? ` to \"${folder}\"` : ""}`;
+  },
+  calendar_create: (a) => {
+    const title = typeof a.summary === "string" ? a.summary : null;
+    if (!title) return null;
+    const start = formatDateTimeValue(a.dtStart);
+    return `Create event \"${title}\"${start ? ` — ${start}` : ""}`;
+  },
+  calendar_update: (a) => {
+    const title = typeof a.summary === "string" ? a.summary : null;
+    return title ? `Update event \"${title}\"` : null;
+  },
+  calendar_delete: () => null, // id-only — resolved server-side (event title)
+  task_create: (a) => {
+    if (typeof a.title !== "string") return null;
+    const due = formatDateTimeValue(a.dueDate);
+    return `Create task \"${a.title}\"${due ? ` (due ${due})` : ""}`;
+  },
+  task_update: (a) => (typeof a.title === "string" ? `Update task \"${a.title}\"` : null), // id-only → server-side
+  task_delete: () => null, // id-only — resolved server-side (task title)
+  chat_respond: () => null, // id-only — resolved server-side (chat title)
+  chat_create: (a) => {
+    if (typeof a.message !== "string") return null;
+    const firstLine = a.message.trim().split("\n")[0];
+    if (!firstLine) return null;
+    const short = firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+    return `Start a new chat: ${short}`;
+  },
+  chat_delete: () => null, // id-only — resolved server-side (chat title)
+  read: (a) => (typeof a.path === "string" ? `Read ${a.path}` : null),
+  write: (a) => (typeof a.path === "string" ? `Write ${a.path}` : null),
+  edit: (a) => (typeof a.path === "string" ? `Edit ${a.path}` : null),
+  bash: (a) => {
+    if (typeof a.command !== "string") return null;
+    const firstLine = a.command.trim().split("\n")[0];
+    if (!firstLine) return null;
+    const short = firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine;
+    return `Run: ${short}`;
+  },
+  codemode: (a) => {
+    if (typeof a.code !== "string") return null;
+    const firstLine = a.code.trim().split("\n")[0];
+    if (!firstLine) return null;
+    const short = firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine;
+    return `Run codemode script: ${short}`;
+  },
+  job_run: () => null, // id-only — resolved server-side (job name)
+  job_enable: (a) => {
+    if (typeof a.enabled !== "boolean") return null;
+    return a.enabled ? "Enable a job" : "Disable a job"; // + job name server-side
+  },
+  job_update: () => null, // id-only — resolved server-side (job name)
+  job_delete: () => null, // id-only — resolved server-side (job name)
+  agent_job_create: (a) => (typeof a.name === "string" ? `Create agent job \"${a.name}\"` : null),
+  agent_job_run: () => null, // id-only — resolved server-side (job name)
+  agent_job_update: () => null, // id-only — resolved server-side (job name)
+  agent_job_delete: () => null, // id-only — resolved server-side (job name)
+};
+
+/**
+ * One-line headline for a concrete tool call, derived from its arguments.
+ *
+ * Prefers the catalog `summaryTemplate`, then the per-tool builder, else null
+ * (id-only references are enriched server-side — see tool-approval-summary).
+ * Client-safe: no database access.
+ */
+export function summarizeToolAction(
+  toolName: string,
+  args: Record<string, unknown>,
+): string | null {
+  const info = findToolInfo(toolName);
+  if (info?.summaryTemplate) return resolveTemplate(info.summaryTemplate, args);
+  const builder = SUMMARY_BUILDERS[toolName];
+  if (builder) return builder(args);
+  return null;
+}
+
+/**
+ * Describe a concrete tool call for the approval dialog:
+ * friendly name, one-line summary, and labeled argument fields.
+ *
+ * Client-safe (no database access) — unknown tools (e.g. MCP) still get a
+ * labeled breakdown with humanized keys.
+ */
+export function describeToolAction(toolName: string, args: Record<string, unknown>): ToolAction {
+  const info = findToolInfo(toolName);
+  const argLabels = TOOL_ARG_LABELS[toolName];
+
+  const fields: ToolActionField[] = Object.entries(args).map(([key, value]) => ({
+    key,
+    label: argLabels?.[key] ?? humanizeKey(key),
+    value,
+  }));
+
+  return {
+    toolName,
+    label: info?.label ?? toolName,
+    description: info?.description ?? "",
+    summary: summarizeToolAction(toolName, args),
+    fields,
+    known: info !== undefined,
+  };
+}

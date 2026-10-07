@@ -11,6 +11,22 @@ import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 // resolution over Redis pub/sub. Replace the real (ioredis-backed) module
 // with an in-memory implementation so tests run without a Redis server.
 vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
+
+// The approval gate enriches requests with a resolved summary, which may
+// look up the referenced record. Tests run without a database — every
+// lookup resolves to "not found".
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    infraMachine: { findFirst: vi.fn().mockResolvedValue(null) },
+    calendarEvent: { findFirst: vi.fn().mockResolvedValue(null) },
+    task: { findFirst: vi.fn().mockResolvedValue(null) },
+    chatSession: { findFirst: vi.fn().mockResolvedValue(null) },
+    emailMessage: { findMany: vi.fn().mockResolvedValue([]) },
+    queueTask: { findFirst: vi.fn().mockResolvedValue(null) },
+    agentDefinition: { findFirst: vi.fn().mockResolvedValue(null) },
+  },
+}));
+
 import { resetMockRedis } from "../../helpers/in-memory-redis";
 
 /**

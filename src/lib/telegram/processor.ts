@@ -481,7 +481,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
                 if (!sentToolSummaries.has(event.toolCallId)) {
                   sentToolSummaries.add(event.toolCallId);
 
-                  resolveToolSummary(event.toolName, event.args)
+                  resolveToolSummary(event.toolName, event.args, userId)
                     .then((summary) => {
                       if (summary) {
                         sendTelegramMessage(

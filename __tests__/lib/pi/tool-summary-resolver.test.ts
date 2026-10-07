@@ -10,7 +10,7 @@ import {
 vi.mock("@/lib/db", () => ({
   prisma: {
     infraMachine: {
-      findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
   },
 }));
@@ -125,108 +125,132 @@ describe("resolveToolSummary", () => {
   });
 
   it("delegates non-infra tools to formatToolSummary", async () => {
-    const result = await resolveToolSummary("web_search", { query: "react docs" });
+    const result = await resolveToolSummary("web_search", { query: "react docs" }, "user-1");
     expect(result).toBe('Searching web for "react docs"');
   });
 
   it("resolves infra_exec with machine name from DB", async () => {
-    vi.mocked(mockInfraMachine.findUnique).mockResolvedValue({ name: "prod-web-01" });
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ name: "prod-web-01" });
 
-    const result = await resolveToolSummary("infra_exec", {
-      id: "machine-123",
-      command: "systemctl status nginx",
-    });
+    const result = await resolveToolSummary(
+      "infra_exec",
+      {
+        id: "machine-123",
+        command: "systemctl status nginx",
+      },
+      "user-1",
+    );
 
     expect(result).toBe("Running systemctl status nginx on prod-web-01");
-    expect(mockInfraMachine.findUnique).toHaveBeenCalledWith({
-      where: { id: "machine-123" },
+    expect(mockInfraMachine.findFirst).toHaveBeenCalledWith({
+      where: { id: "machine-123", userId: "user-1" },
       select: { name: true },
     });
   });
 
   it("resolves infra_write_file with machineId arg", async () => {
-    vi.mocked(mockInfraMachine.findUnique).mockResolvedValue({ name: "deploy-server" });
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ name: "deploy-server" });
 
-    const result = await resolveToolSummary("infra_write_file", {
-      machineId: "machine-456",
-      path: "/etc/nginx/nginx.conf",
-      content: "...",
-    });
+    const result = await resolveToolSummary(
+      "infra_write_file",
+      {
+        machineId: "machine-456",
+        path: "/etc/nginx/nginx.conf",
+        content: "...",
+      },
+      "user-1",
+    );
 
     expect(result).toBe("Writing to /etc/nginx/nginx.conf on deploy-server");
   });
 
   it("resolves infra_notes_list with machine name", async () => {
-    vi.mocked(mockInfraMachine.findUnique).mockResolvedValue({ name: "web-01" });
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ name: "web-01" });
 
-    const result = await resolveToolSummary("infra_notes_list", { id: "m1" });
+    const result = await resolveToolSummary("infra_notes_list", { id: "m1" }, "user-1");
 
     expect(result).toBe("Listing notes for web-01");
   });
 
   it("resolves infra_notes_upsert with machineId", async () => {
-    vi.mocked(mockInfraMachine.findUnique).mockResolvedValue({ name: "prod" });
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ name: "prod" });
 
-    const result = await resolveToolSummary("infra_notes_upsert", {
-      machineId: "m1",
-      title: "services",
-      content: "nginx, postgres",
-    });
+    const result = await resolveToolSummary(
+      "infra_notes_upsert",
+      {
+        machineId: "m1",
+        title: "services",
+        content: "nginx, postgres",
+      },
+      "user-1",
+    );
 
     expect(result).toBe("Saving note on prod");
   });
 
   it("resolves infra_add_machine without DB lookup (uses name from args)", async () => {
-    const result = await resolveToolSummary("infra_add_machine", {
-      name: "new-server",
-      host: "10.0.0.1",
-      username: "deploy",
-      authMethod: "key",
-    });
+    const result = await resolveToolSummary(
+      "infra_add_machine",
+      {
+        name: "new-server",
+        host: "10.0.0.1",
+        username: "deploy",
+        authMethod: "key",
+      },
+      "user-1",
+    );
 
     expect(result).toBe("Adding machine new-server");
     // No DB lookup needed — template uses {name} from args
-    expect(mockInfraMachine.findUnique).not.toHaveBeenCalled();
+    expect(mockInfraMachine.findFirst).not.toHaveBeenCalled();
   });
 
   it("resolves infra_remove_machine without DB lookup", async () => {
-    const result = await resolveToolSummary("infra_remove_machine", {
-      id: "m1",
-      name: "old-server",
-    });
+    const result = await resolveToolSummary(
+      "infra_remove_machine",
+      {
+        id: "m1",
+        name: "old-server",
+      },
+      "user-1",
+    );
 
     expect(result).toBe("Removing machine old-server");
-    expect(mockInfraMachine.findUnique).not.toHaveBeenCalled();
+    expect(mockInfraMachine.findFirst).not.toHaveBeenCalled();
   });
 
   it("falls back to missing machineName when machine not found", async () => {
-    vi.mocked(mockInfraMachine.findUnique).mockResolvedValue(null);
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(null);
 
-    const result = await resolveToolSummary("infra_exec", {
-      id: "nonexistent",
-      command: "ls",
-    });
+    const result = await resolveToolSummary(
+      "infra_exec",
+      {
+        id: "nonexistent",
+        command: "ls",
+      },
+      "user-1",
+    );
 
     expect(result).toBe("Running ls on {machineName}");
   });
 
   it("returns null for infra_notes_get (no template, no machine ID)", async () => {
-    const result = await resolveToolSummary("infra_notes_get", { id: "note-123" });
+    const result = await resolveToolSummary("infra_notes_get", { id: "note-123" }, "user-1");
     expect(result).toBeNull();
   });
 
   it("returns null for infra_notes_delete (no template)", async () => {
-    const result = await resolveToolSummary("infra_notes_delete", { id: "note-456" });
+    const result = await resolveToolSummary("infra_notes_delete", { id: "note-456" }, "user-1");
     expect(result).toBeNull();
   });
 
   it("returns null for infra_list_machines (no template)", async () => {
-    const result = await resolveToolSummary("infra_list_machines", {});
+    const result = await resolveToolSummary("infra_list_machines", {}, "user-1");
     expect(result).toBeNull();
   });
 
   it("returns null for unknown tools", async () => {
-    const result = await resolveToolSummary("nonexistent_tool", {});
+    const result = await resolveToolSummary("nonexistent_tool", {}, "user-1");
     expect(result).toBeNull();
   });
 });
