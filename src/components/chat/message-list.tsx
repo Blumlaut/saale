@@ -23,7 +23,7 @@ import { CompactActivity } from "./compact-activity";
 import { splitToolCalls } from "./tool-cards";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
-import { groupMessages } from "@/lib/chat/group-messages";
+import { groupMessages, type MessageGroup } from "@/lib/chat/group-messages";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
 import { formatFileSize, cn } from "@/lib/utils";
@@ -328,6 +328,12 @@ export const MessageList = memo(
     const lastMsg = messages[messages.length - 1];
     const isStreaming = isLoading && lastMsg?.role === "assistant" && isStreamingMessage(lastMsg);
 
+    // The run in flight, if any: the last assistant group while a response is
+    // still coming. Deliberately group-scoped and not derived from a streaming
+    // message id — a turn keeps running while its tools do, and its message is
+    // saved (losing the `streaming-` id) before those tools ever report back.
+    const busyGroupKey = isLoading ? lastAssistantGroupId(visibleGroups) : null;
+
     return (
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
@@ -373,9 +379,7 @@ export const MessageList = memo(
                   key={group.messages[0]!.id}
                   messages={group.messages}
                   compactActivity={compactActivity}
-                  isStreaming={
-                    lastMsg?.id === group.messages[group.messages.length - 1]?.id && !!isStreaming
-                  }
+                  isBusy={busyGroupKey !== null && group.messages[0]!.id === busyGroupKey}
                 />
               ),
             )}
@@ -763,6 +767,15 @@ function compactBlocks(messages: readonly Message[]): CompactBlock[] {
   return blocks;
 }
 
+/** The last assistant group of a transcript — the turn a run is working on. */
+function lastAssistantGroupId(groups: readonly MessageGroup[]): string | null {
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const group = groups[i]!;
+    if (group.type === "assistant-group") return group.messages[0]?.id ?? null;
+  }
+  return null;
+}
+
 /** One step's prose: the answer bubble, a provider error, or progress dots. */
 function AssistantMessageBody({
   message,
@@ -803,11 +816,12 @@ function AssistantMessageBody({
  */
 function AssistantGroup({
   messages,
-  isStreaming,
+  isBusy,
   compactActivity,
 }: {
   messages: Message[];
-  isStreaming: boolean;
+  /** The run is still working on this group — see `busyGroupKey`. */
+  isBusy: boolean;
   compactActivity: boolean;
 }) {
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
@@ -840,10 +854,10 @@ function AssistantGroup({
   // Combined response text for the copy button (empty when no turn has text)
   const copyText = getAssistantCopyText(visibleMessages);
 
-  // The turn still being generated, if any. Only its row reports progress.
-  const streamingTurnId = isStreaming
-    ? (visibleMessages[visibleMessages.length - 1]?.id ?? null)
-    : null;
+  // The turn the run is working on, if any. Only its rows report progress, and
+  // the flag is turn-scoped rather than per token — otherwise it drops every
+  // time a step pauses to run a tool, and the row blinks.
+  const activeTurnId = isBusy ? (visibleMessages[visibleMessages.length - 1]?.id ?? null) : null;
 
   return (
     <div className="group/message flex gap-3">
@@ -861,7 +875,7 @@ function AssistantGroup({
                   key={block.key}
                   reasoning={block.steps.flatMap((step) => (step.thinking ? [step.thinking] : []))}
                   toolCalls={block.steps.flatMap((step) => step.work)}
-                  isStreaming={block.steps.some((step) => step.id === streamingTurnId)}
+                  isActive={block.steps.some((step) => step.id === activeTurnId)}
                 />
               ) : block.kind === "attachments" ? (
                 <ToolCallGroup key={block.key} toolCalls={block.toolCalls} />
@@ -869,7 +883,7 @@ function AssistantGroup({
                 <AssistantMessageBody
                   key={block.key}
                   message={block.message}
-                  isStreaming={block.message.id === streamingTurnId}
+                  isStreaming={block.message.id === activeTurnId}
                 />
               ),
             )
@@ -889,9 +903,9 @@ function AssistantGroup({
                       )}
                       <Lightbulb className="text-muted-foreground h-3.5 w-3.5" />
                       <span className="text-muted-foreground text-xs font-medium">
-                        {message.id === streamingTurnId ? "Thinking..." : "Thought process"}
+                        {message.id === activeTurnId ? "Thinking..." : "Thought process"}
                       </span>
-                      {message.id === streamingTurnId && (
+                      {message.id === activeTurnId && (
                         <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
                       )}
                       {!expandedThinking.has(message.id) && message.thinking.length > 60 && (
@@ -911,10 +925,7 @@ function AssistantGroup({
                   </div>
                 )}
 
-                <AssistantMessageBody
-                  message={message}
-                  isStreaming={message.id === streamingTurnId}
-                />
+                <AssistantMessageBody message={message} isStreaming={message.id === activeTurnId} />
 
                 {/* Tool calls — the turn's work collapses, its shared files do not */}
                 {message.toolCalls && message.toolCalls.length > 0 && (

@@ -22,6 +22,11 @@ import type { ToolCallData } from "./types";
  *
  * The count and the icons update in place rather than appending, which is what
  * keeps the transcript from growing while the turn is still running.
+ *
+ * Both lines report progress from the *turn*, not from the tokens arriving: the
+ * turn is active from the moment it starts until its final reply begins, tools
+ * included. A per-token flag would drop every time a step paused to run a tool,
+ * which is a blink.
  */
 
 /** Characters of the newest reasoning shown before it is cut off. */
@@ -39,14 +44,17 @@ export interface CompactActivityProps {
   reasoning: readonly string[];
   /** The work those steps did, in call order. */
   toolCalls: readonly ToolCallData[];
-  /** True while the newest step of the run is still being generated. */
-  isStreaming: boolean;
+  /**
+   * The turn this run belongs to is still being worked on — true across its tool
+   * runs, false once its final reply starts (that reply is its own block).
+   */
+  isActive: boolean;
 }
 
-export function CompactActivity({ reasoning, toolCalls, isStreaming }: CompactActivityProps) {
+export function CompactActivity({ reasoning, toolCalls, isActive }: CompactActivityProps) {
   return (
     <div className="space-y-1">
-      {reasoning.length > 0 && <ReasoningRow reasoning={reasoning} isStreaming={isStreaming} />}
+      {reasoning.length > 0 && <ReasoningRow reasoning={reasoning} isActive={isActive} />}
       {toolCalls.length > 0 && <ToolsRow toolCalls={toolCalls} />}
     </div>
   );
@@ -55,10 +63,10 @@ export function CompactActivity({ reasoning, toolCalls, isStreaming }: CompactAc
 /** "Thought process: …" — the newest reasoning, full text one click down. */
 function ReasoningRow({
   reasoning,
-  isStreaming,
+  isActive,
 }: {
   reasoning: readonly string[];
-  isStreaming: boolean;
+  isActive: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // The step the row is currently showing is the newest one — so a replacement
@@ -84,7 +92,7 @@ function ReasoningRow({
         )}
         <Lightbulb className="text-muted-foreground size-3 shrink-0" />
         <span className="shrink-0 text-xs font-medium">
-          {isStreaming ? "Thinking..." : "Thought process:"}
+          {isActive ? "Thinking..." : "Thought process:"}
         </span>
         <span
           key={stepCount}
@@ -92,7 +100,7 @@ function ReasoningRow({
         >
           {snippet}
         </span>
-        {isStreaming && <Loader2 className="text-muted-foreground size-3 shrink-0 animate-spin" />}
+        {isActive && <Loader2 className="text-muted-foreground size-3 shrink-0 animate-spin" />}
       </Button>
 
       {open && (
