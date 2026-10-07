@@ -41,6 +41,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       outputTokens: run.outputTokens,
       cost: run.cost,
       error: run.error,
+      deliveryError: run.deliveryError,
       startedAt: run.startedAt?.toISOString(),
       completedAt: run.completedAt?.toISOString(),
       duration:

@@ -745,11 +745,18 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
     // Ensure the definition always grants terminal access: the Telegram agent
     // needs file tools to reach documents sent via Telegram (they are
     // uploaded into the Open Terminal workspace).
+    //
+    // `agentJobs` is granted for the same "always" reason: a user talking to
+    // the bot is the most likely place to ask for something to happen later
+    // ("remind me at 9"). Without it the request can only be refused — the
+    // chat has no way to schedule anything, and the web UI is a trip away.
     const existingToolConfig = (definition.toolConfig as Record<string, boolean> | null) ?? {};
-    if (existingToolConfig.terminal !== true) {
+    if (existingToolConfig.terminal !== true || existingToolConfig.agentJobs !== true) {
       definition = await prisma.agentDefinition.update({
         where: { id: definition.id },
-        data: { toolConfig: { ...existingToolConfig, terminal: true } },
+        data: {
+          toolConfig: { ...existingToolConfig, terminal: true, agentJobs: true },
+        },
       });
     }
   }
@@ -769,6 +776,8 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
           web: true,
           memory: true,
           tasks: true,
+          telegram: true,
+          agentJobs: true,
           terminal: true,
         },
         modelId: null,

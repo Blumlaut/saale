@@ -1,95 +1,116 @@
 import { prisma } from "@/lib/db";
-import { sendTelegramMessage, sendTypingIndicator } from "@/lib/telegram/client";
+import { sendTypingIndicator } from "@/lib/telegram/client";
 import { resolveDefaultTelegramChat } from "@/lib/telegram/chats";
-import { recordTelegramJobOutput } from "@/lib/telegram/outbound";
+import { deliverTelegramMessage } from "@/lib/telegram/notify";
 import type { AgentOutput } from "./executor";
+
+/**
+ * The result of resolving a definition's output channel.
+ *
+ * A configured channel that cannot be resolved is an *error*, not an absence:
+ * a job whose whole purpose is to tell the user something must not record
+ * itself as a success when nothing was told. `error` is written to
+ * `AgentRun.deliveryError` so the run is visibly undelivered in the UI.
+ */
+export interface BuiltAgentOutput {
+  /** The handler to route assistant turns through, when a channel applies. */
+  output?: AgentOutput;
+  /** Why no handler could be built. Undefined when none was needed. */
+  error?: string;
+}
 
 /**
  * Build an output handler that routes agent run responses to an external
  * channel (e.g., Telegram) based on the job definition's outputChannel /
  * outputChannelId fields.
  *
- * Returns undefined when no channel is configured or the channel cannot be
- * resolved (missing Telegram account, invalid chat ID, unsupported channel) —
- * callers pass the result straight to executeAgentRun().
- *
- * Resolution failures are logged explicitly so a job that "succeeds" without
- * delivering its output is traceable instead of failing silently.
+ * Returns an empty result when no channel is configured (nothing to deliver is
+ * not a failure), and an `error` when a channel *is* configured but cannot be
+ * resolved. Delivery failures that happen later — Telegram rejecting the send —
+ * are collected by the handler and surfaced through
+ * `AgentOutput.deliveryErrors()`, which the caller records after the run.
  */
 export async function buildAgentOutputHandler(params: {
   userId: string;
   outputChannel: string | null;
   outputChannelId: string | null;
-}): Promise<AgentOutput | undefined> {
+}): Promise<BuiltAgentOutput> {
   const { userId, outputChannel, outputChannelId } = params;
 
   if (!outputChannel) {
-    return undefined;
+    return {};
   }
 
-  if (outputChannel === "telegram") {
-    const account = await prisma.telegramAccount.findUnique({
-      where: { userId },
-      select: { id: true, encryptedToken: true },
-    });
+  if (outputChannel !== "telegram") {
+    const error = `Output channel "${outputChannel}" is not supported yet — the run's output was not delivered.`;
+    console.warn(`[agent-jobs] ${error} (user ${userId})`);
+    return { error };
+  }
 
-    if (!account) {
-      console.error(
-        `[agent-jobs] Telegram output requested for user ${userId} but no Telegram account is configured — output will not be sent.`,
-      );
-      return undefined;
-    }
+  const account = await prisma.telegramAccount.findUnique({
+    where: { userId },
+    select: { id: true, encryptedToken: true, enabled: true },
+  });
 
-    // No explicit chat ID → inherit the user's configured Telegram chat
-    // (most recent conversation, else most recent whitelisted user).
-    let chatId: bigint | null;
-    if (outputChannelId) {
-      try {
-        chatId = BigInt(outputChannelId);
-      } catch {
-        console.error(
-          `[agent-jobs] Invalid Telegram chat ID "${outputChannelId}" for user ${userId} — output will not be sent.`,
-        );
-        return undefined;
-      }
-    } else {
-      chatId = await resolveDefaultTelegramChat(account.id);
-      if (chatId === null) {
-        console.error(
-          `[agent-jobs] Telegram output requested for user ${userId} but no configured chat exists (message the bot first or set a chat ID) — output will not be sent.`,
-        );
-        return undefined;
-      }
-    }
-
+  if (!account) {
     return {
-      send(content) {
-        // Record the outbound message in the chat's session (so a reply has
-        // context) before the API call — fire-and-forget, the recording must
-        // not delay or block delivery.
-        recordTelegramJobOutput({ userId, telegramChatId: chatId, content }).catch((err) => {
-          console.error(`[agent-jobs] Failed to record Telegram output in chat ${chatId}:`, err);
-        });
+      error:
+        "Telegram output is configured but no Telegram bot is connected. The output was not delivered.",
+    };
+  }
 
-        sendTelegramMessage(account.encryptedToken, chatId, content).catch((err) => {
-          console.error(`[agent-jobs] Failed to send Telegram output to chat ${chatId}:`, err);
+  if (!account.enabled) {
+    return {
+      error:
+        "Telegram output is configured but the Telegram integration is disabled. The output was not delivered.",
+    };
+  }
+
+  // No explicit chat ID → inherit the user's configured Telegram chat
+  // (most recent conversation, else most recent whitelisted user).
+  let chatId: bigint;
+  if (outputChannelId) {
+    try {
+      chatId = BigInt(outputChannelId);
+    } catch {
+      return {
+        error: `Telegram output is configured with an invalid chat ID "${outputChannelId}". The output was not delivered.`,
+      };
+    }
+  } else {
+    const resolved = await resolveDefaultTelegramChat(account.id);
+    if (resolved === null) {
+      return {
+        error:
+          "Telegram output is configured but no chat is available (message the bot first or set a chat ID). The output was not delivered.",
+      };
+    }
+    chatId = resolved;
+  }
+
+  // Delivery failures accumulate here as the run produces output; the caller
+  // reads them once the run has settled so they land on the run record.
+  const failures: string[] = [];
+
+  return {
+    output: {
+      async send(content) {
+        const delivery = await deliverTelegramMessage({
+          userId,
+          encryptedToken: account.encryptedToken,
+          chatId,
+          content,
         });
+        if (!delivery.ok && delivery.error) {
+          failures.push(delivery.error);
+        }
       },
       typing() {
         sendTypingIndicator(account.encryptedToken, chatId);
       },
-    };
-  }
-
-  if (!outputChannelId) {
-    console.warn(
-      `[agent-jobs] Output channel "${outputChannel}" is set without a target ID — output will not be routed.`,
-    );
-    return undefined;
-  }
-
-  console.warn(
-    `[agent-jobs] Output channel "${outputChannel}" is not supported yet — output will not be routed.`,
-  );
-  return undefined;
+      deliveryErrors() {
+        return [...failures];
+      },
+    },
+  };
 }

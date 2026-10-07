@@ -28,8 +28,10 @@ vi.mock("@/lib/agent-jobs/executor", () => ({
 
 vi.mock("@/lib/agent-jobs/output", () => ({
   buildAgentOutputHandler: vi.fn().mockResolvedValue({
-    send: vi.fn(),
-    typing: vi.fn(),
+    output: {
+      send: vi.fn(),
+      typing: vi.fn(),
+    },
   }),
 }));
 
@@ -617,8 +619,8 @@ describe("createAgentJobTools", () => {
       );
     });
 
-    it("passes undefined output handler when definition has no channel", async () => {
-      (buildAgentOutputHandler as unknown as Mock).mockResolvedValueOnce(undefined);
+    it("passes no output handler when definition has no channel", async () => {
+      (buildAgentOutputHandler as unknown as Mock).mockResolvedValueOnce({});
 
       const def = {
         id: "def-1",

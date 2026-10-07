@@ -163,6 +163,11 @@ export function IntegrationsTab() {
                   addingUser={telegram.addingUser}
                   onAddUser={telegram.addWhitelistUser}
                   onRemoveUser={telegram.removeWhitelistUser}
+                  notifyChats={telegram.chats}
+                  notifyChatsLoading={telegram.chatsLoading}
+                  savingNotifyChat={telegram.savingNotifyChat}
+                  onOpenNotifyChats={telegram.loadChats}
+                  onSetNotifyChat={telegram.setNotifyChat}
                 />
               )}
               {github.account && (

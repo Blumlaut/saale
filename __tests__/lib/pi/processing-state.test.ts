@@ -125,6 +125,45 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Infrastructure notes:");
   });
 
+  it("tells the model it can reach the user when Telegram is enabled", () => {
+    const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: true } });
+
+    // The agent has to know outreach exists, or "remind me" becomes a promise
+    // it cannot keep.
+    expect(prompt).toContain("telegram_send");
+    expect(prompt).toContain("cannot be chosen");
+  });
+
+  it("skips the outreach instruction when Telegram is disabled", () => {
+    expect(buildAgentSystemPrompt({ toolConfig: { telegram: false } })).not.toContain(
+      "telegram_send",
+    );
+  });
+
+  it("includes outreach and scheduling instructions by default", () => {
+    const prompt = buildAgentSystemPrompt({ toolConfig: {} });
+
+    expect(prompt).toContain("telegram_send");
+    // Both categories default on, so the agent is told how to send something
+    // later rather than only how to send it now.
+    expect(prompt).toContain("agent_job_create");
+  });
+
+  it("omits the scheduling instruction when agent jobs are disabled", () => {
+    // Naming agent_job_create to a session without it would describe a tool the
+    // model cannot call.
+    const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: true, agentJobs: false } });
+
+    expect(prompt).toContain("telegram_send");
+    expect(prompt).not.toContain("agent_job_create");
+  });
+
+  it("omits the scheduling instruction when Telegram is disabled", () => {
+    const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: false, agentJobs: true } });
+
+    expect(prompt).not.toContain("agent_job_create");
+  });
+
   it("trims user custom instructions", () => {
     const prompt = buildAgentSystemPrompt({
       customInstructions: "  Be friendly.  ",

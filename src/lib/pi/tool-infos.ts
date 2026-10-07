@@ -129,6 +129,19 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultPolicy: "ask",
   },
 
+  // ── Telegram ──────────────────────────────────────────────────────
+  {
+    name: "telegram_send",
+    label: "Send Telegram Message",
+    description: "Message the user on Telegram",
+    category: "telegram",
+    // Delivers to the user's own chat only, and is the one tool that can reach
+    // them unattended (reminders run without an approval channel), so it must
+    // not sit behind a prompt that nobody can answer.
+    defaultPolicy: "allow",
+    summaryTemplate: "Messaging the user on Telegram",
+  },
+
   // ── Email ─────────────────────────────────────────────────────────
   {
     name: "mail_accounts",

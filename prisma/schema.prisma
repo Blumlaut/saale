@@ -602,6 +602,10 @@ model AgentRun {
   cost           Float           @default(0)
   /// Error message if the run failed.
   error          String?         @db.Text
+  /// Delivery failure for the run's configured output channel (e.g. Telegram
+  /// has no chat to send to). Set when the run produced output it could not
+  /// deliver — the run itself may still have completed successfully.
+  deliveryError  String?         @db.Text
   /// When the agent started processing.
   startedAt      DateTime?
   /// When the agent finished (success or error).
@@ -653,6 +657,9 @@ model TelegramAccount {
   botId           BigInt?             // numeric bot ID from getMe
   botUsername     String?             // @username (without @)
   webhookSecret   String              // random secret for webhook verification
+  /// Chat proactive messages (reminders, job output) are delivered to.
+  /// null = resolve automatically, preferring a private chat.
+  notifyChatId    BigInt?
   whitelistedUsers TelegramWhitelist[]
   chats           TelegramChat[]
   user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)

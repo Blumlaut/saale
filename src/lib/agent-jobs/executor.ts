@@ -23,10 +23,21 @@ import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provide
 
 /** Optional output handler for routing agent responses to external channels. */
 export interface AgentOutput {
-  /** Send a message to the output channel. Called for each assistant turn. */
-  send(content: string, meta?: { toolCalls?: unknown[] }): void;
+  /**
+   * Send a message to the output channel. Called for each assistant turn.
+   *
+   * May be async: the executor waits for it before the turn is persisted, so a
+   * delivery failure is observed before the run settles rather than racing the
+   * run record.
+   */
+  send(content: string, meta?: { toolCalls?: unknown[] }): void | Promise<void>;
   /** Optional: signal that the agent is thinking/working. */
   typing?(): void;
+  /**
+   * Delivery failures collected while the run produced output, oldest first.
+   * Recorded on the run so a job cannot report success without its output.
+   */
+  deliveryErrors?(): string[];
 }
 
 interface ToolCallRecord {
@@ -407,13 +418,15 @@ async function handleAgentEvent(
         state.rootMessageId = msgId;
       }
 
-      // Route output to external channel
+      // Route output to external channel. Awaited so a delivery failure is
+      // recorded on the run before it settles — the turn's persist promise is
+      // tracked, and `finish()` drains those before resolving.
       if (output && state.currentText.trim()) {
         const meta: { toolCalls?: unknown[] } = {};
         if (turnToolCalls.length > 0) {
           meta.toolCalls = turnToolCalls;
         }
-        output.send(state.currentText, meta);
+        await output.send(state.currentText, meta);
       }
 
       state.turnIndex++;

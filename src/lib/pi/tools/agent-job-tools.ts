@@ -129,10 +129,11 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
               web: Type.Optional(Type.Boolean()),
               memory: Type.Optional(Type.Boolean()),
               tasks: Type.Optional(Type.Boolean()),
+              telegram: Type.Optional(Type.Boolean()),
             },
             {
               description:
-                "Which tool categories to expose. Available: email, calendar, jobs, chatSearch, web, memory, tasks.",
+                "Which tool categories to expose. Available: email, calendar, jobs, chatSearch, web, memory, tasks, telegram. Enable telegram so the run can message the user itself.",
             },
           ),
         ),
@@ -285,6 +286,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
               web: Type.Optional(Type.Boolean()),
               memory: Type.Optional(Type.Boolean()),
               tasks: Type.Optional(Type.Boolean()),
+              telegram: Type.Optional(Type.Boolean()),
             },
             {
               description: "Updated tool categories.",

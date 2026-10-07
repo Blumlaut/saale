@@ -77,6 +77,8 @@ export interface AgentJobRun {
   outputTokens: number;
   cost: number;
   error: string | null;
+  /** Set when the run produced output its configured channel could not deliver. */
+  deliveryError: string | null;
   startedAt: string | null;
   completedAt: string | null;
   messageCount: number;

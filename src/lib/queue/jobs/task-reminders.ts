@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
+import { sendTelegramToUser } from "@/lib/telegram/notify";
 
 const NOTIFICATION_KEY = "notifications:";
 
@@ -36,6 +37,7 @@ export async function handler(params: {
     select: { id: true, title: true, dueDate: true },
   });
 
+  let telegramSent = 0;
   let notificationsSent = 0;
   const redis = getRedis();
   const key = `${NOTIFICATION_KEY}${userId}`;
@@ -48,12 +50,34 @@ export async function handler(params: {
       dueDate.getFullYear() === now.getFullYear();
 
     const title = isToday ? `Task due today: ${task.title}` : `Task due tomorrow: ${task.title}`;
+    const message = isToday ? "Don't forget this task is due today!" : "This task is due tomorrow.";
+
+    // Telegram is the channel that actually reaches the user; the in-app
+    // notification list is the fallback for users who never connected one.
+    const delivery = await sendTelegramToUser({
+      userId,
+      content: `${title}\n\n${message}`,
+    });
+
+    if (delivery.ok) {
+      telegramSent++;
+      continue;
+    }
+
+    // A user with no Telegram bot (or one switched off) is not a failure —
+    // falling back is the expected path. Anything else means a configured
+    // channel dropped the message, which is worth a log line.
+    if (delivery.reason !== "not_configured" && delivery.reason !== "disabled") {
+      console.error(
+        `[task-reminders] Telegram delivery failed for user ${userId} (${delivery.reason}): ${delivery.error}`,
+      );
+    }
 
     const notification = {
       id: crypto.randomUUID(),
       type: "task_reminder",
       title,
-      message: isToday ? "Don't forget this task is due today!" : "This task is due tomorrow.",
+      message,
       data: { taskId: task.id },
       read: false,
       createdAt: now.toISOString(),
@@ -75,5 +99,5 @@ export async function handler(params: {
     });
   }
 
-  return JSON.stringify({ tasksScanned: tasks.length, notificationsSent });
+  return JSON.stringify({ tasksScanned: tasks.length, telegramSent, notificationsSent });
 }

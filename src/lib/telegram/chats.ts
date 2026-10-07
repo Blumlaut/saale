@@ -73,6 +73,122 @@ export async function getDefaultTelegramChatInfo(
 }
 
 /**
+ * A resolved destination for proactive messages, and why it was chosen.
+ */
+export interface TelegramNotifyChat {
+  chatId: bigint;
+  /** Display label (whitelist display name, else a generic one). */
+  label: string;
+  /** How the chat was picked — `pinned` means the user chose it explicitly. */
+  source: "pinned" | "private" | "whitelist";
+}
+
+/** Display label for a chat — the whitelist name when the chat is a known user. */
+async function labelForChat(accountId: string, chatId: bigint): Promise<string> {
+  const entry = await prisma.telegramWhitelist.findUnique({
+    where: {
+      telegramAccountId_telegramUserId: {
+        telegramAccountId: accountId,
+        telegramUserId: chatId,
+      },
+    },
+    select: { displayName: true },
+  });
+  return entry?.displayName ?? "Telegram chat";
+}
+
+/**
+ * Resolve the chat proactive messages (reminders, agent job output) go to.
+ *
+ * 1. `pinnedChatId` — the chat the user pinned in the Telegram integration.
+ * 2. The most recently active **private** chat.
+ * 3. The most recently whitelisted user (a private chat's ID is the user's ID).
+ *
+ * Groups are deliberately excluded from automatic resolution: a message meant
+ * for the owner must not land in a group the bot happens to sit in. Only an
+ * explicit pin can target one. This differs from
+ * {@link resolveDefaultTelegramChat}, which keeps its "most recent chat of any
+ * type" behaviour for agent job output the user configured on purpose.
+ *
+ * @param accountId - The TelegramAccount.id to resolve against
+ * @param pinnedChatId - The account's `notifyChatId`, or null when unset
+ * @returns The resolved chat, or null when the account has no usable target
+ */
+export async function resolveNotifyChat(
+  accountId: string,
+  pinnedChatId: bigint | null,
+): Promise<TelegramNotifyChat | null> {
+  if (pinnedChatId !== null) {
+    return {
+      chatId: pinnedChatId,
+      label: await labelForChat(accountId, pinnedChatId),
+      source: "pinned",
+    };
+  }
+
+  const privateChat = await prisma.telegramChat.findFirst({
+    where: { telegramAccountId: accountId, chatType: "private" },
+    select: { telegramChatId: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (privateChat) {
+    return {
+      chatId: privateChat.telegramChatId,
+      label: await labelForChat(accountId, privateChat.telegramChatId),
+      source: "private",
+    };
+  }
+
+  const whitelistEntry = await prisma.telegramWhitelist.findFirst({
+    where: { telegramAccountId: accountId },
+    select: { telegramUserId: true, displayName: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (whitelistEntry) {
+    return {
+      chatId: whitelistEntry.telegramUserId,
+      label: whitelistEntry.displayName ?? "Whitelisted user",
+      source: "whitelist",
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Whether the account has actually seen this chat — either a conversation the
+ * bot has been in, or a whitelisted user (whose private chat ID is their user
+ * ID).
+ *
+ * Used to validate a pinned notification chat, so a typo cannot silently point
+ * proactive messages at an unrelated chat that happens to exist.
+ */
+export async function isKnownTelegramChat(accountId: string, chatId: bigint): Promise<boolean> {
+  const [chat, whitelisted] = await Promise.all([
+    prisma.telegramChat.findUnique({
+      where: {
+        telegramAccountId_telegramChatId: {
+          telegramAccountId: accountId,
+          telegramChatId: chatId,
+        },
+      },
+      select: { id: true },
+    }),
+    prisma.telegramWhitelist.findUnique({
+      where: {
+        telegramAccountId_telegramUserId: {
+          telegramAccountId: accountId,
+          telegramUserId: chatId,
+        },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return chat !== null || whitelisted !== null;
+}
+
+/**
  * List the user's known Telegram chats (most recent first) with labels.
  *
  * Labels use the whitelist display name when the chat matches a whitelisted

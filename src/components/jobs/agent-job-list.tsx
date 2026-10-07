@@ -442,6 +442,12 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                           {run.error && (
                             <div className="text-destructive mt-2 text-xs">{run.error}</div>
                           )}
+                          {!run.error && run.deliveryError && (
+                            <div className="text-destructive mt-2 flex items-start gap-1 text-xs">
+                              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                              <span>Output not delivered: {run.deliveryError}</span>
+                            </div>
+                          )}
                           {run.inputTokens > 0 && (
                             <div className="text-muted-foreground mt-1 text-xs">
                               {run.inputTokens} in · {run.outputTokens} out · $

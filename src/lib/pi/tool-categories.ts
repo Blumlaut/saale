@@ -23,6 +23,7 @@ import {
   Bot,
   Server,
   SlidersHorizontal,
+  Send,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -86,6 +87,16 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     icon: History,
     defaultEnabled: true,
     defaultExposure: "codemode",
+  },
+  {
+    key: "telegram",
+    label: "Telegram",
+    description: "Message the user on Telegram between conversations",
+    icon: Send,
+    defaultEnabled: true,
+    // Reaching the user is the point of the tool, so the model must know it can
+    // do it without spending a discovery step first.
+    defaultExposure: "direct",
   },
   {
     key: "web",

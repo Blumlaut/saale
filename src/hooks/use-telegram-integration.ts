@@ -9,8 +9,24 @@ export interface TelegramAccount {
   botId: string | null;
   botUsername: string | null;
   whitelistCount: number;
+  /** Chat the user pinned for proactive messages, or null for automatic. */
+  notifyChatId: string | null;
+  /** Where proactive messages actually go right now, and why. */
+  notifyChat: TelegramNotifyChat | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TelegramNotifyChat {
+  chatId: string;
+  label: string;
+  source: "pinned" | "private" | "whitelist";
+}
+
+export interface TelegramChatInfo {
+  chatId: string;
+  label: string;
+  chatType: string;
 }
 
 export interface WhitelistEntry {
@@ -48,6 +64,11 @@ export function useTelegramIntegration(initialAccount?: TelegramAccount | null) 
   const [newUserId, setNewUserId] = useState("");
   const [addingUser, setAddingUser] = useState(false);
 
+  // Notification chat
+  const [chats, setChats] = useState<TelegramChatInfo[]>([]);
+  const [chatsLoading, setChatsLoading] = useState(false);
+  const [savingNotifyChat, setSavingNotifyChat] = useState(false);
+
   const loadAccount = useCallback(async () => {
     try {
       const data = await fetchJson<{ account: TelegramAccount | null }>(
@@ -74,6 +95,26 @@ export function useTelegramIntegration(initialAccount?: TelegramAccount | null) 
       setWhitelistEntries([]);
     } finally {
       setWhitelistLoading(false);
+    }
+  }, []);
+
+  /**
+   * Load the chats the bot can send to. Fetched when the notification-chat
+   * dialog opens rather than on mount — the list changes whenever the user
+   * messages the bot, so a cached copy would go stale.
+   */
+  const loadChats = useCallback(async () => {
+    setChatsLoading(true);
+    try {
+      const data = await fetchJson<{ chats: TelegramChatInfo[] }>(
+        "/api/integrations/telegram/chats",
+      );
+      setChats(data.chats ?? []);
+    } catch (err) {
+      console.error("Failed to load Telegram chats:", err);
+      setChats([]);
+    } finally {
+      setChatsLoading(false);
     }
   }, []);
 
@@ -170,6 +211,27 @@ export function useTelegramIntegration(initialAccount?: TelegramAccount | null) 
     [loadWhitelist],
   );
 
+  /**
+   * Pin (or clear, with null) the chat proactive messages go to.
+   *
+   * @throws Never — the caller shows the account state, which is unchanged on
+   * failure; the reason is logged with context.
+   */
+  const setNotifyChat = useCallback(
+    async (chatId: string | null) => {
+      setSavingNotifyChat(true);
+      try {
+        await patchJson("/api/integrations/telegram", { notifyChatId: chatId });
+        await loadAccount();
+      } catch (err) {
+        console.error("Failed to set the Telegram notification chat:", err);
+      } finally {
+        setSavingNotifyChat(false);
+      }
+    },
+    [loadAccount],
+  );
+
   return {
     // Account
     account,
@@ -199,5 +261,12 @@ export function useTelegramIntegration(initialAccount?: TelegramAccount | null) 
     loadWhitelist,
     addWhitelistUser,
     removeWhitelistUser,
+
+    // Notification chat
+    chats,
+    chatsLoading,
+    savingNotifyChat,
+    loadChats,
+    setNotifyChat,
   };
 }
