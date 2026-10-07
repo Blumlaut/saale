@@ -175,13 +175,6 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     summaryTemplate: 'Searching emails for "{query}"',
   },
   {
-    name: "mail_draft",
-    label: "Draft Email",
-    description: "Draft an email for review",
-    category: "email",
-    defaultPolicy: "allow",
-  },
-  {
     name: "mail_send",
     label: "Send Email",
     description: "Send an email",
@@ -342,7 +335,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
   {
     name: "memory_index",
     label: "Memory Index",
-    description: "Save information to persistent memory",
+    description: "List memory collections with sizes, tags and recent titles",
     category: "memory",
     defaultPolicy: "allow",
   },
@@ -357,9 +350,9 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
   {
     name: "memory_delete",
     label: "Delete Memory",
-    description: "Delete a memory",
+    description: "Permanently delete a memory",
     category: "memory",
-    defaultPolicy: "allow",
+    defaultPolicy: "ask",
   },
 
   // ── Tasks ─────────────────────────────────────────────────────────
@@ -653,15 +646,6 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
     attachments: "Attachments",
     accountId: "Account",
   },
-  mail_draft: {
-    to: "To",
-    subject: "Subject",
-    body: "Body",
-    bodyHtml: "HTML body",
-    replyTo: "Reply-to",
-    attachments: "Attachments",
-    accountId: "Account",
-  },
   mail_read: { ids: "Emails" },
   mail_list: {
     accountId: "Account",
@@ -768,8 +752,8 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
   infra_notes_delete: { id: "Note" },
   web_search: { query: "Query" },
   web_fetch: { url: "URL" },
-  memory_index: { content: "Content" },
   memory_search: { query: "Query", collection: "Collection", tags: "Tags", limit: "Limit" },
+  memory_delete: { id: "Memory" },
   settings_list: { key: "Setting" },
   settings_set: { key: "Setting", value: "New value" },
 };
@@ -851,12 +835,6 @@ const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
     const subject = typeof a.subject === "string" ? a.subject : null;
     if (to.length === 0 && !subject) return null;
     return `Send email${to.length ? ` to ${joinList(to)}` : ""}${subject ? ` — \"${subject}\"` : ""}`;
-  },
-  mail_draft: (a) => {
-    const to = Array.isArray(a.to) ? a.to.filter((v): v is string => typeof v === "string") : [];
-    const subject = typeof a.subject === "string" ? a.subject : null;
-    if (to.length === 0 && !subject) return null;
-    return `Draft email${to.length ? ` to ${joinList(to)}` : ""}${subject ? ` — \"${subject}\"` : ""}`;
   },
   mail_delete: (a) => {
     const count = Array.isArray(a.ids) ? a.ids.length : 0;
