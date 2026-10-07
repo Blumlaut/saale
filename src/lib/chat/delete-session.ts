@@ -21,6 +21,12 @@ export interface DeletedChat {
   title: string;
 }
 
+/** Outcome of a multi-chat delete: what went, and what is still there. */
+export interface BulkDeleteResult {
+  deleted: string[];
+  failed: Array<{ sessionId: string; error: string }>;
+}
+
 /**
  * Delete one of a user's chats and everything that belongs to it.
  *
@@ -57,4 +63,32 @@ export async function deleteChatSession(userId: string, sessionId: string): Prom
   }
 
   return { title: session.title };
+}
+
+/**
+ * Delete several of a user's chats.
+ *
+ * A chat that cannot be removed (an id from another account, a file that will
+ * not unlink) must not abort the batch — the caller gets back what went and
+ * what did not, so it can leave the failures selected for a retry.
+ */
+export async function deleteChatSessions(
+  userId: string,
+  sessionIds: string[],
+): Promise<BulkDeleteResult> {
+  const deleted: string[] = [];
+  const failed: BulkDeleteResult["failed"] = [];
+
+  // A repeated id would report a "not found" failure on its second pass.
+  for (const sessionId of new Set(sessionIds)) {
+    try {
+      await deleteChatSession(userId, sessionId);
+      deleted.push(sessionId);
+    } catch (err) {
+      console.error(`Failed to delete chat session ${sessionId}:`, err);
+      failed.push({ sessionId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return { deleted, failed };
 }
