@@ -112,6 +112,21 @@ function sanitize(value: string, max: number): string {
   return truncate(value.trim().replace(/\s+/g, " "), max);
 }
 
+/**
+ * The favicon of the page a `web_fetch` call opened, or null when there is no
+ * URL to resolve yet.
+ *
+ * Read from the result's metadata first and the call's argument second, so a
+ * call still running already shows the site it is reaching for.
+ */
+export function webFetchFaviconUrl(toolCall: ToolCallData): string | null {
+  const meta = extractToolMeta<WebMeta>(toolCall.result);
+  const fromResult = meta?.type === "web_fetch" ? meta.finalUrl || meta.url : "";
+  const fromArgs = typeof toolCall.args.url === "string" ? toolCall.args.url : "";
+  const pageUrl = fromResult || fromArgs;
+  return pageUrl ? faviconUrl(pageUrl) || null : null;
+}
+
 /** The clickable favicon for a site, or "" when the URL cannot be parsed. */
 function faviconUrl(pageUrl: string): string {
   const parsed = parse(pageUrl);

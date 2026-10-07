@@ -233,6 +233,21 @@ const SCALAR_PROPERTIES: UserProperty[] = [
     }),
   },
   {
+    key: "appearance.compactActivity",
+    group: GROUP.appearance,
+    label: "Compact activity",
+    description:
+      "Collapse a turn's reasoning and tool calls into one line each — a running tool count with the tools' own icons — instead of a card per step. Each line expands to the full detail. Set to false for the step-by-step transcript.",
+    columns: ["compactActivity"],
+    apply: "none",
+    scope: "user",
+    schema: z.boolean(),
+    read: (row) => row.compactActivity,
+    write: (_row, value) => ({
+      compactActivity: value === null ? true : Boolean(value),
+    }),
+  },
+  {
     key: "models.default",
     group: GROUP.models,
     label: "Default model",

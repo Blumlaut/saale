@@ -37,3 +37,19 @@ export function toolStatus(
   const resolvedTone = tone ?? toolStatusTone(toolCall);
   return { tone: resolvedTone, label: label ?? DEFAULT_LABEL[resolvedTone] };
 }
+
+/**
+ * One badge for a run of calls: an error anywhere wins, then running, then done.
+ *
+ * A run that failed halfway has to say so — reporting a mixed run as "done"
+ * would hide the failure behind a collapsed row.
+ */
+export function aggregateToolStatus(calls: readonly ToolCallData[]): ToolStatus {
+  const failed = calls.some((call) => call.error || call.status === "error");
+  const running = calls.some((call) => call.status === "running");
+  return failed
+    ? { tone: "danger", label: "failed" }
+    : running
+      ? { tone: "running", label: "running" }
+      : { tone: "success", label: "done" };
+}

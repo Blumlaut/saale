@@ -19,13 +19,15 @@ import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
 import { SelectionQuoteButton } from "./selection-quote-button";
 import { ToolCallGroup } from "./tool-call-group";
+import { CompactActivity } from "./compact-activity";
+import { splitToolCalls } from "./tool-cards";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages } from "@/lib/chat/group-messages";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
 import { formatFileSize, cn } from "@/lib/utils";
-import type { ApprovalData, Message, AttachmentData } from "./types";
+import type { ApprovalData, Message, AttachmentData, ToolCallData } from "./types";
 import {
   Loader2,
   Bot,
@@ -62,6 +64,12 @@ interface MessageListProps {
   activeTool?: { name: string | null; startedAt?: string | null } | null;
   /** Set while a failed provider call is being retried. */
   retry?: { attempt: number; maxAttempts: number; errorMessage: string } | null;
+  /**
+   * Condense each turn's reasoning and tool calls into one line each, instead
+   * of a card and a thinking block per step (the user's Appearance setting).
+   * Defaults to the step-by-step transcript.
+   */
+  compactActivity?: boolean;
 }
 
 const THRESHOLD = 80; // px from bottom to consider "at bottom"
@@ -94,6 +102,7 @@ export const MessageList = memo(
       sessionId,
       activeTool,
       retry,
+      compactActivity = false,
     },
     ref,
   ) {
@@ -301,6 +310,7 @@ export const MessageList = memo(
                 <AssistantGroup
                   key={group.messages[0]!.id}
                   messages={group.messages}
+                  compactActivity={compactActivity}
                   isStreaming={
                     lastMsg?.id === group.messages[group.messages.length - 1]?.id && !!isStreaming
                   }
@@ -640,11 +650,104 @@ function AttachmentChip({
   );
 }
 
+/** One step's contribution to a run: what it reasoned and the work it did. */
+interface CompactStep {
+  id: string;
+  thinking: string;
+  work: ToolCallData[];
+}
+
+/** A block of the condensed transcript: a run of activity, or what a step said. */
+type CompactBlock =
+  | { kind: "activity"; key: string; steps: CompactStep[] }
+  | { kind: "attachments"; key: string; toolCalls: ToolCallData[] }
+  | { kind: "message"; key: string; message: Message };
+
+/**
+ * Fold a turn's steps into the condensed transcript.
+ *
+ * A step that reasoned or worked joins the run above it; a step that said
+ * something ends that run, so a sentence is read after the activity that
+ * produced it and the next step starts a fresh run. Files the turn showed the
+ * user are never folded in — they are the thing to look at, not a record of
+ * work — and `<ToolCallGroup>` knows which calls are which.
+ */
+function compactBlocks(messages: readonly Message[]): CompactBlock[] {
+  const blocks: CompactBlock[] = [];
+
+  for (const message of messages) {
+    const { attachments, work } = splitToolCalls(message.toolCalls ?? []);
+
+    if (message.thinking || work.length > 0) {
+      const step: CompactStep = {
+        id: message.id,
+        thinking: message.thinking?.trim() ?? "",
+        work,
+      };
+      const open = blocks[blocks.length - 1];
+      if (open?.kind === "activity") open.steps.push(step);
+      else blocks.push({ kind: "activity", key: message.id, steps: [step] });
+    }
+
+    if (message.content || message.errorMessage) {
+      blocks.push({ kind: "message", key: message.id, message });
+    }
+
+    if (attachments.length > 0) {
+      blocks.push({ kind: "attachments", key: attachments[0]!.id, toolCalls: attachments });
+    }
+  }
+
+  return blocks;
+}
+
+/** One step's prose: the answer bubble, a provider error, or progress dots. */
+function AssistantMessageBody({
+  message,
+  isStreaming,
+}: {
+  message: Message;
+  isStreaming: boolean;
+}) {
+  return (
+    <>
+      {/* Message bubble (only when there's text) */}
+      {message.content && (
+        <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
+          <MarkdownRenderer content={message.content} />
+        </div>
+      )}
+
+      {/* Provider error (failed turn) */}
+      {message.errorMessage && <ProviderErrorNotice error={message.errorMessage} />}
+
+      {/* Streaming indicator for empty current turn */}
+      {!message.content && !message.errorMessage && isStreaming && (
+        <div className="liquid-glass-inner flex items-center gap-1 rounded-2xl px-4 py-3">
+          <span className="animate-pulse">...</span>
+        </div>
+      )}
+    </>
+  );
+}
+
 /**
  * Renders a group of assistant turns as a single visual unit:
  * one avatar, all turns' content flowing naturally, one timestamp at bottom.
+ *
+ * `compactActivity` replaces the per-step transcript — a thinking block and a
+ * tool card for every step the turn took — with one condensed line each. See
+ * `CompactActivity`.
  */
-function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStreaming: boolean }) {
+function AssistantGroup({
+  messages,
+  isStreaming,
+  compactActivity,
+}: {
+  messages: Message[];
+  isStreaming: boolean;
+  compactActivity: boolean;
+}) {
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
 
   const toggleThinking = (messageId: string) => {
@@ -675,6 +778,11 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
   // Combined response text for the copy button (empty when no turn has text)
   const copyText = getAssistantCopyText(visibleMessages);
 
+  // The turn still being generated, if any. Only its row reports progress.
+  const streamingTurnId = isStreaming
+    ? (visibleMessages[visibleMessages.length - 1]?.id ?? null)
+    : null;
+
   return (
     <div className="group/message flex gap-3">
       {/* Single avatar for the entire group — desktop-only, saves ~44px per group on mobile */}
@@ -684,73 +792,74 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
 
       {/* All turns' content flowing naturally */}
       <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
-        {visibleMessages.map((message) => (
-          <div key={message.id}>
-            {/* Thinking block */}
-            {message.thinking && (
-              <div className="liquid-glass-inner rounded-xl">
-                <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left"
-                  onClick={() => toggleThinking(message.id)}
-                >
-                  {expandedThinking.has(message.id) ? (
-                    <ChevronDown className="text-muted-foreground h-3 w-3" />
-                  ) : (
-                    <ChevronRight className="text-muted-foreground h-3 w-3" />
-                  )}
-                  <Lightbulb className="text-muted-foreground h-3.5 w-3.5" />
-                  <span className="text-muted-foreground text-xs font-medium">
-                    {isStreaming && message.id === visibleMessages[visibleMessages.length - 1]?.id
-                      ? "Thinking..."
-                      : "Thought process"}
-                  </span>
-                  {isStreaming &&
-                    message.id === visibleMessages[visibleMessages.length - 1]?.id && (
-                      <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
-                    )}
-                  {!expandedThinking.has(message.id) && message.thinking.length > 60 && (
-                    <span className="text-muted-foreground/60 text-xs">
-                      {message.thinking.slice(0, 60).trim()}...
-                    </span>
-                  )}
-                </button>
+        {compactActivity
+          ? compactBlocks(visibleMessages).map((block) =>
+              block.kind === "activity" ? (
+                <CompactActivity
+                  key={block.key}
+                  reasoning={block.steps.flatMap((step) => (step.thinking ? [step.thinking] : []))}
+                  toolCalls={block.steps.flatMap((step) => step.work)}
+                  isStreaming={block.steps.some((step) => step.id === streamingTurnId)}
+                />
+              ) : block.kind === "attachments" ? (
+                <ToolCallGroup key={block.key} toolCalls={block.toolCalls} />
+              ) : (
+                <AssistantMessageBody
+                  key={block.key}
+                  message={block.message}
+                  isStreaming={block.message.id === streamingTurnId}
+                />
+              ),
+            )
+          : visibleMessages.map((message) => (
+              <div key={message.id}>
+                {/* Thinking block */}
+                {message.thinking && (
+                  <div className="liquid-glass-inner rounded-xl">
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left"
+                      onClick={() => toggleThinking(message.id)}
+                    >
+                      {expandedThinking.has(message.id) ? (
+                        <ChevronDown className="text-muted-foreground h-3 w-3" />
+                      ) : (
+                        <ChevronRight className="text-muted-foreground h-3 w-3" />
+                      )}
+                      <Lightbulb className="text-muted-foreground h-3.5 w-3.5" />
+                      <span className="text-muted-foreground text-xs font-medium">
+                        {message.id === streamingTurnId ? "Thinking..." : "Thought process"}
+                      </span>
+                      {message.id === streamingTurnId && (
+                        <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
+                      )}
+                      {!expandedThinking.has(message.id) && message.thinking.length > 60 && (
+                        <span className="text-muted-foreground/60 text-xs">
+                          {message.thinking.slice(0, 60).trim()}...
+                        </span>
+                      )}
+                    </button>
 
-                {expandedThinking.has(message.id) && (
-                  <div className="border-border/30 border-t px-3 py-2">
-                    <pre className="text-muted-foreground bg-muted rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
-                      {message.thinking}
-                    </pre>
+                    {expandedThinking.has(message.id) && (
+                      <div className="border-border/30 border-t px-3 py-2">
+                        <pre className="text-muted-foreground bg-muted rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
+                          {message.thinking}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                <AssistantMessageBody
+                  message={message}
+                  isStreaming={message.id === streamingTurnId}
+                />
+
+                {/* Tool calls — the turn's work collapses, its shared files do not */}
+                {message.toolCalls && message.toolCalls.length > 0 && (
+                  <ToolCallGroup toolCalls={message.toolCalls} />
+                )}
               </div>
-            )}
-
-            {/* Message bubble (only when there's text) */}
-            {message.content && (
-              <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
-                <MarkdownRenderer content={message.content} />
-              </div>
-            )}
-
-            {/* Provider error (failed turn) */}
-            {message.errorMessage && <ProviderErrorNotice error={message.errorMessage} />}
-
-            {/* Streaming indicator for empty current turn */}
-            {!message.content &&
-              !message.errorMessage &&
-              isStreaming &&
-              message.id === visibleMessages[visibleMessages.length - 1]?.id && (
-                <div className="liquid-glass-inner flex items-center gap-1 rounded-2xl px-4 py-3">
-                  <span className="animate-pulse">...</span>
-                </div>
-              )}
-
-            {/* Tool calls — the turn's work collapses, its shared files do not */}
-            {message.toolCalls && message.toolCalls.length > 0 && (
-              <ToolCallGroup toolCalls={message.toolCalls} />
-            )}
-          </div>
-        ))}
+            ))}
 
         {/* Single timestamp + copy action for the group */}
         {timestamp && (

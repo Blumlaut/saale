@@ -1,0 +1,186 @@
+"use client";
+
+import { useState } from "react";
+import { ChevronDown, ChevronRight, Lightbulb, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { plural, truncate } from "@/lib/format";
+import { FaviconMark } from "./favicon-mark";
+import { ToolCallView } from "./tool-call-view";
+import { ToolStatusBadge } from "./tool-status-badge";
+import { aggregateToolStatus } from "./tool-status";
+import { toolMark } from "./tool-marks";
+import type { ToolCallData } from "./types";
+
+/**
+ * One turn's reasoning and tool calls, condensed to a line each.
+ *
+ * The step-by-step transcript stacks a card and a thinking block per step, so a
+ * long turn grows without bound. Here a run of steps is summarised instead: the
+ * newest reasoning shown inline (replaced as the next step starts) and one
+ * running tool count. Both lines expand into the same detail the step-by-step
+ * view shows, so nothing is lost — it is deferred.
+ *
+ * The count and the icons update in place rather than appending, which is what
+ * keeps the transcript from growing while the turn is still running.
+ */
+
+/** Characters of the newest reasoning shown before it is cut off. */
+const SNIPPET_CHARS = 80;
+/** Marks on screen at once — a sliding window over a run of any length. */
+const VISIBLE_MARKS = 3;
+/**
+ * One slot: a mark (`h-3.5`) plus a 4px gap. In rem, so the pitch follows the
+ * root font size the same way the marks themselves do.
+ */
+const SLOT_REM = 1.125;
+
+export interface CompactActivityProps {
+  /** The run's reasoning, oldest step first — one entry per step that reasoned. */
+  reasoning: readonly string[];
+  /** The work those steps did, in call order. */
+  toolCalls: readonly ToolCallData[];
+  /** True while the newest step of the run is still being generated. */
+  isStreaming: boolean;
+}
+
+export function CompactActivity({ reasoning, toolCalls, isStreaming }: CompactActivityProps) {
+  return (
+    <div className="space-y-1">
+      {reasoning.length > 0 && <ReasoningRow reasoning={reasoning} isStreaming={isStreaming} />}
+      {toolCalls.length > 0 && <ToolsRow toolCalls={toolCalls} />}
+    </div>
+  );
+}
+
+/** "Thought process: …" — the newest reasoning, full text one click down. */
+function ReasoningRow({
+  reasoning,
+  isStreaming,
+}: {
+  reasoning: readonly string[];
+  isStreaming: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  // The step the row is currently showing is the newest one — so a replacement
+  // is exactly a change in how many steps reasoned, never a token arriving.
+  // Keying the line on that count replays the entrance when it is replaced and
+  // leaves the streaming text alone, which is what makes it cheap.
+  const stepCount = reasoning.length;
+  const snippet = truncate(reasoning[stepCount - 1]!.replace(/\s+/g, " ").trim(), SNIPPET_CHARS);
+
+  return (
+    <div className="liquid-glass-inner rounded-xl">
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+        className="h-auto w-full min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-left text-xs font-normal"
+      >
+        {open ? (
+          <ChevronDown className="text-muted-foreground size-3 shrink-0" />
+        ) : (
+          <ChevronRight className="text-muted-foreground size-3 shrink-0" />
+        )}
+        <Lightbulb className="text-muted-foreground size-3 shrink-0" />
+        <span className="shrink-0 text-xs font-medium">
+          {isStreaming ? "Thinking..." : "Thought process:"}
+        </span>
+        <span
+          key={stepCount}
+          className="text-muted-foreground animate-in fade-in min-w-0 flex-1 truncate text-xs duration-150 ease-out"
+        >
+          {snippet}
+        </span>
+        {isStreaming && <Loader2 className="text-muted-foreground size-3 shrink-0 animate-spin" />}
+      </Button>
+
+      {open && (
+        <div className="border-border/30 border-t px-3 py-2">
+          <pre className="text-muted-foreground bg-muted rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap">
+            {reasoning.join("\n\n")}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Used 7 tools" — a running count and a sliding window of tool marks. */
+function ToolsRow({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
+  const [open, setOpen] = useState(false);
+  // Only the newest marks are on screen: a run of forty tools is a count, not
+  // forty icons. The window slides, so a mark that ages out is dropped and the
+  // newest takes its slot.
+  const marks = toolCalls.slice(-VISIBLE_MARKS);
+
+  return (
+    <div className="liquid-glass-inner rounded-xl">
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+          className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-lg px-3 py-2 text-left text-xs font-normal"
+        >
+          {open ? (
+            <ChevronDown className="text-muted-foreground size-3 shrink-0" />
+          ) : (
+            <ChevronRight className="text-muted-foreground size-3 shrink-0" />
+          )}
+          <span className="shrink-0 text-xs font-medium">
+            Used {plural(toolCalls.length, "tool", "tools")}
+          </span>
+
+          {/* Decorative: the count above is the accessible name. */}
+          <span
+            aria-hidden
+            className="relative h-3.5 shrink-0 overflow-hidden"
+            style={{ width: `${marks.length * SLOT_REM}rem` }}
+          >
+            {marks.map((call, index) => (
+              <span
+                key={call.id}
+                className="absolute top-0 left-0 transition-transform duration-200 ease-out"
+                style={{ transform: `translateX(${index * SLOT_REM}rem)` }}
+              >
+                {/* Nested: the entrance animates a scale, which must not fight
+                    the slot transform that slides the window along. */}
+                <span className="animate-in fade-in zoom-in-75 block h-3.5 w-3.5 duration-200 ease-out">
+                  <ToolMarkView call={call} />
+                </span>
+              </span>
+            ))}
+          </span>
+        </Button>
+
+        <div className="flex shrink-0 items-center gap-1.5 pr-3">
+          <ToolStatusBadge status={aggregateToolStatus(toolCalls)} />
+        </div>
+      </div>
+
+      {open && (
+        <div className="border-border/30 space-y-1.5 border-t p-2">
+          {toolCalls.map((toolCall) => (
+            <ToolCallView key={toolCall.id} toolCall={toolCall} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The call's own mark: the site it opened, or the tool's icon. */
+function ToolMarkView({ call }: { call: ToolCallData }) {
+  const mark = toolMark(call);
+
+  if (mark.kind === "favicon") {
+    return (
+      <FaviconMark url={mark.url} className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain" />
+    );
+  }
+
+  const Icon = mark.icon;
+  return <Icon className="text-muted-foreground h-3.5 w-3.5 shrink-0" />;
+}

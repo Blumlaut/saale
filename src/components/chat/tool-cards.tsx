@@ -9,7 +9,7 @@ import { describeGenericToolCall } from "./tool-descriptors/generic";
 import { infraToolDescriptor } from "./tool-descriptors/infra";
 import { mailToolDescriptor } from "./tool-descriptors/mail";
 import { webToolDescriptor } from "./tool-descriptors/web";
-import type { ToolDescriptor } from "./tool-card-model";
+import type { ToolCardModel, ToolDescriptor } from "./tool-card-model";
 import type { ToolCallData } from "./types";
 
 /**
@@ -37,6 +37,8 @@ interface ToolCardRoute {
    * `ToolCallGroup` renders these open, outside the collapsed run.
    */
   attachment?: true;
+  /** The family's describe, kept so an icon can be read without rendering. */
+  describe?: ToolDescriptor["describe"];
   render: ToolCardRenderer;
 }
 
@@ -65,6 +67,7 @@ function route(descriptor: ToolDescriptor): ToolCardRoute {
   return {
     ...(descriptor.names ? { names: descriptor.names } : {}),
     ...(descriptor.prefixes ? { prefixes: descriptor.prefixes } : {}),
+    describe: descriptor.describe,
     render: modelCard(descriptor),
   };
 }
@@ -91,6 +94,17 @@ function findRoute(name: string): ToolCardRoute | undefined {
 /** The card for a tool call's name, or the generic card. */
 export function resolveToolCard(name: string): ToolCardRenderer {
   return findRoute(name)?.render ?? GenericToolCard;
+}
+
+/**
+ * The model a call's descriptor reads out of it, or null when no descriptor
+ * owns the name (or the result carries nothing a descriptor understands).
+ *
+ * The compact activity row only needs the icon, but it comes through the same
+ * descriptor the full card does, so a tool's mark never drifts from its card.
+ */
+export function describeToolCard(name: string, toolCall: ToolCallData): ToolCardModel | null {
+  return findRoute(name)?.describe?.(toolCall) ?? null;
 }
 
 /** A turn's tool calls, split by how they have to render. */
