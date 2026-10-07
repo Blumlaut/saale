@@ -20,6 +20,7 @@ const {
   mockPublishSessionEvent,
   mockReleaseSendQueue,
   mockIsSendQueueHeld,
+  mockInterruptPendingApprovals,
 } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockPrisma: {
@@ -38,6 +39,7 @@ const {
   mockPublishSessionEvent: vi.fn().mockResolvedValue(1),
   mockReleaseSendQueue: vi.fn().mockResolvedValue(undefined),
   mockIsSendQueueHeld: vi.fn().mockResolvedValue(false),
+  mockInterruptPendingApprovals: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
@@ -61,6 +63,9 @@ vi.mock("@/lib/terminal/client", () => ({
 }));
 vi.mock("@/lib/pi/session-events", () => ({
   publishSessionEvent: mockPublishSessionEvent,
+}));
+vi.mock("@/lib/chat/approval-interrupt", () => ({
+  interruptPendingApprovals: mockInterruptPendingApprovals,
 }));
 
 import { POST } from "@/app/api/chat/sessions/[sessionId]/messages/route";
@@ -110,6 +115,7 @@ beforeEach(() => {
   mockPrisma.chatMessage.create.mockResolvedValue({ id: "msg-1" });
   mockPrisma.chatSession.update.mockResolvedValue({});
   mockIsSessionBusy.mockResolvedValue(false);
+  mockInterruptPendingApprovals.mockResolvedValue(null);
 });
 
 describe("POST /messages while a generation is running", () => {
@@ -139,6 +145,48 @@ describe("POST /messages while a generation is running", () => {
     // A queued message must not claim a prompt: the running generation owns it.
     expect(mockSetPendingPrompt).not.toHaveBeenCalled();
     expect(mockRegisterActiveSession).not.toHaveBeenCalled();
+    // A busy session is the one that can hold a pending approval, so it is
+    // always checked.
+    expect(mockInterruptPendingApprovals).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: USER_ID, sessionId: SESSION_ID, content: "hello" }),
+    );
+  });
+
+  it("steers the message into the turn when it interrupted a pending approval", async () => {
+    mockInterruptPendingApprovals.mockResolvedValue("steered");
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow());
+
+    const res = await postMessage("do this instead");
+    const body = await res.json();
+
+    // The message joins the running turn: part of the conversation (no
+    // queuedAt), reported as delivered with the steered flag, and it claims
+    // no prompt and registers no generation — the run is already active.
+    expect(res.status).toBe(200);
+    expect(body.queued).toBe(false);
+    expect(body.steered).toBe(true);
+    expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ queuedAt: null }) }),
+    );
+    expect(mockSetPendingPrompt).not.toHaveBeenCalled();
+    expect(mockRegisterActiveSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps the message queued when the approval was denied but the steer fell back", async () => {
+    // Agent lives in another process: the denials still stand, but the
+    // message waits for the drain.
+    mockInterruptPendingApprovals.mockResolvedValue("queued");
+    mockPrisma.chatMessage.findUnique.mockResolvedValue(storedRow({ queuedAt: new Date() }));
+
+    const res = await postMessage("do this instead");
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.queued).toBe(true);
+    expect(body.steered).toBeUndefined();
+    expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ queuedAt: expect.any(Date) }) }),
+    );
   });
 
   it("tells connected clients the queue changed", async () => {
@@ -230,5 +278,6 @@ describe("POST /messages while idle", () => {
     await postMessage("hello");
 
     expect(mockPrisma.chatMessage.count).not.toHaveBeenCalled();
+    expect(mockInterruptPendingApprovals).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,10 @@ import {
 } from "@/lib/redis";
 import { deleteAllImages } from "@/lib/image-attachment";
 import {
+  interruptPendingApprovals,
+  type ApprovalInterruptMode,
+} from "@/lib/chat/approval-interrupt";
+import {
   countQueuedMessages,
   listQueuedMessages,
   MAX_QUEUED_MESSAGES,
@@ -97,7 +101,9 @@ export async function GET(
  * When the session is busy — a generation running, or a manual compaction
  * holding it — the message is queued instead of rejected: the row is saved with
  * `queuedAt` set and the server delivers it when the session is free again (see
- * the chat stream route's drain).
+ * the chat stream route's drain). One exception: when tool approvals are
+ * pending, the message counts as a denial of all of them and is steered into
+ * the running turn immediately (`interruptPendingApprovals`).
  */
 export async function POST(
   request: NextRequest,
@@ -190,6 +196,23 @@ export async function POST(
           )}`
         : sanitizedContent;
 
+    // A message that arrives while tool approvals are waiting is the user's
+    // answer to them: deny the pending request(s) and hand the message to the
+    // running agent immediately, so the model acts on what the user wants.
+    // "steered" messages join the live turn and are not part of the queue.
+    let interruptMode: ApprovalInterruptMode | null = null;
+    if (isBusy) {
+      interruptMode = await interruptPendingApprovals({
+        userId: authResult.userId,
+        sessionId,
+        content: promptContent,
+        attachments: attachments.map((att) => ({
+          storagePath: att.stored.storagePath,
+          mimeType: att.mimeType,
+        })),
+      });
+    }
+
     // Save user message with attachments in a single transaction. Queued
     // messages are stamped with `queuedAt` so they stay out of the
     // conversation until the server delivers them.
@@ -198,7 +221,7 @@ export async function POST(
         sessionId,
         role: "user",
         content: promptContent,
-        queuedAt: isBusy ? new Date() : null,
+        queuedAt: isBusy && interruptMode !== "steered" ? new Date() : null,
         ...(attachments.length > 0 && {
           attachments: {
             create: attachments.map((att) => ({
@@ -238,11 +261,25 @@ export async function POST(
 
     // A queued message is delivered by the stream route's drain once the
     // session is free again — it must not claim the prompt itself.
-    if (isBusy) {
+    if (isBusy && interruptMode !== "steered") {
       await publishQueueUpdate(sessionId);
       return NextResponse.json({
         ok: true,
         queued: true,
+        message: serializeChatMessage(userMessageWithAttachments!),
+      });
+    }
+
+    // Steered message: it is already inside the running turn — no pending
+    // prompt to claim, no Redis generation to register (the run is active),
+    // and the client's SSE connection is already observing this run. The
+    // `steered` flag tells the client a tool approval was denied for this.
+    if (interruptMode === "steered") {
+      return NextResponse.json({
+        ok: true,
+        queued: false,
+        steered: true,
+        streamUrl: `/api/chat/sessions/${sessionId}/stream`,
         message: serializeChatMessage(userMessageWithAttachments!),
       });
     }

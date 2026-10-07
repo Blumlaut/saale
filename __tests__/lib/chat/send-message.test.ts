@@ -21,7 +21,7 @@ describe("sendChatMessage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ message: { id: "m1" }, queued: false }));
     const result = await sendChatMessage("sess-1", "hello");
 
-    expect(result).toEqual({ kind: "ok", message: { id: "m1" }, queued: false });
+    expect(result).toEqual({ kind: "ok", message: { id: "m1" }, queued: false, steered: false });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toBe("/api/chat/sessions/sess-1/messages");
     expect(init.method).toBe("POST");
@@ -35,6 +35,19 @@ describe("sendChatMessage", () => {
       kind: "ok",
       message: { id: "m2" },
       queued: true,
+      steered: false,
+    });
+  });
+
+  it("surfaces the steered flag when the message interrupted a pending approval", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ message: { id: "m3" }, queued: false, steered: true }),
+    );
+    expect(await sendChatMessage("sess-1", "do this instead")).toEqual({
+      kind: "ok",
+      message: { id: "m3" },
+      queued: false,
+      steered: true,
     });
   });
 

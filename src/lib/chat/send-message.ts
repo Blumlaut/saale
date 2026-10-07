@@ -9,8 +9,10 @@ import type { Message } from "@/components/chat/types";
 export type SendMessageResult =
   /** Accepted. `queued` means the session was busy (a generation running, or
    *  a compaction), so the message waits in the send queue instead of being
-   *  prompted now. */
-  | { kind: "ok"; message: Message; queued: boolean }
+   *  prompted now. `steered` means the message was injected into a running
+   *  turn that was waiting on a tool approval — all pending approvals were
+   *  denied for it. */
+  | { kind: "ok"; message: Message; queued: boolean; steered?: boolean }
   /** 409 — unexpected: the server queues instead of rejecting. */
   | { kind: "conflict" }
   /** 404 — session gone; caller should navigate away. */
@@ -50,9 +52,14 @@ export async function sendChatMessage(
     return { kind: "error", message: body.error || res.statusText };
   }
 
-  const data = (await res.json()) as { message?: Message; queued?: boolean };
+  const data = (await res.json()) as { message?: Message; queued?: boolean; steered?: boolean };
   if (!data.message) {
     return { kind: "error", message: "Missing message in response" };
   }
-  return { kind: "ok", message: data.message, queued: data.queued === true };
+  return {
+    kind: "ok",
+    message: data.message,
+    queued: data.queued === true,
+    steered: data.steered === true,
+  };
 }

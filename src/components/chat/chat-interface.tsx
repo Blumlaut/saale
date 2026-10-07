@@ -391,6 +391,16 @@ export function ChatInterface({
               return;
             }
 
+            if (result.steered) {
+              // The message denied the tool approval it arrived with — say so,
+              // top-center: a bottom toast would cover the composer.
+              toast.info("Tool approval denied", {
+                description:
+                  "The pending request was denied and your message went straight to the agent.",
+                position: "top-center",
+              });
+            }
+
             // Delivered now. If this client misread the session as busy, the
             // message is in the queue strip and has to move into the
             // conversation.
