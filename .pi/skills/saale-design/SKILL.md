@@ -62,6 +62,7 @@ When the user asks for a UI element or page:
 | Modals, dialogs, sheets     | `references/modals.md`       |
 | Badges, tags, status        | `references/badges.md`       |
 | Cards with media            | `references/cards.md`        |
+| Tool cards (chat transcript) | `references/tool-cards.md`  |
 | Empty states                | `references/empty-states.md` |
 
 ### Integration

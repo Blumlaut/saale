@@ -4,6 +4,34 @@ import { useState, useCallback, useEffect } from "react";
 import { Download, Image as ImageIcon, FileText, File, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LightboxImage } from "./image-lightbox";
+import type { ToolCallData } from "./types";
+
+/** MIME types guessed from an extension (client-side, matches the server). */
+const MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  bmp: "image/bmp",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  csv: "text/csv",
+  json: "application/json",
+  xml: "application/xml",
+  html: "text/html",
+  css: "text/css",
+  js: "text/javascript",
+  ts: "text/typescript",
+  md: "text/markdown",
+  yaml: "text/yaml",
+  yml: "text/yaml",
+  zip: "application/zip",
+  gz: "application/gzip",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+};
 
 interface FileCardProps {
   filePath: string;
@@ -22,7 +50,7 @@ function formatSize(bytes: number): string {
   return `${bytes} B`;
 }
 
-export function FileCard({
+function FileCard({
   filePath,
   fileName,
   mimeType = undefined,
@@ -63,7 +91,12 @@ export function FileCard({
         const url = URL.createObjectURL(blob);
         setImageUrl(url);
       })
-      .catch(() => setImageError(true));
+      .catch((err: unknown) => {
+        // An abort is this effect cleaning up, not a failure to load.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("Failed to load the workspace file preview:", err);
+        setImageError(true);
+      });
 
     return () => {
       controller.abort();
@@ -90,8 +123,8 @@ export function FileCard({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch {
-      // Silently fail — browser handles errors
+    } catch (err) {
+      console.error("Failed to download a workspace file:", err);
     } finally {
       setLoading(false);
     }
@@ -156,4 +189,42 @@ export function FileCard({
       </div>
     </div>
   );
+}
+
+/**
+ * A `show_file` call: the file the assistant shared, as an attachment.
+ *
+ * Deliberately not a `ToolCard` — a shared file is not a report of what a call
+ * did, so it has no card model. The file itself (preview, name, download) is
+ * the content, and there is nothing to collapse.
+ */
+export function ShowFileCard({ toolCall }: { toolCall: ToolCallData }) {
+  const filePath = typeof toolCall.args.filePath === "string" ? toolCall.args.filePath : "";
+  const description =
+    typeof toolCall.args.description === "string" ? toolCall.args.description : undefined;
+  const isError = toolCall.status === "error" || Boolean(toolCall.error);
+
+  return (
+    <FileCard
+      filePath={filePath}
+      fileName={basename(filePath)}
+      mimeType={guessMimeType(filePath)}
+      size={undefined}
+      description={description}
+      isError={isError}
+      errorMessage={toolCall.error}
+    />
+  );
+}
+
+/** The last segment of a path, without importing `path` into client code. */
+function basename(filePath: string): string {
+  const segments = filePath.replace(/\\/g, "/").split("/");
+  return segments[segments.length - 1] || filePath;
+}
+
+function guessMimeType(filePath: string): string | undefined {
+  const extension = filePath.split(".").pop()?.toLowerCase();
+  if (!extension) return undefined;
+  return MIME_TYPES[extension] ?? "application/octet-stream";
 }

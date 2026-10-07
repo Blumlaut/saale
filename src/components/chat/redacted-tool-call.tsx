@@ -4,6 +4,7 @@ import { memo } from "react";
 import { Wrench } from "lucide-react";
 import { findToolInfo } from "@/lib/pi/tool-infos";
 import { ToolStatusBadge } from "./tool-status-badge";
+import { toolStatus } from "./tool-status";
 import type { ToolCallData } from "./types";
 
 /**
@@ -31,7 +32,7 @@ export const RedactedToolCall = memo(function RedactedToolCall({
         <span className="text-muted-foreground min-w-0 truncate text-[11px]">
           {toolCall.redacted}
         </span>
-        <ToolStatusBadge toolCall={toolCall} />
+        <ToolStatusBadge status={toolStatus(toolCall)} />
       </div>
     </div>
   );

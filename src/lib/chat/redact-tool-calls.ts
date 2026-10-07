@@ -16,6 +16,8 @@
  * Owner-facing chats are untouched: this is only called by the share endpoints.
  */
 
+import { extractToolMetaBlock } from "./tool-meta";
+
 /** The persisted shape redaction reads — a subset of `SavedToolCall`. */
 export interface RedactableToolCall {
   id: string;
@@ -165,54 +167,6 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
 const UNKNOWN_TOOL_SUMMARY: SummaryRule = { text: "Ran a tool" };
 
 /**
- * Meta blocks the tools append to their result text. Must stay in sync with
- * the `_saale*Meta` blocks in `src/lib/pi/tools/`.
- */
-const META_KEYS = ["_saaleWebMeta", "_saaleMailMeta", "_saaleCalMeta", "_saaleInfraMeta"] as const;
-
-/**
- * Parse the metadata block a tool appended to its result text.
- *
- * The block is the last JSON object in the string, so the scan starts at the
- * key and walks back to its opening brace. Only `count`-style scalars are ever
- * read from it — the object itself is never returned to a caller that could
- * forward it. Returns null when the tool appended nothing or malformed JSON.
- */
-function extractMeta(result: string | undefined): Record<string, unknown> | null {
-  if (!result) return null;
-
-  for (const key of META_KEYS) {
-    const keyIndex = result.lastIndexOf(`"${key}"`);
-    if (keyIndex === -1) continue;
-
-    const openBrace = result.lastIndexOf("{", keyIndex);
-    if (openBrace === -1) continue;
-
-    let depth = 0;
-    for (let i = openBrace; i < result.length; i++) {
-      if (result[i] === "{") depth++;
-      else if (result[i] === "}") {
-        depth--;
-        if (depth === 0) {
-          try {
-            const parsed = JSON.parse(result.slice(openBrace, i + 1)) as Record<string, unknown>;
-            const meta = parsed[key];
-            if (meta && typeof meta === "object" && !Array.isArray(meta)) {
-              return meta as Record<string, unknown>;
-            }
-          } catch (err) {
-            console.error("Failed to parse tool meta block while redacting for share:", err);
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
  * The one-line description a share page shows for a tool call.
  *
  * Reads nothing from the result except a numeric count, so a tool whose output
@@ -222,7 +176,7 @@ export function summarizeToolCallForShare(name: string, result: string | undefin
   const rule = SUMMARY_RULES[name] ?? UNKNOWN_TOOL_SUMMARY;
   if (!rule.count) return rule.text;
 
-  const value = extractMeta(result)?.[rule.count.field];
+  const value = extractToolMetaBlock(result)?.meta[rule.count.field];
   if (typeof value !== "number" || !Number.isFinite(value)) return rule.text;
 
   return `${rule.text} · ${value} ${value === 1 ? rule.count.one : rule.count.many}`;

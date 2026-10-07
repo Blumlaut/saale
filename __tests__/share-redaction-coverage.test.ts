@@ -20,7 +20,10 @@ import { describe, expect, it } from "vitest";
 const REPO_ROOT = join(__dirname, "..");
 const SRC = join(REPO_ROOT, "src");
 
-/** The owner's dispatcher: the cards it imports are the owner's cards. */
+/** The owner's routing table: the modules it imports are the owner's cards. */
+const TOOL_CARD_REGISTRY = "src/components/chat/tool-cards.tsx";
+
+/** The dispatcher that must route through the registry above. */
 const TOOL_CALL_VIEW = "src/components/chat/tool-call-view.tsx";
 
 /** The share card — allowed to be reachable from the share surface. */
@@ -31,9 +34,16 @@ const SHARE_ENTRIES = ["src/components/chat/share-viewer.tsx", "src/app/share/[t
 
 /**
  * Shared modules a card is allowed to use — not cards themselves, so the share
- * card may reach them.
+ * card may reach them. `tool-card` renders a model and knows no tool name;
+ * `tool-card-model` and `tool-status` are pure vocabulary.
  */
-const NON_CARD_MODULES = new Set(["tool-status-badge", "types", "tool-args"]);
+const NON_CARD_MODULES = [
+  "src/components/chat/types.ts",
+  "src/components/chat/tool-card.tsx",
+  "src/components/chat/tool-card-model.ts",
+  "src/components/chat/tool-status.ts",
+  "src/components/chat/tool-status-badge.tsx",
+];
 
 /**
  * Every module that reads the persisted `toolCalls` column. `owner` means the
@@ -88,20 +98,17 @@ function importsOf(source: string): string[] {
   return [...source.matchAll(/^\s*import\s[^;]*?from\s+"([^"]+)"/gm)].map((m) => m[1] ?? "");
 }
 
-function basename(spec: string): string {
-  return spec.split("/").pop() ?? spec;
-}
-
 /**
- * The card modules the owner's dispatcher renders. Discovered rather than
- * listed, so a card added to `tool-call-view.tsx` is covered without an edit
+ * The card modules the owner's router pulls in — the cards themselves and the
+ * descriptors behind them. Resolved to repo paths and discovered rather than
+ * listed, so a descriptor added to the registry is covered without an edit
  * here.
  */
 function ownerCardModules(): string[] {
-  return importsOf(read(TOOL_CALL_VIEW))
-    .filter((spec) => spec.startsWith("./"))
-    .map(basename)
-    .filter((name) => name !== "redacted-tool-call" && !NON_CARD_MODULES.has(name));
+  return importsOf(read(TOOL_CARD_REGISTRY))
+    .filter((spec) => spec.startsWith("."))
+    .map((spec) => resolveSpec(spec, TOOL_CARD_REGISTRY))
+    .filter((path): path is string => path !== null && !NON_CARD_MODULES.includes(path));
 }
 
 /** Resolve a relative or `@/` specifier to a repo path, or null. */
@@ -143,8 +150,15 @@ describe("the share surface cannot reach an owner's tool card", () => {
   it("discovers the owner's card modules", () => {
     // Guards the discovery itself: an empty list would make the rest vacuous.
     expect(cards.length).toBeGreaterThan(3);
-    expect(cards).toContain("file-card");
-    expect(cards).toContain("infra-tool-cards");
+    expect(cards).toContain("src/components/chat/file-card.tsx");
+    expect(cards).toContain("src/components/chat/tool-descriptors/infra.ts");
+    expect(cards).not.toContain(REDACTED_CARD);
+  });
+
+  it("routes every tool card through the registry", () => {
+    // The discovery above reads the registry, so a dispatcher that stopped
+    // using it would silently stop being covered.
+    expect(importsOf(read(TOOL_CALL_VIEW))).toContain("./tool-cards");
   });
 
   it("imports no card module from any file on the share surface", () => {
@@ -154,18 +168,19 @@ describe("the share surface cannot reach an owner's tool card", () => {
 
     expect(surface.length).toBeGreaterThan(1);
 
-    const offenders: string[] = [];
+    const offenders = new Set<string>();
     for (const path of surface) {
       for (const spec of importsOf(read(path))) {
-        if (cards.includes(basename(spec))) offenders.push(`${path} → ${spec}`);
+        const target = resolveSpec(spec, path);
+        if (target && cards.includes(target)) offenders.add(`${path} → ${target}`);
       }
     }
 
     expect(
-      offenders,
+      [...offenders],
       `These share-surface files import an owner tool card. Share pages must go\n` +
         `through RedactedToolCall instead:\n` +
-        offenders.map((o) => `  - ${o}`).join("\n"),
+        [...offenders].map((offender) => `  - ${offender}`).join("\n"),
     ).toEqual([]);
   });
 
@@ -174,13 +189,11 @@ describe("the share surface cannot reach an owner's tool card", () => {
 
     expect(reachable.has(REDACTED_CARD)).toBe(true);
 
-    const leaked = cards
-      .map((name) => `src/components/chat/${name}.tsx`)
-      .filter((path) => reachable.has(path));
+    const leaked = cards.filter((path) => reachable.has(path));
     expect(
       leaked,
       `The share viewer transitively imports an owner tool card:\n` +
-        leaked.map((p) => `  - ${p}`).join("\n"),
+        leaked.map((path) => `  - ${path}`).join("\n"),
     ).toEqual([]);
 
     // `file-card` downloads through an authenticated endpoint; reaching it from
