@@ -1,10 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
+import { getUploadsDir } from "@/lib/uploads";
 import fs from "fs/promises";
 import path from "path";
-
-const UPLOAD_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 /** Allowed MIME types for uploads. */
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   // Sanitize filename
   const safeName = path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, "_");
-  const userDir = path.join(UPLOAD_DIR, authResult.user.id);
+  const userDir = path.join(getUploadsDir(), authResult.user.id);
   const filePath = path.join(userDir, safeName);
 
   // Prevent directory traversal (defense in depth — safeName should already be clean)

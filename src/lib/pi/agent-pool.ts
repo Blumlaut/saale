@@ -1,6 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import path from "path";
 import { unwireSessionPersistence } from "@/lib/pi/session-persistence";
+import { getUploadsDir } from "@/lib/uploads";
 
 interface PooledSession {
   session: AgentSession;
@@ -84,8 +85,7 @@ export function getPoolKey(userId: string, sessionId: string): string {
  * Survives process restarts (persistent uploads volume in Docker).
  */
 export function getSessionDir(userId: string, sessionId: string): string {
-  const uploadsDir = process.env.UPLOADS_DIR ?? "./uploads";
-  return path.join(uploadsDir, "pi_sessions", userId, sessionId);
+  return path.join(getUploadsDir(), "pi_sessions", userId, sessionId);
 }
 
 /**

@@ -3,13 +3,7 @@ import path from "path";
 import type { Bot, Context } from "grammy";
 import type { ImageContent } from "@earendil-works/pi-ai/compat";
 import { isConfigured as isTerminalConfigured, uploadFile } from "@/lib/terminal/client";
-
-/**
- * Local fallback directory for downloaded Telegram files, used when no Open
- * Terminal is configured (the agent has no file tools in that case, so the
- * path is informational only).
- */
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
+import { getUploadsDir } from "@/lib/uploads";
 
 /** Workspace-relative directory (under the user's home inside the container) where Telegram documents are stored */
 export const TELEGRAM_FILES_DIR = "telegram_files";
@@ -125,7 +119,7 @@ export async function downloadAndProcessTelegramFile(
     return { filePath: result.path, size: result.size, mimeType, fileName };
   }
 
-  const userDir = path.join(UPLOADS_DIR, userId, TELEGRAM_FILES_DIR);
+  const userDir = path.join(getUploadsDir(), userId, TELEGRAM_FILES_DIR);
   await fs.mkdir(userDir, { recursive: true });
   const filePath = path.join(userDir, safeName);
   await fs.writeFile(filePath, buffer);
