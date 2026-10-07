@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MessageList } from "@/components/chat/message-list";
+import { streamReducer, type StreamAction } from "@/lib/chat/stream-reducer";
 import type { Message, ToolCallData } from "@/components/chat/types";
 
 /**
@@ -91,8 +92,15 @@ function showFile(id: string, filePath: string): ToolCallData {
   };
 }
 
-function renderTranscript(messages: Message[], compactActivity = true) {
-  return render(<MessageList messages={messages} compactActivity={compactActivity} />);
+function renderTranscript(messages: Message[], compactActivity = true, isLoading = false) {
+  return render(
+    <MessageList messages={messages} compactActivity={compactActivity} isLoading={isLoading} />,
+  );
+}
+
+/** The reasoning row's toggle — its label reports whether the turn is working. */
+function reasoningRow(): HTMLElement {
+  return screen.getByRole("button", { name: /(Thought process|Thinking)/ });
 }
 
 /** The marks in the tool row's sliding window, oldest first. */
@@ -230,6 +238,60 @@ describe("compact activity", () => {
     expect(screen.getByText("quarterly.pdf")).toBeInTheDocument();
   });
 
+  it("reports progress for the whole turn, tools included", () => {
+    // The real event sequence, through the real reducer: a step's message is
+    // saved (losing its `streaming-` id) before its tool reports back, which is
+    // what used to drop the row out of "Thinking..." for the length of a call.
+    const events: StreamAction[] = [
+      { type: "turn_start", turnId: "t1" },
+      { type: "thinking", turnId: "t1", thinking: "Looking at the queue depth." },
+      { type: "tool_start", turnId: "t1", toolCallId: "tc-1", toolName: "infra_exec", args: {} },
+      { type: "message_saved", turnId: "t1", messageId: "a1" },
+      { type: "tool_end", turnId: "t1", toolCallId: "tc-1", result: "ok" },
+      { type: "turn_start", turnId: "t2" },
+    ];
+
+    let state = streamReducer({ messages: [], rootMessageId: null }, events[0]!);
+    state = streamReducer(state, events[1]!);
+    const { rerender } = renderTranscript(state.messages, true, true);
+    expect(reasoningRow()).toHaveTextContent("Thinking...");
+
+    for (const event of events.slice(2)) {
+      state = streamReducer(state, event);
+      rerender(<MessageList messages={state.messages} compactActivity isLoading />);
+      expect(reasoningRow()).toHaveTextContent("Thinking...");
+      expect(reasoningRow().querySelector(".animate-spin")).not.toBeNull();
+    }
+
+    // The reply is its own step, so the run settles and the text takes over as
+    // the thing that is growing.
+    state = streamReducer(state, { type: "token", turnId: "t2", text: "All healthy." });
+    rerender(<MessageList messages={state.messages} compactActivity isLoading />);
+    expect(reasoningRow()).toHaveTextContent("Thought process:");
+
+    // Done: everything is settled, tool cards and all.
+    state = streamReducer(state, { type: "generation_done" });
+    rerender(<MessageList messages={state.messages} compactActivity isLoading={false} />);
+    expect(reasoningRow()).toHaveTextContent("Thought process:");
+    expect(reasoningRow().querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("stops reporting once the turn's final reply is coming", () => {
+    renderTranscript(
+      [
+        step({ id: "a1", thinking: "Checked the box.", toolCalls: [exec("tc-1", "uptime")] }),
+        step({ id: "a2", content: "Everything is healthy." }),
+      ],
+      true,
+      true,
+    );
+
+    // The activity is behind us and the reply is its own block, so the run
+    // settles instead of claiming to still be thinking.
+    expect(reasoningRow()).toHaveTextContent("Thought process:");
+    expect(reasoningRow().querySelector(".animate-spin")).toBeNull();
+  });
+
   it("leaves the step-by-step transcript alone when the setting is off", () => {
     renderTranscript(
       [
@@ -245,5 +307,15 @@ describe("compact activity", () => {
     expect(screen.queryByText(/^Used /)).not.toBeInTheDocument();
     expect(screen.getByText("2 tool calls")).toBeInTheDocument();
     expect(screen.getByText("Thought process")).toBeInTheDocument();
+  });
+
+  it("reports progress across a tool run when the setting is off too", () => {
+    renderTranscript(
+      [step({ id: "a1", thinking: "Checking.", toolCalls: [exec("tc-1", "uptime", "running")] })],
+      false,
+      true,
+    );
+
+    expect(reasoningRow()).toHaveTextContent("Thinking...");
   });
 });
