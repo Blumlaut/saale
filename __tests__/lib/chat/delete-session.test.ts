@@ -35,7 +35,7 @@ vi.mock("@/lib/pi/agent-pool", () => ({
 const mockRm = vi.fn();
 vi.mock("fs/promises", () => ({ default: { rm: (...args: unknown[]) => mockRm(...args) } }));
 
-import { deleteChatSession } from "@/lib/chat/delete-session";
+import { deleteChatSession, deleteChatSessions } from "@/lib/chat/delete-session";
 
 const USER_ID = "user-1";
 const SESSION_ID = "chat-1";
@@ -110,5 +110,49 @@ describe("deleteChatSession", () => {
 
     await expect(deleteChatSession(USER_ID, SESSION_ID)).rejects.toThrow("disk on fire");
     expect(mockDeleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteChatSessions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+      title: where.id,
+    }));
+    mockFindMany.mockResolvedValue([]);
+    mockDeleteMany.mockResolvedValue({ count: 1 });
+    mockDeleteAllImages.mockResolvedValue(undefined);
+    mockRemove.mockResolvedValue(undefined);
+    mockRm.mockResolvedValue(undefined);
+  });
+
+  it("deletes every chat in the batch, each scoped to its owner", async () => {
+    const result = await deleteChatSessions(USER_ID, ["chat-1", "chat-2"]);
+
+    expect(result).toEqual({ deleted: ["chat-1", "chat-2"], failed: [] });
+    expect(mockDeleteMany).toHaveBeenCalledWith({ where: { id: "chat-2", userId: USER_ID } });
+    expect(mockRemove).toHaveBeenCalledWith(`${USER_ID}:chat-2`);
+  });
+
+  it("keeps going when one chat is not the user's", async () => {
+    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "someone-elses-chat" ? null : { title: where.id },
+    );
+
+    const result = await deleteChatSessions(USER_ID, ["chat-1", "someone-elses-chat", "chat-2"]);
+
+    expect(result.deleted).toEqual(["chat-1", "chat-2"]);
+    expect(result.failed).toEqual([
+      { sessionId: "someone-elses-chat", error: "Chat not found: someone-elses-chat" },
+    ]);
+    // The batch is not aborted: the chats around the failure still went.
+    expect(mockDeleteMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("counts a repeated id once", async () => {
+    const result = await deleteChatSessions(USER_ID, ["chat-1", "chat-1"]);
+
+    expect(result).toEqual({ deleted: ["chat-1"], failed: [] });
+    expect(mockDeleteMany).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,19 +1,25 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
+import { LONG_PRESS_MS } from "@/hooks/use-long-press";
 
 /**
  * The sidebar keeps recent chats in the open and folds idle ones (>5 days)
  * into a card, so a long history never buries the chats you are actually in.
  */
 
-const { routerMock } = vi.hoisted(() => ({ routerMock: { push: vi.fn() } }));
+const { routerMock, toastError } = vi.hoisted(() => ({
+  routerMock: { push: vi.fn() },
+  toastError: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
 }));
+
+vi.mock("sonner", () => ({ toast: { error: toastError, success: vi.fn() } }));
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.now();
@@ -43,15 +49,27 @@ const SESSIONS = [
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-function mockSessions(sessions = SESSIONS) {
+/** Server answer for a bulk delete — ids that went, ids that did not. */
+type BulkResponse = { deleted: string[]; failed: Array<{ sessionId: string; error: string }> };
+
+function mockSessions(sessions = SESSIONS, bulk?: BulkResponse) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "DELETE") {
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (url === "/api/chat/sessions/bulk") {
+      const { ids } = JSON.parse(String(init?.body)) as { ids: string[] };
+      return new Response(JSON.stringify(bulk ?? { deleted: ids, failed: [] }), { status: 200 });
     }
     expect(url).toBe("/api/chat/sessions");
     return new Response(JSON.stringify({ sessions }), { status: 200 });
   });
   vi.stubGlobal("fetch", fetchMock);
+}
+
+/** The row's main button — the click target that opens (or selects) a chat. */
+function rowButton(title: string) {
+  return screen.getByText(title).closest("button") as HTMLElement;
 }
 
 async function renderSidebar(activeSessionId?: string, expected = "Fresh chat") {
@@ -71,6 +89,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -160,5 +179,154 @@ describe("SessionSidebar older chats", () => {
       const trigger = screen.getByRole("button", { name: `Actions for ${title}` });
       expect(trigger).toHaveClass("any-pointer-coarse:opacity-100");
     }
+  });
+});
+
+describe("SessionSidebar multi-select", () => {
+  it("picks several chats with ctrl-click and deletes them in one request", async () => {
+    await renderSidebar();
+
+    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowButton("Recent chat"), { ctrlKey: true });
+
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    // Picking a chat is not opening it.
+    expect(routerMock.push).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
+    expect(await screen.findByText("Delete 2 chats?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.queryByText("Fresh chat")).not.toBeInTheDocument());
+    expect(screen.queryByText("Recent chat")).not.toBeInTheDocument();
+    // The selection ends with the deleted chats — the toolbar goes back to a title.
+    expect(screen.getByText("Conversations")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/chat/sessions/bulk",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ ids: ["s-fresh", "s-recent"] }),
+      }),
+    );
+  });
+
+  it("toggles a chat from its own checkbox", async () => {
+    await renderSidebar();
+
+    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Recent chat" }));
+
+    // One toggle per click — the checkbox must not also fire the row's handler.
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Recent chat" }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("toggles a chat off by tapping it, and stops selecting with the last one", async () => {
+    await renderSidebar();
+
+    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowButton("Recent chat"), { ctrlKey: true });
+
+    // A plain tap inside a selection toggles, so the rows stay reachable there.
+    fireEvent.click(rowButton("Fresh chat"));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(routerMock.push).not.toHaveBeenCalled();
+
+    fireEvent.click(rowButton("Recent chat"));
+    expect(screen.getByText("Conversations")).toBeInTheDocument();
+    expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+  });
+
+  it("starts a selection from the row menu and shows checkboxes", async () => {
+    await renderSidebar();
+
+    await revealRowActions("Fresh chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Select chat" }));
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Fresh chat" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("checkbox", { name: "Select Recent chat" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("keeps the row you held selected without opening it", async () => {
+    await renderSidebar();
+
+    vi.useFakeTimers();
+    const row = rowButton("Fresh chat");
+    fireEvent.pointerDown(row, { pointerType: "touch", button: 0, clientX: 10, clientY: 10 });
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    // Browsers still send the click that follows the hold; it must not open the chat.
+    fireEvent.click(row);
+    expect(routerMock.push).not.toHaveBeenCalled();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("drops the hold when the finger scrolls instead", async () => {
+    await renderSidebar();
+
+    vi.useFakeTimers();
+    const row = rowButton("Fresh chat");
+    fireEvent.pointerDown(row, { pointerType: "touch", button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(row, { pointerType: "touch", clientX: 10, clientY: 80 });
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+
+    expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+
+    fireEvent.click(row);
+    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/chat/s-fresh");
+  });
+
+  it("exits the selection with Escape", async () => {
+    await renderSidebar();
+
+    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByText("Conversations")).toBeInTheDocument();
+  });
+
+  it("leaves the chat view when the open chat is among the deleted", async () => {
+    await renderSidebar("s-fresh");
+
+    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Delete 1 selected chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/dashboard/chat"));
+  });
+
+  it("keeps a chat that failed to delete selected for a retry", async () => {
+    mockSessions(SESSIONS, {
+      deleted: ["s-fresh"],
+      failed: [{ sessionId: "s-recent", error: "Chat not found: s-recent" }],
+    });
+    await renderSidebar();
+
+    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowButton("Recent chat"), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.queryByText("Fresh chat")).not.toBeInTheDocument());
+    expect(screen.getByText("Recent chat")).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining("1 of 2"));
   });
 });

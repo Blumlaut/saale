@@ -32,6 +32,7 @@ const MEMORIES_TAB = "src/app/dashboard/settings/tabs/memories-tab.tsx";
 const MCP_TAB = "src/app/dashboard/settings/tabs/mcp-tab.tsx";
 const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
+const SESSION_SIDEBAR = "src/components/chat/session-sidebar.tsx";
 const SETTINGS = "/dashboard/settings";
 
 /** Realistic ED25519 public key — the content that used to widen the dialog. */
@@ -486,6 +487,21 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: "/dashboard/chat",
     sources: ["src/components/chat/mobile-session-sheet.tsx"],
     open: (page) => click(page, '[data-slot="sheet-trigger"]'),
+  },
+  {
+    name: "chat · delete selected chats",
+    path: "/dashboard/chat",
+    sources: [SESSION_SIDEBAR],
+    open: async (page) => {
+      // At phone widths the session list only exists inside the sheet, so the
+      // selection has to be started from there.
+      await gotoChatSession(page, await ensureChatSession(page));
+      await click(page, '[data-slot="sheet-trigger"]');
+      const sheet = page.locator('[data-slot="sheet-content"]:visible').last();
+      await sheet.locator('[data-slot="dropdown-menu-trigger"]').first().click();
+      await click(page, '[role="menuitem"]:has-text("Select chat")');
+      await click(page, 'button[aria-label="Delete 1 selected chat"]');
+    },
   },
   {
     name: "chat · share dialog",
