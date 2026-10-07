@@ -15,11 +15,24 @@ test-results
 .env.*
 !.env.example
 
-# Tests & docs not needed at build time
+# Tests, docs and host tooling not needed at build time
 __tests__
 e2e
+.github
+.pi
+docs
+plans
+searxng
+AGENTS.md
+DESIGN.md
+README.md
+docker-compose*.yml
+
+# Prisma client is generated into node_modules/.prisma, never from here
+prisma/generated
 
 # Logs & misc
 *.log
+*.tsbuildinfo
 .DS_Store
 uploads
