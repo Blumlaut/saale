@@ -52,6 +52,7 @@ import {
   wasTelegramSessionInterrupted,
 } from "./session-registry";
 import { TELEGRAM_AGENT_NAME } from "@/lib/agent-jobs/system-managed";
+import type { CommandOutcome } from "@/lib/commands/types";
 import { TELEGRAM_FORMATTING_GUIDE, SAALE_SYSTEM_PROMPT } from "./prompt";
 
 /**
@@ -794,10 +795,14 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
 /**
  * Compact a Telegram chat session.
  *
- * Recreates the Pi session from persistent JSONL files, runs compaction,
- * and sends the result back to Telegram.
+ * Recreates the Pi session from persistent JSONL files and runs compaction.
+ * The caller (the `/compact` command handler) renders the outcome — nothing is
+ * sent to Telegram from here, so the web and Telegram paths can share one
+ * command definition.
  */
-export async function compactTelegramSession(params: CompactTelegramSessionParams): Promise<void> {
+export async function compactTelegramSession(
+  params: CompactTelegramSessionParams,
+): Promise<CommandOutcome> {
   // Shares the chat's lock with generation: compacting the transcript while a
   // run is still writing to it would summarise a partial conversation, and the
   // summary could end up off the active path.
@@ -808,27 +813,21 @@ export async function compactTelegramSession(params: CompactTelegramSessionParam
 
 interface CompactTelegramSessionParams {
   userId: string;
-  encryptedToken: string;
   telegramChatId: bigint;
-  replyToMessageId?: number | undefined;
 }
 
 /** The body of `compactTelegramSession`, run exclusively per chat. */
-async function runTelegramCompaction(params: CompactTelegramSessionParams): Promise<void> {
-  const { userId, encryptedToken, telegramChatId, replyToMessageId } = params;
+async function runTelegramCompaction(
+  params: CompactTelegramSessionParams,
+): Promise<CommandOutcome> {
+  const { userId, telegramChatId } = params;
 
   // 1. Find the chat session linked to this Telegram chat
   const account = await prisma.telegramAccount.findUnique({
     where: { userId },
   });
   if (!account) {
-    await sendTelegramMessage(
-      encryptedToken,
-      telegramChatId,
-      "⚠️ Telegram integration not configured.",
-      replyToMessageId != null ? { replyToMessageId } : undefined,
-    );
-    return;
+    return { message: "Telegram integration not configured.", tone: "error" };
   }
 
   const tgChat = await prisma.telegramChat.findUnique({
@@ -840,13 +839,7 @@ async function runTelegramCompaction(params: CompactTelegramSessionParams): Prom
     },
   });
   if (!tgChat) {
-    await sendTelegramMessage(
-      encryptedToken,
-      telegramChatId,
-      "⚠️ No active chat session found. Send a message first.",
-      replyToMessageId != null ? { replyToMessageId } : undefined,
-    );
-    return;
+    return { message: "No active chat session found. Send a message first.", tone: "error" };
   }
 
   const sessionId = tgChat.sessionId;
@@ -860,13 +853,10 @@ async function runTelegramCompaction(params: CompactTelegramSessionParams): Prom
   const explicitModelId = definition?.modelId ?? null;
   const resolvedModelConfig = await resolveModelForPurpose(userId, "telegram", explicitModelId);
   if (!resolvedModelConfig) {
-    await sendTelegramMessage(
-      encryptedToken,
-      telegramChatId,
-      "⚠️ No AI model configured. Please select a model in Settings → AI &amp; Models.",
-      replyToMessageId != null ? { replyToMessageId } : undefined,
-    );
-    return;
+    return {
+      message: "No AI model configured. Please select a model in Settings → AI & Models.",
+      tone: "error",
+    };
   }
 
   const modelId = explicitModelId ?? `${resolvedModelConfig.provider}:${resolvedModelConfig.name}`;
@@ -933,38 +923,19 @@ async function runTelegramCompaction(params: CompactTelegramSessionParams): Prom
     const tokensInfo = result?.tokensBefore
       ? ` (was ${result.tokensBefore.toLocaleString()} tokens)`
       : "";
-    await sendTelegramMessage(
-      encryptedToken,
-      telegramChatId,
-      `✅ Conversation compacted${tokensInfo}.`,
-      replyToMessageId != null ? { replyToMessageId } : undefined,
-    );
+    return { message: `Conversation compacted${tokensInfo}.`, tone: "success" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
 
     if (message === "Already compacted") {
-      await sendTelegramMessage(
-        encryptedToken,
-        telegramChatId,
-        "ℹ️ This conversation is already compacted.",
-        replyToMessageId != null ? { replyToMessageId } : undefined,
-      );
-    } else if (message === "Nothing to compact (session too small)") {
-      await sendTelegramMessage(
-        encryptedToken,
-        telegramChatId,
-        "ℹ️ The conversation is too short to compact.",
-        replyToMessageId != null ? { replyToMessageId } : undefined,
-      );
-    } else {
-      console.error("Telegram compaction failed:", err);
-      await sendTelegramMessage(
-        encryptedToken,
-        telegramChatId,
-        "⚠️ Compaction failed. Please try again.",
-        replyToMessageId != null ? { replyToMessageId } : undefined,
-      );
+      return { message: "This conversation is already compacted.", tone: "info" };
     }
+    if (message === "Nothing to compact (session too small)") {
+      return { message: "The conversation is too short to compact.", tone: "info" };
+    }
+
+    console.error("Telegram compaction failed:", err);
+    return { message: "Compaction failed. Please try again.", tone: "error" };
   } finally {
     session.dispose();
   }

@@ -1,7 +1,8 @@
 import { getRedis } from "@/lib/redis";
 
 /**
- * Time-boxed "auto-approve every tool call" mode (the Telegram /stfu command).
+ * Time-boxed "auto-approve every tool call" mode (the `/stfu` command, on both
+ * the web chat and the Telegram bot).
  *
  * When active for a user, the tool approval gate auto-accepts every tool
  * call that would otherwise require approval ("ask" policy, and risky

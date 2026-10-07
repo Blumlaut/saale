@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useImperativeHandle } from "react";
+import { useState, useRef, useCallback, useEffect, useImperativeHandle, useMemo } from "react";
 import { insertQuote as insertQuoteAtCaret } from "@/lib/chat/quote-insert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
+import { searchCommands } from "@/lib/commands/catalog";
+import { SlashCommandMenu } from "./slash-command-menu";
 import type { TokenUsage } from "./types";
 import { ContextCircle } from "./token-usage-display";
 
@@ -47,6 +49,8 @@ interface InputBarProps {
   /** React 19 ref-as-prop for the imperative API above. */
   ref?: React.Ref<InputBarHandle>;
   onSend: (message: string, files?: File[]) => void;
+  /** Runs a slash command picked from the `/` menu. */
+  onCommand?: (name: string) => void;
   /** Current composer text — owned by the parent so drafts survive navigation. */
   value: string;
   onValueChange: (value: string) => void;
@@ -59,9 +63,13 @@ interface InputBarProps {
   onCompact?: () => void;
 }
 
+/** The composer's value while it is still just a command name: `/`, `/mo`, … */
+const COMMAND_QUERY_PATTERN = /^\/([a-z0-9_-]*)$/i;
+
 export function InputBar({
   ref,
   onSend,
+  onCommand,
   value,
   onValueChange,
   isLoading,
@@ -75,6 +83,26 @@ export function InputBar({
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ─── Slash-command picker ────────────────────────────────────────────
+  // The query is non-null only while the composer holds a bare command name —
+  // once the user types a space the menu closes and the text is just a message
+  // (or `/name args`, which the chat interface parses on send).
+  const commandQuery = COMMAND_QUERY_PATTERN.exec(value)?.[1] ?? null;
+  const commandMatches = useMemo(
+    () => (commandQuery === null ? [] : searchCommands("web", commandQuery)),
+    [commandQuery],
+  );
+  const [commandIndex, setCommandIndex] = useState(0);
+  const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
+  const commandMenuOpen =
+    commandQuery !== null && !commandMenuDismissed && commandMatches.length > 0;
+
+  // A new query starts a fresh highlight, and re-arms a dismissed menu.
+  useEffect(() => {
+    setCommandIndex(0);
+    setCommandMenuDismissed(false);
+  }, [commandQuery]);
 
   const autoResize = useCallback(() => {
     if (textareaRef.current) {
@@ -114,7 +142,28 @@ export function InputBar({
   // so it has to say so — even though Stop is only offered for a generation.
   const willQueue = isLoading || !!isCompacting;
 
+  /** Run the command picked from the menu, and hand the composer back. */
+  const selectCommand = useCallback(
+    (name: string) => {
+      onCommand?.(name);
+      onValueChange("");
+      setCommandMenuDismissed(true);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+        textareaRef.current.focus();
+      }
+    },
+    [onCommand, onValueChange],
+  );
+
   const handleSubmit = useCallback(() => {
+    if (commandMenuOpen) {
+      const highlighted = commandMatches[commandIndex];
+      if (highlighted) {
+        selectCommand(highlighted.name);
+        return;
+      }
+    }
     if (!canSend) return;
     const files = pendingFiles.map((f) => f.file);
     onSend(value.trim(), files.length > 0 ? files : undefined);
@@ -123,9 +172,42 @@ export function InputBar({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [value, pendingFiles, canSend, onSend, onValueChange]);
+  }, [
+    commandMenuOpen,
+    commandMatches,
+    commandIndex,
+    selectCommand,
+    value,
+    pendingFiles,
+    canSend,
+    onSend,
+    onValueChange,
+  ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (commandMenuOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setCommandIndex((index) => (index + 1) % commandMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setCommandIndex((index) => (index - 1 + commandMatches.length) % commandMatches.length);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setCommandMenuDismissed(true);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        handleSubmit();
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -220,7 +302,16 @@ export function InputBar({
   }, [value, autoResize]);
 
   return (
-    <div className="border-border/30 border-t pt-2">
+    <div className="border-border/30 relative border-t pt-2">
+      {commandMenuOpen && (
+        <SlashCommandMenu
+          commands={commandMatches}
+          activeIndex={commandIndex}
+          onSelect={selectCommand}
+          onHighlight={setCommandIndex}
+        />
+      )}
+
       {/* Attachment preview strip */}
       {pendingFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-2">

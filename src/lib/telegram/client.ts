@@ -2,6 +2,7 @@ import { Bot, type Context } from "grammy";
 import { convert as convertToTelegramMarkdown } from "telegram-markdown-v2";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { listCommands } from "@/lib/commands/catalog";
 import { TELEGRAM_MAX_MESSAGE_LENGTH, splitMarkdownV2, splitPlainText } from "./message-split";
 
 /** Webhook endpoint pattern */
@@ -57,7 +58,23 @@ export async function validateBotToken(botToken: string) {
 }
 
 /**
- * Register the webhook with Telegram.
+ * Publish the slash commands to Telegram's own `/` menu.
+ *
+ * The list comes from the shared registry, so the bot menu can never drift
+ * from the commands the web chat offers.
+ */
+export async function registerBotCommands(encryptedToken: string): Promise<boolean> {
+  const bot = createBot(encryptedToken);
+  return bot.api.setMyCommands(
+    listCommands("telegram").map((meta) => ({
+      command: meta.name,
+      description: meta.description,
+    })),
+  );
+}
+
+/**
+ * Register the webhook and the command menu with Telegram.
  * Called when a user enables or updates their Telegram integration.
  */
 export async function registerWebhook(
@@ -71,6 +88,11 @@ export async function registerWebhook(
   const result = await bot.api.setWebhook(url, {
     secret_token: webhookSecret,
     drop_pending_updates: false,
+  });
+
+  // A bot menu is a nicety — never let it fail the webhook registration.
+  await registerBotCommands(encryptedToken).catch((err) => {
+    console.error(`Failed to register the Telegram command menu for ${accountId}:`, err);
   });
 
   return result;

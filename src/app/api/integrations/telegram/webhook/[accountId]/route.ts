@@ -3,30 +3,21 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
   processTelegramMessage,
-  compactTelegramSession,
   isWhitelisted,
   upsertWhitelistDisplayName,
 } from "@/lib/telegram/processor";
 import type { TelegramFileInfo } from "@/lib/telegram/files";
-import { buildUnauthorizedMessage, createBot, sendTelegramMessage } from "@/lib/telegram/client";
+import { buildUnauthorizedMessage, createBot } from "@/lib/telegram/client";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
-import { handleModelCallback, sendModelPicker } from "@/lib/telegram/model-selection";
+import { handleCommandPromptCallback, handleTelegramCommand } from "@/lib/telegram/command-prompts";
 import { extractQuotedMessage } from "@/lib/telegram/reply-context";
-import { enableAutoApprove, disableAutoApprove, STFU_DURATION_MS } from "@/lib/pi/auto-approve";
+import { getCommandMeta } from "@/lib/commands/catalog";
+import { parseCommand } from "@/lib/commands/parse";
 import {
   attachTelegramSession,
   interruptTelegramChat,
   nextMessageSeq,
 } from "@/lib/telegram/session-registry";
-
-/**
- * Match a Telegram command like `/model`, `/model@BotName`, or `/model arg`.
- * The optional @botname suffix is stripped by Telegram when the bot is the
- * only one in the chat; handle both forms defensively.
- */
-function isCommand(text: string, command: string): boolean {
-  return text === command || text.startsWith(`${command}@`) || text.startsWith(`${command} `);
-}
 
 /**
  * Extract processable content from a Telegram message.
@@ -154,36 +145,29 @@ export async function POST(
 
   if (callbackQuery && callbackQuery.data) {
     const bot = createBot(account.encryptedToken);
+    const answer = async (text: string, context: string) => {
+      try {
+        await bot.api.answerCallbackQuery(callbackQuery.id, { text, show_alert: false });
+      } catch (err) {
+        console.error(`Failed to answer ${context} callback query:`, err);
+      }
+    };
 
     // Handle approval callbacks (with accountId for user isolation).
     // The approval card is deleted by the run's card tracker when the
     // resolution event reaches it.
-    const result = await handleApprovalCallback(accountId, callbackQuery.data);
-    if (result.handled && result.message) {
-      try {
-        await bot.api.answerCallbackQuery(callbackQuery.id, {
-          text: result.message,
-          show_alert: false,
-        });
-      } catch (err) {
-        console.error("Failed to answer callback query:", err);
-      }
-    } else if (!result.handled) {
-      // Not an approval callback — try the /model picker callback.
-      const modelResult = await handleModelCallback(
+    const approvalResult = await handleApprovalCallback(accountId, callbackQuery.data);
+    if (approvalResult.handled) {
+      if (approvalResult.message) await answer(approvalResult.message, "approval");
+    } else {
+      // Not an approval callback — try a slash-command prompt's button.
+      const commandResult = await handleCommandPromptCallback(
         accountId,
         callbackQuery.data,
         callbackQuery.message,
       );
-      if (modelResult.handled && modelResult.message) {
-        try {
-          await bot.api.answerCallbackQuery(callbackQuery.id, {
-            text: modelResult.message,
-            show_alert: false,
-          });
-        } catch (err) {
-          console.error("Failed to answer model callback query:", err);
-        }
+      if (commandResult.handled && commandResult.message) {
+        await answer(commandResult.message, "command");
       }
     }
 
@@ -231,83 +215,23 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  // 7.5. Handle commands
-  // /compact — compact the current chat session
-  if (isCommand(content.text ?? "", "/compact")) {
-    compactTelegramSession({
+  // 7.5. Slash commands — declared once in the shared registry and dispatched
+  // through it, so a command behaves identically here and in the web chat.
+  // Only names the registry knows are intercepted; anything else (including
+  // paths like `/dashboard/chat`) still reaches the agent as a normal message.
+  const parsedCommand = parseCommand(content.text ?? "");
+  if (parsedCommand && getCommandMeta(parsedCommand.name)) {
+    handleTelegramCommand({
+      accountId: account.id,
       userId: account.userId,
       encryptedToken: account.encryptedToken,
       telegramChatId,
+      name: parsedCommand.name,
+      args: parsedCommand.args,
       replyToMessageId: message.message_id,
     }).catch((err) => {
-      console.error("Telegram /compact command failed:", err);
+      console.error(`Telegram /${parsedCommand.name} failed:`, err);
     });
-    return NextResponse.json({ ok: true });
-  }
-
-  // /model — inline-keyboard picker for the user's Telegram model
-  if (isCommand(content.text ?? "", "/model")) {
-    sendModelPicker({
-      userId: account.userId,
-      encryptedToken: account.encryptedToken,
-      telegramChatId,
-      replyToMessageId: message.message_id,
-    }).catch((err) => {
-      console.error("Telegram /model command failed:", err);
-    });
-    return NextResponse.json({ ok: true });
-  }
-
-  // /stfu — auto-accept ALL tool use requests that require approval for 2
-  // hours, regardless of per-tool "ask"/"auto" preferences. Tools disabled
-  // with the "off" policy stay disabled. /stfu stop cancels early.
-  const stfuText = content.text ?? "";
-  if (isCommand(stfuText, "/stfu")) {
-    const reply = { replyToMessageId: message.message_id } as const;
-    // Strip the command and any @botname suffix to get the argument.
-    const stfuArg = stfuText.replace(/^\/stfu(@\w+)?/, "").trim();
-    if (stfuArg === "stop") {
-      disableAutoApprove(account.userId)
-        .then(() =>
-          sendTelegramMessage(
-            account.encryptedToken,
-            telegramChatId,
-            "✅ STFU mode cancelled. Tool approvals are back to your normal policies.",
-            reply,
-          ),
-        )
-        .catch((err) => {
-          console.error("Telegram /stfu stop failed:", err);
-        });
-    } else if (stfuArg !== "") {
-      sendTelegramMessage(
-        account.encryptedToken,
-        telegramChatId,
-        "Usage: /stfu (auto-approve all tool calls for 2h) or /stfu stop (cancel).",
-        reply,
-      ).catch((err) => {
-        console.error("Telegram /stfu usage reply failed:", err);
-      });
-    } else {
-      enableAutoApprove(account.userId, STFU_DURATION_MS)
-        .then((until) => {
-          const time = new Date(until).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-          return sendTelegramMessage(
-            account.encryptedToken,
-            telegramChatId,
-            `🤐 STFU mode ON for 2 hours — tool approvals are auto-accepted until ${time}, ` +
-              `regardless of your ask/auto preferences. Tools you've disabled stay off. ` +
-              `Send /stfu stop to cancel.`,
-            reply,
-          );
-        })
-        .catch((err) => {
-          console.error("Telegram /stfu command failed:", err);
-        });
-    }
     return NextResponse.json({ ok: true });
   }
 
