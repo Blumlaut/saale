@@ -7,6 +7,7 @@ import {
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 import { createUserMcpExtension } from "@/lib/mcp/servers";
+import { createCodemodeApprovalExtension } from "./codemode-approval";
 import { createMcpToolPolicyExtension } from "./mcp-tool-policy";
 import { createSessionSettings } from "./settings";
 import type { ApprovalRequest } from "./tool-approval-gate";
@@ -126,8 +127,16 @@ function baseExtensionFactories(): ExtensionFactory[] {
 export interface AgentResourceOptions {
   prompt: string;
   cwd: string;
-  /** Per-user MCP servers plus the approval channel that gates their calls. */
-  mcp?: {
+  /**
+   * The user behind the tools Pi registers after the session exists.
+   *
+   * `codemode` comes from its extension and MCP tools from the user's servers —
+   * both are registered at `session_start`, so neither passes through
+   * `wrapTool` and each needs a gate of its own. Passing this connects those
+   * servers and gates every registered tool with the user's approval policies;
+   * a run with nobody to ask (an agent job) passes nothing and gets neither.
+   */
+  interactive?: {
     userId: string;
     /** ChatSession/agent session id used on approval cards. */
     sessionId: string;
@@ -139,27 +148,32 @@ export interface AgentResourceOptions {
 /**
  * Build a resource loader for a session that can call tools.
  *
- * Adds the extensions Saale runs (codemode) and, when the caller supplies an
- * MCP context, the user's servers and the gate that enforces their approval
- * policies.
+ * Adds the extensions Saale runs (codemode) and, given an interactive context,
+ * the user's MCP servers with the gates that enforce their approval policies.
  */
 export async function createAgentResourceLoader(
   options: AgentResourceOptions,
 ): Promise<ResourceLoader> {
   const extensionFactories = baseExtensionFactories();
 
-  if (options.mcp) {
-    const mcp = await createUserMcpExtension(options.mcp.userId);
+  if (options.interactive) {
+    const interactive = options.interactive;
+    const mcp = await createUserMcpExtension(interactive.userId);
+
+    // The script gate needs the servers' policies: a script reaches MCP tools
+    // like any other, and whether one of those calls asks is resolved the same
+    // way a direct call resolves it.
+    extensionFactories.push(
+      createCodemodeApprovalExtension({
+        ...interactive,
+        mcpServerPolicies: mcp?.policies ?? {},
+      }),
+    );
+
     if (mcp) {
       extensionFactories.push(
         mcp.extension,
-        createMcpToolPolicyExtension({
-          userId: options.mcp.userId,
-          sessionId: options.mcp.sessionId,
-          serverPolicies: mcp.policies,
-          toolPolicies: options.mcp.toolPolicies,
-          emitApprovalRequest: options.mcp.emitApprovalRequest,
-        }),
+        createMcpToolPolicyExtension({ ...interactive, serverPolicies: mcp.policies }),
       );
     }
   }

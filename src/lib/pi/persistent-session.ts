@@ -33,9 +33,9 @@ import type { ApprovalRequest } from "./tool-approval-gate";
  * @param options.thinkingLevel - Thinking level for the model
  * @param options.wrapTool - Optional wrapper applied to every resolved tool (e.g. approval gate)
  * @param options.systemPrompt - Custom system prompt (served via resource loader)
- * @param options.emitApprovalRequest - Approval channel for MCP tool calls
- * @param options.toolPolicies - Per-tool approval policies (MCP tools are gated by them)
- * @param options.mcp - Connect the user's MCP servers for this session
+ * @param options.emitApprovalRequest - Approval channel for the tools Pi extensions register (codemode, MCP)
+ * @param options.toolPolicies - Per-tool approval policies (those tools are gated by them)
+ * @param options.mcp - Give the session its interactive tools: connect the user's MCP servers and gate what the extensions register
  */
 export async function createPersistentSession(options: {
   userId: string;
@@ -52,7 +52,7 @@ export async function createPersistentSession(options: {
   wrapTool?: (tool: ToolDefinition) => ToolDefinition;
   /** System prompt served through the resource loader. */
   systemPrompt: string;
-  /** Approval channel for MCP tool calls; without it MCP servers are not connected. */
+  /** Approval channel for the tools Pi extensions register; without it they are neither connected nor gated. */
   emitApprovalRequest?: ((request: ApprovalRequest) => void) | undefined;
   toolPolicies?: Record<string, string> | null | undefined;
   mcp?: boolean;
@@ -100,7 +100,7 @@ export async function createPersistentSession(options: {
       cwd: options.sessionDir,
       ...(options.mcp && options.emitApprovalRequest
         ? {
-            mcp: {
+            interactive: {
               userId: options.userId,
               sessionId: options.sessionId,
               toolPolicies: options.toolPolicies,

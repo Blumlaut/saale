@@ -47,6 +47,10 @@ export async function sendTelegramApprovalRequest(
   const label = findToolInfo(request.toolName)?.label ?? request.toolName;
   const summary = request.summary ?? summarizeToolAction(request.toolName, request.args);
 
+  // The calls one decision stands in for. A script's approval covers the calls
+  // it announced, so the card names them: the user is deciding on those.
+  const covered = (request.batch?.tools ?? []).map((name) => findToolInfo(name)?.label ?? name);
+
   // Truncate args for display
   const argsPreview = formatArgsPreview(request.args);
 
@@ -54,6 +58,12 @@ export async function sendTelegramApprovalRequest(
     `⚡ <b>Approval required</b>\n\n` +
     `<b>${escapeHtml(label)}</b>` +
     (summary ? `: <b>${escapeHtml(summary)}</b>` : "") +
+    (covered.length > 0
+      ? `\n\n<b>One approval covers:</b> ${escapeHtml(covered.join(", "))}` +
+        (request.batch?.dynamic
+          ? `\n<i>It can also call tools by name — those ask on their own.</i>`
+          : "")
+      : "") +
     `\n\n<code>${escapeHtml(request.toolName)}</code> · session ${request.sessionId.slice(0, 8)}...\n\n` +
     (argsPreview ? `<code>${escapeHtml(argsPreview)}</code>\n\n` : "") +
     `<i>Approve or deny this tool call. It will auto-deny in 5 minutes.</i>`;

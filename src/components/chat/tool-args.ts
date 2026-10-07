@@ -1,6 +1,5 @@
 /**
- * Display helpers for tool calls: readable argument formatting, and parsing a
- * codemode script for the tools it calls.
+ * Display helpers for tool calls: readable argument formatting.
  *
  * `JSON.stringify` escapes newlines inside string values, so a multi-line shell
  * command or codemode script is stored — and rendered — as `"line1\nline2"`:
@@ -10,27 +9,9 @@
  *
  * Shared by the tool-call cards and the approval prompt so an approval shows
  * the same readable command the user will later see in the transcript.
+ * (Reading a codemode script for the tools it reaches lives in
+ * `@/lib/pi/codemode-script`, where the approval gate can share it.)
  */
-
-/** `tools.<name>(` calls in a codemode script. */
-const TOOL_CALL_PATTERN = /\btools\.([A-Za-z_$][\w$]*)\s*\(/g;
-
-/**
- * Tool names a codemode script calls, in first-use order.
- *
- * The transcript only records the `codemode` call itself — the individual calls
- * a script makes are not assistant message content, so they exist only as live
- * stream events and are gone on reload. Reading them off the script (which *is*
- * recorded, in `args.code`) is the only way to tell the user what a past script
- * did.
- */
-export function extractScriptToolNames(code: string): string[] {
-  const names = new Set<string>();
-  for (const match of code.matchAll(TOOL_CALL_PATTERN)) {
-    if (match[1]) names.add(match[1]);
-  }
-  return [...names];
-}
 
 export interface FormatToolArgsOptions {
   /** Only the first N arguments (the approval prompt shows a short preview). */

@@ -356,7 +356,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     resourceLoader: await createAgentResourceLoader({
       prompt: baseSystemPrompt + TELEGRAM_FORMATTING_GUIDE,
       cwd: sessionDir,
-      mcp: { userId, sessionId, toolPolicies, emitApprovalRequest },
+      interactive: { userId, sessionId, toolPolicies, emitApprovalRequest },
     }),
     ...thinkingLevelOption(definition.thinkingLevel),
   });

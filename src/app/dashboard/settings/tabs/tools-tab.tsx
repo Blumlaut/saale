@@ -12,10 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Wrench, Info, ChevronDown, ChevronRight } from "lucide-react";
+import { Wrench, Info, ChevronDown, ChevronRight, Code2 } from "lucide-react";
 import { SaveFooter } from "../components/save-footer";
 import type { UserSettings, ToolConfig, ToolExposureConfig } from "../types";
-import type { ToolPolicy } from "@/lib/pi/tool-infos";
+import type { ToolInfo, ToolPolicy } from "@/lib/pi/tool-infos";
 import {
   DEFAULT_TOOL_CONFIG,
   DEFAULT_TOOL_EXPOSURE,
@@ -24,7 +24,7 @@ import {
   TOOL_EXPOSURES,
   type ToolExposure,
 } from "@/lib/pi/tool-categories";
-import { getToolsByCategory, getDefaultPolicy } from "@/lib/pi/tool-infos";
+import { getToolsByCategory, getUncategorizedTools, getDefaultPolicy } from "@/lib/pi/tool-infos";
 
 interface ToolsTabProps {
   settings: UserSettings | null;
@@ -49,6 +49,7 @@ export function ToolsTab({
   const toolConfig = (settings?.defaultToolConfig ?? DEFAULT_TOOL_CONFIG) as Required<ToolConfig>;
   const toolPolicies = (settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>;
   const toolExposure = (settings?.toolExposure ?? {}) as ToolExposureConfig;
+  const uncategorizedTools = getUncategorizedTools();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const toggleExpanded = useCallback((key: string) => {
@@ -115,9 +116,10 @@ export function ToolsTab({
                 <b>Via codemode</b> — hidden from the model; it writes a short script to call them.{" "}
                 <b>Search only</b> — hidden until found with a tool search. The last two save
                 context on categories you rarely use. <b>Allow</b> — runs automatically. <b>Auto</b>{" "}
-                — auto-approves safe commands, asks for risky ones (infra exec only). <b>Ask</b> —
-                requires your approval. <b>Block</b> — never runs. Tools from an MCP server follow
-                their server&apos;s approval setting in the MCP tab.
+                — decides from what the call does: risky commands, and scripts that reach a tool
+                needing approval, ask; everything else runs. <b>Ask</b> — requires your approval.{" "}
+                <b>Block</b> — never runs. Tools from an MCP server follow their server&apos;s
+                approval setting in the MCP tab.
               </p>
             </div>
           </div>
@@ -215,42 +217,14 @@ export function ToolsTab({
                         </div>
 
                         <div className="space-y-1.5">
-                          {tools.map((tool) => {
-                            const policy = toolPolicies[tool.name] ?? getDefaultPolicy(tool.name);
-
-                            return (
-                              <div
-                                key={tool.name}
-                                className="flex items-center justify-between gap-3"
-                              >
-                                <div className="min-w-0 space-y-0">
-                                  <span className="text-sm">{tool.label}</span>
-                                  <span className="text-muted-foreground text-xs">
-                                    {" "}
-                                    - {tool.description}
-                                  </span>
-                                </div>
-                                <Select
-                                  value={policy}
-                                  onValueChange={(value) => {
-                                    if (value) handlePolicyChange(tool.name, value as ToolPolicy);
-                                  }}
-                                >
-                                  <SelectTrigger className="w-24 shrink-0">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent align="end">
-                                    <SelectItem value="allow">Allow</SelectItem>
-                                    {(tool.name === "infra_exec" || tool.name === "bash") && (
-                                      <SelectItem value="auto">Auto</SelectItem>
-                                    )}
-                                    <SelectItem value="ask">Ask</SelectItem>
-                                    <SelectItem value="off">Block</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            );
-                          })}
+                          {tools.map((tool) => (
+                            <PolicyRow
+                              key={tool.name}
+                              tool={tool}
+                              policy={toolPolicies[tool.name] ?? getDefaultPolicy(tool.name)}
+                              onChange={handlePolicyChange}
+                            />
+                          ))}
                         </div>
                       </div>
                     )}
@@ -259,10 +233,84 @@ export function ToolsTab({
               })}
             </div>
           </div>
+
+          {/* Tools no category owns: active whatever the switches above say, so
+              they carry a policy and no toggle of their own. */}
+          {uncategorizedTools.length > 0 && (
+            <div className="px-6 pb-4">
+              <Separator className="mx-2" />
+              <div className="flex items-center gap-3 py-3">
+                <Code2 className="text-muted-foreground h-4 w-4 shrink-0" />
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium">Always active</Label>
+                  <p className="text-muted-foreground text-xs">
+                    Not tied to a category — active whenever the session can call tools
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 pl-7">
+                {uncategorizedTools.map((tool) => (
+                  <PolicyRow
+                    key={tool.name}
+                    tool={tool}
+                    policy={toolPolicies[tool.name] ?? getDefaultPolicy(tool.name)}
+                    onChange={handlePolicyChange}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </GlassPanelContent>
       </GlassPanel>
 
       <SaveFooter saving={saving} saveStatus={saveStatus} onSave={onSave} />
+    </div>
+  );
+}
+
+/**
+ * One tool's approval policy.
+ *
+ * `Auto` is offered where it means something: the tools whose default policy is
+ * `auto` are the ones whose gate decides from what the call does — a shell
+ * command, or the tools a script reaches (see the policy docs in
+ * `@/lib/pi/tool-infos`). A tool that already carries `auto` keeps the option
+ * even when it is not the default, so the value stays selectable.
+ */
+function PolicyRow({
+  tool,
+  policy,
+  onChange,
+}: {
+  tool: ToolInfo;
+  policy: ToolPolicy;
+  onChange: (toolName: string, policy: ToolPolicy) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0 space-y-0">
+        <span className="text-sm">{tool.label}</span>
+        <span className="text-muted-foreground text-xs"> - {tool.description}</span>
+      </div>
+      <Select
+        value={policy}
+        onValueChange={(value) => {
+          if (value) onChange(tool.name, value as ToolPolicy);
+        }}
+      >
+        <SelectTrigger className="w-24 shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end">
+          <SelectItem value="allow">Allow</SelectItem>
+          {(tool.defaultPolicy === "auto" || policy === "auto") && (
+            <SelectItem value="auto">Auto</SelectItem>
+          )}
+          <SelectItem value="ask">Ask</SelectItem>
+          <SelectItem value="off">Block</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 }

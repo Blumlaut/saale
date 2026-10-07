@@ -207,7 +207,7 @@ export async function createChatAgentSession(options: {
   toolPolicies: Record<string, string> | null | undefined;
   /** The approval gate. Omitting it runs every tool unapproved. */
   wrapTool: (tool: ToolDefinition) => ToolDefinition;
-  /** Approval channel for MCP tool calls (see MCP below). */
+  /** Approval channel for the tools Pi extensions register (see Codemode below). */
   emitApprovalRequest: (request: ApprovalRequest) => void;
 }): Promise<{ session: AgentSession; sessionDir: string }>;
 ```
@@ -246,6 +246,46 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
   supplies through `customTools` — that is how `read`/`bash`/`edit`/`write` and
   the Saale tool categories remain active.
 
+#### The script is the approval unit
+
+`codemode` is registered by its extension at `session_start`, so unlike Saale's
+own tools it never passes through `wrapTool`. `createCodemodeApprovalExtension()`
+(`src/lib/pi/codemode-approval.ts`, wired in `createAgentResourceLoader` under the
+`interactive` context) gates it on the `tool_call` event instead.
+
+A script's calls each carry their own policy, so gating them one by one puts a
+card in front of the user per call — the same decision, asked N times. Instead
+the script is the approval unit: one card **listing the calls that would ask on
+their own**, and one click that stands in for all of them.
+
+- **What a card covers** is read from the script source
+  (`readScriptToolReferences`, `src/lib/pi/codemode-script.ts`; shared with the
+transcript card) and resolved against the registry (`pi.getAllTools()` plus
+  `pi.getActiveTools()`, Pi's own callable rule — `codemode` itself is
+  `model-only`, so a script can never start a script).
+- **Only `ask` tools are covered.** A command-aware `auto` tool (`bash`,
+  `infra_exec`) keeps its per-call gate: its decision is made from the command,
+  which only exists at the call, where a card can show it. A tool the script
+  reaches by a computed name is covered by nothing and asks for itself — the
+  card says so (`dynamic`).
+- **The grant** is recorded by `grantApprovalScope()`
+  (`src/lib/pi/approval-scope.ts`) against the call the user approved, and every
+  gate — `wrapWithApprovalGate` and the MCP extension — consults
+  `isApprovalScopeGranted()` before asking about a nested call
+  (`<parent>/<n>`). It is process-local (the nested calls run where the wait
+  settled), released when the script's result arrives, and expires with the
+  approval window. **A new gate must consult it too**, or a covered call will ask
+  again.
+- **The policy for `codemode` itself** decides whether a script asks at all:
+  `off` blocks scripts outright (nothing else can — no other gate sees them),
+  `ask` always asks, and `auto` (the default) asks only when a script reaches a
+  tool that would ask. `allow` runs the script as one step and leaves every call
+  to its own policy. All three gates resolve policy through `resolveToolPolicy()`
+  (`src/lib/pi/tool-policy.ts`) so they cannot disagree.
+- `codemode` is in the tool catalog with no category (it is active whatever the
+  category switches say), so the settings UI lists it in its own "Always active"
+  group.
+
 ## MCP servers (per user)
 
 `src/lib/mcp/` holds the whole feature: `shared.ts` (client-safe rules),
@@ -264,8 +304,9 @@ loadConfig })`. Never let the MCP extension read the host's Pi directory: it
 - **MCP tools must be gated.** They are registered _after_ the session is built,
   so `wrapTool` never sees them. `createMcpToolPolicyExtension()` (an inline
   extension on `tool_call`) applies the user's per-tool policy, then the
-  server's policy, then `ask`. Wire it wherever `createAgentResourceLoader` is
-  called with an `mcp` context, and pass the same approval channel the session's
+  server's policy, then `ask`, and honours an approval scope an approved script
+  already granted. Wire it wherever `createAgentResourceLoader` is called with
+  an `interactive` context, and pass the same approval channel the session's
   tool gate uses.
 - **A config change must evict the user's pooled chats** (`evictUserSessions`)
   — a pooled session's extensions are fixed at creation.
@@ -290,15 +331,16 @@ loadConfig })`. Never let the MCP extension read the host's Pi directory: it
   store — not re-enabling the default provider.
 - **Interactive sessions only.** `createAgentResourceLoader` connects MCP for
   web chat and Telegram, which can both present an approval card. Unattended
-  agent jobs pass no `mcp` context: they have no approval channel, so an `ask`
-  server could only block, and running third-party tools unattended is not a
-  decision this code makes for the user.
+  agent jobs pass no `interactive` context: they have no approval channel, so an
+  `ask` server could only block, and running third-party tools unattended is not
+  a decision this code makes for the user. (The same context gates `codemode`,
+  for the same reason.)
 
 ```ts
 const resourceLoader = await createAgentResourceLoader({
   prompt,
   cwd: sessionDir,
-  mcp: { userId, sessionId, toolPolicies, emitApprovalRequest },
+  interactive: { userId, sessionId, toolPolicies, emitApprovalRequest },
 });
 const { session } = await createAgentSession({ /* … */ resourceLoader });
 await startSessionExtensions(session);

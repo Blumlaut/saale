@@ -39,7 +39,7 @@ import {
   restoreQueuedMessage,
 } from "@/lib/chat/queue";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
-import { getPendingApprovals } from "@/lib/pi/tool-approval-gate";
+import { getPendingApprovals, toApprovalPayload } from "@/lib/pi/tool-approval-gate";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -528,13 +528,7 @@ export async function GET(
           //    events keep it in sync afterwards.
           const pendingApprovals = await getPendingApprovals(sessionId);
           dispatcher.emitLocal(controller, "approvals_snapshot", {
-            approvals: pendingApprovals.map((a) => ({
-              toolCallId: a.toolCallId,
-              toolName: a.toolName,
-              args: a.args,
-              summary: a.summary ?? null,
-              expiresAt: new Date(a.expiresAt).toISOString(),
-            })),
+            approvals: pendingApprovals.map(toApprovalPayload),
           });
 
           // ── Idle: nothing to stream right now — emit done so the client
