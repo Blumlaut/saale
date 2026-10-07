@@ -72,7 +72,24 @@ interface MessageListProps {
   compactActivity?: boolean;
 }
 
-const THRESHOLD = 80; // px from bottom to consider "at bottom"
+const BOTTOM_EPSILON_PX = 1; // px from the tail that still counts as the tail
+/** How close to the tail, while scrolling *toward* it, counts as arriving. */
+const RETURN_BAND_PX = 80;
+/** Touch drag distance that counts as a deliberate scroll, not a tap. */
+const TOUCH_SLOP_PX = 4;
+
+/** The scroll offset that pins a container to its tail. */
+const tailOffset = (el: HTMLElement) => Math.max(0, el.scrollHeight - el.clientHeight);
+
+/**
+ * Is the view sitting on the tail (within `band`)?
+ *
+ * Deliberately tight by default. A follow leaves the view clamped exactly at the
+ * tail, so anything further away was moved by the user — and the old 80px "at
+ * bottom" band is what let auto-scroll re-arm itself from the user's own scroll
+ * event and pull a wheel tick straight back down.
+ */
+const atTail = (el: HTMLElement, band = BOTTOM_EPSILON_PX) => tailOffset(el) - el.scrollTop <= band;
 
 /**
  * Rendering window. A long transcript is thousands of DOM nodes (markdown,
@@ -114,18 +131,18 @@ export const MessageList = memo(
     // enableAutoScroll (send, approval). Kept separate from isAtBottom,
     // which is purely scroll-derived and also selects the render window.
     const [autoScroll, setAutoScroll] = useState(true);
-    /** `autoScroll` for the effect and the input handlers below. They must read
-     * it synchronously: a token can land in the same frame as the user's wheel,
+    /** `autoScroll` for the follow effect and the handlers below. They must read
+     * it synchronously: a token can commit in the same frame as the user's wheel,
      * and a stale `true` would drag the view back down over them. */
     const autoScrollRef = useRef(true);
     const armAutoScroll = useCallback((armed: boolean) => {
       autoScrollRef.current = armed;
       setAutoScroll(armed);
     }, []);
-    /** Where the last known reading position is. Updated by every scroll event
-     * and by our own tail-follow, so a position we have not seen means somebody
-     * else moved the view — the user. */
-    const observedScrollTopRef = useRef(0);
+    /** The position the last scroll event reported. Every movement reaches us
+     * as a scroll event — ours, the user's, the browser's — and unlike a read
+     * after a programmatic scroll, a dispatched event is never stale. */
+    const observedTopRef = useRef(0);
     const touchStartYRef = useRef<number | null>(null);
     const [hasJobs, setHasJobs] = useState<boolean | null>(null);
 
@@ -165,25 +182,64 @@ export const MessageList = memo(
     const handleScroll = useCallback(() => {
       const el = containerRef.current;
       if (!el) return;
-      observedScrollTopRef.current = el.scrollTop;
-      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const atBottom = distFromBottom <= THRESHOLD;
+      const atBottom = atTail(el);
+      // A follow only ever moves the view *down*, so a position above the last
+      // one we saw cannot be ours: the user dragged the scrollbar, pressed a
+      // key, or the window changed under them. Their position wins.
+      const movedUp = el.scrollTop < observedTopRef.current - BOTTOM_EPSILON_PX;
+      const movedDown = el.scrollTop > observedTopRef.current + BOTTOM_EPSILON_PX;
+      observedTopRef.current = el.scrollTop;
       setIsAtBottom(atBottom);
-      armAutoScroll(atBottom);
       // Reading back: pin the window where the user left it, so arriving turns
       // only append below. Back at the bottom, follow the tail again.
       setPinnedStart(atBottom ? null : windowStart);
+      if (atBottom || (movedDown && atTail(el, RETURN_BAND_PX))) {
+        // On the tail, or scrolling back down into it: following is what they
+        // want. Gated on direction, so a wheel *up* can never re-arm this way.
+        armAutoScroll(true);
+      } else if (movedUp) {
+        armAutoScroll(false);
+      }
     }, [windowStart, armAutoScroll]);
 
-    // Input drives the view, never the other way round: wheel and touch release
-    // auto-scroll as it happens, before the follow effect can pull the view back
-    // to the tail. Reading back down again re-arms it through handleScroll.
+    // Input drives the view, never the other way round: wheel, touch and keys
+    // release auto-scroll as they happen, before the follow effect can pull the
+    // view back to the tail. Scrolling back down to the tail re-arms it.
     const handleWheel = useCallback(
       (e: React.WheelEvent) => {
         const el = containerRef.current;
-        // `scrollTop > 0`: a short transcript cannot scroll up, so leave
-        // auto-scroll armed for the turns still arriving.
-        if (e.deltaY < 0 && el && el.scrollTop > 0) armAutoScroll(false);
+        if (!el) return;
+        // `scrollTop > 0`: a transcript that fits cannot scroll up, so an
+        // upward wheel there is not the user leaving the tail.
+        if (e.deltaY < 0) {
+          if (el.scrollTop > 0) armAutoScroll(false);
+        } else if (e.deltaY > 0 && atTail(el)) {
+          armAutoScroll(true);
+        }
+      },
+      [armAutoScroll],
+    );
+
+    const handlePointerDown = useCallback(
+      (e: React.PointerEvent) => {
+        const el = containerRef.current;
+        if (!el) return;
+        // A press in the scrollbar gutter (inside the container's box, outside
+        // its content area) starts a thumb drag — a scroll input like any other.
+        const gutter = el.offsetWidth - el.clientWidth;
+        if (gutter > 0 && e.nativeEvent.offsetX >= el.clientWidth) armAutoScroll(false);
+      },
+      [armAutoScroll],
+    );
+
+    const handleKeyDown = useCallback(
+      (e: React.KeyboardEvent) => {
+        const target = e.target as HTMLElement | null;
+        // Keys typed into a message's editor are not a scroll.
+        if (target?.closest("input, textarea, [contenteditable='true']")) return;
+        if (e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") {
+          armAutoScroll(false);
+        }
       },
       [armAutoScroll],
     );
@@ -198,8 +254,12 @@ export const MessageList = memo(
         const start = touchStartYRef.current;
         const y = e.touches[0]?.clientY;
         if (start === null || y === undefined || !el) return;
-        // Finger dragged down pulls earlier turns back into view: reading back.
-        if (y - start > 4 && el.scrollTop > 0) armAutoScroll(false);
+        if (y - start > TOUCH_SLOP_PX) {
+          // Finger dragged down pulls earlier turns back into view: reading back.
+          if (el.scrollTop > 0) armAutoScroll(false);
+        } else if (start - y > TOUCH_SLOP_PX && atTail(el)) {
+          armAutoScroll(true);
+        }
       },
       [armAutoScroll],
     );
@@ -207,10 +267,7 @@ export const MessageList = memo(
     // Jump to the tail and re-arm auto-scroll (button click, send, approval).
     const jumpToBottom = useCallback(() => {
       const el = containerRef.current;
-      if (el) {
-        el.scrollTop = el.scrollHeight;
-        observedScrollTopRef.current = el.scrollTop;
-      }
+      if (el) el.scrollTop = el.scrollHeight;
       // Set state directly too: a programmatic scroll may not emit a scroll
       // event (e.g. already at the bottom), and the button must hide now.
       setIsAtBottom(true);
@@ -235,22 +292,13 @@ export const MessageList = memo(
     // Follow the tail on every content change while auto-scroll is armed.
     // Scrolling up disarms it (reading position is preserved through reloads);
     // the jump button, a send, or an approval re-arms it.
-    // Before moving anything, check that the view is still where we left it. A
-    // position we never set means the user moved it — a scrollbar drag whose
-    // scroll event has not been dispatched yet, say — and an armed flag that is
-    // one frame stale must never win over that.
     // Instant, not smooth — queued smooth scrolls lag a fast token stream,
     // which is what made the old auto-scroll feel flaky.
     useEffect(() => {
       const el = containerRef.current;
       if (!el || !autoScrollRef.current) return;
-      if (Math.abs(el.scrollTop - observedScrollTopRef.current) > 1) {
-        armAutoScroll(false);
-        return;
-      }
       bottomRef.current?.scrollIntoView({ behavior: "auto" });
-      observedScrollTopRef.current = el.scrollTop;
-    }, [messages, autoScroll, armAutoScroll]);
+    }, [messages, autoScroll]);
 
     if (messages.length === 0) {
       // While a generation is loading, never show the "Start a conversation"
@@ -341,6 +389,8 @@ export const MessageList = memo(
           className="flex-1 overflow-y-auto"
           onScroll={handleScroll}
           onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onKeyDown={handleKeyDown}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
         >
