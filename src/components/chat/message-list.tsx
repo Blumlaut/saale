@@ -9,8 +9,7 @@ import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
 import { SelectionQuoteButton } from "./selection-quote-button";
-import { ToolCallView } from "./tool-call-view";
-import { ToolCallRun } from "./tool-call-run";
+import { ToolCallGroup } from "./tool-call-group";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages } from "@/lib/chat/group-messages";
@@ -684,15 +683,9 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                 </div>
               )}
 
-            {/* Tool calls — a turn's parallel calls collapse into one row */}
+            {/* Tool calls — the turn's work collapses, its shared files do not */}
             {message.toolCalls && message.toolCalls.length > 0 && (
-              <div className="space-y-1">
-                {message.toolCalls.length > 1 ? (
-                  <ToolCallRun toolCalls={message.toolCalls} />
-                ) : (
-                  <ToolCallView toolCall={message.toolCalls[0]!} />
-                )}
-              </div>
+              <ToolCallGroup toolCalls={message.toolCalls} />
             )}
           </div>
         ))}

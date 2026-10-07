@@ -20,8 +20,8 @@ import type { ToolCallData } from "./types";
  * preview and a download — rather than a report of what a call did, so it has
  * no card model to describe. Everything else is data in `./tool-descriptors`.
  *
- * The owner's path: `MessageList` renders `ToolCallView`, which resolves
- * through here. The share viewer renders `RedactedToolCall` directly, so a
+ * The owner's path: `MessageList` renders `ToolCallGroup`, which resolves each
+ * call through here. The share viewer renders `RedactedToolCall` directly, so a
  * descriptor added below can never reach a public page —
  * `__tests__/share-redaction-coverage.test.ts` enforces that.
  */
@@ -32,6 +32,11 @@ export type ToolCardRenderer = ComponentType<{ toolCall: ToolCallData }>;
 interface ToolCardRoute {
   names?: readonly string[];
   prefixes?: readonly string[];
+  /**
+   * The call hands the user something to look at instead of reporting work.
+   * `ToolCallGroup` renders these open, outside the collapsed run.
+   */
+  attachment?: true;
   render: ToolCardRenderer;
 }
 
@@ -66,7 +71,7 @@ function route(descriptor: ToolDescriptor): ToolCardRoute {
 
 /** First match wins, so the order below is the routing table. */
 const ROUTES: readonly ToolCardRoute[] = [
-  { names: ["show_file"], render: ShowFileCard },
+  { names: ["show_file"], attachment: true, render: ShowFileCard },
   route(webToolDescriptor),
   route(mailToolDescriptor),
   route(calendarToolDescriptor),
@@ -74,11 +79,40 @@ const ROUTES: readonly ToolCardRoute[] = [
   route(codemodeDescriptor),
 ];
 
+/** The route that owns a tool name — the first match, as in the table. */
+function findRoute(name: string): ToolCardRoute | undefined {
+  return ROUTES.find(
+    (toolRoute) =>
+      toolRoute.names?.includes(name) ||
+      toolRoute.prefixes?.some((prefix) => name.startsWith(prefix)),
+  );
+}
+
 /** The card for a tool call's name, or the generic card. */
 export function resolveToolCard(name: string): ToolCardRenderer {
-  for (const toolRoute of ROUTES) {
-    if (toolRoute.names?.includes(name)) return toolRoute.render;
-    if (toolRoute.prefixes?.some((prefix) => name.startsWith(prefix))) return toolRoute.render;
+  return findRoute(name)?.render ?? GenericToolCard;
+}
+
+/** A turn's tool calls, split by how they have to render. */
+export interface ToolCallSplit {
+  /** Attachments: the files the turn is showing the user. Never collapsed. */
+  attachments: ToolCallData[];
+  /** The rest — what the turn did. Collapsed into one row when there are several. */
+  work: ToolCallData[];
+}
+
+/**
+ * Split a turn's calls into the files it showed the user and the calls that
+ * report what it did, preserving the order within each list.
+ */
+export function splitToolCalls(calls: readonly ToolCallData[]): ToolCallSplit {
+  const attachments: ToolCallData[] = [];
+  const work: ToolCallData[] = [];
+
+  for (const call of calls) {
+    if (findRoute(call.name)?.attachment) attachments.push(call);
+    else work.push(call);
   }
-  return GenericToolCard;
+
+  return { attachments, work };
 }
