@@ -37,6 +37,20 @@ Any UI work (pages, panels, forms, lists, modals, buttons, inputs, styling) **mu
 - Group related changes into a single commit. No atomic-one-line commits.
 - Run `npm run check` (lint + typecheck + format + tests) **before committing**. Nothing lands broken.
 
+### Check in the cheap order
+
+`npm run check` ends with the test suite, which is by far the slowest part. Fixing a
+missing newline after waiting minutes for it is a waste, so clear the fast,
+mechanical failures first and run the full suite **once**, as the gate:
+
+1. `npm run lint:fix` — eslint `--fix` also applies prettier formatting (it runs as
+   a lint rule), so one command clears both cheap failure modes. `npm run lint`
+   only reports them.
+2. `npm run typecheck` — type errors next; they are quick, and they are often why a
+   test would fail anyway.
+3. `npx vitest run <path>` — while iterating, run only the test files you touched.
+4. `npm run check` — once, at the end.
+
 ## Testing
 
 - Write **meaningful tests** that verify real behaviour with multiple inputs producing expected outputs.
