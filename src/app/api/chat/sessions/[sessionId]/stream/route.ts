@@ -532,6 +532,7 @@ export async function GET(
               toolCallId: a.toolCallId,
               toolName: a.toolName,
               args: a.args,
+              summary: a.summary ?? null,
               expiresAt: new Date(a.expiresAt).toISOString(),
             })),
           });

@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
+import { findToolInfo, summarizeToolAction } from "@/lib/pi/tool-infos";
 import { createBot } from "./client";
 import type { ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import type { ApprovalCardId } from "./approval-cards";
@@ -40,13 +41,20 @@ export async function sendTelegramApprovalRequest(
 
   const bot = createBot(account.encryptedToken);
 
+  // What the call is about: the server-resolved summary (ID references
+  // looked up against the user's records), falling back to the client-safe
+  // argument summary for requests predating the field.
+  const label = findToolInfo(request.toolName)?.label ?? request.toolName;
+  const summary = request.summary ?? summarizeToolAction(request.toolName, request.args);
+
   // Truncate args for display
   const argsPreview = formatArgsPreview(request.args);
 
   const text =
-    `⚡ <b>Tool Approval Required</b>\n\n` +
-    `<b>Tool:</b> <code>${escapeHtml(request.toolName)}</code>\n` +
-    `<b>Session:</b> ${request.sessionId.slice(0, 8)}...\n\n` +
+    `⚡ <b>Approval required</b>\n\n` +
+    `<b>${escapeHtml(label)}</b>` +
+    (summary ? `: <b>${escapeHtml(summary)}</b>` : "") +
+    `\n\n<code>${escapeHtml(request.toolName)}</code> · session ${request.sessionId.slice(0, 8)}...\n\n` +
     (argsPreview ? `<code>${escapeHtml(argsPreview)}</code>\n\n` : "") +
     `<i>Approve or deny this tool call. It will auto-deny in 5 minutes.</i>`;
 

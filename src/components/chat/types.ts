@@ -26,6 +26,12 @@ export interface ApprovalData {
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
+  /**
+   * One-line "what is this call about", resolved server-side (ID-only
+   * references look up the user's own records). Absent on pre-existing
+   * requests — the card re-derives one from the arguments.
+   */
+  summary?: string | null;
   expiresAt: string;
   resolved?: boolean;
   approved?: boolean;
