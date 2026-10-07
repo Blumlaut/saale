@@ -38,6 +38,13 @@ const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
 
+/** An enabled account, as the resolver selects it. */
+const enabledAccount = {
+  id: "acc-1",
+  encryptedToken: "enc-token",
+  enabled: true,
+};
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("buildAgentOutputHandler", () => {
@@ -48,128 +55,132 @@ describe("buildAgentOutputHandler", () => {
     mockRecordTelegramJobOutput.mockResolvedValue(undefined);
   });
 
-  it("returns undefined when no output channel is set", async () => {
-    const handler = await buildAgentOutputHandler({
+  it("builds nothing, and reports nothing, when no output channel is set", async () => {
+    const result = await buildAgentOutputHandler({
       userId,
       outputChannel: null,
       outputChannelId: null,
     });
 
-    expect(handler).toBeUndefined();
+    // No channel configured is not a failure — there was nothing to deliver.
+    expect(result).toEqual({});
     expect(mockTelegramAccount.findUnique).not.toHaveBeenCalled();
   });
 
   it("inherits the configured chat when telegram has no explicit chat ID", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
     mockResolveDefaultTelegramChat.mockResolvedValue(BigInt("119075844"));
     mockSendTelegramMessage.mockResolvedValue([42]);
 
-    const handler = await buildAgentOutputHandler({
+    const { output } = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
       outputChannelId: null,
     });
 
-    expect(handler).toBeDefined();
+    expect(output).toBeDefined();
     expect(mockResolveDefaultTelegramChat).toHaveBeenCalledWith("acc-1");
 
-    handler!.send("Job finished — here is the report");
+    await output!.send("Job finished — here is the report");
 
-    await vi.waitFor(() => {
-      expect(mockSendTelegramMessage).toHaveBeenCalledWith(
-        "enc-token",
-        BigInt("119075844"),
-        "Job finished — here is the report",
-      );
-    });
+    expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+      "enc-token",
+      BigInt("119075844"),
+      "Job finished — here is the report",
+    );
   });
 
-  it("logs and returns undefined when telegram inherits but no configured chat exists", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+  it("reports an error when telegram inherits but no configured chat exists", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
     mockResolveDefaultTelegramChat.mockResolvedValue(null);
 
-    const handler = await buildAgentOutputHandler({
+    const result = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
       outputChannelId: null,
     });
 
-    expect(handler).toBeUndefined();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("no configured chat exists"),
-    );
+    // A configured channel that cannot resolve must not look like no channel:
+    // the run would otherwise report success having told nobody.
+    expect(result.output).toBeUndefined();
+    expect(result.error).toContain("no chat is available");
   });
 
-  it("logs and returns undefined for non-telegram channels without a target ID", async () => {
-    const handler = await buildAgentOutputHandler({
+  it("reports an error for an unsupported channel with a target ID", async () => {
+    const result = await buildAgentOutputHandler({
       userId,
       outputChannel: "discord",
-      outputChannelId: null,
+      outputChannelId: "123456789",
     });
 
-    expect(handler).toBeUndefined();
+    expect(result.output).toBeUndefined();
+    expect(result.error).toContain('Output channel "discord" is not supported');
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Output channel "discord" is set without a target ID'),
+      expect.stringContaining('Output channel "discord" is not supported'),
     );
   });
 
-  it("logs and returns undefined when telegram output requested but no account configured", async () => {
+  it("reports an error when telegram output is requested but no account is configured", async () => {
     mockTelegramAccount.findUnique.mockResolvedValue(null);
 
-    const handler = await buildAgentOutputHandler({
+    const result = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
       outputChannelId: "119075844",
     });
 
-    expect(handler).toBeUndefined();
+    expect(result.output).toBeUndefined();
+    expect(result.error).toContain("no Telegram bot is connected");
     expect(mockTelegramAccount.findUnique).toHaveBeenCalledWith({
       where: { userId },
-      select: { id: true, encryptedToken: true },
+      select: { id: true, encryptedToken: true, enabled: true },
     });
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("no Telegram account is configured"),
-    );
   });
 
-  it("logs and returns undefined when chat ID is not a valid bigint", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+  it("reports an error when the Telegram integration is disabled", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue({ ...enabledAccount, enabled: false });
 
-    const handler = await buildAgentOutputHandler({
+    const result = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "telegram",
+      outputChannelId: "119075844",
+    });
+
+    expect(result.output).toBeUndefined();
+    expect(result.error).toContain("integration is disabled");
+  });
+
+  it("reports an error when the chat ID is not a valid bigint", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+
+    const result = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
       outputChannelId: "not-a-number",
     });
 
-    expect(handler).toBeUndefined();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid Telegram chat ID "not-a-number"'),
-    );
+    expect(result.output).toBeUndefined();
+    expect(result.error).toContain('invalid chat ID "not-a-number"');
   });
 
-  it("builds a handler that sends turn text to the configured chat", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+  it("delivers turn text to the configured chat and records it for replies", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
     mockSendTelegramMessage.mockResolvedValue([42]);
 
-    const handler = await buildAgentOutputHandler({
+    const { output } = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
       outputChannelId: "119075844",
     });
 
-    expect(handler).toBeDefined();
-    expect(handler!.send).toBeTypeOf("function");
+    expect(output!.send).toBeTypeOf("function");
+    await output!.send("Job finished — here is the report");
 
-    handler!.send("Job finished — here is the report");
-
-    // Send is fire-and-forget; allow the promise chain to run
-    await vi.waitFor(() => {
-      expect(mockSendTelegramMessage).toHaveBeenCalledWith(
-        "enc-token",
-        BigInt("119075844"),
-        "Job finished — here is the report",
-      );
-    });
+    expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+      "enc-token",
+      BigInt("119075844"),
+      "Job finished — here is the report",
+    );
 
     // The outbound message is recorded so a reply to it has context.
     expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({
@@ -177,54 +188,76 @@ describe("buildAgentOutputHandler", () => {
       telegramChatId: BigInt("119075844"),
       content: "Job finished — here is the report",
     });
+    expect(output!.deliveryErrors?.()).toEqual([]);
   });
 
-  it("send logs an error when the Telegram API call fails", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+  it("collects a rejected send instead of swallowing it", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
     mockSendTelegramMessage.mockRejectedValue(new Error("chat not found"));
 
-    const handler = await buildAgentOutputHandler({
+    const { output } = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
       outputChannelId: "119075844",
     });
-    expect(handler).toBeDefined();
 
-    handler!.send("hello");
+    await output!.send("hello");
 
-    await vi.waitFor(() => {
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to send Telegram output"),
-        expect.any(Error),
-      );
+    expect(output!.deliveryErrors?.()).toEqual(["chat not found"]);
+  });
+
+  it("collects every rejected send, in order", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+    mockSendTelegramMessage
+      .mockRejectedValueOnce(new Error("first failure"))
+      .mockRejectedValueOnce(new Error("second failure"));
+
+    const { output } = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "telegram",
+      outputChannelId: "119075844",
     });
+
+    await output!.send("one");
+    await output!.send("two");
+
+    expect(output!.deliveryErrors?.()).toEqual(["first failure", "second failure"]);
+  });
+
+  it("still delivers when recording the message for replies fails", async () => {
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+    mockSendTelegramMessage.mockResolvedValue([42]);
+    mockRecordTelegramJobOutput.mockRejectedValue(new Error("db down"));
+
+    const { output } = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "telegram",
+      outputChannelId: "119075844",
+    });
+
+    await output!.send("hello");
+
+    // The session write is bookkeeping — it must never hold back the message.
+    expect(mockSendTelegramMessage).toHaveBeenCalled();
+    expect(output!.deliveryErrors?.()).toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to record outbound message"),
+      expect.any(Error),
+    );
   });
 
   it("typing() sends a typing indicator", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({ id: "acc-1", encryptedToken: "enc-token" });
+    mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
 
-    const handler = await buildAgentOutputHandler({
+    const { output } = await buildAgentOutputHandler({
       userId,
       outputChannel: "telegram",
       outputChannelId: "-100119075844",
     });
 
-    expect(handler!.typing).toBeTypeOf("function");
-    handler!.typing?.();
+    expect(output!.typing).toBeTypeOf("function");
+    output!.typing?.();
 
     expect(mockSendTypingIndicator).toHaveBeenCalledWith("enc-token", BigInt("-100119075844"));
-  });
-
-  it("logs a warning and returns undefined for unsupported channels", async () => {
-    const handler = await buildAgentOutputHandler({
-      userId,
-      outputChannel: "discord",
-      outputChannelId: "123456789",
-    });
-
-    expect(handler).toBeUndefined();
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Output channel "discord" is not supported'),
-    );
   });
 });

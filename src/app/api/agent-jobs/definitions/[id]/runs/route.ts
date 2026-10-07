@@ -44,6 +44,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       outputTokens: true,
       cost: true,
       error: true,
+      deliveryError: true,
       startedAt: true,
       completedAt: true,
       outputChannel: true,
@@ -64,6 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         outputTokens: number;
         cost: number;
         error: string | null;
+        deliveryError: string | null;
         startedAt: Date | null;
         completedAt: Date | null;
         outputChannel: string | null;
@@ -79,6 +81,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         outputTokens: r.outputTokens,
         cost: r.cost,
         error: r.error,
+        deliveryError: r.deliveryError,
         outputChannel: r.outputChannel,
         outputChannelId: r.outputChannelId,
         startedAt: r.startedAt?.toISOString(),

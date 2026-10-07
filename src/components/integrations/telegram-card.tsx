@@ -9,6 +9,7 @@ import {
   UserPlus,
   ExternalLink,
   Loader2,
+  BellRing,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,29 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { TelegramAccount, WhitelistEntry } from "@/hooks/use-telegram-integration";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type {
+  TelegramAccount,
+  TelegramChatInfo,
+  TelegramNotifyChat,
+  WhitelistEntry,
+} from "@/hooks/use-telegram-integration";
+
+/** Select value meaning "resolve the chat automatically". */
+const AUTOMATIC_CHAT = "automatic";
+
+/** How the current notification chat was chosen, in the user's words. */
+const NOTIFY_SOURCE_LABELS: Record<TelegramNotifyChat["source"], string> = {
+  pinned: "pinned",
+  private: "automatic — most recent private chat",
+  whitelist: "automatic — whitelisted user",
+};
 
 /**
  * Telegram integration card with embedded whitelist management.
@@ -50,6 +73,11 @@ export function TelegramCard({
   addingUser,
   onAddUser,
   onRemoveUser,
+  notifyChats,
+  notifyChatsLoading,
+  savingNotifyChat,
+  onOpenNotifyChats,
+  onSetNotifyChat,
 }: {
   account: TelegramAccount;
   onToggleEnabled: (enabled: boolean) => void;
@@ -64,8 +92,17 @@ export function TelegramCard({
   addingUser: boolean;
   onAddUser: () => void;
   onRemoveUser: (id: string) => void;
+  /** Chats the bot can send to, for the notification-chat picker. */
+  notifyChats: TelegramChatInfo[];
+  notifyChatsLoading: boolean;
+  savingNotifyChat: boolean;
+  /** Called right before the notification-chat dialog opens — fetches fresh chats. */
+  onOpenNotifyChats: () => void;
+  /** Pin a chat, or pass null to go back to automatic resolution. */
+  onSetNotifyChat: (chatId: string | null) => void;
 }) {
   const [whitelistOpen, setWhitelistOpen] = useState(false);
+  const [notifyChatOpen, setNotifyChatOpen] = useState(false);
 
   const handleWhitelistOpenChange = (open: boolean) => {
     setWhitelistOpen(open);
@@ -73,6 +110,13 @@ export function TelegramCard({
     // change from elsewhere (webhook auto-whitelist, another device), so we
     // must not show stale (possibly empty) data.
     if (open) onOpenWhitelist();
+  };
+
+  const handleNotifyChatOpenChange = (open: boolean) => {
+    setNotifyChatOpen(open);
+    // Same reason as the whitelist: the reachable chats change as soon as the
+    // user messages the bot, so a cached list would be wrong.
+    if (open) onOpenNotifyChats();
   };
 
   return (
@@ -132,6 +176,10 @@ export function TelegramCard({
                 }
               />
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleNotifyChatOpenChange(true)}>
+                  <BellRing className="mr-2 h-4 w-4" />
+                  Notification Chat
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleWhitelistOpenChange(true)}>
                   <ShieldCheck className="mr-2 h-4 w-4" />
                   Manage Whitelist
@@ -161,7 +209,118 @@ export function TelegramCard({
         onAddUser={onAddUser}
         onRemoveUser={onRemoveUser}
       />
+
+      {/* Notification chat picker — same data-from-parent pattern */}
+      <NotifyChatDialog
+        open={notifyChatOpen}
+        onOpenChange={handleNotifyChatOpenChange}
+        account={account}
+        chats={notifyChats}
+        loading={notifyChatsLoading}
+        saving={savingNotifyChat}
+        onSelect={onSetNotifyChat}
+      />
     </>
+  );
+}
+
+// ─── Notification Chat Dialog ────────────────────────────────────────────────
+
+/**
+ * Pick the chat proactive messages go to.
+ *
+ * Selecting saves immediately — there is one value, and the dialog shows the
+ * resolved result right below the picker, so a separate Save step would only
+ * add a way to lose the change.
+ */
+function NotifyChatDialog({
+  open,
+  onOpenChange,
+  account,
+  chats,
+  loading,
+  saving,
+  onSelect,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  account: TelegramAccount;
+  chats: TelegramChatInfo[];
+  loading: boolean;
+  saving: boolean;
+  onSelect: (chatId: string | null) => void;
+}) {
+  const selected = account.notifyChatId ?? AUTOMATIC_CHAT;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BellRing className="h-5 w-5" />
+            Notification Chat
+          </DialogTitle>
+          <DialogDescription>
+            Where Saale sends you things outside a conversation — reminders, finished jobs and agent
+            messages. Automatic picks your most recent private chat.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label className="text-xs">Send notifications to</Label>
+            <Select
+              value={selected}
+              onValueChange={(value) => onSelect(!value || value === AUTOMATIC_CHAT ? null : value)}
+              disabled={saving || loading}
+            >
+              <SelectTrigger className="liquid-glass-inner w-full rounded-full border-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTOMATIC_CHAT}>Automatic (most recent private chat)</SelectItem>
+                {chats.map((chat) => (
+                  <SelectItem key={chat.chatId} value={chat.chatId}>
+                    {chat.label}
+                    {chat.chatType === "group" ? " — group" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              Pinning a group chat sends notifications to everyone in it.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+            </div>
+          ) : account.notifyChat ? (
+            <div className="liquid-glass-inner rounded-2xl border-0 px-4 py-3">
+              <p className="text-sm font-medium">Currently: {account.notifyChat.label}</p>
+              <p className="text-muted-foreground mt-0.5 text-xs break-all">
+                {account.notifyChat.chatId} · {NOTIFY_SOURCE_LABELS[account.notifyChat.source]}
+              </p>
+            </div>
+          ) : (
+            <div className="text-muted-foreground py-6 text-center text-sm">
+              No chat available yet — message your bot on Telegram and it will appear here.
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            className="liquid-glass-pill h-9 rounded-full text-xs font-medium"
+            onClick={() => onOpenChange(false)}
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

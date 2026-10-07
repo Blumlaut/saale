@@ -65,6 +65,18 @@ When you write or update a note:
 - A stale note is worse than no note. When reality changes, rewrite the affected note in the same turn; when a note stops being true and nothing replaces it, delete it.
 - Not every task earns a note. Write one only when you have learned durable knowledge that is not already recorded.`;
 
+/** Capability: reaching the user on Telegram between conversations. */
+const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram_send\` — it goes to their own Telegram chat, and the recipient cannot be chosen. It is the only way to tell them something after this conversation ends, so use it whenever they ask to be reminded or told about something. It arrives on their phone: keep it short, self-contained, and only send it when it is worth interrupting them.`;
+
+/**
+ * Capability: giving an outreach message a time to go out.
+ *
+ * Only composed when agent jobs are available too — a message that must be sent
+ * later needs a schedule behind it, and naming `agent_job_create` to a session
+ * without it would describe a tool the model cannot call.
+ */
+const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a schedule behind it: create a one-off agent job (\`agent_job_create\` with \`runAt\`) whose output channel is Telegram, and it will reach the user at that time. Do that instead of promising to remember.`;
+
 /**
  * Build the default agent system prompt for a chat session.
  *
@@ -89,6 +101,8 @@ export function buildAgentSystemPrompt(options: {
     toolConfig.files === true ||
     toolConfig.bash === true;
 
+  const telegramEnabled = isCategoryEnabled(toolConfig, "telegram");
+
   const sections = [
     IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
@@ -96,6 +110,8 @@ export function buildAgentSystemPrompt(options: {
     terminalEnabled ? TERMINAL_PROMPT : null,
     isCategoryEnabled(toolConfig, "memory") ? MEMORY_PROMPT : null,
     isCategoryEnabled(toolConfig, "infra") ? INFRA_PROMPT : null,
+    telegramEnabled ? TELEGRAM_PROMPT : null,
+    telegramEnabled && isCategoryEnabled(toolConfig, "agentJobs") ? TELEGRAM_SCHEDULE_PROMPT : null,
   ];
 
   return sections.filter((section): section is string => section !== null).join("\n\n");

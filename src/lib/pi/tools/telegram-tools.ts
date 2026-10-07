@@ -1,0 +1,62 @@
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { sendTelegramToUser } from "@/lib/telegram/notify";
+
+/**
+ * Create Telegram tools with userId injection for user isolation.
+ *
+ * The single tool here is the agent's *outreach* primitive: it is the only way
+ * to say something to the user once the conversation is over. It deliberately
+ * takes no recipient — delivery always goes to the user's own resolved chat
+ * (see `resolveNotifyChat`), so a message the model decided to send can never
+ * reach a group or another person.
+ */
+export function createTelegramTools(userId: string): ToolDefinition[] {
+  return [
+    defineTool({
+      name: "telegram_send",
+      label: "Send Telegram Message",
+      description:
+        "Message the user on Telegram — their phone, outside this conversation. " +
+        "Use it for reminders they asked for, appointments, or anything that must " +
+        "reach them later; it is the only way to contact them after the " +
+        "conversation ends. The recipient is always the user's own chat and cannot " +
+        "be chosen. Write it as a complete, self-contained message they can act on " +
+        "without this conversation, and keep it short — it interrupts them.",
+      parameters: Type.Object({
+        message: Type.String({
+          description:
+            "The message to send, in Markdown. Self-contained — the user may not " +
+            "remember the context it came from.",
+        }),
+      }),
+      execute: async (_toolCallId, params) => {
+        const message = params.message.trim();
+        if (!message) {
+          throw new Error("The message is empty — nothing was sent.");
+        }
+
+        const delivery = await sendTelegramToUser({ userId, content: message });
+
+        if (!delivery.ok) {
+          // Throw rather than flag a result: the agent loop turns a throw into a
+          // failed tool call carrying the reason, so the model can tell the user
+          // why nothing arrived instead of assuming it was delivered.
+          throw new Error(`Telegram message not delivered: ${delivery.error}`);
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Sent to the user on Telegram${
+                delivery.label ? ` (${delivery.label})` : ""
+              }. They will see it on their phone.`,
+            },
+          ],
+          details: { chatId: delivery.chatId, label: delivery.label },
+        };
+      },
+    }),
+  ];
+}

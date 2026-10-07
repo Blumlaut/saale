@@ -8,8 +8,8 @@ import {
 } from "@/lib/pi/tool-categories";
 
 describe("tool categories", () => {
-  it("has 11 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(11);
+  it("has 12 tool categories", () => {
+    expect(TOOL_CATEGORIES).toHaveLength(12);
   });
 
   it("has unique keys", () => {
@@ -25,6 +25,7 @@ describe("tool categories", () => {
     expect(keys).toContain("jobs");
     expect(keys).toContain("calendar");
     expect(keys).toContain("chatSearch");
+    expect(keys).toContain("telegram");
     expect(keys).toContain("web");
     expect(keys).toContain("memory");
     expect(keys).toContain("tasks");
@@ -72,6 +73,7 @@ describe("DEFAULT_TOOL_CONFIG", () => {
     expect(DEFAULT_TOOL_CONFIG.jobs).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.calendar).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.chatSearch).toBe(true);
+    expect(DEFAULT_TOOL_CONFIG.telegram).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.web).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.memory).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.tasks).toBe(true);
@@ -141,6 +143,7 @@ describe("ToolConfig type", () => {
       jobs: true,
       calendar: true,
       chatSearch: true,
+      telegram: true,
       web: true,
       memory: true,
       tasks: true,
@@ -148,6 +151,6 @@ describe("ToolConfig type", () => {
       infra: false,
       settings: true,
     };
-    expect(Object.keys(config)).toHaveLength(11);
+    expect(Object.keys(config)).toHaveLength(12);
   });
 });

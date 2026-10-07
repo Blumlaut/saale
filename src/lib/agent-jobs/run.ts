@@ -3,6 +3,38 @@ import { executeAgentRun } from "@/lib/agent-jobs/executor";
 import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
 
 /**
+ * Persist the run's delivery outcome, if there is anything to record.
+ *
+ * Two sources feed one column: the channel could not be resolved up front
+ * (`preflightError`), or it resolved and then rejected the messages the run
+ * produced (`runtimeErrors`). Both mean the same thing to a reader — the user
+ * was never told — so they share `AgentRun.deliveryError`.
+ *
+ * A successful send clears nothing: an earlier failure stays on the record
+ * even if a later turn got through, because the run still owes the user
+ * something.
+ */
+async function recordDeliveryFailures(
+  runId: string,
+  runtimeErrors: string[] | undefined,
+  preflightError: string | undefined,
+): Promise<void> {
+  const failures = [preflightError, ...(runtimeErrors ?? [])].filter(
+    (entry): entry is string => !!entry,
+  );
+  if (failures.length === 0) return;
+
+  await prisma.agentRun
+    .update({
+      where: { id: runId },
+      data: { deliveryError: [...new Set(failures)].join("\n") },
+    })
+    .catch((err) => {
+      console.error(`[agent-job:${runId}] Failed to record delivery error:`, err);
+    });
+}
+
+/**
  * Create a run record for an agent definition and execute it asynchronously.
  *
  * Shared by the manual trigger endpoints (UI + LLM tools) and the scheduled
@@ -64,17 +96,18 @@ export async function triggerAgentRun(params: {
 
   // Resolve the external output handler (e.g., Telegram) before dispatching.
   // executeAgentRun only routes output when a handler is provided.
-  const output = await buildAgentOutputHandler({
+  const { output, error: deliveryError } = await buildAgentOutputHandler({
     userId,
     outputChannel: definition.outputChannel,
     outputChannelId: definition.outputChannelId,
   });
 
   // Mark the run as running — startedAt is when execution actually starts
-  // (the run record was created above as "pending").
+  // (the run record was created above as "pending"). A channel that cannot be
+  // resolved is recorded now, so the run never reads as delivered.
   await prisma.agentRun.update({
     where: { id: run.id },
-    data: { status: "running", startedAt: new Date() },
+    data: { status: "running", startedAt: new Date(), deliveryError: deliveryError ?? null },
   });
 
   // Execute asynchronously (fire-and-forget, but with error handling)
@@ -91,6 +124,9 @@ export async function triggerAgentRun(params: {
     output,
   )
     .then(async (stats) => {
+      // A run whose output channel rejected every message still "completed" —
+      // the failure belongs on the record, or the job silently told nobody.
+      await recordDeliveryFailures(run.id, output?.deliveryErrors?.(), deliveryError);
       await prisma.agentRun.update({
         where: { id: run.id },
         data: {
@@ -104,6 +140,7 @@ export async function triggerAgentRun(params: {
     })
     .catch(async (err) => {
       console.error(`[agent-job:${run.id}] Execution failed:`, err);
+      await recordDeliveryFailures(run.id, output?.deliveryErrors?.(), deliveryError);
       await prisma.agentRun.update({
         where: { id: run.id },
         data: {

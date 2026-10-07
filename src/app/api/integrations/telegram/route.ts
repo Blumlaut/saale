@@ -4,7 +4,37 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { validateBotToken, registerWebhook, deleteWebhook } from "@/lib/telegram";
+import { isKnownTelegramChat, resolveNotifyChat } from "@/lib/telegram/chats";
 import crypto from "crypto";
+
+/**
+ * Parse and validate a `notifyChatId` write.
+ *
+ * `null`/`""` clears the pin (back to automatic resolution). Anything else
+ * must be a chat the account has actually seen — a pinned chat that does not
+ * exist would turn every proactive message into a silent delivery failure.
+ *
+ * @throws When the value is not an integer, or names an unknown chat
+ */
+async function parseNotifyChatId(
+  accountId: string,
+  value: string | null | undefined,
+): Promise<bigint | null> {
+  if (value === null || value === undefined || value === "") return null;
+
+  let chatId: bigint;
+  try {
+    chatId = BigInt(value);
+  } catch {
+    throw new Error("notifyChatId must be a Telegram chat ID");
+  }
+
+  if (!(await isKnownTelegramChat(accountId, chatId))) {
+    throw new Error("That chat is not known to this bot — message the bot from it first");
+  }
+
+  return chatId;
+}
 
 /**
  * GET /api/integrations/telegram — Get user's Telegram integration status
@@ -20,6 +50,7 @@ export async function GET() {
       enabled: true,
       botId: true,
       botUsername: true,
+      notifyChatId: true,
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -32,6 +63,8 @@ export async function GET() {
     return NextResponse.json({ account: null });
   }
 
+  const notifyChat = await resolveNotifyChat(account.id, account.notifyChatId);
+
   return NextResponse.json({
     account: {
       id: account.id,
@@ -39,6 +72,14 @@ export async function GET() {
       botId: account.botId?.toString() ?? null,
       botUsername: account.botUsername,
       whitelistCount: account._count.whitelistedUsers,
+      notifyChatId: account.notifyChatId?.toString() ?? null,
+      notifyChat: notifyChat
+        ? {
+            chatId: notifyChat.chatId.toString(),
+            label: notifyChat.label,
+            source: notifyChat.source,
+          }
+        : null,
       createdAt: account.createdAt.toISOString(),
       updatedAt: account.updatedAt.toISOString(),
     },
@@ -118,8 +159,11 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PATCH /api/integrations/telegram — Update Telegram integration (enable/disable)
- * Body: { enabled: boolean }
+ * PATCH /api/integrations/telegram — Update Telegram integration
+ * Body: { enabled?: boolean, notifyChatId?: string | null }
+ *
+ * `notifyChatId` pins the chat proactive messages go to; `null` restores
+ * automatic resolution. Either field may be sent on its own.
  */
 export async function PATCH(request: NextRequest) {
   const authResult = await requireSession();
@@ -127,9 +171,13 @@ export async function PATCH(request: NextRequest) {
 
   const body = await request.json();
   const enabled = body.enabled as boolean | undefined;
+  const notifyChatId = body.notifyChatId as string | null | undefined;
 
-  if (enabled === undefined) {
-    return NextResponse.json({ error: "Missing 'enabled' field" }, { status: 400 });
+  if (enabled === undefined && notifyChatId === undefined) {
+    return NextResponse.json(
+      { error: "Missing 'enabled' or 'notifyChatId' field" },
+      { status: 400 },
+    );
   }
 
   const account = await prisma.telegramAccount.findUnique({
@@ -141,7 +189,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   // If disabling, remove the webhook
-  if (!enabled) {
+  if (enabled === false) {
     try {
       await deleteWebhook(account.encryptedToken);
     } catch (err) {
@@ -151,7 +199,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   // If enabling, re-register the webhook
-  if (enabled) {
+  if (enabled === true) {
     try {
       await registerWebhook(account.encryptedToken, account.id, account.webhookSecret);
     } catch (err) {
@@ -159,17 +207,33 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  const data: { enabled?: boolean; notifyChatId?: bigint | null } = {};
+  if (enabled !== undefined) data.enabled = enabled;
+  if (notifyChatId !== undefined) {
+    try {
+      data.notifyChatId = await parseNotifyChatId(account.id, notifyChatId);
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Invalid notifyChatId" },
+        { status: 400 },
+      );
+    }
+  }
+
   const updated = await prisma.telegramAccount.update({
     where: { id: account.id },
-    data: { enabled },
+    data,
     select: {
       id: true,
       enabled: true,
       botId: true,
       botUsername: true,
+      notifyChatId: true,
       updatedAt: true,
     },
   });
+
+  const notifyChat = await resolveNotifyChat(updated.id, updated.notifyChatId);
 
   return NextResponse.json({
     account: {
@@ -177,6 +241,14 @@ export async function PATCH(request: NextRequest) {
       enabled: updated.enabled,
       botId: updated.botId?.toString() ?? null,
       botUsername: updated.botUsername,
+      notifyChatId: updated.notifyChatId?.toString() ?? null,
+      notifyChat: notifyChat
+        ? {
+            chatId: notifyChat.chatId.toString(),
+            label: notifyChat.label,
+            source: notifyChat.source,
+          }
+        : null,
       updatedAt: updated.updatedAt.toISOString(),
     },
   });

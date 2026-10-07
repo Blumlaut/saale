@@ -159,6 +159,7 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   chat_respond: { text: "Sent a message to another chat" },
   chat_create: { text: "Started another chat" },
   chat_delete: { text: "Deleted another chat" },
+  telegram_send: { text: "Messaged you on Telegram" },
   settings_list: { text: "Listed settings" },
   settings_set: { text: "Changed a setting" },
 };
