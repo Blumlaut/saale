@@ -29,7 +29,13 @@ export async function handler(params: { config: Record<string, unknown>; userId:
   );
 
   if (config.accountId) {
-    const result = await syncEmailAccount(config.accountId as string);
+    // resolveUserEmailAccountIds has validated the account belongs to this
+    // user and is enabled — sync the resolved id, never the raw config value.
+    const targetId = accountIds[0];
+    if (!targetId) {
+      throw new Error(`Email account ${config.accountId} not found or disabled`);
+    }
+    const result = await syncEmailAccount(targetId);
     return JSON.stringify(result);
   }
 
