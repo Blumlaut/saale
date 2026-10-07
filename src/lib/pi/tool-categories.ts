@@ -133,9 +133,10 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Read and change Saale settings and preferences",
     icon: SlidersHorizontal,
     defaultEnabled: true,
-    // Two small tools, and the point of the feature is that the agent can
-    // configure itself without being told where to look — so keep them declared.
-    defaultExposure: "direct",
+    // Changing a setting is an occasional, deliberate act rather than part of
+    // everyday work, so the two tools sit in codemode's catalog instead of
+    // being declared on every request.
+    defaultExposure: "codemode",
   },
 ];
 

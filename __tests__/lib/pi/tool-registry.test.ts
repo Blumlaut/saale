@@ -467,6 +467,7 @@ describe("resolveTools", () => {
       tasks: true,
       agentJobs: true,
       infra: true,
+      settings: true,
     };
 
     it("applies each category's default when the user configured nothing", async () => {
@@ -477,6 +478,8 @@ describe("resolveTools", () => {
       expect(exposureOf(tools, "mail_read")).toBe("codemode");
       expect(exposureOf(tools, "infra_exec")).toBe("codemode");
       expect(exposureOf(tools, "job_list")).toBe("codemode");
+      expect(exposureOf(tools, "settings_list")).toBe("codemode");
+      expect(exposureOf(tools, "settings_set")).toBe("codemode");
       // The everyday tools stay declared.
       expect(exposureOf(tools, "web_search")).toBeUndefined();
       expect(exposureOf(tools, "memory_search")).toBeUndefined();
