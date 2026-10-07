@@ -33,10 +33,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
   }
 
-  if (!email || !password) {
-    return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
-  }
-
   const results: Record<string, { success: boolean; error?: string }> = {};
 
   // Test IMAP

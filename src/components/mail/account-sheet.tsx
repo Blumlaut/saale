@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,19 +26,46 @@ interface ServerConfig {
   secure: boolean;
 }
 
-const DEFAULT_IMAP: ServerConfig = { host: "imap.gmail.com", port: 993, secure: true };
-const DEFAULT_SMTP: ServerConfig = { host: "smtp.gmail.com", port: 465, secure: true };
+interface AutodiscoverResponse {
+  imap: ServerConfig | null;
+  smtp: ServerConfig | null;
+  source: "srv" | "probe" | null;
+}
+
+/** Discovery outcome for this session, plus whether the lookup itself failed. */
+interface Discovery extends AutodiscoverResponse {
+  failed: boolean;
+}
+
+/**
+ * Conventional ports for a fresh account. Hosts deliberately start empty: a
+ * prefilled host silently points the account at a provider the user never
+ * chose (it used to be imap.gmail.com, which broke every non-Gmail signup).
+ */
+const DEFAULT_IMAP_PORT = 993;
+const DEFAULT_SMTP_PORT = 465;
+
+/** Ports are free-text fields, so fall back to the conventional port when empty. */
+function resolvePort(port: string, fallback: number): number {
+  const parsed = Number.parseInt(port, 10);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
+}
+
+function emailDomain(address: string): string | null {
+  const at = address.lastIndexOf("@");
+  return at > 0 && at < address.length - 1 ? address.slice(at + 1) : null;
+}
 
 export function AccountSheet({ open, onOpenChange, onSuccess, account }: AccountSheetProps) {
   const isEdit = !!account;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [imapHost, setImapHost] = useState(DEFAULT_IMAP.host);
-  const [imapPort, setImapPort] = useState(DEFAULT_IMAP.port);
-  const [imapSecure, setImapSecure] = useState(DEFAULT_IMAP.secure);
-  const [smtpHost, setSmtpHost] = useState(DEFAULT_SMTP.host);
-  const [smtpPort, setSmtpPort] = useState(DEFAULT_SMTP.port);
-  const [smtpSecure, setSmtpSecure] = useState(DEFAULT_SMTP.secure);
+  const [imapHost, setImapHost] = useState("");
+  const [imapPort, setImapPort] = useState(String(DEFAULT_IMAP_PORT));
+  const [imapSecure, setImapSecure] = useState(true);
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState(String(DEFAULT_SMTP_PORT));
+  const [smtpSecure, setSmtpSecure] = useState(true);
 
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -48,73 +76,114 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
   const [error, setError] = useState("");
 
   const [discovering, setDiscovering] = useState(false);
-  const [discovered, setDiscovered] = useState<{
-    imap: ServerConfig | null;
-    smtp: ServerConfig | null;
-    source: "srv" | "probe" | null;
-  } | null>(null);
+  const [discovered, setDiscovered] = useState<Discovery | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  /** Hosts the user typed themselves — autodiscovery must never overwrite those. */
+  const editedRef = useRef({ imap: false, smtp: false });
 
   const resetForm = useCallback(() => {
     setEmail(account?.email ?? "");
     setPassword("");
-    setImapHost(account?.imapHost ?? DEFAULT_IMAP.host);
-    setImapPort(account?.imapPort ?? DEFAULT_IMAP.port);
-    setImapSecure(account?.imapSecure ?? DEFAULT_IMAP.secure);
-    setSmtpHost(account?.smtpHost ?? DEFAULT_SMTP.host);
-    setSmtpPort(account?.smtpPort ?? DEFAULT_SMTP.port);
-    setSmtpSecure(account?.smtpSecure ?? DEFAULT_SMTP.secure);
+    setImapHost(account?.imapHost ?? "");
+    setImapPort(String(account?.imapPort ?? DEFAULT_IMAP_PORT));
+    setImapSecure(account?.imapSecure ?? true);
+    setSmtpHost(account?.smtpHost ?? "");
+    setSmtpPort(String(account?.smtpPort ?? DEFAULT_SMTP_PORT));
+    setSmtpSecure(account?.smtpSecure ?? true);
     setTestResult(null);
     setError("");
     setDiscovered(null);
+    setDiscovering(false);
     setShowAdvanced(false);
+    editedRef.current = { imap: false, smtp: false };
   }, [account]);
 
   useEffect(() => {
     resetForm();
   }, [open, resetForm]);
 
+  // Abandon an in-flight lookup when the sheet closes or unmounts.
+  useEffect(() => {
+    if (open) return;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, [open]);
+
+  /**
+   * Apply a discovery result to the form. A server that was not found is
+   * cleared rather than left holding a previous value — a half-filled pair
+   * (IMAP from a stale default, SMTP from the probe) is the bug this guards.
+   */
+  const applyDiscovery = useCallback((result: Discovery) => {
+    setDiscovered(result);
+
+    if (!editedRef.current.imap) {
+      setImapHost(result.imap?.host ?? "");
+      if (result.imap) {
+        setImapPort(String(result.imap.port));
+        setImapSecure(result.imap.secure);
+      }
+    }
+    if (!editedRef.current.smtp) {
+      setSmtpHost(result.smtp?.host ?? "");
+      if (result.smtp) {
+        setSmtpPort(String(result.smtp.port));
+        setSmtpSecure(result.smtp.secure);
+      }
+    }
+  }, []);
+
+  const runAutodiscover = useCallback(
+    async (address: string) => {
+      // Supersede any lookup still in flight: a slow answer for a previously
+      // typed address must never overwrite the result for the current one.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setDiscovering(true);
+      setDiscovered(null);
+
+      try {
+        const data = await postJson<AutodiscoverResponse>(
+          "/api/email/autodiscover",
+          { email: address },
+          { signal: controller.signal },
+        );
+        if (controller.signal.aborted) return;
+        applyDiscovery({ ...data, failed: false });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error("Server settings lookup failed:", err);
+        applyDiscovery({ imap: null, smtp: null, source: null, failed: true });
+      } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          setDiscovering(false);
+        }
+      }
+    },
+    [applyDiscovery],
+  );
+
   const triggerAutodiscover = useCallback(
     (address: string) => {
       if (account) return; // keep the saved server settings while editing
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(async () => {
+      debounceRef.current = setTimeout(() => {
         const trimmed = address.trim();
         if (!trimmed.includes("@")) {
           setDiscovered(null);
           return;
         }
-
-        setDiscovering(true);
-        setDiscovered(null);
-
-        try {
-          const data = await postJson<{
-            imap: ServerConfig | null;
-            smtp: ServerConfig | null;
-            source: "srv" | "probe" | null;
-          }>("/api/email/autodiscover", { email: trimmed });
-          setDiscovered(data);
-
-          if (data.imap) {
-            setImapHost(data.imap.host);
-            setImapPort(data.imap.port);
-            setImapSecure(data.imap.secure);
-          }
-          if (data.smtp) {
-            setSmtpHost(data.smtp.host);
-            setSmtpPort(data.smtp.port);
-            setSmtpSecure(data.smtp.secure);
-          }
-        } catch {
-          setDiscovered({ imap: null, smtp: null, source: null });
-        } finally {
-          setDiscovering(false);
-        }
+        void runAutodiscover(trimmed);
       }, 600);
     },
-    [account],
+    [account, runAutodiscover],
   );
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,10 +204,10 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
         password: password || undefined,
         accountId: account?.id,
         imapHost,
-        imapPort,
+        imapPort: resolvePort(imapPort, DEFAULT_IMAP_PORT),
         imapSecure,
         smtpHost,
-        smtpPort,
+        smtpPort: resolvePort(smtpPort, DEFAULT_SMTP_PORT),
         smtpSecure,
       });
       setTestResult(data.results);
@@ -156,11 +225,11 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
     try {
       const payload: Record<string, unknown> = {
         email,
-        imapHost,
-        imapPort,
+        imapHost: imapHost.trim(),
+        imapPort: resolvePort(imapPort, DEFAULT_IMAP_PORT),
         imapSecure,
-        smtpHost,
-        smtpPort,
+        smtpHost: smtpHost.trim(),
+        smtpPort: resolvePort(smtpPort, DEFAULT_SMTP_PORT),
         smtpSecure,
       };
       if (password) payload.password = password;
@@ -168,7 +237,19 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
       if (account) {
         await patchJson(`/api/email/accounts/${account.id}`, payload);
       } else {
-        await postJson("/api/email/accounts", payload);
+        const created = await postJson<{
+          sync?: { errors?: string[]; pending?: boolean };
+        }>("/api/email/accounts", payload);
+        const syncErrors = created.sync?.errors ?? [];
+        if (syncErrors.length > 0) {
+          // The account exists, but it is not usable yet — say so instead of
+          // closing the sheet as if the setup had worked.
+          toast.error("Account saved, but the first sync failed", {
+            description: `${syncErrors[0]} — edit the account to fix its server settings.`,
+          });
+        } else if (created.sync?.pending) {
+          toast.info("Account saved — the first sync is still running");
+        }
       }
 
       resetForm();
@@ -181,13 +262,15 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
     }
   };
 
-  const hasDiscovery = discovered && (discovered.imap || discovered.smtp);
-  const discoveryLabel =
-    discovered?.source === "srv"
-      ? "Detected via DNS"
-      : discovered?.source === "probe"
-        ? "Detected via probe"
-        : null;
+  const hasBothServers =
+    !!discovered && !discovered.failed && !!discovered.imap && !!discovered.smtp;
+  const foundOne =
+    !!discovered && !discovered.failed && !hasBothServers && !!(discovered.imap || discovered.smtp);
+  const missingProtocol = discovered?.imap ? "SMTP" : "IMAP";
+  const domain = emailDomain(email.trim());
+  const canSave = !!email && !!imapHost.trim() && !!smtpHost.trim() && (isEdit || !!password);
+  const canTest = !!email && !!imapHost.trim() && !!smtpHost.trim() && (isEdit || !!password);
+  const discoveryLabel = discovered?.source === "srv" ? "Detected via DNS" : "Detected via probe";
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -206,41 +289,56 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
               {/* Email & Password */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="text-xs">Email</Label>
+                  <Label htmlFor="account-email" className="text-xs">
+                    Email
+                  </Label>
                   <div className="relative">
                     <Input
+                      id="account-email"
                       value={email}
                       onChange={handleEmailChange}
                       placeholder="you@example.com"
-                      className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
+                      className="liquid-glass-inner rounded-full border-0 bg-transparent pr-10 shadow-none"
                     />
                     {discovering && (
                       <Loader2 className="text-muted-foreground absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin" />
                     )}
-                    {hasDiscovery && !discovering && (
+                    {hasBothServers && !discovering && (
                       <Sparkles className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-amber-500" />
                     )}
                   </div>
                   {discovering && (
                     <p className="text-muted-foreground text-xs">Detecting server settings…</p>
                   )}
-                  {hasDiscovery && !discovering && (
+                  {hasBothServers && !discovering && (
                     <p className="text-muted-foreground flex items-center gap-1 text-xs">
                       <Sparkles className="h-3 w-3" />
                       {discoveryLabel} — settings filled in
                     </p>
                   )}
-                  {discovered && !hasDiscovery && !discovering && email.includes("@") && (
+                  {foundOne && !discovering && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">
+                      {missingProtocol} settings not detected — enter them below
+                    </p>
+                  )}
+                  {discovered && !discovered.failed && !hasBothServers && !foundOne && domain && (
                     <p className="text-muted-foreground text-xs">
-                      Could not auto-detect — enter server settings below
+                      No IMAP/SMTP server found for {domain} — enter your provider&apos;s settings
+                      below
+                    </p>
+                  )}
+                  {discovered?.failed && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">
+                      Settings lookup failed — enter your provider&apos;s server settings below
                     </p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">
+                  <Label htmlFor="account-password" className="text-xs">
                     {isEdit ? "New Password / App Password" : "Password / App Password"}
                   </Label>
                   <Input
+                    id="account-password"
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -256,7 +354,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
               </div>
 
               {/* Server settings toggle */}
-              {hasDiscovery && !showAdvanced && (
+              {hasBothServers && !showAdvanced && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -268,29 +366,40 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                 </Button>
               )}
 
-              {/* Server settings (collapsible when auto-discovered, always visible when editing) */}
-              {(isEdit || showAdvanced || !hasDiscovery) && (
+              {/* Server settings — always visible until *both* servers are known */}
+              {(isEdit || showAdvanced || !hasBothServers) && (
                 <>
                   <Separator className="border-border/30" />
 
                   {/* IMAP Settings */}
                   <div>
                     <h3 className="mb-2 text-sm font-medium">IMAP Settings</h3>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,6rem)_auto]">
                       <div className="space-y-2">
-                        <Label className="text-xs">Host</Label>
+                        <Label htmlFor="imap-host" className="text-xs">
+                          Host
+                        </Label>
                         <Input
+                          id="imap-host"
                           value={imapHost}
-                          onChange={(e) => setImapHost(e.target.value)}
+                          onChange={(e) => {
+                            editedRef.current.imap = true;
+                            setImapHost(e.target.value);
+                          }}
+                          placeholder="imap.example.com"
                           className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs">Port</Label>
+                        <Label htmlFor="imap-port" className="text-xs">
+                          Port
+                        </Label>
                         <Input
+                          id="imap-port"
                           type="number"
+                          inputMode="numeric"
                           value={imapPort}
-                          onChange={(e) => setImapPort(parseInt(e.target.value))}
+                          onChange={(e) => setImapPort(e.target.value)}
                           className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
@@ -314,21 +423,32 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                   {/* SMTP Settings */}
                   <div>
                     <h3 className="mb-2 text-sm font-medium">SMTP Settings</h3>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,6rem)_auto]">
                       <div className="space-y-2">
-                        <Label className="text-xs">Host</Label>
+                        <Label htmlFor="smtp-host" className="text-xs">
+                          Host
+                        </Label>
                         <Input
+                          id="smtp-host"
                           value={smtpHost}
-                          onChange={(e) => setSmtpHost(e.target.value)}
+                          onChange={(e) => {
+                            editedRef.current.smtp = true;
+                            setSmtpHost(e.target.value);
+                          }}
+                          placeholder="smtp.example.com"
                           className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs">Port</Label>
+                        <Label htmlFor="smtp-port" className="text-xs">
+                          Port
+                        </Label>
                         <Input
+                          id="smtp-port"
                           type="number"
+                          inputMode="numeric"
                           value={smtpPort}
-                          onChange={(e) => setSmtpPort(parseInt(e.target.value))}
+                          onChange={(e) => setSmtpPort(e.target.value)}
                           className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
@@ -388,8 +508,8 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
               {/* Error */}
               {error && (
                 <div className="text-destructive bg-destructive/10 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm">
-                  <AlertCircle className="h-4 w-4" />
-                  {error}
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span className="break-words">{error}</span>
                 </div>
               )}
             </div>
@@ -402,7 +522,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                 variant="outline"
                 className="liquid-glass-pill h-9 rounded-full text-xs font-medium"
                 onClick={handleTest}
-                disabled={testing}
+                disabled={testing || !canTest}
               >
                 {testing ? (
                   <>
@@ -416,7 +536,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
               <Button
                 className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
                 onClick={handleSave}
-                disabled={saving || !email || (!isEdit && !password)}
+                disabled={saving || !canSave}
               >
                 {saving ? "Saving..." : isEdit ? "Save Changes" : "Save Account"}
               </Button>

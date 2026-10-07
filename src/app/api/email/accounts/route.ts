@@ -7,6 +7,37 @@ import { createMailboxRefreshJob } from "@/lib/email/auto-sync";
 import { syncEmailAccount } from "@/lib/email/sync";
 
 /**
+ * How long the create request waits for the first mailbox sync.
+ *
+ * A server that accepts the connection and then stalls (Gmail throttles
+ * repeated bad logins, sometimes for minutes) would otherwise hold the HTTP
+ * response open for the whole time. The account's refresh job picks the sync
+ * up either way, and a failed one is recorded on the account itself.
+ */
+const INITIAL_SYNC_TIMEOUT_MS = 15_000;
+
+/**
+ * Resolve with the promise's value, or null once the budget runs out.
+ * A rejection propagates: a sync that blows up is a failure to report, not a
+ * "still running".
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  return new Promise<T | null>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+/**
  * GET /api/email/accounts — List user's email accounts
  */
 export async function GET() {
@@ -27,6 +58,8 @@ export async function GET() {
       smtpSecure: true,
       enabled: true,
       lastSyncedAt: true,
+      lastSyncError: true,
+      lastSyncErrorAt: true,
       cachedFolders: true,
       createdAt: true,
       updatedAt: true,
@@ -55,6 +88,8 @@ export async function GET() {
         smtpSecure: boolean;
         enabled: boolean;
         lastSyncedAt: Date | null;
+        lastSyncError: string | null;
+        lastSyncErrorAt: Date | null;
         cachedFolders: unknown;
         createdAt: Date;
         updatedAt: Date;
@@ -71,6 +106,8 @@ export async function GET() {
         smtpSecure: a.smtpSecure,
         enabled: a.enabled,
         lastSyncedAt: a.lastSyncedAt?.toISOString(),
+        lastSyncError: a.lastSyncError,
+        lastSyncErrorAt: a.lastSyncErrorAt?.toISOString() ?? null,
         createdAt: a.createdAt.toISOString(),
         updatedAt: a.updatedAt.toISOString(),
         messageCount: a._count.messages,
@@ -116,7 +153,7 @@ export async function POST(request: NextRequest) {
   await createMailboxRefreshJob(authResult.user.id, account.id);
 
   // Run initial full sync (lastSyncedAt is null, so syncEmailAccount does a full sync)
-  const syncResult = await syncEmailAccount(account.id);
+  const syncResult = await withTimeout(syncEmailAccount(account.id), INITIAL_SYNC_TIMEOUT_MS);
 
   return NextResponse.json({
     account: {
@@ -125,10 +162,12 @@ export async function POST(request: NextRequest) {
       enabled: account.enabled,
       createdAt: account.createdAt.toISOString(),
     },
-    sync: {
-      newMessages: syncResult.newMessages,
-      updatedMessages: syncResult.updatedMessages,
-      errors: syncResult.errors,
-    },
+    sync: syncResult
+      ? {
+          newMessages: syncResult.newMessages,
+          updatedMessages: syncResult.updatedMessages,
+          errors: syncResult.errors,
+        }
+      : { pending: true },
   });
 }

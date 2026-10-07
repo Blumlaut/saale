@@ -13,6 +13,9 @@ export interface EmailAccount {
   smtpSecure?: boolean;
   enabled: boolean;
   lastSyncedAt?: string | null;
+  /** Reason the last sync attempt failed; null once a sync succeeds. */
+  lastSyncError?: string | null;
+  lastSyncErrorAt?: string | null;
   messageCount?: number;
   folders?: string[];
 }

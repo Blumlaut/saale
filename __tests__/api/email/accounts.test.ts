@@ -12,6 +12,7 @@ vi.mock("@/lib/db", () => ({
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -35,7 +36,7 @@ import * as auth from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import * as autoSync from "@/lib/email/auto-sync";
 import * as emailSync from "@/lib/email/sync";
-import { POST } from "@/app/api/email/accounts/route";
+import { POST, GET } from "@/app/api/email/accounts/route";
 import { PATCH, DELETE } from "@/app/api/email/accounts/[accountId]/route";
 
 const createdAccount = {
@@ -104,6 +105,78 @@ describe("POST /api/email/accounts", () => {
 
     await expect(POST(request)).rejects.toThrow("IMAP down");
     expect(autoSync.createMailboxRefreshJob).toHaveBeenCalledWith("user-1", "acc-1");
+  });
+
+  it("answers with `pending` instead of hanging on a stalled first sync", async () => {
+    mockAuthOk();
+    vi.mocked(prisma.emailAccount.create).mockResolvedValue(createdAccount as never);
+    // A server that accepts the connection and then never finishes.
+    vi.mocked(emailSync.syncEmailAccount).mockReturnValue(new Promise(() => {}) as never);
+    const request = new Request("http://localhost/api/email/accounts", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "test@example.com",
+        imapHost: "imap.example.com",
+        smtpHost: "smtp.example.com",
+        password: "secret",
+      }),
+    }) as never as import("next/server").NextRequest;
+
+    vi.useFakeTimers();
+    try {
+      const pending = POST(request);
+      await vi.advanceTimersByTimeAsync(20_000);
+      const response = await pending;
+
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { sync: unknown };
+      expect(body.sync).toEqual({ pending: true });
+      expect(autoSync.createMailboxRefreshJob).toHaveBeenCalledWith("user-1", "acc-1");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("GET /api/email/accounts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockAuthOk();
+  });
+
+  it("exposes the last sync failure so a broken account is visible in the UI", async () => {
+    // An account whose credentials are rejected is otherwise indistinguishable
+    // from an empty mailbox ("0 messages · Never synced").
+    vi.mocked(prisma.emailAccount.findMany).mockResolvedValue([
+      {
+        ...createdAccount,
+        email: "esthrw1@proton.me",
+        imapHost: "imap.gmail.com",
+        imapPort: 993,
+        imapSecure: true,
+        smtpHost: "smtp.gmail.com",
+        smtpPort: 465,
+        smtpSecure: true,
+        lastSyncedAt: null,
+        lastSyncError: "Connection error: Invalid login: 535 5.7.8",
+        lastSyncErrorAt: new Date("2026-01-01T10:00:00Z"),
+        cachedFolders: null,
+        updatedAt: new Date("2026-01-01T09:00:00Z"),
+        _count: { messages: 0 },
+        messages: [],
+      },
+    ] as never);
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { accounts: Array<Record<string, unknown>> };
+    expect(body.accounts[0]).toMatchObject({
+      email: "esthrw1@proton.me",
+      lastSyncError: "Connection error: Invalid login: 535 5.7.8",
+      lastSyncErrorAt: "2026-01-01T10:00:00.000Z",
+    });
   });
 });
 
