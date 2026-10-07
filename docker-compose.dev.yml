@@ -1,4 +1,11 @@
 services:
+  # Production-only step — in dev the schema is pushed by the web/worker commands.
+  migrate:
+    build:
+      target: development
+    entrypoint: ["sh", "-c"]
+    command: ["echo 'dev: schema handled by prisma db push'"]
+
   web:
     build:
       target: development

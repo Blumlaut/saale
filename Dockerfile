@@ -27,6 +27,10 @@ ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
 RUN npx prisma generate
+# Exercise the migrate path offline (config + schema engine, no DB): a Prisma
+# upgrade that changes the CLI's contract fails the build, not the deploy.
+RUN node node_modules/prisma/build/index.js migrate diff \
+      --from-empty --to-schema prisma/schema.prisma --script > /dev/null
 
 # ─── Build stage (shared by web and worker) ──────────────────────────────────
 
@@ -36,14 +40,11 @@ COPY package.json package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --ignore-scripts
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — build-time only
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
-# Prisma client and CLI closure follow from the schema, not from the app source,
-# so they are prepared before `COPY . .` and survive ordinary source edits.
+# The client follows from the schema, not from the app source, so it is generated
+# before `COPY . .` and survives ordinary source edits.
 COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
 RUN npx prisma generate
-# Stage the prisma CLI + closure for the slim production image (see scripts/bundle-prisma-cli.mjs)
-COPY scripts/bundle-prisma-cli.mjs ./scripts/bundle-prisma-cli.mjs
-RUN node scripts/bundle-prisma-cli.mjs /tmp/prisma-cli-bundle
 COPY . .
 # `.next/cache` holds Turbopack's build cache and the incremental typecheck info
 # — mounted so rebuilds start warm instead of retyping and recompiling everything
@@ -59,20 +60,24 @@ ENV NODE_ENV=production
 COPY --from=build /app/public ./public
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
-# Prisma schema + migrations + config + generated client (not bundled by Next.js standalone)
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
+# The generated client is not traced by Next.js standalone, so copy it. The schema
+# and prisma.config.mjs land here anyway (Turbopack traces the whole project root
+# because of the dynamic fs access in the upload routes), but nothing at runtime
+# reads them: the app builds its client from DATABASE_URL (src/lib/db.ts) and
+# migrations run in the `migrate` service, not in this container.
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-# Prisma CLI + closure for `migrate deploy` at boot (standalone tracer omits the CLI)
-COPY --from=build /tmp/prisma-cli-bundle/ ./node_modules/
 
 ENTRYPOINT ["dumb-init", "--"]
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+CMD ["node", "server.js"]
 
 # ─── Production: Worker (BullMQ, pre-compiled) ──────────────────────────────
+#
+# Also the image the `migrate` service runs: it carries the full production
+# dependency tree — hence a real, npm-installed `prisma` CLI — plus prisma/ and
+# prisma.config.mjs.
 
 FROM base AS production-worker
 WORKDIR /app

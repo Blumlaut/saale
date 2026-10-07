@@ -1,4 +1,23 @@
 services:
+  # One-shot `prisma migrate deploy`, gating web and worker. Reuses the worker
+  # image, so the CLI comes from a real `npm ci` tree rather than a hand-built
+  # closure of its dependencies.
+  migrate:
+    image: saale-worker
+    build:
+      context: .
+      target: production-worker
+    container_name: saale-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+    # `docker compose run --rm migrate migrate resolve --rolled-back <name>` etc.
+    entrypoint: ["node", "node_modules/prisma/build/index.js"]
+    command: ["migrate", "deploy"]
+
   web:
     build:
       context: .
@@ -23,6 +42,8 @@ services:
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
       - APP_URL=${APP_URL:-}
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -76,6 +97,8 @@ services:
       - WORKER_APP_URL=http://web:3000
       - APP_URL=${APP_URL:-}
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

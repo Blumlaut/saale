@@ -12,7 +12,7 @@ Saale uses Prisma's native incremental migration system. This is the official, w
 1. **`prisma/schema.prisma`** — the single source of truth for the database schema.
 2. **`prisma/migrations/`** — incremental migration files, each representing one schema change. Applied in order, tracked in `_prisma_migrations` table.
 3. **`npm run db:migrate`** — creates a new migration from schema changes and applies it locally.
-4. **`prisma migrate deploy`** — runs in Docker entrypoint, applies any pending migrations on the remote DB.
+4. **`prisma migrate deploy`** — runs as the one-shot `migrate` service on deploy, applying any pending migrations to the remote DB before `web` and `worker` start.
 
 ## Workflow
 
@@ -49,7 +49,7 @@ npm run db:migrate    # creates + applies migration
 npx prisma generate   # regenerates client types
 ```
 
-The Docker container will pick up new migrations on restart — `prisma migrate deploy` runs in the entrypoint.
+The `migrate` service picks up new migrations on every deploy — it runs `prisma migrate deploy` and gates `web` and `worker`, so a failing migration stops the deploy instead of crash-looping the app.
 
 ### Resetting Local DB
 
@@ -69,7 +69,7 @@ Or via Docker (when containers are running):
 ```bash
 sudo docker compose exec postgres dropdb --if-exists -U saale saale
 sudo docker compose exec postgres createdb -U saale saale
-sudo docker compose up -d --force-recreate web  # migrate deploy runs automatically
+sudo docker compose run --rm migrate  # runs migrate deploy once
 ```
 
 ## Rules
@@ -263,10 +263,10 @@ A migration started but failed (partial execution). Prisma blocks new migrations
 
 ```bash
 # 1. Mark the failed migration as rolled back (undone)
-npx prisma migrate resolve --rolled-back <migration_name>
+docker compose run --rm migrate migrate resolve --rolled-back <migration_name>
 
 # 2. Now the migration can be re-applied (it will run again from scratch)
-npx prisma migrate deploy
+docker compose run --rm migrate
 ```
 
 The migration SQL must be idempotent (use `IF EXISTS` / `IF NOT EXISTS`) so it doesn't fail on retry. See "Failure-Safe Migrations" above.
