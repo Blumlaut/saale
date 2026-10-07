@@ -19,6 +19,7 @@ import type { ToolPolicy } from "@/lib/pi/tool-infos";
 import {
   DEFAULT_TOOL_CONFIG,
   DEFAULT_TOOL_EXPOSURE,
+  isCategoryEnabled,
   TOOL_CATEGORIES,
   TOOL_EXPOSURES,
   type ToolExposure,
@@ -56,7 +57,9 @@ export function ToolsTab({
 
   const handleToggle = (key: string) => {
     if (!settings) return;
-    const updated = { ...toolConfig, [key]: !toolConfig[key] };
+    // The stored config is sparse and can predate a category, so an absent key
+    // means "at the registry default" — flip that, not `undefined`.
+    const updated = { ...toolConfig, [key]: !isCategoryEnabled(toolConfig, key) };
     onSettingsChange({
       ...settings,
       defaultToolConfig: updated,
@@ -125,7 +128,7 @@ export function ToolsTab({
           <div className="px-6 py-4">
             <div className="space-y-1">
               {TOOL_CATEGORIES.map((category, index) => {
-                const enabled = !!toolConfig[category.key];
+                const enabled = isCategoryEnabled(toolConfig, category.key);
                 const isExpanded = !!expanded[category.key];
                 const tools = getToolsByCategory(category.key);
                 const exposure =

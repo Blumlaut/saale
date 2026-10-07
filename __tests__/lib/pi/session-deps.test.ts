@@ -81,4 +81,29 @@ describe("buildSessionDeps", () => {
     expect(gate).not.toHaveBeenCalled();
     expect(allCustomTools.map((t) => t.name)).toEqual(["caller_tool", "memory_search"]);
   });
+
+  it("enables a category the stored config predates", async () => {
+    // Old rows hold a config written before a category existed, and the row is
+    // sparse once normalized. A missing key must still resolve to the current
+    // registry default, or a newly added tool set is silently off for everyone
+    // whose settings were saved earlier.
+    let enabled: Record<string, boolean> | undefined;
+    mockResolveTools.mockImplementationOnce(
+      async (_userId: string, _sessionId: string, config: unknown) => {
+        enabled = config as Record<string, boolean>;
+        return [tool("memory_search")];
+      },
+    );
+
+    await buildSessionDeps({
+      userId: "user-1",
+      sessionId: "session-1",
+      customTools: [],
+      toolConfig: { terminal: true, email: false },
+      modelProvider: "custom",
+      modelName: "model",
+    });
+
+    expect(enabled).toMatchObject({ terminal: true, email: false, settings: true });
+  });
 });

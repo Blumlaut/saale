@@ -3,6 +3,7 @@ import {
   TOOL_CATEGORIES,
   DEFAULT_TOOL_CONFIG,
   getToolCategory,
+  isCategoryEnabled,
   type ToolConfig,
 } from "@/lib/pi/tool-categories";
 
@@ -96,6 +97,28 @@ describe("getToolCategory", () => {
   it("is case-sensitive", () => {
     expect(getToolCategory("Email")).toBeUndefined();
     expect(getToolCategory("EMAIL")).toBeUndefined();
+  });
+});
+
+describe("isCategoryEnabled", () => {
+  it("reads an absent key as the category default", () => {
+    // A sparse config (or one saved before the category existed) must not read
+    // as off, or a newly added category disappears for existing users.
+    expect(isCategoryEnabled({}, "settings")).toBe(true);
+    expect(isCategoryEnabled({ terminal: true }, "settings")).toBe(true);
+    expect(isCategoryEnabled(null, "terminal")).toBe(true);
+    expect(isCategoryEnabled(undefined, "memory")).toBe(true);
+  });
+
+  it("honours an explicit value", () => {
+    expect(isCategoryEnabled({ settings: false }, "settings")).toBe(false);
+    expect(isCategoryEnabled({ email: false }, "email")).toBe(false);
+    expect(isCategoryEnabled({ web: true }, "web")).toBe(true);
+  });
+
+  it("treats an unknown category as off", () => {
+    expect(isCategoryEnabled({}, "nope")).toBe(false);
+    expect(isCategoryEnabled({ nope: true }, "nope")).toBe(true);
   });
 });
 
