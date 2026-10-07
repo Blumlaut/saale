@@ -5,6 +5,12 @@
 export interface EmailAccount {
   id: string;
   email: string;
+  imapHost?: string;
+  imapPort?: number;
+  imapSecure?: boolean;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
   enabled: boolean;
   lastSyncedAt?: string | null;
   messageCount?: number;

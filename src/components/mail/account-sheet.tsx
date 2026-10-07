@@ -8,12 +8,15 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { AlertCircle, CheckCircle, Loader2, Sparkles, Settings2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { postJson } from "@/lib/http";
+import { postJson, patchJson } from "@/lib/http";
+import type { EmailAccount } from "@/types/shared";
 
 interface AccountSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  /** When set, the sheet edits this account instead of creating a new one. */
+  account?: EmailAccount | null;
 }
 
 interface ServerConfig {
@@ -25,7 +28,8 @@ interface ServerConfig {
 const DEFAULT_IMAP: ServerConfig = { host: "imap.gmail.com", port: 993, secure: true };
 const DEFAULT_SMTP: ServerConfig = { host: "smtp.gmail.com", port: 465, secure: true };
 
-export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProps) {
+export function AccountSheet({ open, onOpenChange, onSuccess, account }: AccountSheetProps) {
+  const isEdit = !!account;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [imapHost, setImapHost] = useState(DEFAULT_IMAP.host);
@@ -53,63 +57,65 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resetForm = useCallback(() => {
-    setEmail("");
+    setEmail(account?.email ?? "");
     setPassword("");
-    setImapHost(DEFAULT_IMAP.host);
-    setImapPort(DEFAULT_IMAP.port);
-    setImapSecure(DEFAULT_IMAP.secure);
-    setSmtpHost(DEFAULT_SMTP.host);
-    setSmtpPort(DEFAULT_SMTP.port);
-    setSmtpSecure(DEFAULT_SMTP.secure);
+    setImapHost(account?.imapHost ?? DEFAULT_IMAP.host);
+    setImapPort(account?.imapPort ?? DEFAULT_IMAP.port);
+    setImapSecure(account?.imapSecure ?? DEFAULT_IMAP.secure);
+    setSmtpHost(account?.smtpHost ?? DEFAULT_SMTP.host);
+    setSmtpPort(account?.smtpPort ?? DEFAULT_SMTP.port);
+    setSmtpSecure(account?.smtpSecure ?? DEFAULT_SMTP.secure);
     setTestResult(null);
     setError("");
     setDiscovered(null);
     setShowAdvanced(false);
-  }, []);
+  }, [account]);
 
   useEffect(() => {
-    if (!open) {
-      resetForm();
-    }
+    resetForm();
   }, [open, resetForm]);
 
-  const triggerAutodiscover = useCallback((address: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      const trimmed = address.trim();
-      if (!trimmed.includes("@")) {
+  const triggerAutodiscover = useCallback(
+    (address: string) => {
+      if (account) return; // keep the saved server settings while editing
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(async () => {
+        const trimmed = address.trim();
+        if (!trimmed.includes("@")) {
+          setDiscovered(null);
+          return;
+        }
+
+        setDiscovering(true);
         setDiscovered(null);
-        return;
-      }
 
-      setDiscovering(true);
-      setDiscovered(null);
+        try {
+          const data = await postJson<{
+            imap: ServerConfig | null;
+            smtp: ServerConfig | null;
+            source: "srv" | "probe" | null;
+          }>("/api/email/autodiscover", { email: trimmed });
+          setDiscovered(data);
 
-      try {
-        const data = await postJson<{
-          imap: ServerConfig | null;
-          smtp: ServerConfig | null;
-          source: "srv" | "probe" | null;
-        }>("/api/email/autodiscover", { email: trimmed });
-        setDiscovered(data);
-
-        if (data.imap) {
-          setImapHost(data.imap.host);
-          setImapPort(data.imap.port);
-          setImapSecure(data.imap.secure);
+          if (data.imap) {
+            setImapHost(data.imap.host);
+            setImapPort(data.imap.port);
+            setImapSecure(data.imap.secure);
+          }
+          if (data.smtp) {
+            setSmtpHost(data.smtp.host);
+            setSmtpPort(data.smtp.port);
+            setSmtpSecure(data.smtp.secure);
+          }
+        } catch {
+          setDiscovered({ imap: null, smtp: null, source: null });
+        } finally {
+          setDiscovering(false);
         }
-        if (data.smtp) {
-          setSmtpHost(data.smtp.host);
-          setSmtpPort(data.smtp.port);
-          setSmtpSecure(data.smtp.secure);
-        }
-      } catch {
-        setDiscovered({ imap: null, smtp: null, source: null });
-      } finally {
-        setDiscovering(false);
-      }
-    }, 600);
-  }, []);
+      }, 600);
+    },
+    [account],
+  );
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -125,7 +131,9 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
     try {
       const data = await postJson<{ results: typeof testResult }>("/api/email/test-connection", {
         email,
-        password,
+        // Fall back to the stored password when editing without a new one
+        password: password || undefined,
+        accountId: account?.id,
         imapHost,
         imapPort,
         imapSecure,
@@ -146,16 +154,22 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
     setError("");
 
     try {
-      await postJson("/api/email/accounts", {
+      const payload: Record<string, unknown> = {
         email,
-        password,
         imapHost,
         imapPort,
         imapSecure,
         smtpHost,
         smtpPort,
         smtpSecure,
-      });
+      };
+      if (password) payload.password = password;
+
+      if (account) {
+        await patchJson(`/api/email/accounts/${account.id}`, payload);
+      } else {
+        await postJson("/api/email/accounts", payload);
+      }
 
       resetForm();
       onOpenChange(false);
@@ -182,7 +196,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
           {/* Header */}
           <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
             <SheetTitle className="text-xl leading-tight font-semibold tracking-tight">
-              Add Email Account
+              {isEdit ? "Edit Email Account" : "Add Email Account"}
             </SheetTitle>
           </SheetHeader>
 
@@ -223,7 +237,9 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Password / App Password</Label>
+                  <Label className="text-xs">
+                    {isEdit ? "New Password / App Password" : "Password / App Password"}
+                  </Label>
                   <Input
                     type="password"
                     value={password}
@@ -231,6 +247,11 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
                     placeholder="••••••••"
                     className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
                   />
+                  {isEdit && (
+                    <p className="text-muted-foreground text-xs">
+                      Leave blank to keep the current password
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -247,8 +268,8 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
                 </Button>
               )}
 
-              {/* Server settings (collapsible when auto-discovered) */}
-              {(showAdvanced || !hasDiscovery) && (
+              {/* Server settings (collapsible when auto-discovered, always visible when editing) */}
+              {(isEdit || showAdvanced || !hasDiscovery) && (
                 <>
                   <Separator className="border-border/30" />
 
@@ -395,9 +416,9 @@ export function AccountSheet({ open, onOpenChange, onSuccess }: AccountSheetProp
               <Button
                 className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
                 onClick={handleSave}
-                disabled={saving || !email || !password}
+                disabled={saving || !email || (!isEdit && !password)}
               >
-                {saving ? "Saving..." : "Save Account"}
+                {saving ? "Saving..." : isEdit ? "Save Changes" : "Save Account"}
               </Button>
             </div>
           </div>
