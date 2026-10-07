@@ -217,3 +217,18 @@ export function isToolExposure(value: unknown): value is ToolExposure {
 export function getToolCategory(key: string): ToolCategory | undefined {
   return TOOL_CATEGORIES.find((c) => c.key === key);
 }
+
+/**
+ * Whether a category is enabled for a stored config that may not name it.
+ *
+ * A stored config is sparse and can predate a category, so an absent key means
+ * the category sits at its registry default — not that it is off. Reading
+ * `config[key]` directly would switch every newly added category off for users
+ * whose settings were saved earlier.
+ */
+export function isCategoryEnabled(
+  config: Record<string, boolean | undefined> | null | undefined,
+  key: string,
+): boolean {
+  return config?.[key] ?? getToolCategory(key)?.defaultEnabled ?? false;
+}

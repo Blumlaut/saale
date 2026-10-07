@@ -17,7 +17,7 @@ import {
 import { postJson, patchJson, fetchJson } from "@/lib/http";
 import { Bot, Loader2 } from "lucide-react";
 import type { AgentJobDefinition } from "@/types/shared";
-import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
+import { isCategoryEnabled, TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
 import {
   DEFAULT_THINKING_LEVEL_SETTING,
   THINKING_LEVEL_OPTIONS,
@@ -139,7 +139,9 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
   }, [open, job]);
 
   const toggleTool = (key: string) => {
-    setToolConfig((prev) => ({ ...prev, [key]: !prev[key] }));
+    // A job's stored config is sparse and can predate a category; an absent key
+    // means the registry default, so flipping it must not read `undefined`.
+    setToolConfig((prev) => ({ ...prev, [key]: !isCategoryEnabled(prev, key) }));
   };
 
   const loadTelegramChats = useCallback(async () => {
@@ -512,7 +514,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {TOOL_CATEGORIES.map((category) => {
                 const Icon = category.icon;
-                const isChecked = toolConfig[category.key] ?? category.defaultEnabled;
+                const isChecked = isCategoryEnabled(toolConfig, category.key);
                 return (
                   <div
                     key={category.key}
