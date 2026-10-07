@@ -1,10 +1,26 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ToolCallView } from "@/components/chat/tool-call-view";
+import { MessageList } from "@/components/chat/message-list";
 import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
-import type { ToolCallData } from "@/components/chat/types";
+import type { Message, ToolCallData } from "@/components/chat/types";
+
+/**
+ * The card shell, through the dispatcher.
+ *
+ * Every card is described by a descriptor (see `tool-descriptors.test.ts` for
+ * what each one says), so these tests cover what only the renderer can get
+ * wrong: collapsing, the single status badge, the fallback when a descriptor
+ * cannot read a result, and the hand-off to the redacted card on a share
+ * payload.
+ */
+
+beforeAll(() => {
+  // jsdom has no layout, so scrollIntoView does not exist.
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 function makeToolCall(overrides: Partial<ToolCallData>): ToolCallData {
   return {
@@ -18,31 +34,57 @@ function makeToolCall(overrides: Partial<ToolCallData>): ToolCallData {
   };
 }
 
-describe("ToolCallView", () => {
-  it("renders a WebSearchCard for web_search with structured meta (happy path)", () => {
-    const meta = {
-      _saaleWebMeta: {
-        type: "web_search",
-        query: "pi coding agent",
-        count: 2,
-        results: [
-          { title: "Pi Coding Agent Docs", url: "https://pi.dev/docs", engine: "searxng" },
-          { title: "GitHub - pi", url: "https://github.com/pi", engine: "gh" },
-        ],
-      },
-    };
-    const result = `Search results for "pi coding agent" (2 results):\n\n1. **[Pi Coding Agent Docs](https://pi.dev/docs)**\n\n${JSON.stringify(meta)}`;
+function infraMeta(meta: Record<string, unknown>): string {
+  return `done\n${JSON.stringify({ _saaleInfraMeta: meta })}`;
+}
 
-    render(<ToolCallView toolCall={makeToolCall({ name: "web_search", result })} />);
+/** The card's header toggle — the only button a collapsed card renders. */
+function header(name: RegExp) {
+  return screen.getByRole("button", { name });
+}
 
-    expect(screen.getByText("Searched")).toBeInTheDocument();
-    expect(screen.getByText(/pi coding agent/)).toBeInTheDocument();
-    expect(screen.getByText("Pi Coding Agent Docs")).toBeInTheDocument();
-    expect(screen.getByText("GitHub - pi")).toBeInTheDocument();
-    expect(screen.getByText("2 results")).toBeInTheDocument();
+describe("tool card shell", () => {
+  it("keeps a card's detail collapsed until the header is clicked", () => {
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({ name: "bash", args: { command: "ls -la" }, result: "total 0" })}
+      />,
+    );
+
+    // One row: the label from the catalog and the command it ran.
+    expect(screen.getByText("Bash")).toBeInTheDocument();
+    expect(screen.getByText("ls -la")).toBeInTheDocument();
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
+
+    fireEvent.click(header(/Bash/));
+    expect(screen.getByText("Arguments")).toBeInTheDocument();
+    expect(screen.getByText("total 0")).toBeInTheDocument();
+
+    fireEvent.click(header(/Bash/));
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
   });
 
-  it("renders a MailToolCard for mail_list with structured meta (happy path)", () => {
+  it("renders a card with nothing to expand as a plain row", () => {
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "infra_remove_machine",
+          result: infraMeta({
+            type: "infra_remove_machine",
+            machineId: "m1",
+            machineName: "prod-web-01",
+          }),
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Removed machine")).toBeInTheDocument();
+    expect(screen.getByText("removed")).toBeInTheDocument();
+    // Nothing to open, so no expander and no focusable control.
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("opens a result-shaped card straight away, since its rows are the answer", () => {
     const meta = {
       _saaleMailMeta: {
         type: "mail_list",
@@ -53,7 +95,7 @@ describe("ToolCallView", () => {
             id: "e1",
             from: "Alice <alice@example.com>",
             subject: "Project update",
-            date: new Date().toISOString(),
+            date: "2026-01-01T10:00:00.000Z",
             preview: "Quick update about the roadmap",
             read: false,
             folder: "Inbox",
@@ -61,91 +103,71 @@ describe("ToolCallView", () => {
         ],
       },
     };
-    const result = `Listed 1 emails from Inbox.\n\n${JSON.stringify(meta)}`;
 
-    render(<ToolCallView toolCall={makeToolCall({ name: "mail_list", result })} />);
+    render(
+      <ToolCallView toolCall={makeToolCall({ name: "mail_list", result: JSON.stringify(meta) })} />,
+    );
 
-    expect(screen.getByText("Listed mail")).toBeInTheDocument();
     expect(screen.getByText("Project update")).toBeInTheDocument();
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
-    expect(screen.getByText("1 emails")).toBeInTheDocument();
+    expect(screen.getByText("1 email")).toBeInTheDocument();
   });
 
-  it("renders a FileCard for show_file with args extracted from the call", () => {
+  it("reports a command's exit code, and shows its output only once opened", () => {
     render(
       <ToolCallView
         toolCall={makeToolCall({
-          name: "show_file",
-          args: { filePath: "reports/summary.txt", description: "Quarterly report" },
+          name: "infra_exec",
+          result: infraMeta({
+            type: "infra_exec",
+            machineId: "m1",
+            machineName: "prod-web-01",
+            command: "nginx -t",
+            exitCode: 0,
+            timedOut: false,
+            truncated: false,
+            stdout: "configuration file test is successful",
+            stderr: "",
+          }),
         })}
       />,
     );
 
-    expect(screen.getByText("summary.txt")).toBeInTheDocument();
-    expect(screen.getByText("Quarterly report")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /download/i })).toBeInTheDocument();
+    expect(screen.getByText("Executed")).toBeInTheDocument();
+    expect(screen.getByText("nginx -t")).toBeInTheDocument();
+    expect(screen.getByText("exit 0")).toHaveClass("text-green-600");
+    expect(screen.queryByText("prod-web-01")).not.toBeInTheDocument();
+
+    fireEvent.click(header(/Executed/));
+    expect(screen.getByText("prod-web-01")).toBeInTheDocument();
+    expect(screen.getByText("configuration file test is successful")).toBeInTheDocument();
   });
 
-  it("falls back to a generic accordion for unknown tools (edge case)", () => {
-    render(<ToolCallView toolCall={makeToolCall({ name: "custom_tool", args: { foo: "bar" } })} />);
-
-    // Accordion header is visible, body is collapsed
-    expect(screen.getByText("custom_tool")).toBeInTheDocument();
-    expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /custom_tool/ }));
-
-    expect(screen.getByText("Arguments:")).toBeInTheDocument();
-    expect(screen.getByText("foo: bar")).toBeInTheDocument();
-
-    // Collapses again on second click
-    fireEvent.click(screen.getByRole("button", { name: /custom_tool/ }));
-    expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
-  });
-
-  it("renders multi-line argument values with real newlines (edge case)", () => {
-    // JSON.stringify escapes newlines, so the old renderer showed a literal
-    // backslash-n for every multi-line command or script.
-    const { container } = render(
-      <ToolCallView
-        toolCall={makeToolCall({
-          name: "custom_tool",
-          args: { command: "git fetch\n  && git status" },
-        })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /custom_tool/ }));
-    const pre = container.querySelector("pre");
-    expect(pre?.textContent).toBe("command: git fetch\n  && git status");
-    expect(pre?.textContent).not.toContain("\\n");
-  });
-
-  it("renders a codemode script with the tools it calls (reloaded transcript)", () => {
-    // Only the codemode call is in the assistant message, so after a reload the
-    // card has to tell the user what the script reached from the script itself.
-    const code =
-      "const mails = await tools.mail_list({ folder: 'INBOX' });\nconst web = await tools.web_search({ query: 'x' });\nreturn [mails, web];";
-
+  it("opens a failed command, so its error is not behind a click", () => {
     render(
       <ToolCallView
         toolCall={makeToolCall({
-          name: "codemode",
-          args: { code },
-          result: "Script completed\n2 emails",
+          name: "infra_exec",
+          result: infraMeta({
+            type: "infra_exec",
+            machineId: "m1",
+            machineName: "prod-web-01",
+            command: "systemctl restart reencode@blade-runner.service",
+            exitCode: 1,
+            timedOut: false,
+            truncated: false,
+            stdout: "",
+            stderr: "Job for reencode@blade-runner.service failed",
+          }),
         })}
       />,
     );
 
-    // Distinct label from the raw tool name — the header says what it is.
-    expect(screen.getByText("Script")).toBeInTheDocument();
-    expect(screen.getAllByText(/List Emails/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Web Search/).length).toBeGreaterThan(0);
-    // The generic arguments dump is not used for a script.
-    expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
+    expect(screen.getByText("exit 1")).toHaveClass("text-red-600");
+    expect(screen.getByText("Job for reencode@blade-runner.service failed")).toBeInTheDocument();
   });
 
-  it("renders an InfraEditFileCard with the diff and replacement count (happy path)", () => {
+  it("summarises a long diff instead of rendering every line", () => {
+    const diffLines = Array.from({ length: 45 }, (_, i) => `+${i + 1} line ${i + 1}`);
     const meta = {
       _saaleInfraMeta: {
         type: "infra_edit_file",
@@ -154,32 +176,7 @@ describe("ToolCallView", () => {
         path: "/etc/nginx/nginx.conf",
         replacements: 2,
         firstChangedLine: 2,
-        diff: "-2   listen 80;\n+2   listen 8080;\n-3   root /var/www;\n+3   root /srv/www;",
-      },
-    };
-    const result = `{\n "machine": "prod-web-01",\n "replacements": 2\n}\n${JSON.stringify(meta)}`;
-
-    render(<ToolCallView toolCall={makeToolCall({ name: "infra_edit_file", result })} />);
-
-    expect(screen.getByText("Edited file")).toBeInTheDocument();
-    expect(screen.getByText("/etc/nginx/nginx.conf")).toBeInTheDocument();
-    expect(screen.getByText("2 edits")).toBeInTheDocument();
-    expect(screen.getByText("prod-web-01")).toBeInTheDocument();
-    expect(screen.getByText("line 2")).toBeInTheDocument();
-    expect(screen.getByText("-2 listen 80;")).toHaveClass("text-red-700");
-    expect(screen.getByText("+2 listen 8080;")).toHaveClass("text-green-700");
-  });
-
-  it("summarises a long diff instead of rendering every line (edge case)", () => {
-    const diffLines = Array.from({ length: 45 }, (_, i) => `+${i + 1} line ${i + 1}`);
-    const meta = {
-      _saaleInfraMeta: {
-        type: "infra_edit_file",
-        machineId: "m1",
-        machineName: "prod-web-01",
-        path: "/etc/app.conf",
-        replacements: 45,
-        diff: diffLines.join("\n"),
+        diff: `-2 listen 80;\n+2 listen 8080;\n${diffLines.join("\n")}`,
       },
     };
 
@@ -188,13 +185,23 @@ describe("ToolCallView", () => {
         toolCall={makeToolCall({ name: "infra_edit_file", result: JSON.stringify(meta) })}
       />,
     );
+    fireEvent.click(header(/Edited file/));
 
-    expect(screen.getByText("+40 line 40")).toBeInTheDocument();
-    expect(screen.queryByText("+41 line 41")).not.toBeInTheDocument();
-    expect(screen.getByText("5 more lines")).toBeInTheDocument();
+    expect(screen.getByText("Edited file")).toBeInTheDocument();
+    expect(screen.getByText("/etc/nginx/nginx.conf")).toBeInTheDocument();
+    expect(screen.getByText("2 edits")).toBeInTheDocument();
+    expect(screen.getByText("prod-web-01")).toBeInTheDocument();
+    expect(screen.getByText("line 2")).toBeInTheDocument();
+    expect(screen.getByText("-2 listen 80;")).toHaveClass("text-red-700");
+    expect(screen.getByText("+2 listen 8080;")).toHaveClass("text-green-700");
+
+    // 45 diff lines plus the two leading ones, capped at 40 shown.
+    expect(screen.getByText("+38 line 38")).toBeInTheDocument();
+    expect(screen.queryByText("+39 line 39")).not.toBeInTheDocument();
+    expect(screen.getByText("7 more lines")).toBeInTheDocument();
   });
 
-  it("renders an InfraReadFileCard and flags truncated output", () => {
+  it("flags a truncated remote read and claims no line count for it", () => {
     const meta = {
       _saaleInfraMeta: {
         type: "infra_read_file",
@@ -212,12 +219,10 @@ describe("ToolCallView", () => {
         toolCall={makeToolCall({ name: "infra_read_file", result: JSON.stringify(meta) })}
       />,
     );
+    fireEvent.click(header(/Read file/));
 
-    expect(screen.getByText("Read file")).toBeInTheDocument();
-    expect(screen.getByText("/var/log/huge.log")).toBeInTheDocument();
     expect(screen.getByText("truncated")).toBeInTheDocument();
     expect(screen.getByText(/2025-01-01 boot/)).toBeInTheDocument();
-    // A truncated read must not claim a complete line count.
     expect(screen.queryByText("9800 lines")).not.toBeInTheDocument();
   });
 
@@ -244,7 +249,7 @@ describe("ToolCallView", () => {
     expect(screen.queryByText(/Read image file/)).not.toBeInTheDocument();
   });
 
-  it("renders nothing for web_search when the result has no structured meta (edge case)", () => {
+  it("hands a result it cannot read to the generic card rather than hiding the call", () => {
     render(
       <ToolCallView
         toolCall={makeToolCall({
@@ -254,7 +259,129 @@ describe("ToolCallView", () => {
       />,
     );
 
+    // The catalog label, not the raw tool name, and the raw result on demand.
+    expect(screen.getByText("Web Search")).toBeInTheDocument();
     expect(screen.queryByText("Searched")).not.toBeInTheDocument();
+
+    fireEvent.click(header(/Web Search/));
+    expect(screen.getByText(/No results found/)).toBeInTheDocument();
+  });
+
+  it("renders multi-line argument values with real newlines", () => {
+    // JSON.stringify escapes newlines, so a naive render shows a literal
+    // backslash-n for every multi-line command or script.
+    const { container } = render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "custom_tool",
+          args: { command: "git fetch\n  && git status" },
+        })}
+      />,
+    );
+
+    fireEvent.click(header(/custom_tool/));
+    const pre = container.querySelector("pre");
+    expect(pre?.textContent).toBe("command: git fetch\n  && git status");
+    expect(pre?.textContent).not.toContain("\\n");
+  });
+
+  it("renders a codemode script with the tools it calls (reloaded transcript)", () => {
+    // Only the codemode call is in the assistant message, so after a reload the
+    // card has to tell the user what the script reached from the script itself.
+    const code =
+      "const mails = await tools.mail_list({ folder: 'INBOX' });\nconst web = await tools.web_search({ query: 'x' });\nreturn [mails, web];";
+
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "codemode",
+          args: { code },
+          result: "Script completed\n2 emails",
+        })}
+      />,
+    );
+
+    // Distinct label from the raw tool name — the header says what it is.
+    expect(screen.getByText("Script")).toBeInTheDocument();
+    expect(screen.getByText("List Emails · Web Search")).toBeInTheDocument();
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
+
+    fireEvent.click(header(/Script/));
+    expect(screen.getByText("Output")).toBeInTheDocument();
+    expect(screen.getByText(/2 emails/)).toBeInTheDocument();
+  });
+
+  it("renders a FileCard for show_file with args extracted from the call", () => {
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "show_file",
+          args: { filePath: "reports/summary.txt", description: "Quarterly report" },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("summary.txt")).toBeInTheDocument();
+    expect(screen.getByText("Quarterly report")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /download/i })).toBeInTheDocument();
+  });
+});
+
+describe("parallel tool calls", () => {
+  function message(calls: ToolCallData[]): Message {
+    return {
+      id: "a1",
+      role: "assistant",
+      content: "Checking both machines.",
+      thinking: undefined,
+      toolCalls: calls,
+      parentMessageId: undefined,
+      createdAt: "2026-01-01T12:00:00.000Z",
+      attachments: undefined,
+    };
+  }
+
+  const exec = (id: string, command: string) =>
+    makeToolCall({
+      id,
+      name: "infra_exec",
+      result: infraMeta({
+        type: "infra_exec",
+        machineId: "m1",
+        machineName: "prod-web-01",
+        command,
+        exitCode: 0,
+        timedOut: false,
+        truncated: false,
+        stdout: "ok",
+        stderr: "",
+      }),
+    });
+
+  it("collapses the calls one turn made into a single row", () => {
+    render(<MessageList messages={[message([exec("tc-1", "uptime"), exec("tc-2", "df -h")])]} />);
+
+    expect(screen.getByText("2 tool calls")).toBeInTheDocument();
+    // Neither command is taking up a row of its own.
+    expect(screen.queryByText("uptime")).not.toBeInTheDocument();
+
+    fireEvent.click(header(/2 tool calls/));
+    expect(screen.getByText("uptime")).toBeInTheDocument();
+    expect(screen.getByText("df -h")).toBeInTheDocument();
+  });
+
+  it("reports the run as failed when one of its calls failed", () => {
+    const failed = { ...exec("tc-2", "df -h"), status: "error" as const, error: "exit 1" };
+    render(<MessageList messages={[message([exec("tc-1", "uptime"), failed])]} />);
+
+    expect(screen.getByText("failed")).toHaveClass("text-red-600");
+  });
+
+  it("leaves a lone tool call as its own card", () => {
+    render(<MessageList messages={[message([exec("tc-1", "uptime")])]} />);
+
+    expect(screen.queryByText("1 tool call")).not.toBeInTheDocument();
+    expect(screen.getByText("uptime")).toBeInTheDocument();
   });
 });
 
@@ -277,7 +404,7 @@ describe("ToolCallView with a redacted tool call", () => {
 
     expect(screen.getByText("Execute Command")).toBeInTheDocument();
     expect(screen.getByText("Ran a command in the terminal")).toBeInTheDocument();
-    // The owner's InfraExecCard header — proof the diversion happened.
+    // The owner's exec card header — proof the diversion happened.
     expect(screen.queryByText("Executed")).not.toBeInTheDocument();
   });
 
@@ -361,7 +488,7 @@ describe("redacted rendering across the tool catalog", () => {
     const { container } = render(<ToolCallView toolCall={poisonedCall("bash")} />);
 
     // The generic card for an unknown tool would render an expandable row.
-    expect(screen.queryByText("Arguments:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
     expect(container.querySelector("pre")).toBeNull();
   });
 });

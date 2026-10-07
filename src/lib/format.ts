@@ -24,3 +24,14 @@ export function formatRelativeDate(dateStr: string): string {
     return "";
   }
 }
+
+/** Cut a string to `max` characters, marking the cut with an ellipsis. */
+export function truncate(str: string, max: number): string {
+  if (!str) return "";
+  return str.length > max ? str.slice(0, max - 1) + "…" : str;
+}
+
+/** Spell a count with its unit — `plural(1, "email", "emails")` → `"1 email"`. */
+export function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}

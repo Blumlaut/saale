@@ -10,6 +10,7 @@ import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
 import { SelectionQuoteButton } from "./selection-quote-button";
 import { ToolCallView } from "./tool-call-view";
+import { ToolCallRun } from "./tool-call-run";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages } from "@/lib/chat/group-messages";
@@ -683,12 +684,14 @@ function AssistantGroup({ messages, isStreaming }: { messages: Message[]; isStre
                 </div>
               )}
 
-            {/* Tool calls */}
+            {/* Tool calls — a turn's parallel calls collapse into one row */}
             {message.toolCalls && message.toolCalls.length > 0 && (
               <div className="space-y-1">
-                {message.toolCalls.map((toolCall) => (
-                  <ToolCallView key={toolCall.id} toolCall={toolCall} />
-                ))}
+                {message.toolCalls.length > 1 ? (
+                  <ToolCallRun toolCalls={message.toolCalls} />
+                ) : (
+                  <ToolCallView toolCall={message.toolCalls[0]!} />
+                )}
               </div>
             )}
           </div>
