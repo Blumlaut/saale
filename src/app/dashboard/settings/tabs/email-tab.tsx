@@ -5,7 +5,16 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
-import { Mail, Loader2, Plus, RefreshCw, Trash2, AlertTriangle, MoreVertical } from "lucide-react";
+import {
+  Mail,
+  Loader2,
+  Plus,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  AlertTriangle,
+  MoreVertical,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +39,7 @@ export function EmailTab() {
   const [emailLoading, setEmailLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
   const [alertOpen, setAlertOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     accountId: string;
@@ -147,7 +157,10 @@ export function EmailTab() {
               <Button
                 size="sm"
                 className="liquid-glass-accent rounded-full"
-                onClick={() => setAccountDialogOpen(true)}
+                onClick={() => {
+                  setEditingAccount(null);
+                  setAccountDialogOpen(true);
+                }}
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Add Account
@@ -218,6 +231,15 @@ export function EmailTab() {
                         />
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
+                            onClick={() => {
+                              setEditingAccount(account);
+                              setAccountDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit Settings
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onClick={() => handleActionRequest(account.id, "sync")}
                             disabled={isBusy}
                           >
@@ -261,6 +283,7 @@ export function EmailTab() {
       <AccountSheet
         open={accountDialogOpen}
         onOpenChange={setAccountDialogOpen}
+        account={editingAccount}
         onSuccess={loadAccounts}
       />
 
