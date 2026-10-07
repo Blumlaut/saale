@@ -33,87 +33,92 @@ const MIME_TYPES: Record<string, string> = {
   mp4: "video/mp4",
 };
 
-interface FileCardProps {
+/** The endpoint that serves a workspace file to its owner. */
+function workspaceFileUrl(filePath: string): string {
+  return `/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`;
+}
+
+/** One `show_file` call, read into the parts every presentation of it needs. */
+interface SharedFile {
+  id: string;
   filePath: string;
   fileName: string;
   mimeType: string | undefined;
-  size: number | undefined;
   description: string | undefined;
+  isImage: boolean;
   isError: boolean;
   errorMessage: string | undefined;
 }
 
-/** Format byte size for display */
-function formatSize(bytes: number): string {
-  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  if (bytes > 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
+function readSharedFile(toolCall: ToolCallData): SharedFile {
+  const filePath = typeof toolCall.args.filePath === "string" ? toolCall.args.filePath : "";
+  const mimeType = guessMimeType(filePath);
+
+  return {
+    id: toolCall.id,
+    filePath,
+    fileName: basename(filePath),
+    mimeType,
+    description:
+      typeof toolCall.args.description === "string" ? toolCall.args.description : undefined,
+    isImage: Boolean(mimeType?.startsWith("image/")),
+    isError: toolCall.status === "error" || Boolean(toolCall.error),
+    errorMessage: toolCall.error,
+  };
 }
 
-function FileCard({
-  filePath,
-  fileName,
-  mimeType = undefined,
-  size = undefined,
-  description = undefined,
-  isError = false,
-  errorMessage = undefined,
-}: FileCardProps) {
-  const [loading, setLoading] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageError, setImageError] = useState(false);
+/**
+ * A file's bytes as an object URL, so an image can be previewed.
+ *
+ * The fetch is explicit rather than an `<img src>`: a preview that fails should
+ * say so instead of rendering a broken image, and the URL has to be revoked
+ * when the card unmounts or the path changes.
+ */
+function useFilePreview(
+  filePath: string,
+  enabled: boolean,
+): { url: string | null; failed: boolean } {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
-  const isImage = mimeType?.startsWith("image/");
-
-  // Pick icon based on MIME type (static component references, not function calls)
-  const Icon = isImage
-    ? ImageIcon
-    : mimeType === "application/pdf"
-      ? FileText
-      : mimeType?.startsWith("text/")
-        ? FileText
-        : File;
-
-  // Load image preview on mount (for images only)
   useEffect(() => {
-    if (!isImage) return;
+    if (!enabled) return;
 
     const controller = new AbortController();
-    fetch(`/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`, {
-      signal: controller.signal,
-      credentials: "include",
-    })
+    fetch(workspaceFileUrl(filePath), { signal: controller.signal, credentials: "include" })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed");
+        if (!res.ok) throw new Error(`Failed to load the file (${res.status})`);
         return res.blob();
       })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        setImageUrl(url);
-      })
+      .then((blob) => setUrl(URL.createObjectURL(blob)))
       .catch((err: unknown) => {
         // An abort is this effect cleaning up, not a failure to load.
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Failed to load the workspace file preview:", err);
-        setImageError(true);
+        setFailed(true);
       });
 
     return () => {
       controller.abort();
-      setImageUrl((url) => {
-        if (url) URL.revokeObjectURL(url);
+      setUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
         return null;
       });
     };
-  }, [filePath, isImage]);
+  }, [filePath, enabled]);
 
-  const handleDownload = useCallback(async () => {
-    setLoading(true);
+  return { url, failed };
+}
+
+/** Fetch a file and hand it to the browser as a download. */
+function useFileDownload(filePath: string, fileName: string) {
+  const [busy, setBusy] = useState(false);
+
+  const download = useCallback(async () => {
+    setBusy(true);
     try {
-      const res = await fetch(`/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to download");
+      const res = await fetch(workspaceFileUrl(filePath), { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to download the file (${res.status})`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -126,66 +131,116 @@ function FileCard({
     } catch (err) {
       console.error("Failed to download a workspace file:", err);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }, [filePath, fileName]);
 
-  if (isError) {
-    return (
-      <div className="liquid-glass-inner flex items-center gap-3 rounded-xl px-4 py-3">
-        <AlertCircle className="text-destructive h-5 w-5 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{fileName}</p>
-          <p className="text-muted-foreground text-xs">{errorMessage || "Failed to share file"}</p>
-        </div>
-      </div>
-    );
-  }
+  return { busy, download };
+}
+
+/**
+ * The download control. `iconOnly` is for a gallery tile, where the file name
+ * beside it already says what is being downloaded.
+ */
+function DownloadButton({ file, iconOnly = false }: { file: SharedFile; iconOnly?: boolean }) {
+  const { busy, download } = useFileDownload(file.filePath, file.fileName);
 
   return (
-    <div className="liquid-glass-inner overflow-hidden rounded-xl">
-      {/* Image preview */}
-      {isImage && imageUrl && !imageError && (
-        <div className="border-border/30 border-b">
-          <LightboxImage
-            src={imageUrl}
-            alt={fileName}
-            wrapperClassName="w-full"
-            className="h-auto max-h-64 w-full bg-black/5 object-contain"
-          />
+    <Button
+      variant="secondary"
+      size={iconOnly ? "icon-sm" : "sm"}
+      className="shrink-0"
+      onClick={download}
+      disabled={busy}
+      aria-label={`Download ${file.fileName}`}
+    >
+      {busy ? (
+        <Loader2 className={iconOnly ? "size-3.5 animate-spin" : "h-3.5 w-3.5 animate-spin"} />
+      ) : (
+        <Download className={iconOnly ? "size-3.5" : "h-3.5 w-3.5"} />
+      )}
+      {!iconOnly && "Download"}
+    </Button>
+  );
+}
+
+/** The mark for a file, from the MIME type its extension suggests. */
+function FileTypeIcon({ file }: { file: SharedFile }) {
+  const Icon = file.isImage
+    ? ImageIcon
+    : file.mimeType === "application/pdf" || file.mimeType?.startsWith("text/")
+      ? FileText
+      : File;
+
+  return <Icon className="text-muted-foreground h-4 w-4" />;
+}
+
+/** A shared file that could not be produced — the reason is the whole card. */
+function SharedFileError({ file }: { file: SharedFile }) {
+  return (
+    <div className="liquid-glass-inner flex min-w-0 items-center gap-3 rounded-xl px-3 py-2">
+      <AlertCircle className="text-destructive h-4 w-4 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium">{file.fileName}</p>
+        <p className="text-muted-foreground text-[11px]">
+          {file.errorMessage || "Failed to share file"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** A non-image attachment: one compact row, with its download. */
+function SharedFileRow({ file }: { file: SharedFile }) {
+  return (
+    <div className="liquid-glass-inner flex min-w-0 items-center gap-3 rounded-xl px-2.5 py-2">
+      <div className="bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+        <FileTypeIcon file={file} />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium">{file.fileName}</p>
+        {file.description && (
+          <p className="text-muted-foreground truncate text-[11px]">{file.description}</p>
+        )}
+      </div>
+
+      <DownloadButton file={file} iconOnly />
+    </div>
+  );
+}
+
+/** An image attachment: a square thumbnail that opens the lightbox. */
+function SharedImageTile({ file }: { file: SharedFile }) {
+  const { url, failed } = useFilePreview(file.filePath, true);
+
+  return (
+    <div className="liquid-glass-inner min-w-0 overflow-hidden rounded-xl">
+      {url && !failed ? (
+        <LightboxImage
+          src={url}
+          alt={file.fileName}
+          wrapperClassName="block w-full"
+          className="aspect-square w-full object-cover"
+        />
+      ) : (
+        <div className="bg-muted/40 flex aspect-square w-full items-center justify-center">
+          {failed ? (
+            <AlertCircle className="text-muted-foreground h-5 w-5" />
+          ) : (
+            <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+          )}
         </div>
       )}
 
-      {/* File info row */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        <div className="bg-muted/50 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
-          <Icon className="text-muted-foreground h-4 w-4" />
-        </div>
-
+      <div className="flex min-w-0 items-center gap-1.5 px-2 py-1.5">
         <div className="min-w-0 flex-1">
-          {description && (
-            <p className="text-muted-foreground line-clamp-1 text-xs">{description}</p>
-          )}
-          <p className="truncate text-sm font-medium">{fileName}</p>
-          {size !== undefined && (
-            <p className="text-muted-foreground text-xs">{formatSize(size)}</p>
+          <p className="truncate text-xs font-medium">{file.fileName}</p>
+          {file.description && (
+            <p className="text-muted-foreground truncate text-[11px]">{file.description}</p>
           )}
         </div>
-
-        <Button
-          variant="secondary"
-          size="sm"
-          className="shrink-0 rounded-full"
-          onClick={handleDownload}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-          )}
-          Download
-        </Button>
+        <DownloadButton file={file} iconOnly />
       </div>
     </div>
   );
@@ -195,25 +250,76 @@ function FileCard({
  * A `show_file` call: the file the assistant shared, as an attachment.
  *
  * Deliberately not a `ToolCard` — a shared file is not a report of what a call
- * did, so it has no card model. The file itself (preview, name, download) is
- * the content, and there is nothing to collapse.
+ * did, so it has no card model and nothing to collapse. The file itself
+ * (preview, name, download) is the content.
  */
 export function ShowFileCard({ toolCall }: { toolCall: ToolCallData }) {
-  const filePath = typeof toolCall.args.filePath === "string" ? toolCall.args.filePath : "";
-  const description =
-    typeof toolCall.args.description === "string" ? toolCall.args.description : undefined;
-  const isError = toolCall.status === "error" || Boolean(toolCall.error);
+  const file = readSharedFile(toolCall);
+  const { url, failed } = useFilePreview(file.filePath, file.isImage && !file.isError);
+
+  if (file.isError) return <SharedFileError file={file} />;
 
   return (
-    <FileCard
-      filePath={filePath}
-      fileName={basename(filePath)}
-      mimeType={guessMimeType(filePath)}
-      size={undefined}
-      description={description}
-      isError={isError}
-      errorMessage={toolCall.error}
-    />
+    <div className="liquid-glass-inner overflow-hidden rounded-xl">
+      {file.isImage && url && !failed && (
+        <div className="border-border/30 border-b">
+          <LightboxImage
+            src={url}
+            alt={file.fileName}
+            wrapperClassName="w-full"
+            className="bg-muted/40 h-auto max-h-64 w-full object-contain"
+          />
+        </div>
+      )}
+
+      <div className="flex min-w-0 items-center gap-3 px-4 py-3">
+        <div className="bg-muted/50 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+          <FileTypeIcon file={file} />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{file.fileName}</p>
+          {file.description && (
+            <p className="text-muted-foreground line-clamp-1 text-xs">{file.description}</p>
+          )}
+        </div>
+
+        <DownloadButton file={file} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The files one turn showed the assistant's user, as a gallery.
+ *
+ * Images become a thumbnail grid (each opening the lightbox) and every other
+ * file a row of its own. It is never collapsed: the agent chose to show these,
+ * so they are the point of the call, not a report of it.
+ */
+export function ShowFileGallery({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
+  const files = toolCalls.map(readSharedFile);
+  const images = files.filter((file) => file.isImage && !file.isError);
+  const rows = files.filter((file) => !file.isImage || file.isError);
+
+  return (
+    <div className="space-y-1.5">
+      {images.length > 0 && (
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          {images.map((file) => (
+            <SharedImageTile key={file.id} file={file} />
+          ))}
+        </div>
+      )}
+
+      {rows.map((file) =>
+        file.isError ? (
+          <SharedFileError key={file.id} file={file} />
+        ) : (
+          <SharedFileRow key={file.id} file={file} />
+        ),
+      )}
+    </div>
   );
 }
 

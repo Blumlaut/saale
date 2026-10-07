@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { ToolCallView } from "@/components/chat/tool-call-view";
 import { MessageList } from "@/components/chat/message-list";
 import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
@@ -382,6 +382,135 @@ describe("parallel tool calls", () => {
 
     expect(screen.queryByText("1 tool call")).not.toBeInTheDocument();
     expect(screen.getByText("uptime")).toBeInTheDocument();
+  });
+});
+
+/**
+ * `show_file` is not a report of a call — it is the file the agent handed the
+ * user. It therefore never folds into a run: one file is its own card, several
+ * are a gallery, and both are open from the first render.
+ */
+describe("files the agent showed the user", () => {
+  function message(calls: ToolCallData[]): Message {
+    return {
+      id: "a1",
+      role: "assistant",
+      content: "Here are the plots.",
+      thinking: undefined,
+      toolCalls: calls,
+      parentMessageId: undefined,
+      createdAt: "2026-01-01T12:00:00.000Z",
+      attachments: undefined,
+    };
+  }
+
+  const exec = (id: string, command: string) =>
+    makeToolCall({
+      id,
+      name: "infra_exec",
+      result: infraMeta({
+        type: "infra_exec",
+        machineId: "m1",
+        machineName: "prod-web-01",
+        command,
+        exitCode: 0,
+        timedOut: false,
+        truncated: false,
+        stdout: "ok",
+        stderr: "",
+      }),
+    });
+
+  const image = (id: string) =>
+    makeToolCall({
+      id,
+      name: "show_file",
+      args: { filePath: `plots/${id}.png`, description: `Plot ${id}` },
+    });
+
+  const doc = (id: string) =>
+    makeToolCall({ id, name: "show_file", args: { filePath: `reports/${id}.pdf` } });
+
+  beforeEach(() => {
+    // jsdom has no object URLs, and no endpoint to serve the file bytes.
+    Object.defineProperty(URL, "createObjectURL", {
+      value: vi.fn(() => "blob:preview"),
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, blob: async () => new Blob(["bytes"]) })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the files open while the work beside them stays collapsed", () => {
+    render(
+      <MessageList
+        messages={[message([exec("tc-1", "uptime"), exec("tc-2", "df -h"), image("chart")])]}
+      />,
+    );
+
+    // The work is still a summary row...
+    expect(screen.getByText("2 tool calls")).toBeInTheDocument();
+    expect(screen.queryByText("uptime")).not.toBeInTheDocument();
+
+    // ...but the file was never behind a click.
+    expect(screen.getByText("chart.png")).toBeInTheDocument();
+    expect(screen.getByText("Plot chart")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download chart.png" })).toBeInTheDocument();
+  });
+
+  it("shows a lone shared file without a summary row of its own", () => {
+    render(<MessageList messages={[message([exec("tc-1", "uptime"), doc("quarterly")])]} />);
+
+    expect(screen.queryByText(/tool calls?/)).not.toBeInTheDocument();
+    expect(screen.getByText("uptime")).toBeInTheDocument();
+    expect(screen.getByText("quarterly.pdf")).toBeInTheDocument();
+  });
+
+  it("lays several shared images out as a thumbnail gallery", async () => {
+    render(<MessageList messages={[message([image("alpha"), image("beta"), doc("notes")])]} />);
+
+    // No work to summarise, so the turn is nothing but the files.
+    expect(screen.queryByText(/tool calls?/)).not.toBeInTheDocument();
+
+    // Both images render a preview once their bytes arrive, one thumbnail each.
+    await act(async () => {});
+    expect(screen.getAllByRole("button", { name: /^View / })).toHaveLength(2);
+    expect(screen.getByText("notes.pdf")).toBeInTheDocument();
+  });
+
+  it("opens a shared image in the lightbox", async () => {
+    render(<MessageList messages={[message([image("alpha"), image("beta")])]} />);
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "View alpha.png" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("shows the reason a file that failed could not be shared (edge case)", () => {
+    const missing = {
+      ...image("missing"),
+      status: "error" as const,
+      error: "File not found: plots/missing.png",
+    };
+
+    render(<MessageList messages={[message([doc("quarterly"), missing])]} />);
+
+    expect(screen.getByText("quarterly.pdf")).toBeInTheDocument();
+    expect(screen.getByText("missing.png")).toBeInTheDocument();
+    expect(screen.getByText("File not found: plots/missing.png")).toBeInTheDocument();
   });
 });
 

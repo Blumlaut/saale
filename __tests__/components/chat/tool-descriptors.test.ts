@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
-import { resolveToolCard } from "@/components/chat/tool-cards";
+import { resolveToolCard, splitToolCalls } from "@/components/chat/tool-cards";
 import { calendarToolDescriptor } from "@/components/chat/tool-descriptors/calendar";
 import { codemodeDescriptor } from "@/components/chat/tool-descriptors/codemode";
 import { describeGenericToolCall } from "@/components/chat/tool-descriptors/generic";
@@ -583,5 +583,33 @@ describe("generic descriptor", () => {
     expect(model.status).toEqual({ tone: "danger", label: "error" });
     expect(firstBlock(model, "code")).toMatchObject({ label: "Error", tone: "danger" });
     expect(model.defaultOpen).toBe(true);
+  });
+});
+
+describe("splitting a turn's calls", () => {
+  it("separates the files shown to the user from the work, order preserved", () => {
+    const { attachments, work } = splitToolCalls([
+      call("bash", "ok", { id: "w1" }),
+      call("show_file", undefined, { id: "f1" }),
+      call("infra_exec", "ok", { id: "w2" }),
+      call("show_file", undefined, { id: "f2" }),
+    ]);
+
+    expect(work.map((c) => c.id)).toEqual(["w1", "w2"]);
+    expect(attachments.map((c) => c.id)).toEqual(["f1", "f2"]);
+  });
+
+  it("treats a tool the routing table does not mark as work", () => {
+    const { attachments, work } = splitToolCalls([
+      call("some_future_tool", undefined, { id: "w1" }),
+      call("show_file", undefined, { id: "f1" }),
+    ]);
+
+    expect(work.map((c) => c.id)).toEqual(["w1"]);
+    expect(attachments.map((c) => c.id)).toEqual(["f1"]);
+  });
+
+  it("splits an empty turn into nothing", () => {
+    expect(splitToolCalls([])).toEqual({ attachments: [], work: [] });
   });
 });
