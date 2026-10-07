@@ -5,6 +5,7 @@ import {
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
+import { getUploadsDir } from "@/lib/uploads";
 import { createBot, sendTelegramMessage, startTypingIndicator } from "./client";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { resolveTools } from "@/lib/pi/tool-registry";
@@ -261,12 +262,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   });
 
   // 9. Create or resume the persistent Pi session
-  const sessionDir = path.join(
-    process.env.UPLOADS_DIR ?? "./uploads",
-    "pi_sessions",
-    userId,
-    sessionId,
-  );
+  const sessionDir = path.join(getUploadsDir(), "pi_sessions", userId, sessionId);
 
   // Resolve tool config: user settings → agent definition overrides → defaults
   // (the system definition enables terminal access so files sent via
@@ -877,12 +873,7 @@ async function runTelegramCompaction(
   } as Required<ToolConfig>;
 
   // 4. Create persistent session from JSONL files
-  const sessionDir = path.join(
-    process.env.UPLOADS_DIR ?? "./uploads",
-    "pi_sessions",
-    userId,
-    sessionId,
-  );
+  const sessionDir = path.join(getUploadsDir(), "pi_sessions", userId, sessionId);
 
   const allCustomTools = await resolveTools(userId, "compact", resolvedToolConfig, {
     createTerminalScopedTools,

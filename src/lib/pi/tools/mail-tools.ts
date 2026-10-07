@@ -6,11 +6,10 @@ import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email/smtp";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
-
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
+import { getUploadsDir } from "@/lib/uploads";
 
 function getUserDir(userId: string): string {
-  return path.join(UPLOADS_DIR, userId);
+  return path.join(getUploadsDir(), userId);
 }
 
 /** Fetch all account IDs belonging to a user. Used for user-isolated queries. */

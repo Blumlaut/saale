@@ -4,9 +4,8 @@ import fs from "fs/promises";
 import type { Stats } from "fs";
 import path from "path";
 import { requireSession } from "@/lib/auth";
+import { getUploadsDir } from "@/lib/uploads";
 import * as terminal from "@/lib/terminal/client";
-
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
 
 /**
  * GET /api/chat/workspace-files?file=relative/path
@@ -69,7 +68,7 @@ async function serveFromTerminal(userId: string, filePath: string) {
 
 /** Serve file from local uploads directory (fallback) */
 async function serveFromLocal(userId: string, filePath: string) {
-  const userDir = path.join(UPLOADS_DIR, userId);
+  const userDir = path.join(getUploadsDir(), userId);
 
   // Validate path stays within workspace
   const resolved = path.resolve(userDir, filePath);

@@ -2,8 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
-
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
+import { getUploadsDir } from "@/lib/uploads";
 
 // Max dimension for re-encoded images (keeps token costs reasonable for vision models)
 const MAX_DIMENSION = 2048;
@@ -25,7 +24,7 @@ const ALLOWED_MIME_TYPES = new Set([
  * Generate a user-scoped directory for image attachments.
  */
 function getUserImageDir(userId: string): string {
-  return path.join(UPLOADS_DIR, userId, "images");
+  return path.join(getUploadsDir(), userId, "images");
 }
 
 /**
@@ -68,7 +67,7 @@ export async function processAndStoreImage(
 
   const storageId = randomUUID();
   const storagePath = `images/${storageId}.png`;
-  const fullPath = path.join(UPLOADS_DIR, userId, storagePath);
+  const fullPath = path.join(getUploadsDir(), userId, storagePath);
 
   // Process with sharp: auto-orient, resize, convert to PNG.
   // autoOrient() bakes the EXIF orientation into the pixels — phone photos
@@ -100,7 +99,7 @@ export async function readImageAsBase64(
   userId: string,
   storagePath: string,
 ): Promise<{ data: string; mimeType: string }> {
-  const fullPath = path.join(UPLOADS_DIR, userId, storagePath);
+  const fullPath = path.join(getUploadsDir(), userId, storagePath);
   const buffer = await fs.readFile(fullPath);
   return {
     data: buffer.toString("base64"),
@@ -112,7 +111,7 @@ export async function readImageAsBase64(
  * Resolve the full filesystem path for a stored image.
  */
 export function resolveImagePath(userId: string, storagePath: string): string {
-  return path.join(UPLOADS_DIR, userId, storagePath);
+  return path.join(getUploadsDir(), userId, storagePath);
 }
 
 /**
@@ -227,9 +226,9 @@ async function readUserDirs(): Promise<
   const entries: Array<{ userId: string; filePath: string; relativePath: string }> = [];
 
   try {
-    const userNames = await fs.readdir(UPLOADS_DIR);
+    const userNames = await fs.readdir(getUploadsDir());
     for (const userName of userNames) {
-      const imageDir = path.join(UPLOADS_DIR, userName, "images");
+      const imageDir = path.join(getUploadsDir(), userName, "images");
       try {
         const files = await fs.readdir(imageDir);
         for (const file of files) {

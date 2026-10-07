@@ -3,8 +3,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { isConfigured as isTerminalConfigured, uploadFile } from "@/lib/terminal/client";
 import { processAndStoreImage } from "@/lib/image-attachment";
-
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
+import { getUploadsDir } from "@/lib/uploads";
 
 /**
  * Workspace-relative directory (under the user's home inside the Open
@@ -101,12 +100,12 @@ export async function storeChatFile(
     };
   }
 
-  const filesDir = path.join(UPLOADS_DIR, userId, "files");
+  const filesDir = path.join(getUploadsDir(), userId, "files");
   await fs.mkdir(filesDir, { recursive: true });
 
   const storageId = randomUUID();
   const storagePath = `files/${storageId}-${safeName}`;
-  await fs.writeFile(path.join(UPLOADS_DIR, userId, storagePath), fileBuffer);
+  await fs.writeFile(path.join(getUploadsDir(), userId, storagePath), fileBuffer);
 
   return { storageId, storagePath, safeName };
 }

@@ -1,6 +1,7 @@
 import path from "path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
+import { getUploadsDir } from "@/lib/uploads";
 import { withChatLock } from "./chat-lock";
 
 /** Custom-entry type used when replaying outbound job messages into the Pi transcript. */
@@ -67,12 +68,7 @@ export async function recordTelegramJobOutput(params: {
   // Append under the chat lock so it cannot interleave with an active run
   // writing to the same transcript file.
   await withChatLock(`${userId}:${telegramChatId}`, async () => {
-    const sessionDir = path.join(
-      process.env.UPLOADS_DIR ?? "./uploads",
-      "pi_sessions",
-      userId,
-      sessionId,
-    );
+    const sessionDir = path.join(getUploadsDir(), "pi_sessions", userId, sessionId);
     const manager = SessionManager.continueRecent(sessionDir, sessionDir);
     manager.appendCustomMessageEntry(
       JOB_OUTPUT_CUSTOM_TYPE,

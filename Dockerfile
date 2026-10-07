@@ -60,11 +60,10 @@ ENV NODE_ENV=production
 COPY --from=build /app/public ./public
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
-# The generated client is not traced by Next.js standalone, so copy it. The schema
-# and prisma.config.mjs land here anyway (Turbopack traces the whole project root
-# because of the dynamic fs access in the upload routes), but nothing at runtime
-# reads them: the app builds its client from DATABASE_URL (src/lib/db.ts) and
-# migrations run in the `migrate` service, not in this container.
+# The generated client is not traced by Next.js standalone, so copy it. Nothing
+# at runtime reads the schema or prisma.config.mjs in this container: the app
+# builds its client from DATABASE_URL (src/lib/db.ts) and migrations run in the
+# `migrate` service, not in this container.
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 
 ENTRYPOINT ["dumb-init", "--"]

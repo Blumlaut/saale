@@ -7,8 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
 import * as terminal from "@/lib/terminal/client";
-
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR ?? "./uploads");
+import { getUploadsDir } from "@/lib/uploads";
 
 /** Max file size for show_file (5 MB) */
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -60,7 +59,7 @@ function isImageMime(mimeType: string): boolean {
  * Get the isolated workspace directory for a user.
  */
 function getUserDir(userId: string): string {
-  return path.join(UPLOADS_DIR, userId);
+  return path.join(getUploadsDir(), userId);
 }
 
 /**

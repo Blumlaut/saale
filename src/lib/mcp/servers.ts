@@ -30,6 +30,7 @@ import {
 import { StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { getUploadsDir } from "@/lib/uploads";
 import { isMcpToolPolicy, mcpNameKey, type McpToolPolicy } from "./shared";
 
 /** The row shape the Pi-config builder needs. */
@@ -110,7 +111,7 @@ export async function loadUserMcpServers(userId: string): Promise<UserMcpServers
 
 /** Where a user's MCP server log messages are appended. */
 export async function getMcpLogPath(userId: string): Promise<string> {
-  const dir = path.join(process.env.UPLOADS_DIR ?? "./uploads", "pi_sessions", userId);
+  const dir = path.join(getUploadsDir(), "pi_sessions", userId);
   await fs.mkdir(dir, { recursive: true }).catch((err) => {
     console.error(`Failed to create the MCP log directory for user ${userId}:`, err);
   });
