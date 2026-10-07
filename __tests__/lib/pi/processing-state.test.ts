@@ -10,7 +10,9 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("You are Saale");
     expect(prompt).toContain("Be concise and direct");
     expect(prompt).not.toContain("Custom instructions");
-    expect(prompt).not.toContain("Terminal");
+    // Terminal and memory default on, and the tools are resolved with those same
+    // defaults — so the prompt must describe them without being asked.
+    expect(prompt).toContain("A Terminal is available");
     expect(prompt).toContain("persistent memory system");
   });
 
@@ -55,14 +57,28 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).not.toContain("A Terminal is available");
   });
 
-  it("skips terminal instruction when not specified", () => {
-    const prompt = buildAgentSystemPrompt({ toolConfig: {} });
-    expect(prompt).not.toContain("A Terminal is available");
+  it("includes terminal instruction by default", () => {
+    // The chat stores a null toolConfig; the tools still default on, so the
+    // capability block must appear rather than the model being left unaware of
+    // `write`.
+    expect(buildAgentSystemPrompt({ toolConfig: {} })).toContain("A Terminal is available");
+    expect(buildAgentSystemPrompt({})).toContain("A Terminal is available");
+  });
+
+  it("includes terminal instruction for legacy files/bash keys", () => {
+    expect(buildAgentSystemPrompt({ toolConfig: { files: true } })).toContain(
+      "A Terminal is available",
+    );
+    expect(buildAgentSystemPrompt({ toolConfig: { bash: true } })).toContain(
+      "A Terminal is available",
+    );
   });
 
   it("includes memory instruction by default", () => {
     const prompt = buildAgentSystemPrompt({});
     expect(prompt).toContain("persistent memory system");
+    // The model must know it can delete, not just search.
+    expect(prompt).toContain("memory_delete");
   });
 
   it("skips memory instruction when explicitly disabled", () => {
@@ -91,9 +107,10 @@ describe("buildAgentSystemPrompt", () => {
     );
   });
 
-  it("skips infrastructure instruction when not specified", () => {
-    expect(buildAgentSystemPrompt({ toolConfig: {} })).not.toContain("Infrastructure notes:");
-    expect(buildAgentSystemPrompt({})).not.toContain("Infrastructure notes:");
+  it("includes infrastructure instruction by default", () => {
+    // Every category defaults on; the prompt must not disagree with the tools.
+    expect(buildAgentSystemPrompt({ toolConfig: {} })).toContain("Infrastructure notes:");
+    expect(buildAgentSystemPrompt({})).toContain("Infrastructure notes:");
   });
 
   it("includes all sections when all tools enabled", () => {

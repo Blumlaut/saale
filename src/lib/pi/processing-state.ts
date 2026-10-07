@@ -10,6 +10,7 @@ import { createUserMcpExtension } from "@/lib/mcp/servers";
 import { createCodemodeApprovalExtension } from "./codemode-approval";
 import { createMcpToolPolicyExtension } from "./mcp-tool-policy";
 import { createSessionSettings } from "./settings";
+import { isCategoryEnabled } from "./tool-categories";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
 /**
@@ -40,7 +41,7 @@ const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write 
 Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes — each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.`;
 
 /** Capability: persistent memory. Defaults on. */
-const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, use \`memory_search\` to look it up before answering.`;
+const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, use \`memory_search\` to look it up before answering; \`memory_index\` lists what collections exist, and \`memory_delete\` removes a memory that is wrong or stale.`;
 
 /**
  * Capability: SSH machines and the notes that describe them.
@@ -76,17 +77,25 @@ export function buildAgentSystemPrompt(options: {
   customInstructions?: string | null | undefined;
   toolConfig?: Record<string, unknown> | undefined;
 }): string {
-  const toolConfig = options.toolConfig ?? {};
+  const toolConfig = (options.toolConfig ?? {}) as Record<string, boolean | undefined>;
   const customInstructions = options.customInstructions?.trim();
+
+  // Resolve through the category registry, exactly as `resolveTools` does: an
+  // absent key means the category sits at its default, not off. Reading the raw
+  // snapshot with `=== true` dropped the Terminal block — and with it any mention
+  // of `write` — for every chat whose stored `toolConfig` was null.
+  const terminalEnabled =
+    isCategoryEnabled(toolConfig, "terminal") ||
+    toolConfig.files === true ||
+    toolConfig.bash === true;
 
   const sections = [
     IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
     TOOLS_PROMPT,
-    toolConfig.terminal === true ? TERMINAL_PROMPT : null,
-    // Memory is on unless explicitly disabled; terminal and infra default off.
-    toolConfig.memory !== false ? MEMORY_PROMPT : null,
-    toolConfig.infra === true ? INFRA_PROMPT : null,
+    terminalEnabled ? TERMINAL_PROMPT : null,
+    isCategoryEnabled(toolConfig, "memory") ? MEMORY_PROMPT : null,
+    isCategoryEnabled(toolConfig, "infra") ? INFRA_PROMPT : null,
   ];
 
   return sections.filter((section): section is string => section !== null).join("\n\n");
