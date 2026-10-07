@@ -32,9 +32,23 @@ export interface ApprovalData {
    * requests — the card re-derives one from the arguments.
    */
   summary?: string | null;
+  /**
+   * The calls one decision stands in for, when it covers more than this call —
+   * a codemode script's approval covers the calls it announced. Mirrors
+   * `ApprovalBatch` in `@/lib/pi/tool-approval-gate`.
+   */
+  batch?: ApprovalBatchData;
   expiresAt: string;
   resolved?: boolean;
   approved?: boolean;
+}
+
+/** The tool calls a single approval covers. */
+export interface ApprovalBatchData {
+  /** Tool names the approval covers; a call to any other tool still asks. */
+  tools: string[];
+  /** The tool can reach names its source does not show. */
+  dynamic?: boolean;
 }
 
 export interface CompactionData {

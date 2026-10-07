@@ -32,6 +32,7 @@ import {
   createToolApprovalGate,
   type ApprovalRequest,
 } from "@/lib/pi/tool-approval-gate";
+import { grantApprovalScope } from "@/lib/pi/approval-scope";
 
 // Helper to create a minimal tool definition for testing
 function makeMockTool(
@@ -375,6 +376,86 @@ describe("tool-approval-gate", () => {
       await rejection;
       // The user never approved: the tool must not run.
       expect(executed).toBe(false);
+    });
+
+    it("runs a tool an approved script already covered, without asking", async () => {
+      const { sessionId } = makeUniqueIds("covered");
+      const emitted: ApprovalRequest[] = [];
+      let executed = false;
+
+      // The user approved the script at `script-call`; this is one of the calls
+      // it announced, which Pi ids `<parent>/<n>`.
+      grantApprovalScope({
+        sessionId,
+        toolCallId: "script-call",
+        tools: ["mail_send"],
+        expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
+      });
+
+      const tool = wrapWithApprovalGate(
+        makeMockTool("mail_send", async () => {
+          executed = true;
+          return { content: [{ type: "text", text: "sent" }], details: {} };
+        }),
+        "user-1",
+        sessionId,
+        async () => "ask",
+        (request) => {
+          emitted.push(request);
+        },
+      );
+
+      const result = (await tool.execute(
+        "script-call/1",
+        { to: "a@b.c" },
+        undefined,
+        undefined,
+        {} as never,
+      )) as ToolResult;
+
+      expect(emitted).toHaveLength(0);
+      expect(executed).toBe(true);
+      expect(result.content[0].text).toBe("sent");
+    });
+
+    it("still asks for a nested call the script did not announce", async () => {
+      const { sessionId } = makeUniqueIds("uncovered");
+      const emitted: ApprovalRequest[] = [];
+
+      grantApprovalScope({
+        sessionId,
+        toolCallId: "script-call",
+        tools: ["mail_send"],
+        expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
+      });
+
+      const tool = wrapWithApprovalGate(
+        makeMockTool("mail_delete", async () => ({
+          content: [{ type: "text", text: "deleted" }],
+          details: {},
+        })),
+        "user-1",
+        sessionId,
+        async () => "ask",
+        (request) => {
+          emitted.push(request);
+        },
+      );
+
+      const promise = tool.execute(
+        "script-call/2",
+        { ids: ["m1"] },
+        undefined,
+        undefined,
+        {} as never,
+      );
+      const rejection = expect(promise).rejects.toThrow(/denied/);
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(emitted).toHaveLength(1);
+
+      await resolveApproval(sessionId, "script-call/2", false);
+      await rejection;
     });
 
     it("denies tool when approval is rejected", async () => {

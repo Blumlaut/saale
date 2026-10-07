@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { formatDateTimeValue, describeToolAction, findToolInfo } from "@/lib/pi/tool-infos";
 import { getToolCategory } from "@/lib/pi/tool-categories";
 import { formatToolArgs } from "./tool-args";
-import type { ApprovalData } from "./types";
+import type { ApprovalBatchData, ApprovalData } from "./types";
 
 interface ApprovalMessageProps {
   sessionId: string;
@@ -126,6 +126,9 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
         <div className="border-border/30 border-t">
           {headline && <div className="px-3 pt-2 text-sm leading-snug">{headline}</div>}
 
+          {/* What the one click covers, before how it does it */}
+          {approval.batch && <BatchList batch={approval.batch} />}
+
           {action.fields.length > 0 && (
             <div className="space-y-1.5 px-3 py-2">
               {action.fields.map((field) => (
@@ -188,6 +191,40 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The calls an approval stands in for.
+ *
+ * A script's approval covers the calls it announced, so the card has to name
+ * them: the user is approving those calls, not the script's text. Calls the
+ * script makes that are not listed still ask for themselves, which is what the
+ * note below says when the script can pick tools by name.
+ */
+function BatchList({ batch }: { batch: ApprovalBatchData }) {
+  const labels = batch.tools.map((name) => findToolInfo(name)?.label ?? name);
+
+  return (
+    <div className="space-y-1.5 px-3 pt-2">
+      <div className="text-muted-foreground text-[11px] font-medium">
+        {labels.length === 1
+          ? "One approval covers this call:"
+          : `One approval covers these ${labels.length} calls:`}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {batch.tools.map((name, index) => (
+          <Badge key={name} variant="secondary" className="rounded-full px-1.5 py-0 text-[10px]">
+            {labels[index]}
+          </Badge>
+        ))}
+      </div>
+      {batch.dynamic && (
+        <p className="text-muted-foreground text-[11px]">
+          The script can also pick tools by name while it runs — those ask on their own.
+        </p>
       )}
     </div>
   );

@@ -9,36 +9,15 @@
  *
  * The gate therefore runs as a Pi extension on the `tool_call` event, which is
  * the pipeline MCP calls (direct or from a codemode script) go through. Policy
- * resolution mirrors `createToolApprovalGate`:
- *
- * 1. the user's per-tool policy for the exact tool name (`mcp__server__tool`),
- * 2. otherwise the server's own policy (Saale's MCP settings),
- * 3. otherwise `ask` — fail closed, like any other unknown tool.
+ * resolution is shared with every other gate (see `tool-policy.ts`).
  */
 
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import {
-  isMcpToolPolicy,
-  mcpServerFromToolName,
-  MCP_TOOL_PREFIX,
-  type McpToolPolicy,
-} from "@/lib/mcp/shared";
+import { MCP_TOOL_PREFIX, type McpToolPolicy } from "@/lib/mcp/shared";
+import { isApprovalScopeGranted } from "./approval-scope";
 import { isAutoApproveActive } from "./auto-approve";
 import { requestToolApproval, type ApprovalRequest } from "./tool-approval-gate";
-
-/** The policy that governs one MCP tool call. */
-export function resolveMcpToolPolicy(options: {
-  toolName: string;
-  serverPolicies: Record<string, McpToolPolicy>;
-  toolPolicies: Record<string, string> | null | undefined;
-}): McpToolPolicy {
-  const explicit = options.toolPolicies?.[options.toolName];
-  if (isMcpToolPolicy(explicit)) return explicit;
-
-  const server = mcpServerFromToolName(options.toolName);
-  const serverPolicy = server ? options.serverPolicies[server] : undefined;
-  return serverPolicy ?? "ask";
-}
+import { resolveMcpToolPolicy } from "./tool-policy";
 
 export function createMcpToolPolicyExtension(options: {
   userId: string;
@@ -68,6 +47,18 @@ export function createMcpToolPolicyExtension(options: {
       // ask — never a tool the user turned off.
       if (await isAutoApproveActive(options.userId)) return undefined;
       if (policy === "allow") return undefined;
+
+      // The user already approved this call as part of a script that announced
+      // it — asking again would undo the one-click decision.
+      if (
+        isApprovalScopeGranted({
+          sessionId: options.sessionId,
+          toolCallId: event.toolCallId,
+          toolName,
+        })
+      ) {
+        return undefined;
+      }
 
       const outcome = await requestToolApproval({
         toolCallId: event.toolCallId,

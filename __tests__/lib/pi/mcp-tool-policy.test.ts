@@ -10,55 +10,14 @@ vi.mock("@/lib/pi/tool-approval-gate", () => ({
   requestToolApproval: (...args: unknown[]) => mockRequestToolApproval(...args),
 }));
 
-import { createMcpToolPolicyExtension, resolveMcpToolPolicy } from "@/lib/pi/mcp-tool-policy";
+import { createMcpToolPolicyExtension } from "@/lib/pi/mcp-tool-policy";
+import { grantApprovalScope } from "@/lib/pi/approval-scope";
 
 const SERVER_POLICIES = {
   home_assistant: "ask" as const,
   docs: "allow" as const,
   legacy: "off" as const,
 };
-
-describe("resolveMcpToolPolicy", () => {
-  it("prefers the user's exact per-tool policy", () => {
-    expect(
-      resolveMcpToolPolicy({
-        toolName: "mcp__docs__search",
-        serverPolicies: SERVER_POLICIES,
-        toolPolicies: { mcp__docs__search: "off" },
-      }),
-    ).toBe("off");
-  });
-
-  it("ignores a per-tool policy it does not understand", () => {
-    expect(
-      resolveMcpToolPolicy({
-        toolName: "mcp__docs__search",
-        serverPolicies: SERVER_POLICIES,
-        toolPolicies: { mcp__docs__search: "yes" },
-      }),
-    ).toBe("allow");
-  });
-
-  it("falls back to the server's policy", () => {
-    expect(
-      resolveMcpToolPolicy({
-        toolName: "mcp__legacy__do",
-        serverPolicies: SERVER_POLICIES,
-        toolPolicies: null,
-      }),
-    ).toBe("off");
-  });
-
-  it("asks when the server is unknown", () => {
-    expect(
-      resolveMcpToolPolicy({
-        toolName: "mcp__unconfigured__do",
-        serverPolicies: SERVER_POLICIES,
-        toolPolicies: null,
-      }),
-    ).toBe("ask");
-  });
-});
 
 /** Capture the `tool_call` handler the extension registers. */
 function captureHandler() {
@@ -141,6 +100,31 @@ describe("MCP tool call gate", () => {
         args: { entity: "light" },
       }),
     );
+  });
+
+  it("runs an asking tool an approved script already covered", async () => {
+    // A codemode approval covers the calls its script announced, and a script
+    // reaches MCP tools like any other: asking again would undo the one click.
+    grantApprovalScope({
+      sessionId: "session-1",
+      toolCallId: "call-script",
+      tools: ["mcp__home_assistant__HassTurnOn"],
+      expiresAt: Date.now() + 60_000,
+    });
+
+    const handler = captureHandler();
+    const result = await handler(
+      {
+        toolName: "mcp__home_assistant__HassTurnOn",
+        toolCallId: "call-script/1",
+        parentToolCallId: "call-script",
+        input: { entity: "light" },
+      },
+      { signal: undefined },
+    );
+
+    expect(result).toBeUndefined();
+    expect(mockRequestToolApproval).not.toHaveBeenCalled();
   });
 
   it("blocks an asking tool the user denied", async () => {

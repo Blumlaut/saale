@@ -1,6 +1,7 @@
 import { Code2 } from "lucide-react";
 import { findToolInfo } from "@/lib/pi/tool-infos";
-import { extractScriptToolNames, formatToolArgs } from "../tool-args";
+import { readScriptToolReferences } from "@/lib/pi/codemode-script";
+import { formatToolArgs } from "../tool-args";
 import { toolStatus } from "../tool-status";
 import type { ToolCardModel, ToolDescriptor } from "../tool-card-model";
 
@@ -21,7 +22,7 @@ export const codemodeDescriptor: ToolDescriptor = {
   names: ["codemode"],
   describe(toolCall): ToolCardModel {
     const code = typeof toolCall.args.code === "string" ? toolCall.args.code : "";
-    const calledTools = extractScriptToolNames(code);
+    const calledTools = readScriptToolReferences(code).keys;
     const isError = Boolean(toolCall.error) || toolCall.status === "error";
 
     return {

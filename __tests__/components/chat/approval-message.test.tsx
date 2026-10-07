@@ -60,6 +60,44 @@ describe("ApprovalMessage", () => {
     expect(screen.getByText("tsk_1")).toBeInTheDocument();
   });
 
+  it("shows what one approval covers when it stands in for several calls", () => {
+    render(
+      <ApprovalMessage
+        sessionId="cs-1"
+        approval={makeApproval({
+          toolName: "codemode",
+          args: { code: "await tools.mail_send({}); await tools.task_delete({});" },
+          summary: "Run codemode script: await tools.mail_send({});",
+          batch: { tools: ["mail_send", "task_delete"] },
+        })}
+        onResolved={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("One approval covers these 2 calls:")).toBeInTheDocument();
+    expect(screen.getByText("Send Email")).toBeInTheDocument();
+    expect(screen.getByText("Delete Task")).toBeInTheDocument();
+    // Nothing says the script can reach further than the list.
+    expect(screen.queryByText(/pick tools by name/)).not.toBeInTheDocument();
+  });
+
+  it("says when the covered list may not be the whole plan", () => {
+    render(
+      <ApprovalMessage
+        sessionId="cs-1"
+        approval={makeApproval({
+          toolName: "codemode",
+          args: { code: "await tools.mail_send({});" },
+          batch: { tools: ["mail_send"], dynamic: true },
+        })}
+        onResolved={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("One approval covers this call:")).toBeInTheDocument();
+    expect(screen.getByText(/pick tools by name/)).toBeInTheDocument();
+  });
+
   it("shows labeled fields and hides the raw-arguments dump by default", () => {
     render(<ApprovalMessage sessionId="cs-1" approval={makeApproval()} onResolved={() => {}} />);
 

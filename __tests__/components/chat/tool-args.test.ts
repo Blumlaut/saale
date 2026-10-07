@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractScriptToolNames, formatToolArgs } from "@/components/chat/tool-args";
+import { formatToolArgs } from "@/components/chat/tool-args";
 
 describe("formatToolArgs", () => {
   it("renders string values verbatim, so newlines are real", () => {
@@ -34,31 +34,5 @@ describe("formatToolArgs", () => {
 
   it("returns an empty string for no arguments", () => {
     expect(formatToolArgs({})).toBe("");
-  });
-});
-
-describe("extractScriptToolNames", () => {
-  it("finds the tools a script calls, in first-use order, without duplicates", () => {
-    const code = [
-      "const a = await tools.infra_exec({ id: 'm1', command: 'ls' });",
-      "const b = await tools.memory_search({ query: 'x' });",
-      "const c = await tools.infra_exec({ id: 'm1', command: 'pwd' });",
-      "return [a, b, c];",
-    ].join("\n");
-
-    expect(extractScriptToolNames(code)).toEqual(["infra_exec", "memory_search"]);
-  });
-
-  it("tolerates whitespace and no parentheses", () => {
-    expect(extractScriptToolNames("await tools . mail_list ()")).toEqual([]);
-    expect(extractScriptToolNames("const t = tools.mail_list;")).toEqual([]);
-    expect(extractScriptToolNames("tools.chat_respond({ sessionId, message })")).toEqual([
-      "chat_respond",
-    ]);
-  });
-
-  it("returns nothing for a script that calls no tools", () => {
-    expect(extractScriptToolNames("return ALL_TOOLS.length;")).toEqual([]);
-    expect(extractScriptToolNames("")).toEqual([]);
   });
 });

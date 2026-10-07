@@ -1,22 +1,15 @@
 import { getRedis } from "@/lib/redis";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { isApprovalScopeGranted } from "./approval-scope";
 import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand } from "./command-classifier";
 import { publishSessionEvent, subscribeSessionEvents } from "./session-events";
-import { getDefaultPolicy } from "./tool-infos";
+import type { ToolPolicy } from "./tool-infos";
+import { resolveToolPolicy } from "./tool-policy";
 import { resolveApprovalSummary } from "./tool-approval-summary";
 import { TOOL_ABORT_MESSAGE } from "./tool-abort";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-/** Per-tool approval policy. */
-export type ToolPolicy = "off" | "ask" | "allow" | "auto";
-
-/**
- * The "auto" policy is command-aware:
- * - For infra_exec and bash: auto-approves safe commands (ls, cat, grep…), requires approval for risky ones (rm, echo >>, sudo…)
- * - For all other tools: behaves like "allow"
- */
 
 /** Tools that support command-aware "auto" approval. */
 const COMMAND_AWARE_TOOLS = new Set(["infra_exec", "bash"]);
@@ -77,6 +70,8 @@ export interface ApprovalRequest {
    * existed have none, and the client re-derives one from the arguments.
    */
   summary?: string | null;
+  /** Set when this one decision covers more than the call in front of it. */
+  batch?: ApprovalBatch;
   createdAt: number;
   expiresAt: number;
   /** Present once the request has been decided (approved or denied). */
@@ -84,6 +79,48 @@ export interface ApprovalRequest {
   /** Set instead of `approved` when the run ended before a decision. */
   cancelled?: boolean;
   resolvedAt?: number;
+}
+
+/**
+ * The calls one decision stands in for.
+ *
+ * A script announces the calls it is about to make, and the user approves them
+ * with the script — see `codemode-approval.ts`. Only the calls it *covers* run
+ * on that approval: a call to a tool that is not listed still asks on its own,
+ * and `dynamic` says the list may not be the script's whole plan, so the card
+ * never reads as a blanket approval.
+ */
+export interface ApprovalBatch {
+  /** Tool names the approval covers. */
+  tools: string[];
+  /** The tool can reach names its source does not show. */
+  dynamic?: boolean;
+}
+
+/**
+ * The client payload for an approval request — the same shape whether it arrives
+ * as a live `tool_approval_request` event or in the reconnect snapshot, so the
+ * two cannot drift.
+ */
+export interface ApprovalPayload {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  summary: string | null;
+  batch?: ApprovalBatch;
+  expiresAt: string;
+}
+
+/** Build the payload every approval channel and the reconnect snapshot send. */
+export function toApprovalPayload(request: ApprovalRequest): ApprovalPayload {
+  return {
+    toolCallId: request.toolCallId,
+    toolName: request.toolName,
+    args: request.args,
+    summary: request.summary ?? null,
+    ...(request.batch ? { batch: request.batch } : {}),
+    expiresAt: new Date(request.expiresAt).toISOString(),
+  };
 }
 
 /** Payload of the `tool_approval_resolved` session bus event. */
@@ -390,6 +427,8 @@ export async function requestToolApproval(options: {
   args: Record<string, unknown>;
   emitApprovalRequest: (request: ApprovalRequest) => void;
   signal?: AbortSignal | undefined;
+  /** The calls this one decision covers, when they are more than the call. */
+  batch?: ApprovalBatch;
 }): Promise<ApprovalOutcome> {
   const { toolCallId, toolName, userId, sessionId, args, emitApprovalRequest, signal } = options;
 
@@ -405,6 +444,7 @@ export async function requestToolApproval(options: {
     userId,
     args,
     summary,
+    ...(options.batch ? { batch: options.batch } : {}),
     createdAt: Date.now(),
     expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
   };
@@ -501,6 +541,12 @@ export function wrapWithApprovalGate(
 
       // Policy: "ask" — wait for user approval
       if (policy === "ask") {
+        // …unless the user already approved it as part of the script that
+        // announced it: that decision covers this call.
+        if (isApprovalScopeGranted({ sessionId, toolCallId, toolName: tool.name })) {
+          return originalExecute(toolCallId, params, signal, onUpdate, ctx);
+        }
+
         const outcome = await requestToolApproval({
           toolCallId,
           toolName: tool.name,
@@ -543,12 +589,8 @@ export function createToolApprovalGate(options: {
   toolPolicies: Record<string, string> | null | undefined;
   emitApprovalRequest: (request: ApprovalRequest) => void;
 }): (tool: ToolDefinition) => ToolDefinition {
-  const getPolicy = async (toolName: string): Promise<ToolPolicy> => {
-    const policy = options.toolPolicies?.[toolName];
-    return policy === "off" || policy === "ask" || policy === "allow" || policy === "auto"
-      ? policy
-      : getDefaultPolicy(toolName);
-  };
+  const getPolicy = async (toolName: string): Promise<ToolPolicy> =>
+    resolveToolPolicy(toolName, { toolPolicies: options.toolPolicies });
 
   return (tool) =>
     wrapWithApprovalGate(
@@ -567,14 +609,10 @@ export function createToolApprovalGate(options: {
  */
 export function createChatApprovalEmitter(sessionId: string): (request: ApprovalRequest) => void {
   return (request) => {
-    publishSessionEvent(sessionId, "tool_approval_request", {
-      toolCallId: request.toolCallId,
-      toolName: request.toolName,
-      args: request.args,
-      summary: request.summary ?? null,
-      expiresAt: new Date(request.expiresAt).toISOString(),
-    }).catch((err) => {
-      console.error("Failed to publish approval request:", err);
-    });
+    publishSessionEvent(sessionId, "tool_approval_request", toApprovalPayload(request)).catch(
+      (err) => {
+        console.error("Failed to publish approval request:", err);
+      },
+    );
   };
 }

@@ -9,18 +9,33 @@ import type { ToolCategoryKey } from "@/lib/pi/tool-categories";
 
 export type ToolPolicy = "allow" | "auto" | "ask" | "off";
 
+/** Whether a stored value is one of {@link ToolPolicy}. */
+export function isToolPolicy(value: unknown): value is ToolPolicy {
+  return value === "allow" || value === "auto" || value === "ask" || value === "off";
+}
+
 /**
- * The "auto" policy is command-aware:
- * - For infra_exec: auto-approves safe commands (ls, cat, grep…), requires approval for risky ones (rm, echo >>, sudo…)
- * - For all other tools: behaves like "allow"
+ * What "auto" decides from the call itself, rather than from a name-level rule:
+ * - infra_exec and bash: the command — safe ones (ls, cat, grep…) run, risky ones
+ *   (rm, echo >>, sudo…) ask.
+ * - codemode: the script — it asks only when the script reaches a tool that
+ *   would ask on its own, so a script that only reads costs no click.
+ * - Every other tool: behaves like "allow".
  */
+
+/** Pi's tool for running a script that calls other tools (see codemode-approval.ts). */
+export const CODEMODE_TOOL_NAME = "codemode";
 
 export interface ToolInfo {
   name: string;
   label: string;
   description: string;
-  /** Which tool category this tool belongs to. */
-  category: ToolCategoryKey;
+  /**
+   * Which tool category this tool belongs to. Omitted for a tool no category
+   * owns (`codemode` is active whatever categories are enabled, so a category
+   * toggle would not govern it); the settings UI lists those tools on their own.
+   */
+  category?: ToolCategoryKey;
   /** Default approval policy for new users. */
   defaultPolicy: ToolPolicy;
   /**
@@ -34,6 +49,16 @@ export interface ToolInfo {
 }
 
 export const ALL_TOOL_INFOS: ToolInfo[] = [
+  // ── Agent (not a category of its own) ─────────────────────────────
+  {
+    name: CODEMODE_TOOL_NAME,
+    label: "Script",
+    description: "Run one script that calls several tools at once",
+    // Active whenever the session can call tools, whichever categories are on,
+    // so it is listed on its own rather than under a category switch.
+    defaultPolicy: "auto",
+  },
+
   // ── Terminal (Pi built-ins) ───────────────────────────────────────
   {
     name: "read",
@@ -551,6 +576,14 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
 /** Group tools by category key. */
 export function getToolsByCategory(categoryKey: string): typeof ALL_TOOL_INFOS {
   return ALL_TOOL_INFOS.filter((t) => t.category === categoryKey);
+}
+
+/**
+ * Tools no category owns. They are active regardless of the category switches,
+ * so the settings UI lists them separately, with their policies and no toggle.
+ */
+export function getUncategorizedTools(): typeof ALL_TOOL_INFOS {
+  return ALL_TOOL_INFOS.filter((t) => t.category === undefined);
 }
 
 /** Look up the default policy for a tool by name. */

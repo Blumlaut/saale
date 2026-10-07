@@ -97,3 +97,45 @@ describe("ToolsTab category toggles", () => {
     );
   });
 });
+
+/**
+ * Tools no category owns (`codemode`) are active whatever the category switches
+ * say, so they get a policy of their own and no switch — a switch there would
+ * claim to govern them and would not.
+ */
+describe("ToolsTab always-active tools", () => {
+  /**
+   * The policy a row is set to. Read from the option list: a closed trigger
+   * shows the stored value, not the label of the item it selects.
+   */
+  function selectedPolicy(trigger: HTMLElement): string {
+    fireEvent.click(trigger);
+    const selected = screen
+      .getAllByRole("option")
+      .find((option) => option.getAttribute("aria-selected") === "true");
+    if (!selected) throw new Error("no option is selected");
+    return selected.textContent ?? "";
+  }
+
+  it("lists the codemode policy outside the categories, and offers Auto for it", () => {
+    const { switches } = renderTab({ ...baseSettings });
+
+    expect(screen.getByText("Always active")).toBeInTheDocument();
+    expect(screen.getByText("Script")).toBeInTheDocument();
+    // A row with a policy, but no switch claiming to turn it off.
+    expect(switches).toHaveLength(TOOL_CATEGORIES.length);
+
+    // No category is expanded, so the only policy select on the page is
+    // codemode's — and its default resolves to the Auto item, which is only
+    // offered where the gate decides from the call.
+    const policies = screen.getAllByRole("combobox");
+    expect(policies).toHaveLength(1);
+    expect(selectedPolicy(policies[0]!)).toBe("Auto");
+  });
+
+  it("shows the policy the user stored", () => {
+    renderTab({ ...baseSettings, toolPolicies: { codemode: "off" } });
+
+    expect(selectedPolicy(screen.getByRole("combobox"))).toBe("Block");
+  });
+});
