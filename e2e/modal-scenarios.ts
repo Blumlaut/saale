@@ -543,6 +543,18 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await click(page, 'button[aria-label*="compact" i]');
     },
   },
+  {
+    name: "chat · slash command picker",
+    path: "/dashboard/chat",
+    sources: ["src/components/chat/command-sheet.tsx"],
+    open: async (page) => {
+      await gotoChatSession(page, await ensureChatSession(page));
+      const composer = visible(page, 'textarea[placeholder="Message Saale..."]');
+      await composer.fill("/model");
+      await composer.press("Enter");
+      await page.locator('[data-slot="sheet-content"]').waitFor({ state: "visible" });
+    },
+  },
 
   // ── Settings ──────────────────────────────────────────────────────────────
   {

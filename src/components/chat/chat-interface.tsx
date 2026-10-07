@@ -30,6 +30,15 @@ import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import type { Message, ApprovalData, TokenUsage } from "./types";
 import { ChatHeader } from "./chat-header";
 import { useChatStream } from "./use-chat-stream";
+import { CommandSheet } from "./command-sheet";
+import { getCommandMeta } from "@/lib/commands/catalog";
+import { parseCommand } from "@/lib/commands/parse";
+import type { CommandOutcome, CommandPrompt } from "@/lib/commands/types";
+
+/** Response of `POST /api/chat/sessions/:id/command`. */
+type CommandApiResponse =
+  | { kind: "prompt"; name: string; prompt: CommandPrompt }
+  | { kind: "done"; name: string; outcome: CommandOutcome };
 
 export function ChatInterface({
   sessionId,
@@ -83,6 +92,12 @@ export function ChatInterface({
     errorMessage: string;
   } | null>(null);
   const { markStreaming, markDone } = useStreamingSessions();
+  // Slash command waiting for a choice (an interactive command's prompt).
+  const [commandPrompt, setCommandPrompt] = useState<{
+    name: string;
+    prompt: CommandPrompt;
+  } | null>(null);
+  const [commandBusy, setCommandBusy] = useState(false);
 
   // Session metadata (title, model, thinking, tool config) + persistence.
   const {
@@ -223,10 +238,86 @@ export function ChatInterface({
     onRetryEnd: () => setRetryNotice(null),
   });
 
+  // ─── Slash commands ──────────────────────────────────────────────────────
+  // Every command comes from the shared registry (see `src/lib/commands`),
+  // which the Telegram bot reads too — there is no web-only command list.
+
+  const applyCommandResult = useCallback(
+    (result: CommandApiResponse) => {
+      if (result.kind === "prompt") {
+        setCommandPrompt({ name: result.name, prompt: result.prompt });
+        return;
+      }
+      if (result.kind !== "done") return;
+
+      setCommandPrompt(null);
+      const { message, tone, refresh } = result.outcome;
+      if (tone === "error") toast.error(message);
+      else if (tone === "info") toast.info(message);
+      else toast.success(message);
+
+      if (refresh === "messages") void loadMessages();
+      if (refresh === "generation") {
+        // The server already cancelled the run — mirror the client half of
+        // `handleStop`: hold the queue and reconnect so the server re-decides.
+        setQueuePaused(true);
+        disconnect();
+        connect();
+      }
+    },
+    [loadMessages, disconnect, connect],
+  );
+
+  const runCommand = useCallback(
+    async (name: string, args = "", value?: string) => {
+      setCommandBusy(true);
+      try {
+        const result = await postJson<CommandApiResponse>(
+          `/api/chat/sessions/${sessionId}/command`,
+          { name, args, value },
+        );
+        applyCommandResult(result);
+      } catch (err) {
+        console.error(`Slash command /${name} failed:`, err);
+        setCommandPrompt(null);
+        toast.error("Command failed", {
+          description: err instanceof Error ? err.message : "Something went wrong.",
+        });
+      } finally {
+        setCommandBusy(false);
+      }
+    },
+    [sessionId, applyCommandResult],
+  );
+
+  const handleCommandPick = useCallback(
+    (name: string) => {
+      void runCommand(name);
+    },
+    [runCommand],
+  );
+
+  const handleCommandChoice = useCallback(
+    (value: string) => {
+      if (!commandPrompt) return;
+      void runCommand(commandPrompt.name, "", value);
+    },
+    [commandPrompt, runCommand],
+  );
+
   // ─── Message handlers ────────────────────────────────────────────────────
 
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
+      // A leading `/name` the registry knows is a command, not a message — run
+      // it instead of sending it to the model. Unknown `/foo` falls through and
+      // reaches the agent like any other text.
+      const parsed = parseCommand(content);
+      if (!files?.length && parsed && getCommandMeta(parsed.name)) {
+        void runCommand(parsed.name, parsed.args);
+        return;
+      }
+
       const optimistic = makeTempUserMessage(content, files);
       // While the session is busy — Pi generating, or a compaction holding it —
       // the server queues the message (the composer's Queue button shows this
@@ -333,7 +424,7 @@ export function ChatInterface({
         }
       }
     },
-    [sessionId, router, connect, disconnect, setDraft],
+    [sessionId, router, connect, disconnect, setDraft, runCommand],
   );
 
   // ─── Send queue actions ──────────────────────────────────────────────────
@@ -703,6 +794,7 @@ export function ChatInterface({
       <InputBar
         ref={inputBarRef}
         onSend={handleSend}
+        onCommand={handleCommandPick}
         value={draft}
         onValueChange={setDraft}
         isLoading={isLoading}
@@ -712,6 +804,16 @@ export function ChatInterface({
         tokenUsage={tokenUsage}
         isCompacting={isCompacting}
         onCompact={handleCompact}
+      />
+
+      <CommandSheet
+        open={commandPrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) setCommandPrompt(null);
+        }}
+        prompt={commandPrompt?.prompt ?? null}
+        busy={commandBusy}
+        onSelect={handleCommandChoice}
       />
 
       {isDragging && <FileDropOverlay />}
