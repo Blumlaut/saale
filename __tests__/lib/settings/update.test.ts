@@ -47,6 +47,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     defaultModelName: "",
     defaultThinkingLevel: "default",
     theme: "system",
+    compactActivity: true,
     agentCustomInstructions: null,
     emailWritingStyle: null,
     purposeModelOverrides: null,

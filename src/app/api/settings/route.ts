@@ -12,6 +12,7 @@ function serializeSettings(settings: AppSettings) {
     defaultModelName: settings.defaultModelName,
     defaultThinkingLevel: settings.defaultThinkingLevel,
     theme: settings.theme,
+    compactActivity: settings.compactActivity,
     agentCustomInstructions: settings.agentCustomInstructions,
     emailWritingStyle: settings.emailWritingStyle,
     purposeModelOverrides: settings.purposeModelOverrides,

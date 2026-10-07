@@ -5,8 +5,9 @@ import type { ReactNode } from "react";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, ExternalLink, Globe, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Star } from "lucide-react";
 import { plural } from "@/lib/format";
+import { FaviconMark } from "./favicon-mark";
 import { ToolStatusBadge } from "./tool-status-badge";
 import type {
   ToolCardBlock,
@@ -273,7 +274,7 @@ function ToolRowLeadingView({ leading }: { leading: ToolRowLeading }) {
         </div>
       );
     case "favicon":
-      return <Favicon url={leading.url} />;
+      return <FaviconMark url={leading.url} />;
   }
 }
 
@@ -439,21 +440,4 @@ function toolToneClass(tone: ToolTone = "neutral"): string {
     case "violet":
       return "bg-violet-500/10 text-violet-600 dark:text-violet-400";
   }
-}
-
-/** A site favicon, falling back to a globe when it cannot be loaded. */
-function Favicon({ url }: { url: string }) {
-  const [failed, setFailed] = useState(false);
-
-  if (!url || failed) return <Globe className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />;
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- favicon from an external CDN
-    <img
-      src={url}
-      alt=""
-      className="mt-0.5 h-4 w-4 shrink-0 rounded-sm object-contain"
-      onError={() => setFailed(true)}
-    />
-  );
 }

@@ -10,6 +10,7 @@ import { FileDropOverlay } from "./file-drop-overlay";
 import { QueuedMessages } from "./queued-messages";
 import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
+import { useCompactActivity } from "@/hooks/use-compact-activity";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
 import {
@@ -65,6 +66,8 @@ export function ChatInterface({
 
   // Composer draft — persisted per session, so it survives navigation.
   const { draft, setDraft } = useChatDraft(sessionId);
+  // The user's Appearance setting for how the transcript shows turn activity.
+  const compactActivity = useCompactActivity();
   // Imperative access to the composer (quote insertion targets its caret).
   const inputBarRef = useRef<InputBarHandle>(null);
   // Imperative access to the message list (jump to the tail on send).
@@ -796,6 +799,7 @@ export function ChatInterface({
             sessionId={sessionId}
             activeTool={activeTool}
             retry={retryNotice}
+            compactActivity={compactActivity}
           />
         </div>
       </GlassPanel>

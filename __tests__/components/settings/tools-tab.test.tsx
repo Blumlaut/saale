@@ -19,6 +19,7 @@ const baseSettings: UserSettings = {
   defaultModelName: "gpt-4o",
   defaultThinkingLevel: "off",
   theme: "system",
+  compactActivity: true,
   agentCustomInstructions: null,
   emailWritingStyle: null,
   purposeModelOverrides: null,

@@ -51,6 +51,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     defaultModelName: "",
     defaultThinkingLevel: "default",
     theme: "system",
+    compactActivity: true,
     agentCustomInstructions: null,
     emailWritingStyle: null,
     purposeModelOverrides: null,
@@ -205,6 +206,14 @@ describe("settings projections", () => {
     expect(property.read(apply(property, userRow(), "dark"))).toBe("dark");
     // null restores the default.
     expect(property.read(apply(property, userRow({ theme: "dark" }), null))).toBe("system");
+  });
+
+  it("stores compact activity and restores it to the default when cleared", () => {
+    const property = userProperty("appearance.compactActivity");
+    // Compact is the default every user starts on, existing rows included.
+    expect(property.read(userRow())).toBe(true);
+    expect(property.read(apply(property, userRow(), false))).toBe(false);
+    expect(property.read(apply(property, userRow({ compactActivity: false }), null))).toBe(true);
   });
 
   it("round-trips a model reference pair", () => {

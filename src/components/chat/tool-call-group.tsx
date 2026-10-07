@@ -7,7 +7,7 @@ import { ShowFileGallery } from "./file-card";
 import { ToolCard } from "./tool-card";
 import { ToolCallView } from "./tool-call-view";
 import { splitToolCalls } from "./tool-cards";
-import type { ToolStatus } from "./tool-status";
+import { aggregateToolStatus } from "./tool-status";
 import type { ToolCallData } from "./types";
 
 /**
@@ -43,21 +43,13 @@ export function ToolCallGroup({ toolCalls }: { toolCalls: readonly ToolCallData[
 
 /** The summary row: what the turn did, with its cards one click down. */
 function CollapsedWork({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
-  const failed = toolCalls.some((call) => call.error || call.status === "error");
-  const running = toolCalls.some((call) => call.status === "running");
-  const status: ToolStatus = failed
-    ? { tone: "danger", label: "failed" }
-    : running
-      ? { tone: "running", label: "running" }
-      : { tone: "success", label: "done" };
-
   return (
     <ToolCard
       model={{
         icon: Layers,
         title: plural(toolCalls.length, "tool call", "tool calls"),
         detail: toolCalls.map((call) => findToolInfo(call.name)?.label ?? call.name).join(" · "),
-        status,
+        status: aggregateToolStatus(toolCalls),
       }}
     >
       {toolCalls.map((toolCall) => (

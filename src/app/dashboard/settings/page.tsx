@@ -65,6 +65,24 @@ export default function SettingsPage() {
     setSaving(false);
   }, [settings]);
 
+  /**
+   * Save one change on its own. Appearance switches apply as they are flipped
+   * rather than waiting for a Save button, and adopting the response keeps the
+   * state the other tabs send whole from undoing the change.
+   */
+  const handlePatchSettings = useCallback(async (patch: Partial<UserSettings>) => {
+    setSaving(true);
+    try {
+      const data = await patchJson<{ settings: UserSettings }>("/api/settings", patch);
+      setSettings(data.settings);
+      setSaveStatus("success");
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+      setSaveStatus("error");
+    }
+    setSaving(false);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -152,7 +170,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="appearance" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
-          <AppearanceTab />
+          <AppearanceTab settings={settings} onPatch={handlePatchSettings} saving={saving} />
         </TabsContent>
 
         <TabsContent value="memories" className="min-h-0 flex-1 space-y-6 overflow-y-auto">

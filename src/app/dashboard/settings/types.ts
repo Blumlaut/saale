@@ -16,6 +16,8 @@ export interface UserSettings {
   defaultModelName: string;
   defaultThinkingLevel: string;
   theme: string;
+  /** Collapse a turn's reasoning and tool calls into one compact line each. */
+  compactActivity: boolean;
   agentCustomInstructions: string | null;
   emailWritingStyle: string | null;
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
