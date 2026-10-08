@@ -5,10 +5,10 @@ import { ChevronDown, ChevronRight, Lightbulb, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { plural, truncate } from "@/lib/format";
 import { FaviconMark } from "./favicon-mark";
-import { ToolCallView } from "./tool-call-view";
 import { ToolStatusBadge } from "./tool-status-badge";
 import { aggregateToolStatus } from "./tool-status";
-import { toolMark } from "./tool-marks";
+import type { ToolCallRenderer } from "./collapsed-tool-calls";
+import type { ToolMark } from "./tool-mark-model";
 import type { ToolCallData } from "./types";
 
 /**
@@ -27,6 +27,10 @@ import type { ToolCallData } from "./types";
  * turn is active from the moment it starts until its final reply begins, tools
  * included. A per-token flag would drop every time a step paused to run a tool,
  * which is a blink.
+ *
+ * The leaf renderer and the mark are injected, so the share page gets the same
+ * row with redacted leaves and category marks without any owner card — or the
+ * routing table — becoming reachable from it.
  */
 
 /** Characters of the newest reasoning shown before it is cut off. */
@@ -49,13 +53,25 @@ export interface CompactActivityProps {
    * runs, false once its final reply starts (that reply is its own block).
    */
   isActive: boolean;
+  /** How one call in the run renders — the owner's card, or the redacted one. */
+  renderCall: ToolCallRenderer;
+  /** How a call is marked in the sliding window. */
+  markOf: (toolCall: ToolCallData) => ToolMark;
 }
 
-export function CompactActivity({ reasoning, toolCalls, isActive }: CompactActivityProps) {
+export function CompactActivity({
+  reasoning,
+  toolCalls,
+  isActive,
+  renderCall,
+  markOf,
+}: CompactActivityProps) {
   return (
     <div className="space-y-1">
       {reasoning.length > 0 && <ReasoningRow reasoning={reasoning} isActive={isActive} />}
-      {toolCalls.length > 0 && <ToolsRow toolCalls={toolCalls} />}
+      {toolCalls.length > 0 && (
+        <ToolsRow toolCalls={toolCalls} renderCall={renderCall} markOf={markOf} />
+      )}
     </div>
   );
 }
@@ -115,7 +131,15 @@ function ReasoningRow({
 }
 
 /** "Used 7 tools" — a running count and a sliding window of tool marks. */
-function ToolsRow({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
+function ToolsRow({
+  toolCalls,
+  renderCall: RenderCall,
+  markOf,
+}: {
+  toolCalls: readonly ToolCallData[];
+  renderCall: ToolCallRenderer;
+  markOf: (toolCall: ToolCallData) => ToolMark;
+}) {
   const [open, setOpen] = useState(false);
   // Only the newest marks are on screen: a run of forty tools is a count, not
   // forty icons. The window slides, so a mark that ages out is dropped and the
@@ -156,7 +180,7 @@ function ToolsRow({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
                 {/* Nested: the entrance animates a scale, which must not fight
                     the slot transform that slides the window along. */}
                 <span className="animate-in fade-in zoom-in-75 block h-3.5 w-3.5 duration-200 ease-out">
-                  <ToolMarkView call={call} />
+                  <ToolMarkView mark={markOf(call)} />
                 </span>
               </span>
             ))}
@@ -171,7 +195,7 @@ function ToolsRow({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
       {open && (
         <div className="border-border/30 space-y-1.5 border-t p-2">
           {toolCalls.map((toolCall) => (
-            <ToolCallView key={toolCall.id} toolCall={toolCall} />
+            <RenderCall key={toolCall.id} toolCall={toolCall} />
           ))}
         </div>
       )}
@@ -179,10 +203,8 @@ function ToolsRow({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
   );
 }
 
-/** The call's own mark: the site it opened, or the tool's icon. */
-function ToolMarkView({ call }: { call: ToolCallData }) {
-  const mark = toolMark(call);
-
+/** One call's mark: the site it opened, or the tool's icon. */
+function ToolMarkView({ mark }: { mark: ToolMark }) {
   if (mark.kind === "favicon") {
     return (
       <FaviconMark url={mark.url} className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain" />

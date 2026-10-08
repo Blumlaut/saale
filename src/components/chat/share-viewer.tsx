@@ -5,15 +5,18 @@ import { useRouter } from "next/navigation";
 import { Bot, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { CompactActivity } from "./compact-activity";
+import { compactBlocks, type CompactSplit } from "./compact-blocks";
 import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
 import { CollapsedToolCalls } from "./collapsed-tool-calls";
 import { RedactedToolCall } from "./redacted-tool-call";
+import { categoryToolMark, type ToolMark } from "./tool-mark-model";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { groupMessages } from "@/lib/chat/group-messages";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import type { Message } from "./types";
+import type { Message, ToolCallData } from "./types";
 
 interface ShareViewerProps {
   token: string;
@@ -205,21 +208,33 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
         <Bot className="h-4 w-4" />
       </div>
       <div className="max-w-[85%] min-w-0 space-y-2">
-        {visibleMessages.map((message) => (
-          <div key={message.id}>
-            {message.content && (
-              <div className="liquid-glass-inner rounded-2xl px-4 py-3">
-                <MarkdownRenderer content={message.content} />
-              </div>
-            )}
-            {message.errorMessage && <ProviderErrorNotice error={message.errorMessage} />}
-            {message.toolCalls && message.toolCalls.length > 0 && (
-              <div className="space-y-1">
-                <CollapsedToolCalls toolCalls={message.toolCalls} renderCall={RedactedToolCall} />
-              </div>
-            )}
-          </div>
-        ))}
+        {/*
+         * The same condensed transcript the owner gets with "Compact activity"
+         * on: a run of steps folds into one "Used N tools" row, and prose ends
+         * the run. Every leaf is redacted, and so is every mark (see below).
+         */}
+        {compactBlocks(visibleMessages, shareToolCalls).map((block) =>
+          block.kind === "activity" ? (
+            <CompactActivity
+              key={block.key}
+              reasoning={[]}
+              toolCalls={block.steps.flatMap((step) => step.work)}
+              isActive={false}
+              renderCall={RedactedToolCall}
+              markOf={shareToolMark}
+            />
+          ) : block.kind === "attachments" ? (
+            // Unreachable with `shareToolCalls`, but a shared call must never
+            // vanish if the split policy ever changes.
+            <CollapsedToolCalls
+              key={block.key}
+              toolCalls={block.toolCalls}
+              renderCall={RedactedToolCall}
+            />
+          ) : (
+            <ShareMessageBody key={block.key} message={block.message} />
+          ),
+        )}
         {timestamp && (
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">{formatTime(timestamp)}</span>
@@ -242,4 +257,35 @@ function formatTime(isoString: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** One step's prose: the answer bubble, or the provider error that ended the turn. */
+function ShareMessageBody({ message }: { message: Message }) {
+  return (
+    <>
+      {message.content && (
+        <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+          <MarkdownRenderer content={message.content} />
+        </div>
+      )}
+      {message.errorMessage && <ProviderErrorNotice error={message.errorMessage} />}
+    </>
+  );
+}
+
+/**
+ * Every shared call is inert, so none stands apart from the work the way a
+ * `show_file` attachment does for the owner — the whole run folds into one row.
+ */
+function shareToolCalls(toolCalls: readonly ToolCallData[]): CompactSplit {
+  return { work: [...toolCalls], attachments: [] };
+}
+
+/**
+ * A redacted call has no site or result to read, so its mark is its category's
+ * icon. The owner's `toolMark` cannot run here: it reaches the descriptors and
+ * the routing table, which the share surface must not import.
+ */
+function shareToolMark(toolCall: ToolCallData): ToolMark {
+  return categoryToolMark(toolCall.name);
 }
