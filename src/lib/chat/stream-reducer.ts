@@ -13,6 +13,12 @@ import { isStreamingMessage, makeStreamingMessage } from "./message-factories";
  * Events are ordered by the server (and by the buffer replay), so the reducer
  * is applied sequentially. All events are idempotent where it matters:
  * re-delivered tool calls and cumulative token text never double-apply.
+ *
+ * A turn's message is identified by its `turnId`, not by the `streaming-{turnId}`
+ * id: `message_saved` renames the bubble to its DB row, and the buffer replay
+ * (and a mid-run reload) can deliver that turn's events again afterwards. Id
+ * matching alone would treat the renamed row as "this turn is new" and add a
+ * second copy of a step the user is already looking at.
  */
 
 export type StreamAction =
@@ -46,6 +52,16 @@ export interface StreamState {
 }
 
 /**
+ * The message a turn's stream events belong to, streaming or already saved.
+ */
+function findTurnMessage(messages: Message[], turnId: string): Message | undefined {
+  return (
+    messages.find((m) => m.turnId === turnId) ??
+    messages.find((m) => m.id === `streaming-${turnId}`)
+  );
+}
+
+/**
  * Ensure a streaming message exists for a turnId, optionally patching it.
  * Replaying events may arrive without the preceding `turn_start` (e.g. when
  * the buffer was trimmed), so every event can create the message.
@@ -56,9 +72,9 @@ function ensureTurnMessage(
   rootMessageId: string | null,
   patch?: Partial<Message>,
 ): Message[] {
-  const id = `streaming-${turnId}`;
-  if (messages.some((m) => m.id === id)) {
-    return messages.map((m) => (m.id === id ? { ...m, ...patch } : m));
+  const existing = findTurnMessage(messages, turnId);
+  if (existing) {
+    return messages.map((m) => (m === existing ? { ...m, ...patch } : m));
   }
   return [...messages, makeStreamingMessage(turnId, rootMessageId ?? undefined, patch)];
 }
@@ -94,8 +110,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       };
 
     case "tool_start": {
-      const id = `streaming-${action.turnId}`;
-      const existing = state.messages.find((m) => m.id === id);
+      const existing = findTurnMessage(state.messages, action.turnId);
       if (!existing) {
         return {
           ...state,
@@ -109,18 +124,20 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       return {
         ...state,
         messages: state.messages.map((m) =>
-          m.id === id
+          m === existing
             ? { ...m, toolCalls: [...(m.toolCalls || []), buildRunningToolCall(action)] }
             : m,
         ),
       };
     }
 
-    case "tool_update":
+    case "tool_update": {
+      const target = findTurnMessage(state.messages, action.turnId);
+      if (!target?.toolCalls) return state;
       return {
         ...state,
         messages: state.messages.map((m) => {
-          if (m.id !== `streaming-${action.turnId}` || !m.toolCalls) return m;
+          if (m !== target || !m.toolCalls) return m;
           return {
             ...m,
             toolCalls: m.toolCalls.map((tc) =>
@@ -131,12 +148,15 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           };
         }),
       };
+    }
 
-    case "tool_end":
+    case "tool_end": {
+      const target = findTurnMessage(state.messages, action.turnId);
+      if (!target?.toolCalls) return state;
       return {
         ...state,
         messages: state.messages.map((m) => {
-          if (m.id !== `streaming-${action.turnId}` || !m.toolCalls) return m;
+          if (m !== target || !m.toolCalls) return m;
           return {
             ...m,
             toolCalls: m.toolCalls.map((tc) =>
@@ -152,6 +172,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           };
         }),
       };
+    }
 
     case "turn_end":
       return {
@@ -166,18 +187,18 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       // The retry re-runs the turn, so the bubble goes; `rootMessageId` must
       // be cleared when it pointed at the discarded message, otherwise the
       // retried turn would be grouped as a child of a nonexistent parent.
-      // Match on both ids: the turn may still be streaming, or may already
-      // have been swapped for its (now deleted) DB row by `message_saved`.
+      // Match the turn, not just its id: the bubble may still be streaming, or
+      // may already have been swapped for its (now deleted) DB row.
+      const discarded = findTurnMessage(state.messages, action.turnId);
       const rootMessageId =
-        state.rootMessageId && state.rootMessageId === action.messageId
+        state.rootMessageId &&
+        (state.rootMessageId === action.messageId || state.rootMessageId === discarded?.id)
           ? null
           : state.rootMessageId;
       return {
         rootMessageId,
         messages: state.messages.filter(
-          (m) =>
-            m.id !== `streaming-${action.turnId}` &&
-            (action.messageId === null || m.id !== action.messageId),
+          (m) => m !== discarded && (action.messageId === null || m.id !== action.messageId),
         ),
       };
     }
@@ -185,11 +206,18 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
     case "message_saved": {
       // First saved message of a generation is the root (parent of later turns).
       const rootMessageId = state.rootMessageId ?? action.messageId;
+      const turn = findTurnMessage(state.messages, action.turnId);
+      // Nothing to swap: the turn is gone, or the row is already the turn's
+      // message (a re-delivered `message_saved`, e.g. from a replay).
+      if (!turn || turn.id === action.messageId) return { ...state, rootMessageId };
+      // The row is on screen already (loaded, or replayed) — the live bubble
+      // would be a second copy of the same message under the same id.
+      if (state.messages.some((m) => m.id === action.messageId)) {
+        return { ...state, rootMessageId, messages: state.messages.filter((m) => m !== turn) };
+      }
       return {
         rootMessageId,
-        messages: state.messages.map((m) =>
-          m.id === `streaming-${action.turnId}` ? { ...m, id: action.messageId } : m,
-        ),
+        messages: state.messages.map((m) => (m === turn ? { ...m, id: action.messageId } : m)),
       };
     }
 

@@ -9,6 +9,10 @@ import type { Message } from "@/components/chat/types";
  * - `streaming-{turnId}` — live assistant turn not yet saved to the DB
  * - anything else — a real DB message id
  *
+ * The id is not the identity of a *turn*, only of its current row: the first
+ * one is replaced by the second. `Message.turnId` is what survives that, so a
+ * replayed event can find the turn it belongs to (see `stream-reducer`).
+ *
  * Centralizing the prefixes (instead of scattering `id.startsWith(...)`
  * checks) keeps the scheme consistent across the chat components and the
  * merge/stream logic.
@@ -69,6 +73,7 @@ export function makeStreamingMessage(
     parentMessageId: parentMessageId || undefined,
     createdAt: new Date().toISOString(),
     attachments: undefined,
+    turnId,
     ...patch,
   };
 }

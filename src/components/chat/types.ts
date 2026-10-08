@@ -84,6 +84,13 @@ export interface Message {
   toolCalls: ToolCallData[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;
+  /**
+   * The server turn that produced this message (client-side only). Live turns
+   * are also identified by their `streaming-{turnId}` id, but `message_saved`
+   * renames them to their DB row — this tag survives that, so a replayed event
+   * for a turn already on screen updates it instead of adding a second copy.
+   */
+  turnId?: string | undefined;
   attachments: AttachmentData[] | undefined;
   approval?: ApprovalData;
   compaction?: CompactionData;
