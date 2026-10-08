@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
+import { CollapsedToolCalls } from "./collapsed-tool-calls";
 import { RedactedToolCall } from "./redacted-tool-call";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { groupMessages } from "@/lib/chat/group-messages";
@@ -214,9 +215,7 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
             {message.errorMessage && <ProviderErrorNotice error={message.errorMessage} />}
             {message.toolCalls && message.toolCalls.length > 0 && (
               <div className="space-y-1">
-                {message.toolCalls.map((toolCall) => (
-                  <RedactedToolCall key={toolCall.id} toolCall={toolCall} />
-                ))}
+                <CollapsedToolCalls toolCalls={message.toolCalls} renderCall={RedactedToolCall} />
               </div>
             )}
           </div>
