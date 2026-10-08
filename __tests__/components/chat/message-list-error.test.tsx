@@ -80,12 +80,14 @@ describe("MessageList provider errors", () => {
     expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
   });
 
-  it("shows the normal thinking indicator when no retry is in flight", () => {
+  it("shows no inline working indicator when no retry is in flight", () => {
+    // Waiting on the LLM or a tool result is covered by the composer's stop
+    // button — the transcript must not duplicate it with a spinner of its own.
     render(
       <MessageList messages={[message({ id: "u1", role: "user", content: "hi" })]} isLoading />,
     );
 
-    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
     expect(screen.queryByText("Provider error")).not.toBeInTheDocument();
   });
 });

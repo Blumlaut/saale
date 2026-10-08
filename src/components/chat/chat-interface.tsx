@@ -89,8 +89,8 @@ export function ChatInterface({
     name: string | null;
     startedAt?: string | null;
   } | null>(null);
-  // Transient provider failure being retried by Pi — shown instead of a
-  // motionless "Thinking..." during the backoff.
+  // Transient provider failure being retried by Pi — the composer's spinner
+  // says nothing went wrong, so the backoff gets its own notice.
   const [retryNotice, setRetryNotice] = useState<{
     attempt: number;
     maxAttempts: number;
@@ -164,6 +164,11 @@ export function ChatInterface({
       setQueuedMessages(data.queuedMessages ?? []);
       setQueuePaused(data.session?.queueHeld ?? false);
       setActiveTool(data.session?.activeTool ?? null);
+      // A generation the server knows about is in flight right now — spin the
+      // composer's stop button even before the stream's first event arrives
+      // (a refresh mid-run must not read as idle). Only ever raised here:
+      // clearing belongs to the stream's `done` event.
+      if (data.session?.isGenerating) setIsLoading(true);
       applySession(data.session);
     } catch (err) {
       if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {
@@ -336,8 +341,7 @@ export function ChatInterface({
       // the server queues the message (the composer's Queue button shows this
       // is what the send means), so the optimistic copy goes straight into the
       // queue strip. Showing it in the conversation first would flash it as
-      // sent — and, sitting behind the live turn, replace the streaming
-      // indicator with a bare "Thinking…" until the POST response moved it.
+      // sent, sitting behind the live turn, until the POST response moved it.
       const placement = placementForSend(busyRef.current);
       if (placement === "queue") {
         setQueuedMessages((prev) => [...prev, optimistic]);

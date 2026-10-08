@@ -448,28 +448,20 @@ export const MessageList = memo(
               </div>
             )}
 
-            {isLoading && !isStreaming && (
+            {/* Waiting on the LLM or a tool result needs no indicator of its
+              own — the composer's stop button spins while the run is in
+              flight. The retry notice is kept: a failing provider call is the
+              one state the spinner can't tell. */}
+            {isLoading && !isStreaming && retry && (
               <div className="text-muted-foreground flex items-center gap-2">
-                {retry ? (
-                  <AlertTriangle className="text-destructive h-4 w-4 shrink-0" />
-                ) : (
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                )}
-                {retry ? (
-                  <span className="min-w-0 text-sm break-words">
-                    <span className="text-destructive font-medium">Provider error</span>{" "}
-                    <span>
-                      {formatProviderError(retry.errorMessage).message} — retrying ({retry.attempt}{" "}
-                      of {retry.maxAttempts})...
-                    </span>
+                <AlertTriangle className="text-destructive h-4 w-4 shrink-0" />
+                <span className="min-w-0 text-sm break-words">
+                  <span className="text-destructive font-medium">Provider error</span>{" "}
+                  <span>
+                    {formatProviderError(retry.errorMessage).message} — retrying ({retry.attempt} of{" "}
+                    {retry.maxAttempts})...
                   </span>
-                ) : activeTool?.name ? (
-                  <span className="text-sm">
-                    Running <span className="font-medium">{activeTool.name}</span>...
-                  </span>
-                ) : (
-                  <span className="text-sm">Thinking...</span>
-                )}
+                </span>
               </div>
             )}
 
