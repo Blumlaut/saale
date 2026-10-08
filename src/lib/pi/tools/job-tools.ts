@@ -1,9 +1,141 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "typebox";
 import { prisma } from "@/lib/db";
 import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from "@/lib/queue";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 import { buildModelRuntime } from "@/lib/pi/models";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
+
+/** A job as job_list reports it (config parsed, dates as ISO strings). */
+const jobListEntrySchema = Type.Object({
+  id: Type.String(),
+  type: Type.String(),
+  enabled: Type.Boolean(),
+  modelId: Type.Union([Type.String(), Type.Null()]),
+  config: Type.Record(Type.String(), Type.Unknown()),
+  // Omitted when the job has never run.
+  lastRunAt: Type.Optional(Type.String()),
+  runCount: Type.Integer(),
+  createdAt: Type.String(),
+});
+
+const jobListSchema = Type.Object({
+  count: Type.Integer(),
+  jobs: Type.Array(jobListEntrySchema),
+});
+
+const jobEnableSchema = Type.Object({
+  id: Type.String(),
+  enabled: Type.Boolean(),
+});
+
+const jobRunSchema = Type.Object({
+  queued: Type.Boolean(),
+  jobId: Type.String(),
+  runId: Type.String(),
+});
+
+/** One run in a job's history. */
+const jobLogRunSchema = Type.Object({
+  id: Type.String(),
+  status: Type.String(),
+  // Parsed JSON payloads; null when the run has none.
+  input: Type.Unknown(),
+  output: Type.Unknown(),
+  error: Type.Union([Type.String(), Type.Null()]),
+  // Omitted until the run starts/finishes.
+  startedAt: Type.Optional(Type.String()),
+  completedAt: Type.Optional(Type.String()),
+  duration: Type.Union([Type.Number(), Type.Null()]),
+});
+
+const jobLogsSchema = Type.Object({
+  jobId: Type.String(),
+  count: Type.Integer(),
+  runs: Type.Array(jobLogRunSchema),
+});
+
+/** A configurable field of a job type, for the dynamic create form. */
+const jobTypeFieldSchema = Type.Object({
+  key: Type.String(),
+  label: Type.String(),
+  description: Type.Optional(Type.String()),
+  type: Type.String(),
+  default: Type.Optional(Type.Unknown()),
+  availableAccounts: Type.Optional(Type.Array(Type.String())),
+  min: Type.Optional(Type.Number()),
+  max: Type.Optional(Type.Number()),
+});
+
+const jobTypesSchema = Type.Object({
+  count: Type.Integer(),
+  types: Type.Array(
+    Type.Object({
+      type: Type.String(),
+      label: Type.String(),
+      description: Type.String(),
+      usesAi: Type.Boolean(),
+      defaultCron: Type.String(),
+      fields: Type.Array(jobTypeFieldSchema),
+    }),
+  ),
+});
+
+/** A newly created job as job_create reports it. */
+const jobCreatedSchema = Type.Object({
+  created: Type.Boolean(),
+  job: Type.Object({
+    id: Type.String(),
+    type: Type.String(),
+    enabled: Type.Boolean(),
+    modelId: Type.Union([Type.String(), Type.Null()]),
+    config: Type.Record(Type.String(), Type.Unknown()),
+    createdAt: Type.String(),
+  }),
+});
+
+const modelListSchema = Type.Object({
+  count: Type.Integer(),
+  providers: Type.Array(
+    Type.Object({
+      provider: Type.String(),
+      models: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          name: Type.String(),
+          modelId: Type.String(),
+        }),
+      ),
+    }),
+  ),
+  defaults: Type.Object({
+    user: Type.Union([
+      Type.Object({
+        provider: Type.String(),
+        model: Type.Union([Type.String(), Type.Null()]),
+      }),
+      Type.Null(),
+    ]),
+    jobs: Type.Union([Type.Object({ provider: Type.String(), model: Type.String() }), Type.Null()]),
+  }),
+});
+
+/** A job after an update, as job_update reports it. */
+const jobUpdatedSchema = Type.Object({
+  updated: Type.Boolean(),
+  job: Type.Object({
+    id: Type.String(),
+    type: Type.String(),
+    enabled: Type.Boolean(),
+    modelId: Type.Union([Type.String(), Type.Null()]),
+    config: Type.Record(Type.String(), Type.Unknown()),
+  }),
+});
+
+const jobDeleteSchema = Type.Object({
+  deleted: Type.Boolean(),
+  id: Type.String(),
+});
 
 /**
  * Create job tools with userId injection for user isolation.
@@ -15,7 +147,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
   return [
     // ─── job_list ───────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_list",
       label: "List Jobs",
       description: "List all configured jobs with their current status, schedule, and run count.",
@@ -32,6 +164,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: jobListSchema,
       execute: async (_toolCallId, params) => {
         const where: Record<string, unknown> = { userId };
         if (params.enabled !== undefined) {
@@ -47,39 +180,30 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  count: jobs.length,
-                  jobs: jobs.map(
-                    (j: {
-                      id: string;
-                      type: string;
-                      enabled: boolean;
-                      modelId: string | null;
-                      config: string;
-                      lastRunAt: Date | null;
-                      runCount: number;
-                      createdAt: Date;
-                    }) => ({
-                      id: j.id,
-                      type: j.type,
-                      enabled: j.enabled,
-                      modelId: j.modelId,
-                      config: JSON.parse(j.config),
-                      lastRunAt: j.lastRunAt?.toISOString(),
-                      runCount: j.runCount,
-                      createdAt: j.createdAt.toISOString(),
-                    }),
-                  ),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            count: jobs.length,
+            jobs: jobs.map(
+              (j: {
+                id: string;
+                type: string;
+                enabled: boolean;
+                modelId: string | null;
+                config: string;
+                lastRunAt: Date | null;
+                runCount: number;
+                createdAt: Date;
+              }) => ({
+                id: j.id,
+                type: j.type,
+                enabled: j.enabled,
+                modelId: j.modelId,
+                config: JSON.parse(j.config),
+                ...(j.lastRunAt ? { lastRunAt: j.lastRunAt.toISOString() } : {}),
+                runCount: j.runCount,
+                createdAt: j.createdAt.toISOString(),
+              }),
+            ),
+          },
           details: { count: jobs.length },
         };
       },
@@ -87,7 +211,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── job_enable ─────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_enable",
       label: "Enable/Disable Job",
       description: "Enable or disable a job by its ID.",
@@ -99,6 +223,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           description: "Whether to enable (true) or disable (false) the job.",
         }),
       }),
+      outputSchema: jobEnableSchema,
       execute: async (_toolCallId, params) => {
         const job = await prisma.queueTask.findFirst({
           where: { id: params.id, userId },
@@ -125,19 +250,10 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  id: params.id,
-                  enabled: params.enabled,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            id: params.id,
+            enabled: params.enabled,
+          },
           details: { id: params.id, enabled: params.enabled },
         };
       },
@@ -145,7 +261,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── job_run ────────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_run",
       label: "Run Job Now",
       description: "Trigger an immediate manual run of a job by its ID.",
@@ -154,6 +270,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           description: "Job ID to run.",
         }),
       }),
+      outputSchema: jobRunSchema,
       execute: async (_toolCallId, params) => {
         const job = await prisma.queueTask.findFirst({
           where: { id: params.id, userId },
@@ -166,20 +283,11 @@ export function createJobTools(userId: string): ToolDefinition[] {
         const { runId } = await triggerQueueTaskRun(job);
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  queued: true,
-                  jobId: params.id,
-                  runId,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            queued: true,
+            jobId: params.id,
+            runId,
+          },
           details: { queued: true, runId },
         };
       },
@@ -187,7 +295,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── job_logs ───────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_logs",
       label: "Job Logs",
       description: "View recent run history for a job, including status, output, and errors.",
@@ -207,6 +315,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: jobLogsSchema,
       execute: async (_toolCallId, params) => {
         // Verify the job belongs to this user
         const job = await prisma.queueTask.findFirst({
@@ -240,42 +349,33 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  jobId: params.id,
-                  count: runs.length,
-                  runs: runs.map(
-                    (r: {
-                      id: string;
-                      status: string;
-                      input: string | null;
-                      output: string | null;
-                      error: string | null;
-                      startedAt: Date | null;
-                      completedAt: Date | null;
-                    }) => ({
-                      id: r.id,
-                      status: r.status,
-                      input: r.input ? JSON.parse(r.input) : null,
-                      output: r.output ? JSON.parse(r.output) : null,
-                      error: r.error,
-                      startedAt: r.startedAt?.toISOString(),
-                      completedAt: r.completedAt?.toISOString(),
-                      duration:
-                        r.startedAt && r.completedAt
-                          ? r.completedAt.getTime() - r.startedAt.getTime()
-                          : null,
-                    }),
-                  ),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            jobId: params.id,
+            count: runs.length,
+            runs: runs.map(
+              (r: {
+                id: string;
+                status: string;
+                input: string | null;
+                output: string | null;
+                error: string | null;
+                startedAt: Date | null;
+                completedAt: Date | null;
+              }) => ({
+                id: r.id,
+                status: r.status,
+                input: r.input ? JSON.parse(r.input) : null,
+                output: r.output ? JSON.parse(r.output) : null,
+                error: r.error,
+                ...(r.startedAt ? { startedAt: r.startedAt.toISOString() } : {}),
+                ...(r.completedAt ? { completedAt: r.completedAt.toISOString() } : {}),
+                duration:
+                  r.startedAt && r.completedAt
+                    ? r.completedAt.getTime() - r.startedAt.getTime()
+                    : null,
+              }),
+            ),
+          },
           details: { count: runs.length },
         };
       },
@@ -283,12 +383,13 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── job_types ──────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_types",
       label: "List Job Types",
       description:
         "List all available job types that can be created, with their descriptions, config fields, and default schedules.",
       parameters: Type.Object({}),
+      outputSchema: jobTypesSchema,
       execute: async (_toolCallId, _params) => {
         // Fetch email accounts for context on accountId fields
         const accounts = await prisma.emailAccount.findMany({
@@ -299,12 +400,12 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
         const types = jobTypeSchemas.map((schema) => {
           const fields = schema.fields.map((field) => {
-            const info: Record<string, unknown> = {
+            const info: Static<typeof jobTypeFieldSchema> = {
               key: field.key,
               label: field.label,
-              description: field.description,
+              ...(field.description !== undefined ? { description: field.description } : {}),
               type: field.type,
-              default: field.default,
+              ...(field.default !== undefined ? { default: field.default } : {}),
             };
             if (field.key === "accountId" && accountLabels.length > 0) {
               info.availableAccounts = accountLabels;
@@ -325,12 +426,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ count: types.length, types }, null, 2),
-            },
-          ],
+          value: { count: types.length, types },
           details: { count: types.length },
         };
       },
@@ -338,7 +434,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── job_create ─────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_create",
       label: "Create Job",
       description:
@@ -366,6 +462,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: jobCreatedSchema,
       execute: async (_toolCallId, params) => {
         const schema = jobTypeSchemas.find((s) => s.type === params.type);
         if (!schema) {
@@ -420,26 +517,17 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  created: true,
-                  job: {
-                    id: job.id,
-                    type: job.type,
-                    enabled: job.enabled,
-                    modelId: job.modelId,
-                    config: JSON.parse(job.config) as Record<string, unknown>,
-                    createdAt: job.createdAt.toISOString(),
-                  },
-                },
-                null,
-                2,
-              ),
+          value: {
+            created: true,
+            job: {
+              id: job.id,
+              type: job.type,
+              enabled: job.enabled,
+              modelId: job.modelId,
+              config: JSON.parse(job.config) as Record<string, unknown>,
+              createdAt: job.createdAt.toISOString(),
             },
-          ],
+          },
           details: { id: job.id },
         };
       },
@@ -447,12 +535,13 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── model_list ────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "model_list",
       label: "List Models",
       description:
         "List all available AI models for this user. Use this to find valid model IDs before creating or updating jobs. Each model includes a 'modelId' field in 'provider:model' format that you can pass directly to job_create or job_update. Returns models grouped by provider, filtered by admin config.",
       parameters: Type.Object({}),
+      outputSchema: modelListSchema,
       execute: async (_toolCallId, _params) => {
         const { models } = await buildModelRuntime(userId);
 
@@ -483,36 +572,27 @@ export function createJobTools(userId: string): ToolDefinition[] {
         > | null;
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  count: models.length,
-                  providers: Array.from(byProvider.entries()).map(([provider, modelList]) => ({
-                    provider,
-                    models: modelList,
-                  })),
-                  defaults: {
-                    user: settings?.defaultModelProvider
-                      ? {
-                          provider: settings.defaultModelProvider,
-                          model: settings.defaultModelName,
-                        }
-                      : null,
-                    jobs: overrides?.jobs
-                      ? {
-                          provider: overrides.jobs.provider,
-                          model: overrides.jobs.model,
-                        }
-                      : null,
-                  },
-                },
-                null,
-                2,
-              ),
+          value: {
+            count: models.length,
+            providers: Array.from(byProvider.entries()).map(([provider, modelList]) => ({
+              provider,
+              models: modelList,
+            })),
+            defaults: {
+              user: settings?.defaultModelProvider
+                ? {
+                    provider: settings.defaultModelProvider,
+                    model: settings.defaultModelName,
+                  }
+                : null,
+              jobs: overrides?.jobs
+                ? {
+                    provider: overrides.jobs.provider,
+                    model: overrides.jobs.model,
+                  }
+                : null,
             },
-          ],
+          },
           details: { count: models.length },
         };
       },
@@ -520,7 +600,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── job_update ────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_update",
       label: "Update Job",
       description:
@@ -550,6 +630,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: jobUpdatedSchema,
       execute: async (_toolCallId, params) => {
         const job = await prisma.queueTask.findFirst({
           where: { id: params.id, userId },
@@ -612,25 +693,16 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  updated: true,
-                  job: {
-                    id: params.id,
-                    type: job.type,
-                    enabled: newEnabled,
-                    modelId: newModelId,
-                    config: newConfig,
-                  },
-                },
-                null,
-                2,
-              ),
+          value: {
+            updated: true,
+            job: {
+              id: params.id,
+              type: job.type,
+              enabled: newEnabled,
+              modelId: newModelId,
+              config: newConfig,
             },
-          ],
+          },
           details: { id: params.id },
         };
       },
@@ -638,7 +710,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
 
     // ─── job_delete ────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "job_delete",
       label: "Delete Job",
       description: "Permanently delete a job and remove its schedule. This cannot be undone.",
@@ -647,6 +719,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           description: "Job ID to delete.",
         }),
       }),
+      outputSchema: jobDeleteSchema,
       execute: async (_toolCallId, params) => {
         const job = await prisma.queueTask.findFirst({
           where: { id: params.id, userId },
@@ -665,19 +738,10 @@ export function createJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  deleted: true,
-                  id: params.id,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            deleted: true,
+            id: params.id,
+          },
           details: { id: params.id },
         };
       },

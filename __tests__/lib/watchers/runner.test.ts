@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Type } from "typebox";
+import type { JsonValue } from "@earendil-works/pi-ai";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { applyStoreWrites, isFiring, runWatcherScript } from "@/lib/watchers/runner";
 
@@ -35,6 +36,45 @@ function failingTool(name: string): ToolDefinition {
       content: [{ type: "text" as const, text: "boom" }],
       details: undefined,
       isError: true,
+    }),
+  };
+}
+
+/**
+ * A tool that declares an `outputSchema` and returns a value — the shape every
+ * Saale tool now has.
+ */
+function valueTool(
+  name: string,
+  value: JsonValue,
+  extra: { isError?: boolean; text?: string } = {},
+): ToolDefinition {
+  return {
+    name,
+    label: name,
+    description: `Returns ${name}'s value`,
+    parameters: Type.Object({}),
+    outputSchema: Type.Object({}, { additionalProperties: true }),
+    execute: async () => ({
+      content: [{ type: "text" as const, text: extra.text ?? JSON.stringify(value, null, 2) }],
+      details: undefined,
+      structuredContent: value,
+      ...(extra.isError ? { isError: true } : {}),
+    }),
+  };
+}
+
+/** A tool that sets `structuredContent` without declaring an output schema. */
+function undeclaredValueTool(name: string): ToolDefinition {
+  return {
+    name,
+    label: name,
+    description: "Sets a value it never declared",
+    parameters: Type.Object({}),
+    execute: async () => ({
+      content: [{ type: "text" as const, text: "the text a script should get" }],
+      details: undefined,
+      structuredContent: { sneaky: true },
     }),
   };
 }
@@ -177,5 +217,77 @@ describe("isFiring", () => {
     expect(isFiring("")).toBe(true);
     expect(isFiring([])).toBe(true);
     expect(isFiring({ any: "value" })).toBe(true);
+  });
+});
+
+describe("what a script receives from a tool call", () => {
+  it("gives the value to a tool that declares an output schema", async () => {
+    const result = await runWatcherScript({
+      script: [
+        "const r = await tools.health({});",
+        "return `exit=${r.exitCode} out=${r.stdout}`;",
+      ].join("\n"),
+      tools: [valueTool("health", { exitCode: 1, stdout: "down", command: "curl health" })],
+      store: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("exit=1 out=down");
+  });
+
+  it("hands over the value even when the call failed", async () => {
+    // Pi's rule: a tool that declared a schema hands its value back for error
+    // results too, so a predicate can read a failed check instead of catching it.
+    const result = await runWatcherScript({
+      script: "const r = await tools.health({});\nreturn r.state;",
+      tools: [valueTool("health", { state: "degraded" }, { isError: true, text: "check failed" })],
+      store: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("degraded");
+  });
+
+  it("gives the text to a tool that never declared a schema", async () => {
+    const result = await runWatcherScript({
+      script: "return String(await tools.legacy({}));",
+      tools: [undeclaredValueTool("legacy")],
+      store: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("the text a script should get");
+  });
+
+  it("falls back to the text when a declared value is missing", async () => {
+    const tool = valueTool("half", {});
+    const withoutValue: ToolDefinition = {
+      ...tool,
+      execute: async () => ({
+        content: [{ type: "text" as const, text: "no value here" }],
+        details: undefined,
+      }),
+    };
+
+    const result = await runWatcherScript({
+      script: "return String(await tools.half({}));",
+      tools: [withoutValue],
+      store: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("no value here");
+  });
+
+  it("rejects when a tool without a declared value fails", async () => {
+    const result = await runWatcherScript({
+      script:
+        "try { await tools.oops({}); return 'unreachable'; } catch (err) { return `caught:${err.message}`; }",
+      tools: [failingTool("oops")],
+      store: {},
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("caught:boom");
   });
 });

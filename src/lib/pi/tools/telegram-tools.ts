@@ -1,6 +1,14 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { sendTelegramToUser } from "@/lib/telegram/notify";
+
+/** Confirmation of a delivered message: where it went, and how to name it. */
+const telegramSendSchema = Type.Object({
+  sent: Type.Boolean(),
+  chatId: Type.Optional(Type.String()),
+  label: Type.Optional(Type.String()),
+});
 
 /**
  * Create Telegram tools with userId injection for user isolation.
@@ -13,7 +21,7 @@ import { sendTelegramToUser } from "@/lib/telegram/notify";
  */
 export function createTelegramTools(userId: string): ToolDefinition[] {
   return [
-    defineTool({
+    defineStructuredTool({
       name: "telegram_send",
       label: "Send Telegram Message",
       description:
@@ -30,6 +38,7 @@ export function createTelegramTools(userId: string): ToolDefinition[] {
             "remember the context it came from.",
         }),
       }),
+      outputSchema: telegramSendSchema,
       execute: async (_toolCallId, params) => {
         const message = params.message.trim();
         if (!message) {
@@ -46,14 +55,14 @@ export function createTelegramTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Sent to the user on Telegram${
-                delivery.label ? ` (${delivery.label})` : ""
-              }. They will see it on their phone.`,
-            },
-          ],
+          value: {
+            sent: true,
+            ...(delivery.chatId ? { chatId: delivery.chatId } : {}),
+            ...(delivery.label ? { label: delivery.label } : {}),
+          },
+          text: `Sent to the user on Telegram${
+            delivery.label ? ` (${delivery.label})` : ""
+          }. They will see it on their phone.`,
           details: { chatId: delivery.chatId, label: delivery.label },
         };
       },

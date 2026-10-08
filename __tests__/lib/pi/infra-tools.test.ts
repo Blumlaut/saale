@@ -429,6 +429,7 @@ describe("createInfraTools", () => {
         stdout: "hello world",
         stderr: "",
         exitCode: 0,
+        signal: null,
         timedOut: false,
         truncated: false,
       });
@@ -444,6 +445,17 @@ describe("createInfraTools", () => {
       expect(client.executeCommand).toHaveBeenCalledWith("m1", "user-123", "echo hello", {
         timeout: 30,
       });
+
+      // A script gets the command's result as fields, and none of the card the
+      // console draws: a marker it greps for can no longer match its own query.
+      expect(result.structuredContent).toMatchObject({
+        machine: "prod-web",
+        command: "echo hello",
+        exitCode: 0,
+        stdout: "hello world",
+        signal: null,
+      });
+      expect(JSON.stringify(result.structuredContent)).not.toContain("_saaleInfraMeta");
     });
 
     it("passes custom timeout", async () => {
@@ -455,6 +467,7 @@ describe("createInfraTools", () => {
         stdout: "done",
         stderr: "",
         exitCode: 0,
+        signal: null,
         timedOut: false,
         truncated: false,
       });
@@ -479,6 +492,7 @@ describe("createInfraTools", () => {
         stdout: "output",
         stderr: "",
         exitCode: 0,
+        signal: null,
         timedOut: false,
         truncated: false,
       });
@@ -504,6 +518,7 @@ describe("createInfraTools", () => {
         stdout: "",
         stderr: "Command timed out after 30s. Increase the timeout parameter for longer commands.",
         exitCode: null,
+        signal: null,
         timedOut: true,
         truncated: false,
       });
@@ -527,6 +542,7 @@ describe("createInfraTools", () => {
         stdout: "very long output\n\n[output truncated — exceeded 51200 byte limit]",
         stderr: "",
         exitCode: 0,
+        signal: null,
         timedOut: false,
         truncated: true,
       });

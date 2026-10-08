@@ -65,6 +65,29 @@ export interface ToolInfo {
 }
 
 /**
+ * Every tool this app defines, built for a user.
+ *
+ * The settings UI reads names and descriptions off it, and the result-shape
+ * test walks it to check what each tool promises a programmatic caller. Both
+ * only build definitions — a tool touches the database when it runs, not when
+ * it is created.
+ */
+export function getAllToolDefinitions(userId: string, sessionId: string): ToolDefinition[] {
+  const definitions: ToolDefinition[] = [];
+
+  for (const category of TOOL_CATEGORIES) {
+    if (category.key === "terminal") continue;
+    const factory = TOOL_FACTORIES[category.key];
+    if (!factory) continue;
+
+    const result = factory(userId, sessionId) as ToolDefinition[] | ToolDefinition;
+    definitions.push(...(Array.isArray(result) ? result : [result]));
+  }
+
+  return definitions;
+}
+
+/**
  * Get all available tool names and descriptions.
  * Used by the settings UI to render per-tool policy selectors.
  * Does not require a userId — returns the static catalog of all tools.
@@ -81,20 +104,8 @@ export function getAllToolInfos(): ToolInfo[] {
   // Collect from all factories (using dummy ids — we only need names/descriptions)
   const allTools: ToolInfo[] = [...terminalTools];
 
-  for (const category of TOOL_CATEGORIES) {
-    if (category.key === "terminal") continue;
-    const factory = TOOL_FACTORIES[category.key];
-    if (!factory) continue;
-
-    const result = factory("dummy", "dummy") as ToolDefinition[];
-    const tools = Array.isArray(result) ? result : [result];
-    for (const t of tools) {
-      allTools.push({
-        name: t.name,
-        label: t.label,
-        description: t.description,
-      });
-    }
+  for (const tool of getAllToolDefinitions("dummy", "dummy")) {
+    allTools.push({ name: tool.name, label: tool.label, description: tool.description });
   }
 
   return allTools;

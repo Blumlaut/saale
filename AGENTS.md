@@ -141,6 +141,12 @@ await prisma.memory.updateMany({ where: { id: { in: memoryIds }, userId }, data:
 - **A new tool category, purpose, tool or sidebar item needs no work here** — those properties are derived from `TOOL_CATEGORIES`, `MODEL_PURPOSES`, `ALL_TOOL_INFOS` and `SIDEBAR_NAV_ITEMS`. A new *column* needs one registry entry; `__tests__/lib/settings/properties.test.ts` fails CI if it is missed.
 - **Admin-scope properties are role-checked at write time**, not only in the tool: a non-admin must not be able to change global settings even if they reach the write path another way.
 
+## Agent Tools
+
+- **Every tool is built with `defineStructuredTool`, not Pi's `defineTool`** (`src/lib/pi/tools/tool-result.ts`). It renders the model-facing text *and* the `structuredContent` a programmatic caller receives from one object, so the two cannot drift.
+- **Every tool declares an `outputSchema`.** Pi hands `structuredContent` to a codemode script or a watcher tick only for tools that declare one; without it the script gets the model's text instead — text that carries UI metadata and an echo of the call's own arguments, which is how a script ends up matching a marker against its own query. `__tests__/lib/pi/tool-results.test.ts` fails CI when a tool skips the declaration.
+- **The model's text is unchanged when a tool adopts the helper.** Pass the existing prose or `JSON.stringify(payload, null, 2)` through, and UI metadata as `meta` (the `_saale*Meta` block) — never inside the value, which is what a script reads.
+
 ## Architecture
 
 - `src/app/` — Next.js routes and layouts

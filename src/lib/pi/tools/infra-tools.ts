@@ -1,7 +1,6 @@
 import {
   createEditToolDefinition,
   createReadToolDefinition,
-  defineTool,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   type EditOperations,
@@ -12,6 +11,7 @@ import {
 // with the platform-sensitive `path` helpers.
 import { posix } from "path";
 import { Type, type Static } from "typebox";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { detectImageMimeTypeFromBuffer, IMAGE_SNIFF_BYTES } from "@/lib/image-sniff";
@@ -108,6 +108,139 @@ async function statWorkspaceFile(userId: string, absolutePath: string): Promise<
  * Create infrastructure tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's machines.
  */
+/** A registered machine, as the list reports it. */
+const MACHINE_SCHEMA = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  host: Type.String(),
+  port: Type.Integer(),
+  username: Type.String(),
+  authMethod: Type.String(),
+  noteCount: Type.Integer(),
+  createdAt: Type.String(),
+});
+
+/** The machine a tool acted on, without its notes. */
+const MACHINE_SUMMARY_SCHEMA = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  host: Type.String(),
+  port: Type.Integer(),
+  username: Type.String(),
+  authMethod: Type.String(),
+});
+
+const MACHINES_SCHEMA = Type.Object({
+  count: Type.Integer(),
+  machines: Type.Array(MACHINE_SCHEMA),
+});
+
+const MACHINE_ADDED_SCHEMA = Type.Object({
+  added: Type.Boolean(),
+  machine: MACHINE_SUMMARY_SCHEMA,
+  /** The public key to install, for key auth. */
+  authorizedKeysEntry: Type.Optional(Type.String()),
+  setupInstructions: Type.Optional(Type.String()),
+  /** Guidance for password auth, where there is no key to install. */
+  note: Type.Optional(Type.String()),
+});
+
+const MACHINE_REMOVED_SCHEMA = Type.Object({
+  removed: Type.Boolean(),
+  id: Type.String(),
+  name: Type.String(),
+});
+
+/** What a command on a machine returned. */
+const EXEC_SCHEMA = Type.Object({
+  machine: Type.String(),
+  command: Type.String(),
+  /** Null when the command was killed by a signal rather than exiting. */
+  exitCode: Type.Union([Type.Integer(), Type.Null()]),
+  signal: Type.Union([Type.String(), Type.Null()]),
+  timedOut: Type.Boolean(),
+  truncated: Type.Boolean(),
+  stdout: Type.String(),
+  stderr: Type.String(),
+});
+
+const READ_FILE_SCHEMA = Type.Object({
+  machine: Type.String(),
+  path: Type.String(),
+  truncated: Type.Boolean(),
+  totalLines: Type.Optional(Type.Integer()),
+  /** The file's text, when it was read as text. */
+  content: Type.Optional(Type.String()),
+  /** Set when the file was read as an image instead. */
+  imageMimeType: Type.Optional(Type.String()),
+});
+
+const WRITE_FILE_SCHEMA = Type.Object({
+  machine: Type.String(),
+  path: Type.String(),
+  ok: Type.Boolean(),
+});
+
+const EDIT_FILE_SCHEMA = Type.Object({
+  machine: Type.String(),
+  path: Type.String(),
+  replacements: Type.Integer(),
+  diff: Type.String(),
+});
+
+const DOWNLOAD_FILE_SCHEMA = Type.Object({
+  machine: Type.String(),
+  remotePath: Type.String(),
+  localPath: Type.String(),
+  size: Type.Integer(),
+  downloaded: Type.Boolean(),
+});
+
+const UPLOAD_FILE_SCHEMA = Type.Object({
+  machine: Type.String(),
+  localPath: Type.String(),
+  remotePath: Type.String(),
+  size: Type.Integer(),
+  uploaded: Type.Boolean(),
+});
+
+/** One note, without its body — what the list shows. */
+const NOTE_SUMMARY_SCHEMA = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  category: Type.String(),
+  updatedAt: Type.String(),
+});
+
+const NOTES_LIST_SCHEMA = Type.Object({
+  machine: Type.String(),
+  count: Type.Integer(),
+  notes: Type.Array(NOTE_SUMMARY_SCHEMA),
+});
+
+const NOTE_GET_SCHEMA = Type.Object({
+  machine: Type.String(),
+  note: Type.Object({
+    id: Type.String(),
+    title: Type.String(),
+    category: Type.String(),
+    content: Type.String(),
+    updatedAt: Type.String(),
+  }),
+});
+
+const NOTE_UPSERT_SCHEMA = Type.Object({
+  machine: Type.String(),
+  note: NOTE_SUMMARY_SCHEMA,
+});
+
+const NOTE_DELETED_SCHEMA = Type.Object({
+  deleted: Type.Boolean(),
+  machine: Type.String(),
+  id: Type.String(),
+  title: Type.String(),
+});
+
 export function createInfraTools(userId: string): ToolDefinition[] {
   // ─── Remote file operations (SFTP) ────────────────────────────────────
   //
@@ -196,12 +329,13 @@ export function createInfraTools(userId: string): ToolDefinition[] {
   return [
     // ─── infra_list_machines ─────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_list_machines",
       label: "List Machines",
       description:
         "List all registered remote machines with their connection details (host, port, username, auth method) and how many notes each has.",
       parameters: Type.Object({}),
+      outputSchema: MACHINES_SCHEMA,
       execute: async (_toolCallId, _params) => {
         const machines = await prisma.infraMachine.findMany({
           where: { userId },
@@ -247,14 +381,8 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         }));
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify({ count: machines.length, machines: machineEntries }, null, 2) +
-                `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: { count: machines.length, machines: machineEntries },
+          meta: infraMeta,
           details: { count: machines.length },
         };
       },
@@ -262,7 +390,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_add_machine ───────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_add_machine",
       label: "Add Machine",
       description:
@@ -294,6 +422,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: MACHINE_ADDED_SCHEMA,
       execute: async (_toolCallId, params) => {
         if (params.authMethod === "password" && !params.password) {
           throw new Error("password is required when authMethod='password'");
@@ -336,39 +465,32 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    added: true,
-                    machine: {
-                      id: machine.id,
-                      name: machine.name,
-                      host: machine.host,
-                      port: machine.port,
-                      username: machine.username,
-                      authMethod: machine.authMethod,
-                    },
-                    ...(params.authMethod === "key"
-                      ? {
-                          authorizedKeysEntry,
-                          setupInstructions: [
-                            `Add this line to ${params.username}@${params.host}:${params.port ?? 22}'s ~/.ssh/authorized_keys:`,
-                            `  ${authorizedKeysEntry}`,
-                            `Then run 'infra_test_connection' to verify the connection works.`,
-                          ].join("\n"),
-                        }
-                      : {
-                          note: "Use 'infra_test_connection' to verify credentials, then 'infra_exec' to run commands.",
-                        }),
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
+          value: {
+            added: true,
+            machine: {
+              id: machine.id,
+              name: machine.name,
+              host: machine.host,
+              port: machine.port,
+              username: machine.username,
+              authMethod: machine.authMethod,
             },
-          ],
+            // Key auth always produced an entry above; the check keeps an
+            // undefined key out of the result a script reads.
+            ...(params.authMethod === "key" && authorizedKeysEntry
+              ? {
+                  authorizedKeysEntry,
+                  setupInstructions: [
+                    `Add this line to ${params.username}@${params.host}:${params.port ?? 22}'s ~/.ssh/authorized_keys:`,
+                    `  ${authorizedKeysEntry}`,
+                    `Then run 'infra_test_connection' to verify the connection works.`,
+                  ].join("\n"),
+                }
+              : {
+                  note: "Use 'infra_test_connection' to verify credentials, then 'infra_exec' to run commands.",
+                }),
+          },
+          meta: infraMeta,
           details: { id: machine.id },
         };
       },
@@ -376,13 +498,14 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_remove_machine ────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_remove_machine",
       label: "Remove Machine",
       description: "Remove a registered machine and all its notes. This cannot be undone.",
       parameters: Type.Object({
         id: Type.String({ description: "Machine ID." }),
       }),
+      outputSchema: MACHINE_REMOVED_SCHEMA,
       execute: async (_toolCallId, params) => {
         const machine = await prisma.infraMachine.findFirst({
           where: { id: params.id, userId },
@@ -406,21 +529,12 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    removed: true,
-                    id: params.id,
-                    name: machine.name,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            removed: true,
+            id: params.id,
+            name: machine.name,
+          },
+          meta: infraMeta,
           details: { id: params.id },
         };
       },
@@ -428,7 +542,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_exec ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_exec",
       label: "Execute Command",
       description:
@@ -451,6 +565,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: EXEC_SCHEMA,
       execute: async (_toolCallId, params) => {
         // Verify ownership
         const machine = await prisma.infraMachine.findFirst({
@@ -481,6 +596,8 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             machineName: machine.name,
             command: params.command,
             exitCode: result.exitCode,
+            // The reason a null exit code has one: the remote killed it.
+            signal: result.signal,
             timedOut: result.timedOut,
             truncated: result.truncated,
             stdout: result.stdout.split("\n")[0] ?? "",
@@ -489,25 +606,17 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: machine.name,
-                    command: params.command,
-                    exitCode: result.exitCode,
-                    timedOut: result.timedOut,
-                    truncated: result.truncated,
-                    stdout: result.stdout,
-                    stderr: result.stderr,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            machine: machine.name,
+            command: params.command,
+            exitCode: result.exitCode,
+            signal: result.signal,
+            timedOut: result.timedOut,
+            truncated: result.truncated,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          },
+          meta: infraMeta,
           details: { exitCode: result.exitCode, timedOut: result.timedOut },
         };
       },
@@ -515,7 +624,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_read_file ─────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_read_file",
       label: "Read Remote File",
       description: `Read a file from a remote machine over SFTP. Supports text files and images (jpg, png, gif, webp) — images are sent as attachments. Text output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first); use offset/limit for larger files. Read a file before \`infra_edit_file\`: edits are matched against the file's exact current content.`,
@@ -528,6 +637,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         ? { constrainedSampling: remoteReadTool.constrainedSampling }
         : {}),
       executionMode: "sequential",
+      outputSchema: READ_FILE_SCHEMA,
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
         const machine = await prisma.infraMachine.findFirst({
           where: { id: params.id, userId },
@@ -583,7 +693,17 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         return {
           // Pi's blocks are kept intact — an image read is an attachment, not
           // something to stringify. The metadata rides along as one more block.
-          content: [...content, { type: "text" as const, text: `\n${JSON.stringify(infraMeta)}` }],
+          value: {
+            machine: machine.name,
+            path: params.path,
+            truncated: truncation?.truncated ?? false,
+            ...(truncation ? { totalLines: truncation.totalLines } : {}),
+            ...(text?.type === "text" ? { content: text.text } : {}),
+            ...(image?.type === "image" ? { imageMimeType: image.mimeType } : {}),
+          },
+          text: text?.type === "text" ? text.text : "",
+          ...(image ? { content: [image] } : {}),
+          meta: infraMeta,
           details: read.details,
         };
       },
@@ -591,7 +711,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_write_file ────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_write_file",
       label: "Write Remote File",
       description:
@@ -605,6 +725,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           description: "File content to write.",
         }),
       }),
+      outputSchema: WRITE_FILE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const machine = await prisma.infraMachine.findFirst({
           where: { id: params.id, userId },
@@ -636,21 +757,12 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: machine.name,
-                    path: params.path,
-                    ok: result.ok,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            machine: machine.name,
+            path: params.path,
+            ok: result.ok,
+          },
+          meta: infraMeta,
           details: { ok: result.ok },
         };
       },
@@ -658,7 +770,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_edit_file ────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_edit_file",
       label: "Edit Remote File",
       description:
@@ -675,6 +787,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         ? { constrainedSampling: remoteEditTool.constrainedSampling }
         : {}),
       executionMode: "sequential",
+      outputSchema: EDIT_FILE_SCHEMA,
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
         const machine = await prisma.infraMachine.findFirst({
           where: { id: params.id, userId },
@@ -720,22 +833,13 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: machine.name,
-                    path: params.path,
-                    replacements: params.edits.length,
-                    diff,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            machine: machine.name,
+            path: params.path,
+            replacements: params.edits.length,
+            diff,
+          },
+          meta: infraMeta,
           details: edited.details,
         };
       },
@@ -743,7 +847,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_download_file ──────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_download_file",
       label: "Download Remote File",
       description: `Download a file from a remote machine into the agent workspace over SFTP, so it can be inspected and changed with the local file tools. Use this instead of \`infra_read_file\` for binary files, files too large to read as text, or anything that will be edited and sent back with \`infra_upload_file\`. The destination defaults to the file's name at the workspace root, and an existing file there is overwritten. Files over ${formatBytes(MAX_TRANSFER_BYTES)} are refused.`,
@@ -759,6 +863,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: DOWNLOAD_FILE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const machine = await prisma.infraMachine.findFirst({
           where: { id: params.id, userId },
@@ -799,23 +904,14 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: machine.name,
-                    remotePath: params.path,
-                    localPath: written.path,
-                    size,
-                    downloaded: true,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            machine: machine.name,
+            remotePath: params.path,
+            localPath: written.path,
+            size,
+            downloaded: true,
+          },
+          meta: infraMeta,
           details: { localPath: written.path, size },
         };
       },
@@ -823,7 +919,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_upload_file ───────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_upload_file",
       label: "Upload File",
       description: `Upload a file from the agent workspace to a remote machine over SFTP, replacing the destination file and creating parent directories as needed. Use this to send back a file changed locally after \`infra_download_file\`, or to deliver an artifact the model produced. Files over ${formatBytes(MAX_TRANSFER_BYTES)} are refused.`,
@@ -837,6 +933,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
             "Workspace path of the file to upload, relative to the workspace root (or absolute inside it).",
         }),
       }),
+      outputSchema: UPLOAD_FILE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const machine = await prisma.infraMachine.findFirst({
           where: { id: params.id, userId },
@@ -886,23 +983,14 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: machine.name,
-                    localPath: source,
-                    remotePath: params.path,
-                    size: result.size,
-                    uploaded: result.ok,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            machine: machine.name,
+            localPath: source,
+            remotePath: params.path,
+            size: result.size,
+            uploaded: result.ok,
+          },
+          meta: infraMeta,
           details: { remotePath: params.path, size: result.size },
         };
       },
@@ -910,7 +998,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_notes_list ────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_notes_list",
       label: "List Machine Notes",
       description:
@@ -924,6 +1012,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: NOTES_LIST_SCHEMA,
       execute: async (_toolCallId, params) => {
         const machine = await prisma.infraMachine.findFirst({
           where: { id: params.id, userId },
@@ -961,26 +1050,17 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: machine.name,
-                    count: notes.length,
-                    notes: notes.map((n) => ({
-                      id: n.id,
-                      title: n.title,
-                      category: n.category,
-                      updatedAt: n.updatedAt.toISOString(),
-                    })),
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            machine: machine.name,
+            count: notes.length,
+            notes: notes.map((n) => ({
+              id: n.id,
+              title: n.title,
+              category: n.category,
+              updatedAt: n.updatedAt.toISOString(),
+            })),
+          },
+          meta: infraMeta,
           details: { count: notes.length },
         };
       },
@@ -988,13 +1068,14 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_notes_get ─────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_notes_get",
       label: "Get Machine Note",
       description: "Read one note in full. Use `infra_notes_list` first to find the note ID.",
       parameters: Type.Object({
         id: Type.String({ description: "Note ID." }),
       }),
+      outputSchema: NOTE_GET_SCHEMA,
       execute: async (_toolCallId, params) => {
         const note = await prisma.infraNote.findFirst({
           where: { id: params.id },
@@ -1023,26 +1104,17 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: note.machine.name,
-                    note: {
-                      id: note.id,
-                      title: note.title,
-                      category: note.category,
-                      content: note.content,
-                      updatedAt: note.updatedAt.toISOString(),
-                    },
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
+          value: {
+            machine: note.machine.name,
+            note: {
+              id: note.id,
+              title: note.title,
+              category: note.category,
+              content: note.content,
+              updatedAt: note.updatedAt.toISOString(),
             },
-          ],
+          },
+          meta: infraMeta,
           details: { id: note.id },
         };
       },
@@ -1050,7 +1122,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_notes_upsert ──────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_notes_upsert",
       label: "Upsert Machine Note",
       description:
@@ -1078,6 +1150,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: NOTE_UPSERT_SCHEMA,
       execute: async (_toolCallId, params) => {
         // Verify machine ownership
         const machine = await prisma.infraMachine.findFirst({
@@ -1130,25 +1203,16 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    machine: machine.name,
-                    note: {
-                      id: note.id,
-                      title: note.title,
-                      category: note.category,
-                      updatedAt: note.updatedAt.toISOString(),
-                    },
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
+          value: {
+            machine: machine.name,
+            note: {
+              id: note.id,
+              title: note.title,
+              category: note.category,
+              updatedAt: note.updatedAt.toISOString(),
             },
-          ],
+          },
+          meta: infraMeta,
           details: { id: note.id },
         };
       },
@@ -1156,7 +1220,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
     // ─── infra_notes_delete ──────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "infra_notes_delete",
       label: "Delete Machine Note",
       description:
@@ -1164,6 +1228,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       parameters: Type.Object({
         id: Type.String({ description: "Note ID." }),
       }),
+      outputSchema: NOTE_DELETED_SCHEMA,
       execute: async (_toolCallId, params) => {
         const note = await prisma.infraNote.findFirst({
           where: { id: params.id },
@@ -1192,22 +1257,13 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         await prisma.infraNote.delete({ where: { id: params.id } });
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    deleted: true,
-                    machine: note.machine.name,
-                    id: params.id,
-                    title: note.title,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(infraMeta)}`,
-            },
-          ],
+          value: {
+            deleted: true,
+            machine: note.machine.name,
+            id: params.id,
+            title: note.title,
+          },
+          meta: infraMeta,
           details: { id: params.id },
         };
       },

@@ -1,7 +1,33 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { searchWeb } from "@/lib/web/search";
 import { fetchUrl } from "@/lib/web/fetch";
+
+/** A search hit as a script reads it, plus the snippet the text shows. */
+const webSearchSchema = Type.Object({
+  query: Type.String(),
+  count: Type.Integer(),
+  results: Type.Array(
+    Type.Object({
+      title: Type.String(),
+      url: Type.String(),
+      engine: Type.String(),
+      content: Type.Optional(Type.String()),
+    }),
+  ),
+});
+
+/** A fetched page — or why it could not be fetched, which is a normal result. */
+const webFetchSchema = Type.Object({
+  url: Type.String(),
+  error: Type.Boolean(),
+  errorMessage: Type.Optional(Type.String()),
+  finalUrl: Type.Optional(Type.String()),
+  title: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  siteName: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  content: Type.Optional(Type.String()),
+});
 
 /**
  * Create web tools (search + fetch) for Pi agent sessions.
@@ -11,7 +37,7 @@ export function createWebTools(): ToolDefinition[] {
   return [
     // ─── web_search ──────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "web_search",
       label: "Web Search",
       description:
@@ -47,6 +73,7 @@ export function createWebTools(): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: webSearchSchema,
       execute: async (_toolCallId, params) => {
         const result = await searchWeb({
           query: params.query,
@@ -83,12 +110,17 @@ export function createWebTools(): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text: `Search results for "${params.query}" (${result.results.length} results):\n\n${formatted || "No results found."}\n\n${JSON.stringify(webMeta)}`,
-            },
-          ],
+          value: {
+            query: params.query,
+            count: result.results.length,
+            results: result.results.map((r) => ({
+              title: r.title,
+              url: r.url,
+              engine: Array.isArray(r.engine) ? r.engine.join(", ") : (r.engine ?? ""),
+              ...(r.content ? { content: r.content } : {}),
+            })),
+          },
+          text: `Search results for "${params.query}" (${result.results.length} results):\n\n${formatted || "No results found."}\n\n${JSON.stringify(webMeta)}`,
           details: { count: result.results.length },
         };
       },
@@ -96,7 +128,7 @@ export function createWebTools(): ToolDefinition[] {
 
     // ─── web_fetch ───────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "web_fetch",
       label: "Fetch URL",
       description:
@@ -148,6 +180,7 @@ export function createWebTools(): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: webFetchSchema,
       execute: async (_toolCallId, params) => {
         const result = await fetchUrl({
           url: params.url,
@@ -172,12 +205,12 @@ export function createWebTools(): ToolDefinition[] {
             },
           };
           return {
-            content: [
-              {
-                type: "text",
-                text: `Error fetching ${params.url}: ${result.error}\n${JSON.stringify(webMeta)}`,
-              },
-            ],
+            value: {
+              url: params.url,
+              error: true,
+              errorMessage: result.error,
+            },
+            text: `Error fetching ${params.url}: ${result.error}\n${JSON.stringify(webMeta)}`,
             details: { url: params.url, format: "text" as const, error: true, code: result.code },
           };
         }
@@ -207,12 +240,15 @@ export function createWebTools(): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text: metadataHeader + result.content + `\n${JSON.stringify(webMeta)}`,
-            },
-          ],
+          value: {
+            url: result.url,
+            error: false,
+            finalUrl: result.finalUrl,
+            title: result.title || null,
+            siteName: result.siteName || null,
+            content: result.content,
+          },
+          text: metadataHeader + result.content + `\n${JSON.stringify(webMeta)}`,
           details: { url: result.url, format: result.format, error: false, code: "ok" },
         };
       },

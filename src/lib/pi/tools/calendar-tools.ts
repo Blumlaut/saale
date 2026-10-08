@@ -1,6 +1,7 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { pushEventToCalDAV } from "@/lib/calendar/caldav";
 import {
   defaultEventEnd,
@@ -8,6 +9,84 @@ import {
   resolveNewEventTimes,
 } from "@/lib/calendar/event-times";
 import { formatWallClock } from "@/lib/calendar/timezone";
+
+/** An event as queryEvents serializes it, for the read-only listing tools. */
+const calendarEventSchema = Type.Object({
+  id: Type.String(),
+  uid: Type.String(),
+  summary: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  location: Type.Union([Type.String(), Type.Null()]),
+  dtStart: Type.String(),
+  dtEnd: Type.Union([Type.String(), Type.Null()]),
+  allDay: Type.Boolean(),
+  calendarName: Type.String(),
+  calendarColor: Type.Union([Type.String(), Type.Null()]),
+});
+
+const calendarListSchema = Type.Object({
+  count: Type.Integer(),
+  calendars: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      color: Type.Union([Type.String(), Type.Null()]),
+      accountName: Type.String(),
+      eventCount: Type.Integer(),
+    }),
+  ),
+});
+
+const calendarUpcomingSchema = Type.Object({
+  from: Type.String(),
+  to: Type.String(),
+  count: Type.Integer(),
+  events: Type.Array(calendarEventSchema),
+});
+
+const calendarSearchSchema = Type.Object({
+  query: Type.String(),
+  count: Type.Integer(),
+  events: Type.Array(calendarEventSchema),
+});
+
+/** The event a create reports — the full set of fields it writes back. */
+const calendarCreatedEventSchema = Type.Object({
+  id: Type.String(),
+  uid: Type.String(),
+  summary: Type.String(),
+  dtStart: Type.String(),
+  dtEnd: Type.Union([Type.String(), Type.Null()]),
+  timeZone: Type.Union([Type.String(), Type.Null()]),
+  localStart: Type.Union([Type.String(), Type.Null()]),
+});
+
+const calendarCreateSchema = Type.Object({
+  created: Type.Boolean(),
+  event: calendarCreatedEventSchema,
+  caldavPush: Type.String(),
+});
+
+/** The event an update reports — no uid, which the response does not carry. */
+const calendarUpdatedEventSchema = Type.Object({
+  id: Type.String(),
+  summary: Type.String(),
+  dtStart: Type.String(),
+  dtEnd: Type.Union([Type.String(), Type.Null()]),
+  timeZone: Type.Union([Type.String(), Type.Null()]),
+  localStart: Type.Union([Type.String(), Type.Null()]),
+});
+
+const calendarUpdateSchema = Type.Object({
+  updated: Type.Boolean(),
+  event: calendarUpdatedEventSchema,
+});
+
+const calendarDeleteSchema = Type.Object({
+  deleted: Type.Boolean(),
+  id: Type.String(),
+  summary: Type.String(),
+});
 
 /**
  * Create calendar tools with userId injection for user isolation.
@@ -56,11 +135,12 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
   return [
     // ─── calendar_list ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "calendar_list",
       label: "List Calendars",
       description: "List all connected calendars with their names, colors, and event counts.",
       parameters: Type.Object({}),
+      outputSchema: calendarListSchema,
       execute: async (_toolCallId, _params) => {
         const calendars = await prisma.calendar.findMany({
           where: {
@@ -79,25 +159,16 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  count: calendars.length,
-                  calendars: calendars.map((c) => ({
-                    id: c.id,
-                    name: c.name,
-                    color: c.color,
-                    accountName: c.account.name,
-                    eventCount: c._count.events,
-                  })),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            count: calendars.length,
+            calendars: calendars.map((c) => ({
+              id: c.id,
+              name: c.name,
+              color: c.color,
+              accountName: c.account.name,
+              eventCount: c._count.events,
+            })),
+          },
           details: { count: calendars.length },
         };
       },
@@ -105,7 +176,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
 
     // ─── calendar_upcoming ──────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "calendar_upcoming",
       label: "Upcoming Events",
       description:
@@ -128,6 +199,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: calendarUpcomingSchema,
       execute: async (_toolCallId, params) => {
         const now = new Date();
         const end = new Date();
@@ -156,22 +228,13 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    from: now.toISOString(),
-                    to: end.toISOString(),
-                    count: events.length,
-                    events,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(calMeta)}`,
-            },
-          ],
+          value: {
+            from: now.toISOString(),
+            to: end.toISOString(),
+            count: events.length,
+            events,
+          },
+          meta: calMeta,
           details: { count: events.length },
         };
       },
@@ -179,7 +242,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
 
     // ─── calendar_search ────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "calendar_search",
       label: "Search Events",
       description:
@@ -195,6 +258,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: calendarSearchSchema,
       execute: async (_toolCallId, params) => {
         const events = await queryEvents({
           calendar: { account: { userId }, enabled: true },
@@ -216,21 +280,12 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    query: params.query,
-                    count: events.length,
-                    events,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(calMeta)}`,
-            },
-          ],
+          value: {
+            query: params.query,
+            count: events.length,
+            events,
+          },
+          meta: calMeta,
           details: { count: events.length },
         };
       },
@@ -238,7 +293,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
 
     // ─── calendar_create ────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "calendar_create",
       label: "Create Event",
       description:
@@ -287,6 +342,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: calendarCreateSchema,
       execute: async (_toolCallId, params) => {
         // Verify calendar belongs to user
         const calendar = await prisma.calendar.findFirst({
@@ -338,34 +394,23 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  created: true,
-                  event: {
-                    id: event.id,
-                    uid: event.uid,
-                    summary: event.summary,
-                    dtStart: event.dtStart.toISOString(),
-                    dtEnd: event.dtEnd?.toISOString() ?? null,
-                    timeZone: event.timeZone,
-                    localStart: event.timeZone
-                      ? formatWallClock(event.dtStart, event.timeZone)
-                      : null,
-                  },
-                  caldavPush: caldavResult
-                    ? caldavResult.success
-                      ? "pushed"
-                      : `failed: ${caldavResult.error}`
-                    : "not a caldav calendar",
-                },
-                null,
-                2,
-              ),
+          value: {
+            created: true,
+            event: {
+              id: event.id,
+              uid: event.uid,
+              summary: event.summary,
+              dtStart: event.dtStart.toISOString(),
+              dtEnd: event.dtEnd?.toISOString() ?? null,
+              timeZone: event.timeZone,
+              localStart: event.timeZone ? formatWallClock(event.dtStart, event.timeZone) : null,
             },
-          ],
+            caldavPush: caldavResult
+              ? caldavResult.success
+                ? "pushed"
+                : `failed: ${caldavResult.error}`
+              : "not a caldav calendar",
+          },
           details: { id: event.id, caldavPush: caldavResult?.success ?? false },
         };
       },
@@ -373,7 +418,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
 
     // ─── calendar_update ────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "calendar_update",
       label: "Update Event",
       description:
@@ -420,6 +465,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: calendarUpdateSchema,
       execute: async (_toolCallId, params) => {
         const event = await findEventByUser(params.id);
         if (!event) {
@@ -456,28 +502,19 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  updated: true,
-                  event: {
-                    id: updated.id,
-                    summary: updated.summary,
-                    dtStart: updated.dtStart.toISOString(),
-                    dtEnd: updated.dtEnd?.toISOString() ?? null,
-                    timeZone: updated.timeZone,
-                    localStart: updated.timeZone
-                      ? formatWallClock(updated.dtStart, updated.timeZone)
-                      : null,
-                  },
-                },
-                null,
-                2,
-              ),
+          value: {
+            updated: true,
+            event: {
+              id: updated.id,
+              summary: updated.summary,
+              dtStart: updated.dtStart.toISOString(),
+              dtEnd: updated.dtEnd?.toISOString() ?? null,
+              timeZone: updated.timeZone,
+              localStart: updated.timeZone
+                ? formatWallClock(updated.dtStart, updated.timeZone)
+                : null,
             },
-          ],
+          },
           details: { id: updated.id },
         };
       },
@@ -485,7 +522,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
 
     // ─── calendar_delete ────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "calendar_delete",
       label: "Delete Event",
       description: "Delete a calendar event by its ID.",
@@ -494,6 +531,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
           description: "Event ID to delete.",
         }),
       }),
+      outputSchema: calendarDeleteSchema,
       execute: async (_toolCallId, params) => {
         const event = await findEventByUser(params.id, { includeCalendar: true });
         if (!event) {
@@ -505,20 +543,11 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  deleted: true,
-                  id: params.id,
-                  summary: event.summary,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            deleted: true,
+            id: params.id,
+            summary: event.summary,
+          },
           details: { id: params.id },
         };
       },

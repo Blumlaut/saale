@@ -1,12 +1,58 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import {
   taskToResponse,
   buildTaskUpdateData,
   findDuplicateTasks,
 } from "@/lib/tasks/task-api-helpers";
+
+/** A task as every task tool reports it — the shared wire shape from taskToResponse. */
+const taskSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  status: Type.String(),
+  priority: Type.String(),
+  dueDate: Type.Union([Type.String(), Type.Null()]),
+  tags: Type.Array(Type.String()),
+  order: Type.Integer(),
+  source: Type.String(),
+  sourceEmailId: Type.Union([Type.String(), Type.Null()]),
+  completedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
+/** A created task, plus any pending tasks whose title it resembles. */
+const taskCreateSchema = Type.Object({
+  created: Type.Boolean(),
+  task: taskSchema,
+  // Present only when a similar pending task already exists.
+  duplicates: Type.Optional(Type.Array(Type.Object({ id: Type.String(), title: Type.String() }))),
+});
+
+const taskUpdateSchema = Type.Object({ updated: Type.Boolean(), task: taskSchema });
+
+const taskListSchema = Type.Object({
+  count: Type.Integer(),
+  tasks: Type.Array(taskSchema),
+});
+
+const taskSearchSchema = Type.Object({
+  // Null on the structured-filter path, which is not a text search.
+  query: Type.Union([Type.String(), Type.Null()]),
+  count: Type.Integer(),
+  tasks: Type.Array(taskSchema),
+});
+
+const taskDeleteSchema = Type.Object({
+  deleted: Type.Boolean(),
+  id: Type.String(),
+  title: Type.String(),
+});
 
 /**
  * Create task tools with userId injection for user isolation.
@@ -24,7 +70,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
   return [
     // ─── task_create ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "task_create",
       label: "Create Task",
       description:
@@ -44,6 +90,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         ),
         tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for grouping." })),
       }),
+      outputSchema: taskCreateSchema,
       execute: async (_toolCallId, params) => {
         // Search for potential duplicates before creating
         const existing = await findDuplicateTasks(params.title, userId);
@@ -60,25 +107,20 @@ export function createTaskTools(userId: string): ToolDefinition[] {
           },
         });
 
-        const response: Record<string, unknown> = {
-          created: true,
-          task: taskToResponse(task),
-        };
-
-        if (existing.length > 0) {
-          response.duplicates = existing.map((e) => ({
-            id: e.id,
-            title: e.title,
-          }));
-        }
-
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(response, null, 2),
-            },
-          ],
+          value: {
+            created: true,
+            task: taskToResponse(task),
+            // Omitted entirely, not set to undefined: the schema makes the key optional.
+            ...(existing.length > 0
+              ? {
+                  duplicates: existing.map((e) => ({
+                    id: e.id,
+                    title: e.title,
+                  })),
+                }
+              : {}),
+          },
           details: { id: task.id },
         };
       },
@@ -86,7 +128,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
 
     // ─── task_update ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "task_update",
       label: "Update Task",
       description:
@@ -102,6 +144,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         tags: Type.Optional(Type.Array(Type.String())),
         status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("completed")])),
       }),
+      outputSchema: taskUpdateSchema,
       execute: async (_toolCallId, params) => {
         const task = await findTaskByUser(params.taskId);
         if (!task) {
@@ -116,19 +159,10 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  updated: true,
-                  task: taskToResponse(updated),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            updated: true,
+            task: taskToResponse(updated),
+          },
           details: { id: updated.id },
         };
       },
@@ -136,7 +170,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
 
     // ─── task_list_pending ────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "task_list_pending",
       label: "List Pending Tasks",
       description:
@@ -144,6 +178,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
       parameters: Type.Object({
         limit: Type.Optional(Type.Integer({ description: "Maximum results. Default: 50." })),
       }),
+      outputSchema: taskListSchema,
       execute: async (_toolCallId, params) => {
         const limit = Math.min(params.limit ?? 50, 200);
 
@@ -158,19 +193,10 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  count: tasks.length,
-                  tasks: tasks.map(taskToResponse),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            count: tasks.length,
+            tasks: tasks.map(taskToResponse),
+          },
           details: { count: tasks.length },
         };
       },
@@ -178,7 +204,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
 
     // ─── task_search ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "task_search",
       label: "Search Tasks",
       description:
@@ -196,6 +222,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         ),
         tag: Type.Optional(Type.String({ description: "Filter by tag." })),
       }),
+      outputSchema: taskSearchSchema,
       execute: async (_toolCallId, params) => {
         const trimmedQuery = params.query?.trim();
         const hasQuery = trimmedQuery?.length ?? 0 > 0;
@@ -238,20 +265,11 @@ export function createTaskTools(userId: string): ToolDefinition[] {
           );
 
           return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(
-                  {
-                    query: trimmedQuery,
-                    count: results.length,
-                    tasks: results.map(taskToResponse),
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
+            value: {
+              query: trimmedQuery,
+              count: results.length,
+              tasks: results.map(taskToResponse),
+            },
             details: { count: results.length },
           };
         }
@@ -273,20 +291,11 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  query: null,
-                  count: tasks.length,
-                  tasks: tasks.map(taskToResponse),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            query: null,
+            count: tasks.length,
+            tasks: tasks.map(taskToResponse),
+          },
           details: { count: tasks.length },
         };
       },
@@ -294,13 +303,14 @@ export function createTaskTools(userId: string): ToolDefinition[] {
 
     // ─── task_delete ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "task_delete",
       label: "Delete Task",
       description: "Permanently delete a task. Use sparingly — prefer marking as completed.",
       parameters: Type.Object({
         taskId: Type.String({ description: "Task ID." }),
       }),
+      outputSchema: taskDeleteSchema,
       execute: async (_toolCallId, params) => {
         const task = await findTaskByUser(params.taskId);
         if (!task) {
@@ -310,20 +320,11 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         await prisma.task.delete({ where: { id: params.taskId } });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  deleted: true,
-                  id: params.taskId,
-                  title: task.title,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            deleted: true,
+            id: params.taskId,
+            title: task.title,
+          },
           details: { id: params.taskId },
         };
       },

@@ -1,7 +1,8 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import {
   createMemory,
   deleteMemory,
@@ -10,6 +11,58 @@ import {
   serializeMemory,
   updateMemory,
 } from "@/lib/memory/store";
+
+/** A memory as every memory tool reports it. */
+const memorySchema = Type.Object({
+  id: Type.String(),
+  collection: Type.String(),
+  title: Type.String(),
+  content: Type.String(),
+  tags: Type.Array(Type.String()),
+  importance: Type.Integer(),
+  // Absent from search results: the full-text query does not select it.
+  source: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  accessCount: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
+/** Collections with their sizes, for the index. */
+const memoryIndexSchema = Type.Object({
+  totalCollections: Type.Integer(),
+  totalMemories: Type.Integer(),
+  collections: Type.Array(
+    Type.Object({
+      collection: Type.String(),
+      count: Type.Integer(),
+      topTags: Type.Array(Type.String()),
+      recent: Type.Array(Type.String()),
+    }),
+  ),
+});
+
+/** Search results, or the reason there are none. */
+const memorySearchSchema = Type.Object({
+  count: Type.Integer(),
+  memories: Type.Array(memorySchema),
+  error: Type.Optional(Type.String()),
+});
+
+/** The save outcome: a new memory, or the one that already held that title. */
+const memoryCreateSchema = Type.Object({
+  created: Type.Boolean(),
+  reason: Type.Optional(Type.String()),
+  memory: memorySchema,
+});
+
+const memoryUpdateSchema = Type.Object({ updated: Type.Boolean(), memory: memorySchema });
+
+const memoryDeleteSchema = Type.Object({
+  deleted: Type.Boolean(),
+  id: Type.String(),
+  title: Type.String(),
+  collection: Type.String(),
+});
 
 /**
  * Create memory tools with userId injection for user isolation.
@@ -20,12 +73,13 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
   return [
     // ─── memory_index ───────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "memory_index",
       label: "Memory Index",
       description:
         "List all available memory collections with their sizes, top tags, and recent memory titles. Use this BEFORE searching to understand what knowledge is available.",
       parameters: Type.Object({}),
+      outputSchema: memoryIndexSchema,
       execute: async (_toolCallId) => {
         // Get collections with counts and top tags
         const collections = await prisma.memory.groupBy({
@@ -67,20 +121,11 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         );
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  totalCollections: details.length,
-                  totalMemories: details.reduce((sum, d) => sum + d.count, 0),
-                  collections: details,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            totalCollections: details.length,
+            totalMemories: details.reduce((sum, d) => sum + d.count, 0),
+            collections: details,
+          },
           details: { collections: details.length },
         };
       },
@@ -88,7 +133,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
 
     // ─── memory_search ──────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "memory_search",
       label: "Search Memory",
       description:
@@ -117,6 +162,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: memorySearchSchema,
       execute: async (_toolCallId, params) => {
         const limit = Math.min(params.limit ?? 10, 50);
         const searchQuery = params.query.trim();
@@ -126,12 +172,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         // Guard: empty/whitespace queries would produce an empty tsquery matching everything
         if (!searchQuery) {
           return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({ count: 0, memories: [], error: "Query is empty" }, null, 2),
-              },
-            ],
+            value: { count: 0, memories: [], error: "Query is empty" },
             details: { count: 0 },
           };
         }
@@ -212,29 +253,20 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  count: results.length,
-                  memories: results.map((r) => ({
-                    id: r.id,
-                    collection: r.collection,
-                    title: r.title,
-                    content: r.content,
-                    tags: r.tags,
-                    importance: r.importance,
-                    accessCount: r.accessCount,
-                    createdAt: r.createdAt.toISOString(),
-                    updatedAt: r.updatedAt.toISOString(),
-                  })),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            count: results.length,
+            memories: results.map((r) => ({
+              id: r.id,
+              collection: r.collection,
+              title: r.title,
+              content: r.content,
+              tags: r.tags,
+              importance: r.importance,
+              accessCount: r.accessCount,
+              createdAt: r.createdAt.toISOString(),
+              updatedAt: r.updatedAt.toISOString(),
+            })),
+          },
           details: { count: results.length },
         };
       },
@@ -242,7 +274,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
 
     // ─── memory_create ──────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "memory_create",
       label: "Save Memory",
       description:
@@ -267,6 +299,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: memoryCreateSchema,
       execute: async (_toolCallId, params) => {
         const collection = params.collection.trim();
         const title = params.title.trim();
@@ -279,21 +312,12 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         const existing = await findMemoryByTitle(userId, collection, title);
         if (existing) {
           return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(
-                  {
-                    created: false,
-                    reason:
-                      "A memory with this title already exists in that collection — update it instead of creating a duplicate.",
-                    memory: serializeMemory(existing),
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
+            value: {
+              created: false,
+              reason:
+                "A memory with this title already exists in that collection — update it instead of creating a duplicate.",
+              memory: serializeMemory(existing),
+            },
             details: { id: existing.id, created: false },
           };
         }
@@ -307,12 +331,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ created: true, memory: serializeMemory(memory) }, null, 2),
-            },
-          ],
+          value: { created: true, memory: serializeMemory(memory) },
           details: { id: memory.id, created: true },
         };
       },
@@ -320,7 +339,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
 
     // ─── memory_update ──────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "memory_update",
       label: "Update Memory",
       description:
@@ -337,6 +356,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         tags: Type.Optional(Type.Array(Type.String({ description: "Replacement tag list." }))),
         importance: Type.Optional(Type.Integer({ description: "1-10." })),
       }),
+      outputSchema: memoryUpdateSchema,
       execute: async (_toolCallId, params) => {
         const patch = {
           collection: params.collection,
@@ -362,12 +382,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ updated: true, memory: serializeMemory(memory) }, null, 2),
-            },
-          ],
+          value: { updated: true, memory: serializeMemory(memory) },
           details: { id: memory.id },
         };
       },
@@ -375,7 +390,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
 
     // ─── memory_delete ──────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "memory_delete",
       label: "Delete Memory",
       description:
@@ -385,6 +400,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
           description: "Memory ID to delete.",
         }),
       }),
+      outputSchema: memoryDeleteSchema,
       execute: async (_toolCallId, params) => {
         const memory = await findMemory(userId, params.id);
 
@@ -397,21 +413,12 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         await deleteMemory(userId, params.id);
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  deleted: true,
-                  id: memory.id,
-                  title: memory.title,
-                  collection: memory.collection,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            deleted: true,
+            id: memory.id,
+            title: memory.title,
+            collection: memory.collection,
+          },
           details: { id: memory.id },
         };
       },
