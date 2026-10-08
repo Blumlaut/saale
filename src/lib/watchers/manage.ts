@@ -43,8 +43,34 @@ export class WatcherInputError extends Error {
   }
 }
 
-/** Five whitespace-separated fields, each made of cron's own characters. */
-const CRON_TOKEN = /^[0-9A-Za-z*,/-]+$/;
+/**
+ * A cron field made of numbers and the operators that combine them — a bare
+ * wildcard, a step, a list, a range, or a range with a step.
+ */
+const NUMERIC_TOKEN = /^[0-9*,\-/]+$/;
+
+/**
+ * A cron field made of three-letter names — a single month or weekday, a range
+ * of them, or a list of them. Names are what let a weekday or month field read
+ * as English, and why the numeric rule alone cannot be the test.
+ */
+const NAMED_TOKEN = /^[A-Za-z]{3}(-[A-Za-z]{3})?(,[A-Za-z]{3}(-[A-Za-z]{3})?)*(\/\d{1,2})?$/;
+
+/**
+ * Whether one field is something cron can parse.
+ *
+ * The charset alone is too loose: it would accept prose ("nope"), which BullMQ
+ * then rejects at scheduling time — leaving a saved watcher that never ticks,
+ * which is the failure this validation exists to catch at the write instead.
+ */
+function isValidCronToken(token: string): boolean {
+  if (!token) return false;
+  if (NAMED_TOKEN.test(token)) return true;
+  if (!NUMERIC_TOKEN.test(token)) return false;
+  // The charset also allows separator soup ("---", "//") that has no numbers
+  // and no wildcard, so it can never name a value.
+  return /[0-9*]/.test(token);
+}
 
 /**
  * Validate a cron expression's shape.
@@ -61,7 +87,7 @@ export function normalizeCronExpression(value: unknown): string {
   const expression = value.trim().replace(/\s+/g, " ");
   const fields = expression.split(" ");
 
-  if (fields.length !== 5 || !fields.every((field) => CRON_TOKEN.test(field))) {
+  if (fields.length !== 5 || !fields.every(isValidCronToken)) {
     throw new WatcherInputError(
       `"${value}" is not a 5-field cron expression (minute hour day month weekday).`,
     );

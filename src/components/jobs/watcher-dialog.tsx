@@ -1,0 +1,474 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { fetchJson, patchJson, postJson } from "@/lib/http";
+import { AlertTriangle, Loader2, Play, Radar, ShieldCheck } from "lucide-react";
+import type { ScriptWatcher, WatcherConsentPreview } from "@/types/shared";
+
+/** The part of a conversation the target picker needs. */
+interface ChatOption {
+  id: string;
+  title: string;
+}
+
+interface WatcherDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
+  watcher?: ScriptWatcher | null;
+}
+
+/** No conversation selected — the watcher runs a standalone agent run instead. */
+const NO_TARGET = "none";
+
+const CRON_PRESETS = [
+  { value: "*/5 * * * *", label: "Every 5 minutes" },
+  { value: "*/10 * * * *", label: "Every 10 minutes" },
+  { value: "*/30 * * * *", label: "Every 30 minutes" },
+  { value: "0 * * * *", label: "Every hour" },
+  { value: "0 */6 * * *", label: "Every 6 hours" },
+  { value: "0 9 * * *", label: "Daily at 9am" },
+];
+
+const STARTER_SCRIPT = `const seen = load('seen') ?? [];
+const mails = await tools.mail_list({ folder: 'INBOX', limit: 20 });
+
+const fresh = mails.filter((m) => !seen.includes(m.uid));
+store('seen', [...seen, ...fresh.map((m) => m.uid)].slice(-200));
+
+// Returning nothing means "no news" — nobody is woken.
+if (fresh.length === 0) return undefined;
+return { count: fresh.length, subjects: fresh.map((m) => m.subject) };`;
+
+/** The result of one test run, shown under the script. */
+interface TestResult {
+  status: string;
+  value?: unknown;
+  reason?: string;
+  output: string;
+  durationMs: number;
+  callCount: number;
+}
+
+/**
+ * Create or edit a watcher.
+ *
+ * The consent list is the point of this dialog: a watcher runs unattended, so
+ * the user reads the script and sees which tool calls it may make without being
+ * asked again. The preview is fetched as the script changes, and the same list
+ * is what gets recorded — there is no second, looser approval at run time.
+ */
+export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: WatcherDialogProps) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [script, setScript] = useState("");
+  const [cronExpression, setCronExpression] = useState("*/10 * * * *");
+  const [sessionId, setSessionId] = useState<string>(NO_TARGET);
+  const [wakePrompt, setWakePrompt] = useState("");
+  const [cooldownMinutes, setCooldownMinutes] = useState("0");
+  const [enabled, setEnabled] = useState(true);
+
+  const [chats, setChats] = useState<ChatOption[]>([]);
+  const [preview, setPreview] = useState<WatcherConsentPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isEdit = Boolean(watcher);
+
+  // Load the conversations a watcher can report into, once per open.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await fetchJson<{ sessions: ChatOption[] }>("/api/chat/sessions");
+        if (!cancelled) setChats(data.sessions ?? []);
+      } catch (err) {
+        console.error("Failed to load conversations for the watcher dialog:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Seed the form from the watcher being edited, or a starter script for a new one.
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    setTestResult(null);
+    setPreviewError(null);
+
+    if (watcher) {
+      setName(watcher.name);
+      setDescription(watcher.description ?? "");
+      setScript(watcher.script);
+      setCronExpression(watcher.cronExpression);
+      setSessionId(watcher.sessionId ?? NO_TARGET);
+      setWakePrompt(watcher.wakePrompt);
+      setCooldownMinutes(String(watcher.cooldownMinutes));
+      setEnabled(watcher.enabled);
+    } else {
+      setName("");
+      setDescription("");
+      setScript(STARTER_SCRIPT);
+      setCronExpression("*/10 * * * *");
+      setSessionId(NO_TARGET);
+      setWakePrompt("");
+      setCooldownMinutes("0");
+      setEnabled(true);
+    }
+  }, [open, watcher]);
+
+  const resolveTarget = useCallback(
+    () => (sessionId === NO_TARGET ? null : sessionId),
+    [sessionId],
+  );
+
+  // Show what the script would be allowed to call, as it is written.
+  useEffect(() => {
+    if (!open || !script.trim()) {
+      setPreview(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const data = await postJson<{ preview: WatcherConsentPreview }>("/api/watchers", {
+          preview: true,
+          script,
+          sessionId: resolveTarget(),
+        });
+        if (cancelled) return;
+        setPreview(data.preview);
+        setPreviewError(null);
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Failed to resolve the script's tool consent:", err);
+        setPreviewError(err instanceof Error ? err.message : "Could not read the script.");
+      }
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, script, resolveTarget]);
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setError(null);
+    try {
+      const data = await postJson<{ preview: WatcherConsentPreview; outcome: TestResult }>(
+        "/api/watchers",
+        { preview: true, run: true, script, sessionId: resolveTarget() },
+      );
+      setPreview(data.preview);
+      setTestResult(data.outcome);
+    } catch (err) {
+      console.error("Failed to test the watcher script:", err);
+      setError(err instanceof Error ? err.message : "The script could not be run.");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = {
+        name,
+        description,
+        script,
+        cronExpression,
+        sessionId: resolveTarget(),
+        wakePrompt,
+        cooldownMinutes: Number(cooldownMinutes) || 0,
+        enabled,
+      };
+
+      if (watcher) {
+        // The user is looking at the script and its consent list, so this save
+        // is also the approval for whatever the script now says.
+        await patchJson(`/api/watchers/${watcher.id}`, { ...payload, approveScript: true });
+      } else {
+        await postJson("/api/watchers", payload);
+      }
+
+      onSuccess?.();
+      onOpenChange(false);
+    } catch (err) {
+      console.error("Failed to save watcher:", err);
+      setError(err instanceof Error ? err.message : "Failed to save the watcher.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const canSave =
+    name.trim().length > 0 && script.trim().length > 0 && cronExpression.trim().length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Radar className="h-4 w-4" />
+            {isEdit ? "Edit watcher" : "New watcher"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="watcher-name">Name</Label>
+              <Input
+                id="watcher-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Watch the inbox"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="watcher-cron">Check every</Label>
+              <Input
+                id="watcher-cron"
+                value={cronExpression}
+                onChange={(event) => setCronExpression(event.target.value)}
+                placeholder="*/10 * * * *"
+                className="font-mono"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {CRON_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.value}
+                    type="button"
+                    variant={cronExpression === preset.value ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setCronExpression(preset.value)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            <Label htmlFor="watcher-target">Report into</Label>
+            <Select value={sessionId} onValueChange={(value) => setSessionId(value ?? NO_TARGET)}>
+              <SelectTrigger id="watcher-target">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_TARGET}>No conversation (standalone run)</SelectItem>
+                {chats.map((chat) => (
+                  <SelectItem key={chat.id} value={chat.id}>
+                    {chat.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              When the script reports something, the agent is given it here and answers in this
+              conversation.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            <Label htmlFor="watcher-description">Description (optional)</Label>
+            <Input
+              id="watcher-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="What this watcher is for"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="watcher-script">Script</Label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void handleTest()}
+                disabled={testing || !script.trim()}
+              >
+                {testing ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Test run
+              </Button>
+            </div>
+            <Textarea
+              id="watcher-script"
+              value={script}
+              onChange={(event) => setScript(event.target.value)}
+              rows={12}
+              spellCheck={false}
+              className="max-h-80 min-h-40 overflow-auto font-mono text-xs whitespace-pre"
+            />
+            <p className="text-muted-foreground text-xs">
+              Runs on a schedule and costs no tokens. Return <code>undefined</code> when there is
+              nothing to report — that is the common case. Keep state between checks with{" "}
+              <code>store()</code> and <code>load()</code>.
+            </p>
+          </div>
+
+          {/* What the script may call without being asked again. */}
+          <div className="bg-muted/40 rounded border p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <ShieldCheck className="text-muted-foreground h-3.5 w-3.5" />
+              <span className="text-xs font-medium">Approved tools</span>
+              {preview?.grantAll && (
+                <Badge
+                  variant="secondary"
+                  className="bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400"
+                >
+                  <AlertTriangle className="mr-1 h-3 w-3" />
+                  Every enabled tool
+                </Badge>
+              )}
+            </div>
+
+            {previewError ? (
+              <p className="text-destructive mt-1.5 text-xs break-words">{previewError}</p>
+            ) : !preview || preview.grantedTools.length === 0 ? (
+              <p className="text-muted-foreground mt-1.5 text-xs">
+                {preview?.grantAll
+                  ? "This script reaches tools it does not name, so it may call any enabled tool. That is what you are approving."
+                  : "None — this script only calls tools that never ask for approval."}
+              </p>
+            ) : (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {preview.grantedTools.map((tool) => (
+                  <Badge key={tool} variant="secondary" className="font-mono text-xs">
+                    {tool}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            <p className="text-muted-foreground mt-1.5 text-xs">
+              These run without asking, every check, forever. Editing the script later asks you to
+              approve the new one.
+            </p>
+          </div>
+
+          {testResult && (
+            <div className="bg-muted/40 rounded border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-medium">
+                  Test run · {testResult.status}
+                  {testResult.callCount > 0 && ` · ${testResult.callCount} tool call(s)`}
+                </span>
+                <span className="text-muted-foreground font-mono text-xs">
+                  {testResult.durationMs}ms
+                </span>
+              </div>
+              {testResult.reason && (
+                <p className="text-destructive mt-1.5 text-xs break-words whitespace-pre-wrap">
+                  {testResult.reason}
+                </p>
+              )}
+              {testResult.value !== undefined && testResult.value !== null && (
+                <pre className="bg-background mt-2 max-h-40 overflow-auto rounded p-2 font-mono text-xs break-all whitespace-pre-wrap">
+                  {JSON.stringify(testResult.value, null, 2)}
+                </pre>
+              )}
+              {testResult.output && (
+                <pre className="text-muted-foreground mt-2 max-h-40 overflow-auto font-mono text-xs break-all whitespace-pre-wrap">
+                  {testResult.output}
+                </pre>
+              )}
+              {testResult.status === "idle" && (
+                <p className="text-muted-foreground mt-1.5 text-xs">
+                  The script returned nothing, so this check would be quiet.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="watcher-cooldown">Cooldown (minutes)</Label>
+              <Input
+                id="watcher-cooldown"
+                type="number"
+                min={0}
+                value={cooldownMinutes}
+                onChange={(event) => setCooldownMinutes(event.target.value)}
+              />
+              <p className="text-muted-foreground text-xs">
+                Shortest gap between two wakes. 0 lets every report through.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="watcher-enabled">Enabled</Label>
+              <div className="flex h-9 items-center gap-2">
+                <Switch id="watcher-enabled" checked={enabled} onCheckedChange={setEnabled} />
+                <span className="text-muted-foreground text-xs">
+                  {enabled ? "Checks on schedule" : "Paused"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            <Label htmlFor="watcher-wake">When it fires, tell the agent to…</Label>
+            <Textarea
+              id="watcher-wake"
+              value={wakePrompt}
+              onChange={(event) => setWakePrompt(event.target.value)}
+              rows={3}
+              placeholder="Review what changed and tell me briefly what it means."
+            />
+            <p className="text-muted-foreground text-xs">
+              The script&apos;s returned value is included automatically.
+            </p>
+          </div>
+
+          {error && (
+            <p className="text-destructive text-sm break-words whitespace-pre-wrap">{error}</p>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSave()} disabled={saving || !canSave}>
+              {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              {isEdit ? "Save and approve" : "Create watcher"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

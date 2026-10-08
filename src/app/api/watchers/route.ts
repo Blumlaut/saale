@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { previewScript } from "@/lib/watchers/tick";
 import {
   createWatcher,
   previewConsent,
@@ -28,8 +29,11 @@ export async function GET() {
 /**
  * POST /api/watchers — create a watcher.
  *
- * `preview` runs the consent resolution without saving, so the dialog can show
- * what the script would be allowed to call before the user commits to it.
+ * With `preview`, nothing is saved: the caller gets the consent list the script
+ * would need, and with `run` the script is also executed once so the user can
+ * see what it actually returns before committing a schedule to it. That is the
+ * authoring loop, and it is the user's own hand on it — the API is the same act
+ * of consent as the dialog they are looking at.
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();
@@ -39,12 +43,14 @@ export async function POST(request: NextRequest) {
 
   try {
     if (body.preview === true) {
-      const preview = await previewConsent({
-        userId: authResult.user.id,
-        script: typeof body.script === "string" ? body.script : "",
-        sessionId: typeof body.sessionId === "string" ? body.sessionId : null,
-      });
-      return NextResponse.json({ preview });
+      const script = typeof body.script === "string" ? body.script : "";
+      const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+
+      const preview = await previewConsent({ userId: authResult.user.id, script, sessionId });
+      if (body.run !== true) return NextResponse.json({ preview });
+
+      const outcome = await previewScript({ userId: authResult.user.id, script, sessionId });
+      return NextResponse.json({ preview, outcome });
     }
 
     const created = await createWatcher({
