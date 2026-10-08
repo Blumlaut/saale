@@ -1,13 +1,9 @@
 "use client";
 
-import { Layers } from "lucide-react";
-import { findToolInfo } from "@/lib/pi/tool-infos";
-import { plural } from "@/lib/format";
+import { CollapsedToolCalls } from "./collapsed-tool-calls";
 import { ShowFileGallery } from "./file-card";
-import { ToolCard } from "./tool-card";
 import { ToolCallView } from "./tool-call-view";
 import { splitToolCalls } from "./tool-cards";
-import { aggregateToolStatus } from "./tool-status";
 import type { ToolCallData } from "./types";
 
 /**
@@ -26,11 +22,7 @@ export function ToolCallGroup({ toolCalls }: { toolCalls: readonly ToolCallData[
 
   return (
     <div className="space-y-1">
-      {work.length === 1 ? (
-        <ToolCallView toolCall={work[0]!} />
-      ) : work.length > 1 ? (
-        <CollapsedWork toolCalls={work} />
-      ) : null}
+      <CollapsedToolCalls toolCalls={work} renderCall={ToolCallView} />
 
       {attachments.length === 1 ? (
         <ToolCallView toolCall={attachments[0]!} />
@@ -38,23 +30,5 @@ export function ToolCallGroup({ toolCalls }: { toolCalls: readonly ToolCallData[
         <ShowFileGallery toolCalls={attachments} />
       ) : null}
     </div>
-  );
-}
-
-/** The summary row: what the turn did, with its cards one click down. */
-function CollapsedWork({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
-  return (
-    <ToolCard
-      model={{
-        icon: Layers,
-        title: plural(toolCalls.length, "tool call", "tool calls"),
-        detail: toolCalls.map((call) => findToolInfo(call.name)?.label ?? call.name).join(" · "),
-        status: aggregateToolStatus(toolCalls),
-      }}
-    >
-      {toolCalls.map((toolCall) => (
-        <ToolCallView key={toolCall.id} toolCall={toolCall} />
-      ))}
-    </ToolCard>
   );
 }
