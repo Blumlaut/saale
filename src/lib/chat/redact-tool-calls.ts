@@ -124,6 +124,8 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
     count: { field: "count", one: "memory", many: "memories" },
   },
   memory_index: { text: "Listed memory collections" },
+  memory_create: { text: "Saved a memory" },
+  memory_update: { text: "Updated a memory" },
   memory_delete: { text: "Deleted memory" },
   model_list: { text: "Listed models" },
   task_create: { text: "Created a task" },

@@ -77,7 +77,9 @@ describe("buildAgentSystemPrompt", () => {
   it("includes memory instruction by default", () => {
     const prompt = buildAgentSystemPrompt({});
     expect(prompt).toContain("persistent memory system");
-    // The model must know it can delete, not just search.
+    // The model must know it can save, update and delete, not just search.
+    expect(prompt).toContain("memory_create");
+    expect(prompt).toContain("memory_update");
     expect(prompt).toContain("memory_delete");
   });
 
