@@ -154,6 +154,52 @@ describe("SelectionQuoteButton", () => {
     expect(button).toHaveClass("opacity-0");
   });
 
+  it("places the button at the selection's viewport offset, not the content offset", () => {
+    const { container } = renderHarness(vi.fn());
+    const scroller = container.firstElementChild as HTMLElement;
+    // The transcript is scrolled: the button must track where the selection
+    // is *on screen*, not where it sits in the scrollable content.
+    scroller.scrollTop = 500;
+    const message = document.getElementById("message-text")!;
+
+    selectText(message, 4, 9); // "quick"
+
+    const button = screen.getByRole("button", { name: "Quote selection into your reply" });
+    // Mocked range rect: top 10, bottom 22 (container bounds are 0). Below-
+    // placement: 22 + GAP. A content-offset calculation would report 528 here.
+    expect(button.style.top).toBe("28px");
+  });
+
+  it("clamps the button inside the container's visible area", () => {
+    const { container } = renderHarness(vi.fn());
+    const scroller = container.firstElementChild as HTMLElement;
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 30 });
+    const message = document.getElementById("message-text")!;
+
+    selectText(message, 4, 9);
+
+    const button = screen.getByRole("button", { name: "Quote selection into your reply" });
+    // Below-placement (28px) would hang off the 30px-tall panel — clamp it in.
+    expect(button.style.top).toBe("6px");
+  });
+
+  it("keeps the button at the selection's spot while it fades out (no corner flash)", () => {
+    renderHarness(vi.fn());
+    const message = document.getElementById("message-text")!;
+
+    selectText(message, 4, 9);
+    const button = screen.getByRole("button", { name: "Quote selection into your reply" });
+    const topWhileVisible = button.style.top;
+    expect(topWhileVisible).toBe("28px");
+
+    clearSelection();
+
+    // Hidden, but still at the selection's spot: the opacity transition must
+    // fade in place, not from the top-left corner.
+    expect(button).toHaveClass("opacity-0");
+    expect(button.style.top).toBe(topWhileVisible);
+  });
+
   it("quotes the selection with the keyboard shortcut (Ctrl+Shift+Q)", () => {
     const onQuote = vi.fn();
     renderHarness(onQuote);

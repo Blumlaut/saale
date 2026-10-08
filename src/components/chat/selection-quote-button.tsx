@@ -6,7 +6,7 @@ import { TextQuote } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SelectionQuoteButtonProps {
-  /** Scrollable message-list container the button floats inside. */
+  /** Scrollable message-list container the button floats over. */
   containerRef: React.RefObject<HTMLDivElement | null>;
   onQuote: (text: string) => void;
   /** Changes when the message list re-renders its content (streaming,
@@ -16,10 +16,15 @@ interface SelectionQuoteButtonProps {
 
 interface SelectionState {
   text: string;
-  /** Selection bounds relative to the container's scrollable content. */
+  /** Selection bounds relative to the container's *visible viewport*. The
+      button is a sibling of the scroller, pinned to the non-scrolling
+      wrapper, so these are viewport offsets — adding `scrollTop` here would
+      push the button off the panel in any scrolled transcript. */
   top: number;
   bottom: number;
   centerX: number;
+  /** The container's visible height, to clamp the placement on screen. */
+  viewportHeight: number;
 }
 
 const GAP = 6;
@@ -40,6 +45,10 @@ export function SelectionQuoteButton({
   version,
 }: SelectionQuoteButtonProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null);
+  // Last position a selection produced. While the button fades out after the
+  // selection is cleared it must stay where it was — jumping to the corner
+  // during the opacity transition would flash it on screen.
+  const [lastPos, setLastPos] = useState<SelectionState | null>(null);
 
   const update = useCallback(() => {
     const container = containerRef.current;
@@ -69,12 +78,15 @@ export function SelectionQuoteButton({
     }
     const rect = range.getBoundingClientRect();
     const bounds = container.getBoundingClientRect();
-    setSelection({
+    const next: SelectionState = {
       text,
-      top: rect.top - bounds.top + container.scrollTop,
-      bottom: rect.bottom - bounds.top + container.scrollTop,
+      top: rect.top - bounds.top,
+      bottom: rect.bottom - bounds.top,
       centerX: rect.left + rect.width / 2 - bounds.left,
-    });
+      viewportHeight: container.clientHeight,
+    };
+    setLastPos(next);
+    setSelection(next);
   }, [containerRef]);
 
   // Fires on every drag step, touch selection, and programmatic change.
@@ -115,14 +127,17 @@ export function SelectionQuoteButton({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selection, quote]);
 
-  // Above the selection by default; below when there is no room above.
-  const placeAbove = selection !== null && selection.top - GAP - BUTTON_HEIGHT >= 4;
-  const top =
-    selection === null
-      ? 0
-      : placeAbove
-        ? selection.top - GAP - BUTTON_HEIGHT
-        : selection.bottom + GAP;
+  // While hidden, the button keeps the last selection's position so the
+  // fade-out happens in place instead of from the corner.
+  const pos = selection ?? lastPos;
+  // Above the selection by default; below when there is no room above. The
+  // wrapper does not scroll, so anything past its visible edge is clipped —
+  // clamp the placement into the container's viewport.
+  const placeAbove = pos !== null && pos.top - GAP - BUTTON_HEIGHT >= 4;
+  let top = pos === null ? 0 : placeAbove ? pos.top - GAP - BUTTON_HEIGHT : pos.bottom + GAP;
+  if (pos !== null && pos.viewportHeight > BUTTON_HEIGHT) {
+    top = Math.min(Math.max(top, 0), pos.viewportHeight - BUTTON_HEIGHT);
+  }
 
   return (
     <Button
@@ -142,10 +157,10 @@ export function SelectionQuoteButton({
         selection ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
       style={
-        selection
+        pos
           ? {
               top,
-              left: `clamp(${HALF_WIDTH}px, ${selection.centerX}px, calc(100% - ${HALF_WIDTH}px))`,
+              left: `clamp(${HALF_WIDTH}px, ${pos.centerX}px, calc(100% - ${HALF_WIDTH}px))`,
             }
           : { top: 0, left: 0 }
       }
