@@ -787,6 +787,11 @@ type CompactBlock =
  * produced it and the next step starts a fresh run. Files the turn showed the
  * user are never folded in — they are the thing to look at, not a record of
  * work — and `<ToolCallGroup>` knows which calls are which.
+ *
+ * One step can produce several blocks (its activity, its prose, its files), so
+ * a block's key is the step's id *and* its kind: React drops or duplicates
+ * siblings that share a key, which is exactly the block vanishing mid-stream
+ * and reappearing on a reload.
  */
 function compactBlocks(messages: readonly Message[]): CompactBlock[] {
   const blocks: CompactBlock[] = [];
@@ -802,15 +807,19 @@ function compactBlocks(messages: readonly Message[]): CompactBlock[] {
       };
       const open = blocks[blocks.length - 1];
       if (open?.kind === "activity") open.steps.push(step);
-      else blocks.push({ kind: "activity", key: message.id, steps: [step] });
+      else blocks.push({ kind: "activity", key: `${message.id}:activity`, steps: [step] });
     }
 
     if (message.content || message.errorMessage) {
-      blocks.push({ kind: "message", key: message.id, message });
+      blocks.push({ kind: "message", key: `${message.id}:prose`, message });
     }
 
     if (attachments.length > 0) {
-      blocks.push({ kind: "attachments", key: attachments[0]!.id, toolCalls: attachments });
+      blocks.push({
+        kind: "attachments",
+        key: `${attachments[0]!.id}:files`,
+        toolCalls: attachments,
+      });
     }
   }
 
