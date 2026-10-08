@@ -491,9 +491,9 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Test Watcher Script",
     description: "Run a watcher script once without scheduling it",
     category: "watchers",
-    // Running a script runs the tools it calls — the card is where the user
-    // reads it, exactly as with `codemode`.
-    defaultPolicy: "ask",
+    // Runs in a sandbox without recording a tick or waking anyone, so it is
+    // safe to let the model exercise scripts on its own.
+    defaultPolicy: "allow",
   },
   {
     name: "watcher_create",
@@ -509,7 +509,9 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Update Watcher",
     description: "Change a watcher's script or schedule",
     category: "watchers",
-    defaultPolicy: "ask",
+    // Changing a script still pauses the watcher until the user approves it on
+    // the Watchers page — only the tool call itself runs without a click.
+    defaultPolicy: "allow",
   },
   {
     name: "watcher_delete",

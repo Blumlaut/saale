@@ -329,8 +329,9 @@ export async function previewWatcherTick(watcherId: string): Promise<TickOutcome
  * Run a script that is not a watcher yet — the authoring loop.
  *
  * A script being written has no grant to check, so the decision that it may run
- * at all belongs to the tool policy that called this (`watcher_test` asks by
- * default). Nothing is recorded and nobody is woken.
+ * at all belongs to the tool policy that called this (`watcher_test` is allowed
+ * by default, but the user can still gate it). Nothing is recorded and nobody
+ * is woken.
  */
 export async function previewScript(params: {
   userId: string;
