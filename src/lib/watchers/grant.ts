@@ -26,7 +26,7 @@ import { resolveToolPolicy } from "@/lib/pi/tool-policy";
 import { CODEMODE_TOOL_NAME, type ToolPolicy } from "@/lib/pi/tool-infos";
 
 /** Policies that need the user's consent before a watcher script may run them. */
-export const CONSENT_POLICIES: readonly ToolPolicy[] = ["ask", "auto"];
+const CONSENT_POLICIES: readonly ToolPolicy[] = ["ask", "auto"];
 
 /** The user's per-tool policies, as `AppSettings.toolPolicies` stores them. */
 export type ToolPolicies = Record<string, string> | null | undefined;
@@ -37,12 +37,12 @@ export function hashScript(script: string): string {
 }
 
 /** The agreed form of the tool-approval policy for one call. */
-export function policyOf(toolName: string, toolPolicies: ToolPolicies): ToolPolicy {
+function policyOf(toolName: string, toolPolicies: ToolPolicies): ToolPolicy {
   return resolveToolPolicy(toolName, { toolPolicies });
 }
 
 /** Whether a policy needs the user's consent to run unattended. */
-export function needsConsent(policy: ToolPolicy): boolean {
+function needsConsent(policy: ToolPolicy): boolean {
   return CONSENT_POLICIES.includes(policy);
 }
 

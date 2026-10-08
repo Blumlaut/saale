@@ -36,10 +36,6 @@ vi.mock("@/lib/watchers/access", () => ({
 
 vi.mock("@/lib/watchers/wake", () => ({
   wakeAgent: vi.fn(),
-  WakeError: class WakeError extends Error {},
-  WATCHER_AGENT_NAME: "Watchers",
-  buildWakeMessage: vi.fn(),
-  ensureWatcherAgentDefinition: vi.fn(),
 }));
 
 import { prisma } from "@/lib/db";

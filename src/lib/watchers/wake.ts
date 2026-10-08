@@ -21,7 +21,7 @@ import { respondInChat } from "@/lib/chat/respond-in-chat";
 import { triggerAgentRun } from "@/lib/agent-jobs/run";
 
 /** Name of the per-user definition standalone watcher wakes run under. */
-export const WATCHER_AGENT_NAME = "Watchers";
+const WATCHER_AGENT_NAME = "Watchers";
 
 /** How the agent is told what fired. */
 export function buildWakeMessage(options: {
@@ -98,14 +98,6 @@ export async function ensureWatcherAgentDefinition(userId: string): Promise<{ id
   });
 
   return { id: created.id };
-}
-
-/** A wake that could not be delivered, and why. */
-export class WakeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WakeError";
-  }
 }
 
 /**
