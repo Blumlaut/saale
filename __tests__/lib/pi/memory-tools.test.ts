@@ -9,6 +9,8 @@ vi.mock("@/lib/db", () => ({
       groupBy: vi.fn(),
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
     },
     $queryRaw: vi.fn(),
   },
@@ -60,6 +62,8 @@ describe("createMemoryTools", () => {
     const names = tools.map((t) => t.name);
     expect(names).toContain("memory_index");
     expect(names).toContain("memory_search");
+    expect(names).toContain("memory_create");
+    expect(names).toContain("memory_update");
     expect(names).toContain("memory_delete");
   });
 
@@ -302,16 +306,144 @@ describe("createMemoryTools", () => {
     });
   });
 
+  describe("memory_create", () => {
+    it("creates a memory and normalizes collection, tags and importance", async () => {
+      const tools = createMemoryTools(userId);
+      const create = tools.find((t) => t.name === "memory_create")!;
+
+      mockMemory.findFirst.mockResolvedValue(null);
+      mockMemory.create.mockResolvedValue(
+        makeMemory({ collection: "preferences", title: "Likes dark mode" }),
+      );
+
+      const result = await callExecute(create.execute, {
+        collection: "  Preferences ",
+        title: "  Likes dark mode  ",
+        content: "  Prefers dark UI themes.  ",
+        tags: ["UI", " ui ", ""],
+        importance: 12,
+      });
+      const text = JSON.parse((result.content[0] as { text: string }).text);
+
+      expect(text.created).toBe(true);
+      expect(text.memory.id).toBe("mem-1");
+      expect(mockMemory.create).toHaveBeenCalledWith({
+        data: {
+          userId,
+          collection: "preferences",
+          title: "Likes dark mode",
+          content: "Prefers dark UI themes.",
+          tags: ["ui"],
+          importance: 10,
+        },
+      });
+    });
+
+    it("reports the existing memory instead of creating a duplicate title", async () => {
+      const tools = createMemoryTools(userId);
+      const create = tools.find((t) => t.name === "memory_create")!;
+
+      const existing = makeMemory({ collection: "preferences", title: "Likes dark mode" });
+      mockMemory.findFirst.mockResolvedValue(existing);
+
+      const result = await callExecute(create.execute, {
+        collection: "preferences",
+        title: "likes dark mode",
+        content: "duplicate",
+      });
+      const text = JSON.parse((result.content[0] as { text: string }).text);
+
+      expect(text.created).toBe(false);
+      expect(text.memory.id).toBe(existing.id);
+      expect(mockMemory.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId,
+          collection: "preferences",
+          title: { equals: "likes dark mode", mode: "insensitive" },
+        },
+      });
+      expect(mockMemory.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a blank required field", async () => {
+      const tools = createMemoryTools(userId);
+      const create = tools.find((t) => t.name === "memory_create")!;
+
+      await expect(
+        callExecute(create.execute, { collection: "facts", title: "X", content: "   " }),
+      ).rejects.toThrow("collection, title and content are required");
+      expect(mockMemory.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("memory_update", () => {
+    it("updates only the supplied fields, scoped to the user", async () => {
+      const tools = createMemoryTools(userId);
+      const update = tools.find((t) => t.name === "memory_update")!;
+
+      mockMemory.findFirst.mockResolvedValue(makeMemory());
+      mockMemory.update.mockResolvedValue(
+        makeMemory({ title: "Renamed", importance: 1, tags: ["one"] }),
+      );
+
+      const result = await callExecute(update.execute, {
+        id: "mem-1",
+        title: "  Renamed  ",
+        tags: ["One", "one"],
+        importance: 0,
+      });
+      const text = JSON.parse((result.content[0] as { text: string }).text);
+
+      expect(text.updated).toBe(true);
+      expect(text.memory.title).toBe("Renamed");
+      expect(mockMemory.findFirst).toHaveBeenCalledWith({ where: { id: "mem-1", userId } });
+      expect(mockMemory.update).toHaveBeenCalledWith({
+        where: { id: "mem-1", userId },
+        data: { title: "Renamed", tags: ["one"], importance: 1 },
+      });
+    });
+
+    it("throws when the memory is not the user's", async () => {
+      const tools = createMemoryTools(userId);
+      const update = tools.find((t) => t.name === "memory_update")!;
+
+      mockMemory.findFirst.mockResolvedValue(null);
+
+      await expect(
+        callExecute(update.execute, { id: "someone-elses", content: "x" }),
+      ).rejects.toThrow("Memory someone-elses not found");
+      expect(mockMemory.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects an empty patch", async () => {
+      const tools = createMemoryTools(userId);
+      const update = tools.find((t) => t.name === "memory_update")!;
+
+      await expect(callExecute(update.execute, { id: "mem-1" })).rejects.toThrow(
+        "Provide at least one field to update",
+      );
+      expect(mockMemory.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("rejects a blank replacement value", async () => {
+      const tools = createMemoryTools(userId);
+      const update = tools.find((t) => t.name === "memory_update")!;
+
+      await expect(callExecute(update.execute, { id: "mem-1", title: "  " })).rejects.toThrow(
+        "title cannot be empty",
+      );
+      expect(mockMemory.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe("memory_delete", () => {
     it("deletes an owned memory and reports it", async () => {
       const tools = createMemoryTools(userId);
       const del = tools.find((t) => t.name === "memory_delete")!;
 
-      mockMemory.findFirst.mockResolvedValue({
-        id: "mem-1",
-        title: "User prefers dark mode",
-        collection: "preferences",
-      });
+      mockMemory.findFirst.mockResolvedValue(
+        makeMemory({ id: "mem-1", collection: "preferences", title: "User prefers dark mode" }),
+      );
       mockMemory.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await callExecute(del.execute, { id: "mem-1" });
@@ -321,10 +453,7 @@ describe("createMemoryTools", () => {
       expect(text.id).toBe("mem-1");
       expect(text.title).toBe("User prefers dark mode");
       // Both the ownership read and the delete are scoped to the user.
-      expect(mockMemory.findFirst).toHaveBeenCalledWith({
-        where: { id: "mem-1", userId },
-        select: { id: true, title: true, collection: true },
-      });
+      expect(mockMemory.findFirst).toHaveBeenCalledWith({ where: { id: "mem-1", userId } });
       expect(mockMemory.deleteMany).toHaveBeenCalledWith({ where: { id: "mem-1", userId } });
     });
 

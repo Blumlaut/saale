@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { createMemory, serializeMemory } from "@/lib/memory/store";
 
 /**
  * GET /api/memories — List user's memories with optional filters
@@ -45,18 +46,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    memories: filtered.map((m) => ({
-      id: m.id,
-      collection: m.collection,
-      title: m.title,
-      content: m.content,
-      tags: m.tags,
-      importance: m.importance,
-      source: m.source,
-      accessCount: m.accessCount,
-      createdAt: m.createdAt.toISOString(),
-      updatedAt: m.updatedAt.toISOString(),
-    })),
+    memories: filtered.map(serializeMemory),
     total,
     limit,
     offset,
@@ -80,27 +70,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const memory = await prisma.memory.create({
-    data: {
-      userId: authResult.user.id,
-      collection,
-      title,
-      content,
-      tags: tags ?? [],
-      importance: importance ?? 5,
-    },
+  const memory = await createMemory(authResult.user.id, {
+    collection,
+    title,
+    content,
+    tags,
+    importance,
   });
 
-  return NextResponse.json({
-    memory: {
-      id: memory.id,
-      collection: memory.collection,
-      title: memory.title,
-      content: memory.content,
-      tags: memory.tags,
-      importance: memory.importance,
-      createdAt: memory.createdAt.toISOString(),
-      updatedAt: memory.updatedAt.toISOString(),
-    },
-  });
+  return NextResponse.json({ memory: serializeMemory(memory) });
 }

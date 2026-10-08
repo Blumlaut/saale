@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { requireMemoryOwner } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { requireMemoryOwner, requireSession } from "@/lib/auth";
+import { deleteMemory, serializeMemory, updateMemory } from "@/lib/memory/store";
 
 /**
  * GET /api/memories/[id] — Get a single memory
@@ -12,20 +12,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const authResult = await requireMemoryOwner(id);
   if (!authResult.ok) return authResult.response;
 
-  return NextResponse.json({
-    memory: {
-      id: authResult.memory.id,
-      collection: authResult.memory.collection,
-      title: authResult.memory.title,
-      content: authResult.memory.content,
-      tags: authResult.memory.tags,
-      importance: authResult.memory.importance,
-      source: authResult.memory.source,
-      accessCount: authResult.memory.accessCount,
-      createdAt: authResult.memory.createdAt.toISOString(),
-      updatedAt: authResult.memory.updatedAt.toISOString(),
-    },
-  });
+  return NextResponse.json({ memory: serializeMemory(authResult.memory) });
 }
 
 /**
@@ -34,35 +21,17 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const authResult = await requireMemoryOwner(id);
+  const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
 
-  const memory = await prisma.memory.update({
-    where: { id },
-    data: {
-      ...(body.title !== undefined && { title: body.title }),
-      ...(body.content !== undefined && { content: body.content }),
-      ...(body.collection !== undefined && { collection: body.collection }),
-      ...(body.tags !== undefined && { tags: body.tags }),
-      ...(body.importance !== undefined && {
-        importance: Math.max(1, Math.min(10, body.importance)),
-      }),
-    },
-  });
+  const memory = await updateMemory(authResult.user.id, id, body);
+  if (!memory) {
+    return NextResponse.json({ error: "Memory not found" }, { status: 404 });
+  }
 
-  return NextResponse.json({
-    memory: {
-      id: memory.id,
-      collection: memory.collection,
-      title: memory.title,
-      content: memory.content,
-      tags: memory.tags,
-      importance: memory.importance,
-      updatedAt: memory.updatedAt.toISOString(),
-    },
-  });
+  return NextResponse.json({ memory: serializeMemory(memory) });
 }
 
 /**
@@ -74,9 +43,13 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  const authResult = await requireMemoryOwner(id);
+  const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  await prisma.memory.delete({ where: { id } });
+  const deleted = await deleteMemory(authResult.user.id, id);
+  if (!deleted) {
+    return NextResponse.json({ error: "Memory not found" }, { status: 404 });
+  }
+
   return NextResponse.json({ success: true });
 }

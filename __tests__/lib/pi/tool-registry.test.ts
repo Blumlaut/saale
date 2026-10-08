@@ -54,6 +54,8 @@ vi.mock("@/lib/pi/tools/memory-tools", () => ({
   createMemoryTools: vi.fn((userId: string) => [
     { name: "memory_index", userId },
     { name: "memory_search", userId },
+    { name: "memory_create", userId },
+    { name: "memory_update", userId },
     { name: "memory_delete", userId },
   ]),
 }));
@@ -319,8 +321,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(3) + tasks(2) + agentJobs(1) + infra(12) = 34
-    expect(tools).toHaveLength(34);
+    // email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(5) + tasks(2) + agentJobs(1) + infra(12) = 36
+    expect(tools).toHaveLength(36);
     expect(tools.map((t) => t.name)).toEqual([
       "mail_accounts",
       "mail_list",
@@ -340,6 +342,8 @@ describe("resolveTools", () => {
       "web_fetch",
       "memory_index",
       "memory_search",
+      "memory_create",
+      "memory_update",
       "memory_delete",
       "task_list",
       "task_create",
@@ -376,8 +380,8 @@ describe("resolveTools", () => {
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(3) + tasks(2) + agentJobs(1) + infra(12) = 39
-    expect(tools).toHaveLength(39);
+    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(5) + tasks(2) + agentJobs(1) + infra(12) = 41
+    expect(tools).toHaveLength(41);
   });
 
   it("passes userId to all user-scoped factories", async () => {

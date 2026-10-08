@@ -2,6 +2,14 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import {
+  createMemory,
+  deleteMemory,
+  findMemory,
+  findMemoryByTitle,
+  serializeMemory,
+  updateMemory,
+} from "@/lib/memory/store";
 
 /**
  * Create memory tools with userId injection for user isolation.
@@ -232,6 +240,139 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
       },
     }),
 
+    // ─── memory_create ──────────────────────────────────────────────────
+
+    defineTool({
+      name: "memory_create",
+      label: "Save Memory",
+      description:
+        "Save a durable fact, preference, decision or project detail to the persistent memory store. Use this when the user states something worth remembering long-term. Do not save transient troubleshooting steps, job configuration or workflow instructions. If a memory with the same title already exists in the collection, this reports the existing memory instead of duplicating it.",
+      parameters: Type.Object({
+        collection: Type.String({
+          description:
+            "Category for the memory, e.g. 'facts', 'preferences', 'projects', 'people', 'decisions'. Reuse an existing collection when one fits (see memory_index).",
+        }),
+        title: Type.String({
+          description: "Short, specific title for the memory.",
+        }),
+        content: Type.String({
+          description: "The memory itself, written as a self-contained fact.",
+        }),
+        tags: Type.Optional(
+          Type.Array(Type.String({ description: "Free-form tag for retrieval." })),
+        ),
+        importance: Type.Optional(
+          Type.Integer({
+            description: "1-10; explicit user statements are 7-10. Default: 5.",
+          }),
+        ),
+      }),
+      execute: async (_toolCallId, params) => {
+        const collection = params.collection.trim();
+        const title = params.title.trim();
+        const content = params.content.trim();
+
+        if (!collection || !title || !content) {
+          throw new Error("collection, title and content are required");
+        }
+
+        const existing = await findMemoryByTitle(userId, collection, title);
+        if (existing) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    created: false,
+                    reason:
+                      "A memory with this title already exists in that collection — update it instead of creating a duplicate.",
+                    memory: serializeMemory(existing),
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+            details: { id: existing.id, created: false },
+          };
+        }
+
+        const memory = await createMemory(userId, {
+          collection,
+          title,
+          content,
+          tags: params.tags,
+          importance: params.importance,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ created: true, memory: serializeMemory(memory) }, null, 2),
+            },
+          ],
+          details: { id: memory.id, created: true },
+        };
+      },
+    }),
+
+    // ─── memory_update ──────────────────────────────────────────────────
+
+    defineTool({
+      name: "memory_update",
+      label: "Update Memory",
+      description:
+        "Correct or extend an existing memory by ID. Get IDs from memory_search or memory_index. Only the fields you pass are changed — content replaces the old text, it is not appended.",
+      parameters: Type.Object({
+        id: Type.String({
+          description: "Memory ID to update.",
+        }),
+        collection: Type.Optional(
+          Type.String({ description: "Move the memory to another collection." }),
+        ),
+        title: Type.Optional(Type.String({ description: "New title." })),
+        content: Type.Optional(Type.String({ description: "Replacement content." })),
+        tags: Type.Optional(Type.Array(Type.String({ description: "Replacement tag list." }))),
+        importance: Type.Optional(Type.Integer({ description: "1-10." })),
+      }),
+      execute: async (_toolCallId, params) => {
+        const patch = {
+          collection: params.collection,
+          title: params.title,
+          content: params.content,
+          tags: params.tags,
+          importance: params.importance,
+        };
+
+        if (Object.values(patch).every((value) => value === undefined)) {
+          throw new Error("Provide at least one field to update");
+        }
+        for (const key of ["collection", "title", "content"] as const) {
+          const value = patch[key];
+          if (value !== undefined && !value.trim()) {
+            throw new Error(`${key} cannot be empty`);
+          }
+        }
+
+        const memory = await updateMemory(userId, params.id, patch);
+        if (!memory) {
+          throw new Error(`Memory ${params.id} not found`);
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ updated: true, memory: serializeMemory(memory) }, null, 2),
+            },
+          ],
+          details: { id: memory.id },
+        };
+      },
+    }),
+
     // ─── memory_delete ──────────────────────────────────────────────────
 
     defineTool({
@@ -245,10 +386,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         }),
       }),
       execute: async (_toolCallId, params) => {
-        const memory = await prisma.memory.findFirst({
-          where: { id: params.id, userId },
-          select: { id: true, title: true, collection: true },
-        });
+        const memory = await findMemory(userId, params.id);
 
         if (!memory) {
           throw new Error(`Memory ${params.id} not found`);
@@ -256,7 +394,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
 
         // Defense in depth: scope the delete to the owner even though the
         // record was fetched with the same guard.
-        await prisma.memory.deleteMany({ where: { id: params.id, userId } });
+        await deleteMemory(userId, params.id);
 
         return {
           content: [

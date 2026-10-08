@@ -41,7 +41,7 @@ const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write 
 Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes — each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.`;
 
 /** Capability: persistent memory. Defaults on. */
-const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, use \`memory_search\` to look it up before answering; \`memory_index\` lists what collections exist, and \`memory_delete\` removes a memory that is wrong or stale.`;
+const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, use \`memory_search\` to look it up before answering; \`memory_index\` lists what collections exist. Save durable facts and preferences the user states with \`memory_create\`, correct or extend what you already hold with \`memory_update\`, and \`memory_delete\` removes a memory that is wrong or stale.`;
 
 /**
  * Capability: SSH machines and the notes that describe them.
