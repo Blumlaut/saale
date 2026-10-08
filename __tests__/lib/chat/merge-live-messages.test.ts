@@ -125,4 +125,26 @@ describe("mergeMessagesWithLive", () => {
       "db-1",
     ]);
   });
+
+  it("carries the live turn's tag onto its saved row", () => {
+    // The tag is how the reducer knows a replayed event belongs to a message
+    // it already has; losing it on reload would let a replay add a copy.
+    const db = [makeMessage({ id: "db-1", role: "assistant", content: "saved" })];
+    const prev = [makeMessage({ id: "db-1", role: "assistant", turnId: "turn-1" })];
+
+    const merged = mergeMessagesWithLive(db, prev);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.turnId).toBe("turn-1");
+    expect(merged[0]!.content).toBe("saved");
+  });
+
+  it("leaves rows without a live counterpart untagged", () => {
+    const db = [makeMessage({ id: "db-1" }), makeMessage({ id: "db-2", role: "assistant" })];
+    const prev = [makeMessage({ id: "db-1", turnId: "turn-1" })];
+
+    const merged = mergeMessagesWithLive(db, prev);
+
+    expect(merged.map((m) => m.turnId)).toEqual(["turn-1", undefined]);
+  });
 });

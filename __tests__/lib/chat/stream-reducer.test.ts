@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { streamReducer, type StreamState } from "@/lib/chat/stream-reducer";
+import { streamReducer, type StreamAction, type StreamState } from "@/lib/chat/stream-reducer";
 import type { Message } from "@/components/chat/types";
 
 function state(messages: Message[] = [], rootMessageId: string | null = null): StreamState {
@@ -229,5 +229,134 @@ describe("streamReducer", () => {
     const next = streamReducer(base, { type: "turn_start", turnId: "t1" });
     expect(next.messages).toHaveLength(2);
     expect(next.messages[0]).toBe(base.messages[0]);
+  });
+});
+
+/**
+ * A mid-run reconnect replays the session buffer, so turns the client already
+ * has are delivered again. `message_saved` renames a turn's bubble to its DB
+ * row, which is what made those replayed events unrecognisable — they were
+ * applied to a message that no longer existed, creating a second copy of a step
+ * the user was already looking at.
+ */
+describe("streamReducer — replay after a turn is saved", () => {
+  /** One step: thinking, its tool call, its text, then its DB row. */
+  const step = (n: number): StreamAction[] => [
+    { type: "turn_start", turnId: `t${n}`, startedAt: `2026-01-01T00:00:0${n}.000Z` },
+    { type: "thinking", turnId: `t${n}`, thinking: `step ${n} reasoning` },
+    { type: "tool_start", turnId: `t${n}`, toolCallId: `tc${n}`, toolName: "bash", args: {} },
+    { type: "tool_end", turnId: `t${n}`, toolCallId: `tc${n}`, result: "ok" },
+    { type: "turn_end", turnId: `t${n}`, text: `step ${n} answer` },
+    { type: "message_saved", turnId: `t${n}`, messageId: `a${n}` },
+  ];
+  const run = (from: StreamState, actions: StreamAction[]) =>
+    actions.reduce((s, a) => streamReducer(s, a), from);
+
+  /** Client mid-run: two steps saved, the third still streaming. */
+  const midRun = () =>
+    run(empty, [
+      ...step(1),
+      ...step(2),
+      ...step(3).slice(0, 3),
+      { type: "token", turnId: "t3", text: "ste" },
+    ]);
+
+  it("keeps one copy of each step when the whole buffer is replayed", () => {
+    const live = midRun();
+    expect(live.messages.map((m) => m.id)).toEqual(["a1", "a2", "streaming-t3"]);
+
+    // No Last-Event-ID: every event since the run began arrives again.
+    const replayed = run(live, [...step(1), ...step(2)]);
+
+    expect(replayed.messages.map((m) => m.id)).toEqual(["a1", "a2", "streaming-t3"]);
+    const ids = replayed.messages.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(replayed.messages.map((m) => m.thinking)).toEqual([
+      "step 1 reasoning",
+      "step 2 reasoning",
+      "step 3 reasoning",
+    ]);
+    expect(replayed.messages.map((m) => m.toolCalls?.length)).toEqual([1, 1, 1]);
+  });
+
+  it("replays the run without mutating it (replay is idempotent)", () => {
+    const live = midRun();
+    const once = run(live, [...step(1), ...step(2)]);
+    const twice = run(once, [...step(1), ...step(2)]);
+    expect(twice.messages).toEqual(once.messages);
+  });
+
+  it("updates the saved message when the buffer was trimmed past its save", () => {
+    // The 500-event buffer drops a prefix, so a turn's events can arrive
+    // without the `message_saved` that renamed its bubble.
+    const live = midRun();
+    const replayed = run(live, [
+      { type: "thinking", turnId: "t2", thinking: "step 2 reasoning" },
+      { type: "tool_start", turnId: "t2", toolCallId: "tc2", toolName: "bash", args: {} },
+      { type: "tool_end", turnId: "t2", toolCallId: "tc2", result: "ok" },
+      { type: "turn_end", turnId: "t2", text: "step 2 answer" },
+    ]);
+
+    expect(replayed.messages.map((m) => m.id)).toEqual(["a1", "a2", "streaming-t3"]);
+    expect(replayed.messages[1]).toMatchObject({
+      id: "a2",
+      thinking: "step 2 reasoning",
+      content: "step 2 answer",
+    });
+    expect(replayed.messages[1]!.toolCalls?.map((tc) => tc.status)).toEqual(["completed"]);
+  });
+
+  it("drops the live bubble when the row is already on screen", () => {
+    // Replayed `turn_end` re-created the bubble, then its `message_saved`
+    // arrived while the DB row was loaded by a mid-run reload.
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, {
+      type: "turn_end",
+      turnId: "t1",
+      text: "answer",
+      thinking: "reasoning",
+    });
+    s = state(
+      [...s.messages, msg({ id: "a1", role: "assistant", content: "answer" })],
+      s.rootMessageId,
+    );
+    s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "a1" });
+
+    expect(s.messages.map((m) => m.id)).toEqual(["a1"]);
+  });
+
+  it("ignores a re-delivered message_saved for an already renamed turn", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "a1" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "a1" });
+    expect(s.messages).toHaveLength(1);
+    expect(s.messages[0]!.id).toBe("a1");
+  });
+
+  it("applies a late tool_end to the saved row instead of a new bubble", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, {
+      type: "tool_start",
+      turnId: "t1",
+      toolCallId: "tc1",
+      toolName: "bash",
+      args: { cmd: "ls" },
+    });
+    s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "a1" });
+    s = streamReducer(s, { type: "tool_end", turnId: "t1", toolCallId: "tc1", result: "done" });
+
+    expect(s.messages).toHaveLength(1);
+    expect(s.messages[0]).toMatchObject({ id: "a1" });
+    expect(s.messages[0]!.toolCalls?.[0]).toMatchObject({ status: "completed", result: "done" });
+  });
+
+  it("turn_discarded drops a turn already swapped for its row", () => {
+    // `messageId` is null when the discard raced the save, so the turn tag has
+    // to identify the bubble.
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t1", messageId: "a1" });
+    s = streamReducer(s, { type: "turn_discarded", turnId: "t1", messageId: null });
+    expect(s.messages).toEqual([]);
+    expect(s.rootMessageId).toBeNull();
   });
 });

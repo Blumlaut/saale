@@ -33,10 +33,22 @@ import { isStreamingMessage, isTempUserMessage } from "./message-factories";
  * Temp messages with other roles (e.g. the compaction placeholder) are NOT
  * preserved: those flows manage their own optimistic state and replacing it
  * with the DB copy on success is the intended outcome.
+ *
+ * A DB row inherits the `turnId` of the live bubble it replaces. The tag is how
+ * the reducer recognises a turn it already has (see `stream-reducer`), so
+ * dropping it here would let a replayed event for that turn add a second copy
+ * of a message sitting on screen.
  */
 export function mergeMessagesWithLive(dbMessages: Message[], prevMessages: Message[]): Message[] {
+  const turnByMessageId = new Map(
+    prevMessages.flatMap((m) => (m.turnId ? [[m.id, m.turnId] as const] : [])),
+  );
+  const tagged = dbMessages.map((m) => {
+    const turnId = turnByMessageId.get(m.id);
+    return turnId && !m.turnId ? { ...m, turnId } : m;
+  });
   const live = prevMessages.filter((m) => isStreamingMessage(m) || isTempUserMessage(m));
-  const ordered = [...dbMessages, ...live.filter(isStreamingMessage)].sort(byCreatedAt);
+  const ordered = [...tagged, ...live.filter(isStreamingMessage)].sort(byCreatedAt);
   return [...ordered, ...live.filter(isTempUserMessage)];
 }
 

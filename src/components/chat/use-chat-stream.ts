@@ -26,6 +26,11 @@ const WATCHDOG_TICK_MS = 15_000;
  * picked up live. Transport errors are handled by the browser's EventSource
  * auto-retry, which sends `Last-Event-ID` — the server replays buffered
  * events from there, so the client self-heals without manual reconnection.
+ * Reconnects that start a NEW EventSource (the stall watchdog, a reconnect
+ * after a send) replay the whole buffer instead, so replayed events must land
+ * on the turns already on screen — the reducer identifies them by the tag on
+ * the message, not by the temp id `message_saved` replaced (see
+ * `stream-reducer`).
  *
  * All message-state transitions are handled by the pure `streamReducer`
  * (unit-tested in `__tests__/lib/chat/stream-reducer.test.ts`); this module
