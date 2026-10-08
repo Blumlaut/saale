@@ -3,13 +3,15 @@
 import { useState, useCallback } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Plus, Bot, RefreshCw } from "lucide-react";
+import { Plus, Bot, RefreshCw, Radar } from "lucide-react";
 import { Page, PageTabStrip } from "@/components/layout/page";
 import { JobList } from "@/components/jobs/job-list";
 import { JobDialog } from "@/components/jobs/job-dialog";
 import { AgentJobList } from "@/components/jobs/agent-job-list";
 import { AgentJobDialog } from "@/components/jobs/agent-job-dialog";
-import type { AgentJobDefinition } from "@/types/shared";
+import { WatcherList } from "@/components/jobs/watcher-list";
+import { WatcherDialog } from "@/components/jobs/watcher-dialog";
+import type { AgentJobDefinition, ScriptWatcher } from "@/types/shared";
 
 export default function JobsPage() {
   const [activeTab, setActiveTab] = useState("agents");
@@ -29,6 +31,11 @@ export default function JobsPage() {
     config: Record<string, unknown>;
   } | null>(null);
   const [jobRefreshKey, setJobRefreshKey] = useState(0);
+
+  // Watcher state
+  const [showWatcherDialog, setShowWatcherDialog] = useState(false);
+  const [editingWatcher, setEditingWatcher] = useState<ScriptWatcher | null>(null);
+  const [watcherRefreshKey, setWatcherRefreshKey] = useState(0);
 
   // Agent job handlers
   const handleAgentCreated = useCallback(() => {
@@ -69,6 +76,21 @@ export default function JobsPage() {
     if (!open) setEditingJob(null);
   }, []);
 
+  // Watcher handlers
+  const handleWatcherCreated = useCallback(() => {
+    setWatcherRefreshKey((k) => k + 1);
+  }, []);
+
+  const handleWatcherEdit = useCallback((watcher: ScriptWatcher) => {
+    setEditingWatcher(watcher);
+    setShowWatcherDialog(true);
+  }, []);
+
+  const handleWatcherDialogClose = useCallback((open: boolean) => {
+    setShowWatcherDialog(open);
+    if (!open) setEditingWatcher(null);
+  }, []);
+
   return (
     <Page>
       {/* Tabs — strip pinned, content scrolls internally */}
@@ -83,6 +105,10 @@ export default function JobsPage() {
               <TabsTrigger value="scheduled" className="gap-2">
                 <RefreshCw className="h-4 w-4" />
                 Scheduled Jobs
+              </TabsTrigger>
+              <TabsTrigger value="watchers" className="gap-2">
+                <Radar className="h-4 w-4" />
+                Watchers
               </TabsTrigger>
             </TabsList>
           </PageTabStrip>
@@ -109,6 +135,17 @@ export default function JobsPage() {
               <span className="hidden md:inline">New Job</span>
             </Button>
           )}
+          {activeTab === "watchers" && (
+            <Button
+              variant="default"
+              size="icon"
+              className="h-8 w-8 shrink-0 md:h-9 md:w-auto md:px-3"
+              onClick={() => setShowWatcherDialog(true)}
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden md:inline">New Watcher</span>
+            </Button>
+          )}
         </div>
 
         {/* Agent Jobs tab — the only scroll region below the strip */}
@@ -123,6 +160,15 @@ export default function JobsPage() {
         {/* Scheduled Jobs tab */}
         <TabsContent value="scheduled" className="mt-4 min-h-0 flex-1 overflow-y-auto">
           <JobList key={jobRefreshKey} onEdit={handleJobEdit} onRefresh={handleJobCreated} />
+        </TabsContent>
+
+        {/* Watchers tab */}
+        <TabsContent value="watchers" className="mt-4 min-h-0 flex-1 overflow-y-auto">
+          <WatcherList
+            key={watcherRefreshKey}
+            onEdit={handleWatcherEdit}
+            onRefresh={handleWatcherCreated}
+          />
         </TabsContent>
       </Tabs>
 
@@ -140,6 +186,14 @@ export default function JobsPage() {
         onOpenChange={handleJobDialogClose}
         onSuccess={handleJobCreated}
         job={editingJob}
+      />
+
+      {/* Watcher Dialog */}
+      <WatcherDialog
+        open={showWatcherDialog}
+        onOpenChange={handleWatcherDialogClose}
+        onSuccess={handleWatcherCreated}
+        watcher={editingWatcher}
       />
     </Page>
   );

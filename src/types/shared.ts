@@ -44,6 +44,57 @@ export interface JobSchema {
   fields: FieldDef[];
 }
 
+// --- Script Watchers ---
+
+/** A poll job: runs a script on a schedule and wakes the agent when it reports. */
+export interface ScriptWatcher {
+  id: string;
+  name: string;
+  description: string | null;
+  script: string;
+  cronExpression: string;
+  enabled: boolean;
+  sessionId: string | null;
+  sessionTitle: string | null;
+  wakePrompt: string;
+  modelId: string | null;
+  cooldownMinutes: number;
+  /** Tools the user approved for this script; the sandbox offers exactly these. */
+  grantedTools: string[];
+  /** The script reaches tools by a computed name, so its grant covers everything callable. */
+  grantAll: boolean;
+  /** The script changed after it was approved — it will not run until approved again. */
+  needsApproval: boolean;
+  tickCount: number;
+  fireCount: number;
+  lastTickAt: string | null;
+  lastFiredAt: string | null;
+  lastError: string | null;
+  lastValue: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One recorded tick of a watcher. */
+export interface ScriptWatcherTick {
+  id: string;
+  /** "idle" | "fired" | "cooldown" | "blocked" | "error" */
+  status: string;
+  value: string | null;
+  error: string | null;
+  output: string | null;
+  durationMs: number;
+  callCount: number;
+  createdAt: string;
+}
+
+/** What a script would need approval for, before anything is saved. */
+export interface WatcherConsentPreview {
+  grantedTools: string[];
+  grantAll: boolean;
+  callableCount: number;
+}
+
 // --- Agent Jobs ---
 
 export interface AgentJobDefinition {

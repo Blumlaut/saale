@@ -313,6 +313,40 @@ async function mockAgentRuns(page: Page) {
   );
 }
 
+async function mockWatchers(page: Page) {
+  await page.route(/\/api\/watchers(\?|$)/, async (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({ json: { watchers: [] } });
+    }
+
+    // The dialog previews consent, then optionally runs the draft script. Both
+    // answers carry content that used to widen the overlay: an unbreakable tool
+    // name in the consent list, and a long value from the script.
+    return route.fulfill({
+      json: {
+        preview: {
+          grantedTools: ["mcp__longserver__an_unbreakable_tool_name_that_keeps_going"],
+          grantAll: false,
+          callableCount: 41,
+        },
+        outcome: {
+          status: "fired",
+          value: {
+            count: 3,
+            subjects: [
+              "Invoice 2026-0001 for the quarterly infrastructure renewal",
+              "An unusually long subject line that must wrap rather than widen the dialog",
+            ],
+          },
+          output: "checked 3 folders\nnone were empty",
+          durationMs: 412,
+          callCount: 2,
+        },
+      },
+    });
+  });
+}
+
 async function mockCalendarSubscriptions(page: Page) {
   await page.route(/\/api\/calendar\/subscriptions(\?|$)/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
@@ -478,6 +512,19 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await clickText(page, "Daily Market Research Digest");
       await clickText(page, "Completed");
+    },
+  },
+  {
+    name: "jobs · new watcher",
+    path: "/dashboard/jobs",
+    // The watcher dialog carries the longest content in the app: a script, a
+    // monospace consent list and a script's returned value, all of which used to
+    // widen auto-sized overlay tracks.
+    sources: ["src/components/jobs/watcher-dialog.tsx"],
+    mock: mockWatchers,
+    open: async (page) => {
+      await click(page, '[role="tab"]:has-text("Watchers")');
+      await click(page, 'button:has-text("New Watcher")');
     },
   },
 

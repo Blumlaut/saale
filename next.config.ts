@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
     "@earendil-works/pi-ai",
     "@earendil-works/pi-coding-agent",
     "@earendil-works/pi-agent-core",
+    // The watcher tick runs codemode scripts directly (not through the agent
+    // loop), so this package must stay unbundled too: its sandbox resolves the
+    // QuickJS worker and wasm relative to its own module URL.
+    "@earendil-works/pi-codemode",
+    "quickjs-wasi",
     // MCP client used for the settings connection test.
     "@earendil-works/pi-mcp",
     // Native bindings for image processing
