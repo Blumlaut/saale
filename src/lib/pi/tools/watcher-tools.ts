@@ -1,10 +1,7 @@
-import {
-  defineTool,
-  type AgentToolResult,
-  type ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "typebox";
 import { prisma } from "@/lib/db";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import {
   createWatcher,
   deleteWatcher,
@@ -31,13 +28,91 @@ const SCRIPT_CONTRACT = [
   "Call tools as `await tools.<name>({...})`, keep state across ticks with `store(key, value)`",
   "and `load(key)`, and `return` something only when there is news:",
   "`undefined`/`null`/`false` means nothing happened and nobody is woken.",
+  "A call resolves to the tool's value, so read its fields (`r.exitCode`, `r.stdout`).",
+  "Never match a marker against a whole result — it echoes the arguments it was called with —",
+  "and never paste a result into the script text: keep it in a variable, or in `store()`.",
   "Timers, `fetch`, `require` and `process` do not exist.",
 ].join(" ");
 
-/** A tool result carrying one JSON document, which is what every tool here returns. */
-function jsonResult(value: unknown): AgentToolResult<undefined> {
-  return { content: [{ type: "text", text: JSON.stringify(value) }], details: undefined };
-}
+/** One watcher as the list reports it. */
+const watcherSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  cron: Type.String(),
+  enabled: Type.Boolean(),
+  reportsTo: Type.Union([
+    Type.Object({ chatId: Type.String(), title: Type.Union([Type.String(), Type.Null()]) }),
+    Type.String(),
+  ]),
+  approvedTools: Type.Array(Type.String()),
+  unrestricted: Type.Boolean(),
+  needsApproval: Type.Boolean(),
+  cooldownMinutes: Type.Union([Type.Integer(), Type.Null()]),
+  ticks: Type.Integer(),
+  fires: Type.Integer(),
+  lastTickAt: Type.Union([Type.String(), Type.Null()]),
+  lastError: Type.Union([Type.String(), Type.Null()]),
+});
+
+const watcherListSchema = Type.Object({
+  count: Type.Integer(),
+  watchers: Type.Array(watcherSchema),
+});
+
+/** What one run of a script did. */
+const runOutcomeSchema = Type.Object({
+  status: Type.String(),
+  value: Type.Optional(Type.Unknown()),
+  reason: Type.Optional(Type.String()),
+  output: Type.String(),
+  durationMs: Type.Number(),
+  toolCalls: Type.Integer(),
+});
+
+const watcherTestSchema = Type.Object({
+  ...runOutcomeSchema.properties,
+  // Only a draft script is checked before the watcher exists.
+  wouldNeedApprovalFor: Type.Optional(Type.Array(Type.String())),
+  wouldBeAllowedEveryTool: Type.Optional(Type.Boolean()),
+});
+
+const watcherCreateSchema = Type.Object({
+  created: Type.Boolean(),
+  id: Type.String(),
+  name: Type.String(),
+  approvedTools: Type.Array(Type.String()),
+  unrestricted: Type.Boolean(),
+  note: Type.String(),
+});
+
+const watcherUpdateSchema = Type.Object({
+  updated: Type.Boolean(),
+  id: Type.String(),
+  needsApproval: Type.Boolean(),
+  note: Type.Optional(Type.String()),
+  toolsItWillAskToApprove: Type.Optional(Type.Array(Type.String())),
+  unrestricted: Type.Optional(Type.Boolean()),
+});
+
+const watcherTicksSchema = Type.Object({
+  watcher: Type.String(),
+  enabled: Type.Boolean(),
+  lastError: Type.Union([Type.String(), Type.Null()]),
+  ticks: Type.Array(
+    Type.Object({
+      at: Type.String(),
+      status: Type.String(),
+      /// JSON-encoded, as the log stores it.
+      value: Type.Union([Type.String(), Type.Null()]),
+      error: Type.Union([Type.String(), Type.Null()]),
+      output: Type.Union([Type.String(), Type.Null()]),
+      durationMs: Type.Number(),
+      toolCalls: Type.Integer(),
+    }),
+  ),
+});
+
+const watcherDeleteSchema = Type.Object({ deleted: Type.Boolean(), id: Type.String() });
 
 /** A tick log entry, trimmed to what the model needs. */
 function tickView(outcome: {
@@ -47,11 +122,11 @@ function tickView(outcome: {
   output: string;
   durationMs: number;
   callCount: number;
-}): Record<string, unknown> {
+}): Static<typeof runOutcomeSchema> {
   return {
     status: outcome.status,
-    value: outcome.value,
-    reason: outcome.reason,
+    ...(outcome.value === undefined ? {} : { value: outcome.value }),
+    ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
     output: outcome.output,
     durationMs: outcome.durationMs,
     toolCalls: outcome.callCount,
@@ -61,12 +136,13 @@ function tickView(outcome: {
 export function createWatcherTools(userId: string, sessionId: string): ToolDefinition[] {
   return [
     // ─── watcher_list ───────────────────────────────────────────────────────
-    defineTool({
+    defineStructuredTool({
       name: "watcher_list",
       label: "List Watchers",
       description:
         "List script watchers: the cheap poll jobs that run a script on a schedule and wake you only when it reports something. Shows cadence, approved tools, last outcome, and whether a script is waiting for the user's approval.",
       parameters: Type.Object({}),
+      outputSchema: watcherListSchema,
       execute: async () => {
         const watchers = await prisma.scriptWatcher.findMany({
           where: { userId },
@@ -74,34 +150,36 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           include: { session: { select: { title: true } } },
         });
 
-        return jsonResult({
-          count: watchers.length,
-          watchers: watchers.map((watcher) => {
-            const serialized = serializeWatcher(watcher);
-            return {
-              id: serialized.id,
-              name: serialized.name,
-              cron: serialized.cronExpression,
-              enabled: serialized.enabled,
-              reportsTo: serialized.sessionId
-                ? { chatId: serialized.sessionId, title: serialized.sessionTitle }
-                : "no conversation (runs a standalone agent run)",
-              approvedTools: serialized.grantedTools,
-              unrestricted: serialized.grantAll,
-              needsApproval: serialized.needsApproval,
-              cooldownMinutes: serialized.cooldownMinutes,
-              ticks: serialized.tickCount,
-              fires: serialized.fireCount,
-              lastTickAt: serialized.lastTickAt,
-              lastError: serialized.lastError,
-            };
-          }),
-        });
+        return {
+          value: {
+            count: watchers.length,
+            watchers: watchers.map((watcher) => {
+              const serialized = serializeWatcher(watcher);
+              return {
+                id: serialized.id,
+                name: serialized.name,
+                cron: serialized.cronExpression,
+                enabled: serialized.enabled,
+                reportsTo: serialized.sessionId
+                  ? { chatId: serialized.sessionId, title: serialized.sessionTitle }
+                  : "no conversation (runs a standalone agent run)",
+                approvedTools: serialized.grantedTools,
+                unrestricted: serialized.grantAll,
+                needsApproval: serialized.needsApproval,
+                cooldownMinutes: serialized.cooldownMinutes,
+                ticks: serialized.tickCount,
+                fires: serialized.fireCount,
+                lastTickAt: serialized.lastTickAt,
+                lastError: serialized.lastError,
+              };
+            }),
+          },
+        };
       },
     }),
 
     // ─── watcher_test ───────────────────────────────────────────────────────
-    defineTool({
+    defineStructuredTool({
       name: "watcher_test",
       label: "Test Watcher Script",
       description: `Run a watcher script once and report what it returned, without scheduling it, recording a tick, or waking anyone. Use this to write and check a script before creating the watcher. ${SCRIPT_CONTRACT} Provide either \`script\` (draft, at any point), or \`watcherId\` to check a saved watcher.`,
@@ -123,6 +201,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           }),
         ),
       }),
+      outputSchema: watcherTestSchema,
       execute: async (_toolCallId, params) => {
         if (params.script && params.watcherId) {
           throw new Error("Provide either `script` or `watcherId`, not both.");
@@ -136,7 +215,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           if (!watcher) throw new Error(`Watcher not found: ${params.watcherId}`);
 
           const outcome = await previewWatcherTick(params.watcherId);
-          return jsonResult(tickView(outcome));
+          return { value: tickView(outcome) };
         }
 
         if (!params.script?.trim()) {
@@ -155,17 +234,19 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           sessionId: targetSession,
         });
 
-        return jsonResult({
-          ...tickView(outcome),
-          // What creating this watcher would ask the user to approve.
-          wouldNeedApprovalFor: consent.grantedTools,
-          wouldBeAllowedEveryTool: consent.grantAll,
-        });
+        return {
+          value: {
+            ...tickView(outcome),
+            // What creating this watcher would ask the user to approve.
+            wouldNeedApprovalFor: consent.grantedTools,
+            wouldBeAllowedEveryTool: consent.grantAll,
+          },
+        };
       },
     }),
 
     // ─── watcher_create ─────────────────────────────────────────────────────
-    defineTool({
+    defineStructuredTool({
       name: "watcher_create",
       label: "Create Watcher",
       description: `Create a script watcher: it runs a script on a cron schedule and wakes you only when the script returns something. Use it for anything you would otherwise poll for on a timer — checking a mailbox, a remote host, a feed — where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} The user must confirm the script and the tools it may call before this happens; say what you are proposing and why.`,
@@ -201,6 +282,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           }),
         ),
       }),
+      outputSchema: watcherCreateSchema,
       execute: async (_toolCallId, params) => {
         try {
           const created = await createWatcher({
@@ -217,14 +299,16 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
             },
           });
 
-          return jsonResult({
-            created: true,
-            id: created.id,
-            name: created.name,
-            approvedTools: created.grantedTools,
-            unrestricted: created.grantAll,
-            note: "The watcher now ticks on its schedule. It wakes you only when the script returns a value.",
-          });
+          return {
+            value: {
+              created: true,
+              id: created.id,
+              name: created.name,
+              approvedTools: created.grantedTools,
+              unrestricted: created.grantAll,
+              note: "The watcher now ticks on its schedule. It wakes you only when the script returns a value.",
+            },
+          };
         } catch (err) {
           if (err instanceof WatcherInputError) throw new Error(err.message);
           throw err;
@@ -233,7 +317,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
     }),
 
     // ─── watcher_update ─────────────────────────────────────────────────────
-    defineTool({
+    defineStructuredTool({
       name: "watcher_update",
       label: "Update Watcher",
       description:
@@ -250,6 +334,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         modelId: Type.Optional(Type.String({ description: "New model override." })),
         enabled: Type.Optional(Type.Boolean({ description: "Enable or disable the watcher." })),
       }),
+      outputSchema: watcherUpdateSchema,
       execute: async (_toolCallId, params) => {
         const fields: Record<string, unknown> = {};
         for (const key of [
@@ -288,18 +373,20 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           });
           const consent = await previewConsent({ userId, script: watcher.script });
 
-          return jsonResult({
-            updated: true,
-            id: updated.id,
-            needsApproval: updated.needsApproval,
-            ...(updated.needsApproval
-              ? {
-                  note: "The script changed, so the watcher is paused until the user approves it on the Watchers page.",
-                  toolsItWillAskToApprove: consent.grantedTools,
-                  unrestricted: consent.grantAll,
-                }
-              : {}),
-          });
+          return {
+            value: {
+              updated: true,
+              id: updated.id,
+              needsApproval: updated.needsApproval,
+              ...(updated.needsApproval
+                ? {
+                    note: "The script changed, so the watcher is paused until the user approves it on the Watchers page.",
+                    toolsItWillAskToApprove: consent.grantedTools,
+                    unrestricted: consent.grantAll,
+                  }
+                : {}),
+            },
+          };
         } catch (err) {
           if (err instanceof WatcherInputError) throw new Error(err.message);
           throw err;
@@ -308,7 +395,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
     }),
 
     // ─── watcher_ticks ──────────────────────────────────────────────────────
-    defineTool({
+    defineStructuredTool({
       name: "watcher_ticks",
       label: "Watcher Tick Log",
       description:
@@ -317,6 +404,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         watcherId: Type.String({ description: "Watcher id." }),
         limit: Type.Optional(Type.Number({ description: "How many ticks to read (default 10)." })),
       }),
+      outputSchema: watcherTicksSchema,
       execute: async (_toolCallId, params) => {
         const watcher = await prisma.scriptWatcher.findFirst({
           where: { id: params.watcherId, userId },
@@ -330,31 +418,34 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           take: Math.min(Math.max(params.limit ?? 10, 1), 50),
         });
 
-        return jsonResult({
-          watcher: watcher.name,
-          enabled: watcher.enabled,
-          lastError: watcher.lastError,
-          ticks: ticks.map((tick) => ({
-            at: tick.createdAt.toISOString(),
-            status: tick.status,
-            value: tick.value,
-            error: tick.error,
-            output: tick.output,
-            durationMs: tick.durationMs,
-            toolCalls: tick.callCount,
-          })),
-        });
+        return {
+          value: {
+            watcher: watcher.name,
+            enabled: watcher.enabled,
+            lastError: watcher.lastError,
+            ticks: ticks.map((tick) => ({
+              at: tick.createdAt.toISOString(),
+              status: tick.status,
+              value: tick.value,
+              error: tick.error,
+              output: tick.output,
+              durationMs: tick.durationMs,
+              toolCalls: tick.callCount,
+            })),
+          },
+        };
       },
     }),
 
     // ─── watcher_delete ─────────────────────────────────────────────────────
-    defineTool({
+    defineStructuredTool({
       name: "watcher_delete",
       label: "Delete Watcher",
       description: "Delete a script watcher and stop its ticks.",
       parameters: Type.Object({
         watcherId: Type.String({ description: "Watcher id." }),
       }),
+      outputSchema: watcherDeleteSchema,
       execute: async (_toolCallId, params) => {
         try {
           await deleteWatcher(params.watcherId, userId);
@@ -363,7 +454,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           throw err;
         }
 
-        return jsonResult({ deleted: true, id: params.watcherId });
+        return { value: { deleted: true, id: params.watcherId } };
       },
     }),
   ];

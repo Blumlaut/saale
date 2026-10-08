@@ -6,8 +6,9 @@
  * settable with no change here.
  */
 
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "typebox";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { listSettings, setSetting, SettingsError, type PropertyView } from "./update";
 
 /** Prefixes the model can filter on — a hint, not an allowlist. */
@@ -30,32 +31,62 @@ function toText(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function propertyJson(property: PropertyView): Record<string, unknown> {
+/** One setting with its value, as a filtered listing reports it. */
+const settingsPropertySchema = Type.Object({
+  key: Type.String(),
+  value: Type.Unknown(),
+  description: Type.String(),
+  values: Type.Optional(Type.Array(Type.String())),
+});
+
+function propertyJson(property: PropertyView): Static<typeof settingsPropertySchema> {
   return {
     key: property.key,
     value: property.value,
     description: property.description,
-    ...(property.values ? { values: property.values } : {}),
+    ...(property.values ? { values: [...property.values] } : {}),
   };
 }
 
+const settingsListSchema = Type.Object({
+  count: Type.Integer(),
+  properties: Type.Array(settingsPropertySchema),
+});
+
+/** Every key grouped by area, without values. */
+const settingsIndexSchema = Type.Object({
+  groups: Type.Array(
+    Type.Object({
+      group: Type.String(),
+      count: Type.Integer(),
+      keys: Type.Array(Type.String()),
+    }),
+  ),
+  hint: Type.String(),
+});
+
+const settingsSetSchema = Type.Object({
+  key: Type.String(),
+  label: Type.String(),
+  value: Type.Unknown(),
+});
+
 /** An index of every key, grouped, without values — cheap to read in full. */
-function indexText(properties: PropertyView[]): string {
+function groupProperties(
+  properties: PropertyView[],
+): { group: string; count: number; keys: string[] }[] {
   const groups = new Map<string, string[]>();
   for (const property of properties) {
     const keys = groups.get(property.group) ?? [];
     keys.push(property.key);
     groups.set(property.group, keys);
   }
-  return toText({
-    groups: [...groups].map(([group, keys]) => ({ group, count: keys.length, keys })),
-    hint: 'Call settings_list with { group: "<group>" } for values and descriptions, or { key: "<key>" } for one setting.',
-  });
+  return [...groups].map(([group, keys]) => ({ group, count: keys.length, keys }));
 }
 
 export function createSettingsTools(userId: string): ToolDefinition[] {
   return [
-    defineTool({
+    defineStructuredTool({
       name: "settings_list",
       label: "List Settings",
       description: [
@@ -76,6 +107,9 @@ export function createSettingsTools(userId: string): ToolDefinition[] {
         ),
         key: Type.Optional(Type.String({ description: 'One exact key, e.g. "models.default".' })),
       }),
+      // A filtered listing and the full index are different shapes, so a script
+      // reads whichever the call produced.
+      outputSchema: Type.Union([settingsListSchema, settingsIndexSchema]),
       execute: async (_toolCallId, params) => {
         const filter =
           typeof params.key === "string" && params.key.trim()
@@ -92,18 +126,22 @@ export function createSettingsTools(userId: string): ToolDefinition[] {
           );
         }
 
-        const text = filter
-          ? toText({
-              count: properties.length,
-              properties: properties.map(propertyJson),
-            })
-          : indexText(properties);
+        const value = filter
+          ? { count: properties.length, properties: properties.map(propertyJson) }
+          : {
+              groups: groupProperties(properties),
+              hint: 'Call settings_list with { group: "<group>" } for values and descriptions, or { key: "<key>" } for one setting.',
+            };
 
-        return { content: [{ type: "text", text }], details: { count: properties.length } };
+        return {
+          value,
+          text: toText(value),
+          details: { count: properties.length },
+        };
       },
     }),
 
-    defineTool({
+    defineStructuredTool({
       name: "settings_set",
       label: "Change Setting",
       description: [
@@ -123,6 +161,7 @@ export function createSettingsTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: settingsSetSchema,
       execute: async (_toolCallId, params) => {
         const key = typeof params.key === "string" ? params.key.trim() : "";
         if (!key) {
@@ -134,19 +173,13 @@ export function createSettingsTools(userId: string): ToolDefinition[] {
 
         try {
           const property = await setSetting(userId, key, params.value);
-          return {
-            content: [
-              {
-                type: "text",
-                text: toText({
-                  key: property.key,
-                  label: property.label,
-                  value: property.value,
-                }),
-              },
-            ],
-            details: { key: property.key },
+          const value = {
+            key: property.key,
+            label: property.label,
+            value: property.value,
           };
+
+          return { value, text: toText(value), details: { key: property.key } };
         } catch (err) {
           // A rejected change is the model's to correct, so surface the reason
           // rather than a generic failure.

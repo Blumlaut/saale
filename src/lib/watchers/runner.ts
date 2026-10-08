@@ -61,9 +61,15 @@ function resultText(content: readonly { type: string; text?: string }[]): string
  * The set is already decided — `watcherToolAccess` is the one place that answers
  * what a script may reach, `codemode` included — so nothing is filtered here.
  *
- * A call resolves the way Pi's own codemode bridge resolves it: a tool that
- * declares `structuredContent` hands that back, anything else hands back its
- * text. A failure rejects, so the script sees an `Error` and can catch it.
+ * A call resolves exactly the way Pi's own codemode bridge resolves it
+ * (`toScriptValue` in the codemode extension): a tool that declares an
+ * `outputSchema` hands back its `structuredContent`, also when the call failed
+ * and carried one; any other tool hands back its text. Anything else that fails
+ * rejects, so the script sees an `Error` and can catch it.
+ *
+ * The rule matters more here than in a chat: the text carries UI metadata and an
+ * echo of the call's own arguments, so a script that had only the text would
+ * match a marker against its own query — which is how a watcher fires early.
  *
  * `ctx` is left undefined. No tool dereferences it — the two that accept it
  * merely forward it to Pi's built-in read/edit, which read `ctx?.cwd` and
@@ -82,10 +88,18 @@ function toSandboxTools(tools: readonly ToolDefinition[]): CodemodeTool[] {
       const noContext = undefined as unknown as ExtensionToolContext;
       const result = await tool.execute(`watcher/${tool.name}`, args, signal, undefined, noContext);
 
-      if (result.isError) {
-        throw new Error(resultText(result.content) || `Tool "${tool.name}" failed`);
+      // Pi gates the value on the declaration, not on the field being set, so a
+      // tool that never declared an `outputSchema` cannot quietly start handing
+      // scripts an object they were never told about.
+      if (tool.outputSchema && result.structuredContent !== undefined) {
+        return result.structuredContent;
       }
-      return result.structuredContent ?? resultText(result.content);
+
+      const text = resultText(result.content);
+      if (result.isError) {
+        throw new Error(text || `Tool "${tool.name}" failed`);
+      }
+      return text;
     },
   }));
 }

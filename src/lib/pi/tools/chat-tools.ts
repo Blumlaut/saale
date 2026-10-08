@@ -1,8 +1,9 @@
 import fs from "fs/promises";
 import type { Stats } from "fs";
 import path from "path";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
@@ -77,8 +78,51 @@ function validatePath(baseDir: string, filePath: string): void {
  * Create a chat search tool with userId injection.
  * Returns a factory function that creates the tool with the userId baked in.
  */
+/** One matching message, with the chat it came from. */
+const CHAT_HIT_SCHEMA = Type.Object({
+  sessionId: Type.String(),
+  sessionTitle: Type.String(),
+  messageId: Type.String(),
+  role: Type.String(),
+  content: Type.String(),
+  date: Type.String(),
+});
+
+const CHAT_SEARCH_SCHEMA = Type.Object({
+  query: Type.String(),
+  count: Type.Integer(),
+  results: Type.Array(CHAT_HIT_SCHEMA),
+});
+
+/** The reply a chat gave when something was said in it. */
+const CHAT_REPLY_SCHEMA = Type.Object({
+  sessionId: Type.String(),
+  title: Type.String(),
+  reply: Type.String(),
+});
+
+/** A new chat, plus what it answered. */
+const CHAT_STARTED_SCHEMA = Type.Object({
+  ...CHAT_REPLY_SCHEMA.properties,
+  started: Type.Boolean(),
+});
+
+const CHAT_DELETED_SCHEMA = Type.Object({
+  deleted: Type.Boolean(),
+  sessionId: Type.String(),
+  title: Type.String(),
+});
+
+/** A file shared into the chat. */
+const SHARED_FILE_SCHEMA = Type.Object({
+  fileName: Type.String(),
+  size: Type.Integer(),
+  mimeType: Type.String(),
+  kind: Type.Union([Type.Literal("image"), Type.Literal("file")]),
+});
+
 export function createChatSearchTool(userId: string) {
-  return defineTool({
+  return defineStructuredTool({
     name: "chat_search",
     label: "Search Chat History",
     description: "Search through chat history by query. Returns matching sessions and messages.",
@@ -93,6 +137,7 @@ export function createChatSearchTool(userId: string) {
         }),
       ),
     }),
+    outputSchema: CHAT_SEARCH_SCHEMA,
     execute: async (_toolCallId: string, params: { query: string; limit?: number }) => {
       const searchQuery = params.query.trim();
       const limit = Math.min(params.limit ?? 20, 100);
@@ -132,27 +177,18 @@ export function createChatSearchTool(userId: string) {
       );
 
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                query: params.query,
-                count: results.length,
-                results: results.map((r) => ({
-                  sessionId: r.sessionId,
-                  sessionTitle: r.sessionTitle,
-                  messageId: r.messageId,
-                  role: r.role,
-                  content: r.content,
-                  date: r.date,
-                })),
-              },
-              null,
-              2,
-            ),
-          },
-        ],
+        value: {
+          query: params.query,
+          count: results.length,
+          results: results.map((r) => ({
+            sessionId: r.sessionId,
+            sessionTitle: r.sessionTitle,
+            messageId: r.messageId,
+            role: r.role,
+            content: r.content,
+            date: r.date,
+          })),
+        },
         details: { count: results.length },
       };
     },
@@ -189,7 +225,7 @@ export function createChatTools(userId: string, sessionId: string): ToolDefiniti
  * is built), so a static import would close a module cycle at startup.
  */
 export function createChatRespondTool(userId: string, callerSessionId: string) {
-  return defineTool({
+  return defineStructuredTool({
     name: "chat_respond",
     label: "Respond in Chat",
     description:
@@ -205,6 +241,7 @@ export function createChatRespondTool(userId: string, callerSessionId: string) {
         description: "The message to send to that chat.",
       }),
     }),
+    outputSchema: CHAT_REPLY_SCHEMA,
     execute: async (
       _toolCallId: string,
       params: { sessionId: string; message: string },
@@ -220,12 +257,12 @@ export function createChatRespondTool(userId: string, callerSessionId: string) {
       });
 
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Chat \"${result.title}\" replied:\n\n${result.reply || "(no reply)"}`,
-          },
-        ],
+        value: {
+          sessionId: result.sessionId,
+          title: result.title,
+          reply: result.reply,
+        },
+        text: `Chat \"${result.title}\" replied:\n\n${result.reply || "(no reply)"}`,
         details: { sessionId: result.sessionId, title: result.title, reply: result.reply },
       };
     },
@@ -239,7 +276,7 @@ export function createChatRespondTool(userId: string, callerSessionId: string) {
  * Both imports are dynamic for the same reason as `chat_respond`'s.
  */
 export function createChatCreateTool(userId: string, callerSessionId: string) {
-  return defineTool({
+  return defineStructuredTool({
     name: "chat_create",
     label: "Start Chat",
     description:
@@ -250,6 +287,7 @@ export function createChatCreateTool(userId: string, callerSessionId: string) {
       message: Type.String({ description: "The first message to send in the new chat." }),
       title: Type.Optional(Type.String({ description: "Optional short title for the new chat." })),
     }),
+    outputSchema: CHAT_STARTED_SCHEMA,
     execute: async (
       _toolCallId: string,
       params: { message: string; title?: string },
@@ -270,14 +308,15 @@ export function createChatCreateTool(userId: string, callerSessionId: string) {
       });
 
       return {
-        content: [
-          {
-            type: "text" as const,
-            text:
-              `Started chat "${result.title}" (${result.sessionId}) — it replied:\n\n` +
-              (result.reply || "(no reply)"),
-          },
-        ],
+        value: {
+          started: true,
+          sessionId: result.sessionId,
+          title: result.title,
+          reply: result.reply,
+        },
+        text:
+          `Started chat "${result.title}" (${result.sessionId}) — it replied:\n\n` +
+          (result.reply || "(no reply)"),
         details: { sessionId: result.sessionId, title: result.title, reply: result.reply },
       };
     },
@@ -289,7 +328,7 @@ export function createChatCreateTool(userId: string, callerSessionId: string) {
  * attachments. Delegates to the same helper the delete route uses.
  */
 export function createChatDeleteTool(userId: string) {
-  return defineTool({
+  return defineStructuredTool({
     name: "chat_delete",
     label: "Delete Chat",
     description:
@@ -300,16 +339,13 @@ export function createChatDeleteTool(userId: string) {
         description: "Chat session ID, as returned by chat_search.",
       }),
     }),
+    outputSchema: CHAT_DELETED_SCHEMA,
     execute: async (_toolCallId: string, params: { sessionId: string }) => {
       const { title } = await deleteChatSession(userId, params.sessionId);
 
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Deleted chat "${title}" (${params.sessionId}) and all of its messages.`,
-          },
-        ],
+        value: { deleted: true, sessionId: params.sessionId, title },
+        text: `Deleted chat "${title}" (${params.sessionId}) and all of its messages.`,
         details: { sessionId: params.sessionId, title },
       };
     },
@@ -326,7 +362,7 @@ export function createChatDeleteTool(userId: string) {
 export function createShowFileTool(userId: string, sessionId: string) {
   const useTerminal = terminal.isConfigured();
 
-  return defineTool({
+  return defineStructuredTool({
     name: "show_file",
     label: "Show File",
     description:
@@ -342,6 +378,7 @@ export function createShowFileTool(userId: string, sessionId: string) {
         }),
       ),
     }),
+    outputSchema: SHARED_FILE_SCHEMA,
     execute: async (_toolCallId: string, params: { filePath: string; description?: string }) => {
       const { filePath, description } = params;
       const fileName = path.basename(filePath);
@@ -375,16 +412,17 @@ export function createShowFileTool(userId: string, sessionId: string) {
                 ? `${(result.buffer.length / 1024).toFixed(0)} KB`
                 : `${result.buffer.length} B`;
 
-          const typeLabel = isImageMime(mimeType) ? "image" : "file";
+          const typeLabel: "image" | "file" = isImageMime(mimeType) ? "image" : "file";
           const prefix = description ? `${description}. ` : "";
 
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: `${prefix}Shared ${typeLabel} "${fileName}" (${sizeLabel}).`,
-              },
-            ],
+            value: {
+              fileName,
+              size: result.buffer.length,
+              mimeType,
+              kind: typeLabel,
+            },
+            text: `${prefix}Shared ${typeLabel} "${fileName}" (${sizeLabel}).`,
             details: { fileName, size: result.buffer.length, mimeType },
           };
         } catch (err: unknown) {
@@ -428,16 +466,12 @@ export function createShowFileTool(userId: string, sessionId: string) {
               ? `${(stats.size / 1024).toFixed(0)} KB`
               : `${stats.size} B`;
 
-        const typeLabel = isImageMime(mimeType) ? "image" : "file";
+        const typeLabel: "image" | "file" = isImageMime(mimeType) ? "image" : "file";
         const prefix = description ? `${description}. ` : "";
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${prefix}Shared ${typeLabel} "${fileName}" (${sizeLabel}).`,
-            },
-          ],
+          value: { fileName, size: stats.size, mimeType, kind: typeLabel },
+          text: `${prefix}Shared ${typeLabel} "${fileName}" (${sizeLabel}).`,
           details: { fileName, size: stats.size, mimeType },
         };
       }

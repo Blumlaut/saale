@@ -1,6 +1,7 @@
 import path from "path";
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/email/smtp";
@@ -27,6 +28,111 @@ export function formatFrom(fromName: string | null, fromEmail: string): string {
 }
 
 /**
+ * A mail message as the mail tools report it. mail_list, mail_read and
+ * mail_search all emit this shape, but each selects a different subset of
+ * fields, so a field a given tool does not fetch is simply absent.
+ */
+const MAIL_MESSAGE_SCHEMA = Type.Object({
+  id: Type.String(),
+  from: Type.String(),
+  subject: Type.String(),
+  date: Type.String(),
+  read: Type.Boolean(),
+  folder: Type.String(),
+  // mail_list and mail_read
+  to: Type.Optional(Type.String()),
+  starred: Type.Optional(Type.Boolean()),
+  tags: Type.Optional(Type.Array(Type.String())),
+  // mail_list and mail_search
+  preview: Type.Optional(Type.String()),
+  // mail_list only
+  uid: Type.Optional(Type.String()),
+  // mail_read only
+  bodyText: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  aiSummary: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  spamScore: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+});
+
+/** A connected account with its folder list and per-folder message counts. */
+const MAIL_ACCOUNT_SCHEMA = Type.Object({
+  id: Type.String(),
+  email: Type.String(),
+  enabled: Type.Boolean(),
+  lastSyncedAt: Type.Union([Type.String(), Type.Null()]),
+  folders: Type.Array(Type.String()),
+  messageCounts: Type.Record(Type.String(), Type.Integer()),
+  totalMessages: Type.Integer(),
+  unreadCount: Type.Integer(),
+});
+
+const MAIL_ACCOUNTS_SCHEMA = Type.Object({
+  accounts: Type.Array(MAIL_ACCOUNT_SCHEMA),
+});
+
+const MAIL_FOLDERS_SCHEMA = Type.Object({
+  accountId: Type.String(),
+  email: Type.String(),
+  remoteFolders: Type.Array(Type.String()),
+  folders: Type.Array(
+    Type.Object({
+      name: Type.String(),
+      total: Type.Integer(),
+      unread: Type.Integer(),
+      starred: Type.Integer(),
+    }),
+  ),
+});
+
+const MAIL_SYNC_SCHEMA = Type.Object({
+  accountId: Type.String(),
+  newMessages: Type.Integer(),
+  updatedMessages: Type.Integer(),
+  // Absent when the sync recorded no errors.
+  errors: Type.Optional(Type.Array(Type.String())),
+});
+
+const MAIL_LIST_SCHEMA = Type.Object({
+  count: Type.Integer(),
+  total: Type.Integer(),
+  hasMore: Type.Boolean(),
+  emails: Type.Array(MAIL_MESSAGE_SCHEMA),
+});
+
+const MAIL_READ_SCHEMA = Type.Object({
+  count: Type.Integer(),
+  emails: Type.Array(MAIL_MESSAGE_SCHEMA),
+});
+
+const MAIL_SEARCH_SCHEMA = Type.Object({
+  query: Type.String(),
+  count: Type.Integer(),
+  emails: Type.Array(MAIL_MESSAGE_SCHEMA),
+});
+
+const MAIL_SEND_SCHEMA = Type.Object({
+  sent: Type.Boolean(),
+  messageId: Type.String(),
+  to: Type.Array(Type.String()),
+  subject: Type.String(),
+  // Absent when the send had no attachments.
+  attachments: Type.Optional(Type.Array(Type.String())),
+});
+
+const MAIL_TAG_SCHEMA = Type.Object({
+  updated: Type.Integer(),
+  ids: Type.Array(Type.String()),
+});
+
+const MAIL_MOVE_SCHEMA = Type.Object({
+  moved: Type.Integer(),
+  folder: Type.String(),
+});
+
+const MAIL_DELETE_SCHEMA = Type.Object({
+  deleted: Type.Integer(),
+});
+
+/**
  * Create mail tools with userId injection for user isolation.
  * All queries are scoped to the authenticated user's email accounts.
  * Returns an array of tool definitions for direct spread into the agent session.
@@ -35,12 +141,13 @@ export function createMailTools(userId: string): ToolDefinition[] {
   return [
     // ─── mail_accounts ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_accounts",
       label: "List Email Accounts",
       description:
         "List all connected email accounts with their metadata: IDs, addresses, enabled status, last sync time, folder list, and message counts per folder.",
       parameters: Type.Object({}),
+      outputSchema: MAIL_ACCOUNTS_SCHEMA,
       execute: async (_toolCallId) => {
         const accounts = await prisma.emailAccount.findMany({
           where: { userId },
@@ -83,12 +190,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         );
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ accounts: results }, null, 2),
-            },
-          ],
+          value: { accounts: results },
           details: { count: results.length },
         };
       },
@@ -96,7 +198,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_folders ───────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_folders",
       label: "List Folders",
       description:
@@ -106,6 +208,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           description: "The email account ID.",
         }),
       }),
+      outputSchema: MAIL_FOLDERS_SCHEMA,
       execute: async (_toolCallId, params) => {
         const account = await prisma.emailAccount.findFirst({
           where: { id: params.accountId, userId },
@@ -142,21 +245,12 @@ export function createMailTools(userId: string): ToolDefinition[] {
         );
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  accountId: account.id,
-                  email: account.email,
-                  remoteFolders: (account.cachedFolders as string[] | null) ?? [],
-                  folders: folderDetails,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            accountId: account.id,
+            email: account.email,
+            remoteFolders: (account.cachedFolders as string[] | null) ?? [],
+            folders: folderDetails,
+          },
           details: { count: folderDetails.length },
         };
       },
@@ -164,7 +258,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_sync ──────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_sync",
       label: "Sync Email Account",
       description:
@@ -174,6 +268,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           description: "The email account ID to sync.",
         }),
       }),
+      outputSchema: MAIL_SYNC_SCHEMA,
       execute: async (_toolCallId, params) => {
         const account = await prisma.emailAccount.findFirst({
           where: { id: params.accountId, userId },
@@ -187,21 +282,12 @@ export function createMailTools(userId: string): ToolDefinition[] {
         const result = await syncEmailAccount(params.accountId);
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  accountId: params.accountId,
-                  newMessages: result.newMessages,
-                  updatedMessages: result.updatedMessages,
-                  errors: result.errors.length > 0 ? result.errors : undefined,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            accountId: params.accountId,
+            newMessages: result.newMessages,
+            updatedMessages: result.updatedMessages,
+            ...(result.errors.length > 0 ? { errors: result.errors } : {}),
+          },
           details: { newMessages: result.newMessages, updatedMessages: result.updatedMessages },
         };
       },
@@ -209,7 +295,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_list ──────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_list",
       label: "List Emails",
       description:
@@ -258,6 +344,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: MAIL_LIST_SCHEMA,
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
@@ -354,22 +441,13 @@ export function createMailTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    count: emails.length,
-                    total,
-                    hasMore: emails.length < total - (params.offset ?? 0),
-                    emails: emailData,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(mailMeta)}`,
-            },
-          ],
+          value: {
+            count: emails.length,
+            total,
+            hasMore: emails.length < total - (params.offset ?? 0),
+            emails: emailData,
+          },
+          meta: mailMeta,
           details: { count: emails.length, total },
         };
       },
@@ -377,7 +455,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_read ──────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_read",
       label: "Read Email(s)",
       description:
@@ -393,6 +471,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           },
         ),
       }),
+      outputSchema: MAIL_READ_SCHEMA,
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
@@ -501,12 +580,11 @@ export function createMailTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(emailData, null, 2) + `\n${JSON.stringify(mailMeta)}`,
-            },
-          ],
+          value: { count: emails.length, emails: emailData },
+          // The text has always been the message array itself; the value a
+          // script reads is the same array under a count.
+          text: JSON.stringify(emailData, null, 2),
+          meta: mailMeta,
           details: { count: emails.length },
         };
       },
@@ -514,7 +592,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_search ────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_search",
       label: "Search Emails",
       description:
@@ -537,6 +615,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: MAIL_SEARCH_SCHEMA,
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
@@ -612,21 +691,12 @@ export function createMailTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                JSON.stringify(
-                  {
-                    query: params.query,
-                    count: emails.length,
-                    emails: emailData,
-                  },
-                  null,
-                  2,
-                ) + `\n${JSON.stringify(mailMeta)}`,
-            },
-          ],
+          value: {
+            query: params.query,
+            count: emails.length,
+            emails: emailData,
+          },
+          meta: mailMeta,
           details: { count: emails.length },
         };
       },
@@ -634,7 +704,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_send ──────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_send",
       label: "Send Email",
       description:
@@ -680,6 +750,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           ),
         ),
       }),
+      outputSchema: MAIL_SEND_SCHEMA,
       execute: async (_toolCallId, params) => {
         const account = await prisma.emailAccount.findFirst({
           where: { id: params.accountId, userId },
@@ -705,24 +776,15 @@ export function createMailTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  sent: true,
-                  messageId: result.messageId,
-                  to: params.to,
-                  subject: params.subject,
-                  attachments: params.attachments
-                    ? params.attachments.map((p: string) => path.basename(p))
-                    : undefined,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            sent: true,
+            messageId: result.messageId,
+            to: params.to,
+            subject: params.subject,
+            ...(params.attachments
+              ? { attachments: params.attachments.map((p: string) => path.basename(p)) }
+              : {}),
+          },
           details: { messageId: result.messageId },
         };
       },
@@ -730,7 +792,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_tag ───────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_tag",
       label: "Tag Email(s)",
       description: "Add or remove tags from one or more emails. Accepts an array of email IDs.",
@@ -756,6 +818,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           ),
         ),
       }),
+      outputSchema: MAIL_TAG_SCHEMA,
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
@@ -785,19 +848,10 @@ export function createMailTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  updated: updatedIds.length,
-                  ids: updatedIds,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            updated: updatedIds.length,
+            ids: updatedIds,
+          },
           details: { updated: updatedIds.length },
         };
       },
@@ -805,7 +859,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_move ──────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_move",
       label: "Move Email(s)",
       description:
@@ -821,6 +875,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           description: 'Target folder (e.g. "INBOX", "Archive", "Trash", "Spam").',
         }),
       }),
+      outputSchema: MAIL_MOVE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
@@ -843,19 +898,10 @@ export function createMailTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  moved: result.count,
-                  folder: params.folder,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            moved: result.count,
+            folder: params.folder,
+          },
           details: { moved: result.count },
         };
       },
@@ -863,7 +909,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
     // ─── mail_delete ────────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "mail_delete",
       label: "Delete Email(s)",
       description:
@@ -876,6 +922,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           { minItems: 1, maxItems: 50 },
         ),
       }),
+      outputSchema: MAIL_DELETE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
@@ -897,18 +944,9 @@ export function createMailTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  deleted: result.count,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            deleted: result.count,
+          },
           details: { deleted: result.count },
         };
       },

@@ -130,6 +130,11 @@ describe("createMemoryTools", () => {
       expect(text.count).toBe(1);
       expect(text.memories[0].title).toBe("User prefers dark mode");
       expect(mockQueryRaw).toHaveBeenCalled();
+
+      // The value a codemode script or watcher tick receives: no parsing, and no
+      // UI metadata mixed in.
+      expect(result.structuredContent).toEqual(text);
+      expect(search.outputSchema).toBeDefined();
     });
 
     it("returns empty results for whitespace-only query", async () => {

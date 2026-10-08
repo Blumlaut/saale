@@ -32,9 +32,14 @@ Guidelines:
  * "use codemode to batch calls" guideline only exists in its default system
  * prompt — which a custom prompt replaces. Without this, the model sees the
  * `codemode` tool but is never told that the tools it needs are inside it.
+ *
+ * The line about results is what keeps a payload out of the script text: a
+ * result pasted in as a literal stops the script parsing, and it has already
+ * run by the time that is discovered.
  */
 export const TOOLS_PROMPT = `Tool use:
-Not every tool is listed to you directly. Reach the rest by writing a short JavaScript script with the \`codemode\` tool — \`await tools.<name>({ ...args })\` — and batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. If a tool you need is not listed, find it with \`searchTools("what you need")\`. Only the script's output comes back to you.`;
+Not every tool is listed to you directly. Reach the rest by writing a short JavaScript script with the \`codemode\` tool — \`await tools.<name>({ ...args })\` — and batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. If a tool you need is not listed, find it with \`searchTools("what you need")\`. Only the script's output comes back to you.
+A call resolves to the tool's value, so read its fields (\`r.exitCode\`, \`r.stdout\`) rather than matching text against the whole result — a result echoes the arguments it was called with. Keep a result in a variable, or carry it into a later script with \`store(key, value)\` and \`load(key)\`; never paste it into the script text, where one stray quote or brace stops the script parsing.`;
 
 /** Capability: shell + files via the terminal tool. */
 const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. Files the user uploads in chat are placed in the \`uploads/\` directory of the working directory — read them from there when the user refers to an attached file.

@@ -1,4 +1,4 @@
-import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { triggerAgentRun } from "@/lib/agent-jobs/run";
@@ -9,6 +9,123 @@ import {
   SYSTEM_MANAGED_ERROR,
 } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
+import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
+
+/**
+ * An agent job definition as list, create and update report it. The three tools
+ * embed the same definition, so its fields live here once; each tool adds only
+ * the timestamps and counters it returns.
+ */
+const AGENT_JOB_DEFINITION_SCHEMA = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  prompt: Type.String(),
+  systemPrompt: Type.Union([Type.String(), Type.Null()]),
+  toolConfig: Type.Union([Type.Record(Type.String(), Type.Boolean()), Type.Null()]),
+  modelId: Type.Union([Type.String(), Type.Null()]),
+  outputChannel: Type.Union([Type.String(), Type.Null()]),
+  outputChannelId: Type.Union([Type.String(), Type.Null()]),
+  cronExpression: Type.Union([Type.String(), Type.Null()]),
+  runAt: Type.Union([Type.String(), Type.Null()]),
+  enabled: Type.Boolean(),
+});
+
+/** A definition with its run history, as agent_job_list reports it. */
+const AGENT_JOB_LIST_ENTRY_SCHEMA = Type.Object({
+  ...AGENT_JOB_DEFINITION_SCHEMA.properties,
+  // Omitted when the job has never run.
+  lastRunAt: Type.Optional(Type.String()),
+  runCount: Type.Integer(),
+  createdAt: Type.String(),
+});
+
+const AGENT_JOB_LIST_SCHEMA = Type.Object({
+  count: Type.Integer(),
+  jobs: Type.Array(AGENT_JOB_LIST_ENTRY_SCHEMA),
+});
+
+/** The definition agent_job_create writes, plus the row's creation time. */
+const AGENT_JOB_CREATED_SCHEMA = Type.Object({
+  ...AGENT_JOB_DEFINITION_SCHEMA.properties,
+  createdAt: Type.String(),
+});
+
+const AGENT_JOB_CREATE_SCHEMA = Type.Object({
+  created: Type.Boolean(),
+  job: AGENT_JOB_CREATED_SCHEMA,
+});
+
+/** The definition agent_job_update writes, plus the row's update time. */
+const AGENT_JOB_UPDATED_SCHEMA = Type.Object({
+  ...AGENT_JOB_DEFINITION_SCHEMA.properties,
+  updatedAt: Type.String(),
+});
+
+const AGENT_JOB_UPDATE_SCHEMA = Type.Object({
+  updated: Type.Boolean(),
+  job: AGENT_JOB_UPDATED_SCHEMA,
+});
+
+const AGENT_JOB_DELETE_SCHEMA = Type.Object({
+  deleted: Type.Boolean(),
+  id: Type.String(),
+});
+
+const AGENT_JOB_RUN_SCHEMA = Type.Object({
+  queued: Type.Boolean(),
+  runId: Type.String(),
+  jobId: Type.String(),
+});
+
+/** One run in an agent job's history. */
+const AGENT_JOB_RUN_LOG_SCHEMA = Type.Object({
+  id: Type.String(),
+  status: Type.String(),
+  prompt: Type.String(),
+  modelId: Type.Union([Type.String(), Type.Null()]),
+  inputTokens: Type.Integer(),
+  outputTokens: Type.Integer(),
+  cost: Type.Number(),
+  error: Type.Union([Type.String(), Type.Null()]),
+  // Omitted until the run starts/finishes.
+  startedAt: Type.Optional(Type.String()),
+  completedAt: Type.Optional(Type.String()),
+  duration: Type.Union([Type.Number(), Type.Null()]),
+  createdAt: Type.String(),
+});
+
+const AGENT_JOB_LOGS_SCHEMA = Type.Object({
+  jobId: Type.String(),
+  count: Type.Integer(),
+  runs: Type.Array(AGENT_JOB_RUN_LOG_SCHEMA),
+});
+
+/** One recorded tool call in a run's transcript, parsed from the stored JSON. */
+const AGENT_JOB_TOOL_CALL_SCHEMA = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  args: Type.Record(Type.String(), Type.Unknown()),
+  // Absent when the run was saved before the call reported a result.
+  result: Type.Optional(Type.String()),
+  isError: Type.Optional(Type.Boolean()),
+});
+
+/** One message in a run's transcript. */
+const AGENT_RUN_MESSAGE_SCHEMA = Type.Object({
+  id: Type.String(),
+  role: Type.String(),
+  content: Type.String(),
+  thinking: Type.Union([Type.String(), Type.Null()]),
+  toolCalls: Type.Union([Type.Array(AGENT_JOB_TOOL_CALL_SCHEMA), Type.Null()]),
+  createdAt: Type.String(),
+});
+
+const AGENT_RUN_MESSAGES_SCHEMA = Type.Object({
+  runId: Type.String(),
+  count: Type.Integer(),
+  messages: Type.Array(AGENT_RUN_MESSAGE_SCHEMA),
+});
 
 /**
  * Create agent job tools with userId injection for user isolation.
@@ -18,7 +135,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
   return [
     // ─── agent_job_list ─────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "agent_job_list",
       label: "List Agent Jobs",
       description:
@@ -30,6 +147,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: AGENT_JOB_LIST_SCHEMA,
       execute: async (_toolCallId, params) => {
         const where: Record<string, unknown> = { userId };
         if (params.enabled !== undefined) {
@@ -59,35 +177,26 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  count: definitions.length,
-                  jobs: definitions.map((d) => ({
-                    id: d.id,
-                    name: d.name,
-                    description: d.description,
-                    prompt: d.prompt,
-                    systemPrompt: d.systemPrompt,
-                    toolConfig: d.toolConfig as Record<string, boolean> | null,
-                    modelId: d.modelId,
-                    outputChannel: d.outputChannel,
-                    outputChannelId: d.outputChannelId,
-                    cronExpression: d.cronExpression,
-                    runAt: d.runAt?.toISOString() ?? null,
-                    lastRunAt: d.lastRunAt?.toISOString(),
-                    enabled: d.enabled,
-                    runCount: d._count.runs,
-                    createdAt: d.createdAt.toISOString(),
-                  })),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            count: definitions.length,
+            jobs: definitions.map((d) => ({
+              id: d.id,
+              name: d.name,
+              description: d.description,
+              prompt: d.prompt,
+              systemPrompt: d.systemPrompt,
+              toolConfig: d.toolConfig as Record<string, boolean> | null,
+              modelId: d.modelId,
+              outputChannel: d.outputChannel,
+              outputChannelId: d.outputChannelId,
+              cronExpression: d.cronExpression,
+              runAt: d.runAt?.toISOString() ?? null,
+              ...(d.lastRunAt ? { lastRunAt: d.lastRunAt.toISOString() } : {}),
+              enabled: d.enabled,
+              runCount: d._count.runs,
+              createdAt: d.createdAt.toISOString(),
+            })),
+          },
           details: { count: definitions.length },
         };
       },
@@ -95,7 +204,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
 
     // ─── agent_job_create ───────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "agent_job_create",
       label: "Create Agent Job",
       description:
@@ -167,6 +276,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: AGENT_JOB_CREATE_SCHEMA,
       execute: async (_toolCallId, params) => {
         if (isReservedAgentName(params.name)) {
           throw new Error(RESERVED_AGENT_NAME_ERROR);
@@ -213,33 +323,24 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  created: true,
-                  job: {
-                    id: definition.id,
-                    name: definition.name,
-                    description: definition.description,
-                    prompt: definition.prompt,
-                    systemPrompt: definition.systemPrompt,
-                    toolConfig: definition.toolConfig as Record<string, boolean> | null,
-                    modelId: definition.modelId,
-                    outputChannel: definition.outputChannel,
-                    outputChannelId: definition.outputChannelId,
-                    cronExpression: definition.cronExpression,
-                    runAt: definition.runAt?.toISOString() ?? null,
-                    enabled: definition.enabled,
-                    createdAt: definition.createdAt.toISOString(),
-                  },
-                },
-                null,
-                2,
-              ),
+          value: {
+            created: true,
+            job: {
+              id: definition.id,
+              name: definition.name,
+              description: definition.description,
+              prompt: definition.prompt,
+              systemPrompt: definition.systemPrompt,
+              toolConfig: definition.toolConfig as Record<string, boolean> | null,
+              modelId: definition.modelId,
+              outputChannel: definition.outputChannel,
+              outputChannelId: definition.outputChannelId,
+              cronExpression: definition.cronExpression,
+              runAt: definition.runAt?.toISOString() ?? null,
+              enabled: definition.enabled,
+              createdAt: definition.createdAt.toISOString(),
             },
-          ],
+          },
           details: { id: definition.id },
         };
       },
@@ -247,7 +348,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
 
     // ─── agent_job_update ───────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "agent_job_update",
       label: "Update Agent Job",
       description: "Update an existing agent job definition. Only provided fields are updated.",
@@ -326,6 +427,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: AGENT_JOB_UPDATE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const definition = await prisma.agentDefinition.findFirst({
           where: { id: params.id, userId },
@@ -395,33 +497,24 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  updated: true,
-                  job: {
-                    id: updated.id,
-                    name: updated.name,
-                    description: updated.description,
-                    prompt: updated.prompt,
-                    systemPrompt: updated.systemPrompt,
-                    toolConfig: updated.toolConfig as Record<string, boolean> | null,
-                    modelId: updated.modelId,
-                    outputChannel: updated.outputChannel,
-                    outputChannelId: updated.outputChannelId,
-                    cronExpression: updated.cronExpression,
-                    runAt: updated.runAt?.toISOString() ?? null,
-                    enabled: updated.enabled,
-                    updatedAt: updated.updatedAt.toISOString(),
-                  },
-                },
-                null,
-                2,
-              ),
+          value: {
+            updated: true,
+            job: {
+              id: updated.id,
+              name: updated.name,
+              description: updated.description,
+              prompt: updated.prompt,
+              systemPrompt: updated.systemPrompt,
+              toolConfig: updated.toolConfig as Record<string, boolean> | null,
+              modelId: updated.modelId,
+              outputChannel: updated.outputChannel,
+              outputChannelId: updated.outputChannelId,
+              cronExpression: updated.cronExpression,
+              runAt: updated.runAt?.toISOString() ?? null,
+              enabled: updated.enabled,
+              updatedAt: updated.updatedAt.toISOString(),
             },
-          ],
+          },
           details: { id: updated.id },
         };
       },
@@ -429,7 +522,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
 
     // ─── agent_job_delete ───────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "agent_job_delete",
       label: "Delete Agent Job",
       description: "Delete an agent job definition and all its runs.",
@@ -438,6 +531,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           description: "Job definition ID.",
         }),
       }),
+      outputSchema: AGENT_JOB_DELETE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const definition = await prisma.agentDefinition.findFirst({
           where: { id: params.id, userId },
@@ -457,12 +551,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         await unscheduleAgentDefinition(params.id);
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ deleted: true, id: params.id }, null, 2),
-            },
-          ],
+          value: { deleted: true, id: params.id },
           details: { id: params.id },
         };
       },
@@ -470,7 +559,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
 
     // ─── agent_job_run ──────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "agent_job_run",
       label: "Run Agent Job",
       description: "Trigger an immediate run of an agent job by its ID.",
@@ -485,6 +574,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: AGENT_JOB_RUN_SCHEMA,
       execute: async (_toolCallId, params) => {
         const definition = await prisma.agentDefinition.findFirst({
           where: { id: params.id, userId },
@@ -508,20 +598,11 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  queued: true,
-                  runId: run.id,
-                  jobId: params.id,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            queued: true,
+            runId: run.id,
+            jobId: params.id,
+          },
           details: { runId: run.id },
         };
       },
@@ -529,7 +610,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
 
     // ─── agent_job_logs ─────────────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "agent_job_logs",
       label: "Agent Job Logs",
       description:
@@ -550,6 +631,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           }),
         ),
       }),
+      outputSchema: AGENT_JOB_LOGS_SCHEMA,
       execute: async (_toolCallId, params) => {
         const definition = await prisma.agentDefinition.findFirst({
           where: { id: params.id, userId },
@@ -584,50 +666,41 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  jobId: params.id,
-                  count: runs.length,
-                  runs: runs.map(
-                    (r: {
-                      id: string;
-                      status: string;
-                      prompt: string;
-                      modelId: string | null;
-                      inputTokens: number;
-                      outputTokens: number;
-                      cost: number;
-                      error: string | null;
-                      startedAt: Date | null;
-                      completedAt: Date | null;
-                      createdAt: Date;
-                    }) => ({
-                      id: r.id,
-                      status: r.status,
-                      prompt: r.prompt,
-                      modelId: r.modelId,
-                      inputTokens: r.inputTokens,
-                      outputTokens: r.outputTokens,
-                      cost: r.cost,
-                      error: r.error,
-                      startedAt: r.startedAt?.toISOString(),
-                      completedAt: r.completedAt?.toISOString(),
-                      duration:
-                        r.startedAt && r.completedAt
-                          ? r.completedAt.getTime() - r.startedAt.getTime()
-                          : null,
-                      createdAt: r.createdAt.toISOString(),
-                    }),
-                  ),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            jobId: params.id,
+            count: runs.length,
+            runs: runs.map(
+              (r: {
+                id: string;
+                status: string;
+                prompt: string;
+                modelId: string | null;
+                inputTokens: number;
+                outputTokens: number;
+                cost: number;
+                error: string | null;
+                startedAt: Date | null;
+                completedAt: Date | null;
+                createdAt: Date;
+              }) => ({
+                id: r.id,
+                status: r.status,
+                prompt: r.prompt,
+                modelId: r.modelId,
+                inputTokens: r.inputTokens,
+                outputTokens: r.outputTokens,
+                cost: r.cost,
+                error: r.error,
+                ...(r.startedAt ? { startedAt: r.startedAt.toISOString() } : {}),
+                ...(r.completedAt ? { completedAt: r.completedAt.toISOString() } : {}),
+                duration:
+                  r.startedAt && r.completedAt
+                    ? r.completedAt.getTime() - r.startedAt.getTime()
+                    : null,
+                createdAt: r.createdAt.toISOString(),
+              }),
+            ),
+          },
           details: { count: runs.length },
         };
       },
@@ -635,7 +708,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
 
     // ─── agent_job_run_messages ─────────────────────────────────────────────
 
-    defineTool({
+    defineStructuredTool({
       name: "agent_job_run_messages",
       label: "Agent Run Messages",
       description:
@@ -645,6 +718,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
           description: "Run ID.",
         }),
       }),
+      outputSchema: AGENT_RUN_MESSAGES_SCHEMA,
       execute: async (_toolCallId, params) => {
         const run = await prisma.agentRun.findFirst({
           where: { id: params.runId, userId },
@@ -668,36 +742,27 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         });
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  runId: params.runId,
-                  count: messages.length,
-                  messages: messages.map(
-                    (m: {
-                      id: string;
-                      role: string;
-                      content: string;
-                      thinking: string | null;
-                      toolCalls: string | null;
-                      createdAt: Date;
-                    }) => ({
-                      id: m.id,
-                      role: m.role,
-                      content: m.content,
-                      thinking: m.thinking,
-                      toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : null,
-                      createdAt: m.createdAt.toISOString(),
-                    }),
-                  ),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
+          value: {
+            runId: params.runId,
+            count: messages.length,
+            messages: messages.map(
+              (m: {
+                id: string;
+                role: string;
+                content: string;
+                thinking: string | null;
+                toolCalls: string | null;
+                createdAt: Date;
+              }) => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                thinking: m.thinking,
+                toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : null,
+                createdAt: m.createdAt.toISOString(),
+              }),
+            ),
+          },
           details: { count: messages.length },
         };
       },
