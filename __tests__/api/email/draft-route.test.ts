@@ -24,7 +24,7 @@ const {
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: mockCreateAgentSession,
-  SessionManager: { inMemory: () => ({}) },
+  SessionManager: { inMemory: () => ({ getCwd: () => "/tmp/session" }) },
   SettingsManager: { inMemory: () => ({}) },
 }));
 

@@ -1,9 +1,5 @@
 import path from "path";
-import {
-  createAgentSession,
-  SessionManager,
-  type AgentSessionEvent,
-} from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { getUploadsDir } from "@/lib/uploads";
 import { createBot, sendTelegramMessage, startTypingIndicator } from "./client";
@@ -31,7 +27,7 @@ import {
   startSessionExtensions,
 } from "@/lib/pi/processing-state";
 import { withChatLock } from "./chat-lock";
-import { createSessionSettings } from "@/lib/pi/settings";
+import { createSaaleAgentSession } from "@/lib/pi/agent-session";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import {
   downloadAndProcessTelegramFile,
@@ -346,10 +342,9 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     toolConfig: resolvedToolConfig,
   });
 
-  const { session } = await createAgentSession({
+  const { session } = await createSaaleAgentSession(userId, {
     sessionManager,
     modelRuntime,
-    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,
@@ -895,10 +890,9 @@ async function runTelegramCompaction(
     toolConfig: resolvedToolConfig,
   });
 
-  const { session } = await createAgentSession({
+  const { session } = await createSaaleAgentSession(userId, {
     sessionManager: SessionManager.continueRecent(sessionDir, sessionDir),
     modelRuntime,
-    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(resolvedModel ? { model: resolvedModel } : {}),
     customTools: allCustomTools,

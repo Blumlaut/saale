@@ -1,8 +1,4 @@
-import {
-  createAgentSession,
-  SessionManager,
-  type AgentSessionEvent,
-} from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
@@ -11,7 +7,7 @@ import {
   startSessionExtensions,
   TOOLS_PROMPT,
 } from "@/lib/pi/processing-state";
-import { createSessionSettings } from "@/lib/pi/settings";
+import { createSaaleAgentSession } from "@/lib/pi/agent-session";
 import { createTerminalScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { loadToolExposure } from "@/lib/pi/tool-exposure";
@@ -209,10 +205,9 @@ export async function executeAgentRun(
     `You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.\n\n${TOOLS_PROMPT}`;
 
   // Create agent session
-  const { session } = await createAgentSession({
+  const { session } = await createSaaleAgentSession(userId, {
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
-    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,

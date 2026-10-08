@@ -43,7 +43,7 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: vi.fn(),
-  SessionManager: { continueRecent: vi.fn(() => ({})) },
+  SessionManager: { continueRecent: vi.fn(() => ({ getCwd: () => "/tmp/session" })) },
 }));
 
 vi.mock("@/lib/telegram/client", () => ({

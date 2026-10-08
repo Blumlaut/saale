@@ -2,14 +2,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import {
-  createAgentSession,
-  SessionManager,
-  type CreateAgentSessionResult,
-} from "@earendil-works/pi-coding-agent";
+import { SessionManager, type CreateAgentSessionResult } from "@earendil-works/pi-coding-agent";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
-import { createSessionSettings } from "@/lib/pi/settings";
+import { createSaaleAgentSession } from "@/lib/pi/agent-session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
@@ -113,10 +109,9 @@ Rules:
 - Output plain text only — no markdown formatting`;
 
   // Create a lightweight agent session — no tools, no thinking, just text completion
-  const result: CreateAgentSessionResult = await createAgentSession({
+  const result: CreateAgentSessionResult = await createSaaleAgentSession(authResult.user.id, {
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
-    settingsManager: createSessionSettings(),
     noTools: "all",
     model,
     customTools: [],

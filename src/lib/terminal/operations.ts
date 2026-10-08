@@ -230,10 +230,10 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
 
     bash: {
       exec: async (command, requestedCwd, { onData, signal, timeout }) => {
-        // Pi hands us its own cwd, which is a host-side path (the Pi session
-        // directory) and does not exist in the container. Only a path inside
-        // the container's home is meaningful; anything else falls back to
-        // `cwd`, the user's home — the directory the file tools use as well.
+        // The agent session cwd is the user's container home
+        // (`createSaaleAgentSession`), so `requestedCwd` is normally that same
+        // path. Guard anyway: a path outside the home is an app-side path that
+        // does not exist in the container and must never reach it.
         const callCwd = requestedCwd && requestedCwd.startsWith(cwd) ? requestedCwd : undefined;
 
         // The timeout comes from the model's tool arguments, so a negative or
