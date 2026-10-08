@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { sendTypingIndicator } from "@/lib/telegram/client";
 import { resolveDefaultTelegramChat } from "@/lib/telegram/chats";
 import { deliverTelegramMessage } from "@/lib/telegram/notify";
+import { TELEGRAM_SEND_TOOL_NAME } from "@/lib/pi/tools/telegram-tools";
 import type { AgentOutput } from "./executor";
 
 /**
@@ -92,9 +93,19 @@ export async function buildAgentOutputHandler(params: {
   // reads them once the run has settled so they land on the run record.
   const failures: string[] = [];
 
+  // Chats the agent already messaged itself through `telegram_send`. A run can
+  // have both an output channel and the tool (the category is on by default),
+  // and then the agent's closing text is the same message it just sent —
+  // forwarding it would deliver everything twice. Once it has reached this
+  // chat itself, the runner leaves delivery to it.
+  const selfDeliveredChats = new Set<string>();
+  const targetChatId = chatId.toString();
+
   return {
     output: {
       async send(content) {
+        if (selfDeliveredChats.has(targetChatId)) return;
+
         const delivery = await deliverTelegramMessage({
           userId,
           encryptedToken: account.encryptedToken,
@@ -104,6 +115,14 @@ export async function buildAgentOutputHandler(params: {
         if (!delivery.ok && delivery.error) {
           failures.push(delivery.error);
         }
+      },
+      noteToolCall(call) {
+        if (call.isError || call.name !== TELEGRAM_SEND_TOOL_NAME) return;
+
+        // A successful send reports its chat, so a message to a *different*
+        // chat (an explicit group target, say) does not silence this channel.
+        const delivered = (call.structured as { chatId?: unknown } | undefined)?.chatId;
+        selfDeliveredChats.add(typeof delivered === "string" ? delivered : targetChatId);
       },
       typing() {
         sendTypingIndicator(account.encryptedToken, chatId);

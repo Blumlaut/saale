@@ -52,7 +52,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 import { createAgentSession } from "@earendil-works/pi-coding-agent";
-import { executeAgentRun } from "@/lib/agent-jobs/executor";
+import { executeAgentRun, type AgentOutput } from "@/lib/agent-jobs/executor";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 
 // ─── Fake session ────────────────────────────────────────────────────────────
@@ -419,5 +419,102 @@ describe("executeAgentRun — provider failures", () => {
     await result.promise;
 
     expect(fake.listenerCount()).toBe(0);
+  });
+});
+
+describe("executeAgentRun — output delivery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Start a run with an output handler and wait for it to subscribe. */
+  async function startRunWithOutput(
+    fake: ReturnType<typeof createFakeSession>,
+    output: AgentOutput,
+  ) {
+    const result = track(executeAgentRun("run-1", DEFINITION, "user-1", output));
+    await flush();
+    if (fake.listenerCount() === 0) {
+      throw new Error("executor never subscribed to the session");
+    }
+    return result;
+  }
+
+  it("hands every finished tool call to the output handler", async () => {
+    const fake = setup();
+    const output: AgentOutput = { send: vi.fn(), noteToolCall: vi.fn() };
+    const result = await startRunWithOutput(fake, output);
+
+    // A tool-only turn produces no text, so `send` never sees this call — the
+    // handler needs it to know the agent reached the user itself.
+    fake.emit({
+      type: "tool_execution_start",
+      toolCallId: "tc-1",
+      toolName: "telegram_send",
+      args: { message: "Stand up" },
+    });
+    fake.emit({
+      type: "tool_execution_end",
+      toolCallId: "tc-1",
+      toolName: "telegram_send",
+      result: {
+        content: [{ type: "text", text: "Sent to the user on Telegram." }],
+        details: { chatId: "42" },
+        structuredContent: { sent: true, chatId: "42" },
+      },
+      isError: false,
+    });
+    await flush();
+
+    expect(output.noteToolCall).toHaveBeenCalledWith({
+      name: "telegram_send",
+      args: { message: "Stand up" },
+      structured: { sent: true, chatId: "42" },
+      isError: false,
+    });
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+  });
+
+  it("reports a failed tool call as failed", async () => {
+    const fake = setup();
+    const output: AgentOutput = { send: vi.fn(), noteToolCall: vi.fn() };
+    const result = await startRunWithOutput(fake, output);
+
+    fake.emit({
+      type: "tool_execution_end",
+      toolCallId: "tc-2",
+      toolName: "telegram_send",
+      result: { content: [{ type: "text", text: "not delivered" }] },
+      isError: true,
+    });
+    await flush();
+
+    expect(output.noteToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "telegram_send", isError: true }),
+    );
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+  });
+
+  it("still routes assistant text to the handler", async () => {
+    const fake = setup();
+    const output: AgentOutput = { send: vi.fn(), noteToolCall: vi.fn() };
+    const result = await startRunWithOutput(fake, output);
+
+    fake.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "Done" }] },
+    });
+    fake.emit(TURN_END);
+    await flush();
+
+    expect(output.send).toHaveBeenCalledWith("Done", {});
+    expect(output.noteToolCall).not.toHaveBeenCalled();
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
   });
 });

@@ -260,4 +260,123 @@ describe("buildAgentOutputHandler", () => {
 
     expect(mockSendTypingIndicator).toHaveBeenCalledWith("enc-token", BigInt("-100119075844"));
   });
+
+  describe("when the agent reaches the chat itself", () => {
+    /** A successful `telegram_send` result, as the executor forwards it. */
+    function telegramSend(chatId: string, isError = false) {
+      return {
+        name: "telegram_send",
+        args: { message: "Stand up" },
+        structured: { sent: true, chatId },
+        isError,
+      };
+    }
+
+    it("drops the run's closing text so the message lands once", async () => {
+      mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+      mockSendTelegramMessage.mockResolvedValue([42]);
+
+      const { output } = await buildAgentOutputHandler({
+        userId,
+        outputChannel: "telegram",
+        outputChannelId: "119075844",
+      });
+
+      // The agent sends the reminder itself, then closes with the same text.
+      output!.noteToolCall?.(telegramSend("119075844"));
+      await output!.send("Stand up");
+
+      // The tool already delivered it — forwarding the closing text would
+      // message the user twice.
+      expect(mockSendTelegramMessage).not.toHaveBeenCalled();
+      expect(output!.deliveryErrors?.()).toEqual([]);
+    });
+
+    it("keeps delivering to a different chat", async () => {
+      mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+      mockSendTelegramMessage.mockResolvedValue([42]);
+
+      const { output } = await buildAgentOutputHandler({
+        userId,
+        outputChannel: "telegram",
+        outputChannelId: "-100999",
+      });
+
+      // A ping to the user's private chat is not the group this job targets.
+      output!.noteToolCall?.(telegramSend("119075844"));
+      await output!.send("Weekly report");
+
+      expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+        "enc-token",
+        BigInt("-100999"),
+        "Weekly report",
+      );
+    });
+
+    it("ignores a failed tool call", async () => {
+      mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+      mockSendTelegramMessage.mockResolvedValue([42]);
+
+      const { output } = await buildAgentOutputHandler({
+        userId,
+        outputChannel: "telegram",
+        outputChannelId: "119075844",
+      });
+
+      // Nothing reached the user, so the runner still owes them the message.
+      output!.noteToolCall?.(telegramSend("119075844", true));
+      await output!.send("Stand up");
+
+      expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+        "enc-token",
+        BigInt("119075844"),
+        "Stand up",
+      );
+    });
+
+    it("ignores other tools", async () => {
+      mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+      mockSendTelegramMessage.mockResolvedValue([42]);
+
+      const { output } = await buildAgentOutputHandler({
+        userId,
+        outputChannel: "telegram",
+        outputChannelId: "119075844",
+      });
+
+      output!.noteToolCall?.({
+        name: "email_send",
+        args: { body: "hi" },
+        structured: { chatId: "119075844" },
+        isError: false,
+      });
+      await output!.send("Done");
+
+      expect(mockSendTelegramMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("suppresses every later turn, not just the one after the send", async () => {
+      mockTelegramAccount.findUnique.mockResolvedValue(enabledAccount);
+      mockSendTelegramMessage.mockResolvedValue([42]);
+
+      const { output } = await buildAgentOutputHandler({
+        userId,
+        outputChannel: "telegram",
+        outputChannelId: "119075844",
+      });
+
+      await output!.send("Checking your calendar");
+      output!.noteToolCall?.(telegramSend("119075844"));
+      await output!.send("Stand up");
+      await output!.send("Anything else?");
+
+      // Only the turn before the agent took over delivery was forwarded.
+      expect(mockSendTelegramMessage).toHaveBeenCalledTimes(1);
+      expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+        "enc-token",
+        BigInt("119075844"),
+        "Checking your calendar",
+      );
+    });
+  });
 });
