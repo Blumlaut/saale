@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   AlertDialog,
@@ -38,6 +37,7 @@ import {
   MoreVertical,
   MessageSquarePlus,
   CheckSquare,
+  Check,
   X,
 } from "lucide-react";
 
@@ -126,11 +126,11 @@ function SessionRow({
 
   return (
     <div
+      data-slot="session-row"
       className={cn(
-        "group relative flex items-center gap-1 rounded-lg py-2 pr-1 text-sm transition-colors duration-150",
-        selecting ? "pl-1.5" : "pl-3",
+        "group relative flex items-center gap-1 rounded-lg text-sm transition-colors duration-150 select-none",
+        !selecting && "pr-1",
         selected ? "bg-primary/10" : active ? "bg-accent/70" : "hover:bg-accent/60",
-        selecting && "select-none",
       )}
       onPointerDown={hold.onPointerDown}
       onPointerMove={hold.onPointerMove}
@@ -138,38 +138,50 @@ function SessionRow({
       onPointerCancel={hold.onPointerCancel}
       onContextMenu={hold.onContextMenu}
     >
-      {selecting && (
-        <Checkbox
-          checked={selected}
-          onCheckedChange={() => onToggleSelect(session.id)}
-          aria-label={`Select ${session.title}`}
-          className="ml-1.5"
-        />
-      )}
+      {/* One target per row: while picking, the whole surface toggles, so a tap
+          that lands beside the box — or on the row's padding — still counts. */}
       <button
-        className="flex min-w-0 flex-1 flex-col items-start text-left"
+        className={cn(
+          "flex min-w-0 flex-1 items-center text-left",
+          selecting ? "gap-2 px-1.5" : "pl-3",
+        )}
+        aria-pressed={selecting ? selected : undefined}
         onClick={handleActivate}
       >
-        <div className="flex items-center gap-1.5">
-          <div className="truncate font-medium">
-            {session.title.length > TITLE_MAX_CHARS
-              ? `${session.title.slice(0, TITLE_MAX_CHARS)}…`
-              : session.title}
-          </div>
-          {session.isGenerating && (
-            <span className="text-muted-foreground animate-pulse-dot -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current" />
-          )}
-          {session.forkedFromSessionId && (
-            <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
-          )}
-          {session.temporary && <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />}
-        </div>
-        <div className="text-muted-foreground truncate text-xs">
-          {formatDate(session.lastActivityAt ?? session.updatedAt)} · {session.messageCount}{" "}
-          messages
-          {session.forkedFromSessionId && " · fork"}
-          {session.temporary && " · auto-delete"}
-        </div>
+        {selecting && (
+          <span
+            aria-hidden
+            data-slot="selection-indicator"
+            className={cn(
+              "border-input flex size-4 shrink-0 items-center justify-center rounded-sm border transition-colors",
+              selected && "border-primary bg-primary text-primary-foreground",
+            )}
+          >
+            {selected && <Check className="size-3.5" strokeWidth={3} />}
+          </span>
+        )}
+        <span className="flex min-w-0 flex-1 flex-col py-2">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate font-medium">
+              {session.title.length > TITLE_MAX_CHARS
+                ? `${session.title.slice(0, TITLE_MAX_CHARS)}…`
+                : session.title}
+            </span>
+            {session.isGenerating && (
+              <span className="text-muted-foreground animate-pulse-dot -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current" />
+            )}
+            {session.forkedFromSessionId && (
+              <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
+            )}
+            {session.temporary && <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />}
+          </span>
+          <span className="text-muted-foreground truncate text-xs">
+            {formatDate(session.lastActivityAt ?? session.updatedAt)} · {session.messageCount}{" "}
+            messages
+            {session.forkedFromSessionId && " · fork"}
+            {session.temporary && " · auto-delete"}
+          </span>
+        </span>
       </button>
       {/* Delete lives behind the row menu: a permanent one-tap delete next to
           every row is too easy to hit while scrolling. */}
@@ -375,35 +387,6 @@ export function SessionSidebar({
         </div>
       )}
 
-      {/* Selection bar — directly above the list it acts on, and below the top
-          row: the mobile sheet draws its own close button in the panel's corner. */}
-      {selecting && (
-        <div className="border-border/30 flex h-11 shrink-0 items-center gap-1 border-b px-2 md:px-4">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Cancel selection"
-            onClick={() => setSelectedIds(new Set())}
-          >
-            <X />
-          </Button>
-          <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium">
-            {selectedCount} selected
-          </span>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-8 shrink-0"
-            aria-label={`Delete ${selectedCount} selected ${selectedCount === 1 ? "chat" : "chats"}`}
-            disabled={bulkDeleting}
-            onClick={() => setConfirmOpen(true)}
-          >
-            {bulkDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-            Delete
-          </Button>
-        </div>
-      )}
-
       {/* Session list */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {loading ? (
@@ -440,6 +423,37 @@ export function SessionSidebar({
           </div>
         )}
       </div>
+
+      {/* Selection bar — pinned below the list, not above it: a row that jumps
+          out from under the finger would hand the click that follows a hold to
+          a neighbour, and select a chat nobody touched. Out of reach of the
+          sheet's own close button in the panel's top corner, too. */}
+      {selecting && (
+        <div className="border-border/30 flex h-11 shrink-0 items-center gap-1 border-t px-2 md:px-4">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Cancel selection"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X />
+          </Button>
+          <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium">
+            {selectedCount} selected
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-8 shrink-0"
+            aria-label={`Delete ${selectedCount} selected ${selectedCount === 1 ? "chat" : "chats"}`}
+            disabled={bulkDeleting}
+            onClick={() => setConfirmOpen(true)}
+          >
+            {bulkDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+            Delete
+          </Button>
+        </div>
+      )}
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

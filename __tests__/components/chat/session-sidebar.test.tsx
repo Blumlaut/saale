@@ -211,16 +211,18 @@ describe("SessionSidebar multi-select", () => {
     );
   });
 
-  it("toggles a chat from its own checkbox", async () => {
+  it("toggles a chat when the tap lands on its selection box", async () => {
     await renderSidebar();
 
     fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Recent chat" }));
+    const box = rowButton("Recent chat").querySelector('[data-slot="selection-indicator"]');
+    expect(box).not.toBeNull();
 
-    // One toggle per click — the checkbox must not also fire the row's handler.
+    // The box is part of the row's single target — one tap, one toggle.
+    fireEvent.click(box as HTMLElement);
     expect(screen.getByText("2 selected")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Recent chat" }));
+    fireEvent.click(box as HTMLElement);
     expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
@@ -240,21 +242,15 @@ describe("SessionSidebar multi-select", () => {
     expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
   });
 
-  it("starts a selection from the row menu and shows checkboxes", async () => {
+  it("starts a selection from the row menu and marks the picked rows", async () => {
     await renderSidebar();
 
     await revealRowActions("Fresh chat");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Select chat" }));
 
     expect(screen.getByText("1 selected")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Select Fresh chat" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    expect(screen.getByRole("checkbox", { name: "Select Recent chat" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    expect(rowButton("Fresh chat")).toHaveAttribute("aria-pressed", "true");
+    expect(rowButton("Recent chat")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("keeps the row you held selected without opening it", async () => {
