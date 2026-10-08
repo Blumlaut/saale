@@ -16,10 +16,12 @@ import { previewScript, previewWatcherTick } from "@/lib/watchers/tick";
  * Script watcher tools.
  *
  * A watcher is a durable, unattended capability: its script runs on a schedule
- * and can call the user's tools without anyone watching. So the tools that
- * create, change or run one default to asking the user — the approval card is
- * where the script is read before it becomes permanent — and nothing here can
- * approve a script on the user's behalf.
+ * and can call the user's tools without anyone watching. Listing, testing and
+ * updating a watcher run on the model's own say-so — testing runs in a sandbox
+ * without recording or waking anyone, and updating a script still pauses the
+ * watcher until the user approves it on the Watchers page. Creating or deleting
+ * one asks the user first, and nothing here can approve a watcher's script on
+ * the user's behalf.
  */
 
 /** How a script is expected to report. Repeated in the descriptions on purpose. */
