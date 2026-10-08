@@ -38,8 +38,27 @@ import { isStreamingMessage, isTempUserMessage } from "./message-factories";
  * the reducer recognises a turn it already has (see `stream-reducer`), so
  * dropping it here would let a replayed event for that turn add a second copy
  * of a message sitting on screen.
+ *
+ * A turn saved while the snapshot was in flight is the same problem seen from
+ * the start: `message_saved` renamed the bubble to a row the server had not
+ * committed when it read the response, so the snapshot does not have it. Only
+ * its `savedAt` (see `MergeOptions`) explains the absence — anything else the
+ * snapshot lacks is really gone.
  */
-export function mergeMessagesWithLive(dbMessages: Message[], prevMessages: Message[]): Message[] {
+export interface MergeOptions {
+  /**
+   * The client clock when the snapshot was requested. A turn saved at or after
+   * that moment cannot be in it, however fresh the response looks, so it is
+   * kept even though the snapshot lacks it.
+   */
+  requestedAt?: number;
+}
+
+export function mergeMessagesWithLive(
+  dbMessages: Message[],
+  prevMessages: Message[],
+  options: MergeOptions = {},
+): Message[] {
   const turnByMessageId = new Map(
     prevMessages.flatMap((m) => (m.turnId ? [[m.id, m.turnId] as const] : [])),
   );
@@ -48,7 +67,17 @@ export function mergeMessagesWithLive(dbMessages: Message[], prevMessages: Messa
     return turnId && !m.turnId ? { ...m, turnId } : m;
   });
   const live = prevMessages.filter((m) => isStreamingMessage(m) || isTempUserMessage(m));
-  const ordered = [...tagged, ...live.filter(isStreamingMessage)].sort(byCreatedAt);
+  const snapshotIds = new Set(dbMessages.map((m) => m.id));
+  const savedWhileLoading = prevMessages.filter(
+    (m) =>
+      !snapshotIds.has(m.id) &&
+      options.requestedAt !== undefined &&
+      m.savedAt !== undefined &&
+      m.savedAt >= options.requestedAt,
+  );
+  const ordered = [...tagged, ...live.filter(isStreamingMessage), ...savedWhileLoading].sort(
+    byCreatedAt,
+  );
   return [...ordered, ...live.filter(isTempUserMessage)];
 }
 

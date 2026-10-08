@@ -91,6 +91,13 @@ export interface Message {
    * for a turn already on screen updates it instead of adding a second copy.
    */
   turnId?: string | undefined;
+  /**
+   * When this client learned the row id of a turn it streamed (client clock).
+   * A reload's snapshot that was read before the save committed cannot contain
+   * the row, so the merge needs to tell "not committed yet" from "deleted" —
+   * only a save this recent explains the absence (see `mergeMessagesWithLive`).
+   */
+  savedAt?: number | undefined;
   attachments: AttachmentData[] | undefined;
   approval?: ApprovalData;
   compaction?: CompactionData;

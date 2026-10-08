@@ -147,4 +147,70 @@ describe("mergeMessagesWithLive", () => {
 
     expect(merged.map((m) => m.turnId)).toEqual(["turn-1", undefined]);
   });
+
+  it("keeps a turn saved while the snapshot was in flight", () => {
+    // The snapshot was read before the save committed, but `message_saved`
+    // renamed the bubble before the response landed. The row is on screen and
+    // in the DB, so keeping it is right — and its absence from the snapshot is
+    // explained by the save's timing, not by a delete.
+    const staleDb = [makeMessage({ id: "db-user", role: "user", content: "hi" })];
+    const prev = [
+      makeMessage({ id: "db-user", role: "user", content: "hi" }),
+      makeMessage({ id: "db-turn-1", role: "assistant", content: "saved", savedAt: 5_000 }),
+    ];
+
+    const merged = mergeMessagesWithLive(staleDb, prev, { requestedAt: 4_000 });
+
+    expect(merged.map((m) => m.id)).toEqual(["db-user", "db-turn-1"]);
+  });
+
+  it("drops a message the snapshot lacks when the save predates the request", () => {
+    // Saved before the request, so a snapshot without it means it is gone from
+    // the DB — deleted, or truncated by editing an earlier message. Keeping it
+    // would make those actions look like they did nothing.
+    const db = [makeMessage({ id: "db-user", role: "user", content: "edited" })];
+    const prev = [
+      makeMessage({ id: "db-user", role: "user", content: "original" }),
+      makeMessage({ id: "db-gone", role: "assistant", content: "truncated", savedAt: 3_000 }),
+    ];
+
+    const merged = mergeMessagesWithLive(db, prev, { requestedAt: 4_000 });
+
+    expect(merged.map((m) => m.id)).toEqual(["db-user"]);
+  });
+
+  it("drops an untagged message the snapshot lacks", () => {
+    // Loaded from the DB by an earlier snapshot, never streamed here: the tag
+    // is what marks it as this client's own turn.
+    const db = [makeMessage({ id: "db-user", role: "user" })];
+    const prev = [makeMessage({ id: "db-user", role: "user" }), makeMessage({ id: "db-gone" })];
+
+    const merged = mergeMessagesWithLive(db, prev, { requestedAt: 4_000 });
+
+    expect(merged.map((m) => m.id)).toEqual(["db-user"]);
+  });
+
+  it("prefers the snapshot's copy of a row it does contain", () => {
+    const db = [makeMessage({ id: "db-1", role: "assistant", content: "from the DB" })];
+    const prev = [
+      makeMessage({ id: "db-1", role: "assistant", content: "streamed", savedAt: 5_000 }),
+    ];
+
+    const merged = mergeMessagesWithLive(db, prev, { requestedAt: 4_000 });
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.content).toBe("from the DB");
+  });
+
+  it("keeps nothing when the caller does not say when it asked", () => {
+    // Without a request time there is no way to tell a stale snapshot from a
+    // deletion, so the snapshot wins.
+    const db = [makeMessage({ id: "db-user", role: "user" })];
+    const prev = [
+      makeMessage({ id: "db-user", role: "user" }),
+      makeMessage({ id: "db-1", role: "assistant", savedAt: 5_000 }),
+    ];
+
+    expect(mergeMessagesWithLive(db, prev).map((m) => m.id)).toEqual(["db-user"]);
+  });
 });

@@ -346,7 +346,12 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     if (!rootMessageIdRef.current) {
       rootMessageIdRef.current = parsed.messageId;
     }
-    dispatch({ type: "message_saved", turnId: parsed.turnId, messageId: parsed.messageId });
+    dispatch({
+      type: "message_saved",
+      turnId: parsed.turnId,
+      messageId: parsed.messageId,
+      receivedAt: Date.now(),
+    });
   });
 
   // ── Approval request ──────────────────────────────────────────────────
