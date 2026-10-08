@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireAccountOwner, sanitizeError } from "@/lib/auth";
 import { decrypt } from "@/lib/crypto";
-import { sendEmail } from "@/lib/email/smtp";
+import { sendMailForAccount } from "@/lib/email/send-mail";
 
 /**
  * POST /api/email/accounts/:accountId/send — Send an email
@@ -32,7 +32,7 @@ export async function POST(
   const password = decrypt(account.encryptedPassword);
 
   try {
-    const result = await sendEmail({
+    const result = await sendMailForAccount({
       account,
       password,
       to: Array.isArray(to) ? to : [to],
@@ -47,6 +47,7 @@ export async function POST(
     return NextResponse.json({
       sent: true,
       messageId: result.messageId,
+      sentFolder: result.sentFolder,
     });
   } catch (err) {
     return NextResponse.json({ error: sanitizeError(err) }, { status: 500 });

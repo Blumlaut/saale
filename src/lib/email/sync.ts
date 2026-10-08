@@ -1,98 +1,9 @@
-import type {
-  FetchMessageObject,
-  MessageAddressObject,
-  MessageEnvelopeObject,
-  ListResponse,
-} from "imapflow";
+import type { FetchMessageObject, MessageAddressObject, MessageEnvelopeObject } from "imapflow";
 import { ImapFlow } from "imapflow";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { discoverFolders } from "@/lib/email/folders";
 import { sanitizePostgresString } from "@/lib/email/utils";
-
-/**
- * Special-use folder attribute → fallback names to try if SPECIAL-USE discovery fails.
- */
-const SPECIAL_USE_FALLBACKS: Record<string, string[]> = {
-  "\\Inbox": ["INBOX", "Inbox"],
-  "\\Sent": ["Sent", "Sent Messages", "Sent Items", "Gesendet"],
-  "\\Drafts": ["Drafts", "Drafts Messages", "Entwurf", "Entwürfe"],
-  "\\Trash": ["Trash", "Deleted Messages", "Deleted Items", "Gelöscht", "Papierkorb"],
-  "\\Archive": ["Archive", "Archiv", "All Mail"],
-};
-
-/**
- * Discover mailbox folders using IMAP LIST.
- * Returns all folders plus special-use matched folders.
- */
-async function discoverFolders(
-  mailbox: ImapFlow,
-): Promise<{ allFolders: string[]; special: Record<string, string | null> }> {
-  const special: Record<string, string | null> = {
-    "\\Sent": null,
-    "\\Drafts": null,
-    "\\Trash": null,
-    "\\Archive": null,
-  };
-  const allFolders: string[] = [];
-
-  try {
-    const mailboxes: ListResponse[] = await mailbox.list();
-
-    // Collect all folder paths (skip INBOX and \Noselect parent folders).
-    // Use mb.path (full selectable path like "INBOX/Zapx") instead of mb.name
-    // (last segment only like "Zapx") — mailboxOpen() needs the full path.
-    for (const mb of mailboxes) {
-      if (mb.name.toUpperCase() === "INBOX") continue;
-      const attrs = mb.flags ?? new Set<string>();
-      if (attrs.has("\\Noselect")) continue; // parent container, not selectable
-      allFolders.push(mb.path);
-    }
-
-    for (const mb of mailboxes) {
-      const attrs = mb.flags ?? new Set<string>();
-
-      // Match special-use attributes (check both flags set and specialUse field).
-      // Store mb.path (selectable path) instead of mb.name.
-      if ((attrs.has("\\Sent") || mb.specialUse === "\\Sent") && !special["\\Sent"]) {
-        special["\\Sent"] = mb.path;
-      }
-      if ((attrs.has("\\Drafts") || mb.specialUse === "\\Drafts") && !special["\\Drafts"]) {
-        special["\\Drafts"] = mb.path;
-      }
-      if ((attrs.has("\\Trash") || mb.specialUse === "\\Trash") && !special["\\Trash"]) {
-        special["\\Trash"] = mb.path;
-      }
-      if ((attrs.has("\\Archive") || mb.specialUse === "\\Archive") && !special["\\Archive"]) {
-        special["\\Archive"] = mb.path;
-      }
-    }
-
-    // Fill in any gaps with fallback name matching (case-insensitive)
-    for (const [attr, fallbacks] of Object.entries(SPECIAL_USE_FALLBACKS)) {
-      if (attr === "\\Inbox") continue; // INBOX is always "INBOX"
-      if (special[attr as keyof typeof special]) continue; // already found
-
-      for (const fallback of fallbacks) {
-        const match = mailboxes.find((mb) => mb.name.toLowerCase() === fallback.toLowerCase());
-        if (match) {
-          special[attr as keyof typeof special] = match.path;
-          break;
-        }
-      }
-    }
-  } catch {
-    // If listing fails, rely purely on fallback names
-    for (const attr of Object.keys(special)) {
-      const fallbacks = SPECIAL_USE_FALLBACKS[attr];
-      const firstFallback = fallbacks?.[0];
-      if (firstFallback) {
-        special[attr as keyof typeof special] = firstFallback;
-      }
-    }
-  }
-
-  return { allFolders, special };
-}
 
 /**
  * Extract a comma-separated address list from an imapflow address array.
@@ -104,14 +15,19 @@ function addressesToString(addrs: MessageAddressObject[] | undefined): string {
 
 /**
  * Upsert a single message from its IMAP envelope (headers only).
- * Body fields (bodyPreview, bodyHtml, bodyText) are stored as null
- * and fetched on-demand when the user opens the message.
+ *
+ * Body fields are left alone: a message already in the DB keeps the body that
+ * was fetched when it was last opened. Nulling them here would blank out
+ * today's mail on every run, because `SINCE` matches by day and re-fetches the
+ * whole of today each time.
+ *
+ * Returns whether the row was new, which is what the sync reports to the user.
  */
 async function syncMessageFromEnvelope(
   msg: FetchMessageObject,
   accountId: string,
   folder: string,
-): Promise<void> {
+): Promise<"created" | "updated"> {
   const uid = String(msg.uid ?? "");
   const envelope = msg.envelope as MessageEnvelopeObject | undefined;
   const flags = msg.flags ?? new Set<string>();
@@ -126,8 +42,9 @@ async function syncMessageFromEnvelope(
 
   const existing = await prisma.emailMessage.findUnique({
     where: {
-      accountId_uid: {
+      accountId_folder_uid: {
         accountId,
+        folder,
         uid,
       },
     },
@@ -143,10 +60,6 @@ async function syncMessageFromEnvelope(
     folder,
     isRead: flagsArray.includes("\\Seen"),
     isStarred: flagsArray.includes("\\Flagged"),
-    // Body fields are null — fetched on-demand
-    bodyPreview: null,
-    bodyHtml: null,
-    bodyText: null,
   };
 
   if (existing) {
@@ -154,11 +67,13 @@ async function syncMessageFromEnvelope(
       where: { id: existing.id },
       data: updateData,
     });
-  } else {
-    await prisma.emailMessage.create({
-      data: { ...updateData, accountId },
-    });
+    return "updated";
   }
+
+  await prisma.emailMessage.create({
+    data: { ...updateData, accountId },
+  });
+  return "created";
 }
 
 /**
@@ -250,12 +165,12 @@ export async function syncEmailAccount(accountId: string): Promise<{
         // Process messages from the async iterator
         for await (const msg of mailbox.fetch(uids, fetchOpts)) {
           try {
-            await syncMessageFromEnvelope(msg, accountId, folder);
+            const outcome = await syncMessageFromEnvelope(msg, accountId, folder);
 
-            if (msg.envelope) {
-              updatedMessages++;
-            } else {
+            if (outcome === "created") {
               newMessages++;
+            } else {
+              updatedMessages++;
             }
           } catch (err) {
             const msgErr = err as Error;

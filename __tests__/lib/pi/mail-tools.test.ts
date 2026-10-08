@@ -27,8 +27,8 @@ vi.mock("@/lib/crypto", () => ({
 }));
 
 // Mock email modules
-vi.mock("@/lib/email/smtp", () => ({
-  sendEmail: vi.fn().mockResolvedValue({ messageId: "msg-123" }),
+vi.mock("@/lib/email/send-mail", () => ({
+  sendMailForAccount: vi.fn().mockResolvedValue({ messageId: "msg-123", sentFolder: "Sent" }),
 }));
 
 vi.mock("@/lib/email/sync", () => ({
@@ -48,6 +48,7 @@ vi.mock("@/lib/email/imap", () => ({
 
 // Import mocks for assertions
 import * as db from "@/lib/db";
+import { sendMailForAccount } from "@/lib/email/send-mail";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockEmailAccount = db.prisma.emailAccount as any;
@@ -373,6 +374,80 @@ describe("createMailTools", () => {
         where: { userId: "user-123" },
         select: { id: true },
       });
+    });
+  });
+
+  describe("mail_send", () => {
+    const sendParams = {
+      accountId: "acc-1",
+      to: ["you@example.com"],
+      subject: "hi",
+      body: "body",
+    };
+
+    beforeEach(() => {
+      mockEmailAccount.findFirst.mockResolvedValue({
+        id: "acc-1",
+        userId,
+        email: "me@example.com",
+        encryptedPassword: "enc",
+      });
+      vi.mocked(sendMailForAccount).mockResolvedValue({
+        messageId: "msg-123",
+        sentFolder: "Sent",
+      });
+    });
+
+    it("scopes the sending account to the caller's user", async () => {
+      const tools = createMailTools(userId);
+      const mailSend = tools.find((t) => t.name === "mail_send")!;
+
+      await callExecute(mailSend.execute, sendParams);
+
+      expect(mockEmailAccount.findFirst).toHaveBeenCalledWith({
+        where: { id: "acc-1", userId: "user-123" },
+      });
+    });
+
+    it("reports the folder the sent copy was filed in", async () => {
+      const tools = createMailTools(userId);
+      const mailSend = tools.find((t) => t.name === "mail_send")!;
+
+      const result = await callExecute(mailSend.execute, sendParams);
+
+      expect(result.structuredContent).toEqual({
+        sent: true,
+        messageId: "msg-123",
+        to: ["you@example.com"],
+        subject: "hi",
+        sentFolder: "Sent",
+      });
+    });
+
+    it("still reports the send when no copy could be filed in Sent", async () => {
+      vi.mocked(sendMailForAccount).mockResolvedValue({
+        messageId: "msg-123",
+        sentFolder: null,
+      });
+
+      const tools = createMailTools(userId);
+      const mailSend = tools.find((t) => t.name === "mail_send")!;
+
+      const result = await callExecute(mailSend.execute, sendParams);
+
+      expect(result.structuredContent).toMatchObject({ sent: true, sentFolder: null });
+    });
+
+    it("refuses to send from an account the user does not own", async () => {
+      mockEmailAccount.findFirst.mockResolvedValue(null);
+
+      const tools = createMailTools(userId);
+      const mailSend = tools.find((t) => t.name === "mail_send")!;
+
+      await expect(callExecute(mailSend.execute, sendParams)).rejects.toThrow(
+        "Email account acc-1 not found",
+      );
+      expect(sendMailForAccount).not.toHaveBeenCalled();
     });
   });
 });

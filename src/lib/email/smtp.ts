@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
-import nodemailer from "nodemailer";
+import nodemailer, { type SendMailOptions } from "nodemailer";
+import MailComposer from "nodemailer/lib/mail-composer";
 
 /** Strip CR/LF characters to prevent email header injection. */
 function sanitizeHeader(value: string): string {
@@ -90,6 +91,11 @@ async function resolveAttachments(
 
 /**
  * Send an email via SMTP.
+ *
+ * Returns the raw MIME source of the message alongside its id so the caller can
+ * file an identical copy in the account's Sent folder: submitting over SMTP
+ * leaves no trace there on most servers, and the copy has to carry the same
+ * Message-ID as the delivered message for the two to be recognised as one.
  */
 export async function sendEmail(params: {
   account: {
@@ -110,7 +116,7 @@ export async function sendEmail(params: {
   attachmentPaths?: string[];
   /** Base directory to resolve attachment paths against. */
   attachmentBaseDir?: string;
-}): Promise<{ messageId: string }> {
+}): Promise<{ messageId: string; raw: Buffer; date: Date }> {
   const transporter = nodemailer.createTransport({
     host: params.account.smtpHost,
     port: params.account.smtpPort,
@@ -121,7 +127,7 @@ export async function sendEmail(params: {
     },
   });
 
-  const mailOptions: Record<string, unknown> = {
+  const mailOptions: SendMailOptions = {
     from: params.account.email,
     to: params.to.map(sanitizeHeader).join(", "),
     cc: params.cc?.map(sanitizeHeader).join(", "),
@@ -140,9 +146,17 @@ export async function sendEmail(params: {
     );
   }
 
-  const info = await transporter.sendMail(mailOptions);
+  // Compose the message to pin its Message-ID and Date: the transporter renders
+  // its own copy for delivery, and both have to agree so the delivered message
+  // and the Sent copy are one mail. The pinned id is what the caller reports.
+  const date = new Date();
+  const node = new MailComposer({ ...mailOptions, date }).compile();
+  const messageId = node.messageId();
+  const raw = await node.build();
 
-  return { messageId: info.messageId };
+  await transporter.sendMail({ ...mailOptions, messageId, date });
+
+  return { messageId, raw, date };
 }
 
 /**
