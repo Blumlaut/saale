@@ -12,6 +12,7 @@ import { createWebTools } from "./tools/web-tools";
 import { createMemoryTools } from "./tools/memory-tools";
 import { createTaskTools } from "./tools/task-tools";
 import { createAgentJobTools } from "./tools/agent-job-tools";
+import { createWatcherTools } from "./tools/watcher-tools";
 import { createTelegramTools } from "./tools/telegram-tools";
 import { createInfraTools } from "./tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
@@ -46,6 +47,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   memory: (userId) => createMemoryTools(userId),
   tasks: (userId) => createTaskTools(userId),
   agentJobs: (userId) => createAgentJobTools(userId),
+  watchers: (userId, sessionId) => createWatcherTools(userId, sessionId),
   infra: (userId) => createInfraTools(userId),
   settings: (userId) => createSettingsTools(userId),
 };

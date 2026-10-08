@@ -5,7 +5,9 @@ import {
   createWorker,
   scheduleAllAgentDefinitions,
   scheduleAllJobs,
+  scheduleAllWatchers,
   scheduleOrphanCleanup,
+  WATCHER_TICK_JOB_NAME,
 } from "@/lib/queue";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { registerAllWebhooks } from "@/lib/telegram";
@@ -69,6 +71,18 @@ async function executeAgentJobViaApp(job: Job): Promise<unknown> {
   });
 }
 
+/**
+ * Execute one watcher tick by calling the Next.js app's internal API.
+ *
+ * The tick needs the app's tool factories and the user's settings, and the app
+ * is where the sandbox already runs for chats — the worker only schedules.
+ */
+async function executeWatcherTickViaApp(job: Job): Promise<unknown> {
+  return postToApp("/api/watchers/execute", {
+    watcherId: (job.data as { watcherId?: string }).watcherId,
+  });
+}
+
 /** Route jobs: system jobs inline, user jobs via Next.js API. */
 function createJobRouter(): Processor {
   return async (job: Job) => {
@@ -81,6 +95,9 @@ function createJobRouter(): Processor {
     }
     if (job.name === "agent_execute") {
       return executeAgentJobViaApp(job);
+    }
+    if (job.name === WATCHER_TICK_JOB_NAME) {
+      return executeWatcherTickViaApp(job);
     }
     return executeJobViaApp(job);
   };
@@ -134,6 +151,7 @@ async function main() {
 
   await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
   await retryUntilSuccess("Schedule agent definitions", scheduleAllAgentDefinitions);
+  await retryUntilSuccess("Schedule watchers", scheduleAllWatchers);
   await retryUntilSuccess("Schedule orphan cleanup", registerOrphanCleanup);
   await retryUntilSuccess("Register Telegram webhooks", registerAllWebhooks);
 

@@ -306,6 +306,82 @@ export async function scheduleAllAgentDefinitions(): Promise<void> {
   }
 }
 
+// ─── Script watcher scheduling ──────────────────────────────────────────────
+
+/** BullMQ scheduler key namespace for script watchers. */
+const WATCHER_SCHEDULER_PREFIX = "watcher-scheduled-";
+
+/** Job name the watcher schedulers enqueue. */
+export const WATCHER_TICK_JOB_NAME = "watcher_tick";
+
+/** Scheduler id for a watcher. */
+export function watcherSchedulerId(watcherId: string): string {
+  return `${WATCHER_SCHEDULER_PREFIX}${watcherId}`;
+}
+
+/** The scheduling-relevant fields of a ScriptWatcher. */
+export interface WatcherSchedule {
+  id: string;
+  enabled: boolean;
+  cronExpression: string;
+}
+
+/**
+ * Schedule a watcher's ticks.
+ *
+ * Cron granularity is one minute, which is also the fastest a watcher can poll —
+ * the tick itself is a sandbox run, not a model call, but there is no point
+ * polling faster than the queue can schedule.
+ */
+export async function scheduleWatcher(watcher: WatcherSchedule): Promise<void> {
+  if (!watcher.enabled || !watcher.cronExpression) return;
+
+  await getQueue().upsertJobScheduler(
+    watcherSchedulerId(watcher.id),
+    { pattern: watcher.cronExpression, tz: "UTC" },
+    { name: WATCHER_TICK_JOB_NAME, data: { watcherId: watcher.id } },
+  );
+}
+
+/** Remove a watcher's tick scheduler. */
+export async function unscheduleWatcher(watcherId: string): Promise<void> {
+  const schedulerId = watcherSchedulerId(watcherId);
+  await getQueue()
+    .removeJobScheduler(schedulerId)
+    .catch((err) => {
+      console.error(`Failed to remove watcher scheduler ${schedulerId}:`, err);
+    });
+}
+
+/**
+ * (Re)sync a watcher's schedule with its current state. Use after
+ * create/update — a changed cron needs the old scheduler gone first, or both
+ * patterns would fire.
+ */
+export async function syncWatcherSchedule(watcher: WatcherSchedule): Promise<void> {
+  await unscheduleWatcher(watcher.id);
+  await scheduleWatcher(watcher);
+}
+
+/**
+ * Schedule every enabled watcher. Call on worker startup. Disabled watchers are
+ * unscheduled rather than skipped, so a watcher switched off while the worker
+ * was down does not resume ticking on boot.
+ */
+export async function scheduleAllWatchers(): Promise<void> {
+  const watchers = await prisma.scriptWatcher.findMany({
+    select: { id: true, enabled: true, cronExpression: true },
+  });
+
+  for (const watcher of watchers) {
+    try {
+      await syncWatcherSchedule(watcher);
+    } catch (err) {
+      console.error(`Failed to schedule watcher ${watcher.id}:`, (err as Error).message);
+    }
+  }
+}
+
 // ─── Orphaned image cleanup ─────────────────────────────────────────────────
 
 /** Job scheduler id of the orphaned-image cleanup. */

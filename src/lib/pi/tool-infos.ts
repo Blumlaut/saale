@@ -471,6 +471,54 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultPolicy: "ask",
   },
 
+  // ── Watchers ──────────────────────────────────────────────────────
+  {
+    name: "watcher_list",
+    label: "List Watchers",
+    description: "List script watchers and their last outcome",
+    category: "watchers",
+    defaultPolicy: "allow",
+  },
+  {
+    name: "watcher_ticks",
+    label: "Watcher Ticks",
+    description: "Read a watcher's recent ticks",
+    category: "watchers",
+    defaultPolicy: "allow",
+  },
+  {
+    name: "watcher_test",
+    label: "Test Watcher Script",
+    description: "Run a watcher script once without scheduling it",
+    category: "watchers",
+    // Running a script runs the tools it calls — the card is where the user
+    // reads it, exactly as with `codemode`.
+    defaultPolicy: "ask",
+  },
+  {
+    name: "watcher_create",
+    label: "Create Watcher",
+    description: "Create a scheduled script watcher",
+    category: "watchers",
+    // The durable half: this is what turns a script into an unattended job, so
+    // it is confirmed rather than run on the model's say-so.
+    defaultPolicy: "ask",
+  },
+  {
+    name: "watcher_update",
+    label: "Update Watcher",
+    description: "Change a watcher's script or schedule",
+    category: "watchers",
+    defaultPolicy: "ask",
+  },
+  {
+    name: "watcher_delete",
+    label: "Delete Watcher",
+    description: "Delete a watcher and stop its ticks",
+    category: "watchers",
+    defaultPolicy: "ask",
+  },
+
   // ── Infrastructure ────────────────────────────────────────────────
   {
     name: "infra_list_machines",

@@ -8,6 +8,7 @@ import { createWebTools } from "@/lib/pi/tools/web-tools";
 import { createMemoryTools } from "@/lib/pi/tools/memory-tools";
 import { createTaskTools } from "@/lib/pi/tools/task-tools";
 import { createAgentJobTools } from "@/lib/pi/tools/agent-job-tools";
+import { createWatcherTools } from "@/lib/pi/tools/watcher-tools";
 import { createTelegramTools } from "@/lib/pi/tools/telegram-tools";
 import { createInfraTools } from "@/lib/pi/tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
@@ -47,6 +48,7 @@ async function implementedToolNames(): Promise<string[]> {
     ...from(createMemoryTools(userId)),
     ...from(createTaskTools(userId)),
     ...from(createAgentJobTools(userId)),
+    ...from(createWatcherTools(userId, sessionId)),
     ...from(createTelegramTools(userId)),
     ...from(createInfraTools(userId)),
     ...from(createSettingsTools(userId)),

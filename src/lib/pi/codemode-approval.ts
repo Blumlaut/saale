@@ -30,12 +30,11 @@
  * costs no click at all.
  */
 
-import { toCodemodeIdentifier } from "@earendil-works/pi-codemode/declarations";
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { McpToolPolicy } from "@/lib/mcp/shared";
 import { grantApprovalScope, releaseApprovalScope } from "./approval-scope";
 import { isAutoApproveActive } from "./auto-approve";
-import { readScriptToolReferences } from "./codemode-script";
+import { readScriptToolReferences, resolveReferencedTools } from "./codemode-script";
 import {
   APPROVAL_TIMEOUT_MS,
   requestToolApproval,
@@ -164,31 +163,4 @@ function callableToolNames(pi: ExtensionAPI): string[] {
         (tool.exposure === "direct" && active.has(tool.name)),
     )
     .map((tool) => tool.name);
-}
-
-/**
- * Tool names the script's keys name.
- *
- * A key is the tool's codemode identifier (`mail_send`, `mcp__docs__search`) or
- * its raw name (`tools["my-tool"]`), and one string can be both — `my-tool`
- * becomes the identifier `my_tool`, which another tool may already be called —
- * so a key resolves to every name it could mean. Covering a name the script
- * never calls costs nothing; missing one it does call is what puts a call the
- * user already approved back in front of them.
- */
-function resolveReferencedTools(keys: readonly string[], callable: readonly string[]): string[] {
-  const namesByKey = new Map<string, string[]>();
-  for (const name of callable) {
-    for (const key of new Set([name, toCodemodeIdentifier(name)])) {
-      const names = namesByKey.get(key);
-      if (!names) namesByKey.set(key, [name]);
-      else if (!names.includes(name)) names.push(name);
-    }
-  }
-
-  const resolved = new Set<string>();
-  for (const key of keys) {
-    for (const name of namesByKey.get(key) ?? []) resolved.add(name);
-  }
-  return [...resolved];
 }

@@ -38,6 +38,7 @@ model User {
   providerApiKeys ProviderApiKey[] // user-scoped keys
   tasks              Task[]
   agentDefinitions   AgentDefinition[]
+  scriptWatchers     ScriptWatcher[]
   telegramAccounts   TelegramAccount[]
   githubAccounts     GitHubAccount[]
   infraMachines      InfraMachine[]
@@ -141,6 +142,7 @@ model ChatSession {
   shareToken       String?       @unique          // random 32-char token for /share/[token]
   sourceShareToken String?                          // shareToken this session was copied from (idempotency guard)
   messages         ChatMessage[]
+  scriptWatchers   ScriptWatcher[]
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -643,6 +645,95 @@ model AgentRunMessage {
 
   @@index([runId, createdAt])
   @@map("AgentRunMessage")
+}
+
+// ─── Script Watchers ──────────────────────────────────────────
+
+/// A scripted watcher: runs a codemode script on a schedule and wakes the
+/// agent only when the script reports something worth reporting.
+///
+/// The tick costs one QuickJS sandbox and no model call, so a watcher can poll
+/// far more often than an agent job could afford to run. The model is prompted
+/// only when the script returns a value (see `lib/watchers/wake.ts`).
+model ScriptWatcher {
+  id          String  @id @default(cuid())
+  userId      String
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  /// Script body, run in the codemode sandbox as an async function body.
+  script     String   @db.Text
+  /// sha256 of `script` at the moment the user approved its tool calls. A
+  /// mismatch at tick time means the script changed under the approval, so the
+  /// tick is refused until the user approves the new one.
+  scriptHash String
+  /// Tool names approved for this script — and the exact set the sandbox is
+  /// given, so an unapproved call is not merely gated but unavailable.
+  grantedTools String[] @default([])
+  /// The script reaches tools by a computed name, so its tool use cannot be
+  /// read from the source and the grant covers every callable tool instead.
+  grantAll     Boolean  @default(false)
+
+  cronExpression String
+  enabled        Boolean @default(true)
+
+  /// The conversation a fired result is posted into. Null runs a standalone
+  /// agent run instead. Deleting the conversation deletes its watchers.
+  sessionId      String?
+  /// Instructions handed to the agent when the watcher fires; the script's
+  /// returned value is appended as JSON.
+  wakePrompt     String  @db.Text
+  /// Model for a standalone wake. A chat-bound wake is a turn in that
+  /// conversation, so the conversation's own model governs instead.
+  modelId        String?
+
+  /// The script's `store()`, carried from one tick to the next.
+  store Json @default("{}")
+
+  lastValue       String?   @db.Text
+  lastTickAt      DateTime?
+  lastError       String?   @db.Text
+  lastFiredAt     DateTime?
+  tickCount       Int       @default(0)
+  fireCount       Int       @default(0)
+  /// Minimum gap between wakes, in minutes. A fire inside the window is
+  /// recorded as `cooldown` and not delivered — a bound the definition owns,
+  /// so a script cannot spend the user's tokens at will.
+  cooldownMinutes Int       @default(0)
+
+  ticks     ScriptWatcherTick[]
+  session   ChatSession?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, enabled])
+  @@index([sessionId])
+  @@map("ScriptWatcher")
+}
+
+/// One tick of a watcher, kept for diagnosis: a predicate that never matches
+/// looks exactly like nothing happening, so the recent ticks are what makes a
+/// broken script visible. Old rows are pruned (see `TICK_HISTORY_LIMIT`).
+model ScriptWatcherTick {
+  id        String @id @default(cuid())
+  watcherId String
+  /// "idle" | "fired" | "cooldown" | "blocked" | "error"
+  status    String
+  /// The script's returned value, JSON-encoded.
+  value     String? @db.Text
+  error     String? @db.Text
+  /// The script's `text()`/`console` output.
+  output    String? @db.Text
+  durationMs Int     @default(0)
+  callCount  Int     @default(0)
+
+  watcher   ScriptWatcher @relation(fields: [watcherId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@index([watcherId, createdAt])
+  @@map("ScriptWatcherTick")
 }
 
 // ─── Telegram Integration ──────────────────────────────────────

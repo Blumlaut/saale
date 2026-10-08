@@ -1,0 +1,187 @@
+/**
+ * Running one watcher tick: the script in the codemode sandbox, with no model
+ * involved.
+ *
+ * The sandbox is the same one `codemode` uses in a chat (`CodemodeSandbox` —
+ * QuickJS in a worker thread, no timers, no `fetch`, no `require`), so a script
+ * written in a conversation runs here unchanged: it sees `tools.<name>(args)`,
+ * `text()`, `console.*`, `store()`/`load()`, and returns a value.
+ *
+ * Two differences from the chat path, both because there is nobody watching:
+ *
+ * - The tool table is built directly instead of through Pi's agent loop, whose
+ *   `ctx.executeTool()` is what applies the approval gate. The gate is replaced
+ *   by the grant check in `grant.ts`, which runs before the sandbox starts.
+ * - The script's deadline is a tick budget. In a chat the model waits out a slow
+ *   script; here a tick that overruns would pile up against the next one.
+ */
+
+import {
+  CodemodeSandbox,
+  type CodemodeJsonSchema,
+  type CodemodeOutputItem,
+  type CodemodeTool,
+} from "@earendil-works/pi-codemode";
+import type { ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+
+/** How long one tick's script may run. */
+const TICK_TIMEOUT_MS = Number(process.env.WATCHER_TICK_TIMEOUT_MS ?? 60_000);
+
+/** Memory ceiling for the sandbox VM. */
+const TICK_MEMORY_LIMIT_BYTES = Number(process.env.WATCHER_TICK_MEMORY_BYTES ?? 128 * 1024 * 1024);
+
+/** Result of one tick's script. */
+export interface WatcherScriptResult {
+  /** False when the script threw, failed to parse, timed out or was aborted. */
+  ok: boolean;
+  /** The script's `return` value. `undefined` means it declined the `return`. */
+  value: unknown;
+  /** `text()` and `console.*` output, joined — the tick log's readable part. */
+  output: string;
+  /** How many tool calls the script made. */
+  callCount: number;
+  durationMs: number;
+  /** The script's `store()` writes, to carry into the next tick. */
+  storeWrites: { set: Record<string, unknown>; delete: string[] };
+  /** Present only when `ok` is false. */
+  error?: string;
+}
+
+/** The text of a tool result, which is what a script receives. */
+function resultText(content: readonly { type: string; text?: string }[]): string {
+  return content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text ?? "")
+    .join("\n");
+}
+
+/**
+ * Turn Saale's tools into sandbox tools.
+ *
+ * The set is already decided — `watcherToolAccess` is the one place that answers
+ * what a script may reach, `codemode` included — so nothing is filtered here.
+ *
+ * A call resolves the way Pi's own codemode bridge resolves it: a tool that
+ * declares `structuredContent` hands that back, anything else hands back its
+ * text. A failure rejects, so the script sees an `Error` and can catch it.
+ *
+ * `ctx` is left undefined. No tool dereferences it — the two that accept it
+ * merely forward it to Pi's built-in read/edit, which read `ctx?.cwd` and
+ * `ctx?.model` through optional chaining and fall back to their own defaults.
+ */
+function toSandboxTools(tools: readonly ToolDefinition[]): CodemodeTool[] {
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    // Rendered into the script's declarations ("ALL_TOOLS") only; the sandbox
+    // does not validate calls against it, so TypeBox's schema is passed
+    // through as the JSON Schema document it already is.
+    inputSchema: tool.parameters as unknown as CodemodeJsonSchema,
+    execute: async (args: unknown, { signal }: { signal: AbortSignal }) => {
+      // Deliberately undefined: a watcher tick has no agent loop behind it.
+      const noContext = undefined as unknown as ExtensionToolContext;
+      const result = await tool.execute(`watcher/${tool.name}`, args, signal, undefined, noContext);
+
+      if (result.isError) {
+        throw new Error(resultText(result.content) || `Tool "${tool.name}" failed`);
+      }
+      return result.structuredContent ?? resultText(result.content);
+    },
+  }));
+}
+
+/** Join the sandbox's output items into one string, images marked in place. */
+function formatOutput(output: readonly CodemodeOutputItem[]): string {
+  return output
+    .map((item) => (item.type === "text" ? item.text : `[image: ${item.mimeType}]`))
+    .join("\n");
+}
+
+/**
+ * Run one watcher script.
+ *
+ * Never rejects: a script that throws, times out or is aborted comes back as
+ * `ok: false` with the reason, because a failed tick is a normal tick that the
+ * log has to show.
+ */
+export async function runWatcherScript(options: {
+  script: string;
+  tools: readonly ToolDefinition[];
+  /** Values the script reads with `load()`. */
+  store: Record<string, unknown>;
+  signal?: AbortSignal;
+}): Promise<WatcherScriptResult> {
+  const sandbox = new CodemodeSandbox({
+    tools: toSandboxTools(options.tools),
+    timeoutMs: TICK_TIMEOUT_MS,
+    memoryLimitBytes: TICK_MEMORY_LIMIT_BYTES,
+  });
+
+  const startedAt = Date.now();
+  try {
+    const result = await sandbox.execute(options.script, {
+      store: options.store,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+
+    const durationMs = Date.now() - startedAt;
+    const callCount = result.calls.length;
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        value: undefined,
+        output: formatOutput(result.output),
+        callCount,
+        durationMs,
+        storeWrites: { set: {}, delete: [] },
+        error: `${result.error.kind}: ${result.error.message}`,
+      };
+    }
+
+    return {
+      ok: true,
+      value: result.value,
+      output: formatOutput(result.output),
+      callCount,
+      durationMs,
+      storeWrites: result.storeWrites,
+    };
+  } catch (err) {
+    // The sandbox rejects only for a failure outside the script's control —
+    // a missing worker or wasm file. That is worth surfacing as a real error.
+    console.error("Watcher sandbox failed to start:", err);
+    return {
+      ok: false,
+      value: undefined,
+      output: "",
+      callCount: 0,
+      durationMs: Date.now() - startedAt,
+      storeWrites: { set: {}, delete: [] },
+      error: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    await sandbox.close();
+  }
+}
+
+/**
+ * Whether a script's return value is a report worth waking the agent for.
+ *
+ * `undefined`, `null` and `false` mean "nothing changed" — the common case, and
+ * the whole reason a tick is cheap. Anything else is handed to the agent, so a
+ * script reports by returning something.
+ */
+export function isFiring(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false;
+}
+
+/** Apply the script's `store()` writes to the state the next tick reads. */
+export function applyStoreWrites(
+  store: Record<string, unknown>,
+  writes: { set: Record<string, unknown>; delete: string[] },
+): Record<string, unknown> {
+  const next = { ...store };
+  for (const key of writes.delete) delete next[key];
+  return { ...next, ...writes.set };
+}
