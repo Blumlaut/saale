@@ -17,6 +17,19 @@ import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provide
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+/**
+ * A tool call that finished, as delivery detection needs to see it.
+ *
+ * `structured` is the tool's `structuredContent` — the value it declared with an
+ * `outputSchema` — not the text the model reads.
+ */
+export interface CompletedToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  structured?: unknown;
+  isError: boolean;
+}
+
 /** Optional output handler for routing agent responses to external channels. */
 export interface AgentOutput {
   /**
@@ -29,6 +42,16 @@ export interface AgentOutput {
   send(content: string, meta?: { toolCalls?: unknown[] }): void | Promise<void>;
   /** Optional: signal that the agent is thinking/working. */
   typing?(): void;
+  /**
+   * Observe every tool call as it finishes — including calls made from a codemode
+   * script and turns that produced no text, which never reach `send`.
+   *
+   * This is how a handler that can also be reached through a tool notices the
+   * agent delivered the message itself: the Telegram output channel and the
+   * `telegram_send` tool target the same chat, and forwarding the agent's
+   * closing text on top of the tool's message would send it twice.
+   */
+  noteToolCall?(call: CompletedToolCall): void;
   /**
    * Delivery failures collected while the run produced output, oldest first.
    * Recorded on the run so a job cannot report success without its output.
@@ -105,6 +128,15 @@ function normalizeToolResult(result: unknown): string {
     return JSON.stringify(obj);
   }
   return String(result ?? "");
+}
+
+/**
+ * The structured result of a tool call — what a tool declaring an `outputSchema`
+ * computed — as opposed to the text the model reads.
+ */
+function extractStructuredContent(result: unknown): unknown {
+  if (typeof result !== "object" || result === null) return undefined;
+  return (result as { structuredContent?: unknown }).structuredContent;
 }
 
 /** Save an assistant message to the run. */
@@ -382,6 +414,15 @@ async function handleAgentEvent(
         existing.result = normalizeToolResult(event.result);
         existing.isError = event.isError;
       }
+      // Let the output handler see every completed call, even ones made from a
+      // codemode script: a call that reached the user is a call whose turn may
+      // never produce text, so `send` alone would miss it.
+      output?.noteToolCall?.({
+        name: event.toolName,
+        args: existing?.args ?? {},
+        structured: extractStructuredContent(event.result),
+        isError: event.isError,
+      });
       break;
     }
 

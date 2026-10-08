@@ -3,6 +3,12 @@ import { Type } from "typebox";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { sendTelegramToUser } from "@/lib/telegram/notify";
 
+/**
+ * Name of the outreach tool, shared so a delivery channel can recognise that the
+ * agent reached the user itself instead of the runner doing it.
+ */
+export const TELEGRAM_SEND_TOOL_NAME = "telegram_send";
+
 /** Confirmation of a delivered message: where it went, and how to name it. */
 const telegramSendSchema = Type.Object({
   sent: Type.Boolean(),
@@ -22,7 +28,7 @@ const telegramSendSchema = Type.Object({
 export function createTelegramTools(userId: string): ToolDefinition[] {
   return [
     defineStructuredTool({
-      name: "telegram_send",
+      name: TELEGRAM_SEND_TOOL_NAME,
       label: "Send Telegram Message",
       description:
         "Message the user on Telegram — their phone, outside this conversation. " +
