@@ -1,9 +1,9 @@
 import type { Job } from "bullmq";
-import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
-import { createSessionSettings } from "@/lib/pi/settings";
+import { createSaaleAgentSession } from "@/lib/pi/agent-session";
 import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
@@ -44,10 +44,9 @@ export async function dispatchAiJob(
     options?.systemPrompt ??
     `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
 
-  const { session } = await createAgentSession({
+  const { session } = await createSaaleAgentSession(userId, {
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
-    settingsManager: createSessionSettings(),
     noTools: "all",
     ...(model ? { model } : {}),
     resourceLoader: await createSystemPromptLoader(systemPrompt, process.cwd()),

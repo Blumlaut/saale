@@ -1,12 +1,11 @@
 import fs from "fs/promises";
 import {
-  createAgentSession,
   SessionManager,
   type CreateAgentSessionResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createAgentResourceLoader, startSessionExtensions } from "./processing-state";
-import { createSessionSettings } from "./settings";
+import { createSaaleAgentSession } from "./agent-session";
 import { buildSessionDeps, type ToolConfig } from "./session";
 import type { ToolExposureConfig } from "./tool-categories";
 import { thinkingLevelOption } from "./thinking-levels";
@@ -83,15 +82,18 @@ export async function createPersistentSession(options: {
   //
   // Since each chat session has its own directory (pi_sessions/{userId}/{id}/)
   // with exactly one JSONL file, continueRecent() always finds the right file.
+  //
+  // The manager's cwd is only the JSONL store (and the value recorded in the
+  // session header); the *agent* cwd that tool paths resolve against is set by
+  // `createSaaleAgentSession` to the Open Terminal home.
   const sessionManager = SessionManager.continueRecent(
     options.sessionDir, // cwd — stored in session header
     options.sessionDir, // sessionDir — where JSONL files are written
   );
 
-  const result = await createAgentSession({
+  const result = await createSaaleAgentSession(options.userId, {
     sessionManager, // File-based — entries persist to JSONL
     modelRuntime,
-    settingsManager: createSessionSettings(),
     noTools: "builtin",
     ...(model ? { model } : {}),
     customTools: allCustomTools,

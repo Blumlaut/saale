@@ -46,7 +46,7 @@ vi.mock("@/lib/pi/processing-state", async (importOriginal) => ({
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: vi.fn(),
-  SessionManager: { inMemory: () => ({}) },
+  SessionManager: { inMemory: () => ({ getCwd: () => "/tmp/session" }) },
   // `createSessionSettings()` builds one of these per session.
   SettingsManager: { inMemory: () => ({}) },
 }));
