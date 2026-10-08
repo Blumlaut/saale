@@ -180,6 +180,46 @@ describe("compact activity", () => {
     expect(screen.getByText("That much is clear.")).toBeInTheDocument();
   });
 
+  it("keeps one block per kind when a step both reasoned and spoke", () => {
+    // A step that reasoned, called a tool AND wrote a sentence produces up to
+    // three sibling blocks (activity, prose, files). Keyed by the step id alone
+    // they collide: React then omits or duplicates one of them on the next
+    // render, so the reasoning block disappeared mid-stream and came back only
+    // when a reload remounted the list.
+    const keyWarnings: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      const text = args.map(String).join(" ");
+      if (text.includes("same key")) keyWarnings.push(text);
+    });
+
+    try {
+      const reasoned = step({
+        id: "a1",
+        thinking: "First I looked.",
+        toolCalls: [exec("tc-1", "uptime")],
+        content: "Nothing is wrong.",
+      });
+      const { rerender } = renderTranscript([reasoned]);
+
+      // The step streams on: the same blocks re-render with more prose.
+      rerender(
+        <MessageList
+          messages={[{ ...reasoned, content: "Nothing is wrong here either." }]}
+          compactActivity
+          isLoading
+        />,
+      );
+
+      expect(keyWarnings).toEqual([]);
+      // Both of the step's blocks are still there: the activity row and the prose.
+      expect(toolsRow()).toBeInTheDocument();
+      expect(screen.getByText("Nothing is wrong here either.")).toBeInTheDocument();
+      expect(reasoningRow()).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("shows the newest reasoning and expands to all of it", () => {
     renderTranscript([
       step({ id: "a1", thinking: "First I looked at the logs, which were quiet." }),
