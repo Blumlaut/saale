@@ -113,15 +113,22 @@ export function ReplyForwardSheet({
     setError("");
 
     try {
-      await postJson(`/api/email/accounts/${accountId}/send`, {
-        to: splitEmailAddresses(to),
-        cc: splitEmailAddresses(cc),
-        bcc: splitEmailAddresses(bcc),
-        subject,
-        body,
-      });
+      const result = await postJson<{ sentFolder: string | null }>(
+        `/api/email/accounts/${accountId}/send`,
+        {
+          to: splitEmailAddresses(to),
+          cc: splitEmailAddresses(cc),
+          bcc: splitEmailAddresses(bcc),
+          subject,
+          body,
+        },
+      );
 
-      toast.success("Email sent");
+      if (result.sentFolder) {
+        toast.success("Email sent");
+      } else {
+        toast.warning("Email sent, but no copy could be filed in Sent");
+      }
       resetAndClose();
       onSuccess();
     } catch (err) {

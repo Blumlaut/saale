@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { sendEmail } from "@/lib/email/smtp";
+import { sendMailForAccount } from "@/lib/email/send-mail";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 import { getUploadsDir } from "@/lib/uploads";
@@ -114,6 +114,8 @@ const MAIL_SEND_SCHEMA = Type.Object({
   messageId: Type.String(),
   to: Type.Array(Type.String()),
   subject: Type.String(),
+  /** Folder the sent copy was filed in; null when filing it failed. */
+  sentFolder: Type.Union([Type.String(), Type.Null()]),
   // Absent when the send had no attachments.
   attachments: Type.Optional(Type.Array(Type.String())),
 });
@@ -709,6 +711,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
       label: "Send Email",
       description:
         "Send an email via SMTP using the user's configured email account. " +
+        "The sent message is filed in the account's Sent folder. " +
         "Supports file attachments from the workspace using relative file paths.",
       parameters: Type.Object({
         accountId: Type.String({
@@ -762,7 +765,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
 
         const password = decrypt(account.encryptedPassword);
 
-        const result = await sendEmail({
+        const result = await sendMailForAccount({
           account,
           password,
           to: params.to,
@@ -781,11 +784,12 @@ export function createMailTools(userId: string): ToolDefinition[] {
             messageId: result.messageId,
             to: params.to,
             subject: params.subject,
+            sentFolder: result.sentFolder,
             ...(params.attachments
               ? { attachments: params.attachments.map((p: string) => path.basename(p)) }
               : {}),
           },
-          details: { messageId: result.messageId },
+          details: { messageId: result.messageId, sentFolder: result.sentFolder },
         };
       },
     }),

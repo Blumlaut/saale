@@ -1,7 +1,9 @@
 import { ImapFlow } from "imapflow";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { simpleParser } from "mailparser";
+import { discoverFolders, resolveSentFolder } from "@/lib/email/folders";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 import { sanitizePostgresString } from "@/lib/email/utils";
 
@@ -18,6 +20,8 @@ const FLAG_FLAGGED = "\\Flagged";
 export async function connectImap(accountId: string): Promise<{
   mailbox: ImapFlow;
   email: string;
+  /** Special-use folder mapping cached by the last sync. */
+  specialFolders: Prisma.JsonValue | null;
 }> {
   const account = await prisma.emailAccount.findUnique({
     where: { id: accountId },
@@ -40,7 +44,7 @@ export async function connectImap(accountId: string): Promise<{
   });
 
   await mailbox.connect();
-  return { mailbox, email: account.email };
+  return { mailbox, email: account.email, specialFolders: account.specialFolders };
 }
 
 /**
@@ -108,6 +112,63 @@ export async function syncMessageFlags(
       await mailbox.logout();
     } catch {
       // Ignore cleanup errors
+    }
+  }
+}
+
+/**
+ * File a copy of a sent message in the account's Sent folder.
+ *
+ * Submitting over SMTP only delivers the message: unlike Gmail and Outlook,
+ * an ordinary Dovecot/Postfix account keeps no copy of it, so the client has to
+ * append one. The copy is marked \Seen and carries the Message-ID of the
+ * delivered message, so a server that does save its own copy (or a mail client
+ * that later syncs) recognises the two as the same mail.
+ *
+ * Throws when no Sent folder can be resolved or the server refuses the append —
+ * the caller decides whether that should reach the user.
+ */
+export async function appendSentCopy(params: {
+  accountId: string;
+  raw: Buffer;
+  date: Date;
+}): Promise<{ folder: string }> {
+  const { mailbox, specialFolders } = await connectImap(params.accountId);
+
+  const appendTo = async (folder: string) => {
+    const result = await mailbox.append(folder, params.raw, [FLAG_SEEN], params.date);
+    // A falsy result means imapflow skipped the command; reporting that as
+    // filed would be the silent loss this copy exists to prevent.
+    if (!result) {
+      throw new Error(`Server did not store the copy in ${folder}`);
+    }
+    return result.destination;
+  };
+
+  try {
+    const folder = await resolveSentFolder(mailbox, specialFolders);
+    if (!folder) {
+      throw new Error("No Sent folder found on the mail server");
+    }
+
+    try {
+      return { folder: await appendTo(folder) };
+    } catch (err) {
+      // A cached mapping goes stale when the folder is renamed server-side;
+      // re-listing is cheap next to losing the copy.
+      const relisted = await discoverFolders(mailbox).then(({ special }) => special["\\Sent"]);
+      if (!relisted || relisted === folder) throw err;
+
+      console.warn(
+        `[imap] Retrying sent copy for account ${params.accountId} in renamed folder ${relisted}`,
+      );
+      return { folder: await appendTo(relisted) };
+    }
+  } finally {
+    try {
+      await mailbox.logout();
+    } catch (err) {
+      console.error(`[imap] Failed to close connection for account ${params.accountId}:`, err);
     }
   }
 }

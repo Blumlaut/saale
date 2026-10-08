@@ -272,7 +272,9 @@ model EmailMessage {
   account     EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt   DateTime    @default(now())
 
-  @@unique([accountId, uid])
+  // IMAP UIDs are unique per mailbox, not per account — INBOX and Sent both
+  // start at 1, so the folder has to be part of the key.
+  @@unique([accountId, folder, uid])
   @@index([accountId, folder, isRead])
   @@index([accountId, date])
   @@map("EmailMessage")
