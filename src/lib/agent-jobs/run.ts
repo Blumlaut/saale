@@ -46,6 +46,7 @@ async function recordDeliveryFailures(
  * @param definitionId - The AgentDefinition.id to run
  * @param userId - The user who owns the definition (scopes the lookup)
  * @param promptOverride - Optional prompt override (defaults to definition.prompt)
+ * @param modelId - Optional model override (defaults to definition.modelId)
  * @returns The created AgentRun record
  * @throws When the definition does not exist or is disabled
  */
@@ -53,6 +54,7 @@ export async function triggerAgentRun(params: {
   definitionId: string;
   userId: string;
   promptOverride?: string;
+  modelId?: string;
 }): Promise<{
   id: string;
   status: string;
@@ -61,7 +63,7 @@ export async function triggerAgentRun(params: {
   outputChannelId: string | null;
   createdAt: Date;
 }> {
-  const { definitionId, userId, promptOverride } = params;
+  const { definitionId, userId, promptOverride, modelId } = params;
 
   const definition = await prisma.agentDefinition.findFirst({
     where: { id: definitionId, userId },
@@ -74,6 +76,7 @@ export async function triggerAgentRun(params: {
   }
 
   const runPrompt = promptOverride || definition.prompt;
+  const runModelId = modelId ?? definition.modelId;
 
   const run = await prisma.agentRun.create({
     data: {
@@ -82,7 +85,7 @@ export async function triggerAgentRun(params: {
       status: "pending",
       prompt: runPrompt,
       systemPrompt: definition.systemPrompt,
-      modelId: definition.modelId,
+      modelId: runModelId,
       outputChannel: definition.outputChannel,
       outputChannelId: definition.outputChannelId,
     },
@@ -117,7 +120,7 @@ export async function triggerAgentRun(params: {
       prompt: runPrompt,
       systemPrompt: definition.systemPrompt,
       toolConfig: definition.toolConfig as Record<string, boolean> | null,
-      modelId: definition.modelId,
+      modelId: runModelId,
       thinkingLevel: definition.thinkingLevel,
     },
     userId,

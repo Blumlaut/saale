@@ -16,6 +16,8 @@
  * never happens.
  */
 
+import { toCodemodeIdentifier } from "@earendil-works/pi-codemode/declarations";
+
 /**
  * A tool the script names: `tools.<key>` or `tools["<key>"]`, with the
  * whitespace JavaScript allows around the dot or bracket.
@@ -53,4 +55,39 @@ export function readScriptToolReferences(code: string): ScriptToolReferences {
   }
 
   return { keys, dynamic: DYNAMIC_REFERENCE.test(code) };
+}
+
+/**
+ * Tool names the script's keys name.
+ *
+ * A key is the tool's codemode identifier (`mail_send`, `mcp__docs__search`) or
+ * its raw name (`tools["my-tool"]`), and one string can be both — `my-tool`
+ * becomes the identifier `my_tool`, which another tool may already be called —
+ * so a key resolves to every name it could mean. Covering a name the script
+ * never calls costs nothing; missing one it does call is what puts a call the
+ * user already approved back in front of them.
+ *
+ * Shared by every caller that has to decide what a script reaches: the chat
+ * approval gate, the transcript card, and a watcher's tool grant. They must
+ * agree — a script the gate reads one way and a grant reads another is exactly
+ * the disagreement this module exists to make impossible.
+ */
+export function resolveReferencedTools(
+  keys: readonly string[],
+  callable: readonly string[],
+): string[] {
+  const namesByKey = new Map<string, string[]>();
+  for (const name of callable) {
+    for (const key of new Set([name, toCodemodeIdentifier(name)])) {
+      const names = namesByKey.get(key);
+      if (!names) namesByKey.set(key, [name]);
+      else if (!names.includes(name)) names.push(name);
+    }
+  }
+
+  const resolved = new Set<string>();
+  for (const key of keys) {
+    for (const name of namesByKey.get(key) ?? []) resolved.add(name);
+  }
+  return [...resolved];
 }

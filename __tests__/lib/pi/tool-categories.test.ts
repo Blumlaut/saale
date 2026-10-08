@@ -8,8 +8,8 @@ import {
 } from "@/lib/pi/tool-categories";
 
 describe("tool categories", () => {
-  it("has 12 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(12);
+  it("has 13 tool categories", () => {
+    expect(TOOL_CATEGORIES).toHaveLength(13);
   });
 
   it("has unique keys", () => {
