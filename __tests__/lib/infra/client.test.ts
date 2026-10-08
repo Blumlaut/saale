@@ -38,6 +38,7 @@ import {
   readFileForTransfer,
   writeFile,
   writeFileBuffer,
+  executeCommand,
 } from "@/lib/infra/client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -566,6 +567,195 @@ describe("SFTP file operations", () => {
     setupSftp(["/etc/nginx.conf"]);
 
     await statFile("machine-1", "user-1", "/etc/nginx.conf");
+
+    expect(mockInfraMachine.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "machine-1", userId: "user-1" } }),
+    );
+  });
+});
+
+describe("executeCommand", () => {
+  const machine = {
+    id: "machine-1",
+    userId: "user-1",
+    name: "prod-web",
+    host: "10.0.0.1",
+    port: 22,
+    username: "deploy",
+    authMethod: "key",
+    encryptedKey: "encrypted:-----BEGIN RSA PRIVATE KEY-----",
+    encryptedPass: null,
+    passPhrase: null,
+  };
+
+  /**
+   * Stand up a NodeSSH whose exec behaves like a real remote command, and
+   * record the request the SSH client would have put on the wire.
+   */
+  function setupExec(response: {
+    stdout?: string;
+    stderr?: string;
+    code?: number | null;
+    signal?: string | null;
+    neverSettles?: boolean;
+  }) {
+    const destroy = vi.fn();
+    const execCommand = vi.fn().mockImplementation(() =>
+      response.neverSettles
+        ? new Promise(() => {})
+        : Promise.resolve({
+            stdout: response.stdout ?? "",
+            stderr: response.stderr ?? "",
+            // `??` would turn an explicit null — a killed command — into 0.
+            code: response.code === undefined ? 0 : response.code,
+            signal: response.signal === undefined ? null : response.signal,
+          }),
+    );
+
+    (NodeSSH as unknown as Mock).mockImplementation(function () {
+      return {
+        connect: vi.fn().mockResolvedValue(undefined),
+        execCommand,
+        dispose: vi.fn(),
+        connection: { destroy },
+      };
+    });
+
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(machine);
+
+    return { execCommand, destroy };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sends the command over stdin, never as the exec request", async () => {
+    const { execCommand } = setupExec({ stdout: "done" });
+
+    await executeCommand("machine-1", "user-1", "pkill -f health_scan.py && echo done");
+
+    const [request, options] = execCommand.mock.calls[0] as [string, { stdin: string }];
+    // The request is what lands in the remote process list. A command that
+    // greps for its own name must not be able to find itself there.
+    expect(request).not.toContain("health_scan.py");
+    expect(request).not.toContain("pkill");
+    expect(request.trim().endsWith("-s")).toBe(true);
+    expect(options.stdin).toBe("pkill -f health_scan.py && echo done");
+  });
+
+  it("runs the command through a shell that reads stdin", async () => {
+    const { execCommand } = setupExec({});
+
+    await executeCommand("machine-1", "user-1", "whoami");
+
+    const [request] = execCommand.mock.calls[0] as [string];
+    // `$SHELL` is what ran the command before this change; the fallback covers
+    // an account whose login shell is unset.
+    expect(request).toContain("${SHELL");
+    expect(request).toContain("/bin/sh");
+  });
+
+  it("keeps the working directory without putting the command in the request", async () => {
+    const { execCommand } = setupExec({});
+
+    await executeCommand("machine-1", "user-1", "tar czf backup.tar.gz /srv", { cwd: "/srv/app" });
+
+    const [request, options] = execCommand.mock.calls[0] as [string, { cwd?: string }];
+    expect(options.cwd).toBe("/srv/app");
+    expect(request).not.toContain("backup.tar.gz");
+  });
+
+  it("exports environment variables inside the command, not as a request", async () => {
+    const { execCommand } = setupExec({});
+
+    await executeCommand("machine-1", "user-1", "echo $GREETING", {
+      env: { GREETING: "hi there", NAME: "o'brien" },
+    });
+
+    const [request, options] = execCommand.mock.calls[0] as [string, { stdin: string }];
+    expect(request).not.toContain("GREETING");
+    expect(options.stdin).toBe(
+      `export GREETING='hi there'\nexport NAME='o'\\''brien'\necho $GREETING`,
+    );
+  });
+
+  it("refuses an environment name a shell cannot assign", async () => {
+    setupExec({});
+
+    await expect(
+      executeCommand("machine-1", "user-1", "echo hi", { env: { "not a name": "1" } }),
+    ).rejects.toThrow("Invalid environment variable name: not a name");
+  });
+
+  it("reports a normal exit", async () => {
+    setupExec({ stdout: "hello", stderr: "", code: 0 });
+
+    const result = await executeCommand("machine-1", "user-1", "echo hello");
+
+    expect(result).toMatchObject({
+      stdout: "hello",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      truncated: false,
+    });
+  });
+
+  it("reports the signal that killed the command", async () => {
+    // What a command killed by `pkill` looks like: partial output, no exit code.
+    setupExec({ stdout: "line 1", stderr: "", code: null, signal: "SIGTERM" });
+
+    const result = await executeCommand("machine-1", "user-1", "health_scan.py --full");
+
+    expect(result.exitCode).toBeNull();
+    expect(result.signal).toBe("SIGTERM");
+    expect(result.stdout).toBe("line 1");
+    expect(result.timedOut).toBe(false);
+  });
+
+  it("reports a non-zero exit without a signal", async () => {
+    setupExec({ stdout: "", stderr: "not found", code: 127 });
+
+    const result = await executeCommand("machine-1", "user-1", "nope");
+
+    expect(result.exitCode).toBe(127);
+    expect(result.signal).toBeNull();
+    expect(result.stderr).toBe("not found");
+  });
+
+  it("truncates long output", async () => {
+    setupExec({ stdout: "a".repeat(200), code: 0 });
+
+    const result = await executeCommand("machine-1", "user-1", "cat big.log", { maxOutput: 100 });
+
+    expect(result.truncated).toBe(true);
+    expect(result.stdout).toContain("[output truncated — exceeded 100 byte limit]");
+  });
+
+  it("gives up on a hanging command and tears the connection down", async () => {
+    vi.useFakeTimers();
+    try {
+      const { destroy } = setupExec({ neverSettles: true });
+
+      const pending = executeCommand("machine-1", "user-1", "sleep 1000", { timeout: 30 });
+      await vi.advanceTimersByTimeAsync(30_000);
+      const result = await pending;
+
+      expect(result.timedOut).toBe(true);
+      expect(result.exitCode).toBeNull();
+      expect(result.stderr).toContain("timed out after 30s");
+      expect(destroy).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("scopes the connection to the authenticated user", async () => {
+    setupExec({});
+
+    await executeCommand("machine-1", "user-1", "whoami");
 
     expect(mockInfraMachine.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "machine-1", userId: "user-1" } }),

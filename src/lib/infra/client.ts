@@ -60,7 +60,10 @@ export interface ExecOptions {
 export interface ExecResult {
   stdout: string;
   stderr: string;
+  /** Null when the command was killed by a signal rather than exiting. */
   exitCode: number | null;
+  /** The signal that killed it, when one did — the reason `exitCode` is null. */
+  signal: string | null;
   timedOut: boolean;
   truncated: boolean;
 }
@@ -375,6 +378,48 @@ function sftpListDir(sftp: SFTPWrapper, path: string): Promise<SftpListEntry[]> 
 // ─── Public API ─────────────────────────────────────────────────
 
 /**
+ * The command's shell, reading the command from stdin.
+ *
+ * sshd runs an exec request through the login shell, so the request's text — the
+ * whole command — lands in that shell's own process list. A command that hunts
+ * for its own name (`pkill -f health_scan.py`) then matches the shell running it
+ * and kills the session mid-script, which arrives as a truncated result with a
+ * null exit code. Writing the command to stdin instead leaves the process list
+ * showing only the shell that reads it. `$SHELL` because that is what ran the
+ * text before, with a fallback for an account that has none set.
+ */
+const STDIN_SHELL = 'exec "${SHELL:-/bin/sh}" -s';
+
+/** A name a shell accepts on the left of an assignment. */
+const SHELL_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Single-quote a value so the remote shell passes it through unchanged. */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Add the environment to the front of a command.
+ *
+ * The variables are exported inside the script rather than sent as an env
+ * request: sshd only accepts the names its `AcceptEnv` lists, so a request for
+ * anything else is dropped without a word, while an export line reaches every
+ * process the command starts.
+ */
+function withEnvironment(command: string, env: Record<string, string> | undefined): string {
+  if (!env) return command;
+
+  const exports = Object.entries(env).map(([name, value]) => {
+    if (!SHELL_VARIABLE_NAME.test(name)) {
+      throw new Error(`Invalid environment variable name: ${name}`);
+    }
+    return `export ${name}=${shellQuote(value)}`;
+  });
+
+  return exports.length === 0 ? command : `${exports.join("\n")}\n${command}`;
+}
+
+/**
  * Execute a command on a remote machine via SSH.
  * Connects, runs the command, collects output, disconnects.
  */
@@ -387,20 +432,20 @@ export async function executeCommand(
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
   const maxOutput = options.maxOutput ?? MAX_OUTPUT_BYTES;
 
+  // Built before connecting: an environment name the shell cannot assign is the
+  // caller's mistake, so it throws rather than coming back as a failed command.
+  const script = withEnvironment(command, options.env);
+
   const { ssh, disconnect } = await connect(machineId, userId);
 
   let timedOut = false;
   let timerId: ReturnType<typeof setTimeout> | null = null;
 
   try {
-    const execOptions: Record<string, unknown> = {};
-    if (options.cwd) execOptions.cwd = options.cwd;
-    if (options.env) execOptions.env = options.env;
+    const sshOptions: NonNullable<Parameters<NodeSSH["execCommand"]>[1]> = { stdin: script };
+    if (options.cwd) sshOptions.cwd = options.cwd;
 
-    const execPromise = ssh.execCommand(
-      command,
-      execOptions as Parameters<NodeSSH["execCommand"]>[1],
-    );
+    const execPromise = ssh.execCommand(STDIN_SHELL, sshOptions);
 
     // Race against a timer for timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -425,7 +470,8 @@ export async function executeCommand(
     const result = (await Promise.race([execPromise, timeoutPromise])) as {
       stdout: string;
       stderr: string;
-      code: number;
+      code: number | null;
+      signal: string | null;
     };
 
     const stdoutTruncated = truncateOutput(result.stdout ?? "", maxOutput);
@@ -435,6 +481,7 @@ export async function executeCommand(
       stdout: stdoutTruncated.text,
       stderr: stderrTruncated.text,
       exitCode: result.code ?? null,
+      signal: result.signal ?? null,
       timedOut: false,
       truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
     };
@@ -446,6 +493,7 @@ export async function executeCommand(
         ? `Command timed out after ${timeout}s. Increase the timeout parameter for longer commands.`
         : message,
       exitCode: null,
+      signal: null,
       timedOut,
       truncated: false,
     };
