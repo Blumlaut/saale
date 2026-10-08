@@ -139,6 +139,10 @@ export function ChatInterface({
 
   const loadMessages = useCallback(async (): Promise<void> => {
     try {
+      // Stamped BEFORE the request: a turn saved after this moment is not in
+      // the response even though it is already in the DB, so the merge has to
+      // keep the client's copy of it instead of blanking the step.
+      const requestedAt = Date.now();
       const data = await fetchJson<{
         messages: Message[];
         queuedMessages?: Message[];
@@ -156,7 +160,7 @@ export function ChatInterface({
       // tokens/tools + the optimistic user message whose POST hasn't resolved
       // yet). A stale snapshot fetched before the POST committed must never
       // wipe the just-sent message, or the UI flashes back to the empty state.
-      setMessages((prev) => mergeMessagesWithLive(data.messages, prev));
+      setMessages((prev) => mergeMessagesWithLive(data.messages, prev, { requestedAt }));
       setQueuedMessages(data.queuedMessages ?? []);
       setQueuePaused(data.session?.queueHeld ?? false);
       setActiveTool(data.session?.activeTool ?? null);

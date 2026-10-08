@@ -19,6 +19,12 @@ import { isStreamingMessage, makeStreamingMessage } from "./message-factories";
  * (and a mid-run reload) can deliver that turn's events again afterwards. Id
  * matching alone would treat the renamed row as "this turn is new" and add a
  * second copy of a step the user is already looking at.
+ *
+ * The tag is client state, so a client that connects mid-run has none for the
+ * turns saved before it arrived: a replayed event for one of those builds a
+ * bubble until that turn's `message_saved` folds it into the row it was saved
+ * as (see the `message_saved` case). That is one turn's worth of replayed
+ * events, and the fold tags the row, so it cannot happen twice.
  */
 
 export type StreamAction =
@@ -35,7 +41,8 @@ export type StreamAction =
   | { type: "tool_update"; turnId: string; toolCallId: string; partialResult?: string }
   | { type: "tool_end"; turnId: string; toolCallId: string; result?: string; isError?: boolean }
   | { type: "turn_end"; turnId: string; text?: string; thinking?: string | null }
-  | { type: "message_saved"; turnId: string; messageId: string }
+  /** `receivedAt` is the client clock when the event arrived (see `Message.savedAt`). */
+  | { type: "message_saved"; turnId: string; messageId: string; receivedAt?: number }
   /** The SDK discarded a failed turn to retry it — drop the live bubble. */
   | { type: "turn_discarded"; turnId: string; messageId: string | null }
   /** Generation finished (done/error) — drop live streaming turns. */
@@ -104,9 +111,15 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
     case "thinking":
       return {
         ...state,
-        messages: ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, {
-          thinking: action.thinking || undefined,
-        }),
+        // An empty event is the SDK's thinking block opening, not "stop
+        // reasoning": clearing the field here would wipe the reasoning of a
+        // turn whose row is already on screen and only a reload would bring it
+        // back.
+        messages: action.thinking
+          ? ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, {
+              thinking: action.thinking,
+            })
+          : ensureTurnMessage(state.messages, action.turnId, state.rootMessageId),
       };
 
     case "tool_start": {
@@ -207,17 +220,41 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       // First saved message of a generation is the root (parent of later turns).
       const rootMessageId = state.rootMessageId ?? action.messageId;
       const turn = findTurnMessage(state.messages, action.turnId);
-      // Nothing to swap: the turn is gone, or the row is already the turn's
-      // message (a re-delivered `message_saved`, e.g. from a replay).
+      // Nothing to swap: the turn is gone, or the row is already its message
+      // (a re-delivered `message_saved`, e.g. from a replay).
       if (!turn || turn.id === action.messageId) return { ...state, rootMessageId };
-      // The row is on screen already (loaded, or replayed) — the live bubble
-      // would be a second copy of the same message under the same id.
-      if (state.messages.some((m) => m.id === action.messageId)) {
-        return { ...state, rootMessageId, messages: state.messages.filter((m) => m !== turn) };
+      const row = state.messages.find((m) => m.id === action.messageId);
+      if (row) {
+        // The row is on screen already, so the server did not create one for
+        // this turn: `agent_end` finalizes a run by updating an existing row,
+        // and a reload can deliver that row while its turn still streams. Its
+        // text and reasoning are the newest, so move them onto the row and drop
+        // the bubble — dropping the content instead blanks the step until the
+        // next reload, and keeping both duplicates the row.
+        return {
+          rootMessageId,
+          messages: state.messages.flatMap((m) => {
+            if (m === turn) return [];
+            if (m !== row) return [m];
+            return [
+              {
+                ...m,
+                content: turn.content,
+                thinking: turn.thinking,
+                errorMessage: turn.errorMessage ?? m.errorMessage,
+                // The row carries this turn now, so the turn's later events have
+                // to find it — unless it is already identified by its own turn.
+                turnId: m.turnId ?? turn.turnId,
+              },
+            ];
+          }),
+        };
       }
       return {
         rootMessageId,
-        messages: state.messages.map((m) => (m === turn ? { ...m, id: action.messageId } : m)),
+        messages: state.messages.map((m) =>
+          m === turn ? { ...m, id: action.messageId, savedAt: action.receivedAt ?? m.savedAt } : m,
+        ),
       };
     }
 

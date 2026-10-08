@@ -74,12 +74,16 @@ describe("streamReducer", () => {
     expect(s.messages).toHaveLength(1);
   });
 
-  it("thinking sets the thinking block (empty string is dropped)", () => {
-    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+  it("empty thinking opens the block without clearing reasoning", () => {
+    let s = streamReducer(empty, { type: "thinking", turnId: "t1", thinking: "" });
+    // The bubble still appears: an empty event is the block opening.
+    expect(s.messages).toHaveLength(1);
     s = streamReducer(s, { type: "thinking", turnId: "t1", thinking: "hmm" });
     expect(s.messages[0]!.thinking).toBe("hmm");
+    // A later empty event only means "no reasoning yet" — it must not wipe what
+    // is on screen (for a saved row that would take a reload to bring back).
     s = streamReducer(s, { type: "thinking", turnId: "t1", thinking: "" });
-    expect(s.messages[0]!.thinking).toBeUndefined();
+    expect(s.messages[0]!.thinking).toBe("hmm");
   });
 
   it("tool_start adds a running tool call and dedupes re-delivered calls", () => {
@@ -348,6 +352,47 @@ describe("streamReducer — replay after a turn is saved", () => {
     expect(s.messages).toHaveLength(1);
     expect(s.messages[0]).toMatchObject({ id: "a1" });
     expect(s.messages[0]!.toolCalls?.[0]).toMatchObject({ status: "completed", result: "done" });
+  });
+
+  it("moves a folded turn's content onto the row it was saved into", () => {
+    // `agent_end` finalizes a run by UPDATING an existing row, and a reload can
+    // deliver that row while its turn is still streaming. The row is on screen
+    // under the turn's id, so the newest text belongs on it — dropping the
+    // bubble's content would blank the step until the next reload.
+    let s = state([msg({ id: "a1", role: "assistant", content: "first answer" })], "a1");
+    s = streamReducer(s, { type: "turn_start", turnId: "t2" });
+    s = streamReducer(s, { type: "thinking", turnId: "t2", thinking: "final reasoning" });
+    s = streamReducer(s, { type: "token", turnId: "t2", text: "final answer" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t2", messageId: "a1" });
+
+    expect(s.messages).toHaveLength(1);
+    expect(s.messages[0]).toMatchObject({
+      id: "a1",
+      content: "final answer",
+      thinking: "final reasoning",
+      // The row speaks for the turn now, so its later events land on it.
+      turnId: "t2",
+    });
+  });
+
+  it("keeps the row's own tag when it already has one", () => {
+    let s = state([msg({ id: "a1", role: "assistant", content: "first", turnId: "t1" })], "a1");
+    s = streamReducer(s, { type: "turn_start", turnId: "t2" });
+    s = streamReducer(s, { type: "token", turnId: "t2", text: "second" });
+    s = streamReducer(s, { type: "message_saved", turnId: "t2", messageId: "a1" });
+
+    expect(s.messages[0]).toMatchObject({ id: "a1", content: "second", turnId: "t1" });
+  });
+
+  it("stamps a saved turn with the moment the client learned its id", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, {
+      type: "message_saved",
+      turnId: "t1",
+      messageId: "a1",
+      receivedAt: 1_700_000_000_000,
+    });
+    expect(s.messages[0]!.savedAt).toBe(1_700_000_000_000);
   });
 
   it("turn_discarded drops a turn already swapped for its row", () => {
