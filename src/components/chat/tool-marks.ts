@@ -1,13 +1,9 @@
-import { Wrench } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { getToolCategory } from "@/lib/pi/tool-categories";
-import { findToolInfo } from "@/lib/pi/tool-infos";
+import { categoryToolMark, type ToolMark } from "./tool-mark-model";
 import { describeToolCard } from "./tool-cards";
 import { webFetchFaviconUrl } from "./tool-descriptors/web";
 import type { ToolCallData } from "./types";
 
-/** What the compact activity row shows for one call in place of a card. */
-export type ToolMark = { kind: "favicon"; url: string } | { kind: "icon"; icon: LucideIcon };
+export type { ToolMark };
 
 /**
  * The mark for one call: the site's own favicon when the call opened a page,
@@ -24,14 +20,6 @@ export function toolMark(toolCall: ToolCallData): ToolMark {
     if (url) return { kind: "favicon", url };
   }
 
-  return { kind: "icon", icon: toolIcon(toolCall) };
-}
-
-/** The call's card icon, else its category's, else the generic wrench. */
-function toolIcon(toolCall: ToolCallData): LucideIcon {
   const described = describeToolCard(toolCall.name, toolCall);
-  if (described) return described.icon;
-
-  const info = findToolInfo(toolCall.name);
-  return getToolCategory(info?.category ?? "")?.icon ?? Wrench;
+  return described ? { kind: "icon", icon: described.icon } : categoryToolMark(toolCall.name);
 }

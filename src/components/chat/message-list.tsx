@@ -20,14 +20,17 @@ import { CopyButton } from "./copy-button";
 import { SelectionQuoteButton } from "./selection-quote-button";
 import { ToolCallGroup } from "./tool-call-group";
 import { CompactActivity } from "./compact-activity";
+import { compactBlocks } from "./compact-blocks";
 import { splitToolCalls } from "./tool-cards";
+import { ToolCallView } from "./tool-call-view";
+import { toolMark } from "./tool-marks";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages, type MessageGroup } from "@/lib/chat/group-messages";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
 import { formatFileSize, cn } from "@/lib/utils";
-import type { ApprovalData, Message, AttachmentData, ToolCallData } from "./types";
+import type { ApprovalData, Message, AttachmentData } from "./types";
 import {
   Loader2,
   Bot,
@@ -758,66 +761,6 @@ function AttachmentChip({
   );
 }
 
-/** One step's contribution to a run: what it reasoned and the work it did. */
-interface CompactStep {
-  id: string;
-  thinking: string;
-  work: ToolCallData[];
-}
-
-/** A block of the condensed transcript: a run of activity, or what a step said. */
-type CompactBlock =
-  | { kind: "activity"; key: string; steps: CompactStep[] }
-  | { kind: "attachments"; key: string; toolCalls: ToolCallData[] }
-  | { kind: "message"; key: string; message: Message };
-
-/**
- * Fold a turn's steps into the condensed transcript.
- *
- * A step that reasoned or worked joins the run above it; a step that said
- * something ends that run, so a sentence is read after the activity that
- * produced it and the next step starts a fresh run. Files the turn showed the
- * user are never folded in — they are the thing to look at, not a record of
- * work — and `<ToolCallGroup>` knows which calls are which.
- *
- * One step can produce several blocks (its activity, its prose, its files), so
- * a block's key is the step's id *and* its kind: React drops or duplicates
- * siblings that share a key, which is exactly the block vanishing mid-stream
- * and reappearing on a reload.
- */
-function compactBlocks(messages: readonly Message[]): CompactBlock[] {
-  const blocks: CompactBlock[] = [];
-
-  for (const message of messages) {
-    const { attachments, work } = splitToolCalls(message.toolCalls ?? []);
-
-    if (message.thinking || work.length > 0) {
-      const step: CompactStep = {
-        id: message.id,
-        thinking: message.thinking?.trim() ?? "",
-        work,
-      };
-      const open = blocks[blocks.length - 1];
-      if (open?.kind === "activity") open.steps.push(step);
-      else blocks.push({ kind: "activity", key: `${message.id}:activity`, steps: [step] });
-    }
-
-    if (message.content || message.errorMessage) {
-      blocks.push({ kind: "message", key: `${message.id}:prose`, message });
-    }
-
-    if (attachments.length > 0) {
-      blocks.push({
-        kind: "attachments",
-        key: `${attachments[0]!.id}:files`,
-        toolCalls: attachments,
-      });
-    }
-  }
-
-  return blocks;
-}
-
 /** The last assistant group of a transcript — the turn a run is working on. */
 function lastAssistantGroupId(groups: readonly MessageGroup[]): string | null {
   for (let i = groups.length - 1; i >= 0; i--) {
@@ -920,13 +863,15 @@ function AssistantGroup({
       {/* All turns' content flowing naturally */}
       <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
         {compactActivity
-          ? compactBlocks(visibleMessages).map((block) =>
+          ? compactBlocks(visibleMessages, splitToolCalls).map((block) =>
               block.kind === "activity" ? (
                 <CompactActivity
                   key={block.key}
                   reasoning={block.steps.flatMap((step) => (step.thinking ? [step.thinking] : []))}
                   toolCalls={block.steps.flatMap((step) => step.work)}
                   isActive={block.steps.some((step) => step.id === activeTurnId)}
+                  renderCall={ToolCallView}
+                  markOf={toolMark}
                 />
               ) : block.kind === "attachments" ? (
                 <ToolCallGroup key={block.key} toolCalls={block.toolCalls} />
