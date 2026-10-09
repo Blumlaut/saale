@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { TelegramCard, TelegramLinkPanel } from "@/components/integrations/telegram-card";
+import { TelegramBox, TelegramLinkPanel } from "@/components/integrations/telegram-card";
 import type {
   TelegramBotStatus,
   TelegramLink,
@@ -29,22 +29,22 @@ const linkCode: TelegramLinkCode = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function renderCard(overrides: Partial<Parameters<typeof TelegramCard>[0]> = {}) {
+function renderBox(overrides: Partial<Parameters<typeof TelegramBox>[0]> = {}) {
   const onUnlink = vi.fn();
-  const onRelink = vi.fn();
+  const onLink = vi.fn();
 
   render(
-    <TelegramCard
+    <TelegramBox
       link={link}
-      botUsername="saale_bot"
+      bot={bot}
       unlinking={false}
       onUnlink={onUnlink}
-      onRelink={onRelink}
+      onLink={onLink}
       {...overrides}
     />,
   );
 
-  return { onUnlink, onRelink };
+  return { onUnlink, onLink };
 }
 
 function renderPanel(overrides: Partial<Parameters<typeof TelegramLinkPanel>[0]> = {}) {
@@ -73,37 +73,46 @@ async function clickMenuItem(label: string) {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("TelegramCard", () => {
+describe("TelegramBox", () => {
   it("shows which Telegram account is linked", () => {
-    renderCard();
+    renderBox();
 
     expect(screen.getByText("Telegram")).toBeInTheDocument();
     expect(screen.getByText("@saale_bot")).toBeInTheDocument();
     expect(screen.getByText(/Test User · ID 119075844/)).toBeInTheDocument();
-    expect(screen.getByText("Linked")).toBeInTheDocument();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
   });
 
   it("still renders the raw id when the link has no cached name", () => {
-    renderCard({ link: { ...link, displayName: null } });
+    renderBox({ link: { ...link, displayName: null } });
 
     // The id is the identity; the name is only a cache of what Telegram told us.
     expect(screen.getByText("ID 119075844")).toBeInTheDocument();
   });
 
+  it("offers a link button instead of a status when nothing is linked", () => {
+    renderBox({ link: null });
+
+    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Link Telegram/ })).toBeInTheDocument();
+    // No menu or account details while unlinked.
+    expect(screen.queryByRole("button", { name: /Unlink/ })).not.toBeInTheDocument();
+  });
+
   it("unlinks through the row menu", async () => {
-    const { onUnlink } = renderCard();
+    const { onUnlink } = renderBox();
 
     await clickMenuItem("Unlink");
 
     expect(onUnlink).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the relink flow through the row menu", async () => {
-    const { onRelink, onUnlink } = renderCard();
+  it("opens the link dialog for relinking through the row menu", async () => {
+    const { onLink, onUnlink } = renderBox();
 
     await clickMenuItem("Link a different account");
 
-    expect(onRelink).toHaveBeenCalledTimes(1);
+    expect(onLink).toHaveBeenCalledTimes(1);
     expect(onUnlink).not.toHaveBeenCalled();
   });
 });

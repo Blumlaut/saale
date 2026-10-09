@@ -6,7 +6,7 @@ export interface IntegrationManifest {
   id: IntegrationId;
   /** Display name */
   name: string;
-  /** Short description shown in the add dialog and empty state */
+  /** Short description shown on the integration box */
   description: string;
   /** Icon component */
   icon: ComponentType<{ className?: string }>;

@@ -7,11 +7,14 @@ import { MessageCircle, GitFork } from "lucide-react";
  * To add a new integration:
  * 1. Add an entry here with metadata and API path
  * 2. Create API routes at `src/app/api/integrations/{id}/route.ts`
- * 3. Create a card component at `src/components/integrations/{id}-card.tsx`
- * 4. Import and render the card in `integrations-tab.tsx`
+ * 3. Create a box component at `src/components/integrations/{id}-card.tsx`
+ *    (built on `IntegrationBox` from `integration-box.tsx`)
+ * 4. Add the integration ID to `IntegrationId` and render the box in
+ *    `integrations-tab.tsx`
  *
- * The tab component reads this registry to render the add dialog, empty state,
- * and available integrations list — no hardcoded conditionals needed.
+ * The boxes read name, description, icon and color from this registry, so
+ * metadata lives in one place. The delete confirmation dialog is also driven
+ * by it.
  */
 export const INTEGRATIONS: IntegrationManifest[] = [
   {
