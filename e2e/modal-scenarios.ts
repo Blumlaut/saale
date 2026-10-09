@@ -780,7 +780,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
 
       // Anchor on the mocked link's name — it only exists inside this card, so
       // the row menu is unambiguous even though the shell has its own menus.
-      const card = page.locator("div").filter({ hasText: "Test Operator" }).last();
+      // Filtering by the trigger too picks the card itself, not the inner div
+      // that happens to hold the text.
+      const card = page
+        .locator("div")
+        .filter({ hasText: "Test Operator" })
+        .filter({ has: page.locator('[data-slot="dropdown-menu-trigger"]') })
+        .last();
       await card.locator('[data-slot="dropdown-menu-trigger"]').click();
       await click(page, '[role="menuitem"]:has-text("Link a different account")');
       await click(page, 'button:has-text("Get link code")');
