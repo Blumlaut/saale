@@ -16,12 +16,13 @@ import { previewScript, previewWatcherTick } from "@/lib/watchers/tick";
  * Script watcher tools.
  *
  * A watcher is a durable, unattended capability: its script runs on a schedule
- * and can call the user's tools without anyone watching. Listing, testing and
- * updating a watcher run on the model's own say-so — testing runs in a sandbox
- * without recording or waking anyone, and updating a script still pauses the
- * watcher until the user approves it on the Watchers page. Creating or deleting
- * one asks the user first, and nothing here can approve a watcher's script on
- * the user's behalf.
+ * and can call the user's tools without anyone watching. Managing one runs on
+ * the model's own say-so — testing runs in a sandbox without recording or
+ * waking anyone, and deleting only stops a tick the user can recreate. The gate
+ * is the *script* instead: a script whose calls need approval is created locked
+ * and starts running when the user approves it on the Watchers page, and a
+ * rewritten one pauses the same way. Nothing here can approve a script on the
+ * user's behalf.
  */
 
 /** How a script is expected to report. Repeated in the descriptions on purpose. */
@@ -84,6 +85,7 @@ const watcherCreateSchema = Type.Object({
   name: Type.String(),
   approvedTools: Type.Array(Type.String()),
   unrestricted: Type.Boolean(),
+  needsApproval: Type.Boolean(),
   note: Type.String(),
 });
 
@@ -251,7 +253,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
     defineStructuredTool({
       name: "watcher_create",
       label: "Create Watcher",
-      description: `Create a script watcher: it runs a script on a cron schedule and wakes you only when the script returns something. Use it for anything you would otherwise poll for on a timer — checking a mailbox, a remote host, a feed — where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} The user must confirm the script and the tools it may call before this happens; say what you are proposing and why.`,
+      description: `Create a script watcher: it runs a script on a cron schedule and wakes you only when the script returns something. Use it for anything you would otherwise poll for on a timer — checking a mailbox, a remote host, a feed — where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} A script that calls a tool needing approval is created paused: the watcher starts ticking once the user approves its script on the Watchers page, so tell them it is waiting. A script that only calls tools which never ask runs from the moment you create it.`,
       parameters: Type.Object({
         name: Type.String({ description: "Watcher name (max 100 chars, unique per user)." }),
         script: Type.String({ description: `The script body. ${SCRIPT_CONTRACT}` }),
@@ -289,6 +291,8 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         try {
           const created = await createWatcher({
             userId,
+            // A tool call is not a human reading the script.
+            approvedByUser: false,
             fields: {
               name: params.name,
               script: params.script,
@@ -308,7 +312,10 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
               name: created.name,
               approvedTools: created.grantedTools,
               unrestricted: created.grantAll,
-              note: "The watcher now ticks on its schedule. It wakes you only when the script returns a value.",
+              needsApproval: created.needsApproval,
+              note: created.needsApproval
+                ? "The watcher is created but paused: tell the user it needs their approval on the Watchers page before it starts ticking."
+                : "The watcher now ticks on its schedule. It wakes you only when the script returns a value.",
             },
           };
         } catch (err) {

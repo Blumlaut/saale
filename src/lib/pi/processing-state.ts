@@ -10,7 +10,7 @@ import { createUserMcpExtension } from "@/lib/mcp/servers";
 import { createCodemodeApprovalExtension } from "./codemode-approval";
 import { createMcpToolPolicyExtension } from "./mcp-tool-policy";
 import { createSessionSettings } from "./settings";
-import { isCategoryEnabled } from "./tool-categories";
+import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
 /**
@@ -38,7 +38,7 @@ Guidelines:
  * run by the time that is discovered.
  */
 export const TOOLS_PROMPT = `Tool use:
-Not every tool is listed to you directly. Reach the rest by writing a short JavaScript script with the \`codemode\` tool — \`await tools.<name>({ ...args })\` — and batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. If a tool you need is not listed, find it with \`searchTools("what you need")\`. Only the script's output comes back to you.
+Most of your tools are not listed to you. The ones that are listed are entry points to their area, not the whole set: before you act in an area whose tools you cannot see, and before you tell the user you cannot do something, look for them. Reach every tool by writing a short JavaScript script with the \`codemode\` tool — \`await tools.<name>({ ...args })\` — and call \`await searchTools("what you need")\` inside it to find the rest (\`ALL_TOOLS\` lists everything), including the tools of the user's MCP servers. Batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. Only the script's output comes back to you.
 A call resolves to the tool's value, so read its fields (\`r.exitCode\`, \`r.stdout\`) rather than matching text against the whole result — a result echoes the arguments it was called with. Keep a result in a variable, or carry it into a later script with \`store(key, value)\` and \`load(key)\`; never paste it into the script text, where one stray quote or brace stops the script parsing.`;
 
 /** Capability: shell + files via the terminal tool. */
@@ -151,7 +151,7 @@ function baseExtensionFactories(): ExtensionFactory[] {
   // calls several tools in parallel and reduces the results, which keeps both
   // the prompt and the transcript smaller than issuing every call itself. It is
   // also how MCP tools are reached (`codemode` is their default exposure).
-  return [createCodemodeExtension()];
+  return [createCodemodeExtension({ inlineBudget: CODEMODE_INLINE_BUDGET })];
 }
 
 export interface AgentResourceOptions {

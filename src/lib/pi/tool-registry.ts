@@ -204,22 +204,29 @@ export async function resolveTools(
 }
 
 /**
- * Set each tool's Pi exposure from its category: the user's setting when they
- * made one, otherwise the category's registry default.
+ * Set each tool's Pi exposure: the user's setting for its category when they
+ * made one, otherwise the tool's own default from the shared catalog, otherwise
+ * the category's default.
  *
- * The category comes from the shared catalog (`tool-infos.ts`) rather than the
- * loop that produced the tool, because a category's tools are not always built
- * together: `show_file` ships with the terminal bundle but belongs to
- * "Chat history". Tools missing from the catalog stay `direct`.
+ * The catalog decides rather than the loop that produced the tool, because a
+ * category's tools are not always built together: `show_file` ships with the
+ * terminal bundle but belongs to "Chat history". Tools missing from the catalog
+ * stay `direct`.
+ *
+ * The middle step is what splits a `codemode` category in two: its read-only
+ * tools are listed in codemode's catalog and the rest are `deferred` — callable
+ * from a script, but found with `searchTools` rather than advertised. See
+ * `ToolInfo.defaultExposure`.
  */
 function applyToolExposure(
   tools: ToolDefinition[],
   exposure: ToolExposureConfig,
 ): ToolDefinition[] {
   return tools.map((tool) => {
-    const category = findToolInfo(tool.name)?.category;
-    if (!category) return tool;
-    const level = exposure[category] ?? DEFAULT_TOOL_EXPOSURE[category];
+    const info = findToolInfo(tool.name);
+    if (!info?.category) return tool;
+    const level =
+      exposure[info.category] ?? info.defaultExposure ?? DEFAULT_TOOL_EXPOSURE[info.category];
     if (!level || level === "direct") return tool;
     return { ...tool, exposure: level };
   });

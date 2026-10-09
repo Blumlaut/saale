@@ -203,8 +203,19 @@ export const DEFAULT_TOOL_EXPOSURE: Record<ToolCategoryKey, ToolExposure> = Obje
   TOOL_CATEGORIES.map((c) => [c.key, c.defaultExposure]),
 ) as Record<ToolCategoryKey, ToolExposure>;
 
-/** Display metadata for the exposure selector, in preference order. */
-export const TOOL_EXPOSURES: Array<{
+/**
+ * How many tokens of the codemode catalog the model is given.
+ *
+ * Pi's default is 3000, and it fills cheapest-first by description length, so it
+ * spent the budget on whichever tools happened to be worded shortest and dropped
+ * the longest ones — which were the entry points (`mail_search`, `watcher_list`).
+ * Only the read-only tools are listed now (see `ToolInfo.defaultExposure`), and
+ * this covers all of them with room to spare; `tool-catalog-drift.test.ts` fails
+ * if a newly listed tool no longer fits.
+ */
+export const CODEMODE_INLINE_BUDGET = 5000;
+
+/** Display metadata for the exposure selector, in preference order. */ export const TOOL_EXPOSURES: Array<{
   value: ToolExposure;
   label: string;
   description: string;

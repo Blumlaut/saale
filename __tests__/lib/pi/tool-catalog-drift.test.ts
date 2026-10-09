@@ -1,5 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { ALL_TOOL_INFOS, CODEMODE_TOOL_NAME } from "@/lib/pi/tool-infos";
+import {
+  createCodemodeExtension,
+  type ExtensionAPI,
+  type ToolDefinition,
+  type ToolLoadout,
+} from "@earendil-works/pi-coding-agent";
+import { ALL_TOOL_INFOS, CODEMODE_TOOL_NAME, findToolInfo } from "@/lib/pi/tool-infos";
+import {
+  CODEMODE_INLINE_BUDGET,
+  DEFAULT_TOOL_EXPOSURE,
+  type ToolExposure,
+} from "@/lib/pi/tool-categories";
 import { createChatTools, createShowFileTool } from "@/lib/pi/tools/chat-tools";
 import { createMailTools } from "@/lib/pi/tools/mail-tools";
 import { createJobTools } from "@/lib/pi/tools/job-tools";
@@ -13,7 +24,6 @@ import { createTelegramTools } from "@/lib/pi/tools/telegram-tools";
 import { createInfraTools } from "@/lib/pi/tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
 import { createTerminalScopedTools } from "@/lib/pi/session";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 // The terminal tools are Pi built-ins wrapped by Saale; building them must not
 // reach for a GitHub token (or a database) to learn their names.
@@ -23,36 +33,41 @@ vi.mock("@/lib/github", () => ({ getGitHubEnv: vi.fn(async () => null) }));
 const PI_BUILTIN_TOOL_NAMES = [CODEMODE_TOOL_NAME];
 
 /**
- * Every tool name the registry can actually declare to a session.
+ * Every tool a factory can build for a session, as definitions rather than
+ * names.
  *
  * The terminal bundle (`read`/`write`/`edit`/`bash`) is built through the same
  * factory `resolveTools` uses rather than hard-coded here, so a rewiring that
  * drops one of them fails this test instead of being assumed present.
  */
-async function implementedToolNames(): Promise<string[]> {
+async function implementedTools(): Promise<ToolDefinition[]> {
   const userId = "catalog-user";
   const sessionId = "catalog-session";
-  const from = (tools: ToolDefinition | ToolDefinition[]) =>
-    (Array.isArray(tools) ? tools : [tools]).map((t) => t.name);
   const terminal = await createTerminalScopedTools(userId, sessionId);
 
-  return [
-    ...PI_BUILTIN_TOOL_NAMES,
-    ...from(Object.values(terminal)),
-    ...from(createChatTools(userId, sessionId)),
-    ...from(createShowFileTool(userId, sessionId)),
-    ...from(createMailTools(userId)),
-    ...from(createJobTools(userId)),
-    ...from(createCalendarTools(userId)),
-    ...from(createWebTools()),
-    ...from(createMemoryTools(userId)),
-    ...from(createTaskTools(userId)),
-    ...from(createAgentJobTools(userId)),
-    ...from(createWatcherTools(userId, sessionId)),
-    ...from(createTelegramTools(userId)),
-    ...from(createInfraTools(userId)),
-    ...from(createSettingsTools(userId)),
+  const bundles: Array<ToolDefinition | ToolDefinition[]> = [
+    Object.values(terminal),
+    createChatTools(userId, sessionId),
+    createShowFileTool(userId, sessionId),
+    createMailTools(userId),
+    createJobTools(userId),
+    createCalendarTools(userId),
+    createWebTools(),
+    createMemoryTools(userId),
+    createTaskTools(userId),
+    createAgentJobTools(userId),
+    createWatcherTools(userId, sessionId),
+    createTelegramTools(userId),
+    createInfraTools(userId),
+    createSettingsTools(userId),
   ];
+
+  return bundles.flatMap((bundle) => (Array.isArray(bundle) ? bundle : [bundle]));
+}
+
+/** Every tool name the registry can declare, Pi's `codemode` included. */
+async function implementedToolNames(): Promise<string[]> {
+  return [...PI_BUILTIN_TOOL_NAMES, ...(await implementedTools()).map((tool) => tool.name)];
 }
 
 /**
@@ -84,4 +99,113 @@ describe("tool catalog ↔ implementation drift", () => {
     const names = ALL_TOOL_INFOS.map((info) => info.name);
     expect(new Set(names).size).toBe(names.length);
   });
+
+  it("gives every tool of a codemode category a listed-or-hidden decision", () => {
+    const undecided = ALL_TOOL_INFOS.filter((info) => {
+      const category = info.category;
+      if (!category || DEFAULT_TOOL_EXPOSURE[category] !== "codemode") return false;
+      return info.defaultExposure !== "codemode" && info.defaultExposure !== "deferred";
+    });
+    expect(
+      undecided.map((info) => info.name),
+      'Set `defaultExposure` on these in ALL_TOOL_INFOS: "codemode" to list the tool in the codemode catalog, "deferred" to leave it to searchTools',
+    ).toEqual([]);
+  });
+
+  it("never lists a tool that has to be confirmed", () => {
+    // The catalog is what the model reads without looking; a tool the user has
+    // to approve is an action, and an action is something to go and find.
+    const listedAndGuarded = ALL_TOOL_INFOS.filter(
+      (info) => info.defaultPolicy === "ask" && info.defaultExposure === "codemode",
+    );
+    expect(listedAndGuarded.map((info) => info.name)).toEqual([]);
+  });
+
+  it("lists the read-only entry points of every area", async () => {
+    const listed = await listedToolNames();
+    // The regression this guards: the codemode budget filled with whichever
+    // tools had the shortest descriptions, which dropped the entry points and
+    // left `watcher_delete` advertised with no sign of what a watcher is.
+    expect([...listed].sort()).toEqual([
+      "agent_job_list",
+      "agent_job_logs",
+      "agent_job_run_messages",
+      "calendar_list",
+      "calendar_search",
+      "calendar_upcoming",
+      "chat_search",
+      "infra_download_file",
+      "infra_list_machines",
+      "infra_notes_get",
+      "infra_notes_list",
+      "infra_read_file",
+      "job_list",
+      "job_logs",
+      "job_types",
+      "mail_accounts",
+      "mail_folders",
+      "mail_list",
+      "mail_read",
+      "mail_search",
+      "model_list",
+      "settings_list",
+      "task_list_pending",
+      "task_search",
+      "watcher_list",
+      "watcher_ticks",
+    ]);
+  });
 });
+
+/** The exposure the resolver gives a tool when the user changed nothing. */
+function defaultExposureOf(name: string): ToolExposure {
+  const info = findToolInfo(name);
+  const category = info?.category;
+  if (!category) return "direct";
+  // Mirrors `applyToolExposure`: no default anywhere leaves the tool declared.
+  return info?.defaultExposure ?? DEFAULT_TOOL_EXPOSURE[category] ?? "direct";
+}
+
+/**
+ * The tools codemode lists to the model, rendered by Pi's own catalog.
+ *
+ * Pi builds that description in `prepareLoadout`, which a session calls whenever
+ * the active tools change, so the check runs the real renderer — including its
+ * token budget — rather than a re-implementation of it that could not fail.
+ */
+async function listedToolNames(): Promise<Set<string>> {
+  const exposureOf = defaultExposureOf;
+  const callable = (await implementedTools()).filter((t) => exposureOf(t.name) !== "direct");
+
+  let registered: ToolDefinition | undefined;
+  createCodemodeExtension({ inlineBudget: CODEMODE_INLINE_BUDGET })({
+    // Registration reads only these members; the rest of ExtensionAPI is never
+    // reached, so the stub stands in for a session that will never exist here.
+    registerTool: (tool: ToolDefinition) => {
+      registered = tool;
+    },
+    getSettings: () => ({}),
+    getAllTools: () => [],
+    appendEntry: () => {},
+  } as unknown as ExtensionAPI);
+
+  if (!registered?.prepareLoadout) throw new Error("codemode registered no loadout hook");
+
+  const loadout: ToolLoadout = {
+    // No declared tools: the catalog lists what is reachable from a script, and
+    // the declared ones are excluded from it by exposure either way.
+    declared: [],
+    callable: callable as unknown as ToolLoadout["callable"],
+    registered: callable as unknown as ToolLoadout["registered"],
+    getExposure: (name) => exposureOf(name),
+    getNamespace: () => undefined,
+    getPromptGuidelines: () => [],
+  };
+
+  const description = registered.prepareLoadout(loadout)?.descriptions?.[CODEMODE_TOOL_NAME];
+  if (!description) throw new Error("codemode rendered no catalog");
+
+  return new Set(
+    [...description.matchAll(/^### `([A-Za-z0-9_]+)`/gm)].map((match) => match[1] ?? ""),
+  );
+}

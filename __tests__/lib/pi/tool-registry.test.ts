@@ -472,6 +472,7 @@ describe("resolveTools", () => {
       memory: true,
       tasks: true,
       agentJobs: true,
+      watchers: true,
       infra: true,
       settings: true,
     };
@@ -479,13 +480,19 @@ describe("resolveTools", () => {
     it("applies each category's default when the user configured nothing", async () => {
       vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
       const tools = await resolveTools(userId, sessionId, ALL_ON, options);
-      // Niche catalogs default to codemode — registered, reachable from a
-      // script, not declared on every request.
+      // The read-only tools of a niche catalog are the ones codemode lists, so
+      // the model can survey the area before it acts.
       expect(exposureOf(tools, "mail_read")).toBe("codemode");
-      expect(exposureOf(tools, "infra_exec")).toBe("codemode");
       expect(exposureOf(tools, "job_list")).toBe("codemode");
       expect(exposureOf(tools, "settings_list")).toBe("codemode");
-      expect(exposureOf(tools, "settings_set")).toBe("codemode");
+      // A watcher is a thing the model must know it can look at — its list is
+      // listed — while creating one is an action it has to go and find.
+      expect(exposureOf(tools, "watcher_list")).toBe("codemode");
+      expect(exposureOf(tools, "watcher_create")).toBe("deferred");
+      // The rest of the catalog stays callable from a script but unlisted, so
+      // it has to be found with `searchTools`.
+      expect(exposureOf(tools, "infra_exec")).toBe("deferred");
+      expect(exposureOf(tools, "settings_set")).toBe("deferred");
       // The everyday tools stay declared.
       expect(exposureOf(tools, "web_search")).toBeUndefined();
       expect(exposureOf(tools, "memory_search")).toBeUndefined();
@@ -499,11 +506,13 @@ describe("resolveTools", () => {
         exposure: { email: "direct", infra: "deferred" },
       });
 
-      // email is pulled back in front of the model…
+      // email is pulled back in front of the model — the user's choice for the
+      // category beats the per-tool split, both listed and unlisted tools.
       expect(exposureOf(tools, "mail_accounts")).toBeUndefined();
       expect(exposureOf(tools, "mail_read")).toBeUndefined();
       // …infra is hidden even from codemode's catalog…
       expect(exposureOf(tools, "infra_exec")).toBe("deferred");
+      expect(exposureOf(tools, "infra_list_machines")).toBe("deferred");
       // …and categories the user did not touch keep their default.
       expect(exposureOf(tools, "job_list")).toBe("codemode");
       expect(exposureOf(tools, "web_search")).toBeUndefined();
