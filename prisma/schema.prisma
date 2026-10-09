@@ -39,7 +39,8 @@ model User {
   tasks              Task[]
   agentDefinitions   AgentDefinition[]
   scriptWatchers     ScriptWatcher[]
-  telegramAccounts   TelegramAccount[]
+  telegramLink       TelegramLink?
+  telegramLinkCodes  TelegramLinkCode[]
   githubAccounts     GitHubAccount[]
   infraMachines      InfraMachine[]
   mcpServers         McpServer[]
@@ -740,59 +741,71 @@ model ScriptWatcherTick {
 
 // ─── Telegram Integration ──────────────────────────────────────
 
-/// User's Telegram bot account — one bot per user.
-/// Token is encrypted at rest (AES-256-GCM via lib/crypto).
-model TelegramAccount {
-  id              String              @id @default(cuid())
-  userId          String
-  encryptedToken  String              @db.Text // encrypted bot token
-  enabled         Boolean             @default(true)
-  botId           BigInt?             // numeric bot ID from getMe
-  botUsername     String?             // @username (without @)
-  webhookSecret   String              // random secret for webhook verification
-  /// Chat proactive messages (reminders, job output) are delivered to.
-  /// null = resolve automatically, preferring a private chat.
-  notifyChatId    BigInt?
-  whitelistedUsers TelegramWhitelist[]
-  chats           TelegramChat[]
-  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+/// The Telegram bot this Saale instance runs — a single row, configured by an
+/// admin. Users link their own Telegram account to it instead of each running
+/// their own bot. Token is encrypted at rest (AES-256-GCM via lib/crypto) and
+/// is never returned by an API route.
+model TelegramBot {
+  id              String         @id @default("global")
+  encryptedToken  String         @db.Text // encrypted bot token
+  enabled         Boolean        @default(true)
+  botId           BigInt?        // numeric bot ID from getMe
+  botUsername     String?        // @username (without @)
+  webhookSecret   String         // random secret for webhook verification
+  /// Admin who last saved this configuration (audit trail).
+  updatedByUserId String?
+  links           TelegramLink[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  @@unique([userId]) // one bot per user
-  @@index([webhookSecret])
-  @@map("TelegramAccount")
+  @@map("TelegramBot")
 }
 
-/// Whitelisted Telegram users allowed to interact with a bot.
-model TelegramWhitelist {
-  id                String          @id @default(cuid())
-  telegramAccountId String
-  telegramUserId    BigInt          // Telegram user ID (exceeds JS safe integer range)
-  displayName       String?         // cached first/last name
-  account           TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
-  createdAt         DateTime        @default(now())
+/// A Saale user's linked Telegram account.
+///
+/// One Telegram identity per Saale user, and one Saale user per Telegram
+/// identity: `telegramUserId` is globally unique, so an incoming message can
+/// only ever resolve to the single user who linked that identity — nothing in
+/// the message itself can pick a different account.
+///
+/// A private chat's ID equals its user's ID; `telegramChatId` is stored
+/// explicitly because that is the value messages are sent to.
+model TelegramLink {
+  id             String      @id @default(cuid())
+  botId          String
+  userId         String      @unique
+  telegramUserId BigInt      @unique
+  telegramChatId BigInt
+  displayName    String?
+  /// Saale ChatSession this link talks through (null until the first message).
+  sessionId      String?
+  bot            TelegramBot @relation(fields: [botId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  @@unique([telegramAccountId, telegramUserId])
-  @@index([telegramAccountId])
-  @@map("TelegramWhitelist")
-}
-
-/// Per-conversation state linking a Telegram chat to a Saale chat session.
-model TelegramChat {
-  id                String          @id @default(cuid())
-  telegramAccountId String
-  telegramChatId    BigInt          // Telegram chat ID
-  chatType          String          // "private" | "group"
-  sessionId         String          // ChatSession.id — links to existing chat system
-  lastMessageId     Int?            // last processed Telegram message ID (dedup)
-  account           TelegramAccount @relation(fields: [telegramAccountId], references: [id], onDelete: Cascade)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-
-  @@unique([telegramAccountId, telegramChatId])
+  @@index([botId])
   @@index([sessionId])
-  @@map("TelegramChat")
+  @@map("TelegramLink")
+}
+
+/// Short-lived single-use code that binds a Telegram identity to the Saale
+/// user who requested it.
+///
+/// Only the hash is stored — the plaintext exists solely in the deep link
+/// rendered inside that user's authenticated session, so possessing the code
+/// is proof of having been signed in as that user.
+model TelegramLinkCode {
+  id        String   @id @default(cuid())
+  codeHash  String   @unique
+  userId    String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("TelegramLinkCode")
 }
 
 /// GitHub integration — stores a user's GitHub personal access token.

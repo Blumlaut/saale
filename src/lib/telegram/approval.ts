@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { findToolInfo, summarizeToolAction } from "@/lib/pi/tool-infos";
 import { createBot } from "./client";
+import { getEnabledTelegramBot } from "./bot";
+import { getLinkByTelegramUserId, getLinkByUserId } from "./links";
 import type { ApprovalRequest } from "@/lib/pi/tool-approval-gate";
 import type { ApprovalCardId } from "./approval-cards";
 
@@ -12,9 +14,9 @@ const TOKEN_KEY_PREFIX = "saale:approval-token:";
 /**
  * Send a tool approval request via Telegram with inline buttons.
  *
- * Only sends if the user has an enabled Telegram bot configured.
- * Uses a short random token (stored in Redis) for callback_data
- * to stay within Telegram's 64-byte limit.
+ * Only sends if the instance has an enabled bot and the user has linked their
+ * Telegram account. Uses a short random token (stored in Redis) for
+ * callback_data to stay within Telegram's 64-byte limit.
  *
  * @returns The card's chat + message IDs (so the sender can delete it
  *          later), or null if no card was sent.
@@ -23,23 +25,13 @@ export async function sendTelegramApprovalRequest(
   userId: string,
   request: ApprovalRequest,
 ): Promise<ApprovalCardId | null> {
-  const account = await prisma.telegramAccount.findFirst({
-    where: { userId, enabled: true },
-    select: { id: true, encryptedToken: true, userId: true },
-  });
+  const botConfig = await getEnabledTelegramBot();
+  if (!botConfig) return null;
 
-  if (!account) return null;
+  const link = await getLinkByUserId(userId);
+  if (!link) return null;
 
-  // Find the user's Telegram chat ID from TelegramChat records
-  const chat = await prisma.telegramChat.findFirst({
-    where: { telegramAccountId: account.id },
-    select: { telegramChatId: true },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  if (!chat) return null;
-
-  const bot = createBot(account.encryptedToken);
+  const bot = createBot(botConfig.encryptedToken);
 
   // What the call is about: the server-resolved summary (ID references
   // looked up against the user's records), falling back to the client-safe
@@ -84,7 +76,7 @@ export async function sendTelegramApprovalRequest(
       console.error("Failed to store approval token in Redis:", err);
     });
 
-  const sent = await bot.api.sendMessage(Number(chat.telegramChatId), text, {
+  const sent = await bot.api.sendMessage(Number(link.telegramChatId), text, {
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [
@@ -102,7 +94,7 @@ export async function sendTelegramApprovalRequest(
     },
   });
 
-  return { chatId: Number(chat.telegramChatId), messageId: sent.message_id };
+  return { chatId: Number(link.telegramChatId), messageId: sent.message_id };
 }
 
 /**
@@ -127,7 +119,12 @@ export async function deleteTelegramApprovalMessage(
  * Callback data format: `a:{token}` or `d:{token}` (approve/deny).
  * The token is looked up in Redis to get the actual sessionId and toolCallId.
  *
- * Verifies user isolation: the session must belong to the Telegram account's user.
+ * User isolation: the press must come from the Telegram account linked to the
+ * user who owns the session. One bot serves every user, so the card's presence
+ * proves nothing — a forwarded message keeps its buttons, and without this
+ * check any user of the bot could resolve someone else's approval. The
+ * `telegramUserId` comes from Telegram's own callback payload, not from
+ * anything the sender can forge.
  *
  * The approval card itself is deleted by the run's card tracker (which
  * observes the `tool_approval_resolved` session bus event this resolution
@@ -136,8 +133,8 @@ export async function deleteTelegramApprovalMessage(
  * @returns true if the callback was handled, false if it was not an approval callback.
  */
 export async function handleApprovalCallback(
-  accountId: string,
   callbackData: string,
+  telegramUserId: bigint,
 ): Promise<{ handled: boolean; message?: string; approved?: boolean }> {
   if (!callbackData.startsWith("a:") && !callbackData.startsWith("d:")) {
     return { handled: false };
@@ -160,34 +157,32 @@ export async function handleApprovalCallback(
     };
   }
 
-  // Clean up the token
-  await redis.del(`${TOKEN_KEY_PREFIX}${token}`).catch((err) => {
-    console.error("Failed to clean up approval token:", err);
-  });
-
   const { sessionId, toolCallId } = JSON.parse(tokenData) as {
     sessionId: string;
     toolCallId: string;
   };
 
-  // User isolation: verify the session belongs to the Telegram account's user
-  const account = await prisma.telegramAccount.findUnique({
-    where: { id: accountId },
-    select: { userId: true },
-  });
+  // User isolation: the pressing Telegram account must be the one linked to the
+  // session's owner. The token is only consumed once that holds.
+  const [link, session] = await Promise.all([
+    getLinkByTelegramUserId(telegramUserId),
+    prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: { userId: true },
+    }),
+  ]);
 
-  if (!account) {
-    return { handled: false };
+  if (!link || !session || session.userId !== link.userId) {
+    return {
+      handled: true,
+      message: "⚠️ This approval belongs to a different account.",
+    };
   }
 
-  const session = await prisma.chatSession.findUnique({
-    where: { id: sessionId },
-    select: { userId: true },
+  // Clean up the token
+  await redis.del(`${TOKEN_KEY_PREFIX}${token}`).catch((err) => {
+    console.error("Failed to clean up approval token:", err);
   });
-
-  if (!session || session.userId !== account.userId) {
-    return { handled: false };
-  }
 
   // Import dynamically to avoid circular deps
   const { resolveApproval } = await import("@/lib/pi/tool-approval-gate");

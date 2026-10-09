@@ -1,13 +1,20 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import {
-  processTelegramMessage,
-  isWhitelisted,
-  upsertWhitelistDisplayName,
-} from "@/lib/telegram/processor";
+  buildLinkFailureMessage,
+  buildLinkRequiredMessage,
+  buildLinkSuccessMessage,
+  createBot,
+} from "@/lib/telegram/client";
+import { getTelegramBot } from "@/lib/telegram/bot";
+import {
+  LINK_CODE_PATTERN,
+  consumeLinkCode,
+  getLinkByTelegramUserId,
+  updateLinkDisplayName,
+} from "@/lib/telegram/links";
+import { processTelegramMessage } from "@/lib/telegram/processor";
 import type { TelegramFileInfo } from "@/lib/telegram/files";
-import { buildUnauthorizedMessage, createBot } from "@/lib/telegram/client";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
 import { handleCommandPromptCallback, handleTelegramCommand } from "@/lib/telegram/command-prompts";
 import { extractQuotedMessage } from "@/lib/telegram/reply-context";
@@ -81,70 +88,88 @@ function extractMessageContent(message: Record<string, unknown>): {
 }
 
 /**
- * POST /api/integrations/telegram/webhook/:accountId
+ * Read a `/start` (or `/link`) deep-link payload from a message.
  *
- * Receives Telegram updates via webhook. Each user's bot has its own
- * webhook URL pointing to their account ID, so we don't need to
- * disambiguate which bot received the update.
+ * Returns the payload — empty string for a bare `/start` — or null when the
+ * message is not one of those commands.
+ */
+function parseLinkPayload(text: string): string | null {
+  const match = /^\/(?:start|link)(?:\s+(\S+))?$/i.exec(text.trim());
+  if (!match) return null;
+  return match[1] ?? "";
+}
+
+/** The sender's display name from a Telegram `from` object. */
+function senderDisplayName(from: { first_name?: string; last_name?: string }): string | null {
+  const name = [from.first_name, from.last_name].filter(Boolean).join(" ").trim();
+  return name || null;
+}
+
+/**
+ * POST /api/integrations/telegram/webhook
+ *
+ * Receives Telegram updates for the instance's shared bot.
  *
  * Security:
- * - The accountId in the URL is a cuid() (not user-guessable)
- * - The account must exist and be enabled
  * - The webhookSecret is verified via Telegram's X-Telegram-Bot-Api-Secret-Token header
- * - Only whitelisted Telegram users can interact with the bot
+ * - The sender's Telegram user ID is the *only* input that selects a Saale
+ *   account: it is matched against TelegramLink, and an unlinked sender is
+ *   refused. Nothing in the message body can name a different account.
+ * - Inline button presses are verified against the same link, because a
+ *   forwarded card keeps its buttons and one bot now serves every user.
+ * - Only private chats are processed — a shared, discoverable bot in a group
+ *   would run one member's message against another member's account in front
+ *   of everyone.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ accountId: string }> },
-) {
-  const { accountId } = await params;
+export async function POST(request: NextRequest) {
+  // 1. The instance's bot must exist and be switched on
+  const botConfig = await getTelegramBot();
 
-  // 1. Look up the Telegram account (user-isolated via DB query)
-  const account = await prisma.telegramAccount.findUnique({
-    where: { id: accountId },
-    select: {
-      id: true,
-      userId: true,
-      encryptedToken: true,
-      enabled: true,
-      webhookSecret: true,
-    },
-  });
-
-  if (!account) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!botConfig) {
+    return NextResponse.json({ error: "Telegram is not configured" }, { status: 404 });
   }
 
-  // 2. Check if the integration is enabled
-  if (!account.enabled) {
+  if (!botConfig.enabled) {
     return NextResponse.json({ error: "Telegram integration is disabled" }, { status: 403 });
   }
 
-  // 3. Verify the webhook secret (Telegram sends this in a header)
+  // 2. Verify the webhook secret (Telegram sends this in a header)
   const incomingSecret = request.headers.get("x-telegram-bot-api-secret-token");
-  if (incomingSecret !== account.webhookSecret) {
+  if (incomingSecret !== botConfig.webhookSecret) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // 4. Parse the update
+  // 3. Parse the update
   let update: Record<string, unknown>;
   try {
     update = await request.json();
-  } catch {
+  } catch (err) {
+    console.error("Failed to parse Telegram update body:", err);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // 5. Handle callback queries (inline button presses — e.g. tool approval)
+  const { encryptedToken } = botConfig;
+
+  // 4. Handle callback queries (inline button presses — tool approval, command prompts)
   const callbackQuery = update.callback_query as
     | {
         id: string;
         data?: string;
+        from?: { id: number; first_name?: string; last_name?: string };
         message: { chat: { id: number; type: string }; message_id: number };
       }
     | undefined;
 
   if (callbackQuery && callbackQuery.data) {
-    const bot = createBot(account.encryptedToken);
+    // Without the presser we cannot tell whose decision this is, and guessing
+    // would be exactly the cross-account leak this design exists to prevent.
+    if (!callbackQuery.from) {
+      console.error("Telegram callback query arrived without a sender — ignoring it");
+      return NextResponse.json({ ok: true });
+    }
+
+    const presserId = BigInt(callbackQuery.from.id);
+    const bot = createBot(encryptedToken);
     const answer = async (text: string, context: string) => {
       try {
         await bot.api.answerCallbackQuery(callbackQuery.id, { text, show_alert: false });
@@ -153,28 +178,26 @@ export async function POST(
       }
     };
 
-    // Handle approval callbacks (with accountId for user isolation).
     // The approval card is deleted by the run's card tracker when the
     // resolution event reaches it.
-    const approvalResult = await handleApprovalCallback(accountId, callbackQuery.data);
+    const approvalResult = await handleApprovalCallback(callbackQuery.data, presserId);
     if (approvalResult.handled) {
       if (approvalResult.message) await answer(approvalResult.message, "approval");
     } else {
       // Not an approval callback — try a slash-command prompt's button.
       const commandResult = await handleCommandPromptCallback(
-        accountId,
         callbackQuery.data,
+        presserId,
         callbackQuery.message,
       );
-      if (commandResult.handled && commandResult.message) {
+      if (commandResult.handled && commandResult.message)
         await answer(commandResult.message, "command");
-      }
     }
 
     return NextResponse.json({ ok: true });
   }
 
-  // 6. Extract message from update (private chats only)
+  // 5. Extract message from update (private chats only)
   const message = update.message as
     | {
         text?: string;
@@ -200,31 +223,59 @@ export async function POST(
 
   const telegramChatId = BigInt(message.chat.id);
   const telegramUserId = BigInt(message.from.id);
+  const bot = createBot(encryptedToken);
 
-  // 7. Check whitelist
-  const whitelisted = await isWhitelisted(account.id, telegramUserId);
-  if (!whitelisted) {
-    const bot = createBot(account.encryptedToken);
+  const reply = async (text: string) => {
     try {
-      await bot.api.sendMessage(message.chat.id, buildUnauthorizedMessage(telegramUserId), {
-        parse_mode: "HTML",
-      });
+      await bot.api.sendMessage(message.chat.id, text, { parse_mode: "HTML" });
     } catch (err) {
-      console.error("Failed to send rejection message:", err);
+      console.error("Failed to send a Telegram reply:", err);
     }
+  };
+
+  // 6. Linking. `/start <code>` arrives from the deep link (or as `/link` typed
+  //    on another device) and is the *only* way a link is created. It must be
+  //    handled before the link check — redeeming a code is what an unlinked
+  //    user is here to do.
+  const linkPayload = parseLinkPayload(content.text ?? "");
+  if (linkPayload !== null) {
+    if (linkPayload === "") {
+      await reply(buildLinkRequiredMessage());
+      return NextResponse.json({ ok: true });
+    }
+
+    const result = LINK_CODE_PATTERN.test(linkPayload)
+      ? await consumeLinkCode({
+          code: linkPayload,
+          telegramUserId,
+          telegramChatId,
+          displayName: senderDisplayName(message.from),
+        })
+      : ({ ok: false, reason: "expired" } as const);
+
+    await reply(result.ok ? buildLinkSuccessMessage() : buildLinkFailureMessage(result.reason));
     return NextResponse.json({ ok: true });
   }
 
-  // 7.5. Slash commands — declared once in the shared registry and dispatched
-  // through it, so a command behaves identically here and in the web chat.
-  // Only names the registry knows are intercepted; anything else (including
-  // paths like `/dashboard/chat`) still reaches the agent as a normal message.
+  // 7. Resolve the sender's Saale account. Unlinked senders are refused here —
+  //    there is no path from a message to an account other than this lookup.
+  const link = await getLinkByTelegramUserId(telegramUserId);
+  if (!link) {
+    await reply(buildLinkRequiredMessage());
+    return NextResponse.json({ ok: true });
+  }
+
+  const userId = link.userId;
+
+  // 8. Slash commands — declared once in the shared registry and dispatched
+  //    through it, so a command behaves identically here and in the web chat.
+  //    Only names the registry knows are intercepted; anything else (including
+  //    paths like `/dashboard/chat`) still reaches the agent as a normal message.
   const parsedCommand = parseCommand(content.text ?? "");
   if (parsedCommand && getCommandMeta(parsedCommand.name)) {
     handleTelegramCommand({
-      accountId: account.id,
-      userId: account.userId,
-      encryptedToken: account.encryptedToken,
+      userId,
+      encryptedToken,
       telegramChatId,
       name: parsedCommand.name,
       args: parsedCommand.args,
@@ -235,31 +286,17 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  // 8. Update display name cache (fire-and-forget)
-  const displayName = [message.from.first_name, message.from.last_name].filter(Boolean).join(" ");
-  upsertWhitelistDisplayName(account.id, telegramUserId, displayName || null).catch((err) => {
-    console.error("Failed to update whitelist display name:", err);
+  // 9. Update the cached display name (fire-and-forget)
+  updateLinkDisplayName(telegramUserId, senderDisplayName(message.from)).catch((err) => {
+    console.error("Failed to update the Telegram link display name:", err);
   });
-
-  // 9. Update last processed message ID (fire-and-forget)
-  prisma.telegramChat
-    .updateMany({
-      where: {
-        telegramAccountId: account.id,
-        telegramChatId,
-      },
-      data: { lastMessageId: message.message_id },
-    })
-    .catch((err) => {
-      console.error("Failed to update lastMessageId:", err);
-    });
 
   // 10. Latest message wins: this message replaces any in-flight run for the
   //     chat. Bump the chat's message sequence, then supersede the active run
   //     (aborting the live session if the Pi session exists yet) and wait for
   //     it to settle before the new run starts.
-  const messageSeq = nextMessageSeq(account.userId, telegramChatId);
-  await interruptTelegramChat(account.userId, telegramChatId);
+  const messageSeq = nextMessageSeq(userId, telegramChatId);
+  await interruptTelegramChat(userId, telegramChatId);
 
   // 11. Process the message asynchronously with run tracking for interruption.
   //     The done promise settles when the run has fully settled (success,
@@ -271,8 +308,8 @@ export async function POST(
   });
 
   processTelegramMessage({
-    userId: account.userId,
-    encryptedToken: account.encryptedToken,
+    userId,
+    encryptedToken,
     telegramChatId,
     telegramUserId,
     messageText: content.text ?? "",
@@ -283,7 +320,7 @@ export async function POST(
     messageSeq,
     donePromise: processingPromise,
     onSessionCreated: (session, tgChatId) => {
-      attachTelegramSession(account.userId, tgChatId, session);
+      attachTelegramSession(userId, tgChatId, session);
     },
     processingDone,
   }).catch((err) => {

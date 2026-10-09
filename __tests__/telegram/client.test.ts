@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { convert as convertToTelegramMarkdown } from "telegram-markdown-v2";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -23,7 +23,13 @@ import {
   splitMarkdownV2,
   splitPlainText,
 } from "@/lib/telegram/message-split";
-import { buildUnauthorizedMessage, sendTelegramMessage } from "@/lib/telegram/client";
+import {
+  buildLinkFailureMessage,
+  buildLinkRequiredMessage,
+  buildLinkSuccessMessage,
+  buildWebhookUrl,
+  sendTelegramMessage,
+} from "@/lib/telegram/client";
 import { TELEGRAM_FORMATTING_GUIDE } from "@/lib/telegram/prompt";
 
 // ─── Chunk validation helpers ────────────────────────────────────────────────
@@ -378,21 +384,81 @@ describe("sendTelegramMessage", () => {
   });
 });
 
-// ─── Unauthorized message ────────────────────────────────────────────────────
+// ─── Linking messages ────────────────────────────────────────────────────────
 
-describe("buildUnauthorizedMessage", () => {
-  it("includes the sender's Telegram user ID and whitelist guidance", () => {
-    const msg = buildUnauthorizedMessage(BigInt("8123456789"));
-    expect(msg).toContain("<code>8123456789</code>");
-    expect(msg).toContain("not authorized");
-    expect(msg).toContain("whitelist");
+describe("buildWebhookUrl", () => {
+  const originalEnv = { ...process.env };
+
+  afterAll(() => {
+    Object.assign(process.env, originalEnv);
   });
 
-  it("handles multi-digit IDs beyond JS safe integer range", () => {
-    const id = BigInt("9007199254740993"); // 2^53 + 1 — above Number.MAX_SAFE_INTEGER
-    const msg = buildUnauthorizedMessage(id);
-    // bigint toString must round-trip exactly, not via Number()
-    expect(msg).toContain("<code>9007199254740993</code>");
+  it.each([
+    { envVar: "NGROK_URL", value: "https://abc123.ngrok.io" },
+    { envVar: "VERCEL_URL", value: "myapp.vercel.app" },
+    { envVar: "NEXT_PUBLIC_BASE_URL", value: "https://saale.example.com" },
+    { envVar: "APP_URL", value: "http://localhost:3000" },
+  ])("uses $envVar when set", ({ envVar, value }) => {
+    delete process.env.NGROK_URL;
+    delete process.env.VERCEL_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.APP_URL;
+    process.env[envVar] = value;
+
+    // One shared bot means one webhook path — it names the instance, not a user.
+    expect(buildWebhookUrl()).toBe(
+      `${envVar === "VERCEL_URL" ? "https://" : ""}${value}/api/integrations/telegram/webhook`,
+    );
+  });
+
+  it("prefers NGROK_URL over VERCEL_URL", () => {
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.APP_URL;
+    process.env.NGROK_URL = "https://ngrok.test";
+    process.env.VERCEL_URL = "vercel.test";
+
+    expect(buildWebhookUrl()).toBe("https://ngrok.test/api/integrations/telegram/webhook");
+  });
+
+  it("falls back to localhost when no env is set", () => {
+    delete process.env.NGROK_URL;
+    delete process.env.VERCEL_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.APP_URL;
+
+    expect(buildWebhookUrl()).toBe("http://localhost:3630/api/integrations/telegram/webhook");
+  });
+});
+
+describe("buildLinkRequiredMessage", () => {
+  it("sends an unlinked sender to the linking screen, not to a bot owner", () => {
+    const msg = buildLinkRequiredMessage();
+
+    expect(msg).toContain("Settings");
+    expect(msg).toContain("Integrations");
+    // There is no owner to whitelist anyone any more.
+    expect(msg).not.toMatch(/whitelist|authorized/i);
+  });
+});
+
+describe("buildLinkSuccessMessage", () => {
+  it("confirms the account is connected", () => {
+    const msg = buildLinkSuccessMessage();
+    expect(msg).toContain("Linked");
+  });
+});
+
+describe("buildLinkFailureMessage", () => {
+  it("explains an expired or unknown code", () => {
+    const msg = buildLinkFailureMessage("expired");
+    expect(msg).toMatch(/invalid or has expired/);
+    expect(msg).toContain("Integrations");
+  });
+
+  it("tells someone whose Telegram account is taken by another user what to do", () => {
+    const msg = buildLinkFailureMessage("already_linked");
+    expect(msg).toMatch(/already linked to a different Saale account/);
+    expect(msg).toMatch(/Unlink/);
   });
 });
 

@@ -2,186 +2,169 @@
 import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { TelegramCard } from "@/components/integrations/telegram-card";
+import { TelegramCard, TelegramLinkPanel } from "@/components/integrations/telegram-card";
 import type {
-  TelegramAccount,
-  TelegramChatInfo,
-  WhitelistEntry,
+  TelegramBotStatus,
+  TelegramLink,
+  TelegramLinkCode,
 } from "@/hooks/use-telegram-integration";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const account: TelegramAccount = {
-  id: "acc-1",
-  enabled: true,
-  botId: "123456",
-  botUsername: "saale_bot",
-  whitelistCount: 1,
-  notifyChatId: null,
-  notifyChat: { chatId: "119075844", label: "Test User", source: "private" },
-  createdAt: "2024-01-01T00:00:00.000Z",
-  updatedAt: "2024-01-01T00:00:00.000Z",
+const link: TelegramLink = {
+  telegramUserId: "119075844",
+  chatId: "119075844",
+  displayName: "Test User",
+  linkedAt: "2024-01-01T00:00:00.000Z",
 };
 
-const whitelistedUser: WhitelistEntry = {
-  id: "wl-1",
-  telegramUserId: "119075844",
-  displayName: "Test User",
-  createdAt: "2024-01-01T00:00:00.000Z",
+const bot: TelegramBotStatus = { configured: true, enabled: true, username: "saale_bot" };
+
+const linkCode: TelegramLinkCode = {
+  code: "abcDEF123_-GHIJKL456_-mnopqr789_",
+  deepLink: "https://t.me/saale_bot?start=abcDEF123_-GHIJKL456_-mnopqr789_",
+  expiresAt: "2030-01-01T00:12:00.000Z",
+  botUsername: "saale_bot",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function renderCard(overrides: Partial<Parameters<typeof TelegramCard>[0]> = {}) {
-  const onOpenWhitelist = vi.fn();
-  const onToggleEnabled = vi.fn();
-  const onDelete = vi.fn();
-  const onNewUserIdChange = vi.fn();
-  const onAddUser = vi.fn();
-  const onRemoveUser = vi.fn();
-  const onOpenNotifyChats = vi.fn();
-  const onSetNotifyChat = vi.fn();
+  const onUnlink = vi.fn();
+  const onRelink = vi.fn();
 
   render(
     <TelegramCard
-      account={account}
-      onToggleEnabled={onToggleEnabled}
-      onDelete={onDelete}
-      actionLoading={null}
-      whitelistEntries={[]}
-      whitelistLoading={false}
-      onOpenWhitelist={onOpenWhitelist}
-      newUserId=""
-      onNewUserIdChange={onNewUserIdChange}
-      addingUser={false}
-      onAddUser={onAddUser}
-      onRemoveUser={onRemoveUser}
-      notifyChats={[]}
-      notifyChatsLoading={false}
-      savingNotifyChat={false}
-      onOpenNotifyChats={onOpenNotifyChats}
-      onSetNotifyChat={onSetNotifyChat}
+      link={link}
+      botUsername="saale_bot"
+      unlinking={false}
+      onUnlink={onUnlink}
+      onRelink={onRelink}
       {...overrides}
     />,
   );
 
-  return {
-    onOpenWhitelist,
-    onToggleEnabled,
-    onDelete,
-    onAddUser,
-    onRemoveUser,
-    onOpenNotifyChats,
-    onSetNotifyChat,
-  };
+  return { onUnlink, onRelink };
 }
 
-/** Open the "Manage Whitelist" dialog via the card's dropdown menu. */
-async function openWhitelistDialog() {
-  const moreButton = screen.getByRole("button");
-  fireEvent.click(moreButton);
+function renderPanel(overrides: Partial<Parameters<typeof TelegramLinkPanel>[0]> = {}) {
+  const onCreateCode = vi.fn();
 
-  const manageItem = await screen.findByText("Manage Whitelist");
-  fireEvent.click(manageItem);
+  render(
+    <TelegramLinkPanel
+      bot={bot}
+      linkCode={null}
+      linking={false}
+      linkError={null}
+      linked={false}
+      onCreateCode={onCreateCode}
+      {...overrides}
+    />,
+  );
+
+  return { onCreateCode };
 }
 
-/** Open the "Notification Chat" dialog via the card's dropdown menu. */
-async function openNotifyChatDialog() {
+/** Open the card's row menu and click an item by label. */
+async function clickMenuItem(label: string) {
   fireEvent.click(screen.getByRole("button"));
-
-  const menuItem = await screen.findByText("Notification Chat");
-  fireEvent.click(menuItem);
+  fireEvent.click(await screen.findByText(label));
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("TelegramCard whitelist", () => {
-  it("fetches fresh whitelist entries every time the dialog opens", async () => {
-    const { onOpenWhitelist } = renderCard();
+describe("TelegramCard", () => {
+  it("shows which Telegram account is linked", () => {
+    renderCard();
 
-    await openWhitelistDialog();
-    expect(onOpenWhitelist).toHaveBeenCalledTimes(1);
-
-    // Reopening the dialog fetches again — the whitelist may have changed
-    // elsewhere (webhook auto-whitelist, another device) since last time.
-    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
-    await openWhitelistDialog();
-    expect(onOpenWhitelist).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Telegram")).toBeInTheDocument();
+    expect(screen.getByText("@saale_bot")).toBeInTheDocument();
+    expect(screen.getByText(/Test User · ID 119075844/)).toBeInTheDocument();
+    expect(screen.getByText("Linked")).toBeInTheDocument();
   });
 
-  it("shows whitelisted users when entries are provided", async () => {
-    renderCard({ whitelistEntries: [whitelistedUser] });
+  it("still renders the raw id when the link has no cached name", () => {
+    renderCard({ link: { ...link, displayName: null } });
 
-    await openWhitelistDialog();
-
-    expect(await screen.findByText("Test User")).toBeInTheDocument();
-    expect(screen.getByText("ID: 119075844")).toBeInTheDocument();
+    // The id is the identity; the name is only a cache of what Telegram told us.
+    expect(screen.getByText("ID 119075844")).toBeInTheDocument();
   });
 
-  it("shows the empty state when there are no entries", async () => {
-    renderCard({ whitelistEntries: [] });
+  it("unlinks through the row menu", async () => {
+    const { onUnlink } = renderCard();
 
-    await openWhitelistDialog();
+    await clickMenuItem("Unlink");
 
-    expect(await screen.findByText("No users whitelisted yet")).toBeInTheDocument();
+    expect(onUnlink).toHaveBeenCalledTimes(1);
   });
 
-  it("does not fetch when the dialog is simply closed", async () => {
-    const { onOpenWhitelist } = renderCard();
+  it("opens the relink flow through the row menu", async () => {
+    const { onRelink, onUnlink } = renderCard();
 
-    // No interaction — the callback must not fire on mount
-    expect(onOpenWhitelist).not.toHaveBeenCalled();
+    await clickMenuItem("Link a different account");
+
+    expect(onRelink).toHaveBeenCalledTimes(1);
+    expect(onUnlink).not.toHaveBeenCalled();
   });
 });
 
-// ─── Notification chat ───────────────────────────────────────────────────────
+describe("TelegramLinkPanel", () => {
+  it("tells the user when the instance has no bot, and offers no code", () => {
+    const { onCreateCode } = renderPanel({
+      bot: { configured: false, enabled: false, username: null },
+    });
 
-describe("TelegramCard notification chat", () => {
-  const chats: TelegramChatInfo[] = [
-    { chatId: "119075844", label: "Test User", chatType: "private" },
-    { chatId: "-100123456789", label: "Group chat", chatType: "group" },
-  ];
-
-  it("fetches fresh chats every time the dialog opens", async () => {
-    const { onOpenNotifyChats } = renderCard();
-
-    await openNotifyChatDialog();
-    expect(onOpenNotifyChats).toHaveBeenCalledTimes(1);
-
-    // Reopening refetches — the reachable chats change as the user messages
-    // the bot, so a cached list would be wrong.
-    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
-    await openNotifyChatDialog();
-    expect(onOpenNotifyChats).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/No Telegram bot is set up on this instance/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Get link code/ })).not.toBeInTheDocument();
+    expect(onCreateCode).not.toHaveBeenCalled();
   });
 
-  it("shows where notifications currently go and why", async () => {
-    renderCard();
+  it("tells the user when the bot is switched off, and offers no code", () => {
+    renderPanel({ bot: { ...bot, enabled: false } });
 
-    await openNotifyChatDialog();
-
-    expect(await screen.findByText("Currently: Test User")).toBeInTheDocument();
-    expect(screen.getByText(/119075844 · automatic/)).toBeInTheDocument();
+    expect(screen.getByText(/switched off/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Get link code/ })).not.toBeInTheDocument();
   });
 
-  it("offers an automatic option and every known chat", async () => {
-    renderCard({ notifyChats: chats });
+  it("asks for a code rather than minting one unprompted", () => {
+    const { onCreateCode } = renderPanel();
 
-    await openNotifyChatDialog();
-    // The Select renders its options in a portal only once opened, so drive it
-    // the way a user would.
-    fireEvent.click(await screen.findByRole("combobox"));
+    // Minting on render would create codes nobody asked for (and race itself
+    // under React's double-invoked effects).
+    expect(onCreateCode).not.toHaveBeenCalled();
 
-    expect(await screen.findByText("Automatic (most recent private chat)")).toBeInTheDocument();
-    expect(screen.getByText("Test User")).toBeInTheDocument();
-    expect(screen.getByText("Group chat — group")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Get link code/ }));
+
+    expect(onCreateCode).toHaveBeenCalledTimes(1);
   });
 
-  it("explains the empty state when no chat is reachable", async () => {
-    renderCard({ account: { ...account, notifyChat: null } });
+  it("warns that relinking replaces the current account", () => {
+    renderPanel({ linked: true });
 
-    await openNotifyChatDialog();
+    expect(screen.getByText(/replaces the one currently linked/)).toBeInTheDocument();
+  });
 
-    expect(await screen.findByText(/No chat available yet/)).toBeInTheDocument();
+  it("shows the code, a deep link, and the /start fallback", () => {
+    renderPanel({ linkCode });
+
+    expect(screen.getByText(linkCode.code)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`/start ${linkCode.code}`))).toBeInTheDocument();
+
+    const anchor = screen.getByRole("link", { name: /Open Telegram/ });
+    expect(anchor).toHaveAttribute("href", linkCode.deepLink);
+    // Noopener: the deep link leaves the app.
+    expect(anchor).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("surfaces a linking error", () => {
+    renderPanel({ linkError: "The Telegram bot is switched off. Ask an admin to enable it." });
+
+    expect(screen.getByText(/switched off. Ask an admin/)).toBeInTheDocument();
+  });
+
+  it("shows a creating state instead of a second code button", () => {
+    renderPanel({ linking: true });
+
+    expect(screen.getByRole("button", { name: /Creating/ })).toBeDisabled();
   });
 });

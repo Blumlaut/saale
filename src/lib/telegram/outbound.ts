@@ -2,13 +2,14 @@ import path from "path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { getUploadsDir } from "@/lib/uploads";
+import { getLinkByUserId } from "./links";
 import { withChatLock } from "./chat-lock";
 
 /** Custom-entry type used when replaying outbound job messages into the Pi transcript. */
 const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
 
 /**
- * Persist an outbound job message into the Telegram chat's chat session so a
+ * Persist an outbound job message into the user's Telegram chat session so a
  * follow-up reply has context.
  *
  * Jobs run in their own in-memory Pi session, so without this the Telegram
@@ -22,36 +23,21 @@ const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
  *    agent reads as conversation context (custom entries convert to a user
  *    message for the model).
  *
- * No-ops when the chat has no session yet (the user has never messaged the
- * bot) — there is nothing to attach the message to, and the reply-to context
- * injection covers that case.
+ * No-ops when the user has no link or the link has no session yet (they have
+ * never messaged the bot) — there is nothing to attach the message to, and the
+ * reply-to context injection covers that case.
  */
 export async function recordTelegramJobOutput(params: {
   userId: string;
-  telegramChatId: bigint;
   content: string;
 }): Promise<void> {
-  const { userId, telegramChatId, content } = params;
+  const { userId, content } = params;
   if (!content.trim()) return;
 
-  const account = await prisma.telegramAccount.findUnique({
-    where: { userId },
-    select: { id: true },
-  });
-  if (!account) return;
+  const link = await getLinkByUserId(userId);
+  if (!link?.sessionId) return;
 
-  const tgChat = await prisma.telegramChat.findUnique({
-    where: {
-      telegramAccountId_telegramChatId: {
-        telegramAccountId: account.id,
-        telegramChatId,
-      },
-    },
-    select: { sessionId: true },
-  });
-  if (!tgChat) return;
-
-  const { sessionId } = tgChat;
+  const { sessionId, telegramChatId } = link;
 
   await prisma.chatMessage.create({
     data: { sessionId, role: "assistant", content },

@@ -102,7 +102,6 @@ export async function triggerAgentRun(params: {
   const { output, error: deliveryError } = await buildAgentOutputHandler({
     userId,
     outputChannel: definition.outputChannel,
-    outputChannelId: definition.outputChannelId,
   });
 
   // Mark the run as running — startedAt is when execution actually starts

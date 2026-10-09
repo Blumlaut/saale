@@ -79,8 +79,8 @@ describe("task_reminders handler", () => {
     mockTask.findMany.mockResolvedValue([dueToday]);
     mockSendTelegramToUser.mockResolvedValue({
       ok: false,
-      reason: "not_configured",
-      error: "No Telegram bot is connected.",
+      reason: "bot_not_configured",
+      error: "No Telegram bot is configured on this instance.",
     });
 
     const result = JSON.parse(await handler({ config: {}, userId }));
@@ -100,6 +100,21 @@ describe("task_reminders handler", () => {
     // Never having connected Telegram is the expected path, not an error.
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
+
+  it.each(["bot_not_configured", "bot_disabled", "not_linked"] as const)(
+    "treats %s as an expected fallback rather than a failure",
+    async (reason) => {
+      mockTask.findMany.mockResolvedValue([dueToday]);
+      mockSendTelegramToUser.mockResolvedValue({ ok: false, reason, error: "..." });
+
+      const result = JSON.parse(await handler({ config: {}, userId }));
+
+      expect(result).toEqual({ tasksScanned: 1, telegramSent: 0, notificationsSent: 1 });
+      // Each of these means "this user has no reachable Telegram", which the
+      // in-app list covers — nothing to log.
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it("logs and falls back when a connected channel drops the message", async () => {
     mockTask.findMany.mockResolvedValue([dueToday]);

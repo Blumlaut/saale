@@ -21,9 +21,9 @@ const telegramSendSchema = Type.Object({
  *
  * The single tool here is the agent's *outreach* primitive: it is the only way
  * to say something to the user once the conversation is over. It deliberately
- * takes no recipient — delivery always goes to the user's own resolved chat
- * (see `resolveNotifyChat`), so a message the model decided to send can never
- * reach a group or another person.
+ * takes no recipient — delivery always goes to the caller's own linked
+ * Telegram chat (see `sendTelegramToUser`), so a message the model decided to
+ * send can never reach another person.
  */
 export function createTelegramTools(userId: string): ToolDefinition[] {
   return [
