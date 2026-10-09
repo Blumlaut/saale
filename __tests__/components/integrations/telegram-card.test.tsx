@@ -153,7 +153,7 @@ describe("TelegramLinkPanel", () => {
     expect(screen.getByText(/replaces the one currently linked/)).toBeInTheDocument();
   });
 
-  it("shows the code, a deep link, and the /start fallback", () => {
+  it("shows the /start command, the code, and the deep link", () => {
     renderPanel({ linkCode });
 
     expect(screen.getByText(linkCode.code)).toBeInTheDocument();
