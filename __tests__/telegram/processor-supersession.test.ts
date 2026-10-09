@@ -26,8 +26,7 @@ const h = vi.hoisted(() => {
     systemManaged: true,
   };
   const prisma = {
-    telegramAccount: { findUnique: vi.fn() },
-    telegramChat: { findUnique: vi.fn(), upsert: vi.fn() },
+    telegramLink: { findUnique: vi.fn(), update: vi.fn() },
     chatSession: { create: vi.fn(), update: vi.fn() },
     chatMessage: { findMany: vi.fn(), create: vi.fn() },
     chatAttachment: { create: vi.fn() },
@@ -36,6 +35,12 @@ const h = vi.hoisted(() => {
     agentRun: { create: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(),
   };
+  // Interactive transactions run against the same fake; the array form awaits.
+  prisma.$transaction.mockImplementation(async (arg: unknown) =>
+    typeof arg === "function"
+      ? (arg as (tx: unknown) => Promise<unknown>)(prisma)
+      : Promise.all(arg as Promise<unknown>[]),
+  );
   return { prisma, definition };
 });
 
@@ -215,17 +220,20 @@ function makeFakeSession(events: Array<Record<string, unknown>> = []) {
   return { session: fake as unknown as AgentSession, fake };
 }
 
-/** Existing chat + account + definition, so the run takes the happy setup path. */
+/** Existing link + session + definition, so the run takes the happy setup path. */
 function setupPrisma(chatId: bigint) {
   // Partial mock values — `as never` follows the codebase's mocking convention.
-  vi.mocked(prisma.telegramAccount.findUnique).mockResolvedValue({ id: "account-1" } as never);
-  vi.mocked(prisma.telegramChat.findUnique).mockResolvedValue({
-    id: "tgchat-1",
-    telegramAccountId: "account-1",
+  vi.mocked(prisma.telegramLink.findUnique).mockResolvedValue({
+    id: "link-1",
+    userId: "user-1",
+    telegramUserId: chatId,
     telegramChatId: chatId,
+    displayName: "Jane",
     sessionId: "session-1",
-    chatType: "private",
+    createdAt: new Date(),
+    updatedAt: new Date(),
   } as never);
+  vi.mocked(prisma.telegramLink.update).mockResolvedValue({} as never);
   // A recent message exists → no new session is created.
   vi.mocked(prisma.chatMessage.findMany).mockResolvedValue([
     { id: "m0", createdAt: new Date() },

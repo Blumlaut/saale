@@ -12,20 +12,25 @@ const {
   mockSendTelegramMessage,
   mockSendMessage,
   mockEditMessageText,
-  mockAccountFindUnique,
+  mockGetEnabledTelegramBot,
+  mockGetLinkByTelegramUserId,
   mockExecuteCommand,
 } = vi.hoisted(() => ({
   mockCreateBot: vi.fn(),
   mockSendTelegramMessage: vi.fn(),
   mockSendMessage: vi.fn(),
   mockEditMessageText: vi.fn(),
-  mockAccountFindUnique: vi.fn(),
+  mockGetEnabledTelegramBot: vi.fn(),
+  mockGetLinkByTelegramUserId: vi.fn(),
   mockExecuteCommand: vi.fn(),
 }));
 
 vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
-vi.mock("@/lib/db", () => ({
-  prisma: { telegramAccount: { findUnique: mockAccountFindUnique } },
+vi.mock("@/lib/telegram/bot", () => ({
+  getEnabledTelegramBot: (...args: unknown[]) => mockGetEnabledTelegramBot(...args),
+}));
+vi.mock("@/lib/telegram/links", () => ({
+  getLinkByTelegramUserId: (...args: unknown[]) => mockGetLinkByTelegramUserId(...args),
 }));
 vi.mock("@/lib/telegram/client", () => ({
   createBot: mockCreateBot,
@@ -36,13 +41,14 @@ vi.mock("@/lib/commands/execute", () => ({ executeCommand: mockExecuteCommand })
 import { resetMockRedis, getRedis } from "../../helpers/in-memory-redis";
 import { handleCommandPromptCallback, handleTelegramCommand } from "@/lib/telegram/command-prompts";
 
-const ACCOUNT_ID = "acc-1";
 const USER_ID = "user-1";
+const OTHER_USER_ID = "user-2";
 const CHAT_ID = BigInt(4242);
+/** The Telegram account pressing the buttons — what the link resolves from. */
+const PRESSER = BigInt(4242);
 const CALLBACK_MESSAGE = { chat: { id: 4242 }, message_id: 99 };
 
 const COMMAND = {
-  accountId: ACCOUNT_ID,
   userId: USER_ID,
   encryptedToken: "encrypted-token",
   telegramChatId: CHAT_ID,
@@ -87,11 +93,18 @@ describe("Telegram command adapter", () => {
     mockSendTelegramMessage.mockResolvedValue([1]);
     mockSendMessage.mockResolvedValue({ message_id: 10 });
     mockEditMessageText.mockResolvedValue(true);
-    mockAccountFindUnique.mockResolvedValue({
-      id: ACCOUNT_ID,
-      userId: USER_ID,
+    mockGetEnabledTelegramBot.mockResolvedValue({
+      id: "global",
       encryptedToken: "encrypted-token",
+      enabled: true,
+      botId: BigInt(1),
+      botUsername: "saale_bot",
+      webhookSecret: "secret",
+      updatedByUserId: "admin-1",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     });
+    mockGetLinkByTelegramUserId.mockResolvedValue({ userId: USER_ID });
   });
 
   describe("handleTelegramCommand", () => {
@@ -173,7 +186,6 @@ describe("Telegram command adapter", () => {
       expect(stored).not.toBeNull();
       expect(JSON.parse(stored!)).toMatchObject({
         userId: USER_ID,
-        accountId: ACCOUNT_ID,
         command: "model",
         telegramChatId: "4242",
         replyToMessageId: 7,
@@ -234,15 +246,15 @@ describe("Telegram command adapter", () => {
     }
 
     it("ignores callbacks that belong to another subsystem", async () => {
-      await expect(handleCommandPromptCallback(ACCOUNT_ID, "a:deadbeefdeadbeef")).resolves.toEqual({
+      await expect(handleCommandPromptCallback("a:deadbeefdeadbeef", PRESSER)).resolves.toEqual({
         handled: false,
       });
     });
 
     it("reports an expired prompt instead of failing silently", async () => {
       const result = await handleCommandPromptCallback(
-        ACCOUNT_ID,
         `c:${"0".repeat(16)}:s:0`,
+        PRESSER,
         CALLBACK_MESSAGE,
       );
 
@@ -251,22 +263,55 @@ describe("Telegram command adapter", () => {
       expect(mockEditMessageText).not.toHaveBeenCalled();
     });
 
-    it("refuses a token that belongs to another account", async () => {
+    it("refuses a press from a Telegram account linked to someone else", async () => {
       const button = await openPrompt();
-      mockAccountFindUnique.mockResolvedValue({
-        id: "acc-2",
-        userId: "user-2",
-        encryptedToken: "other-token",
-      });
+      mockGetLinkByTelegramUserId.mockResolvedValue({ userId: OTHER_USER_ID });
 
       const result = await handleCommandPromptCallback(
-        "acc-2",
         button.callback_data,
+        PRESSER,
         CALLBACK_MESSAGE,
       );
 
-      expect(result).toEqual({ handled: false });
+      expect(result).toEqual({
+        handled: true,
+        message: expect.stringMatching(/different account/),
+      });
       expect(mockExecuteCommand).toHaveBeenCalledTimes(1); // only the prompt
+      expect(mockEditMessageText).not.toHaveBeenCalled();
+    });
+
+    it("refuses a press from an account that is not linked at all", async () => {
+      const button = await openPrompt();
+      mockGetLinkByTelegramUserId.mockResolvedValue(null);
+
+      const result = await handleCommandPromptCallback(
+        button.callback_data,
+        PRESSER,
+        CALLBACK_MESSAGE,
+      );
+
+      expect(result).toEqual({
+        handled: true,
+        message: expect.stringMatching(/different account/),
+      });
+      expect(mockEditMessageText).not.toHaveBeenCalled();
+    });
+
+    it("refuses to act when the bot is switched off, even for a valid prompt", async () => {
+      const button = await openPrompt();
+      mockGetEnabledTelegramBot.mockResolvedValue(null);
+
+      const result = await handleCommandPromptCallback(
+        button.callback_data,
+        PRESSER,
+        CALLBACK_MESSAGE,
+      );
+
+      expect(result).toEqual({
+        handled: true,
+        message: expect.stringMatching(/different account/),
+      });
       expect(mockEditMessageText).not.toHaveBeenCalled();
     });
 
@@ -280,8 +325,8 @@ describe("Telegram command adapter", () => {
       });
 
       const result = await handleCommandPromptCallback(
-        ACCOUNT_ID,
         button.callback_data,
+        PRESSER,
         CALLBACK_MESSAGE,
       );
 
@@ -305,7 +350,7 @@ describe("Telegram command adapter", () => {
       const button = await openPrompt();
       const stale = button.callback_data.replace(/:s:0$/, ":s:9");
 
-      const result = await handleCommandPromptCallback(ACCOUNT_ID, stale, CALLBACK_MESSAGE);
+      const result = await handleCommandPromptCallback(stale, PRESSER, CALLBACK_MESSAGE);
 
       expect(result.handled).toBe(true);
       expect(result.message).toMatch(/no longer available/);
@@ -322,8 +367,8 @@ describe("Telegram command adapter", () => {
       const next = navigation[1]!;
 
       const result = await handleCommandPromptCallback(
-        ACCOUNT_ID,
         next.callback_data,
+        PRESSER,
         CALLBACK_MESSAGE,
       );
 
@@ -349,8 +394,8 @@ describe("Telegram command adapter", () => {
       const indicator = sentKeyboard()[6]![0]!;
 
       const result = await handleCommandPromptCallback(
-        ACCOUNT_ID,
         indicator.callback_data,
+        PRESSER,
         CALLBACK_MESSAGE,
       );
 

@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
 import { ModelPicker } from "@/components/shared/model-picker";
+import { TelegramBotPanel } from "@/components/admin/telegram-bot-panel";
 import { Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
 
 interface AdminSettings {
@@ -135,6 +136,9 @@ export default function AdminSettingsPage() {
             </GlassPanelContent>
           </GlassPanel>
 
+          {/* Shared Telegram bot */}
+          <TelegramBotPanel />
+
           {/* Info */}
           <GlassPanel>
             <GlassPanelHeader title="About" />
@@ -148,6 +152,12 @@ export default function AdminSettingsPage() {
                 <p>
                   <span className="text-foreground font-medium">Users</span> — Manage user accounts,
                   roles, and access in the Users tab.
+                </p>
+                <Separator />
+                <p>
+                  <span className="text-foreground font-medium">Telegram</span> — One bot for the
+                  whole instance. Users link their own Telegram account to it in Settings →
+                  Integrations.
                 </p>
               </div>
             </GlassPanelContent>

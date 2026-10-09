@@ -1,10 +1,11 @@
 import { randomBytes } from "crypto";
-import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { getCommandMeta } from "@/lib/commands/catalog";
 import { executeCommand } from "@/lib/commands/execute";
 import type { CommandOption, CommandPrompt } from "@/lib/commands/types";
 import { createBot, sendTelegramMessage } from "./client";
+import { getEnabledTelegramBot } from "./bot";
+import { getLinkByTelegramUserId } from "./links";
 
 /**
  * Telegram adapter for the shared slash-command registry.
@@ -38,7 +39,6 @@ export interface CallbackMessage {
 /** Prompt state stored in Redis while its keyboard is on screen. */
 interface PromptSession {
   token: string;
-  accountId: string;
   userId: string;
   command: string;
   /** bigint as string — JSON cannot carry a bigint. */
@@ -68,7 +68,6 @@ function escapeHtml(text: string): string {
  * sent here, and failures are logged rather than surfaced to Telegram.
  */
 export async function handleTelegramCommand(params: {
-  accountId: string;
   userId: string;
   encryptedToken: string;
   telegramChatId: bigint;
@@ -76,8 +75,7 @@ export async function handleTelegramCommand(params: {
   args: string;
   replyToMessageId?: number | undefined;
 }): Promise<void> {
-  const { accountId, userId, encryptedToken, telegramChatId, name, args, replyToMessageId } =
-    params;
+  const { userId, encryptedToken, telegramChatId, name, args, replyToMessageId } = params;
 
   const reply = replyToMessageId != null ? { replyToMessageId } : undefined;
   const result = await executeCommand(name, {
@@ -105,7 +103,6 @@ export async function handleTelegramCommand(params: {
   }
 
   await sendCommandPrompt({
-    accountId,
     userId,
     encryptedToken,
     telegramChatId,
@@ -123,7 +120,6 @@ export async function handleTelegramCommand(params: {
  * the absolute option index.
  */
 export async function sendCommandPrompt(params: {
-  accountId: string;
   userId: string;
   encryptedToken: string;
   telegramChatId: bigint;
@@ -131,7 +127,7 @@ export async function sendCommandPrompt(params: {
   prompt: CommandPrompt;
   replyToMessageId?: number | undefined;
 }): Promise<void> {
-  const { accountId, userId, encryptedToken, telegramChatId, command, prompt } = params;
+  const { userId, encryptedToken, telegramChatId, command, prompt } = params;
 
   const bot = createBot(encryptedToken);
 
@@ -148,7 +144,6 @@ export async function sendCommandPrompt(params: {
   const token = randomBytes(8).toString("hex"); // 16 hex chars
   const session: PromptSession = {
     token,
-    accountId,
     userId,
     command,
     telegramChatId: telegramChatId.toString(),
@@ -217,14 +212,16 @@ function buildKeyboard(session: PromptSession): { inline_keyboard: unknown[] } {
 /**
  * Handle a command-prompt button press.
  *
- * User isolation: the Redis session must belong to the account the callback
- * arrived on — a token leaked from another account cannot apply its choice.
+ * User isolation: the press must come from the Telegram account linked to the
+ * user the prompt was opened for, and the prompt must target the chat it is
+ * reported on. One bot serves every user, so a prompt token leaked or forwarded
+ * from another account cannot apply its choice here.
  *
  * @returns `handled: false` when the callback belongs to another subsystem.
  */
 export async function handleCommandPromptCallback(
-  accountId: string,
   callbackData: string,
+  telegramUserId: bigint,
   message?: CallbackMessage,
 ): Promise<{ handled: boolean; message?: string }> {
   if (!callbackData.startsWith("c:")) {
@@ -250,15 +247,16 @@ export async function handleCommandPromptCallback(
     return { handled: true, message: "⚠️ This prompt is no longer usable." };
   }
 
-  const account = await prisma.telegramAccount.findUnique({
-    where: { id: accountId },
-    select: { id: true, userId: true, encryptedToken: true },
-  });
-  if (!account || account.userId !== session.userId || session.accountId !== account.id) {
-    return { handled: false };
+  const [botConfig, link] = await Promise.all([
+    getEnabledTelegramBot(),
+    getLinkByTelegramUserId(telegramUserId),
+  ]);
+
+  if (!botConfig || !link || link.userId !== session.userId) {
+    return { handled: true, message: "⚠️ This prompt belongs to a different account." };
   }
 
-  const bot = createBot(account.encryptedToken);
+  const bot = createBot(botConfig.encryptedToken);
   const edit = async (text: string, keyboard: { inline_keyboard: unknown[] }) => {
     if (!message) return;
     await bot.api.editMessageText(message.chat.id, message.message_id, text, {
@@ -297,7 +295,7 @@ export async function handleCommandPromptCallback(
       userId: session.userId,
       args: "",
       telegramChatId: BigInt(session.telegramChatId),
-      encryptedToken: account.encryptedToken,
+      encryptedToken: botConfig.encryptedToken,
       replyToMessageId: session.replyToMessageId,
     },
     option.value,

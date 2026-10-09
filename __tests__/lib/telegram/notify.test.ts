@@ -2,25 +2,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockTelegramAccount, mockSendTelegramMessage } = vi.hoisted(() => ({
-  mockTelegramAccount: { findUnique: vi.fn() },
+const {
+  mockGetTelegramBot,
+  mockGetLinkByUserId,
+  mockSendTelegramMessage,
+  mockRecordTelegramJobOutput,
+} = vi.hoisted(() => ({
+  mockGetTelegramBot: vi.fn(),
+  mockGetLinkByUserId: vi.fn(),
   mockSendTelegramMessage: vi.fn(),
+  mockRecordTelegramJobOutput: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({
-  prisma: { telegramAccount: mockTelegramAccount },
+vi.mock("@/lib/telegram/bot", () => ({
+  getTelegramBot: (...args: unknown[]) => mockGetTelegramBot(...args),
+}));
+
+vi.mock("@/lib/telegram/links", () => ({
+  getLinkByUserId: (...args: unknown[]) => mockGetLinkByUserId(...args),
 }));
 
 vi.mock("@/lib/telegram/client", () => ({
   sendTelegramMessage: (...args: unknown[]) => mockSendTelegramMessage(...args),
 }));
 
-const mockResolveNotifyChat = vi.fn();
-vi.mock("@/lib/telegram/chats", () => ({
-  resolveNotifyChat: (...args: unknown[]) => mockResolveNotifyChat(...args),
-}));
-
-const mockRecordTelegramJobOutput = vi.fn();
 vi.mock("@/lib/telegram/outbound", () => ({
   recordTelegramJobOutput: (...args: unknown[]) => mockRecordTelegramJobOutput(...args),
 }));
@@ -29,95 +34,113 @@ const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 import { deliverTelegramMessage, sendTelegramToUser } from "@/lib/telegram/notify";
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const userId = "user-1";
 const chatId = BigInt("119075844");
 
+/** The configured bot, as `getTelegramBot` returns it. */
+const bot = {
+  id: "global",
+  encryptedToken: "enc",
+  enabled: true,
+  botId: BigInt(1),
+  botUsername: "saale_bot",
+  webhookSecret: "secret",
+  updatedByUserId: "admin-1",
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+};
+
+/** The user's link, as `getLinkByUserId` returns it. */
+const link = {
+  id: "link-1",
+  userId,
+  telegramUserId: chatId,
+  telegramChatId: chatId,
+  displayName: "Jane",
+  sessionId: "sess-1",
+  createdAt: new Date("2026-02-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockGetTelegramBot.mockResolvedValue(bot);
+  mockGetLinkByUserId.mockResolvedValue(link);
+  mockSendTelegramMessage.mockResolvedValue([42]);
+  mockRecordTelegramJobOutput.mockResolvedValue(undefined);
+});
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
 describe("sendTelegramToUser", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRecordTelegramJobOutput.mockResolvedValue(undefined);
-    mockSendTelegramMessage.mockResolvedValue([42]);
-  });
-
-  it("fails with a fixable reason when no bot is connected", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue(null);
+  it("fails with a fixable reason when the instance has no bot", async () => {
+    mockGetTelegramBot.mockResolvedValue(null);
 
     const result = await sendTelegramToUser({ userId, content: "hello" });
 
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe("not_configured");
+    expect(result.reason).toBe("bot_not_configured");
     // The message must name the fix — the agent repeats it to the user.
-    expect(result.error).toContain("Settings");
+    expect(result.error).toContain("admin");
     expect(mockSendTelegramMessage).not.toHaveBeenCalled();
   });
 
-  it("fails when the integration is connected but switched off", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({
-      id: "acc-1",
-      encryptedToken: "enc",
-      enabled: false,
-      notifyChatId: null,
-    });
+  it("fails when the bot is configured but switched off", async () => {
+    mockGetTelegramBot.mockResolvedValue({ ...bot, enabled: false });
 
     const result = await sendTelegramToUser({ userId, content: "hello" });
 
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe("disabled");
-    expect(mockResolveNotifyChat).not.toHaveBeenCalled();
+    expect(result.reason).toBe("bot_disabled");
+    expect(mockGetLinkByUserId).not.toHaveBeenCalled();
+    expect(mockSendTelegramMessage).not.toHaveBeenCalled();
   });
 
-  it("fails when nothing is reachable, without trying to send", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({
-      id: "acc-1",
-      encryptedToken: "enc",
-      enabled: true,
-      notifyChatId: null,
-    });
-    mockResolveNotifyChat.mockResolvedValue(null);
+  it("fails when the user has not linked an account", async () => {
+    mockGetLinkByUserId.mockResolvedValue(null);
 
     const result = await sendTelegramToUser({ userId, content: "hello" });
 
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe("no_chat");
+    expect(result.reason).toBe("not_linked");
+    expect(result.error).toContain("Integrations");
     expect(mockSendTelegramMessage).not.toHaveBeenCalled();
   });
 
-  it("resolves against the account's pinned chat", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({
-      id: "acc-1",
-      encryptedToken: "enc",
-      enabled: true,
-      notifyChatId: chatId,
-    });
-    mockResolveNotifyChat.mockResolvedValue({
-      chatId,
-      label: "Jane",
-      source: "pinned",
-    });
-
+  it("sends to the caller's own linked chat, labelled with their name", async () => {
     const result = await sendTelegramToUser({ userId, content: "Dentist in 30 minutes" });
 
     expect(result).toEqual({ ok: true, chatId: "119075844", label: "Jane" });
-    expect(mockResolveNotifyChat).toHaveBeenCalledWith("acc-1", chatId);
+    expect(mockGetLinkByUserId).toHaveBeenCalledWith(userId);
     expect(mockSendTelegramMessage).toHaveBeenCalledWith("enc", chatId, "Dentist in 30 minutes");
     // Recorded so a reply to the reminder continues the thread.
     expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({
       userId,
-      telegramChatId: chatId,
       content: "Dentist in 30 minutes",
     });
   });
 
+  it("omits the label when the link has no cached name", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, displayName: null });
+
+    const result = await sendTelegramToUser({ userId, content: "hi" });
+
+    expect(result).toEqual({ ok: true, chatId: "119075844" });
+  });
+
+  it("never targets anyone but the caller", async () => {
+    // The recipient is resolved from the user id alone — there is no parameter
+    // through which a different chat could be named.
+    await sendTelegramToUser({ userId, content: "hi" });
+
+    expect(mockGetLinkByUserId).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegramMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendTelegramMessage.mock.calls[0]![1]).toBe(chatId);
+  });
+
   it("surfaces a rejected send with the provider's reason", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({
-      id: "acc-1",
-      encryptedToken: "enc",
-      enabled: true,
-      notifyChatId: null,
-    });
-    mockResolveNotifyChat.mockResolvedValue({ chatId, label: "Jane", source: "private" });
     mockSendTelegramMessage.mockRejectedValue(new Error("Forbidden: bot was blocked by the user"));
 
     const result = await sendTelegramToUser({ userId, content: "hello" });
@@ -128,13 +151,6 @@ describe("sendTelegramToUser", () => {
   });
 
   it("delivers even when recording the message for replies fails", async () => {
-    mockTelegramAccount.findUnique.mockResolvedValue({
-      id: "acc-1",
-      encryptedToken: "enc",
-      enabled: true,
-      notifyChatId: null,
-    });
-    mockResolveNotifyChat.mockResolvedValue({ chatId, label: "Jane", source: "private" });
     mockRecordTelegramJobOutput.mockRejectedValue(new Error("db down"));
 
     const result = await sendTelegramToUser({ userId, content: "hello" });
@@ -150,12 +166,6 @@ describe("sendTelegramToUser", () => {
 });
 
 describe("deliverTelegramMessage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRecordTelegramJobOutput.mockResolvedValue(undefined);
-    mockSendTelegramMessage.mockResolvedValue([42]);
-  });
-
   it("sends and records the message for reply context", async () => {
     const result = await deliverTelegramMessage({
       userId,
@@ -166,11 +176,7 @@ describe("deliverTelegramMessage", () => {
 
     expect(result).toEqual({ ok: true, chatId: "119075844" });
     expect(mockSendTelegramMessage).toHaveBeenCalledWith("enc", chatId, "hello");
-    expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({
-      userId,
-      telegramChatId: chatId,
-      content: "hello",
-    });
+    expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({ userId, content: "hello" });
   });
 
   it("returns a failed result rather than throwing", async () => {

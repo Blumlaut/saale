@@ -51,14 +51,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const classes = cn(buttonVariants({ variant, size, className }));
 
     if (asChild && React.isValidElement(props.children)) {
-      const child = props.children as React.ReactElement<
+      // `children` is the element being cloned, so it must not be forwarded as
+      // a prop — doing so replaces the clone's own content with itself and
+      // nests an <a> inside an <a>.
+      const { children, ...rest } = props;
+      const child = children as React.ReactElement<
         { className?: string } & Record<string, unknown>
       >;
       return React.cloneElement(child, {
         className: cn(child.props.className, classes),
         "data-slot": "button",
         ref,
-        ...props,
+        ...rest,
       });
     }
 

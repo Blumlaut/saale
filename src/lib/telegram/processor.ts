@@ -41,6 +41,7 @@ import { resetSessionEvents, subscribeSessionEvents } from "@/lib/pi/session-eve
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { buildQuotedContext, type QuotedMessageContext } from "./reply-context";
+import { getLinkByUserId } from "./links";
 import {
   beginTelegramRun,
   clearTelegramRun,
@@ -144,12 +145,8 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     return;
   }
 
-  // 1. Find or create the TelegramChat + ChatSession
-  const { sessionId, telegramChatId: tgChatId } = await upsertTelegramChat(
-    userId,
-    encryptedToken,
-    telegramChatId,
-  );
+  // 1. Find or create the Saale chat session this link talks through
+  const { sessionId } = await upsertTelegramSession(userId, telegramChatId);
 
   // 2. Download and process any attached file
   let processedFile: ProcessedFile | undefined;
@@ -253,7 +250,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
       modelId,
       outputChannel: "telegram",
       outputChannelId: telegramChatId.toString(),
-      telegramChatId: tgChatId,
+      telegramChatId,
     },
   });
 
@@ -820,29 +817,18 @@ interface CompactTelegramSessionParams {
 async function runTelegramCompaction(
   params: CompactTelegramSessionParams,
 ): Promise<CommandOutcome> {
-  const { userId, telegramChatId } = params;
+  const { userId } = params;
 
-  // 1. Find the chat session linked to this Telegram chat
-  const account = await prisma.telegramAccount.findUnique({
-    where: { userId },
-  });
-  if (!account) {
-    return { message: "Telegram integration not configured.", tone: "error" };
+  // 1. Find the chat session this link talks through
+  const link = await getLinkByUserId(userId);
+  if (!link) {
+    return { message: "Telegram is not linked to this account.", tone: "error" };
   }
-
-  const tgChat = await prisma.telegramChat.findUnique({
-    where: {
-      telegramAccountId_telegramChatId: {
-        telegramAccountId: account.id,
-        telegramChatId,
-      },
-    },
-  });
-  if (!tgChat) {
+  if (!link.sessionId) {
     return { message: "No active chat session found. Send a message first.", tone: "error" };
   }
 
-  const sessionId = tgChat.sessionId;
+  const sessionId = link.sessionId;
 
   // 2. Get model config from the agent definition or user settings
   const definition = await prisma.agentDefinition.findFirst({
@@ -940,81 +926,66 @@ async function runTelegramCompaction(
 /** Telegram chats expire after this many ms of inactivity (6 hours) */
 const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
 
+/** Whether the session has sat unused past the chat's expiry window. */
+async function isSessionExpired(sessionId: string): Promise<boolean> {
+  const [lastMessage] = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "desc" },
+    take: 1,
+  });
+
+  // No messages at all means the session was created but never used — expired.
+  return (
+    lastMessage == null || lastMessage.createdAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now()
+  );
+}
+
 /**
- * Find or create the TelegramChat record and its linked ChatSession.
+ * Find or create the Saale chat session this link talks through.
+ *
+ * The link remembers its session, because a link is exactly one user and one
+ * private chat — there is no per-chat row to look up. Sessions still expire
+ * after six hours of inactivity so a stale thread starts clean instead of
+ * carrying an unbounded history.
  */
-async function upsertTelegramChat(
+async function upsertTelegramSession(
   userId: string,
-  _encryptedToken: string,
   telegramChatId: bigint,
-): Promise<{ sessionId: string; telegramChatId: bigint }> {
-  const account = await prisma.telegramAccount.findUnique({
-    where: { userId },
-  });
-  if (!account) {
-    throw new Error("Telegram account not found");
+): Promise<{ sessionId: string }> {
+  const link = await getLinkByUserId(userId);
+  if (!link) {
+    throw new Error("Telegram link not found");
   }
 
-  let tgChat = await prisma.telegramChat.findUnique({
-    where: {
-      telegramAccountId_telegramChatId: {
-        telegramAccountId: account.id,
-        telegramChatId,
+  // Defence in depth: the webhook routed this message in from this link's chat,
+  // so a mismatch means the link changed while the message was in flight.
+  if (link.telegramChatId !== telegramChatId) {
+    throw new Error("Telegram chat does not belong to this user's link");
+  }
+
+  if (link.sessionId && !(await isSessionExpired(link.sessionId))) {
+    return { sessionId: link.sessionId };
+  }
+
+  const sessionId = crypto.randomUUID();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.chatSession.create({
+      data: {
+        id: sessionId,
+        userId,
+        title: "Telegram Chat",
+        temporary: false,
       },
-    },
+    });
+
+    await tx.telegramLink.update({
+      where: { userId },
+      data: { sessionId },
+    });
   });
 
-  let needsNewSession = !tgChat;
-
-  if (tgChat) {
-    // Use the latest message's createdAt to determine activity — this is more
-    // reliable than ChatSession.updatedAt which is only set when the session
-    // record itself is modified (at the end of processing). If processing
-    // errors before that update, updatedAt stays stale and the chat appears
-    // "active" when it isn't.
-    const [lastMessage] = await prisma.chatMessage.findMany({
-      where: { sessionId: tgChat.sessionId },
-      orderBy: { createdAt: "desc" },
-      take: 1,
-    });
-    needsNewSession =
-      lastMessage == null || lastMessage.createdAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
-  }
-
-  if (needsNewSession) {
-    const sessionId = crypto.randomUUID();
-
-    await prisma.$transaction(async (tx) => {
-      await tx.chatSession.create({
-        data: {
-          id: sessionId,
-          userId,
-          title: "Telegram Chat",
-          temporary: false,
-        },
-      });
-
-      tgChat = await tx.telegramChat.upsert({
-        where: {
-          telegramAccountId_telegramChatId: {
-            telegramAccountId: account.id,
-            telegramChatId,
-          },
-        },
-        create: {
-          telegramAccountId: account.id,
-          telegramChatId,
-          chatType: "private",
-          sessionId,
-        },
-        update: {
-          sessionId,
-        },
-      });
-    });
-  }
-
-  return { sessionId: tgChat!.sessionId, telegramChatId: tgChat!.telegramChatId };
+  return { sessionId };
 }
 
 /**
@@ -1041,50 +1012,4 @@ async function saveUserMessage(sessionId: string, content: string): Promise<void
     .catch((err) => {
       console.error(`Failed to bump lastActivityAt for telegram session ${sessionId}:`, err);
     });
-}
-
-// ─── Whitelist Helpers ───────────────────────────────────────────────────────
-
-/**
- * Check if a Telegram user is whitelisted for a given account.
- */
-export async function isWhitelisted(
-  telegramAccountId: string,
-  telegramUserId: bigint,
-): Promise<boolean> {
-  const entry = await prisma.telegramWhitelist.findUnique({
-    where: {
-      telegramAccountId_telegramUserId: {
-        telegramAccountId,
-        telegramUserId,
-      },
-    },
-  });
-  return !!entry;
-}
-
-/**
- * Upsert a whitelist entry (called when user info changes).
- */
-export async function upsertWhitelistDisplayName(
-  telegramAccountId: string,
-  telegramUserId: bigint,
-  displayName: string | null,
-): Promise<void> {
-  await prisma.telegramWhitelist.upsert({
-    where: {
-      telegramAccountId_telegramUserId: {
-        telegramAccountId,
-        telegramUserId,
-      },
-    },
-    update: {
-      displayName: displayName ?? null,
-    },
-    create: {
-      telegramAccountId,
-      telegramUserId,
-      displayName: displayName ?? null,
-    },
-  });
 }

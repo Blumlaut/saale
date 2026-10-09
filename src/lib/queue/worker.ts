@@ -10,7 +10,7 @@ import {
   WATCHER_TICK_JOB_NAME,
 } from "@/lib/queue";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
-import { registerAllWebhooks } from "@/lib/telegram";
+import { registerTelegramWebhook } from "@/lib/telegram";
 
 /** How often to scan for orphaned image files (30 min) */
 const ORPHAN_CLEANUP_INTERVAL_MINUTES = 30;
@@ -153,7 +153,7 @@ async function main() {
   await retryUntilSuccess("Schedule agent definitions", scheduleAllAgentDefinitions);
   await retryUntilSuccess("Schedule watchers", scheduleAllWatchers);
   await retryUntilSuccess("Schedule orphan cleanup", registerOrphanCleanup);
-  await retryUntilSuccess("Register Telegram webhooks", registerAllWebhooks);
+  await retryUntilSuccess("Register Telegram webhook", registerTelegramWebhook);
 
   process.on("SIGINT", async () => {
     console.log("[worker] Shutting down...");

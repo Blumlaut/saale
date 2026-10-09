@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { sendTelegramToUser } from "@/lib/telegram/notify";
+import type { TelegramDeliveryFailure } from "@/lib/telegram/notify";
 
 const NOTIFICATION_KEY = "notifications:";
 
@@ -64,10 +65,16 @@ export async function handler(params: {
       continue;
     }
 
-    // A user with no Telegram bot (or one switched off) is not a failure —
-    // falling back is the expected path. Anything else means a configured
-    // channel dropped the message, which is worth a log line.
-    if (delivery.reason !== "not_configured" && delivery.reason !== "disabled") {
+    // A user with no bot on the instance, a bot that is switched off, or no
+    // linked account is not a failure — falling back is the expected path.
+    // Anything else means a configured channel dropped the message, which is
+    // worth a log line.
+    const expectedFallback: TelegramDeliveryFailure[] = [
+      "bot_not_configured",
+      "bot_disabled",
+      "not_linked",
+    ];
+    if (!delivery.reason || !expectedFallback.includes(delivery.reason)) {
       console.error(
         `[task-reminders] Telegram delivery failed for user ${userId} (${delivery.reason}): ${delivery.error}`,
       );

@@ -140,6 +140,45 @@ async function mockMachineNotes(page: Page) {
 
 /** One configured MCP server, with a URL and description long enough to matter on a phone. */
 /**
+ * A linked Telegram account and a fresh one-time code, so the link dialog can
+ * be opened (and its unbreakable code rendered) without a live bot.
+ */
+async function mockTelegramLinked(page: Page) {
+  await page.route(/\/api\/integrations\/telegram$/, async (route) => {
+    const method = route.request().method();
+
+    if (method === "GET") {
+      return route.fulfill({
+        json: {
+          integration: {
+            bot: { configured: true, enabled: true, username: "saale_bot" },
+            link: {
+              telegramUserId: "119075844",
+              chatId: "119075844",
+              displayName: "Test Operator",
+              linkedAt: NOW,
+            },
+          },
+        },
+      });
+    }
+
+    if (method === "POST") {
+      return route.fulfill({
+        json: {
+          code: "abcDEF123_-GHIJKL456_-mnopqr789_",
+          deepLink: "https://t.me/saale_bot?start=abcDEF123_-GHIJKL456_-mnopqr789_",
+          expiresAt: NOW,
+          botUsername: "saale_bot",
+        },
+      });
+    }
+
+    return route.fallback();
+  });
+}
+
+/**
  * The provider list and a sign-in in its most demanding state: a device code, an
  * authorization URL long enough to wrap, and a prompt waiting to be answered.
  */
@@ -732,10 +771,20 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
-    name: "settings · telegram whitelist",
+    name: "settings · telegram link",
     path: SETTINGS,
     sources: ["src/components/integrations/telegram-card.tsx"],
-    skip: "requires a connected Telegram bot — the token is validated against the Telegram API",
+    mock: mockTelegramLinked,
+    open: async (page) => {
+      await openSettingsTab(page, "Integrations");
+
+      // Anchor on the mocked link's name — it only exists inside this card, so
+      // the row menu is unambiguous even though the shell has its own menus.
+      const card = page.locator("div").filter({ hasText: "Test Operator" }).last();
+      await card.locator('[data-slot="dropdown-menu-trigger"]').click();
+      await click(page, '[role="menuitem"]:has-text("Link a different account")');
+      await click(page, 'button:has-text("Get link code")');
+    },
   },
 
   // ── Calendar ──────────────────────────────────────────────────────────────
@@ -801,6 +850,12 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
 
   // ── Admin ─────────────────────────────────────────────────────────────────
+  {
+    name: "admin · telegram bot",
+    path: "/admin/settings",
+    sources: ["src/components/admin/telegram-bot-panel.tsx"],
+    skip: "admin-only surface — the overlay needs a configured bot to render its trigger",
+  },
   {
     name: "admin · user dialogs",
     path: "/admin/users",

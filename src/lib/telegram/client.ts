@@ -1,18 +1,17 @@
 import { Bot, type Context } from "grammy";
 import { convert as convertToTelegramMarkdown } from "telegram-markdown-v2";
 import { decrypt } from "@/lib/crypto";
-import { prisma } from "@/lib/db";
 import { listCommands } from "@/lib/commands/catalog";
 import { TELEGRAM_MAX_MESSAGE_LENGTH, splitMarkdownV2, splitPlainText } from "./message-split";
 
-/** Webhook endpoint pattern */
+/** Webhook endpoint — a single path, since there is a single bot. */
 const WEBHOOK_PATH = "/api/integrations/telegram/webhook";
 
 /**
  * Get the public base URL for webhook registration.
  * Uses NGROK_URL, VERCEL_URL, or falls back to localhost.
  */
-function getPublicBaseUrl(): string {
+export function getPublicBaseUrl(): string {
   if (process.env.NGROK_URL) return process.env.NGROK_URL;
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL;
@@ -22,14 +21,17 @@ function getPublicBaseUrl(): string {
 }
 
 /**
- * Build the full webhook URL for a specific Telegram account.
+ * Build the webhook URL Telegram should deliver updates to.
+ *
+ * The URL is constant — it identifies the instance, not a user — so the
+ * `webhookSecret` header is what actually authenticates a delivery.
  */
-export function buildWebhookUrl(accountId: string): string {
-  return `${getPublicBaseUrl()}${WEBHOOK_PATH}/${accountId}`;
+export function buildWebhookUrl(): string {
+  return `${getPublicBaseUrl()}${WEBHOOK_PATH}`;
 }
 
 /**
- * Create a grammY Bot instance for a given account.
+ * Create a grammY Bot instance for the shared bot.
  * Decrypts the stored token and configures the API client.
  */
 export function createBot(encryptedToken: string): Bot<Context> {
@@ -75,15 +77,14 @@ export async function registerBotCommands(encryptedToken: string): Promise<boole
 
 /**
  * Register the webhook and the command menu with Telegram.
- * Called when a user enables or updates their Telegram integration.
+ * Called when an admin saves or re-enables the bot.
  */
 export async function registerWebhook(
   encryptedToken: string,
-  accountId: string,
   webhookSecret: string,
 ): Promise<boolean> {
   const bot = createBot(encryptedToken);
-  const url = buildWebhookUrl(accountId);
+  const url = buildWebhookUrl();
 
   const result = await bot.api.setWebhook(url, {
     secret_token: webhookSecret,
@@ -92,7 +93,7 @@ export async function registerWebhook(
 
   // A bot menu is a nicety — never let it fail the webhook registration.
   await registerBotCommands(encryptedToken).catch((err) => {
-    console.error(`Failed to register the Telegram command menu for ${accountId}:`, err);
+    console.error("Failed to register the shared Telegram command menu:", err);
   });
 
   return result;
@@ -100,7 +101,7 @@ export async function registerWebhook(
 
 /**
  * Delete the webhook from Telegram.
- * Called when a user disables or removes their Telegram integration.
+ * Called when the bot is disabled or removed.
  */
 export async function deleteWebhook(encryptedToken: string): Promise<boolean> {
   const bot = createBot(encryptedToken);
@@ -108,64 +109,37 @@ export async function deleteWebhook(encryptedToken: string): Promise<boolean> {
 }
 
 /**
- * Re-register webhooks for all enabled Telegram accounts.
- * Called on server startup to ensure webhooks are active after restarts.
+ * Where a sender who has not linked an account is told to go.
+ *
+ * There is no bot owner to whitelist them any more — the bot belongs to the
+ * instance — so the instruction has to be self-service.
  */
-export async function registerAllWebhooks(): Promise<void> {
-  const accounts = await prisma.telegramAccount.findMany({
-    where: { enabled: true },
-    select: {
-      id: true,
-      encryptedToken: true,
-      webhookSecret: true,
-    },
-  });
-
-  for (const account of accounts) {
-    try {
-      await registerWebhook(account.encryptedToken, account.id, account.webhookSecret);
-    } catch (err) {
-      console.error(`Failed to register webhook for account ${account.id}:`, err);
-    }
-  }
-
-  if (accounts.length > 0) {
-    // Logged by caller (worker startup)
-  }
+export function buildLinkRequiredMessage(): string {
+  return (
+    `This bot isn't connected to a Saale account yet.\n\n` +
+    `Sign in to Saale and open <b>Settings → Integrations → Telegram</b> to link your account, then message me again.\n\n` +
+    `${getPublicBaseUrl()}`
+  );
 }
 
-/**
- * Look up a TelegramAccount by its webhook secret.
- * Used by the webhook handler to route incoming updates to the correct account.
- */
-export async function findAccountByWebhookSecret(webhookSecret: string): Promise<{
-  id: string;
-  userId: string;
-  encryptedToken: string;
-  enabled: boolean;
-  webhookSecret: string;
-} | null> {
-  const account = await prisma.telegramAccount.findFirst({
-    where: { webhookSecret },
-    select: {
-      id: true,
-      userId: true,
-      encryptedToken: true,
-      enabled: true,
-      webhookSecret: true,
-    },
-  });
-
-  return account ?? null;
+/** Confirmation that a link code was redeemed. Sent with parse_mode "HTML". */
+export function buildLinkSuccessMessage(): string {
+  return `✅ <b>Linked.</b>\n\nYour Telegram account is now connected to Saale — just send a message to talk to your agent.`;
 }
 
-/**
- * Rejection message for non-whitelisted senders. Includes the sender's own
- * Telegram user ID so the bot owner can whitelist themselves without an
- * external lookup bot. Sent with parse_mode "HTML".
- */
-export function buildUnauthorizedMessage(telegramUserId: bigint): string {
-  return `You are not authorized to use this bot.\n\nYour Telegram user ID: <code>${telegramUserId.toString()}</code>\n\nIf you own this bot, add that ID in Saale → Integrations → Telegram. Otherwise, ask the bot's owner to whitelist you.`;
+/** Why a link code was refused, for the sender. Sent with parse_mode "HTML". */
+export function buildLinkFailureMessage(reason: "expired" | "already_linked"): string {
+  if (reason === "already_linked") {
+    return (
+      `⚠️ This Telegram account is already linked to a different Saale account.\n\n` +
+      `Unlink it there first (Settings → Integrations → Telegram), then link it again.`
+    );
+  }
+
+  return (
+    `⚠️ That link is invalid or has expired.\n\n` +
+    `Open Saale → Settings → Integrations → Telegram and use the link button again.`
+  );
 }
 
 /**

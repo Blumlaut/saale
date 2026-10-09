@@ -17,7 +17,7 @@ export const INTEGRATIONS: IntegrationManifest[] = [
   {
     id: "telegram",
     name: "Telegram",
-    description: "Chat with Saale via your own Telegram bot",
+    description: "Chat with Saale on Telegram — link your account to the shared bot",
     icon: MessageCircle,
     color: "text-sky-500",
     apiBase: "/api/integrations/telegram",

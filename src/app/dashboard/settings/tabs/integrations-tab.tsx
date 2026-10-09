@@ -36,13 +36,17 @@ import { INTEGRATIONS } from "@/lib/integrations/registry";
 import type { IntegrationId } from "@/lib/integrations/types";
 import { useTelegramIntegration } from "@/hooks/use-telegram-integration";
 import { useGitHubIntegration } from "@/hooks/use-github-integration";
-import { TelegramCard } from "@/components/integrations/telegram-card";
+import {
+  TelegramCard,
+  TelegramLinkDialog,
+  TelegramLinkPanel,
+} from "@/components/integrations/telegram-card";
 import { GitHubCard } from "@/components/integrations/github-card";
 
 /** Delete confirmation descriptions per integration */
 const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
   telegram:
-    "This will disconnect your Telegram bot, remove the webhook, and delete all whitelist entries. This cannot be undone.",
+    "This unlinks your Telegram account. Nothing is sent to Telegram, and you can link again at any time.",
   github:
     "This will disconnect your GitHub account and remove the stored token. This cannot be undone.",
 };
@@ -62,23 +66,18 @@ export function IntegrationsTab() {
   const [deleteIntegrationId, setDeleteIntegrationId] = useState<IntegrationId | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Relink dialog — opening it discards any code minted for the last attempt
+  const [relinkOpen, setRelinkOpen] = useState(false);
+
   // Reset forms when dialog closes
   const closeAddDialog = useCallback(() => {
     setAddDialogOpen(false);
-    telegram.resetTokenForm();
+    telegram.resetLinkCode();
     github.resetTokenForm();
     setSelectedIntegration(null);
   }, [telegram, github]);
 
   // ─── Handlers ─────────────────────────────────────────────────────
-
-  const handleSaveTelegram = useCallback(() => {
-    telegram.saveToken(() => {
-      setTimeout(() => {
-        closeAddDialog();
-      }, 800);
-    });
-  }, [telegram, closeAddDialog]);
 
   const handleSaveGitHub = useCallback(() => {
     github.saveToken(() => {
@@ -94,7 +93,7 @@ export function IntegrationsTab() {
     try {
       await deleteJson(`/api/integrations/${deleteIntegrationId}`);
       if (deleteIntegrationId === "telegram") {
-        await telegram.loadAccount();
+        await telegram.loadIntegration();
       } else {
         await github.loadAccount();
       }
@@ -107,7 +106,7 @@ export function IntegrationsTab() {
     }
   }, [deleteIntegrationId, telegram, github]);
 
-  const hasAnyIntegration = !!telegram.account || !!github.account;
+  const hasAnyIntegration = !!telegram.link || !!github.account;
 
   // ─── Render ───────────────────────────────────────────────────────
 
@@ -146,28 +145,19 @@ export function IntegrationsTab() {
           {/* Active integrations — data passed as props, no duplicate hooks */}
           {hasAnyIntegration ? (
             <div className="space-y-3">
-              {telegram.account && (
+              {telegram.link && (
                 <TelegramCard
-                  account={telegram.account}
-                  actionLoading={telegram.actionLoading}
-                  onToggleEnabled={telegram.toggleEnabled}
-                  onDelete={() => {
+                  link={telegram.link}
+                  botUsername={telegram.bot.username}
+                  unlinking={telegram.unlinking}
+                  onRelink={() => {
+                    telegram.resetLinkCode();
+                    setRelinkOpen(true);
+                  }}
+                  onUnlink={() => {
                     setDeleteIntegrationId("telegram");
                     setDeleteAlertOpen(true);
                   }}
-                  whitelistEntries={telegram.whitelistEntries}
-                  whitelistLoading={telegram.whitelistLoading}
-                  onOpenWhitelist={telegram.loadWhitelist}
-                  newUserId={telegram.newUserId}
-                  onNewUserIdChange={telegram.setNewUserId}
-                  addingUser={telegram.addingUser}
-                  onAddUser={telegram.addWhitelistUser}
-                  onRemoveUser={telegram.removeWhitelistUser}
-                  notifyChats={telegram.chats}
-                  notifyChatsLoading={telegram.chatsLoading}
-                  savingNotifyChat={telegram.savingNotifyChat}
-                  onOpenNotifyChats={telegram.loadChats}
-                  onSetNotifyChat={telegram.setNotifyChat}
                 />
               )}
               {github.account && (
@@ -201,8 +191,20 @@ export function IntegrationsTab() {
         onSelectIntegration={setSelectedIntegration}
         telegram={telegram}
         github={github}
-        onSaveTelegram={handleSaveTelegram}
         onSaveGitHub={handleSaveGitHub}
+      />
+
+      {/* Relink — same panel, without going through Add Integration */}
+      <TelegramLinkDialog
+        open={relinkOpen}
+        onOpenChange={setRelinkOpen}
+        bot={telegram.bot}
+        linkCode={telegram.linkCode}
+        linking={telegram.linking}
+        linkError={telegram.linkError}
+        linked={!!telegram.link}
+        onCreateCode={telegram.createLinkCode}
+        onDone={telegram.loadIntegration}
       />
 
       {/* Delete Confirmation */}
@@ -246,7 +248,6 @@ function AddIntegrationDialog({
   onSelectIntegration,
   telegram,
   github,
-  onSaveTelegram,
   onSaveGitHub,
 }: {
   open: boolean;
@@ -255,7 +256,6 @@ function AddIntegrationDialog({
   onSelectIntegration: (id: IntegrationId) => void;
   telegram: ReturnType<typeof useTelegramIntegration>;
   github: ReturnType<typeof useGitHubIntegration>;
-  onSaveTelegram: () => void;
   onSaveGitHub: () => void;
 }) {
   return (
@@ -294,30 +294,13 @@ function AddIntegrationDialog({
           /* Config form — per-integration */
           <>
             {selectedIntegration === "telegram" && (
-              <IntegrationConfigForm
-                label="Bot Token"
-                placeholder="123456:aBcDeF_gHiJkLmNoP-q"
-                helpText={
-                  <>
-                    Get your bot token from{" "}
-                    <a
-                      href="https://t.me/BotFather"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline underline-offset-2"
-                    >
-                      @BotFather
-                      <ExternalLink className="ml-0.5 inline-block h-3 w-3" />
-                    </a>{" "}
-                    on Telegram
-                  </>
-                }
-                value={telegram.token}
-                onChange={telegram.setToken}
-                error={telegram.tokenError}
-                success={telegram.tokenSuccess}
-                successMessage="Telegram bot connected successfully!"
-                onSave={onSaveTelegram}
+              <TelegramLinkPanel
+                bot={telegram.bot}
+                linkCode={telegram.linkCode}
+                linking={telegram.linking}
+                linkError={telegram.linkError}
+                linked={!!telegram.link}
+                onCreateCode={telegram.createLinkCode}
               />
             )}
 
@@ -352,22 +335,6 @@ function AddIntegrationDialog({
         )}
 
         <DialogFooter>
-          {selectedIntegration === "telegram" && (
-            <Button
-              className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
-              onClick={onSaveTelegram}
-              disabled={telegram.savingToken || !telegram.token.trim()}
-            >
-              {telegram.savingToken ? (
-                <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  Connecting...
-                </>
-              ) : (
-                "Connect"
-              )}
-            </Button>
-          )}
           {selectedIntegration === "github" && (
             <Button
               className="liquid-glass-accent h-9 rounded-full text-xs font-medium"

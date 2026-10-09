@@ -1,105 +1,245 @@
-// Set env before importing crypto module
-process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
 
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { _resetKey } from "@/lib/crypto";
-import { encrypt, decrypt } from "@/lib/crypto";
-import { buildWebhookUrl } from "@/lib/telegram";
+// ─── Mocks ───────────────────────────────────────────────────────────────────
 
-describe("Telegram integration — client", () => {
-  beforeEach(() => {
-    _resetKey();
+const {
+  mockGetTelegramBot,
+  mockIssueLinkCode,
+  mockUnlinkUser,
+  mockGetLinkByUserId,
+  mockHashLinkCode,
+} = vi.hoisted(() => ({
+  mockGetTelegramBot: vi.fn(),
+  mockIssueLinkCode: vi.fn(),
+  mockUnlinkUser: vi.fn(),
+  mockGetLinkByUserId: vi.fn(),
+  mockHashLinkCode: vi.fn((code: string) => `hash(${code})`),
+}));
+
+vi.mock("@/lib/auth", () => ({ requireSession: vi.fn() }));
+
+vi.mock("@/lib/telegram/bot", () => ({
+  getTelegramBot: (...args: unknown[]) => mockGetTelegramBot(...args),
+}));
+
+vi.mock("@/lib/telegram/links", () => ({
+  issueLinkCode: (...args: unknown[]) => mockIssueLinkCode(...args),
+  unlinkUser: (...args: unknown[]) => mockUnlinkUser(...args),
+  getLinkByUserId: (...args: unknown[]) => mockGetLinkByUserId(...args),
+  hashLinkCode: (code: string) => mockHashLinkCode(code),
+}));
+
+import * as auth from "@/lib/auth";
+import { DELETE, GET, POST } from "@/app/api/integrations/telegram/route";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const userId = "user-1";
+
+function authenticate() {
+  vi.mocked(auth.requireSession).mockResolvedValue({
+    ok: true,
+    user: { id: userId },
+    response: null,
+  } as never);
+}
+
+const postRequest = () =>
+  new NextRequest("http://localhost/api/integrations/telegram", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({}),
   });
 
-  describe("buildWebhookUrl", () => {
-    const originalEnv = { ...process.env };
+/** A configured, enabled bot row as `getTelegramBot` returns it. */
+const bot = {
+  id: "global",
+  encryptedToken: "enc",
+  enabled: true,
+  botId: BigInt(1),
+  botUsername: "saale_bot",
+  webhookSecret: "secret",
+  updatedByUserId: "admin-1",
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+};
 
-    it.each([
-      {
-        var: "NGROK_URL",
-        value: "https://abc123.ngrok.io",
-        expected: "https://abc123.ngrok.io/api/integrations/telegram/webhook/test-id",
-      },
-      {
-        var: "VERCEL_URL",
-        value: "myapp.vercel.app",
-        expected: "https://myapp.vercel.app/api/integrations/telegram/webhook/test-id",
-      },
-      {
-        var: "NEXT_PUBLIC_BASE_URL",
-        value: "https://saale.example.com",
-        expected: "https://saale.example.com/api/integrations/telegram/webhook/test-id",
-      },
-      {
-        var: "APP_URL",
-        value: "http://localhost:3000",
-        expected: "http://localhost:3000/api/integrations/telegram/webhook/test-id",
-      },
-    ])(`uses $var when set`, ({ var: envVar, value, expected }) => {
-      // Clear all priority env vars, set only the one being tested
-      delete process.env.NGROK_URL;
-      delete process.env.VERCEL_URL;
-      delete process.env.NEXT_PUBLIC_BASE_URL;
-      delete process.env.APP_URL;
-      process.env[envVar] = value;
+/** A link row as `getLinkByUserId` returns it. */
+const link = {
+  id: "link-1",
+  userId,
+  telegramUserId: BigInt("9007199254740993"),
+  telegramChatId: BigInt("9007199254740993"),
+  displayName: "Jane Doe",
+  sessionId: null,
+  createdAt: new Date("2026-02-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+};
 
-      expect(buildWebhookUrl("test-id")).toBe(expected);
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+describe("GET /api/integrations/telegram", () => {
+  it("returns 401 when not authenticated", async () => {
+    vi.mocked(auth.requireSession).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
 
-    it("prefers NGROK_URL over VERCEL_URL", () => {
-      delete process.env.NEXT_PUBLIC_BASE_URL;
-      delete process.env.APP_URL;
-      process.env.NGROK_URL = "https://ngrok.test";
-      process.env.VERCEL_URL = "vercel.test";
+    expect((await GET()).status).toBe(401);
+  });
 
-      expect(buildWebhookUrl("id")).toBe("https://ngrok.test/api/integrations/telegram/webhook/id");
-    });
+  it("reports an unconfigured instance and no link", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(null);
+    mockGetLinkByUserId.mockResolvedValue(null);
 
-    it("prefers VERCEL_URL over NEXT_PUBLIC_BASE_URL", () => {
-      delete process.env.NGROK_URL;
-      delete process.env.APP_URL;
-      process.env.VERCEL_URL = "vercel.test";
-      process.env.NEXT_PUBLIC_BASE_URL = "https://public.test";
+    const body = await (await GET()).json();
 
-      expect(buildWebhookUrl("id")).toBe(
-        "https://vercel.test/api/integrations/telegram/webhook/id",
-      );
-    });
-
-    it("falls back to localhost when no env set", () => {
-      delete process.env.NGROK_URL;
-      delete process.env.VERCEL_URL;
-      delete process.env.NEXT_PUBLIC_BASE_URL;
-      delete process.env.APP_URL;
-
-      expect(buildWebhookUrl("id")).toBe(
-        "http://localhost:3630/api/integrations/telegram/webhook/id",
-      );
-    });
-
-    afterAll(() => {
-      Object.assign(process.env, originalEnv);
+    expect(body.integration).toEqual({
+      bot: { configured: false, enabled: false, username: null },
+      link: null,
     });
   });
 
-  describe("token encryption", () => {
-    it("encrypts and decrypts a Telegram bot token", () => {
-      const token = "123456789:AAGWzUqz4aBcDeFgHiJkLmNoPqRsTuVwXyZ";
-      const encrypted = encrypt(token);
-      expect(encrypted).not.toBe(token);
-      expect(decrypt(encrypted)).toBe(token);
+  it("reports the linked account without ever exposing the bot token", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(bot);
+    mockGetLinkByUserId.mockResolvedValue(link);
+
+    const body = await (await GET()).json();
+
+    expect(body.integration.bot).toEqual({
+      configured: true,
+      enabled: true,
+      username: "saale_bot",
+    });
+    expect(body.integration.link).toEqual({
+      telegramUserId: "9007199254740993",
+      chatId: "9007199254740993",
+      displayName: "Jane Doe",
+      linkedAt: "2026-02-01T00:00:00.000Z",
+    });
+    // The token is instance infrastructure — it must not reach a user's browser.
+    expect(JSON.stringify(body)).not.toContain("enc");
+    expect(JSON.stringify(body)).not.toContain("secret");
+  });
+
+  it("reports a switched-off bot as configured but not enabled", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue({ ...bot, enabled: false });
+    mockGetLinkByUserId.mockResolvedValue(null);
+
+    const body = await (await GET()).json();
+
+    expect(body.integration.bot).toEqual({
+      configured: true,
+      enabled: false,
+      username: "saale_bot",
+    });
+  });
+
+  it("scopes the link lookup to the authenticated user", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(bot);
+    mockGetLinkByUserId.mockResolvedValue(null);
+
+    await GET();
+
+    expect(mockGetLinkByUserId).toHaveBeenCalledWith(userId);
+  });
+});
+
+describe("POST /api/integrations/telegram", () => {
+  it("returns 401 when not authenticated", async () => {
+    vi.mocked(auth.requireSession).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
 
-    it("encrypts different tokens to different values", () => {
-      const token1 = "123456789:AAGWzUqz4aBcDeFgHiJkLmNoPqRsTuVwXyZ";
-      const token2 = "987654321:BBHWaUrY5bCdEfGhIjKlMnOpQrStUvWxYzA";
-      expect(encrypt(token1)).not.toBe(encrypt(token2));
+    expect((await POST(postRequest())).status).toBe(401);
+  });
+
+  it("refuses to mint a code when no bot is configured", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(null);
+
+    const response = await POST(postRequest());
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("admin");
+    expect(mockIssueLinkCode).not.toHaveBeenCalled();
+  });
+
+  it("refuses to mint a code when the bot is switched off", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue({ ...bot, enabled: false });
+
+    const response = await POST(postRequest());
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("switched off");
+    expect(mockIssueLinkCode).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the bot has no username to open a deep link with", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue({ ...bot, botUsername: null });
+
+    const response = await POST(postRequest());
+
+    expect(response.status).toBe(409);
+    expect(mockIssueLinkCode).not.toHaveBeenCalled();
+  });
+
+  it("mints a code bound to the caller and a deep link that redeems it", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(bot);
+    mockIssueLinkCode.mockResolvedValue({
+      code: "CODE_-abcDEF123_-abcDEF123_-abc",
+      expiresAt: new Date("2026-02-01T00:10:00.000Z"),
     });
 
-    it("handles tokens with special characters", () => {
-      const token = "123:AAG_Wz.Uq+z4a=Bc~De`Fg|Hi\\Jk";
-      const encrypted = encrypt(token);
-      expect(decrypt(encrypted)).toBe(token);
+    const body = await (await POST(postRequest())).json();
+
+    // The code is issued for the authenticated user — that binding is what
+    // makes redeeming it in Telegram safe.
+    expect(mockIssueLinkCode).toHaveBeenCalledWith(userId);
+    expect(body.code).toBe("CODE_-abcDEF123_-abcDEF123_-abc");
+    expect(body.botUsername).toBe("saale_bot");
+    expect(body.deepLink).toBe("https://t.me/saale_bot?start=CODE_-abcDEF123_-abcDEF123_-abc");
+    expect(body.expiresAt).toBe("2026-02-01T00:10:00.000Z");
+  });
+});
+
+describe("DELETE /api/integrations/telegram", () => {
+  it("returns 401 when not authenticated", async () => {
+    vi.mocked(auth.requireSession).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
+
+    expect((await DELETE()).status).toBe(401);
+  });
+
+  it("unlinks only the authenticated user's account", async () => {
+    authenticate();
+    mockUnlinkUser.mockResolvedValue(true);
+
+    const response = await DELETE();
+
+    expect(response.status).toBe(200);
+    expect(mockUnlinkUser).toHaveBeenCalledWith(userId);
+  });
+
+  it("reports 404 when there was nothing linked", async () => {
+    authenticate();
+    mockUnlinkUser.mockResolvedValue(false);
+
+    expect((await DELETE()).status).toBe(404);
   });
 });

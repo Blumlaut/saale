@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/db";
+import { getTelegramBot } from "./bot";
 import { sendTelegramMessage } from "./client";
-import { resolveNotifyChat } from "./chats";
+import { getLinkByUserId } from "./links";
 import { recordTelegramJobOutput } from "./outbound";
 
 /**
@@ -10,8 +10,8 @@ import { recordTelegramJobOutput } from "./outbound";
  * the `telegram_send` tool, task reminders, and agent job output. Centralising
  * it keeps three behaviours consistent:
  *
- *  - **The recipient is never chosen by the model.** Only the user's own
- *    resolved chat is targeted (see `resolveNotifyChat`), so a message the
+ *  - **The recipient is never chosen by the model.** A delivery resolves the
+ *    caller's own link, and a link is a single private chat, so a message the
  *    agent decided to send can never land in a group or another user's chat.
  *  - **Replies keep their context.** Every delivered message is recorded in the
  *    chat's session, so replying to it continues the thread instead of reading
@@ -22,12 +22,12 @@ import { recordTelegramJobOutput } from "./outbound";
 
 /** Why a delivery could not be attempted or did not land. */
 export type TelegramDeliveryFailure =
-  /** No Telegram bot is connected for this user. */
-  | "not_configured"
-  /** The integration is connected but switched off. */
-  | "disabled"
-  /** Connected, but no chat is reachable (nothing pinned, no private chat, nobody whitelisted). */
-  | "no_chat"
+  /** No bot is configured on this instance (an admin has to set one up). */
+  | "bot_not_configured"
+  /** A bot exists but an admin switched it off. */
+  | "bot_disabled"
+  /** This user has not linked their Telegram account yet. */
+  | "not_linked"
   /** Telegram rejected the send (blocked bot, revoked token, rate limit…). */
   | "send_failed";
 
@@ -44,7 +44,7 @@ export interface TelegramDelivery {
 }
 
 /**
- * Send a message to an already-resolved chat and record it in the chat's
+ * Send a message to the user's linked chat and record it in that chat's
  * session so a reply has context.
  *
  * Recording failures are logged and swallowed — a message that would otherwise
@@ -59,9 +59,9 @@ export async function deliverTelegramMessage(params: {
   const { userId, encryptedToken, chatId, content } = params;
 
   try {
-    await recordTelegramJobOutput({ userId, telegramChatId: chatId, content });
+    await recordTelegramJobOutput({ userId, content });
   } catch (err) {
-    console.error(`[telegram] Failed to record outbound message in chat ${chatId}:`, err);
+    console.error(`[telegram] Failed to record outbound message for user ${userId}:`, err);
   }
 
   try {
@@ -79,12 +79,12 @@ export async function deliverTelegramMessage(params: {
 }
 
 /**
- * Resolve the user's notify chat and deliver a message to it.
+ * Resolve the user's linked Telegram chat and deliver a message to it.
  *
  * This is the entry point for anything that reaches the user without a
  * conversation in progress. It never throws — inspect the result instead.
  *
- * @param params.userId - The owner of the Telegram integration
+ * @param params.userId - The Saale user to reach
  * @param params.content - Message text (Markdown; split automatically if long)
  */
 export async function sendTelegramToUser(params: {
@@ -93,45 +93,40 @@ export async function sendTelegramToUser(params: {
 }): Promise<TelegramDelivery> {
   const { userId, content } = params;
 
-  const account = await prisma.telegramAccount.findUnique({
-    where: { userId },
-    select: { id: true, encryptedToken: true, enabled: true, notifyChatId: true },
-  });
-
-  if (!account) {
+  const bot = await getTelegramBot();
+  if (!bot) {
     return {
       ok: false,
-      reason: "not_configured",
+      reason: "bot_not_configured",
       error:
-        "No Telegram bot is connected. The user must add one in Settings → Integrations → Telegram.",
+        "No Telegram bot is configured on this instance. An admin must add one in Admin → Settings → Telegram.",
     };
   }
 
-  if (!account.enabled) {
+  if (!bot.enabled) {
     return {
       ok: false,
-      reason: "disabled",
-      error:
-        "The Telegram integration is disabled. The user must enable it before messages arrive.",
+      reason: "bot_disabled",
+      error: "The Telegram bot is switched off. An admin must enable it before messages arrive.",
     };
   }
 
-  const target = await resolveNotifyChat(account.id, account.notifyChatId);
-  if (!target) {
+  const link = await getLinkByUserId(userId);
+  if (!link) {
     return {
       ok: false,
-      reason: "no_chat",
+      reason: "not_linked",
       error:
-        "No Telegram chat is available to send to. The user must message the bot, or pin a notification chat in Settings → Integrations → Telegram.",
+        "This user has not linked a Telegram account. Link one in Settings → Integrations → Telegram.",
     };
   }
 
   const delivery = await deliverTelegramMessage({
     userId,
-    encryptedToken: account.encryptedToken,
-    chatId: target.chatId,
+    encryptedToken: bot.encryptedToken,
+    chatId: link.telegramChatId,
     content,
   });
 
-  return { ...delivery, label: target.label };
+  return { ...delivery, ...(link.displayName ? { label: link.displayName } : {}) };
 }
