@@ -34,80 +34,83 @@ import type {
   TelegramLink,
   TelegramLinkCode,
 } from "@/hooks/use-telegram-integration";
+import { INTEGRATION_MAP } from "@/lib/integrations/registry";
+import { IntegrationBox } from "./integration-box";
 
 /**
- * The user's side of the shared Telegram bot: an account that is linked, or a
- * panel that links one.
+ * The Telegram box on the Integrations tab.
  *
- * There is no bot token, no whitelist and no notification-chat picker any
- * more — a link is one user and one private chat, so all three collapse into
- * "is this account linked".
+ * There is no bot token, no whitelist and no notification-chat picker — a
+ * link is one user and one private chat. So the box shows either the linked
+ * account (with relink/unlink behind the menu) or a button into the link
+ * dialog.
  */
-export function TelegramCard({
+export function TelegramBox({
   link,
-  botUsername,
+  bot,
   unlinking,
   onUnlink,
-  onRelink,
+  onLink,
 }: {
-  link: TelegramLink;
-  botUsername: string | null;
+  link: TelegramLink | null;
+  bot: TelegramBotStatus;
   unlinking: boolean;
   onUnlink: () => void;
-  onRelink: () => void;
+  /** Opens the link dialog — first link or relink, the panel adapts. */
+  onLink: () => void;
 }) {
   return (
-    <div className="liquid-glass-inner rounded-2xl border-0 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="shrink-0 rounded-xl bg-sky-500/10 p-2.5">
-            <MessageCircle className="h-5 w-5 text-sky-500" />
-          </div>
+    <IntegrationBox
+      manifest={INTEGRATION_MAP.get("telegram")!}
+      connected={!!link}
+      badges={
+        bot.username ? (
+          <Badge variant="secondary" className="rounded-full">
+            @{bot.username}
+          </Badge>
+        ) : null
+      }
+    >
+      {link ? (
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-sm font-medium">Telegram</h4>
-              {botUsername && (
-                <Badge variant="secondary" className="rounded-full">
-                  @{botUsername}
-                </Badge>
-              )}
-              <Badge variant="outline" className="rounded-full">
-                Linked
-              </Badge>
-            </div>
-            <p className="text-muted-foreground mt-0.5 text-xs break-all">
+            <p className="text-xs break-all">
               {link.displayName ? `${link.displayName} · ` : ""}ID {link.telegramUserId}
             </p>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground mt-0.5 text-xs">
               Linked {new Date(link.linkedAt).toLocaleDateString()}
             </p>
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={unlinking}>
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onLink}>
+                <Link2 className="mr-2 h-4 w-4" />
+                Link a different account
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={onUnlink}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Unlink
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={unlinking}>
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onRelink}>
-              <Link2 className="mr-2 h-4 w-4" />
-              Link a different account
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={onUnlink}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Unlink
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+      ) : (
+        <Button size="sm" className="liquid-glass-accent rounded-full" onClick={onLink}>
+          <Link2 className="mr-2 h-4 w-4" />
+          Link Telegram
+        </Button>
+      )}
+    </IntegrationBox>
   );
 }
 
@@ -123,9 +126,8 @@ function Notice({ children }: { children: React.ReactNode }) {
 /**
  * The linking flow: mint a one-time code, redeem it in Telegram.
  *
- * Shown inline in the "Add Integration" dialog and inside
- * {@link TelegramLinkDialog} for relinking — one implementation, so the two
- * entry points cannot drift.
+ * Rendered inside {@link TelegramLinkDialog}, which serves both the first
+ * link (from the box's button) and relinking (from the box's menu).
  */
 export function TelegramLinkPanel({
   bot,
