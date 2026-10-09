@@ -8,15 +8,17 @@
  *
  * The grant is derived from the script at save time. The *approval* is the human
  * gate on the write path: the API is session-authenticated and the UI dialog
- * shows the consent list before saving, and the tools carry an `ask` policy so
- * the user reads the script before it is created. `checkGrant` then catches what
- * moves afterwards — a rewritten script through a path that skipped approval, a
- * tool switched off, a policy turned to `ask`.
+ * shows the consent list before saving, while a write from the model's tools
+ * lands pending (`UNAPPROVED_SCRIPT_HASH`) unless the script needs no consent at
+ * all — a watcher runs unattended, so its approval cannot come from the thing
+ * that benefits from it. `checkGrant` then catches what moves afterwards — a
+ * rewritten script through a path that skipped approval, a tool switched off, a
+ * policy turned to `ask`.
  */
 
 import { prisma } from "@/lib/db";
 import type { ScriptWatcher } from "@prisma/client";
-import { hashScript, consentFor } from "./grant";
+import { hashScript, consentFor, UNAPPROVED_SCRIPT_HASH } from "./grant";
 import { loadWatcherToolAccess } from "./access";
 import { scheduleWatcher, syncWatcherSchedule, unscheduleWatcher } from "@/lib/queue";
 
@@ -155,9 +157,15 @@ export interface WatcherFields {
 /**
  * Create a watcher, deriving its grant from the script.
  *
- * Creation is always an explicit act by the user — the dialog they were reading,
- * or an approval card for the tool — so the grant is recorded here rather than
- * left pending.
+ * `approvedByUser` says whether a person read the script behind this write. The
+ * API sets it — the dialog shows the consent list before saving — and the
+ * model's tool does not, so a script the model wrote only starts running once
+ * the user has approved it on the Watchers page.
+ *
+ * A script that reaches nothing the user has to consent to is the same either
+ * way: there is nothing to approve, so it ticks from the moment it is created.
+ * The pending state is only for a script that would call an `ask` or `auto`
+ * tool unattended, which is exactly what the approval exists to cover.
  */
 export async function createWatcher(params: {
   userId: string;
@@ -172,7 +180,15 @@ export async function createWatcher(params: {
     cooldownMinutes?: unknown;
     enabled?: unknown;
   };
-}): Promise<{ id: string; name: string; grantedTools: string[]; grantAll: boolean }> {
+  /** Whether a human read this script: the dialog on the API, never a tool call. */
+  approvedByUser: boolean;
+}): Promise<{
+  id: string;
+  name: string;
+  grantedTools: string[];
+  grantAll: boolean;
+  needsApproval: boolean;
+}> {
   const { userId } = params;
   const fields = await validateFields(userId, params.fields);
 
@@ -182,6 +198,9 @@ export async function createWatcher(params: {
     callableNames: access.callableNames,
     toolPolicies: access.toolPolicies,
   });
+
+  const needsApproval =
+    !params.approvedByUser && (consent.grantedTools.length > 0 || consent.grantAll);
 
   const existing = await prisma.scriptWatcher.findFirst({
     where: { userId, name: fields.name },
@@ -195,7 +214,7 @@ export async function createWatcher(params: {
     data: {
       userId,
       ...fields,
-      scriptHash: consent.scriptHash,
+      scriptHash: needsApproval ? UNAPPROVED_SCRIPT_HASH : consent.scriptHash,
       grantedTools: consent.grantedTools,
       grantAll: consent.grantAll,
     },
@@ -210,6 +229,7 @@ export async function createWatcher(params: {
     name: watcher.name,
     grantedTools: consent.grantedTools,
     grantAll: consent.grantAll,
+    needsApproval,
   };
 }
 

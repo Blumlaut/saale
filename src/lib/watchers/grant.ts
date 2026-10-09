@@ -31,6 +31,20 @@ const CONSENT_POLICIES: readonly ToolPolicy[] = ["ask", "auto"];
 /** The user's per-tool policies, as `AppSettings.toolPolicies` stores them. */
 export type ToolPolicies = Record<string, string> | null | undefined;
 
+/**
+ * The hash a watcher carries until a person has approved its script.
+ *
+ * Stored in place of the script's real hash, which makes the watcher read as
+ * unapproved everywhere it matters: `needsScriptApproval` is true, so the UI
+ * offers the approval, and the next tick is refused. It is the same
+ * representation a script edited after approval gets — to a tick, "never
+ * approved" and "changed since approval" are one thing: a stored hash that does
+ * not describe this script.
+ *
+ * No sha256 is the empty string, so this cannot collide with a real one.
+ */
+export const UNAPPROVED_SCRIPT_HASH = "";
+
 /** The script's identity, as stored on the watcher. */
 export function hashScript(script: string): string {
   return createHash("sha256").update(script, "utf8").digest("hex");
@@ -136,6 +150,10 @@ export function checkGrant(options: {
   toolPolicies: ToolPolicies;
 }): GrantViolation | null {
   const { grant } = options;
+
+  if (grant.scriptHash === UNAPPROVED_SCRIPT_HASH) {
+    return { reason: "The script has not been approved by the user yet.", missing: [] };
+  }
 
   if (hashScript(grant.script) !== grant.scriptHash) {
     return { reason: "The script changed after it was approved.", missing: [] };

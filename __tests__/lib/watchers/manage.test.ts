@@ -1,12 +1,40 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
+  createWatcher,
   DEFAULT_WAKE_PROMPT,
   MAX_COOLDOWN_MINUTES,
   needsScriptApproval,
   normalizeCronExpression,
   WatcherInputError,
 } from "@/lib/watchers/manage";
-import { hashScript } from "@/lib/watchers/grant";
+import { hashScript, UNAPPROVED_SCRIPT_HASH } from "@/lib/watchers/grant";
+
+// The create path is decided by the tool set and the consent it earns, so both
+// are stated here rather than resolved: `mail_list` never asks, `mail_send` does.
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    scriptWatcher: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+    },
+  },
+}));
+
+vi.mock("@/lib/watchers/access", () => ({
+  loadWatcherToolAccess: vi.fn(async () => ({
+    callable: [],
+    callableNames: ["mail_list", "mail_send"],
+    toolPolicies: null,
+  })),
+}));
+
+vi.mock("@/lib/queue", () => ({
+  scheduleWatcher: vi.fn(async () => {}),
+  syncWatcherSchedule: vi.fn(async () => {}),
+  unscheduleWatcher: vi.fn(async () => {}),
+}));
+
+import { prisma } from "@/lib/db";
 
 /**
  * The watcher write rules. A watcher runs unattended, so what it accepts has to
@@ -76,5 +104,66 @@ describe("the limits a watcher is created with", () => {
   it("has a wake prompt that tells the agent to act and report", () => {
     expect(DEFAULT_WAKE_PROMPT).toMatch(/act on it/i);
     expect(DEFAULT_WAKE_PROMPT).toMatch(/tell me/i);
+  });
+});
+
+describe("createWatcher and who approved the script", () => {
+  it("ticks a script that needs no consent, whoever wrote it", async () => {
+    const created = await createWatcher({
+      userId: "user-1",
+      approvedByUser: false,
+      fields: {
+        name: "Watch the inbox",
+        script: "return await tools.mail_list({ folder: 'inbox' });",
+        cronExpression: "*/10 * * * *",
+      },
+    });
+
+    // `mail_list` is `allow`, so there is nothing for a person to approve and
+    // the watcher is live from the moment it exists.
+    expect(created.needsApproval).toBe(false);
+    expect(created.grantedTools).toEqual([]);
+  });
+
+  it("pauses a script the model wrote that would call a tool needing approval", async () => {
+    const created = await createWatcher({
+      userId: "user-1",
+      approvedByUser: false,
+      fields: {
+        name: "Forward the important mail",
+        script: "return await tools.mail_send({ to: 'me@example.com' });",
+        cronExpression: "*/10 * * * *",
+      },
+    });
+
+    expect(created.needsApproval).toBe(true);
+    expect(created.grantedTools).toEqual(["mail_send"]);
+    // The stored hash cannot describe the script, which is what "unapproved"
+    // means everywhere the row is read: the UI offers the approval and the tick
+    // is refused until it is given.
+    const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.scriptHash).toBe(UNAPPROVED_SCRIPT_HASH);
+    expect(
+      needsScriptApproval({
+        script: String(written?.script),
+        scriptHash: String(written?.scriptHash),
+      }),
+    ).toBe(true);
+  });
+
+  it("starts the same script immediately when the user is the one saving it", async () => {
+    const created = await createWatcher({
+      userId: "user-1",
+      approvedByUser: true,
+      fields: {
+        name: "Forward the important mail",
+        script: "return await tools.mail_send({ to: 'me@example.com' });",
+        cronExpression: "*/10 * * * *",
+      },
+    });
+
+    expect(created.needsApproval).toBe(false);
+    const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.scriptHash).toBe(hashScript(String(written?.script)));
   });
 });

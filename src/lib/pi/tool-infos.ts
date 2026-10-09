@@ -6,6 +6,7 @@
  * MUST stay in sync with the actual tool definitions in src/lib/pi/tools/.
  */
 import type { ToolCategoryKey } from "@/lib/pi/tool-categories";
+import type { ToolExposure } from "@/lib/pi/tool-categories";
 
 export type ToolPolicy = "allow" | "auto" | "ask" | "off";
 
@@ -38,6 +39,20 @@ export interface ToolInfo {
   category?: ToolCategoryKey;
   /** Default approval policy for new users. */
   defaultPolicy: ToolPolicy;
+  /**
+   * How this tool reaches the model when the user has not changed its category.
+   * Omitted means the category's own default (`TOOL_CATEGORIES[].defaultExposure`).
+   *
+   * Inside a `codemode` category this is the listing decision: `"codemode"` puts
+   * the tool in the catalog the model reads, `"deferred"` keeps it callable from
+   * a script but out of that catalog, so it has to be found with `searchTools`.
+   * Only the read-only tools are listed — the model surveys what it can look at
+   * before it does anything, and reaching for an action is a deliberate step.
+   *
+   * `__tests__/lib/pi/tool-catalog-drift.test.ts` requires every tool in a
+   * `codemode` category to say which it is, so the split cannot rot silently.
+   */
+  defaultExposure?: ToolExposure;
   /**
    * Human-readable summary template for tool call notifications.
    * Uses {argName} placeholders resolved from the tool's arguments.
@@ -106,6 +121,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search through chat history by query",
     category: "chatSearch",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "chat_respond",
@@ -113,6 +129,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Send a message into a chat and get its reply",
     category: "chatSearch",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
   {
     name: "chat_create",
@@ -120,6 +137,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Start a new chat and get its reply",
     category: "chatSearch",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
   {
     name: "chat_delete",
@@ -127,6 +145,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Permanently delete a chat and its messages",
     category: "chatSearch",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
 
   // ── Telegram ──────────────────────────────────────────────────────
@@ -149,6 +168,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List connected email accounts",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "mail_folders",
@@ -156,6 +176,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List folders for an email account",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "mail_sync",
@@ -163,6 +184,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Sync an email account to fetch new messages",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
     summaryTemplate: "Syncing mailbox",
   },
   {
@@ -171,6 +193,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List emails with filters",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "mail_read",
@@ -178,6 +201,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Read email content by ID",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "mail_search",
@@ -185,6 +209,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search emails by query",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
     summaryTemplate: 'Searching emails for "{query}"',
   },
   {
@@ -193,6 +218,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Send an email",
     category: "email",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
   {
     name: "mail_tag",
@@ -200,6 +226,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Add or remove tags from emails",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "mail_move",
@@ -207,6 +234,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Move emails between folders",
     category: "email",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "mail_delete",
@@ -214,6 +242,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Permanently delete emails",
     category: "email",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
 
   // ── Jobs ──────────────────────────────────────────────────────────
@@ -223,6 +252,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List all configured jobs",
     category: "jobs",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "job_types",
@@ -230,6 +260,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List available job types and their schemas",
     category: "jobs",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "job_logs",
@@ -237,6 +268,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "View recent run history for a job",
     category: "jobs",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "model_list",
@@ -244,6 +276,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List available AI models",
     category: "jobs",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "job_create",
@@ -251,6 +284,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Create a new scheduled job",
     category: "jobs",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "job_update",
@@ -258,6 +292,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Update an existing job",
     category: "jobs",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "job_enable",
@@ -265,6 +300,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Enable or disable a job",
     category: "jobs",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "job_run",
@@ -272,6 +308,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Trigger an immediate manual run of a job",
     category: "jobs",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
   {
     name: "job_delete",
@@ -279,6 +316,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Permanently delete a job",
     category: "jobs",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
 
   // ── Calendar ──────────────────────────────────────────────────────
@@ -288,6 +326,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List all connected calendars",
     category: "calendar",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "calendar_upcoming",
@@ -295,6 +334,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List upcoming calendar events",
     category: "calendar",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "calendar_search",
@@ -302,6 +342,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search calendar events by query",
     category: "calendar",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
     summaryTemplate: 'Searching calendar for "{query}"',
   },
   {
@@ -310,6 +351,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Create a calendar event",
     category: "calendar",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "calendar_update",
@@ -317,6 +359,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Update a calendar event",
     category: "calendar",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "calendar_delete",
@@ -324,6 +367,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Delete a calendar event",
     category: "calendar",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
 
   // ── Web ───────────────────────────────────────────────────────────
@@ -390,6 +434,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Create a new task",
     category: "tasks",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "task_update",
@@ -397,6 +442,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Update a task",
     category: "tasks",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "task_list_pending",
@@ -404,6 +450,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List pending and overdue tasks",
     category: "tasks",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "task_search",
@@ -411,6 +458,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search tasks by query",
     category: "tasks",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "task_delete",
@@ -418,6 +466,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Permanently delete a task",
     category: "tasks",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
 
   // ── Agent Jobs ────────────────────────────────────────────────────
@@ -427,6 +476,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List agent job definitions",
     category: "agentJobs",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "agent_job_logs",
@@ -434,6 +484,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "View recent agent job runs",
     category: "agentJobs",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "agent_job_run_messages",
@@ -441,6 +492,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "View conversation for a specific agent run",
     category: "agentJobs",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "agent_job_create",
@@ -448,6 +500,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Create a background agent job",
     category: "agentJobs",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
   {
     name: "agent_job_update",
@@ -455,6 +508,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Update an agent job definition",
     category: "agentJobs",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "agent_job_run",
@@ -462,6 +516,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Trigger an immediate agent job run",
     category: "agentJobs",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
   {
     name: "agent_job_delete",
@@ -469,6 +524,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Delete an agent job and all its runs",
     category: "agentJobs",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
   },
 
   // ── Watchers ──────────────────────────────────────────────────────
@@ -478,6 +534,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List script watchers and their last outcome",
     category: "watchers",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "watcher_ticks",
@@ -485,6 +542,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Read a watcher's recent ticks",
     category: "watchers",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "watcher_test",
@@ -494,15 +552,19 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     // Runs in a sandbox without recording a tick or waking anyone, so it is
     // safe to let the model exercise scripts on its own.
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "watcher_create",
     label: "Create Watcher",
     description: "Create a scheduled script watcher",
     category: "watchers",
-    // The durable half: this is what turns a script into an unattended job, so
-    // it is confirmed rather than run on the model's say-so.
-    defaultPolicy: "ask",
+    // The durable half, but not the dangerous one: the watcher is what runs the
+    // script, and the script's approval is a gate of its own — a creation that
+    // would need one lands paused for it. Managing watchers is otherwise the
+    // model's own say-so.
+    defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "watcher_update",
@@ -512,13 +574,16 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     // Changing a script still pauses the watcher until the user approves it on
     // the Watchers page — only the tool call itself runs without a click.
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "watcher_delete",
     label: "Delete Watcher",
     description: "Delete a watcher and stop its ticks",
     category: "watchers",
-    defaultPolicy: "ask",
+    // Stopping a watch the user asked for, and reversible by creating it again.
+    defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
 
   // ── Infrastructure ────────────────────────────────────────────────
@@ -528,6 +593,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List registered remote machines",
     category: "infra",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "infra_notes_list",
@@ -535,6 +601,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List notes for a machine",
     category: "infra",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
     summaryTemplate: "Listing notes for {machineName}",
   },
   {
@@ -543,6 +610,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Get the full content of a note",
     category: "infra",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "infra_add_machine",
@@ -550,6 +618,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Register a new remote machine",
     category: "infra",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
     summaryTemplate: "Adding machine {name}",
   },
   {
@@ -558,6 +627,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Create or update a machine note",
     category: "infra",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
     summaryTemplate: "Saving note on {machineName}",
   },
   {
@@ -566,6 +636,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Run a shell command on a remote machine",
     category: "infra",
     defaultPolicy: "auto",
+    defaultExposure: "deferred",
     summaryTemplate: "Running {command} on {machineName}",
   },
   {
@@ -574,6 +645,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Read a file from a remote machine",
     category: "infra",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
     summaryTemplate: "Reading {path} on {machineName}",
   },
   {
@@ -582,6 +654,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Write content to a file on a remote machine",
     category: "infra",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
     summaryTemplate: "Writing to {path} on {machineName}",
   },
   {
@@ -590,6 +663,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Edit a file on a remote machine with targeted replacements",
     category: "infra",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
     summaryTemplate: "Editing {path} on {machineName}",
   },
   {
@@ -598,6 +672,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Download a file from a remote machine into the workspace",
     category: "infra",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
     summaryTemplate: "Downloading {path} from {machineName}",
   },
   {
@@ -606,6 +681,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Upload a file from the workspace to a remote machine",
     category: "infra",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
     summaryTemplate: "Uploading to {path} on {machineName}",
   },
   {
@@ -614,6 +690,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Delete a machine note",
     category: "infra",
     defaultPolicy: "allow",
+    defaultExposure: "deferred",
   },
   {
     name: "infra_remove_machine",
@@ -621,6 +698,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Remove a registered machine and all its notes",
     category: "infra",
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
     summaryTemplate: "Removing machine {name}",
   },
 
@@ -631,6 +709,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List Saale settings and their current values",
     category: "settings",
     defaultPolicy: "allow",
+    defaultExposure: "codemode",
   },
   {
     name: "settings_set",
@@ -640,6 +719,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     // Changing a setting is consequential — it can widen the agent's own
     // permissions or rewrite the prompt. Ask unless the user opts out.
     defaultPolicy: "ask",
+    defaultExposure: "deferred",
     summaryTemplate: "Changing setting {key}",
   },
 ];

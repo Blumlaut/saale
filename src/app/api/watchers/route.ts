@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
 
     const created = await createWatcher({
       userId: authResult.user.id,
+      // The user is looking at the dialog, consent list and all.
+      approvedByUser: true,
       fields: {
         name: body.name,
         description: body.description,

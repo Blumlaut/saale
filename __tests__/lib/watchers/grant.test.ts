@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { checkGrant, consentFor, hashScript, watcherToolAccess } from "@/lib/watchers/grant";
+import {
+  checkGrant,
+  consentFor,
+  hashScript,
+  UNAPPROVED_SCRIPT_HASH,
+  watcherToolAccess,
+} from "@/lib/watchers/grant";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
@@ -212,5 +218,47 @@ describe("checkGrant", () => {
     // — refused up front, with the reason a user can act on.
     expect(violation?.missing).toEqual(["mail_send"]);
     expect(violation?.reason).toContain("no longer available");
+  });
+});
+
+describe("checkGrant on a watcher nobody has approved", () => {
+  it("refuses a script that was never approved", () => {
+    const script = "return await tools.mail_list({});";
+    const consent = consentFor({ script, callableNames: CALLABLE, toolPolicies: null });
+
+    const violation = checkGrant({
+      // What a create from the model's tools records: the grant is known, the
+      // approval is not. Without this the tick would run a script the user has
+      // never read, which is the whole thing the grant exists to prevent.
+      grant: {
+        script,
+        scriptHash: UNAPPROVED_SCRIPT_HASH,
+        grantedTools: consent.grantedTools,
+        grantAll: consent.grantAll,
+      },
+      callableNames: CALLABLE,
+      toolPolicies: null,
+    });
+
+    expect(violation?.reason).toContain("not been approved");
+    expect(violation?.missing).toEqual([]);
+  });
+
+  it("says the script changed, not that it was never approved, once one was approved", () => {
+    const script = "return await tools.mail_list({});";
+    const previous = "return await tools.job_list({});";
+
+    const violation = checkGrant({
+      grant: {
+        script,
+        scriptHash: hashScript(previous),
+        grantedTools: [],
+        grantAll: false,
+      },
+      callableNames: CALLABLE,
+      toolPolicies: null,
+    });
+
+    expect(violation?.reason).toContain("changed");
   });
 });
