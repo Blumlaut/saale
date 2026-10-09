@@ -12,11 +12,11 @@ import { applyStoreWrites, isFiring, runWatcherScript } from "@/lib/watchers/run
  */
 
 /** A tool that echoes its input, standing in for Saale's own tools. */
-function echoTool(name: string): ToolDefinition {
+function echoTool(name: string, description = `Echo ${name}`): ToolDefinition {
   return {
     name,
     label: name,
-    description: `Echo ${name}`,
+    description,
     parameters: Type.Object({ value: Type.String() }),
     execute: async (_toolCallId: string, params: { value: string }) => ({
       content: [{ type: "text" as const, text: `echo:${params.value}` }],
@@ -155,6 +155,28 @@ describe("runWatcherScript", () => {
 
     expect(result.ok).toBe(true);
     expect(result.value).toEqual(["undefined", "undefined", "undefined", "undefined"]);
+  });
+
+  it("finds a tool the script cannot name, the way a chat's sandbox does", async () => {
+    const result = await runWatcherScript({
+      script: [
+        'const [found] = await searchTools("send an email");',
+        "text(await describeTool(found.name));",
+        'const sent = await tools[found.name]({ value: "hi" });',
+        "return { found: found.name, sent };",
+      ].join("\n"),
+      tools: [
+        echoTool("mail_list"),
+        echoTool("mail_send", "Send an email from the user's mailbox"),
+      ],
+      store: {},
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toEqual({ found: "mail_send", sent: "echo:hi" });
+    // The discovery helpers are globals: finding a tool is not a call on it.
+    expect(result.callCount).toBe(1);
+    expect(result.output).toContain("Send an email from the user's mailbox");
   });
 
   it("refuses a script that can never settle rather than hanging the tick", async () => {

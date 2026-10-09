@@ -5,7 +5,10 @@
  * The sandbox is the same one `codemode` uses in a chat (`CodemodeSandbox` —
  * QuickJS in a worker thread, no timers, no `fetch`, no `require`), so a script
  * written in a conversation runs here unchanged: it sees `tools.<name>(args)`,
- * `text()`, `console.*`, `store()`/`load()`, and returns a value.
+ * `text()`, `console.*`, `store()`/`load()`, the discovery helpers
+ * `searchTools()`/`describeTool()`/`describeNamespace()` (which a chat's sandbox
+ * gets from Pi's extension, and this one from `codemode-discovery.ts`), and
+ * returns a value.
  *
  * Two differences from the chat path, both because there is nobody watching:
  *
@@ -23,6 +26,7 @@ import {
   type CodemodeTool,
 } from "@earendil-works/pi-codemode";
 import type { ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createDiscoveryGlobals, toolSample } from "@/lib/pi/codemode-discovery";
 
 /** How long one tick's script may run. */
 const TICK_TIMEOUT_MS = Number(process.env.WATCHER_TICK_TIMEOUT_MS ?? 60_000);
@@ -75,10 +79,15 @@ function resultText(content: readonly { type: string; text?: string }[]): string
  * merely forward it to Pi's built-in read/edit, which read `ctx?.cwd` and
  * `ctx?.model` through optional chaining and fall back to their own defaults.
  */
-function toSandboxTools(tools: readonly ToolDefinition[]): CodemodeTool[] {
+function toSandboxTools(
+  tools: readonly ToolDefinition[],
+  samples: ReadonlyMap<string, string>,
+): CodemodeTool[] {
   return tools.map((tool) => ({
     name: tool.name,
-    description: tool.description,
+    // The rendered sample, as in a chat: the description a script reads back from
+    // `ALL_TOOLS` and `searchTools()` is the one it would see there.
+    description: samples.get(tool.name) ?? tool.description,
     // Rendered into the script's declarations ("ALL_TOOLS") only; the sandbox
     // does not validate calls against it, so TypeBox's schema is passed
     // through as the JSON Schema document it already is.
@@ -125,8 +134,13 @@ export async function runWatcherScript(options: {
   store: Record<string, unknown>;
   signal?: AbortSignal;
 }): Promise<WatcherScriptResult> {
+  // Both are built from one set of samples, so `ALL_TOOLS`, the discovery
+  // helpers and the tool table describe a tool with the same text.
+  const samples = new Map(options.tools.map((tool) => [tool.name, toolSample(tool)]));
+
   const sandbox = new CodemodeSandbox({
-    tools: toSandboxTools(options.tools),
+    tools: toSandboxTools(options.tools, samples),
+    globals: createDiscoveryGlobals(options.tools, samples),
     timeoutMs: TICK_TIMEOUT_MS,
     memoryLimitBytes: TICK_MEMORY_LIMIT_BYTES,
   });
