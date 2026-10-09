@@ -194,7 +194,7 @@ export function TelegramLinkPanel({
           <p className="text-muted-foreground text-sm">
             {linked
               ? "Get a link code to connect a different Telegram account. It replaces the one currently linked."
-              : `Saale talks to you through a shared Telegram bot${bot.username ? ` (@${bot.username})` : ""}. Get a link code, send it to the bot, and your Telegram account is connected.`}
+              : `Saale talks to you through a shared Telegram bot${bot.username ? ` (@${bot.username})` : ""}. Get a link code, send it to the bot with /start, and your Telegram account is connected.`}
           </p>
           <Button
             className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
@@ -217,7 +217,7 @@ export function TelegramLinkPanel({
       ) : (
         <>
           <p className="text-muted-foreground text-sm">
-            Open Telegram and send this code to{" "}
+            Open Telegram and send <code className="font-mono">/start {linkCode.code}</code> to{" "}
             <span className="text-foreground font-medium">
               {bot.username ? `@${bot.username}` : "the bot"}
             </span>
@@ -247,10 +247,6 @@ export function TelegramLinkPanel({
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
-            <p className="text-muted-foreground mt-3 text-xs break-all">
-              …or send <code className="font-mono">/start {linkCode.code}</code> to the bot from any
-              device.
-            </p>
           </div>
 
           <p className="text-muted-foreground text-xs">
