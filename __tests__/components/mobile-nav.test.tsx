@@ -57,7 +57,6 @@ describe("MobileNav", () => {
       expect(labels()).toEqual([
         "Chat",
         "Mail",
-        "Contacts",
         "Calendar",
         "Tasks",
         "Jobs",
@@ -72,7 +71,7 @@ describe("MobileNav", () => {
     mockSession("user");
     renderNav();
 
-    await waitFor(() => expect(labels()).toHaveLength(8));
+    await waitFor(() => expect(labels()).toHaveLength(7));
     expect(labels()).not.toContain("Admin");
   });
 
@@ -107,7 +106,7 @@ describe("MobileNav", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     renderNav();
 
-    await waitFor(() => expect(labels()).toHaveLength(8));
+    await waitFor(() => expect(labels()).toHaveLength(7));
     expect(consoleError).toHaveBeenCalledWith("Failed to check admin status:", expect.anything());
     consoleError.mockRestore();
   });

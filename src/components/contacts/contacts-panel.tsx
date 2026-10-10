@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { fetchJson, deleteJson } from "@/lib/http";
 import { toast } from "sonner";
-import { Page } from "@/components/layout/page";
 import { ContactList } from "@/components/contacts/contact-list";
 import { ContactSheet } from "@/components/contacts/contact-sheet";
 import {
@@ -18,7 +17,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { Contact } from "@/types/shared";
 
-export default function ContactsPage() {
+/**
+ * Contact book — list, create/edit sheet and delete confirmation.
+ * Rendered inside a tab on the mail page; manages its own data.
+ */
+export function ContactsPanel() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -71,7 +74,7 @@ export default function ContactsPage() {
   }, [deleting]);
 
   return (
-    <Page className="gap-0">
+    <>
       <div className="min-h-0 flex-1">
         <ContactList
           contacts={contacts}
@@ -108,6 +111,6 @@ export default function ContactsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Page>
+    </>
   );
 }

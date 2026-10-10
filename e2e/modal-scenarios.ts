@@ -320,6 +320,10 @@ async function mockMemories(page: Page) {
 }
 
 /** One contact with a name and email long enough to matter on a phone. */
+async function mockContactsTab(page: Page) {
+  await click(page, '[role="tab"]:has-text("Contacts")');
+}
+
 async function mockContacts(page: Page) {
   await page.route(/\/api\/contacts(\?|$)/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
@@ -910,16 +914,20 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Contacts ────────────────────────────────────────────────────────────
   {
     name: "contacts · new contact",
-    path: "/dashboard/contacts",
+    path: "/dashboard/mail",
     sources: ["src/components/contacts/contact-sheet.tsx"],
-    open: (page) => click(page, 'button:has-text("New Contact")'),
+    open: async (page) => {
+      await mockContactsTab(page);
+      await click(page, 'button:has-text("New Contact")');
+    },
   },
   {
     name: "contacts · edit contact",
-    path: "/dashboard/contacts",
+    path: "/dashboard/mail",
     sources: ["src/components/contacts/contact-sheet.tsx"],
     mock: mockContacts,
     open: async (page) => {
+      await mockContactsTab(page);
       await visible(page, 'div.group:has-text("extremely long contact display name")')
         .first()
         .click();
@@ -927,10 +935,11 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "contacts · delete contact confirmation",
-    path: "/dashboard/contacts",
-    sources: ["src/app/dashboard/contacts/page.tsx"],
+    path: "/dashboard/mail",
+    sources: ["src/components/contacts/contacts-panel.tsx"],
     mock: mockContacts,
     open: async (page) => {
+      await mockContactsTab(page);
       await openRowMenu(page, "extremely long contact display name");
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
