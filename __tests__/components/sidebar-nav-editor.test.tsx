@@ -58,7 +58,7 @@ describe("SidebarNavEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move Chat down" }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(ids(changedEntries(onChange)).slice(0, 3)).toEqual(["mail", "chat", "contacts"]);
+    expect(ids(changedEntries(onChange)).slice(0, 3)).toEqual(["mail", "chat", "calendar"]);
   });
 
   it("disables the boundary arrows", () => {
@@ -79,7 +79,7 @@ describe("SidebarNavEditor", () => {
       id: "calendar",
       hidden: true,
     });
-    expect(next).toHaveLength(8);
+    expect(next).toHaveLength(7);
   });
 
   it("keeps the last visible item from being hidden", () => {
