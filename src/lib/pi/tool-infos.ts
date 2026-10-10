@@ -245,6 +245,50 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultExposure: "deferred",
   },
 
+  // ── Contacts ─────────────────────────────────────────────────
+  {
+    name: "contacts_list",
+    label: "List Contacts",
+    description: "List the contact book",
+    category: "contacts",
+    defaultPolicy: "allow",
+    defaultExposure: "codemode",
+  },
+  {
+    name: "contacts_search",
+    label: "Search Contacts",
+    description: "Search the contact book by name, email, or company",
+    category: "contacts",
+    defaultPolicy: "allow",
+    defaultExposure: "codemode",
+    summaryTemplate: 'Searching contacts for "{query}"',
+  },
+  {
+    name: "contacts_create",
+    label: "Create Contact",
+    description: "Add a contact to the contact book",
+    category: "contacts",
+    defaultPolicy: "allow",
+    defaultExposure: "deferred",
+    summaryTemplate: 'Saving contact "{email}"',
+  },
+  {
+    name: "contacts_update",
+    label: "Update Contact",
+    description: "Update a contact in the contact book",
+    category: "contacts",
+    defaultPolicy: "allow",
+    defaultExposure: "deferred",
+  },
+  {
+    name: "contacts_delete",
+    label: "Delete Contact",
+    description: "Permanently delete a contact",
+    category: "contacts",
+    defaultPolicy: "ask",
+    defaultExposure: "deferred",
+  },
+
   // ── Jobs ──────────────────────────────────────────────────────────
   {
     name: "job_list",
@@ -819,6 +863,17 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
   mail_tag: { ids: "Emails", addTags: "Add tags", removeTags: "Remove tags" },
   mail_move: { ids: "Emails", folder: "To folder" },
   mail_delete: { ids: "Emails" },
+  contacts_list: { limit: "Limit" },
+  contacts_search: { query: "Query", limit: "Limit" },
+  contacts_create: { name: "Name", email: "Email", company: "Company", notes: "Notes" },
+  contacts_update: {
+    id: "Contact",
+    name: "Name",
+    email: "Email",
+    company: "Company",
+    notes: "Notes",
+  },
+  contacts_delete: { id: "Contact" },
   calendar_create: {
     calendarId: "Calendar",
     summary: "Title",

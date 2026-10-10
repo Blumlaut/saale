@@ -25,6 +25,7 @@ import {
   Server,
   SlidersHorizontal,
   Send,
+  Users,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -62,6 +63,14 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     label: "Email",
     description: "Access and manage email accounts",
     icon: Mail,
+    defaultEnabled: true,
+    defaultExposure: "codemode",
+  },
+  {
+    key: "contacts",
+    label: "Contacts",
+    description: "Look up and manage the user's contact book",
+    icon: Users,
     defaultEnabled: true,
     defaultExposure: "codemode",
   },

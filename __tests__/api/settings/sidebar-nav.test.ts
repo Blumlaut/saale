@@ -91,6 +91,7 @@ describe("GET /api/settings/sidebar-nav", () => {
     expect(body.items.map((item: { id: string }) => item.id)).toEqual([
       "chat",
       "mail",
+      "contacts",
       "calendar",
       "tasks",
       "jobs",
@@ -145,7 +146,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     const written = lastUpdate().data.sidebarItems as { id: string }[];
     expect(written.slice(0, 2).map((entry) => entry.id)).toEqual(["tasks", "chat"]);
     // Registry items the layout doesn't mention come back visible, appended.
-    expect(body.items.map((item: { id: string }) => item.id)).toHaveLength(7);
+    expect(body.items.map((item: { id: string }) => item.id)).toHaveLength(8);
     expect(body.items.at(-1)).toEqual({ id: "infra", hidden: false });
   });
 
@@ -154,7 +155,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
 
     expect(res.status).toBe(200);
     expect(lastUpdate().data.sidebarItems).toBe(Prisma.DbNull);
-    expect((await res.json()).items).toHaveLength(7);
+    expect((await res.json()).items).toHaveLength(8);
   });
 
   it("rejects an unknown item id", async () => {
@@ -180,7 +181,16 @@ describe("PATCH /api/settings/sidebar-nav", () => {
   });
 
   it("keeps pinned items visible when the layout hides every item", async () => {
-    const items = ["chat", "mail", "calendar", "tasks", "jobs", "infra", "settings"].map((id) => ({
+    const items = [
+      "chat",
+      "mail",
+      "contacts",
+      "calendar",
+      "tasks",
+      "jobs",
+      "infra",
+      "settings",
+    ].map((id) => ({
       id,
       hidden: true,
     }));

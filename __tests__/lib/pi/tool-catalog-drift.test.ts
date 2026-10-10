@@ -13,6 +13,7 @@ import {
 } from "@/lib/pi/tool-categories";
 import { createChatTools, createShowFileTool } from "@/lib/pi/tools/chat-tools";
 import { createMailTools } from "@/lib/pi/tools/mail-tools";
+import { createContactTools } from "@/lib/pi/tools/contact-tools";
 import { createJobTools } from "@/lib/pi/tools/job-tools";
 import { createCalendarTools } from "@/lib/pi/tools/calendar-tools";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
@@ -50,6 +51,7 @@ async function implementedTools(): Promise<ToolDefinition[]> {
     createChatTools(userId, sessionId),
     createShowFileTool(userId, sessionId),
     createMailTools(userId),
+    createContactTools(userId),
     createJobTools(userId),
     createCalendarTools(userId),
     createWebTools(),
@@ -134,6 +136,8 @@ describe("tool catalog ↔ implementation drift", () => {
       "calendar_search",
       "calendar_upcoming",
       "chat_search",
+      "contacts_list",
+      "contacts_search",
       "infra_download_file",
       "infra_list_machines",
       "infra_notes_get",

@@ -71,14 +71,14 @@ describe("AppShell", () => {
     );
 
     // Hidden items (tasks) stay out; unmentioned items keep their registry order.
-    const expected = ["Jobs", "Chat", "Settings", "Mail", "Calendar", "Servers"];
+    const expected = ["Jobs", "Chat", "Settings", "Mail", "Contacts", "Calendar", "Servers"];
     await waitFor(() => expect(mobileNavLabels()).toEqual(expected));
 
     // Both shells render the page, and both see the provider's layout.
     const probes = await probeText();
     expect(probes).toEqual([
-      "jobs chat settings mail calendar infra",
-      "jobs chat settings mail calendar infra",
+      "jobs chat settings mail contacts calendar infra",
+      "jobs chat settings mail contacts calendar infra",
     ]);
 
     expect(screen.getByTestId("desktop-nav")).toBeInTheDocument();
@@ -98,10 +98,11 @@ describe("AppShell", () => {
     );
 
     // A nav is the only way out of a page, so it must never come up empty.
-    await waitFor(() => expect(mobileNavLabels()).toHaveLength(7));
+    await waitFor(() => expect(mobileNavLabels()).toHaveLength(8));
     expect(mobileNavLabels()).toEqual([
       "Chat",
       "Mail",
+      "Contacts",
       "Calendar",
       "Tasks",
       "Jobs",

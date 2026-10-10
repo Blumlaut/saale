@@ -6,6 +6,7 @@ import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
 import { withAbortSignal } from "./tool-abort";
 import { createChatTools, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
+import { createContactTools } from "./tools/contact-tools";
 import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
 import { createWebTools } from "./tools/web-tools";
@@ -39,6 +40,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
     return [];
   },
   email: (userId) => createMailTools(userId),
+  contacts: (userId) => createContactTools(userId),
   jobs: (userId) => createJobTools(userId),
   calendar: (userId) => createCalendarTools(userId),
   chatSearch: (userId, sessionId) => createChatTools(userId, sessionId),

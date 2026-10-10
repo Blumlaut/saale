@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { RecipientInput } from "./recipient-input";
 import {
   Select,
   SelectContent,
@@ -109,10 +110,11 @@ export function EmailComposeForm({
           {/* To */}
           <div className="space-y-1.5">
             <Label className="text-xs">To</Label>
-            <Input
+            <RecipientInput
               value={to}
-              onChange={(e) => onToChange(e.target.value)}
-              placeholder="recipient@example.com"
+              onChange={onToChange}
+              label="To"
+              placeholder="Name or email"
               className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
             />
           </div>
@@ -137,10 +139,11 @@ export function EmailComposeForm({
               {/* CC */}
               <div className="space-y-1.5">
                 <Label className="text-xs">Cc</Label>
-                <Input
+                <RecipientInput
                   value={cc}
-                  onChange={(e) => onCcChange(e.target.value)}
-                  placeholder="cc@example.com"
+                  onChange={onCcChange}
+                  label="Cc"
+                  placeholder="Name or email"
                   className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
                 />
               </div>
@@ -148,10 +151,11 @@ export function EmailComposeForm({
               {/* BCC */}
               <div className="space-y-1.5">
                 <Label className="text-xs">Bcc</Label>
-                <Input
+                <RecipientInput
                   value={bcc}
-                  onChange={(e) => onBccChange(e.target.value)}
-                  placeholder="bcc@example.com"
+                  onChange={onBccChange}
+                  label="Bcc"
+                  placeholder="Name or email"
                   className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
                 />
               </div>

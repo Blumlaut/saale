@@ -88,6 +88,11 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   mail_tag: { text: "Tagged mail" },
   mail_delete: { text: "Deleted mail" },
   mail_sync: { text: "Synced mail" },
+  contacts_list: { text: "Listed contacts" },
+  contacts_search: { text: "Searched contacts" },
+  contacts_create: { text: "Created a contact" },
+  contacts_update: { text: "Updated a contact" },
+  contacts_delete: { text: "Deleted a contact" },
   calendar_list: { text: "Listed calendars" },
   calendar_upcoming: {
     text: "Checked the calendar",

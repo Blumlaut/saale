@@ -24,6 +24,7 @@ export function isSidebarNavPinned(id: SidebarNavItemId): boolean {
 export const SIDEBAR_NAV_ITEM_IDS = [
   "chat",
   "mail",
+  "contacts",
   "calendar",
   "tasks",
   "jobs",
@@ -51,6 +52,7 @@ export interface SidebarNavEntry {
 const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id">> = {
   chat: { href: "/dashboard/chat", label: "Chat" },
   mail: { href: "/dashboard/mail", label: "Mail" },
+  contacts: { href: "/dashboard/contacts", label: "Contacts" },
   calendar: { href: "/dashboard/calendar", label: "Calendar" },
   tasks: { href: "/dashboard/tasks", label: "Tasks" },
   jobs: { href: "/dashboard/jobs", label: "Jobs" },

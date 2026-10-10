@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Server,
   Settings,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { SidebarNavItemId } from "@/lib/navigation/sidebar-nav";
@@ -14,6 +15,7 @@ import type { SidebarNavItemId } from "@/lib/navigation/sidebar-nav";
 export const SIDEBAR_NAV_ICONS: Record<SidebarNavItemId, LucideIcon> = {
   chat: MessageSquare,
   mail: Mail,
+  contacts: Users,
   calendar: Calendar,
   tasks: CheckSquare,
   jobs: ListTodo,

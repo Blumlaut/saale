@@ -319,6 +319,30 @@ async function mockMemories(page: Page) {
   );
 }
 
+/** One contact with a name and email long enough to matter on a phone. */
+async function mockContacts(page: Page) {
+  await page.route(/\/api\/contacts(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        contacts: [
+          {
+            id: "e2e-contact",
+            name: "An extremely long contact display name to exercise truncation",
+            email: "averyveryverylonglocalpart@an-example-domain-that-keeps-going.co.uk",
+            company: "Example Corp",
+            notes: null,
+            lastSentAt: NOW,
+          },
+        ],
+      },
+    });
+  });
+  await page.route(/\/api\/contacts\/recent(\?|$)/, (route) =>
+    route.fulfill({ json: { recipients: [] } }),
+  );
+}
+
 async function mockAgentRuns(page: Page) {
   await page.route(/\/api\/agent-jobs\/definitions\/[^/]+\/runs(\?|$)/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
@@ -881,6 +905,35 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: "/dashboard/mail",
     sources: ["src/components/mail/reply-forward-sheet.tsx"],
     skip: "requires a connected IMAP/SMTP account",
+  },
+
+  // ── Contacts ────────────────────────────────────────────────────────────
+  {
+    name: "contacts · new contact",
+    path: "/dashboard/contacts",
+    sources: ["src/components/contacts/contact-sheet.tsx"],
+    open: (page) => click(page, 'button:has-text("New Contact")'),
+  },
+  {
+    name: "contacts · edit contact",
+    path: "/dashboard/contacts",
+    sources: ["src/components/contacts/contact-sheet.tsx"],
+    mock: mockContacts,
+    open: async (page) => {
+      await visible(page, 'div.group:has-text("extremely long contact display name")')
+        .first()
+        .click();
+    },
+  },
+  {
+    name: "contacts · delete contact confirmation",
+    path: "/dashboard/contacts",
+    sources: ["src/app/dashboard/contacts/page.tsx"],
+    mock: mockContacts,
+    open: async (page) => {
+      await openRowMenu(page, "extremely long contact display name");
+      await click(page, '[role="menuitem"]:has-text("Delete")');
+    },
   },
   {
     name: "settings · remove email account confirmation",
