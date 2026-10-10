@@ -5,6 +5,7 @@ import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { sendMailForAccount } from "@/lib/email/send-mail";
+import { learnContactsFromSend } from "@/lib/contacts/contacts";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 import { getUploadsDir } from "@/lib/uploads";
@@ -712,14 +713,16 @@ export function createMailTools(userId: string): ToolDefinition[] {
       description:
         "Send an email via SMTP using the user's configured email account. " +
         "The sent message is filed in the account's Sent folder. " +
-        "Supports file attachments from the workspace using relative file paths.",
+        "Supports file attachments from the workspace using relative file paths. " +
+        "If the user refers to a recipient by name, resolve the address with " +
+        "contacts_search before sending.",
       parameters: Type.Object({
         accountId: Type.String({
           description: "The email account ID to send from.",
         }),
         to: Type.Array(
           Type.String({
-            description: "Recipient email address(es).",
+            description: "Recipient email address(es), optionally `Name <email>`.",
           }),
           { minItems: 1 },
         ),
@@ -777,6 +780,9 @@ export function createMailTools(userId: string): ToolDefinition[] {
             ? { attachmentPaths: params.attachments, attachmentBaseDir: getUserDir(userId) }
             : {}),
         });
+
+        // The learner never throws — the book must not fail the send.
+        await learnContactsFromSend(userId, params.to);
 
         return {
           value: {

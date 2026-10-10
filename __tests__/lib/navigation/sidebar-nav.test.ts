@@ -154,6 +154,7 @@ describe("visibleSidebarNavItems", () => {
     expect(visibleSidebarNavItems(entries).map((item) => item.id)).toEqual([
       "tasks",
       "chat",
+      "contacts",
       "calendar",
       "jobs",
       "infra",
@@ -183,14 +184,14 @@ describe("moveSidebarNavEntry", () => {
 
     expect(ids(moveSidebarNavEntry(entries, 0, 2)).slice(0, 3)).toEqual([
       "mail",
-      "calendar",
+      "contacts",
       "chat",
     ]);
     expect(ids(moveSidebarNavEntry(entries, 3, 1)).slice(0, 4)).toEqual([
       "chat",
-      "tasks",
-      "mail",
       "calendar",
+      "mail",
+      "contacts",
     ]);
   });
 

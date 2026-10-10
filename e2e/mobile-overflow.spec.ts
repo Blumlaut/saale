@@ -26,6 +26,7 @@ import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
 const DASHBOARD_PAGES = [
   "/dashboard/chat",
   "/dashboard/mail",
+  "/dashboard/contacts",
   "/dashboard/calendar",
   "/dashboard/tasks",
   "/dashboard/jobs",

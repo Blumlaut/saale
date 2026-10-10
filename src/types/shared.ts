@@ -20,6 +20,17 @@ export interface EmailAccount {
   folders?: string[];
 }
 
+// --- Contacts ---
+
+export interface Contact {
+  id: string;
+  name: string;
+  email: string;
+  company: string | null;
+  notes: string | null;
+  lastSentAt: string | null;
+}
+
 // --- Jobs ---
 
 export interface FieldDef {
