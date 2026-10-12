@@ -147,14 +147,18 @@ describe("MessageList attachments", () => {
 
     render(<MessageList messages={[message]} />);
 
-    const link = screen.getByRole("link", { name: "Download report.pdf" });
-    expect(link).toHaveAttribute("href", "/api/chat/attachments/att-real-1");
-    expect(link).toHaveAttribute("download", "report.pdf");
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
     expect(screen.getByText("2 KB")).toBeInTheDocument();
+
+    // The chip fetches the file itself rather than navigating to it: on Firefox
+    // for Android a download navigation leaves the custom tab on about:blank.
+    fireEvent.click(screen.getByRole("button", { name: "Download report.pdf" }));
+    const [frame] = [...document.body.querySelectorAll("iframe")];
+    expect(frame?.getAttribute("src")).toBe("/api/chat/attachments/att-real-1");
+    expect(frame?.hidden).toBe(true);
   });
 
-  it("renders a temp (in-flight) attachment as a muted chip without a download link", () => {
+  it("renders a temp (in-flight) attachment as a muted chip without a download control", () => {
     const message = makeUserMessage({
       content: "sending",
       attachments: [
@@ -171,6 +175,7 @@ describe("MessageList attachments", () => {
     render(<MessageList messages={[message]} />);
 
     expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Download / })).toBeNull();
     expect(screen.getByText("notes.txt")).toBeInTheDocument();
   });
 

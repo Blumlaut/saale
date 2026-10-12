@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Download, Image as ImageIcon, FileText, File, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { downloadFile } from "@/lib/download";
 import { LightboxImage } from "./image-lightbox";
 import type { ToolCallData } from "./types";
 
@@ -112,45 +113,20 @@ function useFilePreview(
 }
 
 /**
- * Fetch a file by pointing the browser at it.
- *
- * Reading the bytes into a blob and clicking a blob: URL is the obvious way to
- * do this, and the one that breaks in an installed PWA. The browser hands the
- * URL to a download manager that cannot read the renderer's blob store, so the
- * download never starts and the app window ends up on the (revoked) blob —
- * `about:blank`. The server's `Content-Disposition` is understood by every
- * download path, including the PWA's.
- *
- * The click stays a plain same-window navigation, exactly like the attachment
- * chip: a standalone window has no tabs, so `target="_blank"` is a new-window
- * request it may not be able to honour.
- */
-function useFileDownload(filePath: string, fileName: string) {
-  const download = useCallback(() => {
-    const anchor = document.createElement("a");
-    anchor.href = workspaceFileUrl(filePath, { download: true });
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  }, [filePath, fileName]);
-
-  return { download };
-}
-
-/**
  * The download control. `iconOnly` is for a gallery tile, where the file name
  * beside it already says what is being downloaded.
+ *
+ * The file is fetched from the server rather than assembled in the browser: a
+ * blob built here is invisible to the download manager, which is what left an
+ * installed web app on `about:blank`. See `downloadFile`.
  */
 function DownloadButton({ file, iconOnly = false }: { file: SharedFile; iconOnly?: boolean }) {
-  const { download } = useFileDownload(file.filePath, file.fileName);
-
   return (
     <Button
       variant="secondary"
       size={iconOnly ? "icon-sm" : "sm"}
       className="shrink-0"
-      onClick={download}
+      onClick={() => downloadFile(workspaceFileUrl(file.filePath, { download: true }))}
       aria-label={`Download ${file.fileName}`}
     >
       <Download className={iconOnly ? "size-3.5" : "h-3.5 w-3.5"} />
