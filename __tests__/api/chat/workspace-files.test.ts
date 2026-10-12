@@ -56,6 +56,14 @@ function request(file: string, ifNoneMatch?: string) {
   return GET(req);
 }
 
+function downloadRequest(file: string) {
+  return GET(
+    new NextRequest(
+      `http://localhost/api/chat/workspace-files?file=${encodeURIComponent(file)}&download=1`,
+    ),
+  );
+}
+
 async function body(res: Response): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
@@ -146,6 +154,33 @@ describe("workspace file serving", () => {
 
   it("404s a missing file", async () => {
     expect((await request("nope.pdf")).status).toBe(404);
+  });
+
+  it("marks a requested download as an attachment, keeping the name", async () => {
+    const dir = path.join(tmpRoot, USER_ID, "reports");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "q3.pdf"), "%PDF-1.4");
+
+    // Preview stays inline — only `download=1` turns the response into a file
+    // the browser's download manager (and an installed PWA) will save.
+    expect((await request("reports/q3.pdf")).headers.get("content-disposition")).toBeNull();
+
+    const res = await downloadRequest("reports/q3.pdf");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toBe(
+      `attachment; filename="q3.pdf"; filename*=UTF-8''q3.pdf`,
+    );
+  });
+
+  it("encodes a non-ASCII download name for the client", async () => {
+    const dir = path.join(tmpRoot, USER_ID);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "Prüfbericht.pdf"), "%PDF-1.4");
+
+    const res = await downloadRequest("Prüfbericht.pdf");
+    expect(res.headers.get("content-disposition")).toBe(
+      `attachment; filename="Pr_fbericht.pdf"; filename*=UTF-8''Pr%C3%BCfbericht.pdf`,
+    );
   });
 
   it("400s without a file parameter", async () => {

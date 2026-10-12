@@ -34,8 +34,9 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /** The endpoint that serves a workspace file to its owner. */
-function workspaceFileUrl(filePath: string): string {
-  return `/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`;
+function workspaceFileUrl(filePath: string, { download = false } = {}): string {
+  const url = `/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`;
+  return download ? `${url}&download=1` : url;
 }
 
 /** One `show_file` call, read into the parts every presentation of it needs. */
@@ -110,32 +111,33 @@ function useFilePreview(
   return { url, failed };
 }
 
-/** Fetch a file and hand it to the browser as a download. */
+/**
+ * Fetch a file by pointing the browser at it.
+ *
+ * Reading the bytes into a blob and clicking a blob: URL is the obvious way to
+ * do this, and the one that breaks in an installed PWA: the WebAPK/TWA hands
+ * the URL to a download manager that cannot read the renderer's blob store, so
+ * the download never starts and the app window ends up on `about:blank`. The
+ * server's `Content-Disposition` is understood by every download path,
+ * including the PWA's.
+ *
+ * `target="_blank"` keeps a failed request (file since removed, expired
+ * session) from replacing the chat with an error page the user cannot go back
+ * from inside the app window.
+ */
 function useFileDownload(filePath: string, fileName: string) {
-  const [busy, setBusy] = useState(false);
-
-  const download = useCallback(async () => {
-    setBusy(true);
-    try {
-      const res = await fetch(workspaceFileUrl(filePath), { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed to download the file (${res.status})`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Failed to download a workspace file:", err);
-    } finally {
-      setBusy(false);
-    }
+  const download = useCallback(() => {
+    const anchor = document.createElement("a");
+    anchor.href = workspaceFileUrl(filePath, { download: true });
+    anchor.download = fileName;
+    anchor.target = "_blank";
+    anchor.rel = "noopener";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
   }, [filePath, fileName]);
 
-  return { busy, download };
+  return { download };
 }
 
 /**
@@ -143,7 +145,7 @@ function useFileDownload(filePath: string, fileName: string) {
  * beside it already says what is being downloaded.
  */
 function DownloadButton({ file, iconOnly = false }: { file: SharedFile; iconOnly?: boolean }) {
-  const { busy, download } = useFileDownload(file.filePath, file.fileName);
+  const { download } = useFileDownload(file.filePath, file.fileName);
 
   return (
     <Button
@@ -151,14 +153,9 @@ function DownloadButton({ file, iconOnly = false }: { file: SharedFile; iconOnly
       size={iconOnly ? "icon-sm" : "sm"}
       className="shrink-0"
       onClick={download}
-      disabled={busy}
       aria-label={`Download ${file.fileName}`}
     >
-      {busy ? (
-        <Loader2 className={iconOnly ? "size-3.5 animate-spin" : "h-3.5 w-3.5 animate-spin"} />
-      ) : (
-        <Download className={iconOnly ? "size-3.5" : "h-3.5 w-3.5"} />
-      )}
+      <Download className={iconOnly ? "size-3.5" : "h-3.5 w-3.5"} />
       {!iconOnly && "Download"}
     </Button>
   );
