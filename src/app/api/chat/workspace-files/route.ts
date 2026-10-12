@@ -9,10 +9,13 @@ import { getUploadsDir } from "@/lib/uploads";
 import * as terminal from "@/lib/terminal/client";
 
 /**
- * GET /api/chat/workspace-files?file=relative/path
+ * GET /api/chat/workspace-files?file=relative/path[&download=1]
  *
  * Serve a file from the authenticated user's workspace.
  * Used by the show_file tool's FileCard component for on-demand file delivery.
+ *
+ * Inline by default (images preview in the card); `download=1` marks the
+ * response as an attachment so the browser's own download machinery saves it.
  *
  * When Open Terminal is configured, proxies through its API (files live in the container).
  * Otherwise reads from the local uploads directory.
@@ -29,17 +32,23 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = authResult.user.id;
+  const disposition = searchParams.get("download") === "1" ? attachment(fileParam) : undefined;
 
   // When Open Terminal is configured, files live in the container
   if (terminal.isConfigured()) {
-    return serveFromTerminal(request, userId, fileParam);
+    return serveFromTerminal(request, userId, fileParam, disposition);
   }
 
-  return serveFromLocal(request, userId, fileParam);
+  return serveFromLocal(request, userId, fileParam, disposition);
 }
 
 /** Serve file through Open Terminal API */
-async function serveFromTerminal(request: NextRequest, userId: string, filePath: string) {
+async function serveFromTerminal(
+  request: NextRequest,
+  userId: string,
+  filePath: string,
+  disposition: string | undefined,
+) {
   const homeDir = terminal.getTerminalHomeDir(userId);
   const fullPath = path.resolve(homeDir, filePath);
 
@@ -51,7 +60,7 @@ async function serveFromTerminal(request: NextRequest, userId: string, filePath:
 
   try {
     const result = await terminal.readFileBinary(fullPath, { userId });
-    return serveBuffer(request, result.buffer, result.mimeType);
+    return serveBuffer(request, result.buffer, result.mimeType, disposition);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("404")) {
@@ -62,7 +71,12 @@ async function serveFromTerminal(request: NextRequest, userId: string, filePath:
 }
 
 /** Serve file from local uploads directory (fallback) */
-async function serveFromLocal(request: NextRequest, userId: string, filePath: string) {
+async function serveFromLocal(
+  request: NextRequest,
+  userId: string,
+  filePath: string,
+  disposition: string | undefined,
+) {
   const userDir = path.join(getUploadsDir(), userId);
 
   // Validate path stays within workspace
@@ -85,7 +99,7 @@ async function serveFromLocal(request: NextRequest, userId: string, filePath: st
   }
 
   const buffer = await fs.readFile(resolved);
-  return serveBuffer(request, buffer, mimeTypeFor(filePath));
+  return serveBuffer(request, buffer, mimeTypeFor(filePath), disposition);
 }
 
 /**
@@ -98,7 +112,12 @@ async function serveFromLocal(request: NextRequest, userId: string, filePath: st
  * Download replays whatever bytes were fetched first, and the user gets the
  * pre-edit file no matter how many times they share the new one.
  */
-function serveBuffer(request: NextRequest, buffer: Uint8Array<ArrayBuffer>, mimeType: string) {
+function serveBuffer(
+  request: NextRequest,
+  buffer: Uint8Array<ArrayBuffer>,
+  mimeType: string,
+  disposition: string | undefined,
+) {
   const etag = contentEtag(buffer);
 
   if (matchesEtag(request.headers.get("if-none-match"), etag)) {
@@ -114,8 +133,25 @@ function serveBuffer(request: NextRequest, buffer: Uint8Array<ArrayBuffer>, mime
       "Content-Length": String(buffer.length),
       "Cache-Control": "private, no-cache",
       ETag: etag,
+      ...(disposition ? { "Content-Disposition": disposition } : {}),
     },
   });
+}
+
+/**
+ * `Content-Disposition` for a download of `filePath`.
+ *
+ * Both forms are sent: a quoted ASCII `filename` every client understands, and
+ * RFC 5987 `filename*` so a non-ASCII name survives intact.
+ */
+function attachment(filePath: string): string {
+  const fileName = path.basename(filePath);
+  const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
 /** A strong ETag over the file's bytes — the only stable identity it has. */

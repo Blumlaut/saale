@@ -479,6 +479,39 @@ describe("files the agent showed the user", () => {
     expect(screen.getByText("quarterly.pdf")).toBeInTheDocument();
   });
 
+  /**
+   * The download must be a real URL the browser saves itself. A fetched blob
+   * and a blob: URL never downloads inside an installed PWA — the WebAPK hands
+   * the object URL to a download manager that cannot read it, and the app is
+   * left on about:blank with no file.
+   */
+  it("hands the download to the browser as a file URL, not a blob", () => {
+    const opened: Array<{ href: string; download: string; target: string }> = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      opened.push({
+        href: this.getAttribute("href")!,
+        download: this.getAttribute("download")!,
+        target: this.getAttribute("target")!,
+      });
+    });
+
+    render(<MessageList messages={[message([doc("quarterly")])]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Download quarterly.pdf" }));
+
+    expect(opened).toEqual([
+      {
+        href: `/api/chat/workspace-files?file=${encodeURIComponent("reports/quarterly.pdf")}&download=1`,
+        download: "quarterly.pdf",
+        target: "_blank",
+      },
+    ]);
+    expect(click).toHaveBeenCalledTimes(1);
+    // No browser-side copy of the bytes: the URL is the whole transfer.
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
   it("lays several shared images out as a thumbnail gallery", async () => {
     render(<MessageList messages={[message([image("alpha"), image("beta"), doc("notes")])]} />);
 
