@@ -481,19 +481,22 @@ describe("files the agent showed the user", () => {
 
   /**
    * The download must be a real URL the browser saves itself. A fetched blob
-   * and a blob: URL never downloads inside an installed PWA — the WebAPK hands
-   * the object URL to a download manager that cannot read it, and the app is
+   * and a blob: URL never downloads inside an installed PWA — the app hands the
+   * object URL to a download manager that cannot read it, and the window is
    * left on about:blank with no file.
+   *
+   * The click stays in the app window, like the attachment chip: a standalone
+   * window cannot be relied on to open a tab for a download.
    */
   it("hands the download to the browser as a file URL, not a blob", () => {
-    const opened: Array<{ href: string; download: string; target: string }> = [];
+    const opened: Array<{ href: string; download: string; target: string | null }> = [];
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
       this: HTMLAnchorElement,
     ) {
       opened.push({
         href: this.getAttribute("href")!,
         download: this.getAttribute("download")!,
-        target: this.getAttribute("target")!,
+        target: this.getAttribute("target"),
       });
     });
 
@@ -504,7 +507,7 @@ describe("files the agent showed the user", () => {
       {
         href: `/api/chat/workspace-files?file=${encodeURIComponent("reports/quarterly.pdf")}&download=1`,
         download: "quarterly.pdf",
-        target: "_blank",
+        target: null,
       },
     ]);
     expect(click).toHaveBeenCalledTimes(1);

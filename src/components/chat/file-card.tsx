@@ -115,23 +115,21 @@ function useFilePreview(
  * Fetch a file by pointing the browser at it.
  *
  * Reading the bytes into a blob and clicking a blob: URL is the obvious way to
- * do this, and the one that breaks in an installed PWA: the WebAPK/TWA hands
- * the URL to a download manager that cannot read the renderer's blob store, so
- * the download never starts and the app window ends up on `about:blank`. The
- * server's `Content-Disposition` is understood by every download path,
- * including the PWA's.
+ * do this, and the one that breaks in an installed PWA. The browser hands the
+ * URL to a download manager that cannot read the renderer's blob store, so the
+ * download never starts and the app window ends up on the (revoked) blob —
+ * `about:blank`. The server's `Content-Disposition` is understood by every
+ * download path, including the PWA's.
  *
- * `target="_blank"` keeps a failed request (file since removed, expired
- * session) from replacing the chat with an error page the user cannot go back
- * from inside the app window.
+ * The click stays a plain same-window navigation, exactly like the attachment
+ * chip: a standalone window has no tabs, so `target="_blank"` is a new-window
+ * request it may not be able to honour.
  */
 function useFileDownload(filePath: string, fileName: string) {
   const download = useCallback(() => {
     const anchor = document.createElement("a");
     anchor.href = workspaceFileUrl(filePath, { download: true });
     anchor.download = fileName;
-    anchor.target = "_blank";
-    anchor.rel = "noopener";
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
