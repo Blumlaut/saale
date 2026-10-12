@@ -105,7 +105,8 @@ export interface ReadFileResult {
 export interface ReadFileBinaryResult {
   path: string;
   mimeType: string;
-  buffer: Buffer;
+  /** ArrayBuffer-backed so the bytes can be handed straight to a Response body. */
+  buffer: Buffer<ArrayBuffer>;
 }
 
 export interface ListDirectoryResult {

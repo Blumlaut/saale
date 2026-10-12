@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import type { Stats } from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import { requireSession } from "@/lib/auth";
 import { getUploadsDir } from "@/lib/uploads";
 import * as terminal from "@/lib/terminal/client";
@@ -31,14 +32,14 @@ export async function GET(request: NextRequest) {
 
   // When Open Terminal is configured, files live in the container
   if (terminal.isConfigured()) {
-    return serveFromTerminal(userId, fileParam);
+    return serveFromTerminal(request, userId, fileParam);
   }
 
-  return serveFromLocal(userId, fileParam);
+  return serveFromLocal(request, userId, fileParam);
 }
 
 /** Serve file through Open Terminal API */
-async function serveFromTerminal(userId: string, filePath: string) {
+async function serveFromTerminal(request: NextRequest, userId: string, filePath: string) {
   const homeDir = terminal.getTerminalHomeDir(userId);
   const fullPath = path.resolve(homeDir, filePath);
 
@@ -50,13 +51,7 @@ async function serveFromTerminal(userId: string, filePath: string) {
 
   try {
     const result = await terminal.readFileBinary(fullPath, { userId });
-    return new NextResponse(new Uint8Array(result.buffer), {
-      headers: {
-        "Content-Type": result.mimeType,
-        "Content-Length": String(result.buffer.length),
-        "Cache-Control": "private, max-age=3600",
-      },
-    });
+    return serveBuffer(request, result.buffer, result.mimeType);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("404")) {
@@ -67,7 +62,7 @@ async function serveFromTerminal(userId: string, filePath: string) {
 }
 
 /** Serve file from local uploads directory (fallback) */
-async function serveFromLocal(userId: string, filePath: string) {
+async function serveFromLocal(request: NextRequest, userId: string, filePath: string) {
   const userDir = path.join(getUploadsDir(), userId);
 
   // Validate path stays within workspace
@@ -89,11 +84,53 @@ async function serveFromLocal(userId: string, filePath: string) {
     return new NextResponse("Not a file", { status: 400 });
   }
 
-  // Read and serve
   const buffer = await fs.readFile(resolved);
-  const fileName = path.basename(filePath);
-  const ext = path.extname(fileName).toLowerCase();
+  return serveBuffer(request, buffer, mimeTypeFor(filePath));
+}
 
+/**
+ * Serve bytes from a workspace file.
+ *
+ * A workspace file is mutable but its URL is not — the path is the whole
+ * identity, so an agent that rewrites `report.pdf` produces the exact same
+ * request the browser already has cached. The response is therefore keyed by
+ * content (ETag) and must be revalidated (`no-cache`): without that, clicking
+ * Download replays whatever bytes were fetched first, and the user gets the
+ * pre-edit file no matter how many times they share the new one.
+ */
+function serveBuffer(request: NextRequest, buffer: Uint8Array<ArrayBuffer>, mimeType: string) {
+  const etag = contentEtag(buffer);
+
+  if (matchesEtag(request.headers.get("if-none-match"), etag)) {
+    return new NextResponse(null, {
+      status: 304,
+      headers: { ETag: etag, "Cache-Control": "private, no-cache" },
+    });
+  }
+
+  return new NextResponse(buffer, {
+    headers: {
+      "Content-Type": mimeType,
+      "Content-Length": String(buffer.length),
+      "Cache-Control": "private, no-cache",
+      ETag: etag,
+    },
+  });
+}
+
+/** A strong ETag over the file's bytes — the only stable identity it has. */
+function contentEtag(buffer: Uint8Array<ArrayBuffer>): string {
+  return `"${createHash("sha1").update(buffer).digest("hex")}"`;
+}
+
+/** `If-None-Match` may carry a list of tags and weak-tag prefixes. */
+function matchesEtag(ifNoneMatch: string | null, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  return ifNoneMatch.split(",").some((candidate) => candidate.trim().replace(/^W\//, "") === etag);
+}
+
+/** MIME type guessed from an extension, matching the client's map. */
+function mimeTypeFor(filePath: string): string {
   const MIME_TYPES: Record<string, string> = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -120,13 +157,7 @@ async function serveFromLocal(userId: string, filePath: string) {
     ".mp4": "video/mp4",
   };
 
-  const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
-
-  return new NextResponse(buffer, {
-    headers: {
-      "Content-Type": mimeType,
-      "Content-Length": String(buffer.length),
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
+  const fileName = path.basename(filePath).toLowerCase();
+  const ext = path.extname(fileName);
+  return MIME_TYPES[ext] ?? "application/octet-stream";
 }
