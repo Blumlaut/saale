@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { downloadFile } from "@/lib/download";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { LightboxImage } from "./image-lightbox";
 import { ApprovalMessage } from "./approval-message";
@@ -716,8 +717,8 @@ function UserMessageItem({
 }
 
 /**
- * Non-image attachment rendered as a compact chip. Real attachments link to
- * the download endpoint; temp (in-flight) ones render muted without a link.
+ * Non-image attachment rendered as a compact chip. Real attachments download
+ * their file; temp (in-flight) ones render muted without a control.
  */
 function AttachmentChip({
   attachment,
@@ -750,14 +751,14 @@ function AttachmentChip({
   }
 
   return (
-    <a
-      href={url}
-      download={attachment.fileName}
+    <button
+      type="button"
+      onClick={() => downloadFile(url)}
       aria-label={`Download ${attachment.fileName}`}
       className="border-border/30 bg-muted/50 hover:bg-accent/60 flex items-center gap-2 rounded-xl border px-2.5 py-1.5 transition-colors"
     >
       {chip}
-    </a>
+    </button>
   );
 }
 
