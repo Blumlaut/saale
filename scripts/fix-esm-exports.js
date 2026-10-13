@@ -11,8 +11,6 @@
  * Why these: the app's .ts files are compiled to CJS by tsx (package.json has
  * no `"type": "module"`) and the worker runs through tsx in development.
  *   - @earendil-works/pi-*     — the agent SDK itself
- *   - @earendil-works/chord    — `chord/context`, imported by pi-coding-agent's
- *                                bundled chunks since 0.85
  *   - jiti                     — `jiti/static`, pulled in by the same bundle
  *   - defuddle                 — `defuddle/node`, imported by the web-fetch tool
  * Production is unaffected: Docker installs with `--ignore-scripts` and runs
@@ -25,7 +23,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const PKG_PATTERN = /^(@earendil-works\/(pi-[^/]+|chord)|jiti|defuddle)$/;
+const PKG_PATTERN = /^(@earendil-works\/pi-[^/]+|jiti|defuddle)$/;
 // Deep enough for nested copies of the packages above, shallow enough to skip
 // walking the whole dependency tree.
 const MAX_DEPTH = 6;

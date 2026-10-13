@@ -32,6 +32,8 @@ export interface DiscoverableTool {
   outputSchema?: unknown;
   namespace?: {
     name: string;
+    /** Other names that refer to the namespace, such as an MCP server's own name. */
+    aliases?: readonly string[];
     description?: string;
     instructions?: string;
   };
@@ -176,17 +178,17 @@ export function toolSample(tool: DiscoverableTool): string {
 }
 
 /**
- * Whether `query` names the namespace: its name, its script identifier
- * (`mcp__dev-radius` is `mcp__dev_radius`), or the part after its last `__` in
- * either form (`dev-radius`, `dev_radius`).
+ * Whether `query` names the namespace: its name or one of its aliases, as written
+ * or as the same script identifier (`dev-radius` and `dev_radius` are both
+ * `dev_radius`).
  */
-function isNamespaceName(namespace: string, query: string): boolean {
-  const id = toCodemodeIdentifier(namespace);
+function isNamespaceName(
+  namespace: NonNullable<DiscoverableTool["namespace"]>,
+  query: string,
+): boolean {
   const queryId = toCodemodeIdentifier(query);
-  const suffix = (name: string) =>
-    name.includes("__") ? name.slice(name.lastIndexOf("__") + 2) : undefined;
-  return (
-    namespace === query || id === queryId || suffix(namespace) === query || suffix(id) === queryId
+  return [namespace.name, ...(namespace.aliases ?? [])].some(
+    (name) => name === query || toCodemodeIdentifier(name) === queryId,
   );
 }
 
@@ -236,8 +238,7 @@ export function createDiscoveryGlobals(
           documents.filter(
             (document) =>
               !namespace ||
-              (document.namespace !== undefined &&
-                isNamespaceName(document.namespace.name, namespace)),
+              (document.namespace !== undefined && isNamespaceName(document.namespace, namespace)),
           ),
           limit,
         );
@@ -273,7 +274,7 @@ export function createDiscoveryGlobals(
         let namespace: DiscoverableTool["namespace"];
         const names: string[] = [];
         for (const tool of tools) {
-          if (!tool.namespace || !isNamespaceName(tool.namespace.name, name)) continue;
+          if (!tool.namespace || !isNamespaceName(tool.namespace, name)) continue;
           namespace ??= tool.namespace;
           names.push(toCodemodeIdentifier(tool.name));
         }
