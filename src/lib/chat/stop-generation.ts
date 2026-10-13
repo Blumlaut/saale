@@ -23,20 +23,31 @@ export async function stopChatGeneration(userId: string, sessionId: string): Pro
   const isActive = await isSessionActive(userId, sessionId);
   const poolKey = getPoolKey(userId, sessionId);
   const pooled = get(poolKey);
-  const isStreamingHere = pooled?.session.isStreaming ?? false;
+  // `isStreaming` misses a run that is in flight but not yet inside the agent
+  // loop — a prompt deferred to a compaction, or one queued behind it — because
+  // `promptInFlight` is set as soon as the run claims the session. Either is a
+  // run Stop must reach.
+  const runInFlight = pooled !== undefined && (pooled.session.isStreaming || pooled.promptInFlight);
 
-  if (!isActive && !isStreamingHere) return false;
+  if (!isActive && !runInFlight) return false;
 
   // A stop pauses the send queue as well: whatever was queued during this run
   // must not start sending the moment the abort lands (see redis.ts).
   await holdSendQueue(sessionId);
 
-  if (pooled && isStreamingHere) {
+  if (pooled && runInFlight) {
     // Record the stop before aborting: the tracker cannot tell a cancelled
     // request from a failed one, and must not report the user's own action as
     // a provider error.
     requestSessionAbort(userId, sessionId);
-    pooled.session.abort();
+    // Not awaited: `abort()` resolves only once the agent is idle, and a tool
+    // that ignores the abort signal can keep it busy indefinitely. Stop has
+    // already landed — the flag is cleared below and the session's run settles
+    // on its own — so waiting here would only make Stop look like it did
+    // nothing.
+    void Promise.resolve(pooled.session.abort()).catch((err) => {
+      console.error(`Failed to abort the chat run for session ${sessionId}:`, err);
+    });
     // Don't remove from pool — let it be reused for the next message
     // (eviction handles cleanup)
   }
