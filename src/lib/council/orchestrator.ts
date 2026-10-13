@@ -11,7 +11,14 @@
  *
  * - **parallel** (the default): every member whose inbox is non-empty runs at
  *   once. A member's inbox is filled by the messages that address it, so the
- *   conversation graph decides the schedule and no member waits on another.
+ *   conversation graph decides the schedule and no member waits on another. A
+ *   member that is addressed while working is not made to wait for its turn to
+ *   finish on its own: at the next tool-call boundary the turn is ended
+ *   (recorded as `preempted`) and the member is re-run on the message.
+ *
+ * In round-robin a busy member can never be addressed mid-turn (no other member
+ * is running to post, and the owner's messages are absorbed between rounds), so
+ * preemption is a parallel-mode concern only.
  * - **round-robin**: one member at a time, in list order, round after round.
  *
  * Members speak only through `council_post` (their closing text is not a room
@@ -95,7 +102,11 @@ export interface CouncilRunPlan {
 
 /** A member's turn, as the store persists it. */
 export interface TurnRecord {
-  status: "completed" | "error";
+  /**
+   * `preempted`: the turn was ended at a tool-call boundary because a message
+   * addressed the member mid-turn — not a failure, and not a finished answer.
+   */
+  status: "completed" | "preempted" | "error";
   thinking: string | null;
   toolCalls: string | null;
   finalText: string | null;
@@ -516,7 +527,42 @@ export async function runCouncilLoop(
       round: round ?? null,
     });
 
-    const collector = collectTurn(session.session, state, deps);
+    // A message that addresses this member while it works should not wait for
+    // the turn to run to its own conclusion. The watch fires on the next
+    // tool-call boundary (see collectTurn's onToolEnd): the in-flight tool call
+    // is left to finish, and only then does the turn end, so a preemption never
+    // leaves a half-executed call behind.
+    let preempted = false;
+    const preempt: { watch: StopWatch; trigger: () => void } | null =
+      plan.orchestration === "parallel"
+        ? (() => {
+            let rejectPreempt: (err: Error) => void = () => {};
+            const watch: StopWatch = {
+              promise: new Promise<never>((_resolve, reject) => {
+                rejectPreempt = reject;
+              }),
+              cancel: () => {},
+            };
+            return {
+              watch,
+              trigger: () => {
+                preempted = true;
+                void session.session.abort().catch((err) => {
+                  console.error(
+                    `[council:${plan.runId}] Failed to end ${state.plan.name}'s preempted turn:`,
+                    err,
+                  );
+                });
+                rejectPreempt(new Error("Turn ended early: this member was addressed again."));
+              },
+            };
+          })()
+        : null;
+
+    const collector = collectTurn(session.session, state, deps, () => {
+      // `!preempted` keeps a second tool end from aborting an already-ending turn.
+      if (preempt && !stop && !preempted && state.inbox.length > 0) preempt.trigger();
+    });
     const before = state.stats;
     let failure: string | null = null;
 
@@ -530,10 +576,18 @@ export async function runCouncilLoop(
           stop = { reason: "aborted" };
           await session.session.abort();
         }),
+        preempt?.watch ?? null,
       ]);
     } catch (err) {
-      failure = errorMessage(err);
-      console.error(`[council:${plan.runId}] ${state.plan.name}'s turn failed:`, err);
+      // A preemption is not a failure: the turn ended early on purpose so the
+      // member can answer the message that addressed it. It is recorded below
+      // as `preempted`, with its partial transcript and usage.
+      if (preempted && !stop) {
+        // no error to record
+      } else {
+        failure = errorMessage(err);
+        console.error(`[council:${plan.runId}] ${state.plan.name}'s turn failed:`, err);
+      }
     } finally {
       collector.stop();
     }
@@ -558,7 +612,7 @@ export async function runCouncilLoop(
     state.turns += 1;
 
     await deps.store.finishTurn(turnId, {
-      status: failure ? "error" : "completed",
+      status: failure ? "error" : preempted && !stop ? "preempted" : "completed",
       thinking: transcript.thinking,
       toolCalls: transcript.toolCalls ? JSON.stringify(transcript.toolCalls) : null,
       finalText: transcript.text || null,
@@ -878,6 +932,7 @@ function collectTurn(
   session: AgentSession,
   state: MemberState,
   deps: CouncilRunDeps,
+  onToolEnd?: () => void,
 ): { stop: () => void; snapshot: () => TurnTranscript } {
   let content: unknown[] = [];
   let thinking: string | null = null;
@@ -939,6 +994,7 @@ function collectTurn(
           tool: event.toolName,
           isError: event.isError,
         });
+        onToolEnd?.();
         return;
       }
 

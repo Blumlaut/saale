@@ -88,7 +88,9 @@ export function AgentTranscript({ turns, messages = [], loading }: AgentTranscri
             ? "bg-destructive/10 text-destructive"
             : turn.status === "running"
               ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-              : "bg-green-500/10 text-green-600 dark:text-green-400";
+              : turn.status === "preempted"
+                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                : "bg-green-500/10 text-green-600 dark:text-green-400";
 
         return (
           <article key={turn.id} className="liquid-glass-inner rounded-xl border-0 p-3 md:p-4">

@@ -611,6 +611,150 @@ describe("runCouncilLoop — stopping early", () => {
   });
 });
 
+describe("runCouncilLoop — preemption of an addressed member (parallel mode)", () => {
+  it("ends a turn at the next tool boundary when the member is addressed, and re-runs it addressed", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: ["a", "b"],
+      behaviours: {
+        a: async (turn) => {
+          const session = h.sessions.get("a")!;
+          if (session.prompts.length === 1) {
+            // The first turn: a tool call is running when blade addresses it.
+            session.emit({
+              type: "message_update",
+              message: {
+                role: "assistant",
+                content: [{ type: "thinking", thinking: "checking the plan" }],
+              },
+            });
+            session.emit({
+              type: "tool_execution_start",
+              toolCallId: "t1",
+              toolName: "read",
+              args: { path: "plan.md" },
+            });
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            // The boundary: the turn must end here rather than run to its conclusion.
+            session.emit({
+              type: "tool_execution_end",
+              toolCallId: "t1",
+              result: { content: [{ type: "text", text: "plan" }] },
+              isError: false,
+            });
+          } else {
+            // The re-run turn answers the address.
+            await turn.post("acorn: switching to plan2.md");
+          }
+        },
+        b: async (turn) => {
+          await new Promise((resolve) => setTimeout(resolve, 15));
+          await turn.post("@acorn quick one — the plan moved to plan2.md");
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(outcome.stopReason).toBe("no-pending-work");
+    expect(outcome.turnCount).toBe(3);
+    expect(h.sessions.get("a")!.aborted).toBe(true);
+
+    const acornTurns = h.room.turns.filter((turn) => turn.memberName === "acorn");
+    expect(acornTurns).toHaveLength(2);
+    // The first turn ended at the boundary on purpose — not an error.
+    expect(acornTurns[0]!.record.status).toBe("preempted");
+    expect(acornTurns[0]!.record.error).toBeNull();
+    // Its partial transcript is kept on the turn.
+    expect(acornTurns[0]!.record.thinking).toContain("checking the plan");
+    expect(acornTurns[1]!.record.status).toBe("completed");
+
+    // The re-run was woken by blade's message and prompted as addressed.
+    const bladeMessage = h.room.messages.find((m) => m.authorName === "blade")!;
+    expect(acornTurns[1]!.triggeredBy).toEqual([bladeMessage.seq]);
+    expect(h.sessions.get("a")!.prompts[1]!).toContain("You were addressed");
+    expect(h.sessions.get("a")!.prompts[1]!).toContain("plan2.md");
+    // No failure notice: the room never saw a failed turn.
+    expect(h.room.messages.some((m) => m.content.includes("could not finish its turn"))).toBe(
+      false,
+    );
+  });
+
+  it("collects every message that landed while the turn ran into the one re-run turn", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade"), MEMBER("c", "cobalt")],
+      openingMemberIds: ["a", "b", "c"],
+      behaviours: {
+        a: async (turn) => {
+          const session = h.sessions.get("a")!;
+          if (session.prompts.length === 1) {
+            session.emit({
+              type: "tool_execution_start",
+              toolCallId: "t1",
+              toolName: "read",
+              args: {},
+            });
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            session.emit({
+              type: "tool_execution_end",
+              toolCallId: "t1",
+              result: { content: [{ type: "text", text: "ok" }] },
+              isError: false,
+            });
+          } else {
+            await turn.post("acorn: got both");
+          }
+        },
+        b: async (turn) => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          await turn.post("@acorn first thing");
+        },
+        c: async (turn) => {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          await turn.post("@acorn second thing");
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(outcome.turnCount).toBe(4); // a ×2, b, c
+    const acornTurns = h.room.turns.filter((turn) => turn.memberName === "acorn");
+    expect(acornTurns).toHaveLength(2);
+    expect(acornTurns[0]!.record.status).toBe("preempted");
+    // Both messages woke the re-run, in order.
+    const firstSeq = h.room.messages.find((m) => m.content === "@acorn first thing")!.seq;
+    const secondSeq = h.room.messages.find((m) => m.content === "@acorn second thing")!.seq;
+    expect(acornTurns[1]!.triggeredBy).toEqual([firstSeq, secondSeq]);
+  });
+
+  it("lets a turn without tool boundaries finish on its own before re-running it", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: ["a", "b"],
+      behaviours: {
+        a: async (turn) => {
+          await new Promise((resolve) => setTimeout(resolve, 15));
+          await turn.post("@blade over to you");
+        },
+        b: async () => {
+          // A long turn with no tool call: nothing to preempt it on.
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(h.sessions.get("b")!.aborted).toBe(false);
+    const bladeTurns = h.room.turns.filter((turn) => turn.memberName === "blade");
+    expect(bladeTurns).toHaveLength(2);
+    expect(bladeTurns[0]!.record.status).toBe("completed");
+    expect(bladeTurns[1]!.record.status).toBe("completed");
+    expect(outcome.turnCount).toBe(3);
+  });
+});
+
 describe("runCouncilLoop — the owner speaking mid-run", () => {
   it("wakes the member the owner addressed while the room was working", async () => {
     const h = harness({
