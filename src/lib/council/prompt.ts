@@ -14,8 +14,8 @@
  *
  * The rules are written for the mode the run uses: a member that knows whether
  * the others are working alongside it or waiting their turn knows that a reply
- * it is waiting for arrives on its own, and can end its turn rather than hold
- * one open.
+ * it is waiting for arrives on its own, can end its turn rather than hold one
+ * open, and knows to agree who does what before it starts.
  *
  * Pure — no database or SDK imports, so the wording is unit-testable.
  */
@@ -83,6 +83,20 @@ function waitingSentence(orchestration: CouncilOrchestration): string {
   return `When you are waiting on another member's reply, end your turn: ${wakeUp}. Never hold a turn open with sleep, polling or a filler post.`;
 }
 
+/**
+ * How to divide the work, before any of it is done.
+ *
+ * In parallel mode the members run at the same time, so their work is invisible
+ * to each other until a post lands: two members who start on the same file
+ * discover it by colliding. A member that must be told to agree the split first
+ * avoids that, so the rule is stated and, being true, also says how to check.
+ */
+function coordinationSentence(orchestration: CouncilOrchestration): string {
+  return orchestration === "round-robin"
+    ? "Say what you are taking before you change a shared file: turns come one at a time, and your post is how the next member knows to leave it to you."
+    : "Split the work in the room before you build anything. Everyone addressed is running at the same time as you, so nothing of yours is visible to the others until you post it: announce what you are taking before you touch a shared file, and read the room first with `council_read` — a claim may have landed while you were working.";
+}
+
 /** The system prompt for one member, for the whole run. */
 export function buildCouncilMemberPrompt(context: CouncilPromptContext): string {
   const { member, members, brief, councilName } = context;
@@ -113,8 +127,7 @@ export function buildCouncilMemberPrompt(context: CouncilPromptContext): string 
     `Working together:
 - You share one private workspace with the other members${context.sandboxPath ? `: \`${context.sandboxPath}\`` : ""}. It is separate from the owner's own files — neither can read the other, and the owner cannot see what is in it unless you paste it into a message.
 - Work there with the file tools. Files are shared with the other members immediately, so say which file you changed when you post about it.
-- Announce a file before you rewrite it: another member may be working in it at the same time.
-- Keep posts short and specific. Long output belongs in a file, summarized in the post.`,
+${others.length > 0 ? `- ${coordinationSentence(context.orchestration)}\n` : ""}- Keep posts short and specific. Long output belongs in a file, summarized in the post.`,
 
     `Be a colleague, not an assistant: disagree when you think the group is wrong, say what you are unsure of, and build on what the others posted rather than restating it.`,
   ];

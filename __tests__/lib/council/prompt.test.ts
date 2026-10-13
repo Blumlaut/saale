@@ -97,6 +97,28 @@ describe("buildCouncilMemberPrompt", () => {
     expect(rounds).not.toMatch(/wakes you as soon as someone addresses you/);
   });
 
+  it("splits the work before any of it is built, in the terms of its mode", () => {
+    // Parallel members cannot see each other's files until a post lands, so the
+    // rule has to come before the building rather than as a warning after it.
+    const parallel = buildCouncilMemberPrompt(CONTEXT);
+    expect(parallel).toMatch(/Split the work in the room before you build anything/);
+    expect(parallel).toMatch(/running at the same time as you/);
+    expect(parallel).toMatch(/read the room first with `council_read`/);
+
+    const rounds = buildCouncilMemberPrompt({ ...CONTEXT, orchestration: "round-robin" });
+    expect(rounds).toMatch(/Say what you are taking before you change a shared file/);
+    expect(rounds).toMatch(/turns come one at a time/);
+    expect(rounds).not.toMatch(/before you build anything/);
+  });
+
+  it("asks a lone member to split nothing", () => {
+    const alone = buildCouncilMemberPrompt({ ...CONTEXT, members: [{ name: "acorn" }] });
+    expect(alone).not.toMatch(/Split the work/);
+    expect(alone).not.toMatch(/Say what you are taking/);
+    // The rest of the shared-workspace rules still apply.
+    expect(alone).toMatch(/You share one private workspace/);
+  });
+
   it("does not describe a role for a member that has none", () => {
     const prompt = buildCouncilMemberPrompt({ ...CONTEXT, member: { name: "acorn" } });
     expect(prompt).not.toContain("Your role in this council");
