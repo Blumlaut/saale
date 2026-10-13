@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import type { Stats } from "fs";
 import path from "path";
-import { createHash } from "crypto";
 import { requireSession } from "@/lib/auth";
 import { getUploadsDir } from "@/lib/uploads";
+import { contentDisposition, contentEtag, matchesEtag } from "@/lib/files/http";
+import { mimeTypeForName } from "@/lib/files/mime";
 import * as terminal from "@/lib/terminal/client";
 
 /**
@@ -32,7 +33,8 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = authResult.user.id;
-  const disposition = searchParams.get("download") === "1" ? attachment(fileParam) : undefined;
+  const disposition =
+    searchParams.get("download") === "1" ? contentDisposition(path.basename(fileParam)) : undefined;
 
   // When Open Terminal is configured, files live in the container
   if (terminal.isConfigured()) {
@@ -99,7 +101,7 @@ async function serveFromLocal(
   }
 
   const buffer = await fs.readFile(resolved);
-  return serveBuffer(request, buffer, mimeTypeFor(filePath), disposition);
+  return serveBuffer(request, buffer, mimeTypeForName(filePath), disposition);
 }
 
 /**
@@ -119,7 +121,6 @@ function serveBuffer(
   disposition: string | undefined,
 ) {
   const etag = contentEtag(buffer);
-
   if (matchesEtag(request.headers.get("if-none-match"), etag)) {
     return new NextResponse(null, {
       status: 304,
@@ -136,64 +137,4 @@ function serveBuffer(
       ...(disposition ? { "Content-Disposition": disposition } : {}),
     },
   });
-}
-
-/**
- * `Content-Disposition` for a download of `filePath`.
- *
- * Both forms are sent: a quoted ASCII `filename` every client understands, and
- * RFC 5987 `filename*` so a non-ASCII name survives intact.
- */
-function attachment(filePath: string): string {
-  const fileName = path.basename(filePath);
-  const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
-  const encoded = encodeURIComponent(fileName).replace(
-    /['()*]/g,
-    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
-}
-
-/** A strong ETag over the file's bytes — the only stable identity it has. */
-function contentEtag(buffer: Uint8Array<ArrayBuffer>): string {
-  return `"${createHash("sha1").update(buffer).digest("hex")}"`;
-}
-
-/** `If-None-Match` may carry a list of tags and weak-tag prefixes. */
-function matchesEtag(ifNoneMatch: string | null, etag: string): boolean {
-  if (!ifNoneMatch) return false;
-  return ifNoneMatch.split(",").some((candidate) => candidate.trim().replace(/^W\//, "") === etag);
-}
-
-/** MIME type guessed from an extension, matching the client's map. */
-function mimeTypeFor(filePath: string): string {
-  const MIME_TYPES: Record<string, string> = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".svg": "image/svg+xml",
-    ".bmp": "image/bmp",
-    ".pdf": "application/pdf",
-    ".txt": "text/plain",
-    ".csv": "text/csv",
-    ".json": "application/json",
-    ".xml": "application/xml",
-    ".html": "text/html",
-    ".css": "text/css",
-    ".js": "text/javascript",
-    ".ts": "text/typescript",
-    ".md": "text/markdown",
-    ".yaml": "text/yaml",
-    ".yml": "text/yaml",
-    ".zip": "application/zip",
-    ".gz": "application/gzip",
-    ".mp3": "audio/mpeg",
-    ".mp4": "video/mp4",
-  };
-
-  const fileName = path.basename(filePath).toLowerCase();
-  const ext = path.extname(fileName);
-  return MIME_TYPES[ext] ?? "application/octet-stream";
 }

@@ -8,14 +8,15 @@
  * eight files.
  */
 
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import type { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { requireCouncilAccess } from "./access";
 import { CouncilBusyError, CouncilNotFoundError, CouncilUnavailableError } from "./run";
 import { CouncilInputError } from "./store";
-import { formatValidationError } from "./schema";
+
+// Re-exported so the council routes keep one import for their plumbing; the
+// implementation is shared with the file endpoints.
+export { readJsonBody } from "@/lib/api-body";
 
 /** The caller, or the response that refuses them. */
 export async function councilCaller(): Promise<
@@ -28,33 +29,6 @@ export async function councilCaller(): Promise<
   if (denied) return { ok: false, response: denied };
 
   return { ok: true, userId: session.user.id };
-}
-
-/** Parse and validate a JSON body, or produce the 400 to send instead. */
-export async function readJsonBody<T>(
-  request: NextRequest,
-  schema: z.ZodType<T>,
-): Promise<{ ok: true; data: T } | { ok: false; response: NextResponse }> {
-  let raw: unknown;
-  try {
-    raw = await request.json();
-  } catch (err) {
-    // A body that is not JSON at all is the caller's mistake, not ours.
-    console.error("Council request body was not valid JSON:", err);
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Expected a JSON body" }, { status: 400 }),
-    };
-  }
-
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: formatValidationError(parsed.error) }, { status: 400 }),
-    };
-  }
-  return { ok: true, data: parsed.data };
 }
 
 /**
