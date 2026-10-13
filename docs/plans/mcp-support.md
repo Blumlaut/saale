@@ -35,8 +35,8 @@ and injected as custom tools alongside email, calendar, web, etc.
 - Proxy-style tool discovery (like `pi-mcp-adapter`'s single proxy tool).
   Saale's embedded agent doesn't have the same context window constraints as the
   Pi CLI — direct tool registration is simpler and more reliable.
-- OAuth flows for MCP servers (out of scope for v1; bearer tokens and unauth
-  servers cover the common cases).
+- OAuth flows for MCP servers were out of scope for v1; they are implemented —
+  see **Authentication** below.
 
 ---
 
@@ -119,15 +119,38 @@ model McpServer {
 }
 ```
 
-### Why JSON fields for args/env/headers
+### Authentication
 
-These are structured data that don't benefit from relational storage.
-Storing as JSON text avoids a sprawling schema and matches how MCP configs
-are typically written (`.mcp.json` files use the same format).
+A remote server authenticates one of three ways, resolved per server in
+`src/lib/mcp/servers.ts`:
 
-`env` values are stored as-is — if the user wants to store secrets, they
-should use environment variable references in the value (e.g., `"$GITHUB_TOKEN"`)
-which we resolve at runtime. This keeps sensitive values out of the DB.
+1. **Stored bearer token** — `McpServer.encryptedToken`, sent as
+   `Authorization: Bearer …`. Takes precedence when set.
+2. **OAuth 2.1** — for a server with no bearer token, the connection sends the
+   stored access token and refreshes it on a `401`. Credentials live in
+   `McpOAuthCredential`, one encrypted blob per server (Pi's `McpOAuthState`:
+   client registration, tokens, PKCE verifier, discovery). Never Pi's host-wide
+   `mcp-auth.json`, which every tenant would share.
+3. **Unauthenticated** — a server that needs no credentials.
+
+OAuth is implemented in `src/lib/mcp/oauth.ts` on Pi's own primitives
+(`McpOAuthProvider`, `authorizeMcp`). The split exists because an agent session
+cannot start a browser:
+
+- The session builds an `AuthProvider` that presents the stored token and
+  refreshes it (serialized with a Redis lock, since refresh tokens rotate).
+  When it cannot, it throws `McpOAuthAuthorizationRequiredError`, which the MCP
+  extension reports as `needs-auth` instead of a failed server.
+- The settings page drives the sign-in. `POST …/oauth/start` runs discovery and
+  dynamic client registration and returns the authorization URL. The provider
+  redirects the browser back to **Saale's public URL**
+  (`<BETTER_AUTH_URL>/api/mcp/oauth/callback`), not a loopback port — the user's
+  browser cannot reach the server host's loopback interface. The public callback
+  resolves the one-time `state` to its server and exchanges the code (PKCE).
+
+A `401`'s `WWW-Authenticate` challenge is cached so the next sign-in reuses the
+resource metadata URL it names, and a server endpoint change discards the
+credentials issued for the old one.
 
 ---
 

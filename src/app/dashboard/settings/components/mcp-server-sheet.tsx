@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { CopyButton } from "@/components/chat/copy-button";
 import {
   Select,
   SelectContent,
@@ -13,14 +14,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, CheckCircle, Loader2, PlugZap } from "lucide-react";
+import { AlertCircle, CheckCircle, ExternalLink, Loader2, PlugZap } from "lucide-react";
 import {
   normalizeMcpServerName,
   validateMcpServerName,
   validateMcpUrl,
   type McpToolPolicy,
 } from "@/lib/mcp/shared";
-import type { McpServer, McpServerInput, McpTestResult } from "@/hooks/use-mcp-servers";
+import type {
+  McpOAuthStart,
+  McpOAuthStatus,
+  McpServer,
+  McpServerInput,
+  McpTestResult,
+} from "@/hooks/use-mcp-servers";
+
+/** How often the sheet asks whether a browser sign-in has finished. */
+const OAUTH_POLL_INTERVAL_MS = 1_500;
 
 /** One policy per server: the default for every tool it contributes. */
 const POLICY_OPTIONS: { value: McpToolPolicy; label: string; hint: string }[] = [
@@ -36,6 +46,12 @@ interface McpServerSheetProps {
   server: McpServer | null;
   onSave: (input: McpServerInput) => Promise<unknown>;
   onTest: (id: string, input: { url: string; token?: string }) => Promise<McpTestResult>;
+  /** Begin an OAuth sign-in for a saved server. */
+  onStartOAuth: (id: string) => Promise<McpOAuthStart>;
+  /** Poll a running OAuth sign-in. */
+  onOAuthStatus: (id: string) => Promise<McpOAuthStatus>;
+  /** Forget a server's OAuth sign-in. */
+  onSignOutOAuth: (id: string) => Promise<void>;
 }
 
 export function McpServerSheet({
@@ -44,6 +60,9 @@ export function McpServerSheet({
   server,
   onSave,
   onTest,
+  onStartOAuth,
+  onOAuthStatus,
+  onSignOutOAuth,
 }: McpServerSheetProps) {
   const isEditing = server !== null;
 
@@ -62,6 +81,13 @@ export function McpServerSheet({
   );
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<McpTestResult | null>(null);
+
+  /** OAuth sign-in state for a saved server. */
+  const [hasOAuth, setHasOAuth] = useState(false);
+  const [oauthPhase, setOauthPhase] = useState<"idle" | "pending" | "succeeded" | "failed">("idle");
+  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [oauthBusy, setOauthBusy] = useState(false);
 
   /**
    * Result of folding what the user typed into a name Pi accepts. Folding
@@ -88,7 +114,44 @@ export function McpServerSheet({
     setError(null);
     setFieldError(null);
     setTestResult(null);
+    setHasOAuth(server?.hasOAuth ?? false);
+    setOauthPhase("idle");
+    setOauthUrl(null);
+    setOauthError(null);
+    setOauthBusy(false);
   }, [open, server]);
+
+  // Follow a browser sign-in until it settles or the sheet closes.
+  useEffect(() => {
+    const serverId = server?.id;
+    if (!open || oauthPhase !== "pending" || !serverId) return;
+
+    let cancelled = false;
+    const poll = setInterval(() => {
+      void (async () => {
+        try {
+          const status = await onOAuthStatus(serverId);
+          if (cancelled) return;
+          if (status.status === "succeeded") {
+            setHasOAuth(true);
+            setOauthPhase("succeeded");
+            setOauthUrl(null);
+          } else if (status.status === "failed") {
+            setOauthPhase("failed");
+            setOauthError(status.error ?? "The sign-in failed.");
+          }
+        } catch (err) {
+          // A lost poll is not a failed sign-in: keep the last state.
+          console.error("Failed to read the MCP OAuth sign-in state:", err);
+        }
+      })();
+    }, OAUTH_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, [open, oauthPhase, server?.id, onOAuthStatus]);
 
   const handleTest = useCallback(async () => {
     const urlError = validateMcpUrl(url.trim());
@@ -114,6 +177,51 @@ export function McpServerSheet({
       setTesting(false);
     }
   }, [onTest, server, token, url]);
+
+  const handleSignIn = useCallback(async () => {
+    if (!server) return;
+    setOauthBusy(true);
+    setOauthError(null);
+    setTestResult(null);
+    try {
+      const result = await onStartOAuth(server.id);
+      if (result.status === "succeeded") {
+        setHasOAuth(true);
+        setOauthPhase("succeeded");
+        return;
+      }
+      if (!result.authorizationUrl) {
+        setOauthPhase("failed");
+        setOauthError("The server did not return a sign-in URL.");
+        return;
+      }
+      setOauthUrl(result.authorizationUrl);
+      setOauthPhase("pending");
+      // Best effort: a blocked popup still leaves the link below.
+      window.open(result.authorizationUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setOauthPhase("failed");
+      setOauthError((err as Error).message || "Failed to start the sign-in");
+    } finally {
+      setOauthBusy(false);
+    }
+  }, [onStartOAuth, server]);
+
+  const handleSignOut = useCallback(async () => {
+    if (!server) return;
+    setOauthBusy(true);
+    setOauthError(null);
+    try {
+      await onSignOutOAuth(server.id);
+      setHasOAuth(false);
+      setOauthPhase("idle");
+      setOauthUrl(null);
+    } catch (err) {
+      setOauthError((err as Error).message || "Failed to sign out");
+    } finally {
+      setOauthBusy(false);
+    }
+  }, [onSignOutOAuth, server]);
 
   const handleSave = useCallback(async () => {
     const normalizedName = normalizeMcpServerName(name);
@@ -245,6 +353,87 @@ export function McpServerSheet({
                   Remove stored token
                 </Button>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">OAuth sign-in</Label>
+              {!isEditing ? (
+                <p className="text-muted-foreground text-xs">
+                  Save this server first, then sign in here.
+                </p>
+              ) : oauthPhase === "pending" ? (
+                <div className="space-y-2">
+                  <p className="text-muted-foreground flex items-center gap-2 text-xs">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Waiting for you to finish signing in…
+                  </p>
+                  {oauthUrl && (
+                    <div className="liquid-glass-inner flex items-start gap-2 rounded-lg px-3 py-2">
+                      <code className="min-w-0 flex-1 text-[11px] break-all">{oauthUrl}</code>
+                      <CopyButton text={oauthUrl} label="Copy the sign-in URL" />
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {oauthUrl && (
+                      <Button size="sm" variant="secondary" asChild>
+                        <a href={oauthUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Open sign-in page
+                        </a>
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleSignIn}
+                      disabled={oauthBusy}
+                    >
+                      Start over
+                    </Button>
+                  </div>
+                </div>
+              ) : hasOAuth || oauthPhase === "succeeded" ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    Signed in
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={handleSignOut}
+                    disabled={oauthBusy}
+                  >
+                    Sign out
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-9 text-xs font-medium"
+                    onClick={handleSignIn}
+                    disabled={oauthBusy}
+                  >
+                    {oauthBusy ? (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                    )}
+                    Sign in
+                  </Button>
+                  <p className="text-muted-foreground text-xs">
+                    For servers that ask clients to sign in. A stored access token is used instead
+                    of OAuth.
+                  </p>
+                </div>
+              )}
+              {oauthError && <p className="text-destructive text-xs">{oauthError}</p>}
             </div>
 
             <div className="space-y-2">

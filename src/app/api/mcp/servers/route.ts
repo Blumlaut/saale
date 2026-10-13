@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { loadMcpOAuthCredentialIds } from "@/lib/mcp/oauth";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 import {
   isMcpToolPolicy,
@@ -24,7 +25,14 @@ export async function GET() {
     orderBy: { createdAt: "asc" },
   });
 
-  return NextResponse.json({ servers: servers.map(toMcpServerView) });
+  const oauthIds = await loadMcpOAuthCredentialIds(
+    authResult.user.id,
+    servers.map((server) => server.id),
+  );
+
+  return NextResponse.json({
+    servers: servers.map((server) => toMcpServerView(server, oauthIds.has(server.id))),
+  });
 }
 
 /**

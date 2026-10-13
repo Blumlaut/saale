@@ -13,6 +13,8 @@ export interface McpServer {
   enabled: boolean;
   /** Whether a bearer token is stored. The token itself is never sent to the client. */
   hasToken: boolean;
+  /** Whether an OAuth credential is stored for this server. */
+  hasOAuth: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +36,22 @@ export interface McpTestResult {
   serverVersion?: string | null;
   tools?: { name: string; description: string | null }[];
   error?: string;
+  /** The server asked for an OAuth sign-in rather than accepting the request. */
+  needsAuth?: boolean;
+}
+
+/** The state of a server's OAuth sign-in, as the settings sheet polls it. */
+export interface McpOAuthStatus {
+  status: "idle" | "pending" | "succeeded" | "failed";
+  error: string | null;
+  authorizationUrl: string | null;
+  hasOAuth: boolean;
+}
+
+/** What starting a sign-in returns: a URL to open, or an already-usable grant. */
+export interface McpOAuthStart {
+  status: "pending" | "succeeded";
+  authorizationUrl: string | null;
 }
 
 /**
@@ -102,6 +120,33 @@ export function useMcpServers() {
     [],
   );
 
+  /** Begin an OAuth sign-in; the returned URL must be opened in a browser. */
+  const startOAuth = useCallback(
+    async (id: string): Promise<McpOAuthStart> => {
+      const result = await postJson<McpOAuthStart>(`/api/mcp/servers/${id}/oauth/start`, {});
+      // A completed sign-in changes the stored credential the list reports.
+      if (result.status === "succeeded") await loadServers();
+      return result;
+    },
+    [loadServers],
+  );
+
+  /** Poll a running OAuth sign-in. */
+  const readOAuthStatus = useCallback(
+    (id: string): Promise<McpOAuthStatus> =>
+      fetchJson<McpOAuthStatus>(`/api/mcp/servers/${id}/oauth`),
+    [],
+  );
+
+  /** Forget a server's OAuth sign-in. */
+  const signOutOAuth = useCallback(
+    async (id: string): Promise<void> => {
+      await deleteJson(`/api/mcp/servers/${id}/oauth`);
+      await loadServers();
+    },
+    [loadServers],
+  );
+
   return {
     servers,
     loading,
@@ -113,5 +158,8 @@ export function useMcpServers() {
     updateServer,
     deleteServer,
     testServer,
+    startOAuth,
+    readOAuthStatus,
+    signOutOAuth,
   };
 }

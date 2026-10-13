@@ -12,6 +12,10 @@ const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 const mockDeleteMany = vi.fn();
 const mockEvictUserSessions = vi.fn();
+const mockOAuthFindMany = vi.fn();
+const mockOAuthFindFirst = vi.fn();
+const mockOAuthDeleteMany = vi.fn();
+const mockOAuthUpsert = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   requireSession: (...args: unknown[]) => mockRequireSession(...args),
@@ -26,6 +30,12 @@ vi.mock("@/lib/db", () => ({
       update: (...args: unknown[]) => mockUpdate(...args),
       deleteMany: (...args: unknown[]) => mockDeleteMany(...args),
     },
+    mcpOAuthCredential: {
+      findMany: (...args: unknown[]) => mockOAuthFindMany(...args),
+      findFirst: (...args: unknown[]) => mockOAuthFindFirst(...args),
+      deleteMany: (...args: unknown[]) => mockOAuthDeleteMany(...args),
+      upsert: (...args: unknown[]) => mockOAuthUpsert(...args),
+    },
   },
 }));
 
@@ -37,6 +47,7 @@ const mockProbeMcpServer = vi.fn();
 vi.mock("@/lib/mcp/probe", () => ({
   probeMcpServer: (...args: unknown[]) => mockProbeMcpServer(...args),
   describeProbeError: (err: unknown) => (err as Error).message,
+  isMcpOAuthRequired: () => false,
 }));
 
 import { GET, POST } from "@/app/api/mcp/servers/route";
@@ -88,6 +99,8 @@ describe("/api/mcp/servers", () => {
     auth();
     mockEvictUserSessions.mockResolvedValue(0);
     mockFindMany.mockResolvedValue([]);
+    mockOAuthFindMany.mockResolvedValue([]);
+    mockOAuthFindFirst.mockResolvedValue(null);
   });
 
   it("requires a session", async () => {
@@ -101,13 +114,18 @@ describe("/api/mcp/servers", () => {
 
   it("lists only the caller's servers", async () => {
     mockFindMany.mockResolvedValue([serverRow()]);
+    mockOAuthFindMany.mockResolvedValue([{ serverId: "srv-1" }]);
     const body = await (await GET()).json();
     expect(mockFindMany).toHaveBeenCalledWith({
       where: { userId: USER_ID },
       orderBy: { createdAt: "asc" },
     });
     expect(body.servers).toHaveLength(1);
-    expect(body.servers[0]).toMatchObject({ name: "homeassistant", hasToken: false });
+    expect(body.servers[0]).toMatchObject({
+      name: "homeassistant",
+      hasToken: false,
+      hasOAuth: true,
+    });
   });
 
   it("creates a server and encrypts its token", async () => {
@@ -170,6 +188,7 @@ describe("/api/mcp/servers/:serverId", () => {
     mockEvictUserSessions.mockResolvedValue(0);
     mockFindMany.mockResolvedValue([]);
     mockFindFirst.mockResolvedValue(serverRow());
+    mockOAuthFindFirst.mockResolvedValue(null);
   });
 
   it("updates the fields it is given and scopes the write to the owner", async () => {
@@ -190,6 +209,31 @@ describe("/api/mcp/servers/:serverId", () => {
     await PATCH(request("PATCH", { token: "" }), params("srv-1"));
     const { data } = mockUpdate.mock.calls[0]![0] as { data: Record<string, unknown> };
     expect(data.encryptedToken).toBeNull();
+  });
+
+  it("reports whether an OAuth sign-in is stored", async () => {
+    mockUpdate.mockResolvedValue(serverRow());
+    mockOAuthFindFirst.mockResolvedValue({ serverId: "srv-1" });
+
+    const body = await (await PATCH(request("PATCH", { enabled: false }), params("srv-1"))).json();
+
+    expect(body.server.hasOAuth).toBe(true);
+  });
+
+  it("drops OAuth credentials when the endpoint changes", async () => {
+    mockUpdate.mockResolvedValue(serverRow({ url: "https://new.example/mcp" }));
+    mockOAuthDeleteMany.mockResolvedValue({ count: 1 });
+
+    const response = await PATCH(
+      request("PATCH", { url: "https://new.example/mcp" }),
+      params("srv-1"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockOAuthDeleteMany).toHaveBeenCalledWith({
+      where: { serverId: "srv-1", userId: USER_ID },
+    });
+    expect((await response.json()).server.hasOAuth).toBe(false);
   });
 
   it("rejects a rename that collides with another of the user's servers", async () => {
@@ -227,6 +271,7 @@ describe("/api/mcp/servers/:serverId/test", () => {
     _resetKey();
     auth();
     mockFindFirst.mockResolvedValue(serverRow());
+    mockOAuthFindFirst.mockResolvedValue(null);
   });
 
   it("tests unsaved form values before anything is stored", async () => {
@@ -288,6 +333,21 @@ describe("/api/mcp/servers/:serverId/test", () => {
     });
   });
 
+  it("tests a tokenless server through its OAuth credentials", async () => {
+    mockProbeMcpServer.mockResolvedValue({
+      serverName: "linear",
+      serverVersion: "1",
+      instructions: null,
+      tools: [],
+    });
+
+    await testServer(request("POST", {}), params("srv-1"));
+
+    const args = mockProbeMcpServer.mock.calls[0]![0] as { token: unknown; authProvider?: unknown };
+    expect(args.token).toBeNull();
+    expect(args.authProvider).toBeDefined();
+  });
+
   it("reports a failed connection as a 502 with the reason", async () => {
     mockProbeMcpServer.mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:8123"));
 
@@ -297,6 +357,7 @@ describe("/api/mcp/servers/:serverId/test", () => {
     expect(await response.json()).toEqual({
       success: false,
       error: "connect ECONNREFUSED 127.0.0.1:8123",
+      needsAuth: false,
     });
   });
 
