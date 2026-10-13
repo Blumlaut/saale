@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 
 import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
-import { COUNCIL_ROUTES, mockCouncilRoom } from "./council-mocks";
+import { COUNCIL_ROUTES, mockCouncilWorkspace } from "./council-mocks";
 
 /**
  * Mobile layout guardrails.
@@ -43,7 +43,7 @@ const ADMIN_PAGES = ["/admin/models", "/admin/users", "/admin/settings"];
  */
 const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   ...DASHBOARD_PAGES.map((path) => ({ path })),
-  ...COUNCIL_ROUTES.map((path) => ({ path, prepare: mockCouncilRoom })),
+  ...COUNCIL_ROUTES.map((path) => ({ path, prepare: mockCouncilWorkspace })),
   ...ADMIN_PAGES.map((path) => ({ path })),
 ];
 

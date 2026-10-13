@@ -17,7 +17,7 @@ import { Readable } from "node:stream";
 import { ZipFile } from "yazl";
 import { MAX_DOWNLOAD_BYTES, MAX_ZIP_BYTES, MAX_ZIP_ENTRIES } from "./config";
 import { FileLimitError, FileNotFoundError, FilePathEscapeError } from "./errors";
-import { formatBytes } from "./format";
+import { formatFileSize } from "@/lib/utils";
 import { baseName, relativeToRoot } from "./paths";
 import { isDotfile, type FileProvider } from "./provider";
 
@@ -70,7 +70,7 @@ export async function planZip(
       totalBytes += stat.size;
       if (stat.size > MAX_DOWNLOAD_BYTES) {
         throw new FileLimitError(
-          `${baseName(path)} is larger than ${formatBytes(MAX_DOWNLOAD_BYTES)} and cannot be zipped.`,
+          `${baseName(path)} is larger than ${formatFileSize(MAX_DOWNLOAD_BYTES)} and cannot be zipped.`,
         );
       }
       if (entries.length >= MAX_ZIP_ENTRIES) {
@@ -80,7 +80,7 @@ export async function planZip(
       }
       if (totalBytes > MAX_ZIP_BYTES) {
         throw new FileLimitError(
-          `That selection is larger than ${formatBytes(MAX_ZIP_BYTES)}. Pick fewer, or a smaller folder.`,
+          `That selection is larger than ${formatFileSize(MAX_ZIP_BYTES)}. Pick fewer, or a smaller folder.`,
         );
       }
       entries.push({ name, path, size: stat.size, modified: stat.modified });

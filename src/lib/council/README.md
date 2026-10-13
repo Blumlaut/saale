@@ -26,6 +26,7 @@ pauses), or the room simply goes quiet.
 | `accounts.ts`     | council → sandbox key → Open Terminal account                                                    |
 | `commands.ts`     | One-shot terminal commands (account lookup, account deletion)                                    |
 | `sandbox.ts`      | The council's confined file operations and workspace lifecycle                                   |
+| `files.ts`        | The council's workspace as a file-browser target (admin gate, sandbox identity)                  |
 | `room.ts`         | The room's read model (one shape for tools, prompts, loop and UI)                                |
 | `prompt.ts`       | The member's system prompt and each turn's prompt                                                |
 | `tools.ts`        | `council_post`, `council_read`, `council_vote_stop`                                              |
@@ -80,8 +81,11 @@ account` in memory and does not re-check `/etc/passwd`, so that id would fail
 - The terminal container is shared with the owner's own workspace by design of
   `OPEN_TERMINAL_MULTI_USER`: `/tmp` and `/proc` are visible to every account in
   it, as they are for any tenant. Home directories are not.
-- A council's files are invisible to the owner unless a member pastes content
-  into the room. There is no council file browser yet.
+- The workspace is browsable. `/dashboard/council/<id>/files` opens the same
+  reusable file browser a user's own files will use, pointed at the council's
+  sandbox root: list, preview, upload, download, multi-select zips, rename,
+  delete. It runs as the sandbox identity, so it sees exactly what a member
+  sees and nothing else (`src/lib/files/`).
 - A run is declared abandoned by the sweep when it has not heartbeated for 90s.
   The heartbeat is a timer (15s), so a process whose event loop is blocked for
   longer than that could have a live run marked failed. Nothing in a council
@@ -121,6 +125,12 @@ Nothing outside the module depends on it. To remove the feature:
    `User`, and generate a migration.
 8. `e2e/modal-scenarios.ts` — drop the council scenarios.
 9. `docker-compose.yml` and `.env.example` — drop the `COUNCIL_ENABLED` entries.
+
+`src/lib/files/` and `src/components/files/` are **not** part of the module and
+stay: they are a generic workspace browser. Only two things in them are
+council-aware — the `council:` branch in `src/lib/files/request.ts` (and its
+import of `src/lib/council/files.ts`) and the page under
+`src/app/dashboard/council/<id>/files/`.
 
 ## Tests
 

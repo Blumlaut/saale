@@ -14,7 +14,7 @@ import { useCouncilStream } from "@/components/council/use-council-stream";
 import { fetchJson, postJson } from "@/lib/http";
 import { COUNCIL_ORCHESTRATIONS, MAX_ROOM_PAGE } from "@/lib/council/config";
 import type { CouncilDetail, CouncilMessageView } from "@/types/council";
-import { ChevronLeft, Loader2, Square } from "lucide-react";
+import { ChevronLeft, FolderOpen, Loader2, Square } from "lucide-react";
 
 /**
  * The council room.
@@ -150,6 +150,14 @@ export default function CouncilRoomPage() {
               )}
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-2">
+              <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
+                <Link
+                  href={`/dashboard/council/${councilId}/files`}
+                  aria-label="Council workspace files"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                </Link>
+              </Button>
               {running && (
                 <Button
                   type="button"

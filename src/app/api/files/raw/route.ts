@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { MAX_DOWNLOAD_BYTES, MAX_PREVIEW_BYTES } from "@/lib/files/config";
 import { FileLimitError, FileNotFoundError } from "@/lib/files/errors";
-import { formatBytes } from "@/lib/files/format";
+import { formatFileSize } from "@/lib/utils";
 import { contentDisposition, contentEtag, matchesEtag } from "@/lib/files/http";
 import { inlineSafeType } from "@/lib/files/mime";
 import { baseName } from "@/lib/files/paths";
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const name = baseName(filePath);
     if (stat.size > MAX_DOWNLOAD_BYTES) {
       throw new FileLimitError(
-        `${name} is ${formatBytes(stat.size)} — larger than the ${formatBytes(MAX_DOWNLOAD_BYTES)} limit for opening a file here.`,
+        `${name} is ${formatFileSize(stat.size)} — larger than the ${formatFileSize(MAX_DOWNLOAD_BYTES)} limit for opening a file here.`,
       );
     }
     if (!download && stat.size > MAX_PREVIEW_BYTES) {
