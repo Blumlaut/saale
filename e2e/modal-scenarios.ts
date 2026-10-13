@@ -458,6 +458,71 @@ async function mockCalendarSubscriptions(page: Page) {
   });
 }
 
+/**
+ * One council with two members, so the list, its row menu and the edit dialog
+ * all have something to open against without touching the real API.
+ */
+const COUNCIL_ID = "e2e-council";
+const COUNCIL_NAME = "Launch review board with a very long name that must truncate";
+
+const COUNCIL_SUMMARY = {
+  id: COUNCIL_ID,
+  name: COUNCIL_NAME,
+  brief: "Decide whether the launch is ready, name the risks, and stop when the council agrees.",
+  orchestration: "parallel",
+  stopVoteThreshold: "majority",
+  toolConfig: { terminal: true },
+  maxDurationSeconds: null,
+  maxTokens: null,
+  maxCostUsd: null,
+  status: "idle",
+  sandboxReady: true,
+  memberCount: 2,
+  enabledMemberCount: 2,
+  lastRunAt: NOW,
+  createdAt: NOW,
+};
+
+const COUNCIL_DETAIL = {
+  ...COUNCIL_SUMMARY,
+  members: [
+    {
+      id: "e2e-member-alice",
+      name: "alice",
+      instructions: "Check the numbers and challenge the assumptions.",
+      modelProvider: null,
+      modelName: null,
+      thinkingLevel: "default",
+      toolConfig: null,
+      enabled: true,
+    },
+    {
+      id: "e2e-member-bob",
+      name: "bob",
+      instructions: "Own the launch checklist.",
+      modelProvider: null,
+      modelName: null,
+      thinkingLevel: "default",
+      toolConfig: null,
+      enabled: true,
+    },
+  ],
+  runs: [],
+  lastSeq: 0,
+  activeRun: null,
+};
+
+async function mockCouncils(page: Page) {
+  await page.route(/\/api\/council(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: { councils: [COUNCIL_SUMMARY] } });
+  });
+  await page.route(/\/api\/council\/[^/]+(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: { council: COUNCIL_DETAIL } });
+  });
+}
+
 /** Chat fixtures are created through the real API; cached for the whole run. */
 let chatSessionId: string | null = null;
 
@@ -965,6 +1030,34 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: SETTINGS,
     sources: ["src/components/auth/two-factor-dialog.tsx"],
     skip: "only reachable once a user has enabled 2FA, which the shared e2e account never does",
+  },
+
+  // ── Council ───────────────────────────────────────────────────────────────
+  {
+    name: "council · new council",
+    path: "/dashboard/council",
+    sources: ["src/components/council/council-dialog.tsx"],
+    open: (page) => click(page, 'button[aria-label="New council"]'),
+  },
+  {
+    name: "council · edit council",
+    path: "/dashboard/council",
+    sources: ["src/components/council/council-dialog.tsx"],
+    mock: mockCouncils,
+    open: async (page) => {
+      await click(page, 'button[aria-label^="Actions for"]');
+      await click(page, '[role="menuitem"]:has-text("Edit")');
+    },
+  },
+  {
+    name: "council · delete council confirmation",
+    path: "/dashboard/council",
+    sources: ["src/app/dashboard/council/page.tsx"],
+    mock: mockCouncils,
+    open: async (page) => {
+      await click(page, 'button[aria-label^="Actions for"]');
+      await click(page, '[role="menuitem"]:has-text("Delete")');
+    },
   },
 
   // ── Admin ─────────────────────────────────────────────────────────────────
