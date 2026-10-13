@@ -76,6 +76,7 @@ import { runCouncilLoop } from "@/lib/council/orchestrator";
 import {
   beginRun,
   finishRun,
+  lastRoomSeq,
   loadCouncil,
   markSandboxReady,
   setCouncilStatus,
@@ -241,6 +242,20 @@ describe("startCouncilRun", () => {
     const plan = vi.mocked(runCouncilLoop).mock.calls[0]![0];
     expect(plan.openingMemberIds).toEqual(["m1"]);
     expect(beginRun).toHaveBeenCalledWith(expect.objectContaining({ triggerMessageId: "msg-1" }));
+  });
+
+  it("reads the room's position before taking the slot, so a racing message is absorbed", async () => {
+    // The loop absorbs everything after this seq. Read after the reservation
+    // instead, and a message the owner sent while the slot was being taken (and
+    // which found the council busy) would be seen by nobody.
+    vi.mocked(lastRoomSeq).mockResolvedValue(12);
+
+    await startCouncilRun({ councilId: "council-1", userId: "user-1" });
+
+    expect(vi.mocked(lastRoomSeq).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(beginRun).mock.invocationCallOrder[0]!,
+    );
+    expect(vi.mocked(runCouncilLoop).mock.calls[0]![0].startedAfterSeq).toBe(12);
   });
 
   it("announces the run, then records its outcome and releases the council", async () => {
