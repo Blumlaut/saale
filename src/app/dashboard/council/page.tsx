@@ -94,7 +94,7 @@ export default function CouncilPage() {
   return (
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
-        <GlassPanel className="flex h-full flex-col overflow-hidden">
+        <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
           {/* Toolbar — functional context left, actions right, icon-only on mobile */}
           <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 md:px-6">
             <span className="console-label min-w-0 truncate">
