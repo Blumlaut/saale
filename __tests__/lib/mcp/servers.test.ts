@@ -99,6 +99,19 @@ describe("MCP server loading", () => {
     const { entries } = await loadUserMcpServers(USER_ID);
     expect(entries[0]?.config).not.toHaveProperty("headers");
   });
+
+  it("maps servers for OAuth by the key Pi derives tool names from", async () => {
+    mockFindMany.mockResolvedValue([row({ name: "home-assistant" })]);
+
+    const { oauthServers } = await loadUserMcpServers(USER_ID);
+
+    expect(oauthServers.get("home_assistant")).toEqual({
+      id: "srv-1",
+      userId: USER_ID,
+      name: "home-assistant",
+      url: "https://homeassistant.local:8123/api/mcp",
+    });
+  });
 });
 
 describe("readMcpToken", () => {

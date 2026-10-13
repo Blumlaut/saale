@@ -31,6 +31,7 @@ import { StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { getUploadsDir } from "@/lib/uploads";
+import { createMcpAuthProvider, type McpOAuthServer } from "./oauth";
 import { isMcpToolPolicy, mcpNameKey, type McpToolPolicy } from "./shared";
 
 /** The row shape the Pi-config builder needs. */
@@ -79,6 +80,8 @@ export interface UserMcpServers {
   entries: McpServerEntry[];
   /** Approval policy per server, keyed by `mcpNameKey(name)`. */
   policies: Record<string, McpToolPolicy>;
+  /** Server identity for OAuth, keyed by `mcpNameKey(name)`. */
+  oauthServers: Map<string, McpOAuthServer>;
 }
 
 /**
@@ -93,6 +96,7 @@ export async function loadUserMcpServers(userId: string): Promise<UserMcpServers
 
   const entries: McpServerEntry[] = [];
   const policies: Record<string, McpToolPolicy> = {};
+  const oauthServers = new Map<string, McpOAuthServer>();
 
   for (const server of servers) {
     entries.push({
@@ -101,12 +105,17 @@ export async function loadUserMcpServers(userId: string): Promise<UserMcpServers
       source: "Saale settings",
       scope: "extension",
     });
-    policies[mcpNameKey(server.name)] = isMcpToolPolicy(server.toolPolicy)
-      ? server.toolPolicy
-      : "ask";
+    const key = mcpNameKey(server.name);
+    policies[key] = isMcpToolPolicy(server.toolPolicy) ? server.toolPolicy : "ask";
+    oauthServers.set(key, {
+      id: server.id,
+      userId: server.userId,
+      name: server.name,
+      url: server.url,
+    });
   }
 
-  return { entries, policies };
+  return { entries, policies, oauthServers };
 }
 
 /** Where a user's MCP server log messages are appended. */
@@ -120,7 +129,7 @@ export async function getMcpLogPath(userId: string): Promise<string> {
 
 /**
  * Transport for a user's server: streamable HTTP, without Pi's long-lived
- * server-to-client stream and without Pi's OAuth provider.
+ * server-to-client stream.
  *
  * The GET stream: Pi opens it by default to receive server-initiated
  * notifications. Pooled sessions are evicted with `session.dispose()`, which
@@ -130,24 +139,34 @@ export async function getMcpLogPath(userId: string): Promise<string> {
  * price is that a server whose tool list changes is only re-read on the next
  * connect (a config change already rebuilds the session).
  *
- * The auth provider: Saale authenticates with the token the user stored, and
- * cannot complete the interactive sign-in Pi's provider exists for. Pi reads
- * that provider's credentials from `<agent directory>/mcp-auth.json` — a
- * *host-wide* file shared by the operator's Pi CLI and every tenant, keyed by
- * server name and URL — so a session would silently use a sign-in the user
- * never made. Better a plain 401 the settings page explains.
+ * Auth: a server with a stored bearer token sends it, as before. A server
+ * without one authenticates with OAuth through Saale's own provider, whose
+ * credentials live in the database per user (`lib/mcp/oauth.ts`) — never in
+ * Pi's host-wide `mcp-auth.json`, which the operator's Pi CLI and every tenant
+ * share. When no sign-in is stored, the provider raises
+ * `McpOAuthAuthorizationRequiredError`, and the settings page offers the
+ * browser sign-in that the agent session cannot perform.
  */
-const createUserMcpTransport: McpTransportFactory = (entry) => {
-  const config = entry.config;
-  if (!("url" in config)) {
-    throw new Error(`MCP server "${entry.name}" must be configured with a URL`);
-  }
-  return new StreamableHttpTransport({
-    url: config.url,
-    ...(config.headers ? { headers: config.headers } : {}),
-    openGetStream: false,
-  });
-};
+function createUserMcpTransport(servers: Map<string, McpOAuthServer>): McpTransportFactory {
+  return (entry) => {
+    const config = entry.config;
+    if (!("url" in config)) {
+      throw new Error(`MCP server "${entry.name}" must be configured with a URL`);
+    }
+
+    const hasAuthorization = Object.keys(config.headers ?? {}).some(
+      (header) => header.toLowerCase() === "authorization",
+    );
+    const oauthServer = hasAuthorization ? undefined : servers.get(mcpNameKey(entry.name));
+
+    return new StreamableHttpTransport({
+      url: config.url,
+      ...(config.headers ? { headers: config.headers } : {}),
+      ...(oauthServer ? { authProvider: createMcpAuthProvider(oauthServer) } : {}),
+      openGetStream: false,
+    });
+  };
+}
 
 export interface UserMcpExtension {
   extension: ExtensionFactory;
@@ -163,7 +182,7 @@ export interface UserMcpExtension {
  * `evictUserSessions` in `lib/pi/agent-pool.ts`).
  */
 export async function createUserMcpExtension(userId: string): Promise<UserMcpExtension | null> {
-  const { entries, policies } = await loadUserMcpServers(userId);
+  const { entries, policies, oauthServers } = await loadUserMcpServers(userId);
   if (entries.length === 0) return null;
 
   const logPath = await getMcpLogPath(userId);
@@ -171,13 +190,14 @@ export async function createUserMcpExtension(userId: string): Promise<UserMcpExt
   const extension = createMcpExtension({
     // Pi asks the loader once, at session start.
     loadConfig: (): LoadedMcpConfig => ({ servers: entries, errors: [] }),
-    createTransport: createUserMcpTransport,
+    createTransport: createUserMcpTransport(oauthServers),
     logPath,
-    // There is no `/mcp` overlay in a hosted app, so an OAuth sign-in cannot be
-    // completed. Refuse loudly instead of hanging: the settings page's
-    // connection test reports the same thing to the user.
+    // There is no `/mcp` overlay in a hosted app, so an OAuth sign-in is
+    // completed from the settings page instead (lib/mcp/oauth.ts). Nothing
+    // should reach this: a server that needs a sign-in fails the connection
+    // with `McpOAuthAuthorizationRequiredError` rather than redirecting here.
     openUrl: (url) => {
-      console.error(`MCP server requires an OAuth sign-in, which Saale cannot complete: ${url}`);
+      console.error(`MCP server requires an OAuth sign-in started from Saale settings: ${url}`);
     },
     // Servers live in the database — never write a host `mcp.json`.
     updateConfig: () => {

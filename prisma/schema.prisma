@@ -45,6 +45,7 @@ model User {
   githubAccounts     GitHubAccount[]
   infraMachines      InfraMachine[]
   mcpServers         McpServer[]
+  mcpOAuthCredentials McpOAuthCredential[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -891,12 +892,32 @@ model McpServer {
   toolPolicy     String   @default("ask")
   enabled        Boolean  @default(true)
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthCredential McpOAuthCredential?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@unique([userId, name])
   @@index([userId])
   @@map("McpServer")
+}
+
+/// OAuth credentials for one MCP server: Pi's client registration, tokens and
+/// in-flight PKCE state, as one encrypted JSON blob (AES-256-GCM via lib/crypto).
+/// A URL change discards the state — Pi ignores state for another server URL.
+model McpOAuthCredential {
+  serverId       String    @id
+  userId         String
+  /// Server URL the stored state belongs to, for detecting a reused endpoint.
+  serverUrl      String    @db.Text
+  /// AES-256-GCM encrypted JSON of Pi's `McpOAuthState`.
+  encryptedState String    @db.Text
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server         McpServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("McpOAuthCredential")
 }
 
 /// Agent-maintained notes about a machine.

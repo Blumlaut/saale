@@ -58,9 +58,8 @@ describe("probeMcpServer", () => {
     });
 
     const message = await probeMcpServer({ url: fake.url }).catch((err) => describeProbeError(err));
-    expect(message).toContain("401");
     expect(message).toContain("OAuth");
-    expect(message).toContain("access token");
+    expect(message).toContain("Sign in");
   });
 
   it("keeps a plain 401 a token problem", async () => {

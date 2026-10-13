@@ -6,7 +6,9 @@
  * reports the tools the server offers.
  */
 
+import type { AuthProvider } from "@earendil-works/pi-mcp";
 import { McpAuthRequiredError, McpClient, StreamableHttpTransport } from "@earendil-works/pi-mcp";
+import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 
 /** Handshake and tool listing must not hang a settings request. */
 const PROBE_TIMEOUT_MS = 15_000;
@@ -22,16 +24,25 @@ export interface McpProbeResult {
 /** Saale's client identity during the MCP handshake. */
 const CLIENT_INFO = { name: "saale", version: "1" };
 
+/**
+ * Whether a failed probe means "this server wants an OAuth sign-in" rather than
+ * a broken token or endpoint. The caller uses it to offer the sign-in button.
+ */
+export function isMcpOAuthRequired(err: unknown): boolean {
+  return err instanceof McpOAuthAuthorizationRequiredError || isOAuthChallenge(err);
+}
+
 /** One-line, printable message for a failed probe (invalid URL, auth, transport). */
 export function describeProbeError(err: unknown): string {
   if (err instanceof Error) {
+    if (isMcpOAuthRequired(err)) {
+      return "This server asks clients to sign in with OAuth. Use Sign in to connect it.";
+    }
+
     // The MCP client wraps HTTP failures; the status is the actionable part.
     const status = (err as { status?: unknown }).status;
     if (typeof status === "number") {
-      const message = `${err.message} (HTTP ${status})`;
-      return isOAuthChallenge(err)
-        ? `${message}. This server asks clients to sign in with OAuth, which Saale does not support: use an access token instead.`
-        : message;
+      return `${err.message} (HTTP ${status})`;
     }
     return err.message;
   }
@@ -43,7 +54,7 @@ export function describeProbeError(err: unknown): string {
  * challenge advertising the resource's metadata. Such a server has no token to
  * mistype, so "check your token" would send the user the wrong way.
  */
-function isOAuthChallenge(err: Error): boolean {
+function isOAuthChallenge(err: unknown): boolean {
   return (
     err instanceof McpAuthRequiredError &&
     /bearer/i.test(err.wwwAuthenticate ?? "") &&
@@ -53,17 +64,22 @@ function isOAuthChallenge(err: Error): boolean {
 
 /**
  * Connect to an MCP server and list what it offers.
- * Throws when the server cannot be reached, rejects the credentials, or
- * requires an OAuth sign-in Saale cannot perform.
+ *
+ * `authProvider` carries a stored OAuth sign-in for a server that has one;
+ * `token` is a bearer token the user supplied. Throws when the server cannot be
+ * reached, rejects the credentials, or requires an OAuth sign-in Saale cannot
+ * complete without the user.
  */
 export async function probeMcpServer(options: {
   url: string;
   token?: string | null;
+  authProvider?: AuthProvider;
 }): Promise<McpProbeResult> {
   const client = new McpClient({ ...CLIENT_INFO, requestTimeoutMs: PROBE_TIMEOUT_MS });
   const transport = new StreamableHttpTransport({
     url: options.url,
     ...(options.token ? { headers: { Authorization: `Bearer ${options.token}` } } : {}),
+    ...(options.authProvider ? { authProvider: options.authProvider } : {}),
     // No long-lived server-to-client stream for a one-shot check, and no
     // retries: a probe either works now or reports why it did not.
     openGetStream: false,

@@ -4,13 +4,21 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 import { McpServerSheet } from "@/app/dashboard/settings/components/mcp-server-sheet";
-import type { McpServerInput } from "@/hooks/use-mcp-servers";
+import type { McpServer, McpServerInput } from "@/hooks/use-mcp-servers";
 
 type Props = Parameters<typeof McpServerSheet>[0];
 
 function renderSheet(overrides: Partial<Props> = {}) {
   const onSave = vi.fn().mockResolvedValue(undefined);
   const onTest = vi.fn().mockResolvedValue({ success: true, tools: [] });
+  const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null });
+  const onOAuthStatus = vi.fn().mockResolvedValue({
+    status: "pending",
+    error: null,
+    authorizationUrl: null,
+    hasOAuth: false,
+  });
+  const onSignOutOAuth = vi.fn().mockResolvedValue(undefined);
   render(
     <McpServerSheet
       open
@@ -18,12 +26,19 @@ function renderSheet(overrides: Partial<Props> = {}) {
       server={null}
       onSave={onSave}
       onTest={onTest}
+      onStartOAuth={onStartOAuth}
+      onOAuthStatus={onOAuthStatus}
+      onSignOutOAuth={onSignOutOAuth}
       {...overrides}
     />,
   );
   return {
     onSave: (overrides.onSave ?? onSave) as unknown as ReturnType<typeof vi.fn>,
     onTest: (overrides.onTest ?? onTest) as unknown as ReturnType<typeof vi.fn>,
+    onStartOAuth: (overrides.onStartOAuth ?? onStartOAuth) as unknown as ReturnType<typeof vi.fn>,
+    onSignOutOAuth: (overrides.onSignOutOAuth ?? onSignOutOAuth) as unknown as ReturnType<
+      typeof vi.fn
+    >,
     // The sheet labels sit next to the inputs without `htmlFor`, so the fields
     // are found by their placeholder.
     name: screen.getByPlaceholderText("homeassistant") as HTMLInputElement,
@@ -92,5 +107,56 @@ describe("McpServerSheet name field", () => {
     // Editing the field again clears its message.
     fireEvent.change(url, { target: { value: "https://example.com/mcp" } });
     expect(screen.queryByText(/must be an http\(s\) URL/i)).not.toBeInTheDocument();
+  });
+});
+
+function savedServer(overrides: Partial<McpServer> = {}): McpServer {
+  return {
+    id: "srv-1",
+    name: "linear",
+    url: "https://mcp.linear.app/mcp",
+    description: "",
+    toolPolicy: "ask",
+    enabled: true,
+    hasToken: false,
+    hasOAuth: false,
+    createdAt: "2026-01-01T09:00:00.000Z",
+    updatedAt: "2026-01-01T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("McpServerSheet OAuth sign-in", () => {
+  it("starts a sign-in and opens the authorization URL", async () => {
+    const authorizationUrl = "https://auth.linear.app/authorize?client_id=saale&state=abc";
+    const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+
+    renderSheet({ server: savedServer(), onStartOAuth });
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    await waitFor(() => expect(onStartOAuth).toHaveBeenCalledWith("srv-1"));
+    expect(open).toHaveBeenCalledWith(authorizationUrl, "_blank", "noopener,noreferrer");
+    // The URL is also reachable when the popup was blocked.
+    expect(await screen.findByText(authorizationUrl)).toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  it("shows a stored sign-in and signs out", async () => {
+    const onSignOutOAuth = vi.fn().mockResolvedValue(undefined);
+
+    renderSheet({ server: savedServer({ hasOAuth: true }), onSignOutOAuth });
+
+    expect(screen.getByText(/signed in/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
+
+    await waitFor(() => expect(onSignOutOAuth).toHaveBeenCalledWith("srv-1"));
+  });
+
+  it("asks for a save before signing in to a server that is not stored yet", () => {
+    renderSheet();
+
+    expect(screen.getByText(/save this server first/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^sign in$/i })).not.toBeInTheDocument();
   });
 });

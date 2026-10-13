@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { clearMcpOAuthCredential, clearMcpOAuthFlow, hasMcpOAuthCredential } from "@/lib/mcp/oauth";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 import {
   isMcpToolPolicy,
@@ -88,9 +89,16 @@ export async function PATCH(
 
   const server = await prisma.mcpServer.update({ where: { id: serverId, userId }, data });
 
+  // OAuth credentials belong to the endpoint they were issued for. Pi ignores
+  // state for another URL anyway; deleting it keeps the list honest and forces
+  // a fresh sign-in against the new server.
+  const urlChanged = typeof data.url === "string" && data.url !== existing.url;
+  if (urlChanged) await clearMcpOAuthCredential(userId, serverId);
+
   await evictUserSessions(userId);
 
-  return NextResponse.json({ server: toMcpServerView(server) });
+  const hasOAuth = urlChanged ? false : await hasMcpOAuthCredential(userId, serverId);
+  return NextResponse.json({ server: toMcpServerView(server, hasOAuth) });
 }
 
 /**
@@ -109,6 +117,9 @@ export async function DELETE(
   const deleted = await prisma.mcpServer.deleteMany({ where: { id: serverId, userId } });
   if (deleted.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // The credential row cascades with the server; the short-lived sign-in state
+  // does not, so forget it explicitly.
+  await clearMcpOAuthFlow(serverId);
   await evictUserSessions(userId);
 
   return NextResponse.json({ ok: true });

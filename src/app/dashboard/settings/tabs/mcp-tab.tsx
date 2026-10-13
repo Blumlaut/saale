@@ -31,8 +31,18 @@ const POLICY_LABELS: Record<string, string> = {
  * user starts, so a configured server "just works" in chat, Telegram and jobs.
  */
 export function McpTab() {
-  const { servers, loading, updateServer, deleteServer, createServer, testServer } =
-    useMcpServers();
+  const {
+    servers,
+    loading,
+    updateServer,
+    deleteServer,
+    createServer,
+    testServer,
+    startOAuth,
+    readOAuthStatus,
+    signOutOAuth,
+    loadServers,
+  } = useMcpServers();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<McpServer | null>(null);
@@ -134,6 +144,11 @@ export function McpTab() {
                             Token
                           </Badge>
                         )}
+                        {server.hasOAuth && (
+                          <Badge variant="outline" className="shrink-0">
+                            OAuth
+                          </Badge>
+                        )}
                         {!server.enabled && (
                           <Badge variant="outline" className="shrink-0">
                             Disabled
@@ -185,10 +200,18 @@ export function McpTab() {
 
       <McpServerSheet
         open={sheetOpen}
-        onOpenChange={setSheetOpen}
+        onOpenChange={(open) => {
+          setSheetOpen(open);
+          // A sign-in completed in the browser changes `hasOAuth`, which the
+          // open sheet cannot see; refresh once it closes.
+          if (!open) void loadServers();
+        }}
         server={editing}
         onSave={handleSave}
         onTest={testServer}
+        onStartOAuth={startOAuth}
+        onOAuthStatus={readOAuthStatus}
+        onSignOutOAuth={signOutOAuth}
       />
 
       <AlertDialog

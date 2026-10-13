@@ -96,21 +96,26 @@ export interface McpServerView {
   toolPolicy: McpToolPolicy;
   enabled: boolean;
   hasToken: boolean;
+  /** Whether an OAuth credential is stored for this server. */
+  hasOAuth: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-export function toMcpServerView(server: {
-  id: string;
-  name: string;
-  url: string;
-  description: string;
-  encryptedToken: string | null;
-  toolPolicy: string;
-  enabled: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}): McpServerView {
+export function toMcpServerView(
+  server: {
+    id: string;
+    name: string;
+    url: string;
+    description: string;
+    encryptedToken: string | null;
+    toolPolicy: string;
+    enabled: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  hasOAuth = false,
+): McpServerView {
   return {
     id: server.id,
     name: server.name,
@@ -119,6 +124,7 @@ export function toMcpServerView(server: {
     toolPolicy: isMcpToolPolicy(server.toolPolicy) ? server.toolPolicy : "ask",
     enabled: server.enabled,
     hasToken: server.encryptedToken !== null,
+    hasOAuth,
     createdAt: server.createdAt.toISOString(),
     updatedAt: server.updatedAt.toISOString(),
   };

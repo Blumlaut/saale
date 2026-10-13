@@ -317,18 +317,18 @@ loadConfig })`. Never let the MCP extension read the host's Pi directory: it
   transport every evicted session would leak one open stream per server for the
   life of the process. The trade-off: a server whose tool list changes is
   re-read on the next connect, not mid-session.
-- **OAuth servers are unsupported, and the host's sign-ins must stay out of
-  reach.** Saale authenticates with the token the user stored. Pi's OAuth
-  sign-in needs a browser, a loopback callback, and the `/mcp` overlay, none of
-  which a hosted web app has, so the loader overrides `openUrl` to log and a
-  token-less HTTP server just gets a 401 (the settings test explains it).
-  `createUserMcpTransport` therefore drops Pi's `authProvider` entirely: its
-  credentials live in `<agent directory>/mcp-auth.json`, a _host-wide_ file
-  shared by the operator's Pi CLI and every tenant and keyed by server name and
-  URL, so a session would otherwise silently present a sign-in the user never
-  made. Adding OAuth later means `McpOAuthProvider` from
-  `@earendil-works/pi-mcp/oauth` with Saale's own redirect URI and a per-user
-  store — not re-enabling the default provider.
+- **OAuth is per user, and the host's sign-ins must stay out of reach.**
+  `lib/mcp/oauth.ts` authenticates a token-less server with Pi's
+  `McpOAuthProvider`/`authorizeMcp`, against Saale's own encrypted
+  `McpOAuthCredential` store and Saale's public redirect URI
+  (`<BETTER_AUTH_URL>/api/mcp/oauth/callback`) — never the default provider,
+  whose credentials live in `<agent directory>/mcp-auth.json`, a _host-wide_ file
+  shared by the operator's Pi CLI and every tenant. The agent session only sends
+  and refreshes the stored token (a Redis lock serialises refreshes, since they
+  rotate); when it cannot, it throws `McpOAuthAuthorizationRequiredError`, which
+  the extension reports as `needs-auth`. The browser sign-in itself runs from the
+  settings page (`/oauth/start` → the callback), because a session cannot open
+  one.
 - **Interactive sessions only.** `createAgentResourceLoader` connects MCP for
   web chat and Telegram, which can both present an approval card. Unattended
   agent jobs pass no `interactive` context: they have no approval channel, so an
