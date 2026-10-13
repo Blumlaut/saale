@@ -191,6 +191,44 @@ describe("council_read", () => {
       /No member called "ghost"/,
     );
   });
+
+  it("says the room is empty rather than that nothing matched", async () => {
+    const { byName } = makeContext();
+    const result = await callExecute(byName("council_read"), {});
+    expect(result.content[0].text).toMatch(/room has no messages yet/);
+    expect(result.content[0].text).toMatch(/before you start work/);
+    expect(result.structuredContent).toMatchObject({ count: 0, lastSeq: 0 });
+  });
+
+  it("says nothing followed a cursor instead of implying an empty room", async () => {
+    const { byName } = makeContext({
+      read: vi.fn(async () => ({ messages: [], lastSeq: 12 })),
+    });
+    const result = await callExecute(byName("council_read"), { sinceSeq: 12 });
+    expect(result.content[0].text).toMatch(/Nothing has been posted after #12/);
+    expect(result.content[0].text).toMatch(/newest message is #12/);
+  });
+
+  it("points at the newer messages it did not return", async () => {
+    const { byName } = makeContext({
+      read: vi.fn(async () => ({
+        lastSeq: 40,
+        messages: [
+          {
+            seq: 1,
+            memberId: "m2",
+            authorName: "blade",
+            authorKind: "member" as const,
+            addressedNames: [],
+            content: "early",
+          },
+        ],
+      })),
+    });
+    const result = await callExecute(byName("council_read"), { limit: 1 });
+    expect(result.content[0].text).toMatch(/39 newer messages not shown/);
+    expect(result.content[0].text).toMatch(/sinceSeq: 1/);
+  });
 });
 
 describe("council_vote_stop", () => {
