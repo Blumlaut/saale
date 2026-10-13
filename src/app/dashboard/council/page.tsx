@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Page } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -28,13 +29,14 @@ import { deleteJson, fetchJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import type { CouncilDetail, CouncilSummary } from "@/types/council";
-import { Loader2, MoreVertical, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { FolderOpen, Loader2, MoreVertical, Pencil, Plus, Trash2, Users } from "lucide-react";
 
 /**
  * The council list — a single full-height panel whose first row is the toolbar.
  * There is no page title; the nav names the page.
  */
 export default function CouncilPage() {
+  const router = useRouter();
   const [councils, setCouncils] = useState<CouncilSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -194,6 +196,12 @@ export default function CouncilPage() {
                         <DropdownMenuItem onClick={() => void openEdit(council.id)}>
                           <Pencil className="mr-2 h-3.5 w-3.5" />
                           Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => router.push(`/dashboard/council/${council.id}/files`)}
+                        >
+                          <FolderOpen className="mr-2 h-3.5 w-3.5" />
+                          Files
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"

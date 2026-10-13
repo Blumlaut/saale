@@ -26,6 +26,12 @@ export const COUNCIL_E2E_ID = "e2e-council";
 export const COUNCIL_MEMBER_ID = "e2e-member-alice";
 export const COUNCIL_MEMBER_NAME = "alice";
 
+/** A file name with no break opportunity, for the phone-width guardrails. */
+export const FILES_LONG_NAME =
+  "9f2c4a1e7b3d5086a4c1e9f2b7d3a5086c4e1a9f2b7d3c5086a4e1b9f2c7d3a5.json";
+/** The file a modal scenario opens in the viewer. */
+export const FILES_PREVIEW_NAME = "e2e-report.md";
+
 const RUN_ID = "e2e-run-1";
 const NOW = "2026-10-13T14:00:00.000Z";
 const COUNCIL_NAME = "Launch review board with a very long name that must truncate";
@@ -237,4 +243,76 @@ export const COUNCIL_ROUTES = [
   "/dashboard/council",
   `/dashboard/council/${COUNCIL_E2E_ID}`,
   `/dashboard/council/${COUNCIL_E2E_ID}/member/${COUNCIL_MEMBER_ID}`,
+  `/dashboard/council/${COUNCIL_E2E_ID}/files`,
 ];
+
+/**
+ * The workspace listing the file browser renders.
+ *
+ * Values are chosen to stress the row layout on a phone: an unbreakable 64-char
+ * name, a folder, and a path deep enough to fill the breadcrumb.
+ */
+export const FILES_ROOT = `/home/${COUNCIL_E2E_ID}`;
+
+export const FILES_LISTING = {
+  target: {
+    id: `council:${COUNCIL_E2E_ID}`,
+    label: COUNCIL_NAME,
+    root: FILES_ROOT,
+    capabilities: { upload: true, createDirectory: true, rename: true, remove: true },
+  },
+  path: FILES_ROOT,
+  truncated: false,
+  entries: [
+    {
+      name: "artifacts",
+      path: `${FILES_ROOT}/artifacts`,
+      kind: "directory",
+      size: 4096,
+      modified: 1791904714445,
+      writable: true,
+    },
+    {
+      name: FILES_PREVIEW_NAME,
+      path: `${FILES_ROOT}/${FILES_PREVIEW_NAME}`,
+      kind: "file",
+      size: 2048,
+      modified: 1791904714445,
+      writable: true,
+    },
+    {
+      name: FILES_LONG_NAME,
+      path: `${FILES_ROOT}/${FILES_LONG_NAME}`,
+      kind: "file",
+      size: 512,
+      modified: 1791904714445,
+      writable: true,
+    },
+  ],
+};
+
+/** Answer the file API from the fixtures above. */
+export async function mockCouncilFiles(page: Page): Promise<void> {
+  await page.route(/\/api\/files\/list/, (route) => route.fulfill({ json: FILES_LISTING }));
+
+  // The viewer fetches text through the raw endpoint; anything else (a zip, a
+  // download) is answered as bytes so a click never hangs the page.
+  await page.route(/\/api\/files\/raw/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/markdown; charset=utf-8",
+      body:
+        "# e2e report\n\nA very long line that would overflow a phone if the viewer let it: " +
+        "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\n",
+    }),
+  );
+
+  await page.route(/\/api\/files\/zip/, (route) =>
+    route.fulfill({ status: 200, contentType: "application/zip", body: "" }),
+  );
+}
+
+/** Everything a council page needs, room and workspace alike. */
+export async function mockCouncilWorkspace(page: Page): Promise<void> {
+  await Promise.all([mockCouncilRoom(page), mockCouncilFiles(page)]);
+}

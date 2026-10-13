@@ -46,9 +46,34 @@ function overlayComponents(): string[] {
     .sort();
 }
 
+/**
+ * The page file a scenario's URL renders.
+ *
+ * A concrete id in a scenario URL still points at a dynamic route
+ * (`/dashboard/council/e2e-council/files` → `[councilId]/files/page.tsx`), so a
+ * segment that does not exist literally is matched against the app tree's
+ * `[param]` directories. Scenarios can therefore use the URLs a spec really
+ * visits rather than a synthetic `[councilId]`.
+ */
 function routeFile(route: string): string {
-  const segment = route.replace(/^\//, "");
-  return join(REPO_ROOT, "src", "app", segment, "page.tsx");
+  const segments = route.replace(/^\//, "").split("/").filter(Boolean);
+  let dir = join(REPO_ROOT, "src", "app");
+
+  for (const segment of segments) {
+    const exact = join(dir, segment);
+    if (existsSync(exact)) {
+      dir = exact;
+      continue;
+    }
+
+    const dynamic = existsSync(dir)
+      ? readdirSync(dir).find((name) => /^\[.+\]$/.test(name) && existsSync(join(dir, name)))
+      : undefined;
+    if (!dynamic) return join(dir, segment, "page.tsx");
+    dir = join(dir, dynamic);
+  }
+
+  return join(dir, "page.tsx");
 }
 
 /** Class strings in a component that use `grid` without declaring a base track. */

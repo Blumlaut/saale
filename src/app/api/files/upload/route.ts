@@ -5,7 +5,7 @@ import {
   MAX_UPLOAD_FILES,
   MAX_UPLOAD_TOTAL_BYTES,
 } from "@/lib/files/config";
-import { formatBytes } from "@/lib/files/format";
+import { formatFileSize } from "@/lib/utils";
 import { isSafeEntryName } from "@/lib/files/paths";
 import {
   childPath,
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const declared = Number(request.headers.get("content-length") ?? 0);
     if (declared > MAX_UPLOAD_TOTAL_BYTES) {
       return NextResponse.json(
-        { error: `Upload is larger than ${formatBytes(MAX_UPLOAD_TOTAL_BYTES)}` },
+        { error: `Upload is larger than ${formatFileSize(MAX_UPLOAD_TOTAL_BYTES)}` },
         { status: 413 },
       );
     }
