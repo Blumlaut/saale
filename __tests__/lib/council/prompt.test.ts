@@ -87,6 +87,7 @@ describe("buildCouncilMemberPrompt", () => {
 
 const MESSAGE = (seq: number, overrides: Partial<TurnMessage> = {}): TurnMessage => ({
   seq,
+  memberId: "m2",
   authorName: "blade",
   authorKind: "member",
   content: `message ${seq}`,

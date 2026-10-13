@@ -78,6 +78,23 @@ export const SANDBOX_KEY_LENGTH = 8;
  */
 export const WATCHDOG_GRACE_SECONDS = 90;
 
+/**
+ * How often an in-flight turn asks whether the run was stopped.
+ *
+ * The loop checks between turns, but a turn can be minutes long — an owner who
+ * presses Stop expects it to land while the model is still working, not after.
+ */
+export const ABORT_POLL_MS = 750;
+
+/**
+ * How often a running loop reports that it is alive.
+ *
+ * A single turn can legitimately run for minutes, so a heartbeat tied to turn
+ * boundaries would look identical to a dead loop. It is a timer instead, which
+ * is what makes "this run stopped reporting" mean the process went away.
+ */
+export const HEARTBEAT_MS = 15_000;
+
 /** Options for the room's mode selector. */
 export const COUNCIL_ORCHESTRATIONS: Array<{
   value: CouncilOrchestration;
