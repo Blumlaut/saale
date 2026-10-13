@@ -91,6 +91,13 @@ account` in memory and does not re-check `/etc/passwd`, so that id would fail
   longer than that could have a live run marked failed. Nothing in a council
   blocks the loop that long; the run is recoverable (start it again) and the
   record says `timeout`.
+- Stop and the budgets never wait for `session.abort()` to resolve. It resolves
+  only once the agent is idle, and a turn stuck in a tool that ignores the abort
+  signal — or a provider stream that never closes after the server went away —
+  keeps it busy indefinitely. The run ends on its own decision and lets the
+  abort land in the background. A turn that is completely silent (no tokens, no
+  thinking, no tool activity) for 10 minutes is ended as a failed turn by the
+  idle guard, so a hung provider cannot keep a run alive between budgets.
 
 ## Two switches
 

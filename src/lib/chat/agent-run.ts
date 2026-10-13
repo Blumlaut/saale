@@ -14,6 +14,7 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { createAgentIdleTimeout, DEFAULT_AGENT_IDLE_TIMEOUT_MS } from "@/lib/pi/agent-idle-timeout";
 import type { ImageContent } from "@/lib/pi/message-replay";
 import { createAndPool, get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
 import {
@@ -143,13 +144,45 @@ export async function dispatchChatRun(options: {
 }): Promise<boolean> {
   const { entry } = options;
   options.log?.("prompt", "sending prompt");
+
+  // A run can go completely silent — a provider whose stream never closes after
+  // the server it was talking to went away, or a tool that never returns — and
+  // `session.prompt()` would then never settle. `promptInFlight` stays set, the
+  // send queue sees a busy session, and the chat can never send again, which is
+  // exactly the state Stop is supposed to clear. Silence is the evidence: every
+  // session event resets the window, so a run that is streaming, thinking or
+  // running tools is never touched.
+  let rejectStall: (err: Error) => void = () => {};
+  const stalled = new Promise<never>((_resolve, reject) => {
+    rejectStall = reject;
+  });
+  const idleTimeout = createAgentIdleTimeout({
+    session: entry.session,
+    timeoutMs: DEFAULT_AGENT_IDLE_TIMEOUT_MS,
+    label: `chat:${options.sessionId}`,
+    onTimeout: () => {
+      // Not awaited: a session that will not settle must not hold the timeout.
+      void Promise.resolve(entry.session.abort()).catch((err) => {
+        console.error(`Failed to abort the stalled chat run for ${options.sessionId}:`, err);
+      });
+      rejectStall(
+        new Error(
+          `The generation stalled (no activity for ${Math.round(DEFAULT_AGENT_IDLE_TIMEOUT_MS / 60_000)} minutes).`,
+        ),
+      );
+    },
+  });
+
   try {
     const images = options.images ?? [];
-    await submitDeferringToCompaction(entry.session, () =>
-      images.length > 0
-        ? entry.session.prompt(options.content, { images })
-        : entry.session.prompt(options.content),
-    );
+    await Promise.race([
+      submitDeferringToCompaction(entry.session, () =>
+        images.length > 0
+          ? entry.session.prompt(options.content, { images })
+          : entry.session.prompt(options.content),
+      ),
+      stalled,
+    ]);
     entry.promptInFlight = false;
     options.log?.("prompt", "session.prompt() settled");
     return true;
@@ -165,5 +198,7 @@ export async function dispatchChatRun(options: {
     resetSessionEvents(options.sessionId).catch(console.error);
     options.onRunFailed?.(err);
     return false;
+  } finally {
+    idleTimeout.clear();
   }
 }

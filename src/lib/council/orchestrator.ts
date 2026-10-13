@@ -38,6 +38,7 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { createAgentIdleTimeout, DEFAULT_AGENT_IDLE_TIMEOUT_MS } from "@/lib/pi/agent-idle-timeout";
 import { buildFinalAssistantMessage, extractThinking } from "@/lib/pi/stream-logic";
 import type { ToolConfig, ToolExposureConfig } from "@/lib/pi/tool-categories";
 import {
@@ -171,6 +172,8 @@ export interface CouncilRunDeps {
   isAbortRequested: () => Promise<boolean>;
   /** How often an in-flight turn checks for a stop (test seam). */
   abortPollMs?: number;
+  /** How long a turn may be silent before it is treated as stalled (test seam). */
+  turnIdleTimeoutMs?: number;
 }
 
 export interface CouncilRunOutcome {
@@ -271,6 +274,15 @@ export async function runCouncilLoop(
   const totals = { inputTokens: 0, outputTokens: 0, cost: 0, turnCount: 0 };
   let stop: { reason: StopReason; error?: string } | null = null;
   let awaitingUser = false;
+  /**
+   * True once the run is being torn down rather than merely pausing.
+   *
+   * A hard stop ends the run, so a turn still unwinding must not post into a
+   * room nobody is following any more. A consensus stop is different: the
+   * in-flight turns are deliberately left to finish and post (their work is
+   * already paid for), so this is not simply `stop !== null`.
+   */
+  let halted = false;
 
   /** Wake a member: its inbox holds the seqs that addressed it. */
   const wake = (memberId: string, seq: number) => {
@@ -333,18 +345,38 @@ export async function runCouncilLoop(
   };
 
   /** Stop the run, aborting whatever is in flight when asked to. */
-  const requestStop = async (reason: StopReason, abort: boolean, error?: string) => {
+  const requestStop = (reason: StopReason, abort: boolean, error?: string) => {
     stop = { reason, ...(error ? { error } : {}) };
-    if (abort) await abortAll();
+    if (abort) {
+      halted = true;
+      abortAll();
+    }
   };
 
-  const abortAll = async () => {
-    await Promise.allSettled(
-      [...states.values()].map(async (state) => {
-        if (!state.session) return;
-        await state.session.session.abort();
-      }),
-    );
+  /** Request one member's abort, logging a failure instead of blocking on it. */
+  const abortSession = (state: MemberState) => {
+    const session = state.session?.session;
+    if (!session) return;
+    void Promise.resolve(session.abort()).catch((err) => {
+      console.error(`[council:${plan.runId}] Failed to abort ${state.plan.name}:`, err);
+    });
+  };
+
+  /**
+   * Ask every live member to stop, without waiting for any of them to become
+   * idle.
+   *
+   * `AgentSession.abort()` resolves only once the agent is idle, and a turn can
+   * stay busy far longer than the stop that ends it: a tool that ignores the
+   * abort signal, or a provider whose stream never closes after the server it
+   * was talking to went away, keeps `waitForIdle()` pending indefinitely.
+   * Awaiting that is what stranded the run — the loop sat in `abortAll` while
+   * the heartbeat kept the watchdog away, so neither Stop nor the wall-clock
+   * budget could ever land. The run has already decided to stop; the abort is
+   * requested and left to take effect on its own.
+   */
+  const abortAll = () => {
+    for (const state of states.values()) abortSession(state);
   };
 
   // ─── The member's view of the room: what its tools act on ──────────────────
@@ -355,6 +387,12 @@ export async function runCouncilLoop(
       members: targets,
 
       post: async ({ content, memberIds, addressesUser, addressedAll }) => {
+        // The run is over: a tool call that is still unwinding (a call the
+        // abort could not interrupt) must not append to a room nobody is
+        // following any more.
+        if (halted) {
+          throw new Error("The run was stopped, so this post was not delivered.");
+        }
         // Mentions are stored as names: the transcript renders without a join and
         // survives a member being renamed or removed.
         const mentioned = participants
@@ -547,12 +585,7 @@ export async function runCouncilLoop(
               watch,
               trigger: () => {
                 preempted = true;
-                void session.session.abort().catch((err) => {
-                  console.error(
-                    `[council:${plan.runId}] Failed to end ${state.plan.name}'s preempted turn:`,
-                    err,
-                  );
-                });
+                abortSession(state);
                 rejectPreempt(new Error("Turn ended early: this member was addressed again."));
               },
             };
@@ -568,14 +601,19 @@ export async function runCouncilLoop(
 
     try {
       await raceWithStops(session.session.prompt(prompt, { expandPromptTemplates: false }), [
-        deadlineWatch(deadline === null ? null : deadline - deps.now(), async () => {
-          stop = { reason: "budget:time" };
-          await session.session.abort();
-        }),
-        abortWatch(deps, async () => {
-          stop = { reason: "aborted" };
-          await session.session.abort();
-        }),
+        deadlineWatch(deadline === null ? null : deadline - deps.now(), () =>
+          requestStop("budget:time", true),
+        ),
+        abortWatch(deps, () => requestStop("aborted", true)),
+        // A stalled turn is this member's failure, not the run's end: the other
+        // members may be working fine, and a run in which every turn stalls
+        // ends on its own once no turn wakes anybody.
+        idleWatch(
+          session.session,
+          deps.turnIdleTimeoutMs ?? DEFAULT_AGENT_IDLE_TIMEOUT_MS,
+          `council:${plan.runId}:${state.plan.name}`,
+          () => abortSession(state),
+        ),
         preempt?.watch ?? null,
       ]);
     } catch (err) {
@@ -673,20 +711,20 @@ export async function runCouncilLoop(
       return false;
     });
     if (aborted) {
-      await requestStop("aborted", true);
+      requestStop("aborted", true);
       return true;
     }
     if (deadline !== null && deps.now() >= deadline) {
-      await requestStop("budget:time", true);
+      requestStop("budget:time", true);
       return true;
     }
     const { maxTokens, maxCostUsd } = plan.budget;
     if (maxTokens !== null && totals.inputTokens + totals.outputTokens >= maxTokens) {
-      await requestStop("budget:tokens", true);
+      requestStop("budget:tokens", true);
       return true;
     }
     if (maxCostUsd !== null && totals.cost >= maxCostUsd) {
-      await requestStop("budget:cost", true);
+      requestStop("budget:cost", true);
       return true;
     }
     if (awaitingUser) {
@@ -783,8 +821,7 @@ export async function runCouncilLoop(
     }
   } catch (err) {
     console.error(`[council:${plan.runId}] Run loop failed:`, err);
-    stop = { reason: "error", error: errorMessage(err) };
-    await abortAll();
+    requestStop("error", true, errorMessage(err));
   } finally {
     clearInterval(heartbeat);
     await settleRunning();
@@ -834,19 +871,21 @@ interface StopWatch {
   cancel: () => void;
 }
 
-/** Reject when the turn's time budget is reached. */
-function deadlineWatch(timeoutMs: number | null, onExpire: () => Promise<void>): StopWatch | null {
+/**
+ * Reject when the turn's time budget is reached.
+ *
+ * The callback requests the abort but is not awaited: the budget has already
+ * been spent, and a session that will not settle must not keep the run alive.
+ */
+function deadlineWatch(timeoutMs: number | null, onExpire: () => void): StopWatch | null {
   if (timeoutMs === null) return null;
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   const promise = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(
       () => {
-        void onExpire()
-          .catch((err) => {
-            console.error("Failed to stop a council turn on its time budget:", err);
-          })
-          .finally(() => reject(new Error("Turn stopped: the run's time budget was reached.")));
+        onExpire();
+        reject(new Error("Turn stopped: the run's time budget was reached."));
       },
       Math.max(0, timeoutMs),
     );
@@ -865,8 +904,9 @@ function deadlineWatch(timeoutMs: number | null, onExpire: () => Promise<void>):
  *
  * Polled rather than pushed: the request arrives on another request's stack
  * (another tab, another replica, the watchdog), and Redis is what carries it.
+ * The stop itself never waits on `abort()` — see `abortAll`.
  */
-function abortWatch(deps: CouncilRunDeps, onAbort: () => Promise<void>): StopWatch {
+function abortWatch(deps: CouncilRunDeps, onAbort: () => void): StopWatch {
   const pollMs = deps.abortPollMs ?? ABORT_POLL_MS;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let cancelled = false;
@@ -877,15 +917,13 @@ function abortWatch(deps: CouncilRunDeps, onAbort: () => Promise<void>): StopWat
       timer = setTimeout(() => {
         void deps
           .isAbortRequested()
-          .then(async (aborted) => {
+          .then((aborted) => {
             if (cancelled) return;
             if (!aborted) {
               poll();
               return;
             }
-            await onAbort().catch((err) => {
-              console.error("Failed to abort a council turn on a stop request:", err);
-            });
+            onAbort();
             reject(new Error("Turn stopped: the run was aborted."));
           })
           .catch((err) => {
@@ -905,6 +943,40 @@ function abortWatch(deps: CouncilRunDeps, onAbort: () => Promise<void>): StopWat
       if (timer) clearTimeout(timer);
     },
   };
+}
+
+/**
+ * Reject when a turn has gone completely silent.
+ *
+ * Budgets watch the *run*; this watches the *turn*. The loop heartbeats while a
+ * turn is in flight, so a model whose server went away — or a tool that never
+ * returns — leaves a run that looks perfectly alive and will not end on its own
+ * until its wall-clock budget (which may be unlimited). Silence is the
+ * evidence: every session event resets the window, so a turn that is still
+ * streaming, still thinking or still running tools is never touched.
+ */
+function idleWatch(
+  session: AgentSession,
+  timeoutMs: number,
+  label: string,
+  onStall: () => void,
+): StopWatch {
+  let reject: (err: Error) => void = () => {};
+  const promise = new Promise<never>((_resolve, rejectFn) => {
+    reject = rejectFn;
+  });
+
+  const idle = createAgentIdleTimeout({
+    session,
+    timeoutMs,
+    label,
+    onTimeout: () => {
+      onStall();
+      reject(new Error(`Turn stalled: no activity for ${Math.round(timeoutMs / 1000)}s.`));
+    },
+  });
+
+  return { promise, cancel: () => idle.clear() };
 }
 
 interface TurnTranscript {

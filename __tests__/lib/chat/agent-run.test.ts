@@ -62,6 +62,7 @@ vi.mock("@/lib/chat/active-tool-state", () => ({
 
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "@/lib/chat/agent-run";
 import type { PooledChatSession } from "@/lib/chat/agent-run";
+import { DEFAULT_AGENT_IDLE_TIMEOUT_MS } from "@/lib/pi/agent-idle-timeout";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 const USER_ID = "user-1";
@@ -77,7 +78,11 @@ function makeEntry() {
   return {
     promptInFlight: false,
     lastPromptedMessageId: null as string | null,
-    session: { prompt: vi.fn().mockResolvedValue(undefined) },
+    session: {
+      prompt: vi.fn().mockResolvedValue(undefined),
+      subscribe: vi.fn(() => () => {}),
+      abort: vi.fn().mockResolvedValue(undefined),
+    },
   } as unknown as PooledChatSession;
 }
 
@@ -247,5 +252,37 @@ describe("dispatchChatRun", () => {
     expect(mockPublish).toHaveBeenCalledWith(SESSION_ID, "done", {});
     expect(mockResetEvents).toHaveBeenCalledWith(SESSION_ID);
     expect(onRunFailed).toHaveBeenCalled();
+  });
+
+  it("ends a silent run on the idle timeout and releases the claim", async () => {
+    vi.useFakeTimers();
+    try {
+      const entry = makeEntry();
+      // A provider stream that never closes: prompt() never settles.
+      promptMock(entry).mockImplementation(() => new Promise<void>(() => {}));
+
+      const run = dispatchChatRun({
+        userId: USER_ID,
+        sessionId: SESSION_ID,
+        entry,
+        content: "hello",
+      });
+
+      await vi.advanceTimersByTimeAsync(DEFAULT_AGENT_IDLE_TIMEOUT_MS + 1);
+      const ok = await run;
+
+      expect(ok).toBe(false);
+      // The stalled run is aborted and the claim released, so the chat can send
+      // again instead of staying "busy" forever.
+      expect(entry.session.abort).toHaveBeenCalled();
+      expect(entry.promptInFlight).toBe(false);
+      expect(mockPublish).toHaveBeenCalledWith(
+        SESSION_ID,
+        "error",
+        expect.objectContaining({ message: expect.stringMatching(/stalled/i) }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

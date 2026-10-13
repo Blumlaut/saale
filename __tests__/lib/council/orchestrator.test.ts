@@ -100,6 +100,8 @@ class FakeAgentSession {
   prompts: string[] = [];
   /** Called when the run aborts this member's turn (a real abort ends it). */
   onAbort?: () => void;
+  /** Make `abort()` never settle, as a turn stuck in a tool that ignores it. */
+  abortNeverSettles = false;
 
   subscribe(cb: (event: any) => void) {
     this.listeners.add(cb);
@@ -123,6 +125,7 @@ class FakeAgentSession {
   async abort() {
     this.aborted = true;
     this.onAbort?.();
+    if (this.abortNeverSettles) await new Promise<void>(() => {});
   }
 
   getSessionStats() {
@@ -161,6 +164,10 @@ function harness(options: {
   abortAfter?: (turnCount: number) => boolean;
   /** Make the loop's abort check fail, as an unreachable Redis would. */
   abortCheckFails?: (turnCount: number) => boolean;
+  /** Poll interval for the stop request (short so the tests are quick). */
+  abortPollMs?: number;
+  /** Silence window per turn (short so a stall is testable). */
+  turnIdleTimeoutMs?: number;
 }) {
   const room = new FakeRoom();
   const events: Array<{ event: string; data: any }> = [];
@@ -232,6 +239,10 @@ function harness(options: {
       events.push({ event, data });
     },
     now: () => Date.now(),
+    ...(options.abortPollMs !== undefined ? { abortPollMs: options.abortPollMs } : {}),
+    ...(options.turnIdleTimeoutMs !== undefined
+      ? { turnIdleTimeoutMs: options.turnIdleTimeoutMs }
+      : {}),
     isAbortRequested: async () => {
       if (options.abortCheckFails?.(turnsSeen)) throw new Error("redis is unreachable");
       return options.abortAfter?.(turnsSeen) ?? false;
@@ -546,6 +557,106 @@ describe("runCouncilLoop — stopping early", () => {
     const outcome = await h.run();
     expect(outcome.stopReason).toBe("aborted");
     expect(h.sessions.has("b")).toBe(false);
+  });
+
+  it("stops the run even when a turn's abort never settles", async () => {
+    // The failure this guards: `abort()` resolves only once the agent is idle,
+    // and a turn stuck in a tool that ignores the abort signal (or a provider
+    // stream that never closes) keeps it busy forever. Awaiting the abort left
+    // the run `running` — Stop did nothing and the watchdog saw a heartbeat.
+    const h = harness({
+      members: [MEMBER("a", "acorn")],
+      openingMemberIds: null,
+      abortAfter: (turns) => turns >= 1,
+      abortPollMs: 5,
+      behaviours: {
+        a: () => {
+          h.sessions.get("a")!.abortNeverSettles = true;
+          return new Promise<void>(() => {});
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(outcome.stopReason).toBe("aborted");
+    expect(h.sessions.get("a")!.aborted).toBe(true);
+    expect(h.room.turnOf("acorn")!.record.status).toBe("error");
+  });
+
+  it("ends a turn on its wall-clock budget even when abort never settles", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn")],
+      openingMemberIds: null,
+      budget: { maxDurationSeconds: 0.05 },
+      behaviours: {
+        a: () => {
+          h.sessions.get("a")!.abortNeverSettles = true;
+          return new Promise<void>(() => {});
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(outcome.stopReason).toBe("budget:time");
+    expect(h.sessions.get("a")!.aborted).toBe(true);
+  });
+
+  it("does not stop the run when one turn stalls and the others are working", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: null,
+      turnIdleTimeoutMs: 40,
+      behaviours: {
+        // acorn never produces another event: a hung provider stream.
+        a: () => new Promise<void>(() => {}),
+        b: async (turn) => {
+          await turn.post("blade: done");
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    // The stalled turn is a failed turn, not the end of the run.
+    expect(outcome.stopReason).toBe("no-pending-work");
+    const acorn = h.room.turnOf("acorn")!;
+    expect(acorn.record.status).toBe("error");
+    expect(acorn.record.error).toMatch(/stalled/i);
+    expect(h.sessions.get("a")!.aborted).toBe(true);
+    expect(h.room.messagesFrom("blade")).toHaveLength(1);
+  });
+
+  it("discards a post that lands after the run was stopped", async () => {
+    const late: { posted: boolean; error: Error | null } = { posted: false, error: null };
+
+    const h = harness({
+      members: [MEMBER("a", "acorn")],
+      openingMemberIds: null,
+      abortAfter: (turns) => turns >= 1,
+      abortPollMs: 5,
+      behaviours: {
+        a: async (turn) => {
+          h.sessions.get("a")!.abortNeverSettles = true;
+          // Keep the turn alive past the stop, then try to speak.
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          try {
+            await turn.post("late thought");
+            late.posted = true;
+          } catch (err) {
+            late.error = err as Error;
+          }
+        },
+      },
+    });
+
+    const outcome = await h.run();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(outcome.stopReason).toBe("aborted");
+    expect(late.posted).toBe(false);
+    expect(late.error?.message).toMatch(/stopped/i);
   });
 
   it("keeps working when the stop check itself fails", async () => {

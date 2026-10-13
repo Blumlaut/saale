@@ -1,6 +1,15 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 /**
+ * Default silence window before a Pi run is treated as stalled.
+ *
+ * Every session event (streamed tokens, thinking, tool execution, turns,
+ * compaction) resets the window, so this is a bound on *silence*, not on total
+ * run time — an actively working agent may run far longer than this.
+ */
+export const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
+
+/**
  * Idle timeout for a running Pi agent session.
  *
  * Unlike a wall-clock timeout, this only fires when the session has
