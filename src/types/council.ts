@@ -81,7 +81,7 @@ export interface CouncilTurnView {
   runId: string;
   memberId: string | null;
   memberName: string;
-  status: "running" | "completed" | "error";
+  status: "running" | "completed" | "preempted" | "error";
   thinking: string | null;
   toolCalls: CouncilToolCall[];
   finalText: string | null;

@@ -392,7 +392,8 @@ export async function startMemberTurn(input: {
 }
 
 export interface FinishTurnInput {
-  status: "completed" | "error";
+  /** `preempted` is an intentional early end (the member was addressed), not an error. */
+  status: "completed" | "preempted" | "error";
   thinking: string | null;
   toolCalls: string | null;
   finalText: string | null;

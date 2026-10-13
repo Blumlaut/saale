@@ -1118,7 +1118,7 @@ model CouncilMemberTurn {
   /// The member's closing text. Never a room message — only its subpage shows it.
   finalText String? @db.Text
 
-  status String  @default("running") // running | completed | error
+  status String  @default("running") // running | completed | preempted | error
   error  String? @db.Text
 
   inputTokens  Int   @default(0)
