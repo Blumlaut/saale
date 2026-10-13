@@ -15,6 +15,8 @@ import type { CouncilMemberPlan } from "@/lib/council/orchestrator";
 
 class FakeRoom {
   messages: RoomMessageView[] = [];
+  /** Make the turn's room read fail, as a database hiccup would. */
+  messageWindowFails = false;
   turns: Array<{
     memberId: string;
     memberName: string;
@@ -39,16 +41,21 @@ class FakeRoom {
     },
 
     messageWindow: async ({ afterSeq, limit }) => {
+      if (this.messageWindowFails) throw new Error("the room is unreachable");
       const after = this.messages.filter((message) => message.seq > afterSeq);
       const newest = after.slice(-limit);
       return { messages: newest, skippedBefore: after.length - newest.length };
     },
 
-    messagesAfter: async ({ afterSeq, limit, memberId }) =>
-      this.messages
-        .filter((message) => message.seq > afterSeq)
-        .filter((message) => !memberId || message.memberId === memberId)
-        .slice(-limit),
+    messagesAfter: async ({ afterSeq, limit, memberId }) => {
+      const scoped = this.messages.filter((message) => !memberId || message.memberId === memberId);
+      // A cursor reads forward from it; no cursor means the room's tail.
+      return afterSeq === undefined
+        ? scoped.slice(-limit)
+        : scoped.filter((message) => message.seq > afterSeq).slice(0, limit);
+    },
+
+    newestSeq: async () => this.seq,
 
     startTurn: async (input) => {
       this.turns.push({
@@ -360,6 +367,78 @@ describe("runCouncilLoop — parallel", () => {
     const outcome = await h.run();
     expect(outcome.stopReason).toBe("no-pending-work");
     expect(outcome.turnCount).toBe(2);
+  });
+
+  it("names an empty room at the start and asks for a post before any work", async () => {
+    // The failure this guards: a first turn with nothing to reply to starts
+    // working, so every member duplicates the others in silence.
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: null,
+      behaviours: {
+        a: async (turn) => {
+          expect(turn.prompt).toContain("the room is empty");
+          expect(turn.prompt).toContain("Post what you are taking on before you start");
+          await turn.post("acorn: I will take the schema");
+        },
+        b: async () => {},
+      },
+    });
+
+    await h.run();
+    expect(h.sessions.get("a")!.prompts).toHaveLength(1);
+  });
+
+  it("says an empty turn window is nothing new, not an empty room", async () => {
+    // Round-robin's second round can have nothing to show a member; it must not
+    // read that as "the room has no history".
+    const prompts: Record<string, string[]> = { a: [], b: [] };
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      orchestration: "round-robin",
+      behaviours: {
+        a: async (turn) => {
+          prompts.a!.push(turn.prompt);
+          if (turn.prompt.includes("round 1")) await turn.post("acorn: first");
+        },
+        b: async (turn) => {
+          prompts.b!.push(turn.prompt);
+        },
+      },
+    });
+
+    await h.run();
+
+    // Blade's second turn has nothing new: acorn's only post landed before it.
+    const empty = prompts.b![1]!;
+    expect(empty).toContain("(nothing new)");
+    expect(empty).toContain("The room is not empty");
+    expect(empty).toContain("council_read");
+    expect(empty).not.toMatch(/Post what you are taking on before you start/);
+  });
+
+  it("fails the turn instead of prompting it with an empty room when the read fails", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn")],
+      openingMemberIds: null,
+      behaviours: {
+        a: async (turn) => {
+          throw new Error(`the member must not be prompted: ${turn.prompt}`);
+        },
+      },
+    });
+    h.room.messageWindowFails = true;
+
+    const outcome = await h.run();
+
+    expect(outcome.stopReason).toBe("no-pending-work");
+    const failed = h.room.turnOf("acorn")!.record;
+    expect(failed.status).toBe("error");
+    expect(failed.error).toContain("the room is unreachable");
+    expect(h.sessions.get("a")!.prompts).toHaveLength(0);
+    expect(h.room.messages.some((m) => m.content.includes("acorn could not read the room"))).toBe(
+      true,
+    );
   });
 
   it("ends on a stop vote once the quorum is reached, before a woken member runs", async () => {

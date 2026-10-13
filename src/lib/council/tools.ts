@@ -191,7 +191,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
       name: "council_read",
       label: "Read the Room",
       description:
-        "Read the council room, oldest message first. Your turn shows you what was posted since your last turn; use this to look further back, to re-read a message, or to see what a particular member has said.",
+        "Read the council room. With `sinceSeq` it returns the messages posted after that one, oldest first; without one it returns the room's newest messages. Your turn already shows you what was posted since your last turn — use this to look further back, to re-read a message, or to see what a particular member has said.",
       parameters: Type.Object({
         sinceSeq: Type.Optional(
           Type.Integer({
@@ -202,7 +202,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
         ),
         limit: Type.Optional(
           Type.Integer({
-            description: `How many messages to return, most recent first. Default ${READ_DEFAULT_LIMIT}, maximum ${READ_MAX_LIMIT}.`,
+            description: `How many messages to return. Default ${READ_DEFAULT_LIMIT}, maximum ${READ_MAX_LIMIT}.`,
             minimum: 1,
             maximum: READ_MAX_LIMIT,
           }),
@@ -225,6 +225,20 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
           ...(author ? { author: author.name, authorId: author.id } : {}),
         });
 
+        const last = messages.at(-1)?.seq ?? 0;
+        const newer = lastSeq - last;
+        const text =
+          messages.length > 0
+            ? messages.map((m) => `#${m.seq} ${m.authorName}: ${m.content}`).join("\n\n") +
+              (newer > 0
+                ? `\n\n(${newer} newer message${newer === 1 ? "" : "s"} not shown — read on with sinceSeq: ${last}.)`
+                : "")
+            : lastSeq === 0
+              ? "The room has no messages yet — nobody has posted. Say what you are taking on with `council_post` before you start work."
+              : params.sinceSeq !== undefined
+                ? `Nothing has been posted after #${params.sinceSeq}. The room's newest message is #${lastSeq}.`
+                : `No messages matched${params.author ? ` from @${params.author}` : ""}. The room's newest message is #${lastSeq} — call \`council_read\` without \`sinceSeq\` for the newest messages.`;
+
         return {
           value: {
             count: messages.length,
@@ -237,10 +251,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
               content: message.content,
             })),
           },
-          text:
-            messages.length === 0
-              ? "No messages matched."
-              : messages.map((m) => `#${m.seq} ${m.authorName}: ${m.content}`).join("\n\n"),
+          text,
         };
       },
     }),

@@ -144,12 +144,19 @@ export interface CouncilRunStore {
     afterSeq: number;
     limit: number;
   }): Promise<{ messages: RoomMessageView[]; skippedBefore: number }>;
-  /** Messages after `afterSeq`, oldest first — what `council_read` returns. */
+  /**
+   * Messages for `council_read`, oldest first. A cursor means "read on from
+   * here"; without one the caller asked for the room, which is its newest
+   * messages — reading forward from 0 would answer with the room's *first*
+   * messages and make a long conversation look untouched.
+   */
   messagesAfter(input: {
-    afterSeq: number;
+    afterSeq?: number;
     limit: number;
     memberId?: string;
   }): Promise<RoomMessageView[]>;
+  /** The newest room seq, or 0 when the room is empty. */
+  newestSeq(): Promise<number>;
   startTurn(input: {
     memberId: string;
     memberName: string;
@@ -427,14 +434,19 @@ export async function runCouncilLoop(
       },
 
       read: async ({ sinceSeq, limit, authorId }) => {
-        const messages = await deps.store.messagesAfter({
-          afterSeq: sinceSeq ?? 0,
-          limit,
-          ...(authorId ? { memberId: authorId } : {}),
-        });
+        const [messages, newest] = await Promise.all([
+          deps.store.messagesAfter({
+            ...(sinceSeq !== undefined ? { afterSeq: sinceSeq } : {}),
+            limit,
+            ...(authorId ? { memberId: authorId } : {}),
+          }),
+          deps.store.newestSeq(),
+        ]);
         return {
           messages,
-          lastSeq: messages.at(-1)?.seq ?? sinceSeq ?? 0,
+          // The room's newest seq, not the last one returned: a member reads it
+          // to tell "the room is empty" from "I am looking at the wrong part".
+          lastSeq: Math.max(newest, messages.at(-1)?.seq ?? 0),
         };
       },
 
@@ -499,12 +511,7 @@ export async function runCouncilLoop(
     const inbox = state.inbox.splice(0, state.inbox.length);
     state.posted = { seqs: [] };
 
-    let session: CouncilMemberSession;
-    try {
-      session = await ensureSession(state);
-    } catch (err) {
-      const message = errorMessage(err);
-      console.error(`[council:${plan.runId}] ${state.plan.name} could not start:`, err);
+    const failBeforePrompt = async (notice: string, message: string): Promise<TurnOutcome> => {
       await deps.store.finishTurn(
         await deps.store.startTurn({
           memberId: state.plan.id,
@@ -524,19 +531,39 @@ export async function runCouncilLoop(
           error: message,
         },
       );
-      await postSystem(`@${state.plan.name} could not start: ${message}`);
+      await postSystem(`@${state.plan.name} ${notice}: ${message}`);
       return { posted: 0 };
+    };
+
+    let session: CouncilMemberSession;
+    try {
+      session = await ensureSession(state);
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error(`[council:${plan.runId}] ${state.plan.name} could not start:`, err);
+      return failBeforePrompt("could not start", message);
     }
 
-    const window = await deps.store
+    // A failed read is *not* an empty room. Prompting the member with nothing
+    // after a failed read is how a member that has read a long room comes to
+    // act as if the room were empty — a mistake it cannot detect and the run
+    // pays for. The turn fails instead; the cursor is left where it was, so the
+    // member re-reads the same window if it runs again.
+    const read = await deps.store
       .messageWindow({ afterSeq: state.cursor, limit: TRANSCRIPT_WINDOW })
-      .catch(async (err) => {
+      .then((window) => ({ window, error: null as string | null }))
+      .catch((err: unknown) => {
         console.error(
           `[council:${plan.runId}] Could not read the room for ${state.plan.name}:`,
           err,
         );
-        return { messages: [], skippedBefore: 0 };
+        return { window: null, error: errorMessage(err) };
       });
+    if (!read.window) {
+      return failBeforePrompt("could not read the room", read.error ?? "unknown error");
+    }
+    const window = read.window;
+
     const seenThrough = window.messages.at(-1)?.seq ?? null;
     if (seenThrough !== null) state.cursor = Math.max(state.cursor, seenThrough);
 
@@ -547,6 +574,11 @@ export async function runCouncilLoop(
       round,
       sandboxPath: session.sandbox.home,
       droppedBefore: window.skippedBefore,
+      // The cursor is now the newest seq this member has been shown, so an
+      // empty window with a non-zero cursor is "nothing new", not "an empty
+      // room", and the prompt can say which.
+      seenThrough: state.cursor,
+      orchestration: plan.orchestration,
     });
 
     const triggeredBy = wakeReasons(inbox);

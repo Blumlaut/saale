@@ -314,17 +314,21 @@ function createRunStore(input: {
 
     messageWindow: async (window) => readRoomWindow({ councilId, userId, ...window }),
 
-    // `council_read` reads *forward* from where the member left off (oldest
-    // first), which is the opposite of the turn window's newest-first rule.
+    // `council_read` with a cursor reads *forward* from where the member left
+    // off (oldest first). Without one the member asked for the room itself,
+    // which is its newest messages — reading forward from 0 answered with the
+    // room's first messages instead, so a long conversation looked untouched.
     messagesAfter: (read) =>
       readRoomMessages({
         councilId,
         userId,
-        afterSeq: read.afterSeq,
+        ...(read.afterSeq !== undefined ? { afterSeq: read.afterSeq } : {}),
+        order: read.afterSeq === undefined ? "newest" : "oldest",
         limit: read.limit,
-        order: "oldest",
         ...(read.memberId ? { memberId: read.memberId } : {}),
       }),
+
+    newestSeq: () => lastRoomSeq(councilId, userId),
 
     startTurn: async (turn) =>
       startMemberTurn({

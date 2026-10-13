@@ -83,18 +83,18 @@ describe("buildCouncilMemberPrompt", () => {
     expect(rounds).toMatch(/nobody posts anything ends the run/);
   });
 
-  it("tells a waiting member to end its turn, in the terms of its mode", () => {
-    // Holding a turn open for an answer is the instinct this rule counters, and
-    // how the answer arrives depends on the mode.
-    const parallel = buildCouncilMemberPrompt(CONTEXT);
-    expect(parallel).toMatch(/waiting on another member's reply, end your turn/);
-    expect(parallel).toMatch(/wakes you as soon as someone addresses you/);
-    expect(parallel).toMatch(/Never hold a turn open/);
+  it("makes the opening move a post, and warns against reading a window as an empty room", () => {
+    const prompt = buildCouncilMemberPrompt(CONTEXT);
+    expect(prompt).toMatch(/opening move of a run is a post, not work/);
+    expect(prompt).toMatch(/An empty turn window means nothing new arrived/);
+  });
 
-    const rounds = buildCouncilMemberPrompt({ ...CONTEXT, orchestration: "round-robin" });
-    expect(rounds).toMatch(/waiting on another member's reply, end your turn/);
-    expect(rounds).toMatch(/next round carries whatever they posted/);
-    expect(rounds).not.toMatch(/wakes you as soon as someone addresses you/);
+  it("does not tell a waiting member to stop waiting", () => {
+    // The room wakes members, but holding a turn open is the member's own call:
+    // the prompt must not forbid waiting, sleeping or re-reading the room.
+    const prompt = buildCouncilMemberPrompt(CONTEXT);
+    expect(prompt).not.toMatch(/Never hold a turn open/);
+    expect(prompt).not.toMatch(/end your turn/);
   });
 
   it("splits the work before any of it is built, in the terms of its mode", () => {
@@ -229,6 +229,44 @@ describe("buildCouncilTurnPrompt", () => {
   it("handles an empty room without pretending there is something to read", () => {
     const prompt = buildCouncilTurnPrompt({ memberName: "acorn", messages: [], addressed: false });
     expect(prompt).toContain("(nothing new)");
+    expect(prompt).toContain("the room is empty");
+    expect(prompt).toMatch(/Post what you are taking on before you start/);
+  });
+
+  it("writes the opening for how the others are running", () => {
+    const parallel = buildCouncilTurnPrompt({
+      memberName: "acorn",
+      messages: [],
+      addressed: false,
+      orchestration: "parallel",
+    });
+    expect(parallel).toMatch(/first turns are starting at the same time as yours/);
+
+    const rounds = buildCouncilTurnPrompt({
+      memberName: "acorn",
+      messages: [],
+      addressed: false,
+      orchestration: "round-robin",
+      round: 1,
+    });
+    expect(rounds).toMatch(/It is your turn in round 1/);
+    expect(rounds).toMatch(/members who follow you this round/);
+  });
+
+  it("says an empty window is nothing new when the room already has history", () => {
+    // The failure this guards: a member that has read a long room is woken with
+    // no new messages and announces that the room is empty.
+    const prompt = buildCouncilTurnPrompt({
+      memberName: "acorn",
+      messages: [],
+      addressed: false,
+      seenThrough: 12,
+    });
+    expect(prompt).toContain("(nothing new)");
+    expect(prompt).toContain("The room is not empty");
+    expect(prompt).toContain("#12");
+    expect(prompt).toContain("council_read");
+    expect(prompt).not.toMatch(/Post what you are taking on before you start/);
   });
 
   it("reminds the member where its workspace is", () => {
