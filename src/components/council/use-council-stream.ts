@@ -42,7 +42,11 @@ export interface CouncilMemberLive {
   turnId: string | null;
 }
 
-/** Running budget totals, accumulated from turn deltas. */
+/**
+ * The run's cumulative totals, as each turn's event reports them (and as the
+ * active run's record seeds them). Cumulative, not a running sum of deltas: a
+ * replay can then never count a turn twice.
+ */
 export interface CouncilRunTotals {
   inputTokens: number;
   outputTokens: number;
@@ -94,6 +98,24 @@ const ZERO_TOTALS: CouncilRunTotals = {
   cost: 0,
   turnCount: 0,
 };
+
+/**
+ * The newest of two readings of the same run's cumulative totals.
+ *
+ * Every counter only rises within a run, so the higher value is always the more
+ * recent one. Taking the maximum rather than replacing is what makes repeated or
+ * out-of-order delivery harmless: an event replayed from the buffer (a room
+ * opened mid-run) cannot push the meters backwards past the REST seed, and the
+ * seed cannot be undone by a replayed event either.
+ */
+function mergeTotals(prev: CouncilRunTotals, next: CouncilRunTotals): CouncilRunTotals {
+  return {
+    inputTokens: Math.max(prev.inputTokens, next.inputTokens),
+    outputTokens: Math.max(prev.outputTokens, next.outputTokens),
+    cost: Math.max(prev.cost, next.cost),
+    turnCount: Math.max(prev.turnCount, next.turnCount),
+  };
+}
 
 function parseEvent<T>(data: string): T | null {
   try {
@@ -170,6 +192,9 @@ export function useCouncilStream(options: CouncilStreamOptions): CouncilStreamSt
         budget: RunBudget;
       }>((event as MessageEvent).data);
       if (!payload) return;
+      // A new run's meters start where that run's record says, not where the
+      // previous run left them.
+      setTotals(ZERO_TOTALS);
       setMembers({});
       const run: CouncilStreamRun = {
         runId: payload.runId,
@@ -283,6 +308,8 @@ export function useCouncilStream(options: CouncilStreamOptions): CouncilStreamSt
         inputTokens?: number;
         outputTokens?: number;
         cost?: number;
+        /** The run's cumulative totals after this turn. */
+        totals?: CouncilRunTotals;
       }>((event as MessageEvent).data);
       if (!payload) return;
       setMembers((prev) => {
@@ -300,12 +327,8 @@ export function useCouncilStream(options: CouncilStreamOptions): CouncilStreamSt
           },
         };
       });
-      setTotals((prev) => ({
-        inputTokens: prev.inputTokens + (payload.inputTokens ?? 0),
-        outputTokens: prev.outputTokens + (payload.outputTokens ?? 0),
-        cost: prev.cost + (payload.cost ?? 0),
-        turnCount: prev.turnCount + 1,
-      }));
+      if (!payload.totals) return;
+      setTotals((prev) => mergeTotals(prev, payload.totals!));
     });
 
     return () => {

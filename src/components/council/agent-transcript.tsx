@@ -121,7 +121,7 @@ export function AgentTranscript({ turns, messages = [], loading }: AgentTranscri
               </div>
               {turn.triggeredBy.length === 0 ? (
                 <p className="text-muted-foreground mt-1 text-xs">
-                  The opening message — no prior room message.
+                  No room message woke it: the opening turn, or its scheduled round.
                 </p>
               ) : (
                 <ul className="mt-1 flex flex-col gap-1">

@@ -117,12 +117,16 @@ class FakeAgentSession {
 
   onPrompt?: (text: string) => unknown;
 
+  /** Set to make the post-turn stats read fail, as a broken session would. */
+  statsError = false;
+
   async abort() {
     this.aborted = true;
     this.onAbort?.();
   }
 
   getSessionStats() {
+    if (this.statsError) throw new Error("the session cannot report its usage");
     return {
       tokens: { input: this.stats.inputTokens, output: this.stats.outputTokens },
       cost: this.stats.cost,
@@ -155,6 +159,8 @@ function harness(options: {
   stopVoteThreshold?: "majority" | "unanimous" | "any";
   budget?: Partial<CouncilRunPlan["budget"]>;
   abortAfter?: (turnCount: number) => boolean;
+  /** Make the loop's abort check fail, as an unreachable Redis would. */
+  abortCheckFails?: (turnCount: number) => boolean;
 }) {
   const room = new FakeRoom();
   const events: Array<{ event: string; data: any }> = [];
@@ -226,7 +232,10 @@ function harness(options: {
       events.push({ event, data });
     },
     now: () => Date.now(),
-    isAbortRequested: async () => options.abortAfter?.(turnsSeen) ?? false,
+    isAbortRequested: async () => {
+      if (options.abortCheckFails?.(turnsSeen)) throw new Error("redis is unreachable");
+      return options.abortAfter?.(turnsSeen) ?? false;
+    },
   };
 
   return { room, events, sessions, plan, deps, run: () => runCouncilLoop(plan, deps) };
@@ -539,6 +548,29 @@ describe("runCouncilLoop — stopping early", () => {
     expect(h.sessions.has("b")).toBe(false);
   });
 
+  it("keeps working when the stop check itself fails", async () => {
+    // Redis being unreachable must not end the run: the loop re-checks later,
+    // and the turn in flight has its own tolerant poll.
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: ["a"],
+      abortCheckFails: (turns) => turns === 1,
+      behaviours: {
+        a: async (turn) => {
+          await turn.post("@blade your turn");
+        },
+        b: async (turn) => {
+          await turn.post("blade: on it");
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(outcome.stopReason).toBe("no-pending-work");
+    expect(h.room.messagesFrom("blade")).toHaveLength(1);
+  });
+
   it("reports a run with no enabled members instead of looping forever", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn", false)],
@@ -772,8 +804,83 @@ describe("runCouncilLoop — the record it keeps", () => {
     expect(turn.record.inputTokens).toBe(120);
     expect(turn.record.outputTokens).toBe(30);
     expect(turn.record.cost).toBeCloseTo(0.02);
-    // The turn recorded why it ran, so a subpage can show the inbox.
-    expect(turn.triggeredBy).toEqual([0]);
+    // The turn recorded why it ran, so a subpage can show the inbox. Nothing
+    // woke it but the opening, and the opening has no room seq to record.
+    expect(turn.triggeredBy).toEqual([]);
+  });
+
+  it("reports the run's totals on every turn, not just that turn's delta", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: ["a", "b"],
+      behaviours: {
+        a: async (turn) => {
+          h.sessions.get("a")!.stats = { inputTokens: 10, outputTokens: 5, cost: 0.001 };
+          await turn.post("acorn: first");
+        },
+        b: async (turn) => {
+          h.sessions.get("b")!.stats = { inputTokens: 20, outputTokens: 8, cost: 0.002 };
+          await turn.post("blade: first");
+        },
+      },
+    });
+
+    await h.run();
+
+    const ended = eventsOf(h.events, "turn_ended");
+    expect(ended).toHaveLength(2);
+    // Each event carries the run's running totals, so a client that has already
+    // accounted for an earlier turn converges instead of double counting.
+    expect(ended.at(-1)!.data.totals).toMatchObject({
+      inputTokens: 30,
+      outputTokens: 13,
+      turnCount: 2,
+    });
+  });
+
+  it("does not count a session's whole usage again when one read fails", async () => {
+    let turns = 0;
+    const h = harness({
+      members: [MEMBER("a", "acorn")],
+      openingMemberIds: null,
+      behaviours: {
+        a: async (turn) => {
+          turns += 1;
+          const session = h.sessions.get("a")!;
+          if (turns === 1) {
+            session.stats = { inputTokens: 100, outputTokens: 0, cost: 0.01 };
+            await turn.post("acorn: one");
+          } else if (turns === 2) {
+            session.stats = { inputTokens: 300, outputTokens: 0, cost: 0.03 };
+            // The read after this turn fails: the baseline must survive it.
+            session.statsError = true;
+            await turn.post("acorn: two");
+          } else {
+            session.statsError = false;
+            session.stats = { inputTokens: 350, outputTokens: 0, cost: 0.05 };
+            await turn.post("acorn: done");
+          }
+          if (turns < 3) {
+            // The owner keeps the room awake so acorn takes another turn; the
+            // third turn wakes nobody, so the run ends.
+            await h.room.store.postMessage({
+              authorKind: "user",
+              authorName: "Ada",
+              content: "@acorn one more thing",
+              mentions: ["acorn"],
+            });
+          }
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(outcome.turnCount).toBe(3);
+    // 100 counted, one read failed, then the cumulative 350 — never 100+350.
+    expect(outcome.inputTokens).toBe(350);
+    expect(outcome.cost).toBeCloseTo(0.05);
+    expect(h.room.progress.at(-1)).toMatchObject({ inputTokens: 350, turnCount: 3 });
   });
 
   it("reports the room's totals as the run progresses", async () => {

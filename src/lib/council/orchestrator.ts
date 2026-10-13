@@ -177,6 +177,15 @@ export interface CouncilRunOutcome {
 /** How often a member's live thinking is published, per turn. */
 const THINKING_PUBLISH_INTERVAL_MS = 250;
 
+/**
+ * The inbox marker the opening wake uses.
+ *
+ * The room's own numbering starts at 1, so this is not a message and is never
+ * recorded as one: it only puts the member in the scheduler's queue. See
+ * `wakeReasons`.
+ */
+const OPENING_SEQ = 0;
+
 interface MemberState {
   plan: CouncilMemberPlan;
   /** Message seqs that woke this member and have not been consumed yet. */
@@ -258,6 +267,15 @@ export async function runCouncilLoop(
     if (!state || state.inbox.includes(seq)) return;
     state.inbox.push(seq);
   };
+
+  /**
+   * The inbox as the turn's record shows it: real room messages only.
+   *
+   * The opening wake carries no message of its own, so it is dropped — an entry
+   * the room cannot resolve would render as a message that does not exist.
+   */
+  const wakeReasons = (inbox: readonly number[]): number[] =>
+    inbox.filter((seq) => seq !== OPENING_SEQ);
 
   /** Room messages the loop did not post itself — i.e. the owner speaking. */
   let externalCursor = plan.startedAfterSeq;
@@ -442,7 +460,7 @@ export async function runCouncilLoop(
         await deps.store.startTurn({
           memberId: state.plan.id,
           memberName: state.plan.name,
-          triggeredBy: inbox,
+          triggeredBy: wakeReasons(inbox),
           seenThrough: null,
         }),
         {
@@ -482,17 +500,18 @@ export async function runCouncilLoop(
       droppedBefore: window.skippedBefore,
     });
 
+    const triggeredBy = wakeReasons(inbox);
     const turnId = await deps.store.startTurn({
       memberId: state.plan.id,
       memberName: state.plan.name,
-      triggeredBy: inbox,
+      triggeredBy,
       seenThrough,
     });
     await deps.publish("turn_started", {
       turnId,
       memberId: state.plan.id,
       memberName: state.plan.name,
-      triggeredBy: inbox,
+      triggeredBy,
       addressed: inbox.length > 0,
       round: round ?? null,
     });
@@ -521,12 +540,17 @@ export async function runCouncilLoop(
 
     const transcript = collector.snapshot();
     const stats = readStats(session.session, plan.runId);
-    const delta = {
-      inputTokens: Math.max(0, stats.inputTokens - before.inputTokens),
-      outputTokens: Math.max(0, stats.outputTokens - before.outputTokens),
-      cost: Math.max(0, stats.cost - before.cost),
-    };
-    state.stats = stats;
+    // A session whose stats cannot be read keeps the previous baseline: treating
+    // the failure as zeros would make the next turn count the whole session's
+    // usage again.
+    const delta = stats
+      ? {
+          inputTokens: Math.max(0, stats.inputTokens - before.inputTokens),
+          outputTokens: Math.max(0, stats.outputTokens - before.outputTokens),
+          cost: Math.max(0, stats.cost - before.cost),
+        }
+      : { inputTokens: 0, outputTokens: 0, cost: 0 };
+    if (stats) state.stats = stats;
     totals.inputTokens += delta.inputTokens;
     totals.outputTokens += delta.outputTokens;
     totals.cost += delta.cost;
@@ -550,6 +574,10 @@ export async function runCouncilLoop(
       posted: state.posted.seqs,
       error: failure,
       ...delta,
+      // The run's cumulative totals, not just this turn's delta: a client that
+      // replays events it already accounted for (a reconnect, a room opened
+      // mid-run) then converges on the same numbers instead of double counting.
+      totals: { ...totals },
     });
 
     await deps.store.progress({ ...totals }).catch((err) => {
@@ -584,7 +612,13 @@ export async function runCouncilLoop(
    */
   async function shouldStop(): Promise<boolean> {
     if (stop) return true;
-    if (await deps.isAbortRequested()) {
+    // A Redis hiccup must not end the run — the same tolerance the in-flight
+    // turn's abort poll has. The flag is re-checked between turns either way.
+    const aborted = await deps.isAbortRequested().catch((err) => {
+      console.error(`[council:${plan.runId}] Could not check for a stop request:`, err);
+      return false;
+    });
+    if (aborted) {
       await requestStop("aborted", true);
       return true;
     }
@@ -688,7 +722,7 @@ export async function runCouncilLoop(
       const opening = plan.openingMemberIds;
       const woken =
         opening === null ? participants : participants.filter((m) => opening.includes(m.id));
-      for (const member of woken) wake(member.id, 0);
+      for (const member of woken) wake(member.id, OPENING_SEQ);
 
       if (plan.orchestration === "round-robin") await runRounds();
       else await runParallel();
@@ -967,11 +1001,11 @@ function normalizeToolResult(result: unknown): string {
   return String(result ?? "");
 }
 
-/** A session's cumulative usage, or zeros when it cannot be read. */
+/** A session's cumulative usage, or null when it cannot be read. */
 function readStats(
   session: AgentSession,
   _runId: string,
-): { inputTokens: number; outputTokens: number; cost: number } {
+): { inputTokens: number; outputTokens: number; cost: number } | null {
   try {
     const stats = session.getSessionStats();
     return {
@@ -981,6 +1015,6 @@ function readStats(
     };
   } catch (err) {
     console.error(`[council:${_runId}] Failed to read session stats:`, err);
-    return { inputTokens: 0, outputTokens: 0, cost: 0 };
+    return null;
   }
 }
