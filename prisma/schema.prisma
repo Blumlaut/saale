@@ -1062,7 +1062,8 @@ model CouncilRun {
 
 /// A message in the room: the user, a member's `council_post`, or a system
 /// notice (a vote, a stop, a failure).
-model CouncilMessage {  id        String  @id @default(cuid())
+model CouncilMessage {
+  id        String  @id @default(cuid())
   councilId String
   userId    String
   /// Run this message was posted in; null for user messages between runs.
