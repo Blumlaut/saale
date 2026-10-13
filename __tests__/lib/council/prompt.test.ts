@@ -73,10 +73,28 @@ describe("buildCouncilMemberPrompt", () => {
   });
 
   it("describes the turn model it is running under", () => {
-    expect(buildCouncilMemberPrompt(CONTEXT)).toMatch(/You run when someone addresses you/);
-    expect(buildCouncilMemberPrompt({ ...CONTEXT, orchestration: "round-robin" })).toMatch(
-      /one turn per round/,
-    );
+    const parallel = buildCouncilMemberPrompt(CONTEXT);
+    expect(parallel).toMatch(/You run when someone addresses you/);
+    expect(parallel).toMatch(/at the same time as you/);
+
+    const rounds = buildCouncilMemberPrompt({ ...CONTEXT, orchestration: "round-robin" });
+    expect(rounds).toMatch(/one turn per round/);
+    expect(rounds).toMatch(/every member speaks once per round/);
+    expect(rounds).toMatch(/nobody posts anything ends the run/);
+  });
+
+  it("tells a waiting member to end its turn, in the terms of its mode", () => {
+    // Holding a turn open for an answer is the instinct this rule counters, and
+    // how the answer arrives depends on the mode.
+    const parallel = buildCouncilMemberPrompt(CONTEXT);
+    expect(parallel).toMatch(/waiting on another member's reply, end your turn/);
+    expect(parallel).toMatch(/wakes you as soon as someone addresses you/);
+    expect(parallel).toMatch(/Never hold a turn open/);
+
+    const rounds = buildCouncilMemberPrompt({ ...CONTEXT, orchestration: "round-robin" });
+    expect(rounds).toMatch(/waiting on another member's reply, end your turn/);
+    expect(rounds).toMatch(/next round carries whatever they posted/);
+    expect(rounds).not.toMatch(/wakes you as soon as someone addresses you/);
   });
 
   it("does not describe a role for a member that has none", () => {

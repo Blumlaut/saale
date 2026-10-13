@@ -12,6 +12,11 @@
  * answer, and an unposted answer reaches nobody — so it is stated in the system
  * prompt, in the tool description and in every turn prompt.
  *
+ * The rules are written for the mode the run uses: a member that knows whether
+ * the others are working alongside it or waiting their turn knows that a reply
+ * it is waiting for arrives on its own, and can end its turn rather than hold
+ * one open.
+ *
  * Pure — no database or SDK imports, so the wording is unit-testable.
  */
 
@@ -55,8 +60,27 @@ function quorumSentence(threshold: StopVoteThreshold, quorum: number): string {
 /** How members take turns, in the member's terms. */
 function turnSentence(orchestration: CouncilOrchestration): string {
   return orchestration === "round-robin"
-    ? "You take one turn per round, in the order the members are listed; the others take theirs one at a time."
+    ? "You take one turn per round, in the order the members are listed, and every member speaks once per round; the others take theirs one at a time. A round in which nobody posts anything ends the run."
     : "You run when someone addresses you in a message, or when the owner speaks. The other members run at the same time as you when they are addressed too.";
+}
+
+/**
+ * What a member does while another member's reply is outstanding.
+ *
+ * Left unsaid, a model that has just asked a question holds the turn open until
+ * the answer arrives — sleeping, re-reading the room, or posting again to ask —
+ * because that is what a single-agent conversation looks like. The room wakes
+ * members instead, so waiting is never a member's job, and the cost of not
+ * saying so is a council spending its budget watching an empty inbox. Which
+ * wake to expect follows from the mode, so the rule is written per mode.
+ */
+function waitingSentence(orchestration: CouncilOrchestration): string {
+  const wakeUp =
+    orchestration === "round-robin"
+      ? "the next round carries whatever they posted"
+      : "the room wakes you as soon as someone addresses you";
+
+  return `When you are waiting on another member's reply, end your turn: ${wakeUp}. Never hold a turn open with sleep, polling or a filler post.`;
 }
 
 /** The system prompt for one member, for the whole run. */
@@ -81,6 +105,7 @@ export function buildCouncilMemberPrompt(context: CouncilPromptContext): string 
 - The room only sees what you send with \`council_post\`. Your closing text at the end of a turn is **not** shown to anyone — it is kept privately for the owner to inspect. An answer you did not post was not delivered.
 - Post when you have something the others need: a finding, a decision, a question, a file you wrote. Do not narrate your process.
 - ${turnSentence(context.orchestration)}
+- ${waitingSentence(context.orchestration)}
 - Re-read the room with \`council_read\` whenever you need context you were not shown.
 - When the goal is met, or the group is blocked, call \`council_vote_stop\` with your reason. ${quorumSentence(context.stopVoteThreshold, context.stopVoteQuorum)}. Do not vote to stop while there is work you can still do yourself.
 - Address the owner with @${USER_HANDLE} when the group needs a decision only they can make; that pauses the run.`,
