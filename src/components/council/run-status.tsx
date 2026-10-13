@@ -196,7 +196,9 @@ export function RunStatus({
         {stopLabel && !running && (
           <span className="text-muted-foreground text-xs">{stopLabel}</span>
         )}
-        {run?.error && <span className="text-destructive truncate text-xs">{run.error}</span>}
+        {run?.error && (
+          <span className="text-destructive max-w-full min-w-0 truncate text-xs">{run.error}</span>
+        )}
         <span className="text-muted-foreground font-mono text-xs">
           {turnCount} turn{turnCount === 1 ? "" : "s"}
         </span>

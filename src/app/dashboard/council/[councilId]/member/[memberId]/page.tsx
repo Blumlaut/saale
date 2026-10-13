@@ -94,7 +94,7 @@ export default function CouncilMemberPage() {
   return (
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
-        <GlassPanel className="flex h-full flex-col overflow-hidden">
+        <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2 md:px-6">
             <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
               <Link href={`/dashboard/council/${councilId}`} aria-label="Back to the room">
