@@ -51,6 +51,19 @@ mechanical failures first and run the full suite **once**, as the gate:
 3. `npx vitest run <path>` — while iterating, run only the test files you touched.
 4. `npm run check` — once, at the end.
 
+### A local build needs a production `NODE_ENV`
+
+`npm run check` does not build, so a broken build still reaches a commit — and
+`next build` obeys the shell's `NODE_ENV`. With `NODE_ENV=development` exported,
+the build dies prerendering `/_global-error` with `Cannot read properties of null
+(reading 'useContext')`, after React's development build has first spammed
+"unique key prop" warnings. That is a known Next 16 symptom (vercel/next.js#86178),
+not a bug in this app: don't go hunting for a context provider or a bad layout.
+
+- Build by hand as `NODE_ENV=production npm run build`.
+- Docker pins `NODE_ENV=production` itself (`Dockerfile`), so images and deploys
+  are unaffected — this only ever bites a local build.
+
 ## Testing
 
 - Write **meaningful tests** that verify real behaviour with multiple inputs producing expected outputs.
