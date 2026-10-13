@@ -29,7 +29,7 @@ pauses), or the room simply goes quiet.
 | `room.ts`       | The room's read model (one shape for tools, prompts, loop and UI)                                  |
 | `prompt.ts`     | The member's system prompt and each turn's prompt                                                  |
 | `tools.ts`      | `council_post`, `council_read`, `council_vote_stop`                                                |
-| `session.ts`    | One member's Pi session for one run                                                                |
+| `session.ts`    | One member's Pi session for one run (its workspace and nothing else, unless the council opts in)    |
 | `orchestrator.ts` | The run loop: scheduling, budgets, votes, the private transcript of each turn                    |
 | `persist.ts`    | The loop's writes (messages, runs, turns, heartbeat)                                               |
 | `store.ts`      | CRUD and reads for the API and the room UI                                                         |
@@ -70,8 +70,11 @@ On top of it:
 Known limits, honestly:
 
 - Deleting a council removes the account (`sudo userdel -r` through the
-  container's own identity) and its home. The `open-terminal` process caches the
-  mapping in memory, and pays no attention to a key that is never reused.
+  container's own identity) and its home. Open Terminal caches `X-User-Id →
+  account` in memory and does not re-check `/etc/passwd`, so that id would fail
+  forever afterwards (`sudo: unknown user`); `ensureCouncilSandbox` therefore
+  re-provisions through an id that resolves to the same account, which the
+  container has not cached.
 - Deleting a council does not stop a run that is in flight — stop it first. The
   run's writes then fail (the rows are gone) and are logged.
 - The terminal container is shared with the owner's own workspace by design of
