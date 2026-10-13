@@ -36,6 +36,7 @@ import {
   failStaleRuns,
   finishRun,
   finishMemberTurn,
+  lastRoomSeq,
   loadCouncil,
   markSandboxReady,
   postRoomMessage,
@@ -46,6 +47,7 @@ import {
   touchRun,
 } from "./persist";
 import { createCouncilMemberSession } from "./session";
+import { findRunningRun } from "./store";
 
 /** The council is already running — the caller should answer 409. */
 export class CouncilBusyError extends Error {
@@ -176,6 +178,7 @@ export async function startCouncilRun(input: StartRunInput): Promise<{ runId: st
       toolConfig: member.toolConfig,
     })),
     openingMemberIds: input.openingMemberIds ?? null,
+    startedAfterSeq: await lastRoomSeq(input.councilId, input.userId),
   };
 
   const deps: CouncilRunDeps = {
@@ -262,20 +265,11 @@ export async function abortCouncilRun(input: {
   councilId: string;
   userId: string;
 }): Promise<{ runId: string } | null> {
-  const run = await findRunningRun(input.councilId, input.userId);
+  const run = await findRunningRun(input.userId, input.councilId);
   if (!run) return null;
 
   await requestCouncilAbort(run.id);
   return { runId: run.id };
-}
-
-async function findRunningRun(councilId: string, userId: string): Promise<{ id: string } | null> {
-  const { prisma } = await import("@/lib/db");
-  return prisma.councilRun.findFirst({
-    where: { councilId, userId, status: "running" },
-    orderBy: { createdAt: "desc" },
-    select: { id: true },
-  });
 }
 
 /**

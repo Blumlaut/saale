@@ -36,6 +36,7 @@ import type { ToolConfig, ToolExposureConfig } from "@/lib/pi/tool-categories";
 import {
   ABORT_POLL_MS,
   HEARTBEAT_MS,
+  ROOM_ABSORB_LIMIT,
   TRANSCRIPT_WINDOW,
   stopVoteQuorum,
   type CouncilOrchestration,
@@ -82,6 +83,14 @@ export interface CouncilRunPlan {
   members: CouncilMemberPlan[];
   /** Members the opening message addressed. Null wakes every enabled member. */
   openingMemberIds: string[] | null;
+  /**
+   * The room's newest seq when the run began.
+   *
+   * Everything above it was either the opening message (already routed from
+   * `openingMemberIds`) or older history; everything below it arrives while the
+   * loop is running and is absorbed by `absorbExternalMessages`.
+   */
+  startedAfterSeq: number;
 }
 
 /** A member's turn, as the store persists it. */
@@ -248,6 +257,39 @@ export async function runCouncilLoop(
     const state = states.get(memberId);
     if (!state || state.inbox.includes(seq)) return;
     state.inbox.push(seq);
+  };
+
+  /** Room messages the loop did not post itself — i.e. the owner speaking. */
+  let externalCursor = plan.startedAfterSeq;
+
+  /**
+   * Wake whoever the owner addressed while the run was working.
+   *
+   * A running loop schedules from its in-memory inboxes, and the owner posts
+   * straight to the database, so without this a message typed into a working
+   * room would be read by nobody: the room would look like it ignored its owner.
+   * A message that addresses nobody wakes everyone — the owner addressing the
+   * room is talking to all of it.
+   */
+  const absorbExternalMessages = async (): Promise<void> => {
+    const window = await deps.store
+      .messageWindow({ afterSeq: externalCursor, limit: ROOM_ABSORB_LIMIT })
+      .catch((err) => {
+        console.error(`[council:${plan.runId}] Could not check the room for new messages:`, err);
+        return { messages: [], skippedBefore: 0 };
+      });
+
+    for (const message of window.messages) {
+      externalCursor = Math.max(externalCursor, message.seq);
+      // Members' posts were routed by `post`; notices address nobody.
+      if (message.authorKind !== "user") continue;
+
+      const named = participants.filter((member) =>
+        message.addressedNames.some((name) => name.toLowerCase() === member.name.toLowerCase()),
+      );
+      const everyone = message.addressedNames.includes(ALL_HANDLE) || named.length === 0;
+      for (const member of everyone ? participants : named) wake(member.id, message.seq);
+    }
   };
 
   const postSystem = async (content: string) => {
@@ -579,6 +621,10 @@ export async function runCouncilLoop(
 
   async function runParallel(): Promise<void> {
     while (!(await shouldStop())) {
+      // Before deciding there is nothing to do: the owner may have spoken since
+      // the last batch, and their message is what the next batch is for.
+      await absorbExternalMessages();
+
       const ready = [...states.values()].filter((state) => state.inbox.length > 0 && !state.busy);
 
       if (ready.length === 0) {
@@ -597,6 +643,11 @@ export async function runCouncilLoop(
   async function runRounds(): Promise<void> {
     let round = 0;
     while (!(await shouldStop())) {
+      // Everyone speaks each round, so a message from the owner needs no wake —
+      // the members see it in their next turn. The cursor is advanced anyway, so
+      // it is never re-read as if it were new.
+      await absorbExternalMessages();
+
       round += 1;
       let posted = 0;
 

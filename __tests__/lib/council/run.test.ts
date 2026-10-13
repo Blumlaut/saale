@@ -38,6 +38,7 @@ vi.mock("@/lib/council/persist", () => ({
   failStaleRuns: vi.fn(),
   finishRun: vi.fn(),
   finishMemberTurn: vi.fn(),
+  lastRoomSeq: vi.fn(async () => 0),
   loadCouncil: vi.fn(),
   markSandboxReady: vi.fn(),
   postRoomMessage: vi.fn(),
@@ -63,12 +64,12 @@ vi.mock("@/lib/council/orchestrator", () => ({
   runCouncilLoop: vi.fn(async () => hoisted.loopOutcome),
 }));
 
-vi.mock("@/lib/db", () => ({
-  prisma: { councilRun: { findFirst: vi.fn() } },
+vi.mock("@/lib/council/store", () => ({
+  findRunningRun: vi.fn(async () => null),
 }));
 
-import { prisma } from "@/lib/db";
 import { ensureCouncilSandbox } from "@/lib/council/sandbox";
+import { findRunningRun } from "@/lib/council/store";
 import { publishCouncilEvent } from "@/lib/council/events";
 import { requestCouncilAbort } from "@/lib/council/abort";
 import { runCouncilLoop } from "@/lib/council/orchestrator";
@@ -303,21 +304,18 @@ describe("startCouncilRun", () => {
 
 describe("abortCouncilRun", () => {
   it("asks the run that is holding the council to stop", async () => {
-    (prisma.councilRun.findFirst as any).mockResolvedValue({ id: "run-7" });
+    vi.mocked(findRunningRun).mockResolvedValue({ id: "run-7" } as any);
 
     const result = await abortCouncilRun({ councilId: "council-1", userId: "user-1" });
 
     expect(result).toEqual({ runId: "run-7" });
     expect(requestCouncilAbort).toHaveBeenCalledWith("run-7");
-    expect(prisma.councilRun.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { councilId: "council-1", userId: "user-1", status: "running" },
-      }),
-    );
+    // Scoped to the user, so another account's run cannot be stopped by id.
+    expect(findRunningRun).toHaveBeenCalledWith("user-1", "council-1");
   });
 
   it("reports nothing to stop when the council is idle", async () => {
-    (prisma.councilRun.findFirst as any).mockResolvedValue(null);
+    vi.mocked(findRunningRun).mockResolvedValue(null);
     expect(await abortCouncilRun({ councilId: "council-1", userId: "user-1" })).toBeNull();
     expect(requestCouncilAbort).not.toHaveBeenCalled();
   });

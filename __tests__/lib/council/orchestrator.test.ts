@@ -180,6 +180,7 @@ function harness(options: {
     sandboxKey: "abcd1234",
     members: options.members,
     openingMemberIds: options.openingMemberIds ?? null,
+    startedAfterSeq: 0,
   };
 
   const deps = {
@@ -575,6 +576,92 @@ describe("runCouncilLoop — stopping early", () => {
     expect(h.room.messages.some((m) => m.content.includes("acorn could not finish its turn"))).toBe(
       true,
     );
+  });
+});
+
+describe("runCouncilLoop — the owner speaking mid-run", () => {
+  it("wakes the member the owner addressed while the room was working", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: ["a"],
+      behaviours: {
+        a: async () => {
+          // The owner types into the room while acorn's turn runs.
+          await h.room.store.postMessage({
+            authorKind: "user",
+            authorName: "Ada",
+            content: "@blade take this one",
+            mentions: ["blade"],
+          });
+        },
+        b: async (turn) => {
+          await turn.post("blade: on it");
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    expect(h.room.messagesFrom("blade")).toHaveLength(1);
+    expect(outcome.turnCount).toBe(2);
+    // The owner's message is in the inbox the turn recorded, so the subpage can
+    // show what prompted it.
+    expect(h.room.turnOf("blade")!.triggeredBy).toHaveLength(1);
+  });
+
+  it("wakes the whole room for an owner message that addresses nobody", async () => {
+    let acornTurns = 0;
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: ["a"],
+      behaviours: {
+        a: async (turn) => {
+          acornTurns += 1;
+          await turn.post(`acorn: take ${acornTurns}`);
+          if (acornTurns === 1) {
+            await h.room.store.postMessage({
+              authorKind: "user",
+              authorName: "Ada",
+              content: "what do you both think?",
+              mentions: [],
+            });
+          }
+        },
+        b: async (turn) => {
+          await turn.post("blade: here is my take");
+        },
+      },
+    });
+
+    const outcome = await h.run();
+
+    // Addressed to nobody, so the owner is talking to the room: both members run.
+    expect(h.room.messagesFrom("blade")).toHaveLength(1);
+    expect(outcome.turnCount).toBe(3);
+  });
+
+  it("leaves the room quiet for a system notice", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
+      openingMemberIds: ["a"],
+      behaviours: {
+        a: async () => {
+          await h.room.store.postMessage({
+            authorKind: "system",
+            authorName: "council",
+            content: "nothing to see here",
+            mentions: [],
+          });
+        },
+        b: async () => {
+          throw new Error("a notice must not wake anyone");
+        },
+      },
+    });
+
+    const outcome = await h.run();
+    expect(outcome.stopReason).toBe("no-pending-work");
+    expect(h.sessions.has("b")).toBe(false);
   });
 });
 

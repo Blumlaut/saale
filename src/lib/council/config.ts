@@ -40,9 +40,23 @@ export const MIN_MEMBERS = 2;
 export const MAX_MEMBERS = 8;
 
 export const MAX_MEMBER_NAME_LENGTH = 50;
+/** A sanity ceiling on a submitted cost budget, in USD. */
+export const MAX_COST_USD = 1000;
 export const MAX_COUNCIL_NAME_LENGTH = 100;
 export const MAX_BRIEF_LENGTH = 4000;
 export const MAX_MESSAGE_LENGTH = 8000;
+
+/**
+ * How many room messages a running loop looks through for ones it did not post.
+ *
+ * Only the owner speaks into a room without going through the loop, and they
+ * speak rarely; the window exists so a burst cannot make the loop fetch the
+ * whole room on every iteration.
+ */
+export const ROOM_ABSORB_LIMIT = 50;
+
+/** How many room messages one API page returns. */
+export const MAX_ROOM_PAGE = 500;
 
 /**
  * How many room messages a single turn prompt carries.
