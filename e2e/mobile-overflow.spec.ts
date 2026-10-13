@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 
 import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
+import { COUNCIL_ROUTES, mockCouncilRoom } from "./council-mocks";
 
 /**
  * Mobile layout guardrails.
@@ -34,6 +35,17 @@ const DASHBOARD_PAGES = [
 ];
 
 const ADMIN_PAGES = ["/admin/models", "/admin/users", "/admin/settings"];
+
+/**
+ * Every route this spec measures: the dashboard, the councils (whose API is
+ * mocked — a council run costs model calls and measures nothing extra) and the
+ * admin pages.
+ */
+const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
+  ...DASHBOARD_PAGES.map((path) => ({ path })),
+  ...COUNCIL_ROUTES.map((path) => ({ path, prepare: mockCouncilRoom })),
+  ...ADMIN_PAGES.map((path) => ({ path })),
+];
 
 let session: E2ESession | null = null;
 
@@ -145,11 +157,13 @@ async function assertRoute(
   browser: Browser,
   path: string,
   viewport: { width: number; height: number },
+  prepare?: (page: Page) => Promise<void>,
 ): Promise<void> {
   const ctx = await browser.newContext({ viewport, storageState: session!.storageState });
   const page = await ctx.newPage();
 
   try {
+    await prepare?.(page);
     const response = await page.goto(path, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.waitForTimeout(400); // settle lazy transitions / polling
@@ -188,10 +202,10 @@ test.describe("mobile layout guardrails", () => {
   });
 
   for (const { name, width, height } of VIEWPORTS) {
-    for (const path of [...DASHBOARD_PAGES, ...ADMIN_PAGES]) {
+    for (const { path, prepare } of PAGES) {
       test(`${path} @ ${name}`, async ({ browser }) => {
         test.skip(!session, "login failed");
-        await assertRoute(browser, path, { width, height });
+        await assertRoute(browser, path, { width, height }, prepare);
       });
     }
   }
