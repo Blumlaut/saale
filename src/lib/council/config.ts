@@ -54,6 +54,16 @@ export const MAX_MESSAGE_LENGTH = 8000;
 export const TRANSCRIPT_WINDOW = 80;
 
 /**
+ * Character ceiling for one turn's room history.
+ *
+ * A count is not a bound on size: messages run to `MAX_MESSAGE_LENGTH` each, so
+ * the window alone could spend a whole model context on the transcript before
+ * the member has read its own instructions. The newest messages are kept until
+ * this is reached (at least one message always is, however long).
+ */
+export const TRANSCRIPT_MAX_CHARS = 60_000;
+
+/**
  * Length of a council's sandbox key, in characters.
  *
  * Open Terminal derives a Linux username by taking the first 8 alphanumeric
