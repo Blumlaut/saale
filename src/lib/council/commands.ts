@@ -36,11 +36,14 @@ export interface TerminalCommandOptions {
 /**
  * An account name that is safe to interpolate into a command.
  *
- * Open Terminal derives names as `[a-z0-9]+` (plus its configured prefix), and
- * every name the sandbox builds comes from a hash — so a name that fails this is
- * a corrupt value or a bug, never something to run.
+ * Open Terminal derives names as `[a-z0-9]+`, optionally behind
+ * `OPEN_TERMINAL_USER_PREFIX` — which operators do use, and which may contain
+ * `-`, `_` or `.`. The leading character is never a separator (the container
+ * refuses what is not `[A-Za-z0-9_]` first), so a name that starts with a digit
+ * or a dash is a corrupt value or a bug, never something to run. Everything
+ * else here cannot leave a shell word.
  */
-const SAFE_ACCOUNT_NAME = /^[a-z0-9]+$/;
+const SAFE_ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export function isSafeAccountName(account: string): boolean {
   return SAFE_ACCOUNT_NAME.test(account);

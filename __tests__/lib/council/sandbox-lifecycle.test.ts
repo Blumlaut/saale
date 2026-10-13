@@ -108,6 +108,18 @@ describe("ensureCouncilSandbox", () => {
     expect(probe).not.toHaveBeenCalled();
   });
 
+  it("accepts an account name behind an operator prefix", async () => {
+    // OPEN_TERMINAL_USER_PREFIX is prepended to the derived name and is the
+    // operator's to choose (`saale_`, `t-`); the guard is about shell safety,
+    // not about the default spelling of a name.
+    const prefixed = { ...IDENTITY, account: `saale_${IDENTITY.account}` };
+    probe.mockResolvedValue({ exitCode: 0, output: `${prefixed.account}\n` });
+
+    await ensureCouncilSandbox(prefixed);
+
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses an account name it would not be safe to run", async () => {
     await expect(
       ensureCouncilSandbox({ key: "abc", account: "bad; rm -rf /", home: "/home/bad" }),
@@ -135,17 +147,15 @@ describe("destroyCouncilSandbox", () => {
     await destroyCouncilSandbox(IDENTITY);
 
     const commands = container.mock.calls.map((call) => call[0]);
-    expect(
-      commands.some((command) => command.includes(`sudo rm -rf /home/${IDENTITY.account}`)),
-    ).toBe(true);
-    // The group membership the container added must go too, or the group (and
-    // the membership list) outlives the account.
-    expect(
-      commands.some((command) => command.includes(`sudo gpasswd -d user ${IDENTITY.account}`)),
-    ).toBe(true);
-    expect(commands.some((command) => command.includes(`sudo groupdel ${IDENTITY.account}`))).toBe(
-      true,
-    );
+    // Order matters: the group survives `userdel` only as long as the container's
+    // own account is a member of it, so that membership is dropped before the
+    // group is — reverse the two and the group would not be deletable.
+    expect(commands).toEqual([
+      `sudo userdel -r ${IDENTITY.account} 2>&1`,
+      `sudo rm -rf /home/${IDENTITY.account} 2>&1`,
+      `sudo gpasswd -d user ${IDENTITY.account} 2>&1`,
+      `sudo groupdel ${IDENTITY.account} 2>&1`,
+    ]);
   });
 
   it("does nothing when there is no terminal to clean up in", async () => {
