@@ -280,6 +280,33 @@ export async function executeCommand(
 }
 
 /**
+ * Execute a command as Open Terminal's own account, not as a mapped user.
+ *
+ * A request without `X-User-Id` runs as the container's default account, which
+ * provisions the per-user accounts and is therefore root-capable. That is an
+ * app-side administrative identity — no tenant session may use it, and a
+ * tenant's own account cannot escalate to it (a provisioned account needs a
+ * password for `sudo`). Used to remove a council's sandbox account when the
+ * council is deleted; see `lib/council/sandbox`.
+ *
+ * Single-shot: these are short administration commands, and a *polling* request
+ * for one would carry an `X-User-Id` and so be answered by another identity.
+ */
+export async function executeContainerCommand(
+  command: string,
+  options: { wait?: number } = {},
+): Promise<ExecuteResult> {
+  const url = new URL(`${BASE_URL}/execute`);
+  if (options.wait !== undefined) url.searchParams.append("wait", String(options.wait));
+
+  return request<ExecuteResult>(url.toString(), {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ command }),
+  });
+}
+
+/**
  * Get command status and output.
  * GET /execute/{process_id}/status
  */
