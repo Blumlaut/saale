@@ -16,28 +16,28 @@ pauses), or the room simply goes quiet.
 
 ## The pieces
 
-| File            | What it is                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------------- |
-| `flag.ts`       | `COUNCIL_ENABLED` — the module-level switch                                                        |
-| `access.ts`     | Who may use it (admins only); 404 otherwise                                                        |
-| `config.ts`     | Limits, defaults, quorum maths, orchestration and threshold vocabularies                            |
-| `mentions.ts`   | `@name` / `@all` / `@user` parsing and resolution                                                 |
-| `names.ts`      | The bundled wordlist a member's name is drawn from when the field is left blank                    |
-| `accounts.ts`   | council → sandbox key → Open Terminal account                                                      |
-| `commands.ts`   | One-shot terminal commands (account lookup, account deletion)                                      |
-| `sandbox.ts`    | The council's confined file operations and workspace lifecycle                                     |
-| `room.ts`       | The room's read model (one shape for tools, prompts, loop and UI)                                  |
-| `prompt.ts`     | The member's system prompt and each turn's prompt                                                  |
-| `tools.ts`      | `council_post`, `council_read`, `council_vote_stop`                                                |
-| `session.ts`    | One member's Pi session for one run (its workspace and nothing else, unless the council opts in)    |
+| File              | What it is                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| `flag.ts`         | `COUNCIL_ENABLED` — the module-level switch                                                      |
+| `access.ts`       | Who may use it (admins only); 404 otherwise                                                      |
+| `config.ts`       | Limits, defaults, quorum maths, orchestration and threshold vocabularies                         |
+| `mentions.ts`     | `@name` / `@all` / `@user` parsing and resolution                                                |
+| `names.ts`        | The bundled wordlist a member's name is drawn from when the field is left blank                  |
+| `accounts.ts`     | council → sandbox key → Open Terminal account                                                    |
+| `commands.ts`     | One-shot terminal commands (account lookup, account deletion)                                    |
+| `sandbox.ts`      | The council's confined file operations and workspace lifecycle                                   |
+| `room.ts`         | The room's read model (one shape for tools, prompts, loop and UI)                                |
+| `prompt.ts`       | The member's system prompt and each turn's prompt                                                |
+| `tools.ts`        | `council_post`, `council_read`, `council_vote_stop`                                              |
+| `session.ts`      | One member's Pi session for one run (its workspace and nothing else, unless the council opts in) |
 | `orchestrator.ts` | The run loop: scheduling, budgets, votes, the private transcript of each turn                    |
-| `persist.ts`    | The loop's writes (messages, runs, turns, heartbeat)                                               |
-| `store.ts`      | CRUD and reads for the API and the room UI                                                         |
-| `run.ts`        | Starting, stopping and sweeping runs                                                               |
-| `events.ts`     | The live channel (the chat stream's Redis bus, keyed by council id)                                 |
-| `abort.ts`      | The stop flag an in-flight run polls                                                               |
-| `schema.ts`     | Request validation (zod)                                                                            |
-| `http.ts`       | Shared route plumbing (session, access, body, error mapping)                                       |
+| `persist.ts`      | The loop's writes (messages, runs, turns, heartbeat)                                             |
+| `store.ts`        | CRUD and reads for the API and the room UI                                                       |
+| `run.ts`          | Starting, stopping and sweeping runs                                                             |
+| `events.ts`       | The live channel (the chat stream's Redis bus, keyed by council id)                              |
+| `abort.ts`        | The stop flag an in-flight run polls                                                             |
+| `schema.ts`       | Request validation (zod)                                                                         |
+| `http.ts`         | Shared route plumbing (session, access, body, error mapping)                                     |
 
 Routes live in `src/app/api/council/`, the UI in `src/app/dashboard/council/`
 and `src/components/council/`.
@@ -71,7 +71,7 @@ Known limits, honestly:
 
 - Deleting a council removes the account (`sudo userdel -r` through the
   container's own identity) and its home. Open Terminal caches `X-User-Id →
-  account` in memory and does not re-check `/etc/passwd`, so that id would fail
+account` in memory and does not re-check `/etc/passwd`, so that id would fail
   forever afterwards (`sudo: unknown user`); `ensureCouncilSandbox` therefore
   re-provisions through an id that resolves to the same account, which the
   container has not cached.
@@ -120,6 +120,7 @@ Nothing outside the module depends on it. To remove the feature:
 7. Prisma: drop the `// ─── Council ───` models, the `councils` back-relation on
    `User`, and generate a migration.
 8. `e2e/modal-scenarios.ts` — drop the council scenarios.
+9. `docker-compose.yml` and `.env.example` — drop the `COUNCIL_ENABLED` entries.
 
 ## Tests
 
@@ -129,4 +130,4 @@ and account derivation, the room tools, the loop's scheduling (mentions, votes,
 budgets, stop conditions, round-robin, mid-run steering, failure isolation), turn
 transcripts, persistence, and the run lifecycle. `__tests__/api/council/` covers
 the message route (handles, busy runs, the access gate). The UI's own behaviour
-is covered by the component test beside it and the e2e specs at 375px/320px.
+is covered by `__tests__/components/council/` and the e2e specs at 375px/320px.
