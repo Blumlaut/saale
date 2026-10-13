@@ -50,6 +50,8 @@ const TOOLS: DiscoverableTool[] = [
     description: "Search the documentation server",
     namespace: {
       name: "mcp__docs",
+      // What Pi's MCP extension sets: the server's own name, for `describeNamespace("docs")`.
+      aliases: ["docs"],
       description: "The documentation server",
       instructions: "Call docs_search before writing about the API.",
     },
@@ -187,10 +189,43 @@ describe("describeNamespace", () => {
     });
   });
 
-  it("accepts the short form of a namespace name", async () => {
-    const byShortName = await call("describeNamespace", "docs");
+  it("accepts an alias of a namespace name", async () => {
+    const byAlias = await call("describeNamespace", "docs");
 
-    expect(byShortName).toMatchObject({ name: "mcp__docs" });
+    expect(byAlias).toMatchObject({ name: "mcp__docs" });
+  });
+
+  it("matches an alias the namespace name does not spell out", async () => {
+    const dev = callWith([
+      tool({
+        name: "dev_search",
+        description: "Search the dev server",
+        namespace: { name: "mcp__dev_radius", aliases: ["dev-radius"] },
+      }),
+    ]);
+
+    await expect(dev("describeNamespace", "dev-radius")).resolves.toEqual({
+      name: "mcp__dev_radius",
+      tools: ["dev_search"],
+    });
+    await expect(dev("describeNamespace", "dev_radius")).resolves.toMatchObject({
+      name: "mcp__dev_radius",
+    });
+  });
+
+  it("does not invent a short name for a namespace without aliases", async () => {
+    const bare = callWith([
+      tool({
+        name: "other_search",
+        description: "Search another server",
+        namespace: { name: "mcp__other" },
+      }),
+    ]);
+
+    await expect(bare("describeNamespace", "mcp__other")).resolves.toMatchObject({
+      name: "mcp__other",
+    });
+    await expect(bare("describeNamespace", "other")).resolves.toBeUndefined();
   });
 
   it("returns undefined for a namespace that does not exist", async () => {
@@ -202,6 +237,14 @@ describe("describeNamespace", () => {
 describe("searchTools with a namespace", () => {
   it("searches only the given namespace", async () => {
     const found = (await call("searchTools", "search docs", { namespace: "mcp__docs" })) as {
+      name: string;
+    }[];
+
+    expect(found.map((match) => match.name)).toEqual(["docs_search"]);
+  });
+
+  it("takes an alias as the namespace to search", async () => {
+    const found = (await call("searchTools", "search docs", { namespace: "docs" })) as {
       name: string;
     }[];
 
