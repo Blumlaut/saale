@@ -18,6 +18,9 @@ export interface MessageTimelineProps {
   loading?: boolean;
 }
 
+/** How close to the tail still counts as following it, in pixels. */
+const BOTTOM_BAND_PX = 80;
+
 function AuthorChip({ councilId, message }: { councilId: string; message: CouncilMessageView }) {
   if (message.authorKind === "system") {
     return <span className="console-label">notice</span>;
@@ -119,7 +122,7 @@ function LiveActivity({ state }: { state: CouncilMemberLive }) {
               className="text-muted-foreground flex items-center gap-1.5 font-mono text-[11px]"
             >
               <Wrench className="h-3 w-3 shrink-0" />
-              <span className="truncate">{call.tool}</span>
+              <span className="min-w-0 truncate">{call.tool}</span>
               <span className={cn("shrink-0", call.done && call.isError && "text-destructive")}>
                 {call.done ? (call.isError ? "failed" : "done") : "…"}
               </span>
@@ -144,15 +147,20 @@ export function MessageTimeline({
   live,
   loading,
 }: MessageTimelineProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastLenRef = useRef(0);
+  /** Whether the view was following the tail before the newest messages landed. */
+  const atBottomRef = useRef(true);
   const memberIds = new Map(members.map((member) => [member.name.toLowerCase(), member.id]));
 
   // Follow new messages, but only when the user is already at the bottom — a
-  // scroll-back to read should not be yanked away by a live run.
+  // scroll-back to read should not be yanked away by a live run (this is what
+  // the room does most of the time).
   useEffect(() => {
     if (messages.length === lastLenRef.current) return;
     lastLenRef.current = messages.length;
+    if (!atBottomRef.current) return;
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
 
@@ -184,7 +192,15 @@ export function MessageTimeline({
   const busy = Object.values(live);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+    <div
+      ref={scrollRef}
+      onScroll={() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_BAND_PX;
+      }}
+      className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6"
+    >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
         {messages.map((message) => {
           if (message.authorKind === "system") {
