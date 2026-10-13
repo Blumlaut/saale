@@ -79,6 +79,11 @@ Known limits, honestly:
   it, as they are for any tenant. Home directories are not.
 - A council's files are invisible to the owner unless a member pastes content
   into the room. There is no council file browser yet.
+- A run is declared abandoned by the sweep when it has not heartbeated for 90s.
+  The heartbeat is a timer (15s), so a process whose event loop is blocked for
+  longer than that could have a live run marked failed. Nothing in a council
+  blocks the loop that long; the run is recoverable (start it again) and the
+  record says `timeout`.
 
 ## Two switches
 
