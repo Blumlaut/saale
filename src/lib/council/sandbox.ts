@@ -200,6 +200,17 @@ export function councilSandboxTools(sandbox: CouncilSandbox): {
 }
 
 /**
+ * An id that Open Terminal maps to the *same* account as `key`.
+ *
+ * Its username is the first eight alphanumeric characters of the id, so an id
+ * that begins with the key resolves to the same account while being a different
+ * id to the container (which caches ids).
+ */
+function sameAccountIdentityKey(key: string): string {
+  return `${key}0`;
+}
+
+/**
  * Create the sandbox account and verify it is one.
  *
  * Runs `id -un` as the sandbox identity, which is also what makes Open Terminal
@@ -207,6 +218,15 @@ export function councilSandboxTools(sandbox: CouncilSandbox): {
  * from the key: anything else means `X-User-Id` was ignored and the command ran
  * as the user's own identity, so the "sandbox" would be the user's home. That is
  * refused rather than run.
+ *
+ * The retry covers a container-side detail with teeth: Open Terminal caches
+ * `X-User-Id → account` in memory, and its cache says "already provisioned"
+ * without re-checking `/etc/passwd`. An account that was deleted (a council
+ * being cleaned up) is therefore remembered as existing, and every command for
+ * that id fails with `sudo: unknown user` — permanently, since the cache lives
+ * as long as the container. Asking under an id that resolves to the *same*
+ * account is a different cache entry, so the container provisions it again; the
+ * original id then works too.
  */
 export async function ensureCouncilSandbox(identity: CouncilSandboxIdentity): Promise<void> {
   if (!isConfigured()) {
@@ -216,12 +236,26 @@ export async function ensureCouncilSandbox(identity: CouncilSandboxIdentity): Pr
     throw new Error(`Refusing to provision an unsafe account name: ${identity.account}`);
   }
 
-  const { exitCode, output } = await runTerminalCommand("id -un", {
-    userId: identity.key,
-    sessionId: `council-sandbox-${identity.key}`,
-    cwd: identity.home,
-    waitSeconds: 60,
-  });
+  const probe = (userId: string) =>
+    runTerminalCommand("id -un", {
+      userId,
+      sessionId: `council-sandbox-${identity.key}`,
+      cwd: identity.home,
+      waitSeconds: 60,
+    });
+
+  let result = await probe(identity.key);
+  if (result.exitCode !== 0) {
+    const retry = await probe(sameAccountIdentityKey(identity.key));
+    if (retry.exitCode === 0) {
+      console.warn(
+        `[council] Sandbox ${identity.account} needed re-provisioning (the container had it cached).`,
+      );
+      result = retry;
+    }
+  }
+
+  const { exitCode, output } = result;
   if (exitCode !== 0) {
     throw new Error(
       `Could not start the council sandbox account ${identity.account}: ${output.trim() || "no output"}`,
