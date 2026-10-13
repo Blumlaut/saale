@@ -237,6 +237,27 @@ describe("createCouncilMemberSession", () => {
     expect(vi.mocked(resolveTools).mock.calls[0]![2]).toMatchObject({ web: true });
   });
 
+  it("defaults to the workspace alone, not to a chat's tool defaults", async () => {
+    await createCouncilMemberSession({
+      ...OPTIONS,
+      councilToolConfig: null,
+      member: { ...OPTIONS.member, toolConfig: null },
+    });
+
+    // A council runs unattended; anything reaching the owner's own accounts
+    // (Telegram, mail, memory, tasks) is a per-council decision.
+    expect(vi.mocked(resolveTools).mock.calls[0]![2]).toMatchObject({
+      terminal: true,
+      telegram: false,
+      email: false,
+      memory: false,
+      tasks: false,
+      calendar: false,
+      infra: false,
+      settings: false,
+    });
+  });
+
   it("refuses to build a member with no model at all", async () => {
     vi.mocked(resolveModelForPurpose).mockResolvedValue(undefined);
     await expect(createCouncilMemberSession(OPTIONS)).rejects.toThrow(

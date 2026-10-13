@@ -31,12 +31,13 @@ import { createSessionSettings } from "@/lib/pi/settings";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { findToolInfo } from "@/lib/pi/tool-infos";
+import type { ToolConfig, ToolExposureConfig } from "@/lib/pi/tool-categories";
 import {
-  DEFAULT_TOOL_CONFIG,
-  type ToolConfig,
-  type ToolExposureConfig,
-} from "@/lib/pi/tool-categories";
-import { stopVoteQuorum, type CouncilOrchestration, type StopVoteThreshold } from "./config";
+  COUNCIL_DEFAULT_TOOL_CONFIG,
+  stopVoteQuorum,
+  type CouncilOrchestration,
+  type StopVoteThreshold,
+} from "./config";
 import { buildCouncilMemberPrompt, type CouncilMemberSummary } from "./prompt";
 import { createCouncilSandbox, councilSandboxTools, type CouncilSandbox } from "./sandbox";
 import { createCouncilTools, type CouncilToolContext } from "./tools";
@@ -126,10 +127,11 @@ export async function createCouncilMemberSession(
     );
   }
 
-  // A member's own selection wins over the council's; both fall back to the
-  // registry defaults, exactly as a chat's tool config does.
+  // A member's own selection wins over the council's; both override the
+  // council's defaults — which are its workspace and nothing else, not a chat's
+  // defaults (see COUNCIL_DEFAULT_TOOL_CONFIG).
   const toolConfig: Required<ToolConfig> = {
-    ...DEFAULT_TOOL_CONFIG,
+    ...COUNCIL_DEFAULT_TOOL_CONFIG,
     ...(options.councilToolConfig ?? {}),
     ...(member.toolConfig ?? {}),
   };

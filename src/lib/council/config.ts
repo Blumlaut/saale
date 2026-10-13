@@ -7,6 +7,7 @@
  * itself (how many members, what a budget may be, how a vote resolves).
  */
 
+import { TOOL_CATEGORIES, type ToolCategoryKey } from "@/lib/pi/tool-categories";
 import { USER_HANDLE } from "./mentions";
 
 /** How members take their turns. */
@@ -38,6 +39,20 @@ export const DEFAULT_RUN_BUDGET: RunBudget = {
 /** A council needs two members to be a council, and no more than this. */
 export const MIN_MEMBERS = 2;
 export const MAX_MEMBERS = 8;
+
+/**
+ * The tool categories a council starts with: its own workspace, nothing else.
+ *
+ * A chat's defaults (email, Telegram, memory, …) are the wrong defaults here. A
+ * council runs unattended in parallel, so a tool that reaches the owner's data
+ * — `telegram_send` messaging them, `mail_send` writing on their behalf — has to
+ * be a deliberate choice per council, not something inherited from the category
+ * registry. Derived from `TOOL_CATEGORIES` so a new category arrives switched
+ * off, and the council's stored `toolConfig` is an override on top of it.
+ */
+export const COUNCIL_DEFAULT_TOOL_CONFIG: Record<ToolCategoryKey, boolean> = Object.fromEntries(
+  TOOL_CATEGORIES.map((category) => [category.key, category.key === "terminal"]),
+) as Record<ToolCategoryKey, boolean>;
 
 export const MAX_MEMBER_NAME_LENGTH = 50;
 /** A sanity ceiling on a submitted cost budget, in USD. */
