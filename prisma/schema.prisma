@@ -1062,8 +1062,7 @@ model CouncilRun {
 
 /// A message in the room: the user, a member's `council_post`, or a system
 /// notice (a vote, a stop, a failure).
-model CouncilMessage {
-  id        String  @id @default(cuid())
+model CouncilMessage {  id        String  @id @default(cuid())
   councilId String
   userId    String
   /// Run this message was posted in; null for user messages between runs.
@@ -1079,7 +1078,9 @@ model CouncilMessage {
   /// Display name at post time — a member may later be renamed or removed.
   authorName String
   content    String   @db.Text
-  /// Member ids this message addresses, plus "user" when it addresses you.
+  /// Names this message addresses — member names, plus "user" when it
+  /// addresses the owner and "all" for a broadcast. Names rather than ids, so a
+  /// transcript renders without a join and survives a member being renamed.
   mentions   String[] @default([])
 
   council Council @relation(fields: [councilId], references: [id], onDelete: Cascade)
