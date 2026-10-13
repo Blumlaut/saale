@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { SIDEBAR_NAV_ITEM_IDS, normalizeSidebarNav } from "@/lib/navigation/sidebar-nav";
+import {
+  SIDEBAR_NAV_ITEM_IDS,
+  normalizeSidebarNav,
+  type SidebarNavEntry,
+  type SidebarNavItemId,
+} from "@/lib/navigation/sidebar-nav";
+import { canUseCouncil } from "@/lib/council/access";
 import { applyUserSettingsPatch, SettingsError } from "@/lib/settings/update";
 
 const sidebarNavEntrySchema = z.object({
@@ -28,18 +34,42 @@ const patchBodySchema = z.object({
 });
 
 /**
+ * Items this user may not open, whatever their stored layout says.
+ *
+ * The registry describes how an item renders; only the route that serves the
+ * layout knows whether this particular user may use it. Filtering here — rather
+ * than in each nav component — keeps the sidebar and the settings editor
+ * offering the same list, and an item whose page cannot be opened is never
+ * offered as a toggle.
+ */
+async function unavailableNavIds(userId: string): Promise<SidebarNavItemId[]> {
+  return (await canUseCouncil(userId)) ? [] : ["council"];
+}
+
+function restrict(entries: SidebarNavEntry[], unavailable: SidebarNavItemId[]): SidebarNavEntry[] {
+  if (unavailable.length === 0) return entries;
+  const excluded = new Set(unavailable);
+  return entries.filter((entry) => !excluded.has(entry.id));
+}
+
+/**
  * GET /api/settings/sidebar-nav — Get the user's sidebar layout
  */
 export async function GET() {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const settings = await prisma.appSettings.findUnique({
-    where: { userId: authResult.user.id },
-    select: { sidebarItems: true },
-  });
+  const [settings, unavailable] = await Promise.all([
+    prisma.appSettings.findUnique({
+      where: { userId: authResult.user.id },
+      select: { sidebarItems: true },
+    }),
+    unavailableNavIds(authResult.user.id),
+  ]);
 
-  return NextResponse.json({ items: normalizeSidebarNav(settings?.sidebarItems) });
+  return NextResponse.json({
+    items: restrict(normalizeSidebarNav(settings?.sidebarItems), unavailable),
+  });
 }
 
 /**
@@ -65,7 +95,10 @@ export async function PATCH(request: NextRequest) {
     const settings = await applyUserSettingsPatch(authResult.user.id, {
       sidebarItems: parsed.data.items,
     });
-    return NextResponse.json({ items: normalizeSidebarNav(settings.sidebarItems) });
+    const unavailable = await unavailableNavIds(authResult.user.id);
+    return NextResponse.json({
+      items: restrict(normalizeSidebarNav(settings.sidebarItems), unavailable),
+    });
   } catch (err) {
     if (err instanceof SettingsError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
