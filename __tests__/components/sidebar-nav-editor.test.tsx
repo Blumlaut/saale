@@ -79,7 +79,7 @@ describe("SidebarNavEditor", () => {
       id: "calendar",
       hidden: true,
     });
-    expect(next).toHaveLength(7);
+    expect(next).toHaveLength(SIDEBAR_NAV_ITEM_IDS.length);
   });
 
   it("keeps the last visible item from being hidden", () => {

@@ -17,8 +17,16 @@ import { bootstrapSession, type E2ESession } from "./utils";
 const DESKTOP = { width: 1280, height: 900 };
 const MOBILE = { width: 375, height: 667 };
 
-/** Default order, and the only labels a nav item can have. */
+/**
+ * The default sidebar order.
+ *
+ * Opt-in items (Council) are registered but hidden until the user enables them,
+ * so they are not part of the default order — `NAV_LABELS_ANY` is what a label
+ * filter uses, so a visible Council item cannot slip past these assertions
+ * unnoticed.
+ */
 const NAV_LABELS = ["Chat", "Mail", "Calendar", "Tasks", "Jobs", "Infrastructure", "Settings"];
+const NAV_LABELS_ANY = [...NAV_LABELS, "Council"];
 
 let session: E2ESession | null = null;
 
@@ -50,7 +58,7 @@ async function sidebarOrder(page: Page): Promise<string[]> {
     return [...nav.querySelectorAll("a, button")]
       .map((element) => (element.textContent ?? "").trim())
       .filter((text) => labels.includes(text));
-  }, NAV_LABELS);
+  }, NAV_LABELS_ANY);
 }
 
 /** An item of the desktop sidebar — Mail renders as a button, the rest as links. */
