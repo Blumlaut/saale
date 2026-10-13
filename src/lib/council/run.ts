@@ -108,6 +108,11 @@ export async function startCouncilRun(input: StartRunInput): Promise<{ runId: st
     maxCostUsd: loaded.council.maxCostUsd,
   });
 
+  // Read before the run slot is taken: the loop absorbs everything posted after
+  // this point, so a message the owner sends while the reservation is being made
+  // (and which therefore found the council busy) still reaches the run.
+  const startedAfterSeq = await lastRoomSeq(input.councilId, input.userId);
+
   const started = await beginRun({
     councilId: input.councilId,
     userId: input.userId,
@@ -178,7 +183,7 @@ export async function startCouncilRun(input: StartRunInput): Promise<{ runId: st
       toolConfig: member.toolConfig,
     })),
     openingMemberIds: input.openingMemberIds ?? null,
-    startedAfterSeq: await lastRoomSeq(input.councilId, input.userId),
+    startedAfterSeq,
   };
 
   const deps: CouncilRunDeps = {
