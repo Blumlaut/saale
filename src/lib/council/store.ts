@@ -209,6 +209,24 @@ export async function listCouncils(userId: string): Promise<CouncilSummary[]> {
   );
 }
 
+/**
+ * A council's name and sandbox key — what the file browser needs to open its
+ * workspace, and nothing else.
+ *
+ * Separate from `getCouncil` so browsing a workspace does not load the members,
+ * runs and messages it will never read.
+ */
+export async function getCouncilSandboxRef(
+  userId: string,
+  councilId: string,
+): Promise<{ name: string; sandboxKey: string } | null> {
+  const row = await prisma.council.findFirst({
+    where: { id: councilId, userId },
+    select: { name: true, sandboxKey: true },
+  });
+  return row ?? null;
+}
+
 export async function getCouncil(userId: string, councilId: string): Promise<CouncilDetail | null> {
   const row = await prisma.council.findFirst({
     where: { id: councilId, userId },

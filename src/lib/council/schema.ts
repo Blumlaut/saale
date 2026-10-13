@@ -95,12 +95,5 @@ export type CouncilUpdateInput = z.infer<typeof councilUpdateSchema>;
 export type MemberInput = z.infer<typeof memberInputSchema>;
 export type CouncilRunInput = z.infer<typeof councilRunSchema>;
 
-/** Format a zod failure for an API response. */
-export function formatValidationError(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const path = issue.path.join(".");
-      return path ? `${path}: ${issue.message}` : issue.message;
-    })
-    .join("; ");
-}
+/** Format a zod failure for an API response (shared with the file routes). */
+export { formatValidationError } from "@/lib/api-body";

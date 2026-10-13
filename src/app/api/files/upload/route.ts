@@ -1,81 +1,88 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
-import { getUploadsDir } from "@/lib/uploads";
-import fs from "fs/promises";
-import path from "path";
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+import {
+  MAX_UPLOAD_BYTES_PER_FILE,
+  MAX_UPLOAD_FILES,
+  MAX_UPLOAD_TOTAL_BYTES,
+} from "@/lib/files/config";
+import { formatBytes } from "@/lib/files/format";
+import { isSafeEntryName } from "@/lib/files/paths";
+import {
+  childPath,
+  fileErrorResponse,
+  openRequestTarget,
+  resolveRequestPath,
+} from "@/lib/files/request";
 
-/** Allowed MIME types for uploads. */
-const ALLOWED_MIME_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "text/markdown",
-  "text/html",
-  "text/xml",
-  "application/json",
-  "application/zip",
-]);
+/** Why a file in the request was not written. */
+type SkipReason = "exists" | "invalid-name" | "too-large";
 
 /**
- * POST /api/files/upload — Upload a file to user's workspace
+ * POST /api/files/upload?target=&dir=&overwrite=
+ *
+ * Multipart, one request per batch. The whole body is parsed into memory before
+ * the first write, which is what the total-size ceiling is really about.
+ *
+ * An existing name is *not* replaced by default: these are files an agent may be
+ * working in, and the workspace API would overwrite them silently. Conflicts come
+ * back in `skipped` and the browser offers to replace them, which is one click
+ * and never a surprise.
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
+  try {
+    const target = await openRequestTarget(request);
+    if (!target.ok) return target.response;
 
-  const formData = await request.formData();
-  const file = formData.get("file") as File | null;
+    const params = request.nextUrl.searchParams;
+    const dir = resolveRequestPath(target.opened, params.get("dir"));
+    const overwrite = params.get("overwrite") === "1";
 
-  if (!file) {
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    const declared = Number(request.headers.get("content-length") ?? 0);
+    if (declared > MAX_UPLOAD_TOTAL_BYTES) {
+      return NextResponse.json(
+        { error: `Upload is larger than ${formatBytes(MAX_UPLOAD_TOTAL_BYTES)}` },
+        { status: 413 },
+      );
+    }
+
+    const form = await request.formData();
+    const files = form.getAll("files").filter((value): value is File => value instanceof File);
+
+    if (files.length === 0) {
+      return NextResponse.json({ error: "No files in the request" }, { status: 400 });
+    }
+    if (files.length > MAX_UPLOAD_FILES) {
+      return NextResponse.json(
+        { error: `Upload at most ${MAX_UPLOAD_FILES} files at a time` },
+        { status: 413 },
+      );
+    }
+
+    const uploaded: string[] = [];
+    const skipped: { name: string; reason: SkipReason }[] = [];
+
+    for (const file of files) {
+      if (!isSafeEntryName(file.name)) {
+        skipped.push({ name: file.name, reason: "invalid-name" });
+        continue;
+      }
+      if (file.size > MAX_UPLOAD_BYTES_PER_FILE) {
+        skipped.push({ name: file.name, reason: "too-large" });
+        continue;
+      }
+
+      const path = childPath(dir, file.name);
+      if (!overwrite && (await target.opened.provider.stat(path))) {
+        skipped.push({ name: file.name, reason: "exists" });
+        continue;
+      }
+
+      await target.opened.provider.write(path, Buffer.from(await file.arrayBuffer()));
+      uploaded.push(file.name);
+    }
+
+    return NextResponse.json({ uploaded, skipped });
+  } catch (err) {
+    return fileErrorResponse(err, "POST /api/files/upload");
   }
-
-  // Validate file size
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json(
-      { error: `File too large (max ${MAX_FILE_SIZE / (1024 * 1024)} MB)` },
-      { status: 413 },
-    );
-  }
-
-  // Validate MIME type
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
-    return NextResponse.json({ error: `File type ${file.type} is not allowed` }, { status: 415 });
-  }
-
-  // Sanitize filename
-  const safeName = path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, "_");
-  const userDir = path.join(getUploadsDir(), authResult.user.id);
-  const filePath = path.join(userDir, safeName);
-
-  // Prevent directory traversal (defense in depth — safeName should already be clean)
-  if (!filePath.startsWith(userDir)) {
-    return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
-  }
-
-  // Ensure directory exists
-  await fs.mkdir(userDir, { recursive: true });
-
-  // Write file
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(filePath, buffer);
-
-  const stats = await fs.stat(filePath);
-
-  return NextResponse.json({
-    ok: true,
-    file: {
-      name: safeName,
-      path: `/${authResult.user.id}/${safeName}`,
-      size: stats.size,
-      mimeType: file.type,
-    },
-  });
 }

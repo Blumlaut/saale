@@ -111,11 +111,15 @@ export interface ReadFileBinaryResult {
 
 export interface ListDirectoryResult {
   dir: string;
+  /** Whether the container can write in this directory (absent on old builds). */
+  writable?: boolean;
   entries: Array<{
     name: string;
     type: "file" | "directory";
     size: number;
+    /** Epoch seconds, with sub-second precision. */
     modified: number;
+    writable?: boolean;
   }>;
 }
 

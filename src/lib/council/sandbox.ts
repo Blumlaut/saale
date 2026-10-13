@@ -41,6 +41,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createTerminalOperations } from "@/lib/terminal/operations";
 import { isConfigured } from "@/lib/terminal/client";
+import { resolveWithinRoot } from "@/lib/files/paths";
 import { sandboxIdentity, type CouncilSandboxIdentity } from "./accounts";
 import { isSafeAccountName, runContainerCommand, runTerminalCommand } from "./commands";
 
@@ -58,32 +59,13 @@ export class CouncilSandboxEscapeError extends Error {
 /**
  * Resolve `path` inside `root`.
  *
- * Purely textual: `.` and empty segments collapse, `..` pops. `inside` is false
- * when the result is neither the root nor under it — a relative path is taken
- * from the root, which is what a member means by `notes/plan.md`.
+ * The rule — collapse, pop `..`, refuse anything that is not the root or under
+ * it — is shared with the file browser (`@/lib/files/paths`), so a member's tool
+ * argument and a browser request can never be judged by two different
+ * implementations. `inside` is false when the result leaves the root.
  */
 export function resolveSandboxPath(root: string, path: string): { path: string; inside: boolean } {
-  const base = root.endsWith("/") ? root.slice(0, -1) : root;
-  if (path.includes("\0")) return { path: base, inside: false };
-
-  const absolute = path.startsWith("/") ? path : `${base}/${path}`;
-
-  const segments: string[] = [];
-  for (const segment of absolute.split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") {
-      if (segments.length === 0) return { path: base, inside: false };
-      segments.pop();
-      continue;
-    }
-    segments.push(segment);
-  }
-
-  const normalized = `/${segments.join("/")}`;
-  if (normalized !== base && !normalized.startsWith(`${base}/`)) {
-    return { path: base, inside: false };
-  }
-  return { path: normalized, inside: true };
+  return resolveWithinRoot(root, path);
 }
 
 /**
