@@ -413,6 +413,39 @@ export async function scheduleOrphanCleanup(intervalMinutes: number): Promise<st
   return removed;
 }
 
+// ─── Council runs ───────────────────────────────────────────────────────────
+
+export const COUNCIL_SWEEP_SCHEDULER_ID = "council-run-sweep";
+export const COUNCIL_SWEEP_JOB_NAME = "council_sweep";
+
+/**
+ * Register the sweep that rescues council runs left `running` by a dead process.
+ *
+ * A council run's loop lives in the web process and holds the council's run
+ * slot through the row's `status`; a restart mid-run would leave that row behind
+ * and refuse every later run. The sweep is what releases it, and it is the only
+ * thing council scheduling needs from the queue.
+ *
+ * @param intervalMinutes - How often to look for abandoned runs
+ * @returns Scheduler ids removed while cleaning up legacy repeatable jobs
+ */
+export async function scheduleCouncilSweep(intervalMinutes: number): Promise<string[]> {
+  const queue = getQueue();
+  const removed = await removeLegacyRepeatableJobs(
+    queue,
+    COUNCIL_SWEEP_JOB_NAME,
+    COUNCIL_SWEEP_SCHEDULER_ID,
+  );
+
+  await queue.upsertJobScheduler(
+    COUNCIL_SWEEP_SCHEDULER_ID,
+    { pattern: `*/${intervalMinutes} * * * *`, tz: "UTC" },
+    { name: COUNCIL_SWEEP_JOB_NAME, data: {} },
+  );
+
+  return removed;
+}
+
 /**
  * Remove BullMQ v5 repeatable jobs that v6 treats as job schedulers of their own.
  *

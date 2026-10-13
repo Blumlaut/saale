@@ -2,18 +2,24 @@
 import "dotenv/config";
 import type { Job, Processor } from "bullmq";
 import {
+  COUNCIL_SWEEP_JOB_NAME,
   createWorker,
   scheduleAllAgentDefinitions,
   scheduleAllJobs,
   scheduleAllWatchers,
+  scheduleCouncilSweep,
   scheduleOrphanCleanup,
   WATCHER_TICK_JOB_NAME,
 } from "@/lib/queue";
+import { isCouncilEnabled } from "@/lib/council/flag";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { registerTelegramWebhook } from "@/lib/telegram";
 
 /** How often to scan for orphaned image files (30 min) */
 const ORPHAN_CLEANUP_INTERVAL_MINUTES = 30;
+
+/** How often to look for council runs abandoned by a restarted app (2 min) */
+const COUNCIL_SWEEP_INTERVAL_MINUTES = 2;
 
 /** URL of the Next.js app (for job execution via API) */
 const APP_URL = process.env.WORKER_APP_URL ?? "http://localhost:3000";
@@ -83,6 +89,16 @@ async function executeWatcherTickViaApp(job: Job): Promise<unknown> {
   });
 }
 
+/**
+ * Rescue council runs whose loop died with a restarted app.
+ *
+ * The app owns the council tables (and the run records), so the sweep is an app
+ * call like the watcher tick rather than an inline worker job.
+ */
+async function executeCouncilSweepViaApp(): Promise<unknown> {
+  return postToApp("/api/council/execute", {});
+}
+
 /** Route jobs: system jobs inline, user jobs via Next.js API. */
 function createJobRouter(): Processor {
   return async (job: Job) => {
@@ -98,6 +114,9 @@ function createJobRouter(): Processor {
     }
     if (job.name === WATCHER_TICK_JOB_NAME) {
       return executeWatcherTickViaApp(job);
+    }
+    if (job.name === COUNCIL_SWEEP_JOB_NAME) {
+      return executeCouncilSweepViaApp();
     }
     return executeJobViaApp(job);
   };
@@ -152,6 +171,11 @@ async function main() {
   await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
   await retryUntilSuccess("Schedule agent definitions", scheduleAllAgentDefinitions);
   await retryUntilSuccess("Schedule watchers", scheduleAllWatchers);
+  if (isCouncilEnabled()) {
+    await retryUntilSuccess("Schedule council sweep", async () => {
+      await scheduleCouncilSweep(COUNCIL_SWEEP_INTERVAL_MINUTES);
+    });
+  }
   await retryUntilSuccess("Schedule orphan cleanup", registerOrphanCleanup);
   await retryUntilSuccess("Register Telegram webhook", registerTelegramWebhook);
 

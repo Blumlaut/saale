@@ -59,6 +59,7 @@ describe("council_post", () => {
       content: "@blade can you check the parse step?",
       memberIds: ["m2"],
       addressesUser: false,
+      addressedAll: false,
     });
     expect(result.structuredContent).toEqual({
       posted: true,
@@ -142,6 +143,7 @@ describe("council_read", () => {
         messages: [
           {
             seq: 39,
+            memberId: "m2",
             authorName: "blade",
             authorKind: "member" as const,
             addressedNames: [],
@@ -149,6 +151,7 @@ describe("council_read", () => {
           },
           {
             seq: 40,
+            memberId: null,
             authorName: "you",
             authorKind: "user" as const,
             addressedNames: ["acorn"],

@@ -23,23 +23,18 @@ import { MAX_MESSAGE_LENGTH } from "./config";
 import {
   ALL_HANDLE,
   USER_HANDLE,
+  addressesEveryone,
   mentionHelp,
   resolveMentions,
   type MentionTarget,
 } from "./mentions";
+import type { RoomMessageView } from "./room";
 
 /** Why a member wants to stop — recorded with the vote so the room can read it. */
 export type StopVoteKind = "consensus" | "done" | "blocked";
 
-/** A room message as the tools report it. */
-export interface CouncilRoomMessage {
-  seq: number;
-  authorName: string;
-  authorKind: "user" | "member" | "system";
-  /** Names this message addressed, as they were written. */
-  addressedNames: string[];
-  content: string;
-}
+/** A room message as the tools report it — the shared read model. */
+export type CouncilRoomMessage = RoomMessageView;
 
 export interface CouncilToolContext {
   /** The member the tools belong to. */
@@ -55,6 +50,8 @@ export interface CouncilToolContext {
     /** Member ids this message addresses. */
     memberIds: string[];
     addressesUser: boolean;
+    /** Whether the message addresses every member (`@all`). */
+    addressedAll: boolean;
   }): Promise<{ seq: number; wokeNames: string[] }>;
   /** Room messages, oldest first. */
   read(input: {
@@ -166,6 +163,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
           content,
           memberIds: resolution.memberIds,
           addressesUser: resolution.addressesUser,
+          addressedAll: addressesEveryone(content),
         });
 
         return {

@@ -18,6 +18,7 @@
 import type { CouncilOrchestration, StopVoteThreshold } from "./config";
 import { TRANSCRIPT_MAX_CHARS, TRANSCRIPT_WINDOW } from "./config";
 import { ALL_HANDLE, USER_HANDLE } from "./mentions";
+import type { RoomMessageView } from "./room";
 
 export interface CouncilMemberSummary {
   name: string;
@@ -96,15 +97,8 @@ export function buildCouncilMemberPrompt(context: CouncilPromptContext): string 
   return sections.filter((section): section is string => section !== null).join("\n\n");
 }
 
-/** One room message as a turn prompt shows it. */
-export interface TurnMessage {
-  seq: number;
-  authorName: string;
-  authorKind: "user" | "member" | "system";
-  content: string;
-  /** Handles this message addressed, as names. */
-  addressedNames: string[];
-}
+/** One room message as a turn prompt shows it — the shared read model. */
+export type TurnMessage = RoomMessageView;
 
 export interface TurnSelection {
   messages: TurnMessage[];
@@ -162,6 +156,12 @@ export interface TurnPromptOptions {
   round?: number | undefined;
   /** The member's workspace path, or null when it has none. */
   sandboxPath?: string | null;
+  /**
+   * Older messages the caller did not fetch (the room is longer than the window
+   * it read). Counted together with what the char cap drops, so the prompt never
+   * implies the member has seen the whole room.
+   */
+  droppedBefore?: number;
 }
 
 /**
@@ -182,9 +182,10 @@ export function buildCouncilTurnPrompt(options: TurnPromptOptions): string {
         : "You have been woken: the room moved on and these messages involve you.";
 
   const body = selection.messages.map(describeMessage).join("\n\n");
+  const droppedCount = selection.droppedEarlier + (options.droppedBefore ?? 0);
   const dropped =
-    selection.droppedEarlier > 0
-      ? `${selection.droppedEarlier} older message${selection.droppedEarlier === 1 ? "" : "s"} in the room ${selection.droppedEarlier === 1 ? "is" : "are"} not shown — use \`council_read\` if you need ${selection.droppedEarlier === 1 ? "it" : "them"}.`
+    droppedCount > 0
+      ? `${droppedCount} older message${droppedCount === 1 ? "" : "s"} in the room ${droppedCount === 1 ? "is" : "are"} not shown — use \`council_read\` if you need ${droppedCount === 1 ? "it" : "them"}.`
       : null;
 
   return [
