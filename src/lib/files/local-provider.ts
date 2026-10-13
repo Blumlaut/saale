@@ -11,6 +11,11 @@
  * permissions, this backend runs as the app's own user, so every path is
  * checked again against the *real* root after `realpath` — including the nearest
  * existing ancestor of a path that does not exist yet (an upload destination).
+ *
+ * The reads below carry `turbopackIgnore` comments to opt out of build-time
+ * filesystem tracing. The root is only known at runtime, so the tracer cannot
+ * scope the paths and would otherwise copy the whole project into the server
+ * output. Writes need no opt-out: the tracer only widens the output for reads.
  */
 
 import fs from "node:fs/promises";
@@ -82,13 +87,23 @@ export function createLocalFileProvider(options: { root: string }): FileProvider
       // that an agent deleted.
       const realDir = await resolveReal(dir);
 
-      const dirents = await fs.readdir(realDir, { withFileTypes: true });
+      const dirents = await fs.readdir(/* turbopackIgnore: true */ realDir, {
+        withFileTypes: true,
+      });
       // One row past the limit is enough for the caller to see it was cut.
       const capped = dirents.slice(0, MAX_LISTING_ENTRIES + 1);
       const entries = await Promise.all(
         capped.map(async (dirent) => {
-          const full = path.join(realDir, dirent.name);
-          const stats = await fs.stat(full).catch(() => null);
+          const full = path.join(/* turbopackIgnore: true */ realDir, dirent.name);
+          // A name that vanished between the read and the stat is simply gone;
+          // anything else (a permission error, a dead mount) still hides the
+          // row, so it is logged rather than passed off as a missing file.
+          const stats = await fs.stat(/* turbopackIgnore: true */ full).catch((err) => {
+            if (!isNotFoundError(err)) {
+              console.error(`Failed to stat ${full} while listing a directory:`, err);
+            }
+            return null;
+          });
           if (!stats) return null;
           return {
             name: dirent.name,
@@ -105,7 +120,7 @@ export function createLocalFileProvider(options: { root: string }): FileProvider
 
     async stat(target: string): Promise<FileStat | null> {
       try {
-        const stats = await fs.stat(await resolveReal(target));
+        const stats = await fs.stat(/* turbopackIgnore: true */ await resolveReal(target));
         return {
           kind: stats.isDirectory() ? "directory" : "file",
           size: stats.size,
@@ -120,9 +135,9 @@ export function createLocalFileProvider(options: { root: string }): FileProvider
 
     async read(target: string): Promise<FileBytes> {
       const real = await resolveReal(target);
-      const stats = await fs.stat(real);
+      const stats = await fs.stat(/* turbopackIgnore: true */ real);
       if (stats.isDirectory()) throw new FileNotFoundError(target);
-      const buffer = await fs.readFile(real);
+      const buffer = await fs.readFile(/* turbopackIgnore: true */ real);
       return { buffer, mimeType: resolveMimeType(path.basename(real)) };
     },
 
