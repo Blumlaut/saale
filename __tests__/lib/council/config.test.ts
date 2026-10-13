@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  COUNCIL_DEFAULT_TOOL_CONFIG,
   DEFAULT_RUN_BUDGET,
   isCouncilOrchestration,
   isStopVoteThreshold,
@@ -8,6 +9,25 @@ import {
   resolveRunBudget,
   stopVoteQuorum,
 } from "@/lib/council/config";
+import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
+
+describe("COUNCIL_DEFAULT_TOOL_CONFIG", () => {
+  it("starts a council with its own workspace and nothing that reaches the owner", () => {
+    // A chat's defaults would hand a council telegram_send, mail_send and the
+    // owner's memory. Those have to be a per-council decision.
+    expect(COUNCIL_DEFAULT_TOOL_CONFIG.terminal).toBe(true);
+    for (const [category, enabled] of Object.entries(COUNCIL_DEFAULT_TOOL_CONFIG)) {
+      if (category === "terminal") continue;
+      expect(enabled, `${category} must be off for a council by default`).toBe(false);
+    }
+  });
+
+  it("covers every registered category, so a new one arrives switched off", () => {
+    expect(Object.keys(COUNCIL_DEFAULT_TOOL_CONFIG).sort()).toEqual(
+      TOOL_CATEGORIES.map((category) => category.key).sort(),
+    );
+  });
+});
 
 describe("stopVoteQuorum", () => {
   it("needs more than half the members for a majority", () => {
