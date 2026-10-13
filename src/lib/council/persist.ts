@@ -127,8 +127,15 @@ export interface PostMessageInput {
   mentions: string[];
 }
 
-/** Append a message to the room. */
-export async function postRoomMessage(input: PostMessageInput): Promise<RoomMessageView> {
+/**
+ * Append a message to the room.
+ *
+ * Returns the stored row's id alongside the read model: the API records it as a
+ * run's trigger, and the loop only cares about the view.
+ */
+export async function postRoomMessage(
+  input: PostMessageInput,
+): Promise<RoomMessageView & { id: string }> {
   const seq = await allocateSeq(input.councilId, input.userId);
 
   const message = await prisma.councilMessage.create({
@@ -146,6 +153,7 @@ export async function postRoomMessage(input: PostMessageInput): Promise<RoomMess
   });
 
   return {
+    id: message.id,
     seq: message.seq,
     memberId: message.memberId,
     authorName: message.authorName,
