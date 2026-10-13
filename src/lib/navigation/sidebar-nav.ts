@@ -27,6 +27,7 @@ export const SIDEBAR_NAV_ITEM_IDS = [
   "calendar",
   "tasks",
   "jobs",
+  "council",
   "infra",
   "settings",
 ] as const;
@@ -39,6 +40,13 @@ export interface SidebarNavItem {
   label: string;
   /** Shorter label for the mobile bottom bar, where space is tight. */
   mobileLabel?: string;
+  /**
+   * Registered but not part of the out-of-the-box sidebar: a layout that does
+   * not mention the item starts with it hidden, so the user turns it on in
+   * Settings instead of turning it off. Availability is a separate question —
+   * an item only reaches the nav if the route that serves the layout says so.
+   */
+  defaultHidden?: boolean;
 }
 
 /** One entry of a user's stored layout. */
@@ -54,6 +62,9 @@ const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id
   calendar: { href: "/dashboard/calendar", label: "Calendar" },
   tasks: { href: "/dashboard/tasks", label: "Tasks" },
   jobs: { href: "/dashboard/jobs", label: "Jobs" },
+  // Hidden until enabled: a council costs several models at once, so it is
+  // opt-in rather than a default destination.
+  council: { href: "/dashboard/council", label: "Council", defaultHidden: true },
   infra: { href: "/dashboard/infra", label: "Infrastructure", mobileLabel: "Servers" },
   settings: { href: "/dashboard/settings", label: "Settings" },
 };
@@ -83,17 +94,18 @@ export function isSidebarNavActive(href: string, pathname: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Default layout: every item visible, in registry order. */
+/** Default layout: registry order, with the opt-in items hidden. */
 export function defaultSidebarNav(): SidebarNavEntry[] {
-  return SIDEBAR_NAV_ITEMS.map((item) => ({ id: item.id, hidden: false }));
+  return SIDEBAR_NAV_ITEMS.map((item) => ({ id: item.id, hidden: item.defaultHidden === true }));
 }
 
 /**
  * Resolve a stored layout into a complete, ordered entry list.
  *
  * Unknown ids and duplicates are dropped, items the layout doesn't mention are
- * appended in registry order (visible), and pinned items (Settings) are always
- * forced back to visible — hiding them is not a valid layout.
+ * appended in registry order at their default visibility, and pinned items
+ * (Settings) are always forced back to visible — hiding them is not a valid
+ * layout.
  */
 export function normalizeSidebarNav(stored: unknown): SidebarNavEntry[] {
   const entries: SidebarNavEntry[] = [];
@@ -109,8 +121,10 @@ export function normalizeSidebarNav(stored: unknown): SidebarNavEntry[] {
     }
   }
 
+  // An item the stored layout never mentioned starts at its registry default:
+  // visible for the everyday destinations, hidden for the opt-in ones.
   for (const item of SIDEBAR_NAV_ITEMS) {
-    if (!seen.has(item.id)) entries.push({ id: item.id, hidden: false });
+    if (!seen.has(item.id)) entries.push({ id: item.id, hidden: item.defaultHidden === true });
   }
 
   return entries.map((entry) =>
@@ -118,12 +132,15 @@ export function normalizeSidebarNav(stored: unknown): SidebarNavEntry[] {
   );
 }
 
-/** Whether a layout matches the default order with everything visible. */
+/** Whether a layout matches the registry's default order and visibility. */
 export function isDefaultSidebarNav(entries: readonly SidebarNavEntry[]): boolean {
   const defaults = defaultSidebarNav();
   return (
     entries.length === defaults.length &&
-    entries.every((entry, index) => entry.id === defaults[index]?.id && !entry.hidden)
+    entries.every(
+      (entry, index) =>
+        entry.id === defaults[index]?.id && entry.hidden === defaults[index]?.hidden,
+    )
   );
 }
 

@@ -24,9 +24,25 @@ function visibleIds(entries: SidebarNavEntry[]): string[] {
 }
 
 describe("sidebar nav registry", () => {
-  it("exposes every id in the default order", () => {
+  it("exposes every id in the default order, at the registry's own visibility", () => {
     expect(ids(defaultSidebarNav())).toEqual([...SIDEBAR_NAV_ITEM_IDS]);
-    expect(defaultSidebarNav().every((entry) => !entry.hidden)).toBe(true);
+    // Pinned items are always on; opt-in items start hidden and are turned on in
+    // Settings, so "visible by default" is a per-item property, not a blanket one.
+    for (const entry of defaultSidebarNav()) {
+      const item = SIDEBAR_NAV_ITEMS.find((candidate) => candidate.id === entry.id)!;
+      expect(entry.hidden, `${entry.id} visibility`).toBe(item.defaultHidden === true);
+    }
+  });
+
+  it("starts an opt-in item hidden rather than dropping it", () => {
+    const council = sidebarNavItem("council");
+    expect(council.defaultHidden).toBe(true);
+
+    // A layout saved before the item existed still knows about it — hidden.
+    const stored = [{ id: "chat", hidden: false }] as SidebarNavEntry[];
+    const entries = normalizeSidebarNav(stored);
+    expect(entries.find((entry) => entry.id === "council")?.hidden).toBe(true);
+    expect(visibleIds(entries)).not.toContain("council");
   });
 
   it("has an icon for every registry item", () => {
