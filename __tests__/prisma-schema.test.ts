@@ -49,7 +49,7 @@ describe("prisma schema shape", () => {
 
   it("gives every council row a primary key the app can read back", () => {
     const schema = readFileSync(SCHEMA_PATH, "utf8");
-    const blocks = schema.matchAll(/^model (Council\w*) \{(.*?)^\}/gms);
+    const blocks = schema.matchAll(/^model (Council\w*) \{([\s\S]*?)^\}/gm);
     const models = [...blocks];
 
     expect(models.map(([, name]) => name)).toEqual([
