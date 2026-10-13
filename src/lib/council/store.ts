@@ -395,7 +395,7 @@ export async function updateCouncil(
   userId: string,
   councilId: string,
   input: CouncilUpdateInput,
-): Promise<CouncilSummary | null> {
+): Promise<CouncilDetail | null> {
   const updated = await prisma.council.updateMany({
     where: { id: councilId, userId },
     data: {

@@ -28,7 +28,15 @@ vi.mock("@/lib/pi/agent-pool", () => ({
   evictUserSessions: vi.fn().mockResolvedValue(0),
 }));
 
+// The route drops nav items this user may not open (the council entry, which is
+// admin-only). Default: allowed, with `mockCanUseCouncil` flipped per case.
+const mockCanUseCouncil = vi.fn(async (..._args: unknown[]) => true);
+vi.mock("@/lib/council/access", () => ({
+  canUseCouncil: (...args: unknown[]) => mockCanUseCouncil(...args),
+}));
+
 import { GET, PATCH } from "@/app/api/settings/sidebar-nav/route";
+import { SIDEBAR_NAV_ITEM_IDS } from "@/lib/navigation/sidebar-nav";
 
 const USER_ID = "user-1";
 
@@ -58,6 +66,7 @@ function lastUpdate(): UpdateArgs {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockCanUseCouncil.mockResolvedValue(true);
   auth();
   mockUpsert.mockResolvedValue({ id: "settings-1", userId: USER_ID, sidebarItems: null });
   mockUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -88,16 +97,29 @@ describe("GET /api/settings/sidebar-nav", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.items.map((item: { id: string }) => item.id)).toEqual([
-      "chat",
-      "mail",
-      "calendar",
-      "tasks",
-      "jobs",
-      "infra",
-      "settings",
-    ]);
-    expect(body.items.every((item: { hidden: boolean }) => !item.hidden)).toBe(true);
+    expect(body.items.map((item: { id: string }) => item.id)).toEqual([...SIDEBAR_NAV_ITEM_IDS]);
+    // Visible by default is per item: the opt-in entries start hidden.
+    expect(body.items.find((item: { id: string }) => item.id === "chat").hidden).toBe(false);
+    expect(body.items.find((item: { id: string }) => item.id === "council").hidden).toBe(true);
+  });
+
+  it("drops a nav item this user may not open", async () => {
+    mockCanUseCouncil.mockResolvedValue(false);
+    mockFindUnique.mockResolvedValue({
+      sidebarItems: [
+        { id: "chat", hidden: false },
+        { id: "council", hidden: false },
+      ],
+    });
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    // Not hidden — absent: offering a toggle for a page that cannot be opened is
+    // what a filtered list avoids.
+    expect(body.items.map((item: { id: string }) => item.id)).not.toContain("council");
+    expect(body.items.map((item: { id: string }) => item.id)).toContain("chat");
   });
 
   it("scopes the lookup to the authenticated user", async () => {
@@ -144,8 +166,10 @@ describe("PATCH /api/settings/sidebar-nav", () => {
 
     const written = lastUpdate().data.sidebarItems as { id: string }[];
     expect(written.slice(0, 2).map((entry) => entry.id)).toEqual(["tasks", "chat"]);
-    // Registry items the layout doesn't mention come back visible, appended.
-    expect(body.items.map((item: { id: string }) => item.id)).toHaveLength(7);
+    // Registry items the layout doesn't mention come back at their own default.
+    expect(body.items.map((item: { id: string }) => item.id)).toHaveLength(
+      SIDEBAR_NAV_ITEM_IDS.length,
+    );
     expect(body.items.at(-1)).toEqual({ id: "infra", hidden: false });
   });
 
@@ -154,7 +178,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
 
     expect(res.status).toBe(200);
     expect(lastUpdate().data.sidebarItems).toBe(Prisma.DbNull);
-    expect((await res.json()).items).toHaveLength(7);
+    expect((await res.json()).items).toHaveLength(SIDEBAR_NAV_ITEM_IDS.length);
   });
 
   it("rejects an unknown item id", async () => {
