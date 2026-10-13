@@ -46,6 +46,7 @@ model User {
   infraMachines      InfraMachine[]
   mcpServers         McpServer[]
   mcpOAuthCredentials McpOAuthCredential[]
+  councils           Council[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -933,4 +934,204 @@ model InfraNote {
 
   @@index([machineId, category])
   @@map("InfraNote")
+}
+
+// ─── Council ──────────────────────────────────────────────────
+
+/// A room of named agents that work a shared goal together. Members speak only
+/// through the `council_post` tool, so every room message is deliberate.
+model Council {
+  id     String @id @default(cuid())
+  userId String
+  name   String @db.VarChar(100)
+  /// What the council is meant to achieve — given to every member.
+  brief  String @db.Text
+
+  /// Which tool categories members may use: { web: true, terminal: true, ... }.
+  toolConfig        Json?
+  /// How members take turns: "parallel" (mention-driven) or "round-robin".
+  orchestration     String @default("parallel")
+  /// Votes needed to stop a run: "majority" | "unanimous" | "any".
+  stopVoteThreshold String @default("majority")
+
+  /// Budget defaults for a new run (overridable per run); null = unlimited.
+  maxDurationSeconds Int?
+  maxTokens          Int?
+  maxCostUsd         Float?
+
+  /// 8-char key whose Open Terminal account is this council's file sandbox.
+  /// kernel-enforced (the home is chmod 2770), so members cannot read the
+  /// user's home directory and the user cannot read the sandbox.
+  sandboxKey   String  @unique
+  /// Whether the sandbox home directory has been created in the container.
+  sandboxReady Boolean @default(false)
+
+  /// Monotonic room message counter — the ordering members read by.
+  nextSeq Int @default(0)
+
+  status    String    @default("idle") // idle | running | waiting | completed | failed | aborted
+  lastRunAt DateTime?
+
+  members  CouncilMember[]
+  messages CouncilMessage[]
+  runs     CouncilRun[]
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@map("Council")
+}
+
+/// One named agent in a council. `name` is the handle others address with
+/// `@name`; it is unique within its council.
+model CouncilMember {
+  id           String  @id @default(cuid())
+  councilId    String
+  /// Denormalized owner — every query is scoped by it, not by the id alone.
+  userId       String
+  name         String  @db.VarChar(50)
+  /// Role and persona instructions appended to the member's system prompt.
+  instructions String? @db.Text
+
+  modelProvider String?
+  modelName     String?
+  thinkingLevel String  @default("default")
+
+  /// Per-member tool selection; null inherits the council's toolConfig.
+  toolConfig Json?
+
+  enabled Boolean @default(true)
+
+  council Council             @relation(fields: [councilId], references: [id], onDelete: Cascade)
+  turns   CouncilMemberTurn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([councilId, name])
+  @@index([userId])
+  @@map("CouncilMember")
+}
+
+/// One execution of a council: members work in parallel (or in turn) until a
+/// vote, a budget or the user stops them.
+model CouncilRun {
+  id        String @id @default(cuid())
+  councilId String
+  userId    String
+
+  status           String  @default("pending") // pending | running | waiting | completed | aborted | failed
+  /// Why the run ended: "consensus" | "no-pending-work" | "budget:time" |
+  /// "budget:tokens" | "budget:cost" | "aborted" | "timeout" | "error".
+  stopReason       String?
+  /// The room message that started this run, when the user convened it.
+  triggerMessageId String?
+
+  /// Budget this run was started with (the council's defaults, overridden per
+  /// run); null = unlimited.
+  maxDurationSeconds Int?
+  maxTokens          Int?
+  maxCostUsd         Float?
+
+  inputTokens  Int   @default(0)
+  outputTokens Int   @default(0)
+  cost         Float @default(0)
+  /// Turns that ran, across all members.
+  turnCount    Int   @default(0)
+
+  error String? @db.Text
+
+  /// Bumped on every turn boundary — the watchdog stops a run whose loop died
+  /// (server restart) instead of leaving it "running" forever.
+  lastHeartbeatAt DateTime?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  council Council             @relation(fields: [councilId], references: [id], onDelete: Cascade)
+  turns   CouncilMemberTurn[]
+
+  createdAt DateTime @default(now())
+
+  @@index([councilId, createdAt])
+  @@index([userId, status])
+  @@map("CouncilRun")
+}
+
+/// A message in the room: the user, a member's `council_post`, or a system
+/// notice (a vote, a stop, a failure).
+model CouncilMessage {
+  id        String  @id @default(cuid())
+  councilId String
+  userId    String
+  /// Run this message was posted in; null for user messages between runs.
+  runId     String?
+
+  /// Monotonic per council — read order and the members' read cursor.
+  seq Int
+
+  /// "user" | "member" | "system".
+  authorKind String
+  /// Set for authorKind "member" (kept as a bare id: history outlives members).
+  memberId   String?
+  /// Display name at post time — a member may later be renamed or removed.
+  authorName String
+  content    String   @db.Text
+  /// Member ids this message addresses, plus "user" when it addresses you.
+  mentions   String[] @default([])
+
+  council Council @relation(fields: [councilId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([councilId, seq])
+  @@index([councilId, createdAt])
+  @@map("CouncilMessage")
+}
+
+/// One member's turn inside a run — the private trace behind its public posts:
+/// what woke it, what it reasoned, every tool call it made, and the closing text
+/// it did NOT send to the room.
+model CouncilMemberTurn {
+  id         String  @id @default(cuid())
+  runId      String
+  councilId  String
+  userId     String
+  /// Null once the member is deleted; the run keeps its trace and its name.
+  memberId   String?
+  memberName String  @db.VarChar(50)
+
+  /// Room message seqs that woke this turn (the member's inbox).
+  triggeredBy Int[] @default([])
+  /// Highest room seq the member was shown, so a subpage can show the gap.
+  seenThrough Int?
+  /// Room messages this turn posted, in order.
+  postedSeqs  Int[] @default([])
+
+  thinking  String? @db.Text
+  /// Tool calls with their results, as JSON.
+  toolCalls String? @db.Text
+  /// The member's closing text. Never a room message — only its subpage shows it.
+  finalText String? @db.Text
+
+  status String  @default("running") // running | completed | error
+  error  String? @db.Text
+
+  inputTokens  Int   @default(0)
+  outputTokens Int   @default(0)
+  cost         Float @default(0)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  run    CouncilRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  member CouncilMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([runId, createdAt])
+  @@index([memberId, createdAt])
+  @@map("CouncilMemberTurn")
 }
