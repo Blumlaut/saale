@@ -7,13 +7,16 @@
  * 1. Verify ownership (`userId` in the query — an id-only delete would let a
  *    guessed id remove another user's chat)
  * 2. Delete attachment files from disk (fails fast, leaving the DB intact)
- * 3. Delete the session row (cascade removes messages + attachment records)
- * 4. Release the pooled agent and Pi's transcript directory
+ * 3. Delete the session row (cascade removes messages + attachment records +
+ *    watcher rows)
+ * 4. Unschedule the chat's watchers (the cascade cannot reach BullMQ state)
+ * 5. Release the pooled agent and Pi's transcript directory
  */
 
 import fs from "fs/promises";
 import { prisma } from "@/lib/db";
 import { deleteAllImages } from "@/lib/image-attachment";
+import { unscheduleWatcher } from "@/lib/queue";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
 
 /** The deleted chat's title, for a confirmation message. */
@@ -50,9 +53,19 @@ export async function deleteChatSession(userId: string, sessionId: string): Prom
     await deleteAllImages(userId, storagePaths);
   }
 
+  // The cascade removes the watcher rows, but their tick schedulers are BullMQ
+  // state the database cannot reach — collect the ids before, unschedule after.
+  const watcherIds = await prisma.scriptWatcher
+    .findMany({ where: { sessionId, userId }, select: { id: true } })
+    .then((watchers) => watchers.map((watcher) => watcher.id));
+
   // `userId` in the where clause as defense in depth, even though ownership was
   // already checked above.
   await prisma.chatSession.deleteMany({ where: { id: sessionId, userId } });
+
+  for (const watcherId of watcherIds) {
+    await unscheduleWatcher(watcherId);
+  }
 
   // Dispose the pooled agent, then remove Pi's JSONL transcript directory.
   await remove(getPoolKey(userId, sessionId));

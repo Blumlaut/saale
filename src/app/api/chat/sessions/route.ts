@@ -27,6 +27,7 @@ export async function GET() {
       createdAt: true,
       updatedAt: true,
       lastActivityAt: true,
+      _count: { select: { scriptWatchers: true } },
     },
   });
 
@@ -39,6 +40,7 @@ export async function GET() {
       title: s.title,
       temporary: s.temporary,
       messageCount: s.messageCount,
+      watcherCount: s._count.scriptWatchers,
       isGenerating: activeSessionIds.has(s.id),
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),

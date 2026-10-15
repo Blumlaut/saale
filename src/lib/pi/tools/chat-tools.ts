@@ -332,8 +332,9 @@ export function createChatDeleteTool(userId: string) {
     name: "chat_delete",
     label: "Delete Chat",
     description:
-      "Permanently delete one of the user's chats and all of its messages. " +
-      "This cannot be undone. Use the sessionId from chat_search.",
+      "Permanently delete one of the user's chats and all of its messages, " +
+      "attachments, and any watchers attached to it. This cannot be undone. " +
+      "Use the sessionId from chat_search.",
     parameters: Type.Object({
       sessionId: Type.String({
         description: "Chat session ID, as returned by chat_search.",
@@ -345,7 +346,7 @@ export function createChatDeleteTool(userId: string) {
 
       return {
         value: { deleted: true, sessionId: params.sessionId, title },
-        text: `Deleted chat "${title}" (${params.sessionId}) and all of its messages.`,
+        text: `Deleted chat "${title}" (${params.sessionId}) and everything attached to it.`,
         details: { sessionId: params.sessionId, title },
       };
     },
