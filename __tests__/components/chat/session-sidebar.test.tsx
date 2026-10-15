@@ -28,12 +28,13 @@ function iso(daysAgo: number) {
   return new Date(NOW - daysAgo * DAY).toISOString();
 }
 
-function session(id: string, title: string, daysAgo: number) {
+function session(id: string, title: string, daysAgo: number, watcherCount = 0) {
   return {
     id,
     title,
     temporary: false,
     messageCount: 3,
+    watcherCount,
     createdAt: iso(daysAgo + 1),
     updatedAt: iso(daysAgo),
     lastActivityAt: iso(daysAgo),
@@ -54,9 +55,6 @@ type BulkResponse = { deleted: string[]; failed: Array<{ sessionId: string; erro
 
 function mockSessions(sessions = SESSIONS, bulk?: BulkResponse) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (init?.method === "DELETE") {
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
-    }
     if (url === "/api/chat/sessions/bulk") {
       const { ids } = JSON.parse(String(init?.body)) as { ids: string[] };
       return new Response(JSON.stringify(bulk ?? { deleted: ids, failed: [] }), { status: 200 });
@@ -158,16 +156,45 @@ describe("SessionSidebar older chats", () => {
     expect(screen.getByRole("button", { name: "Hide older chats" })).toBeInTheDocument();
   });
 
-  it("deletes an idle chat from inside the card", async () => {
+  it("deletes an idle chat from inside the card through the confirmation box", async () => {
     await renderSidebar();
 
     fireEvent.click(screen.getByRole("button", { name: "Show older chats" }));
     await revealRowActions("Stale chat");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
 
+    expect(await screen.findByText("Delete 1 chat?")).toBeInTheDocument();
+    // Cancelling must not touch the chat.
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Stale chat")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await revealRowActions("Stale chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
     await waitFor(() => expect(screen.queryByText("Stale chat")).not.toBeInTheDocument());
     expect(screen.getByText("Ancient chat")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("/api/chat/sessions/s-stale", { method: "DELETE" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/chat/sessions/bulk",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ ids: ["s-stale"] }),
+      }),
+    );
+  });
+
+  it("warns in the confirmation box when the chat has watchers attached", async () => {
+    mockSessions([session("s-watch", "Watched chat", 0.2, 2)]);
+
+    await renderSidebar(undefined, "Watched chat");
+    await revealRowActions("Watched chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
+
+    const box = await screen.findByText("Delete 1 chat?");
+    const description = box.closest("[role=alertdialog]") as HTMLElement;
+    expect(description.textContent).toContain("2 watchers");
+    expect(description.textContent).toContain("scheduled checks stop immediately");
   });
 
   it("offers every row's delete action without a hover state", async () => {

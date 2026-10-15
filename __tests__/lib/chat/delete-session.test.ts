@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockFindFirst = vi.fn();
 const mockFindMany = vi.fn();
 const mockDeleteMany = vi.fn();
+const mockWatcherFindMany = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatSession: {
@@ -16,7 +17,15 @@ vi.mock("@/lib/db", () => ({
       deleteMany: (...args: unknown[]) => mockDeleteMany(...args),
     },
     chatMessage: { findMany: (...args: unknown[]) => mockFindMany(...args) },
+    // The cascade removes the rows; the mock has to hand back the ids so the
+    // scheduler-cleanup under test can see them.
+    scriptWatcher: { findMany: (...args: unknown[]) => mockWatcherFindMany(...args) },
   },
+}));
+
+const mockUnscheduleWatcher = vi.fn();
+vi.mock("@/lib/queue", () => ({
+  unscheduleWatcher: (...args: unknown[]) => mockUnscheduleWatcher(...args),
 }));
 
 const mockDeleteAllImages = vi.fn();
@@ -47,6 +56,7 @@ describe("deleteChatSession", () => {
     mockFindMany.mockResolvedValue([]);
     mockDeleteMany.mockResolvedValue({ count: 1 });
     mockDeleteAllImages.mockResolvedValue(undefined);
+    mockWatcherFindMany.mockResolvedValue([]);
     mockRemove.mockResolvedValue(undefined);
     mockRm.mockResolvedValue(undefined);
   });
@@ -111,6 +121,27 @@ describe("deleteChatSession", () => {
     await expect(deleteChatSession(USER_ID, SESSION_ID)).rejects.toThrow("disk on fire");
     expect(mockDeleteMany).not.toHaveBeenCalled();
   });
+
+  it("unschedules every watcher the chat created", async () => {
+    mockWatcherFindMany.mockResolvedValue([{ id: "w-1" }, { id: "w-2" }]);
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    // The lookup is scoped to the chat's owner, not just the session id.
+    expect(mockWatcherFindMany).toHaveBeenCalledWith({
+      where: { sessionId: SESSION_ID, userId: USER_ID },
+      select: { id: true },
+    });
+    expect(mockUnscheduleWatcher).toHaveBeenCalledTimes(2);
+    expect(mockUnscheduleWatcher).toHaveBeenCalledWith("w-1");
+    expect(mockUnscheduleWatcher).toHaveBeenCalledWith("w-2");
+  });
+
+  it("does nothing to the queue when the chat has no watchers", async () => {
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockUnscheduleWatcher).not.toHaveBeenCalled();
+  });
 });
 
 describe("deleteChatSessions", () => {
@@ -122,6 +153,7 @@ describe("deleteChatSessions", () => {
     mockFindMany.mockResolvedValue([]);
     mockDeleteMany.mockResolvedValue({ count: 1 });
     mockDeleteAllImages.mockResolvedValue(undefined);
+    mockWatcherFindMany.mockResolvedValue([]);
     mockRemove.mockResolvedValue(undefined);
     mockRm.mockResolvedValue(undefined);
   });
@@ -154,5 +186,20 @@ describe("deleteChatSessions", () => {
 
     expect(result).toEqual({ deleted: ["chat-1"], failed: [] });
     expect(mockDeleteMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("unschedules only the watchers of the chats that actually went", async () => {
+    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "someone-elses-chat" ? null : { title: where.id },
+    );
+    mockWatcherFindMany.mockImplementation(async ({ where }: { where: { sessionId: string } }) =>
+      where.sessionId === "chat-1" ? [{ id: `watcher-${where.sessionId}` }] : [],
+    );
+
+    const result = await deleteChatSessions(USER_ID, ["chat-1", "someone-elses-chat", "chat-2"]);
+
+    expect(result.deleted).toEqual(["chat-1", "chat-2"]);
+    expect(mockUnscheduleWatcher).toHaveBeenCalledTimes(1);
+    expect(mockUnscheduleWatcher).toHaveBeenCalledWith("watcher-chat-1");
   });
 });

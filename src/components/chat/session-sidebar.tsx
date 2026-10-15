@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, ROW_ACTION } from "@/lib/utils";
-import { fetchJson, deleteJson, postJson } from "@/lib/http";
+import { fetchJson, postJson } from "@/lib/http";
 import { useLongPress } from "@/hooks/use-long-press";
 import { splitSessionsByActivity } from "@/lib/chat/session-recency";
 import {
@@ -46,6 +46,7 @@ interface ChatSession {
   title: string;
   temporary: boolean;
   messageCount: number;
+  watcherCount?: number;
   updatedAt: string;
   lastActivityAt?: string;
   isGenerating?: boolean;
@@ -230,11 +231,12 @@ export function SessionSidebar({
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [olderOpen, setOlderOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
+  // The pending delete's ids — one from the row menu, several from the
+  // selection bar — so both paths run through the same confirmation.
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
 
   // No separate mode flag: a selection exists exactly as long as chats are
   // picked, so dropping the last one leaves the list back in its normal state.
@@ -284,19 +286,34 @@ export function SessionSidebar({
     return () => window.removeEventListener("keydown", handler);
   }, [selecting]);
 
-  const deleteSession = async (id: string) => {
-    setDeletingId(id);
+  // One delete for one or many: the bulk endpoint takes both, and a failed
+  // single delete reports like a failed batch.
+  const deleteChats = async (ids: string[]) => {
+    setDeletingIds(ids);
     try {
-      await deleteJson(`/api/chat/sessions/${id}`);
-      broadcastSessionsDeleted([id]);
-      if (activeSessionId === id) {
+      const result = await postJson<BulkDeleteResponse>("/api/chat/sessions/bulk", { ids });
+      const deleted = new Set(result.deleted);
+      broadcastSessionsDeleted(result.deleted);
+      // Whatever survived stays picked, so a retry is one tap away.
+      setSelectedIds(new Set(result.failed.map((failure) => failure.sessionId)));
+      if (activeSessionId && deleted.has(activeSessionId)) {
         router.push("/dashboard/chat");
       }
+      if (result.failed.length > 0) {
+        toast.error(
+          ids.length === 1
+            ? "Could not delete the chat"
+            : `Could not delete ${result.failed.length} of ${ids.length} chats — they are still selected`,
+        );
+      }
     } catch (err) {
-      console.error("Failed to delete chat session:", err);
+      console.error("Failed to delete chat sessions:", err);
+      toast.error("Could not delete the selected chats");
     }
-    setDeletingId(null);
+    setDeletingIds([]);
   };
+
+  const requestDelete = (ids: string[]) => setPendingDelete(ids);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -310,30 +327,6 @@ export function SessionSidebar({
   const selectRow = useCallback((id: string) => {
     setSelectedIds((prev) => new Set(prev).add(id));
   }, []);
-
-  const deleteSelected = async () => {
-    const ids = [...selectedIds];
-    setBulkDeleting(true);
-    try {
-      const result = await postJson<BulkDeleteResponse>("/api/chat/sessions/bulk", { ids });
-      const deleted = new Set(result.deleted);
-      broadcastSessionsDeleted(result.deleted);
-      // Whatever survived stays picked, so a retry is one tap away.
-      setSelectedIds(new Set(result.failed.map((failure) => failure.sessionId)));
-      if (activeSessionId && deleted.has(activeSessionId)) {
-        router.push("/dashboard/chat");
-      }
-      if (result.failed.length > 0) {
-        toast.error(
-          `Could not delete ${result.failed.length} of ${ids.length} chats — they are still selected`,
-        );
-      }
-    } catch (err) {
-      console.error("Failed to delete chat sessions:", err);
-      toast.error("Could not delete the selected chats");
-    }
-    setBulkDeleting(false);
-  };
 
   const { recent, older } = useMemo(() => splitSessionsByActivity(sessions), [sessions]);
 
@@ -355,17 +348,23 @@ export function SessionSidebar({
       key={session.id}
       session={session}
       active={session.id === activeSessionId}
-      deleting={deletingId === session.id}
+      deleting={deletingIds.includes(session.id)}
       selecting={selecting}
       selected={selectedIds.has(session.id)}
       onOpen={openSession}
-      onDelete={deleteSession}
+      onDelete={(id) => requestDelete([id])}
       onToggleSelect={toggleSelect}
       onSelectRow={selectRow}
     />
   );
 
   const selectedCount = selectedIds.size;
+
+  const pendingCount = pendingDelete?.length ?? 0;
+  const pendingWatcherCount = (pendingDelete ?? []).reduce(
+    (count, id) => count + (sessions.find((s) => s.id === id)?.watcherCount ?? 0),
+    0,
+  );
 
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
@@ -446,30 +445,51 @@ export function SessionSidebar({
             size="sm"
             className="h-8 shrink-0"
             aria-label={`Delete ${selectedCount} selected ${selectedCount === 1 ? "chat" : "chats"}`}
-            disabled={bulkDeleting}
-            onClick={() => setConfirmOpen(true)}
+            disabled={deletingIds.length > 0}
+            onClick={() => requestDelete([...selectedIds])}
           >
-            {bulkDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+            {deletingIds.length > 0 ? <Loader2 className="animate-spin" /> : <Trash2 />}
             Delete
           </Button>
         </div>
       )}
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      {/* One confirmation for both delete paths. Watchers ride along with the
+          chat (the DB cascade removes them), so the box says so when any are
+          attached — otherwise the user loses scheduled jobs without a trace. */}
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete {selectedCount} {selectedCount === 1 ? "chat" : "chats"}?
+              Delete {pendingCount} {pendingCount === 1 ? "chat" : "chats"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This removes {selectedCount === 1 ? "the chat" : "the chats"}, along with{" "}
-              {selectedCount === 1 ? "its" : "their"} messages and attachments. This cannot be
-              undone.
+              This removes {pendingCount === 1 ? "the chat" : "the chats"}, along with{" "}
+              {pendingCount === 1 ? "its" : "their"} messages and attachments.
+              {pendingWatcherCount > 0 && (
+                <>
+                  {" "}
+                  This also deletes {pendingWatcherCount}{" "}
+                  {pendingWatcherCount === 1 ? "watcher" : "watchers"} — their scheduled checks stop
+                  immediately.
+                </>
+              )}{" "}
+              This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={deleteSelected}>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (pendingDelete) void deleteChats(pendingDelete);
+              }}
+            >
               <Trash2 />
               Delete
             </AlertDialogAction>
