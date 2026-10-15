@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   Clock,
   Lock,
   Loader2,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   Play,
@@ -111,12 +113,18 @@ interface WatcherListProps {
 }
 
 export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
+  const router = useRouter();
   const [watchers, setWatchers] = useState<ScriptWatcher[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [ticks, setTicks] = useState<ScriptWatcherTick[]>([]);
   const [loadingTicks, setLoadingTicks] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const openChat = useCallback(
+    (sessionId: string) => router.push(`/dashboard/chat/${sessionId}`),
+    [router],
+  );
 
   const loadWatchers = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -278,9 +286,24 @@ export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
                           <Clock className="h-3 w-3" />
                           {getCronLabel(watcher.cronExpression)}
                         </span>
-                        <span className="truncate">
-                          {watcher.sessionTitle ?? "No conversation"}
-                        </span>
+                        {watcher.sessionId ? (
+                          <button
+                            type="button"
+                            className="hover:text-foreground inline-flex max-w-full items-center gap-1 hover:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openChat(watcher.sessionId!);
+                            }}
+                            aria-label={`Open chat ${watcher.sessionTitle ?? watcher.name}`}
+                          >
+                            <MessageSquare className="h-3 w-3 shrink-0" />
+                            <span className="truncate">
+                              {watcher.sessionTitle ?? "Conversation"}
+                            </span>
+                          </button>
+                        ) : (
+                          <span className="truncate">No conversation</span>
+                        )}
                         {watcher.fireCount > 0 && <span>· fired {watcher.fireCount}×</span>}
                       </div>
                     </div>
