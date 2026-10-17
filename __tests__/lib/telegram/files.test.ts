@@ -6,17 +6,30 @@ import type { Bot, Context } from "grammy";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockIsConfigured, mockUploadFile } = vi.hoisted(() => ({
-  mockIsConfigured: vi.fn(() => false),
-  mockUploadFile: vi.fn(),
-}));
+const { mockIsConfigured, mockUploadFile, mockReadWorkspaceFile, mockSendTelegramFile } =
+  vi.hoisted(() => ({
+    mockIsConfigured: vi.fn(() => false),
+    mockUploadFile: vi.fn(),
+    mockReadWorkspaceFile: vi.fn(),
+    mockSendTelegramFile: vi.fn(),
+  }));
 
 vi.mock("@/lib/terminal/client", () => ({
   isConfigured: mockIsConfigured,
   uploadFile: mockUploadFile,
 }));
 
+vi.mock("@/lib/files/workspace-file", () => ({
+  readWorkspaceFile: mockReadWorkspaceFile,
+}));
+
+vi.mock("@/lib/telegram/client", () => ({
+  sendTelegramFile: mockSendTelegramFile,
+}));
+
 const mockFetch = vi.fn();
+
+const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 let filesModule: typeof import("@/lib/telegram/files");
 let tmpRoot: string;
@@ -266,5 +279,119 @@ describe("buildFilePromptText", () => {
   it("returns empty string when there is nothing to describe", () => {
     const text = filesModule.buildFilePromptText({ mimeType: "x", fileName: "x" }, undefined);
     expect(text).toBe("");
+  });
+});
+
+// ─── sharedFileFromToolCall ──────────────────────────────────────────────────
+
+describe("sharedFileFromToolCall", () => {
+  it("names the file when the agent showed one", () => {
+    expect(
+      filesModule.sharedFileFromToolCall("show_file", {
+        filePath: "reports/q3.pdf",
+        description: "Quarterly numbers",
+      }),
+    ).toEqual({ filePath: "reports/q3.pdf", description: "Quarterly numbers" });
+  });
+
+  it("ignores every other tool, whatever its arguments look like", () => {
+    expect(filesModule.sharedFileFromToolCall("read", { filePath: "secret.txt" })).toBeNull();
+    expect(filesModule.sharedFileFromToolCall("bash", { command: "cat secret.txt" })).toBeNull();
+  });
+
+  it("needs a usable path", () => {
+    expect(filesModule.sharedFileFromToolCall("show_file", { filePath: "" })).toBeNull();
+    expect(filesModule.sharedFileFromToolCall("show_file", { filePath: 42 })).toBeNull();
+    expect(filesModule.sharedFileFromToolCall("show_file", undefined)).toBeNull();
+  });
+
+  it("omits an empty description", () => {
+    expect(
+      filesModule.sharedFileFromToolCall("show_file", { filePath: "a.txt", description: "" }),
+    ).toEqual({ filePath: "a.txt" });
+  });
+});
+
+// ─── sendSharedFileToTelegram ────────────────────────────────────────────────
+
+describe("sendSharedFileToTelegram", () => {
+  const file = {
+    fileName: "q3.pdf",
+    mimeType: "application/pdf",
+    size: 9,
+    buffer: new Uint8Array([1, 2, 3]),
+  };
+
+  beforeEach(() => {
+    mockReadWorkspaceFile.mockResolvedValue(file);
+    mockSendTelegramFile.mockResolvedValue(55);
+  });
+
+  it("reads the file out of the workspace and uploads it to the chat", async () => {
+    await filesModule.sendSharedFileToTelegram({
+      userId: "user-1",
+      sessionId: "sess-1",
+      encryptedToken: "tok",
+      telegramChatId: BigInt(119075844),
+      filePath: "reports/q3.pdf",
+      description: "Quarterly numbers",
+    });
+
+    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "reports/q3.pdf", {
+      sessionId: "sess-1",
+    });
+    expect(mockSendTelegramFile).toHaveBeenCalledWith("tok", BigInt(119075844), file, {
+      caption: "Quarterly numbers",
+    });
+  });
+
+  it("captions the file with its own name when the agent gave no description", async () => {
+    await filesModule.sendSharedFileToTelegram({
+      userId: "user-1",
+      sessionId: "sess-1",
+      encryptedToken: "tok",
+      telegramChatId: BigInt(1),
+      filePath: "reports/q3.pdf",
+    });
+
+    expect(mockSendTelegramFile).toHaveBeenCalledWith("tok", BigInt(1), file, {
+      caption: "q3.pdf",
+    });
+  });
+
+  it("logs a failed read instead of throwing into the run", async () => {
+    mockReadWorkspaceFile.mockRejectedValue(new Error("Not found: reports/q3.pdf"));
+
+    await expect(
+      filesModule.sendSharedFileToTelegram({
+        userId: "user-1",
+        sessionId: "sess-1",
+        encryptedToken: "tok",
+        telegramChatId: BigInt(1),
+        filePath: "reports/q3.pdf",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mockSendTelegramFile).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("reports/q3.pdf"),
+      expect.any(Error),
+    );
+  });
+
+  it("logs a rejected upload instead of throwing into the run", async () => {
+    mockSendTelegramFile.mockRejectedValue(new Error("file is too big"));
+
+    await expect(
+      filesModule.sendSharedFileToTelegram({
+        userId: "user-1",
+        sessionId: "sess-1",
+        encryptedToken: "tok",
+        telegramChatId: BigInt(1),
+        filePath: "reports/q3.pdf",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });

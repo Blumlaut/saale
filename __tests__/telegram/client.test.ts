@@ -3,18 +3,39 @@ import { convert as convertToTelegramMarkdown } from "telegram-markdown-v2";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockSendMessage, resetMessageIds } = vi.hoisted(() => {
+const { mockSendMessage, mockSendPhoto, mockSendDocument, resetMessageIds } = vi.hoisted(() => {
   let nextId = 0;
-  const fn = vi.fn();
-  fn.mockImplementation(async () => ({ message_id: 1000 + nextId++ }));
-  return { mockSendMessage: fn, resetMessageIds: () => (nextId = 0) };
+  // `vi.fn()` with no arguments, implementation attached: the API calls are
+  // read back out of `mock.calls` with their own tuple types.
+  const make = () => {
+    const fn = vi.fn();
+    fn.mockImplementation(async () => ({ message_id: 1000 + nextId++ }));
+    return fn;
+  };
+  return {
+    mockSendMessage: make(),
+    mockSendPhoto: make(),
+    mockSendDocument: make(),
+    resetMessageIds: () => (nextId = 0),
+  };
 });
 
 vi.mock("@/lib/db", () => ({ prisma: {} }));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => value }));
 vi.mock("grammy", () => ({
   Bot: class {
-    api = { sendMessage: mockSendMessage };
+    api = {
+      sendMessage: mockSendMessage,
+      sendPhoto: mockSendPhoto,
+      sendDocument: mockSendDocument,
+    };
+  },
+  // Only the constructor matters: the upload tests read back what was handed in.
+  InputFile: class {
+    constructor(
+      readonly data: Uint8Array,
+      readonly filename?: string,
+    ) {}
   },
 }));
 
@@ -28,6 +49,7 @@ import {
   buildLinkRequiredMessage,
   buildLinkSuccessMessage,
   buildWebhookUrl,
+  sendTelegramFile,
   sendTelegramMessage,
 } from "@/lib/telegram/client";
 import { TELEGRAM_FORMATTING_GUIDE } from "@/lib/telegram/prompt";
@@ -381,6 +403,112 @@ describe("sendTelegramMessage", () => {
         .join("")
         .replace(/\s+/g, ""),
     ).toBe(text.replace(/\s+/g, ""));
+  });
+});
+
+// ─── sendTelegramFile ────────────────────────────────────────────────────────
+
+/** An upload as `sendTelegramFile` hands it to the API. */
+interface UploadCall {
+  chat: number;
+  input: { data: Uint8Array; filename?: string };
+  params: { caption?: string };
+}
+
+function uploadCall(mock: { mock: { calls: unknown[] } }, index = 0): UploadCall {
+  const [chat, input, params] = mock.mock.calls[index] as [
+    number,
+    { data: Uint8Array; filename?: string },
+    { caption?: string },
+  ];
+  return { chat, input, params };
+}
+
+describe("sendTelegramFile", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMessageIds();
+  });
+
+  it("uploads an image as a photo, which Telegram renders inline", async () => {
+    const id = await sendTelegramFile("tok", BigInt(123), {
+      fileName: "chart.png",
+      mimeType: "image/png",
+      buffer: new Uint8Array([0x89, 0x50]),
+    });
+
+    expect(mockSendDocument).not.toHaveBeenCalled();
+    const call = uploadCall(mockSendPhoto);
+    expect(call.chat).toBe(123);
+    expect(call.input.filename).toBe("chart.png");
+    expect(call.params.caption).toBeUndefined();
+    expect(id).toBe(1000);
+  });
+
+  it("sends every other type as a document, whatever the extension", async () => {
+    for (const file of [
+      { fileName: "report.pdf", mimeType: "application/pdf" },
+      { fileName: "model.gguf", mimeType: "application/octet-stream" },
+      { fileName: "archive.tar.zst", mimeType: "" },
+      { fileName: "diagram.svg", mimeType: "image/svg+xml" },
+    ]) {
+      mockSendDocument.mockClear();
+      await sendTelegramFile("tok", BigInt(123), { ...file, buffer: new Uint8Array([1, 2]) });
+
+      expect(mockSendPhoto).not.toHaveBeenCalled();
+      expect(uploadCall(mockSendDocument).input.filename).toBe(file.fileName);
+    }
+  });
+
+  it("carries the caption over with the file", async () => {
+    await sendTelegramFile(
+      "tok",
+      BigInt(123),
+      { fileName: "q3.pdf", mimeType: "application/pdf", buffer: new Uint8Array([1]) },
+      { caption: "  Quarterly numbers  " },
+    );
+
+    expect(uploadCall(mockSendDocument).params.caption).toBe("Quarterly numbers");
+  });
+
+  it("truncates a caption Telegram would reject along with the file", async () => {
+    await sendTelegramFile(
+      "tok",
+      BigInt(123),
+      { fileName: "q3.pdf", mimeType: "application/pdf", buffer: new Uint8Array([1]) },
+      { caption: "x".repeat(2000) },
+    );
+
+    expect(uploadCall(mockSendDocument).params.caption).toHaveLength(1024);
+  });
+
+  it("falls back to a document when Telegram refuses the photo", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockSendPhoto.mockRejectedValueOnce(new Error("Bad Request: PHOTO_INVALID_DIMENSIONS"));
+
+    const id = await sendTelegramFile("tok", BigInt(123), {
+      fileName: "panorama.png",
+      mimeType: "image/png",
+      buffer: new Uint8Array([0x89]),
+    });
+
+    const call = uploadCall(mockSendDocument);
+    expect(call.input.filename).toBe("panorama.png");
+    expect(id).toBe(1000);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("lets a rejection from the document upload reach the caller", async () => {
+    mockSendDocument.mockRejectedValueOnce(new Error("Bad Request: file is too big"));
+
+    await expect(
+      sendTelegramFile("tok", BigInt(123), {
+        fileName: "huge.bin",
+        mimeType: "application/octet-stream",
+        buffer: new Uint8Array([1]),
+      }),
+    ).rejects.toThrow("file is too big");
   });
 });
 

@@ -32,6 +32,8 @@ import { createTerminalScopedTools } from "@/lib/pi/session";
 import {
   downloadAndProcessTelegramFile,
   buildFilePromptText,
+  sendSharedFileToTelegram,
+  sharedFileFromToolCall,
   TELEGRAM_FILES_DIR,
   type ProcessedFile,
   type TelegramFileInfo,
@@ -385,6 +387,11 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   // Track which tool calls have already had a summary sent to Telegram
   const sentToolSummaries = new Set<string>();
 
+  // Files the agent showed this turn, keyed by tool call. `tool_execution_end`
+  // reports the result but not the arguments, so the path is captured when the
+  // call starts.
+  const sharedFiles = new Map<string, { filePath: string; description?: string }>();
+
   /**
    * Flush accumulated text to Telegram immediately.
    *
@@ -465,6 +472,11 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
               }
 
               case "tool_execution_start": {
+                const sharedFile = sharedFileFromToolCall(event.toolName, event.args);
+                if (sharedFile) {
+                  sharedFiles.set(event.toolCallId, sharedFile);
+                }
+
                 // Send a human-readable summary for tools that define one
                 if (!sentToolSummaries.has(event.toolCallId)) {
                   sentToolSummaries.add(event.toolCallId);
@@ -489,6 +501,26 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
               }
 
               case "tool_execution_end": {
+                // A file the agent showed follows the answer to the phone —
+                // the tool's own result carries no bytes, so it is read back
+                // from the workspace here.
+                const sharedFile = sharedFiles.get(event.toolCallId);
+                if (sharedFile) {
+                  sharedFiles.delete(event.toolCallId);
+
+                  if (!event.isError) {
+                    sendSharedFileToTelegram({
+                      userId,
+                      sessionId,
+                      encryptedToken,
+                      telegramChatId,
+                      ...sharedFile,
+                    }).catch((err) => {
+                      console.error("Failed to send a shared file to Telegram:", err);
+                    });
+                  }
+                }
+
                 // Results are tracked by the session event tracker for DB saves.
                 break;
               }

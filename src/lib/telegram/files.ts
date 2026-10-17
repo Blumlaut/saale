@@ -3,7 +3,10 @@ import path from "path";
 import type { Bot, Context } from "grammy";
 import type { ImageContent } from "@earendil-works/pi-ai/compat";
 import { isConfigured as isTerminalConfigured, uploadFile } from "@/lib/terminal/client";
+import { SHOW_FILE_TOOL_NAME } from "@/lib/pi/tools/chat-tools";
+import { readWorkspaceFile } from "@/lib/files/workspace-file";
 import { getUploadsDir } from "@/lib/uploads";
+import { sendTelegramFile } from "./client";
 
 /** Workspace-relative directory (under the user's home inside the container) where Telegram documents are stored */
 export const TELEGRAM_FILES_DIR = "telegram_files";
@@ -149,4 +152,51 @@ export function buildFilePromptText(
   }
 
   return parts.join(" ");
+}
+
+/** The file a `show_file` call sent the user, or null for another tool's call. */
+export function sharedFileFromToolCall(
+  toolName: string,
+  args: unknown,
+): { filePath: string; description?: string } | null {
+  if (toolName !== SHOW_FILE_TOOL_NAME) return null;
+
+  const { filePath, description } = (args ?? {}) as { filePath?: unknown; description?: unknown };
+  if (typeof filePath !== "string" || !filePath) return null;
+
+  return {
+    filePath,
+    ...(typeof description === "string" && description ? { description } : {}),
+  };
+}
+
+/**
+ * Send a file the agent showed with `show_file` to the user's Telegram chat.
+ *
+ * The web UI fetches the file on demand from the workspace; a phone has no such
+ * client, so the bytes go with the answer instead. Failures are logged and
+ * swallowed: the run is past the tool call that produced the file, and the
+ * question of whether it could be uploaded must not fail the answer's text too.
+ */
+export async function sendSharedFileToTelegram(params: {
+  userId: string;
+  sessionId: string;
+  encryptedToken: string;
+  telegramChatId: bigint;
+  filePath: string;
+  description?: string | undefined;
+}): Promise<void> {
+  const { userId, sessionId, encryptedToken, telegramChatId, filePath, description } = params;
+
+  try {
+    const file = await readWorkspaceFile(userId, filePath, { sessionId });
+    await sendTelegramFile(encryptedToken, telegramChatId, file, {
+      caption: description?.trim() || file.fileName,
+    });
+  } catch (err) {
+    console.error(
+      `Failed to send workspace file "${filePath}" to Telegram chat ${telegramChatId}:`,
+      err,
+    );
+  }
 }

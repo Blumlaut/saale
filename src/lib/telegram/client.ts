@@ -1,4 +1,4 @@
-import { Bot, type Context } from "grammy";
+import { Bot, InputFile, type Context } from "grammy";
 import { convert as convertToTelegramMarkdown } from "telegram-markdown-v2";
 import { decrypt } from "@/lib/crypto";
 import { listCommands } from "@/lib/commands/catalog";
@@ -6,6 +6,30 @@ import { TELEGRAM_MAX_MESSAGE_LENGTH, splitMarkdownV2, splitPlainText } from "./
 
 /** Webhook endpoint — a single path, since there is a single bot. */
 const WEBHOOK_PATH = "/api/integrations/telegram/webhook";
+
+/** Telegram's caption ceiling; a longer one is rejected along with the file. */
+const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
+
+/** Types Telegram renders inline as a photo rather than a file attachment. */
+const PHOTO_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+  "image/avif",
+]);
+
+function isPhotoMimeType(mimeType: string): boolean {
+  return PHOTO_MIME_TYPES.has(mimeType.split(";")[0]?.trim().toLowerCase() ?? "");
+}
+
+/** A file to upload to a chat. */
+export interface TelegramFileUpload {
+  fileName: string;
+  mimeType: string;
+  buffer: Uint8Array<ArrayBuffer>;
+}
 
 /**
  * Get the public base URL for webhook registration.
@@ -199,6 +223,48 @@ export async function sendTelegramMessage(
   }
 
   return messageIds;
+}
+
+/**
+ * Send a single file to a Telegram chat.
+ *
+ * Returns the message ID Telegram assigned it.
+ */
+export async function sendTelegramFile(
+  encryptedToken: string,
+  chatId: bigint,
+  file: TelegramFileUpload,
+  options?: { caption?: string },
+): Promise<number> {
+  const bot = createBot(encryptedToken);
+  const chat = Number(chatId);
+
+  // The caption is decoration on the file itself — a parse error in it would
+  // cost the user the file, so it travels as plain text.
+  const caption = options?.caption?.trim().slice(0, TELEGRAM_MAX_CAPTION_LENGTH);
+  const params = caption ? { caption } : {};
+
+  if (isPhotoMimeType(file.mimeType)) {
+    try {
+      const result = await bot.api.sendPhoto(
+        chat,
+        new InputFile(file.buffer, file.fileName),
+        params,
+      );
+      return result.message_id;
+    } catch (err) {
+      // Telegram only renders a photo it can lay out (dimension and aspect
+      // ratio ceilings) — the same bytes still arrive as a document.
+      console.warn(`Telegram refused "${file.fileName}" as a photo, sending a document:`, err);
+    }
+  }
+
+  const result = await bot.api.sendDocument(
+    chat,
+    new InputFile(file.buffer, file.fileName),
+    params,
+  );
+  return result.message_id;
 }
 
 /**

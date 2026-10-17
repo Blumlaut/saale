@@ -1,78 +1,10 @@
-import fs from "fs/promises";
-import type { Stats } from "fs";
-import path from "path";
 import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
-import * as terminal from "@/lib/terminal/client";
-import { getUploadsDir } from "@/lib/uploads";
-
-/** Max file size for show_file (5 MB) */
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
-/** MIME types by file extension */
-const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".svg": "image/svg+xml",
-  ".bmp": "image/bmp",
-  ".ico": "image/x-icon",
-  ".pdf": "application/pdf",
-  ".txt": "text/plain",
-  ".csv": "text/csv",
-  ".json": "application/json",
-  ".xml": "application/xml",
-  ".html": "text/html",
-  ".css": "text/css",
-  ".js": "text/javascript",
-  ".ts": "text/typescript",
-  ".tsx": "text/typescript",
-  ".jsx": "text/javascript",
-  ".md": "text/markdown",
-  ".yaml": "text/yaml",
-  ".yml": "text/yaml",
-  ".zip": "application/zip",
-  ".gz": "application/gzip",
-  ".tar": "application/x-tar",
-  ".mp3": "audio/mpeg",
-  ".mp4": "video/mp4",
-  ".wav": "audio/wav",
-};
-
-/** Guess MIME type from file extension */
-function guessMimeType(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase();
-  return MIME_TYPES[ext] ?? "application/octet-stream";
-}
-
-/** Check if a MIME type is an image */
-function isImageMime(mimeType: string): boolean {
-  return mimeType.startsWith("image/");
-}
-
-/**
- * Get the isolated workspace directory for a user.
- */
-function getUserDir(userId: string): string {
-  return path.join(getUploadsDir(), userId);
-}
-
-/**
- * Validate that a resolved path stays within the allowed base directory.
- */
-function validatePath(baseDir: string, filePath: string): void {
-  const resolved = path.resolve(baseDir, filePath);
-  const normalizedBase = path.resolve(baseDir);
-  if (!resolved.startsWith(normalizedBase + path.sep) && resolved !== normalizedBase) {
-    throw new Error(`Access denied: path "${filePath}" escapes user workspace`);
-  }
-}
+import { readWorkspaceFile } from "@/lib/files/workspace-file";
 
 /**
  * Create a chat search tool with userId injection.
@@ -112,6 +44,12 @@ const CHAT_DELETED_SCHEMA = Type.Object({
   sessionId: Type.String(),
   title: Type.String(),
 });
+
+/**
+ * Name of the file-sharing tool, shared so a delivery channel can recognise the
+ * call whose file it has to carry to the user itself.
+ */
+export const SHOW_FILE_TOOL_NAME = "show_file";
 
 /** A file shared into the chat. */
 const SHARED_FILE_SCHEMA = Type.Object({
@@ -354,21 +292,22 @@ export function createChatDeleteTool(userId: string) {
 }
 
 /**
- * Create a show_file tool that reads a file from the user's workspace
- * and returns it as a data URI for the user to view/download in chat.
+ * Create a show_file tool that hands a file from the user's workspace to the
+ * chat, where it renders inline (images) or as a download link.
  *
- * Only enabled when bash tools are active (implies workspace access).
- * When terminal is configured, reads through the Open Terminal API.
+ * Only enabled when bash tools are active (implies workspace access). When
+ * terminal is configured, reads through the Open Terminal API.
  */
 export function createShowFileTool(userId: string, sessionId: string) {
-  const useTerminal = terminal.isConfigured();
-
   return defineStructuredTool({
-    name: "show_file",
+    name: SHOW_FILE_TOOL_NAME,
     label: "Show File",
     description:
-      "Send a file to the user in the chat. The file will be displayed inline (images) or as a download link. " +
-      "Path is relative to the workspace root. Max file size: 5MB.",
+      "Send a file from the workspace to the user in the chat — the only way they can receive one, " +
+      "since they have no access to the workspace filesystem themselves. Send anything they asked " +
+      "for, including a file you just created or changed. Images are shown inline; every other " +
+      "type, known or not, is delivered as-is. Path is relative to the workspace root. " +
+      "Max file size: 50MB.",
     parameters: Type.Object({
       filePath: Type.String({
         description: "Path to the file, relative to the workspace root.",
@@ -382,100 +321,23 @@ export function createShowFileTool(userId: string, sessionId: string) {
     outputSchema: SHARED_FILE_SCHEMA,
     execute: async (_toolCallId: string, params: { filePath: string; description?: string }) => {
       const { filePath, description } = params;
-      const fileName = path.basename(filePath);
+      const { fileName, size, mimeType } = await readWorkspaceFile(userId, filePath, { sessionId });
 
-      if (useTerminal) {
-        const homeDir = terminal.getTerminalHomeDir(userId);
-        const fullPath = path.resolve(homeDir, filePath);
+      const sizeLabel =
+        size > 1024 * 1024
+          ? `${(size / 1024 / 1024).toFixed(1)} MB`
+          : size > 1024
+            ? `${(size / 1024).toFixed(0)} KB`
+            : `${size} B`;
 
-        // Validate path stays within user home
-        const normalizedBase = path.resolve(homeDir);
-        if (!fullPath.startsWith(normalizedBase + path.sep) && fullPath !== normalizedBase) {
-          throw new Error(`Access denied: path "${filePath}" escapes workspace`);
-        }
+      const typeLabel: "image" | "file" = mimeType.startsWith("image/") ? "image" : "file";
+      const prefix = description ? `${description}. ` : "";
 
-        try {
-          const result = await terminal.readFileBinary(fullPath, { userId, sessionId });
-
-          if (result.buffer.length > MAX_FILE_SIZE) {
-            throw new Error(
-              `File too large: ${(result.buffer.length / 1024 / 1024).toFixed(1)}MB. Max: ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(0)}MB.`,
-            );
-          }
-
-          const mimeType = !result.mimeType.startsWith("application/octet-stream")
-            ? result.mimeType
-            : guessMimeType(filePath);
-          const sizeLabel =
-            result.buffer.length > 1024 * 1024
-              ? `${(result.buffer.length / 1024 / 1024).toFixed(1)} MB`
-              : result.buffer.length > 1024
-                ? `${(result.buffer.length / 1024).toFixed(0)} KB`
-                : `${result.buffer.length} B`;
-
-          const typeLabel: "image" | "file" = isImageMime(mimeType) ? "image" : "file";
-          const prefix = description ? `${description}. ` : "";
-
-          return {
-            value: {
-              fileName,
-              size: result.buffer.length,
-              mimeType,
-              kind: typeLabel,
-            },
-            text: `${prefix}Shared ${typeLabel} "${fileName}" (${sizeLabel}).`,
-            details: { fileName, size: result.buffer.length, mimeType },
-          };
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("404")) {
-            throw new Error(`File not found: ${filePath}`);
-          }
-          throw err;
-        }
-      } else {
-        const userDir = getUserDir(userId);
-
-        // Validate path stays within workspace
-        validatePath(userDir, filePath);
-
-        const fullPath = path.resolve(userDir, filePath);
-
-        // Check file exists and get stats
-        let stats: Stats;
-        try {
-          stats = await fs.stat(fullPath);
-        } catch {
-          throw new Error(`File not found: ${filePath}`);
-        }
-
-        if (!stats.isFile()) {
-          throw new Error(`Not a file: ${filePath}`);
-        }
-
-        if (stats.size > MAX_FILE_SIZE) {
-          throw new Error(
-            `File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB. Max: ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(0)}MB.`,
-          );
-        }
-
-        const mimeType = guessMimeType(filePath);
-        const sizeLabel =
-          stats.size > 1024 * 1024
-            ? `${(stats.size / 1024 / 1024).toFixed(1)} MB`
-            : stats.size > 1024
-              ? `${(stats.size / 1024).toFixed(0)} KB`
-              : `${stats.size} B`;
-
-        const typeLabel: "image" | "file" = isImageMime(mimeType) ? "image" : "file";
-        const prefix = description ? `${description}. ` : "";
-
-        return {
-          value: { fileName, size: stats.size, mimeType, kind: typeLabel },
-          text: `${prefix}Shared ${typeLabel} "${fileName}" (${sizeLabel}).`,
-          details: { fileName, size: stats.size, mimeType },
-        };
-      }
+      return {
+        value: { fileName, size, mimeType, kind: typeLabel },
+        text: `${prefix}Shared ${typeLabel} "${fileName}" (${sizeLabel}).`,
+        details: { fileName, size, mimeType },
+      };
     },
   });
 }
