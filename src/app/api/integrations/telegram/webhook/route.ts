@@ -233,20 +233,28 @@ export async function POST(request: NextRequest) {
     }
   };
 
-  // 6. Linking. `/start <code>` arrives from the deep link (or as `/link` typed
-  //    on another device) and is the *only* way a link is created. It must be
-  //    handled before the link check — redeeming a code is what an unlinked
-  //    user is here to do.
-  const linkPayload = parseLinkPayload(content.text ?? "");
-  if (linkPayload !== null) {
-    if (linkPayload === "") {
+  // 6. Linking. A link code is redeemed either as `/start <code>` (the deep
+  //    link's payload, or typed on another device) or as a bare code — Telegram
+  //    auto-sends `/start` when the chat opens, so users naturally just send
+  //    the token and expect that to work.
+  const rawText = content.text ?? "";
+  const linkPayload = parseLinkPayload(rawText);
+  const code =
+    linkPayload !== null
+      ? linkPayload
+      : LINK_CODE_PATTERN.test(rawText.trim())
+        ? rawText.trim()
+        : null;
+
+  if (code !== null) {
+    if (code === "") {
       await reply(buildLinkRequiredMessage());
       return NextResponse.json({ ok: true });
     }
 
-    const result = LINK_CODE_PATTERN.test(linkPayload)
+    const result = LINK_CODE_PATTERN.test(code)
       ? await consumeLinkCode({
-          code: linkPayload,
+          code,
           telegramUserId,
           telegramChatId,
           displayName: senderDisplayName(message.from),

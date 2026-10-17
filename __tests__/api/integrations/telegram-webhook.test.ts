@@ -238,6 +238,46 @@ describe("linking through the bot", () => {
     );
   });
 
+  it("redeems a bare code sent on its own, no /start prefix", async () => {
+    mockConsumeLinkCode.mockResolvedValue({ ok: true, link });
+
+    // Telegram auto-sends /start when the chat opens, so the user naturally
+    // sends just the token — that has to work too.
+    await POST(update(messageUpdate({ text: CODE })));
+
+    expect(mockConsumeLinkCode).toHaveBeenCalledWith({
+      code: CODE,
+      telegramUserId: BigInt(SENDER_ID),
+      telegramChatId: BigInt(CHAT_ID),
+      displayName: "Jane Doe",
+    });
+    expect(fakeBot.api.sendMessage).toHaveBeenCalledWith(
+      CHAT_ID,
+      expect.stringContaining("Linked"),
+      expect.anything(),
+    );
+    expect(mockProcessTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("treats a bare code with surrounding whitespace as the code", async () => {
+    mockConsumeLinkCode.mockResolvedValue({ ok: true, link });
+
+    await POST(update(messageUpdate({ text: `  ${CODE}\n` })));
+
+    expect(mockConsumeLinkCode).toHaveBeenCalledWith(expect.objectContaining({ code: CODE }));
+  });
+
+  it("does not intercept a code-shaped string that is not a code", async () => {
+    // One character short of a code — a linked user's message stays a message.
+    mockGetLinkByTelegramUserId.mockResolvedValue(link);
+    await POST(update(messageUpdate({ text: CODE.slice(0, 31) })));
+
+    expect(mockConsumeLinkCode).not.toHaveBeenCalled();
+    expect(mockProcessTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ messageText: CODE.slice(0, 31) }),
+    );
+  });
+
   it("accepts /link as an alias for the deep-link payload", async () => {
     mockConsumeLinkCode.mockResolvedValue({ ok: true, link });
 

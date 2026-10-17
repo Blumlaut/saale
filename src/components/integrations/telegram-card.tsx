@@ -195,7 +195,7 @@ export function TelegramLinkPanel({
           <p className="text-muted-foreground text-sm">
             {linked
               ? "Get a link code to connect a different Telegram account. It replaces the one currently linked."
-              : `Saale talks to you through a shared Telegram bot${bot.username ? ` (@${bot.username})` : ""}. Get a link code, send it to the bot with /start, and your Telegram account is connected.${bot.loginEnabled ? " That link is also how Telegram signs you in." : ""}`}
+              : `Saale talks to you through a shared Telegram bot${bot.username ? ` (@${bot.username})` : ""}. Get a link code and send it to the bot, and your Telegram account is connected.${bot.loginEnabled ? " That link is also how Telegram signs you in." : ""}`}
           </p>
           <Button
             className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
@@ -218,11 +218,12 @@ export function TelegramLinkPanel({
       ) : (
         <>
           <p className="text-muted-foreground text-sm">
-            Open Telegram and send <code className="font-mono">/start {linkCode.code}</code> to{" "}
+            Open Telegram and send the code below to{" "}
             <span className="text-foreground font-medium">
               {bot.username ? `@${bot.username}` : "the bot"}
             </span>
-            . Tapping the button below does it for you.
+            . Just the code is enough — Telegram sends <code className="font-mono">/start</code> on
+            its own when you open the chat. Tapping the button below does it for you.
           </p>
 
           <Button

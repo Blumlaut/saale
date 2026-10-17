@@ -158,11 +158,13 @@ describe("TelegramLinkPanel", () => {
     expect(screen.getByText(/replaces the one currently linked/)).toBeInTheDocument();
   });
 
-  it("shows the /start command, the code, and the deep link", () => {
+  it("shows the bare code, the bot, and the deep link", () => {
     renderPanel({ linkCode });
 
     expect(screen.getByText(linkCode.code)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`/start ${linkCode.code}`))).toBeInTheDocument();
+    // The instruction is to send the code itself — /start is Telegram's own
+    // first message, not something the user has to type.
+    expect(screen.queryByText(new RegExp(`/start ${linkCode.code}`))).not.toBeInTheDocument();
 
     const anchor = screen.getByRole("link", { name: /Open Telegram/ });
     expect(anchor).toHaveAttribute("href", linkCode.deepLink);
