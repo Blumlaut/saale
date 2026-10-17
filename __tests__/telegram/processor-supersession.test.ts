@@ -9,11 +9,17 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
  * message bails out at its checkpoints (queued behind the lock, or still in
  * slow pre-session setup) and sends no reply.
  *
+ * It also covers what the processor sends beside the reply — a file the agent
+ * showed goes on to the chat, which is what makes `show_file` mean anything on
+ * a phone (the web UI fetches the file itself; Telegram cannot).
+ *
  * Everything the processor imports is mocked except `./chat-lock` and
- * `./session-registry` — those are the units under test.
+ * `./session-registry` — those are the units under test — and the `show_file`
+ * recognition in `./files`, which the file test drives for real.
  */
 
 const h = vi.hoisted(() => {
+  const sendSharedFileToTelegram = vi.fn().mockResolvedValue(undefined);
   const definition = {
     id: "def-1",
     userId: "user-1",
@@ -41,7 +47,7 @@ const h = vi.hoisted(() => {
       ? (arg as (tx: unknown) => Promise<unknown>)(prisma)
       : Promise.all(arg as Promise<unknown>[]),
   );
-  return { prisma, definition };
+  return { prisma, definition, sendSharedFileToTelegram };
 });
 
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
@@ -128,10 +134,11 @@ vi.mock("@/lib/pi/session", () => ({
   createTerminalScopedTools: vi.fn(() => []),
 }));
 
-vi.mock("@/lib/telegram/files", () => ({
+vi.mock("@/lib/telegram/files", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/telegram/files")>()),
   downloadAndProcessTelegramFile: vi.fn(),
   buildFilePromptText: vi.fn(() => ""),
-  TELEGRAM_FILES_DIR: "telegram-files",
+  sendSharedFileToTelegram: h.sendSharedFileToTelegram,
 }));
 
 vi.mock("@/lib/redis", () => ({
@@ -383,5 +390,63 @@ describe("processTelegramMessage — latest message wins", () => {
 
     // The run fully settled and left no active entry behind.
     expect(isTelegramSessionActive(USER, chatId)).toBe(false);
+  });
+});
+
+describe("processTelegramMessage — files the agent shows", () => {
+  /** A run whose model calls one tool and settles. */
+  async function runWithToolCall(
+    chatId: bigint,
+    toolName: string,
+    isError: boolean,
+  ): Promise<void> {
+    const { session } = makeFakeSession([
+      {
+        type: "tool_execution_start",
+        toolCallId: "tc1",
+        toolName,
+        args: { filePath: "reports/q3.pdf", description: "Quarterly numbers" },
+      },
+      { type: "tool_execution_end", toolCallId: "tc1", toolName, result: {}, isError },
+      { type: "agent_settled" },
+    ]);
+    vi.mocked(createAgentSession).mockResolvedValue({ session } as never);
+
+    await processTelegramMessage({
+      ...baseParams(chatId),
+      messageText: "send me the report",
+      replyToMessageId: 11,
+      messageSeq: nextMessageSeq(USER, chatId),
+      ...makeDone(),
+    });
+  }
+
+  it("sends the file on to the chat, since a phone cannot fetch it", async () => {
+    const chatId = nextChatId();
+    setupPrisma(chatId);
+
+    await runWithToolCall(chatId, "show_file", false);
+
+    await waitFor(() => h.sendSharedFileToTelegram.mock.calls.length > 0);
+    expect(h.sendSharedFileToTelegram).toHaveBeenCalledWith({
+      userId: USER,
+      sessionId: "session-1",
+      encryptedToken: ENCRYPTED_TOKEN,
+      telegramChatId: chatId,
+      filePath: "reports/q3.pdf",
+      description: "Quarterly numbers",
+    });
+  });
+
+  it("sends nothing for a call that failed, or for another tool's path", async () => {
+    const chatId = nextChatId();
+    setupPrisma(chatId);
+    await runWithToolCall(chatId, "show_file", true);
+
+    const otherChatId = nextChatId();
+    setupPrisma(otherChatId);
+    await runWithToolCall(otherChatId, "read", false);
+
+    expect(h.sendSharedFileToTelegram).not.toHaveBeenCalled();
   });
 });

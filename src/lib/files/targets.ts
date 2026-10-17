@@ -47,12 +47,19 @@ export interface OpenedFileTarget {
  * Prefers the terminal container when it is configured — that is where a user's
  * agents actually work — and falls back to the app's uploads volume otherwise,
  * the same pair of locations the chat workspace routes use.
+ *
+ * `sessionId` rides along as Open Terminal's chat header, so the container's log
+ * attributes a read to the conversation that asked for it. A browser request has
+ * no chat and omits it.
  */
-export async function openUserFileTarget(userId: string): Promise<OpenedFileTarget> {
+export async function openUserFileTarget(
+  userId: string,
+  options: { sessionId?: string } = {},
+): Promise<OpenedFileTarget> {
   if (terminal.isConfigured()) {
     const root = terminal.getTerminalHomeDir(userId);
     return {
-      provider: createTerminalFileProvider({ identity: userId, root }),
+      provider: createTerminalFileProvider({ identity: userId, root, ...options }),
       info: { id: USER_FILE_TARGET, label: "Your files", root, capabilities: FULL_CAPABILITIES },
     };
   }
