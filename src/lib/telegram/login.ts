@@ -26,7 +26,6 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   unable_to_create_user: "Your Saale account could not be created. Try again or ask an admin.",
   unable_to_get_user_info: "Telegram did not return a usable account. Try again.",
   invalid_code: "Telegram rejected the sign-in attempt. Try again.",
-  signup_disabled: "Sign-ups are disabled on this instance. Ask an admin to create your account.",
   oauth_provider_not_found:
     "Telegram sign-in is not configured on this instance. Ask an admin to set it up.",
   email_not_found: "Telegram sign-in is not configured on this instance.",
@@ -42,8 +41,22 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
 /**
  * The sentence to show for a login redirect's error, or null when it carries
  * none.
+ *
+ * `signup_disabled` is Telegram arriving with an account nobody linked, so the
+ * sentence depends on whether signing up is an option on this instance.
  */
-export function telegramLoginError(code: string | null | undefined): string | null {
+export function telegramLoginError(
+  code: string | null | undefined,
+  options: { signupsEnabled?: boolean } = {},
+): string | null {
   if (!code) return null;
-  return LOGIN_ERROR_MESSAGES[code.trim().toLowerCase()] ?? code;
+
+  const key = code.trim().toLowerCase();
+  if (key === "signup_disabled") {
+    return options.signupsEnabled === false
+      ? "That Telegram account is not linked to a Saale account, and sign-ups are not open. Ask an admin to create your account."
+      : "That Telegram account is not linked to a Saale account yet. Sign up with Telegram to create one.";
+  }
+
+  return LOGIN_ERROR_MESSAGES[key] ?? code;
 }

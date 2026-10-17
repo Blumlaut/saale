@@ -1,3 +1,4 @@
+import { areSignupsEnabled } from "@/lib/auth/signups";
 import { getTelegramLoginStatus } from "@/lib/telegram/oidc";
 import { LoginForm } from "./login-form";
 
@@ -6,7 +7,10 @@ import { LoginForm } from "./login-form";
  * before anything renders, so the button never appears and then disappears.
  */
 export default async function LoginPage() {
-  const telegram = await getTelegramLoginStatus();
+  const [telegram, signupsEnabled] = await Promise.all([
+    getTelegramLoginStatus(),
+    areSignupsEnabled(),
+  ]);
 
-  return <LoginForm telegram={{ enabled: telegram.enabled }} />;
+  return <LoginForm telegram={{ enabled: telegram.enabled }} signupsEnabled={signupsEnabled} />;
 }

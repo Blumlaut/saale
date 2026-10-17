@@ -217,6 +217,17 @@ describe("Telegram login configuration", () => {
       }),
     ).toBe(TELEGRAM_ACCOUNT_ID);
   });
+
+  it("signs in only, leaving account creation to an explicit sign-up", () => {
+    process.env.TELEGRAM_OIDC_CLIENT_ID = TELEGRAM_ACCOUNT_ID;
+    process.env.TELEGRAM_OIDC_CLIENT_SECRET = "secret-1";
+
+    // better-auth drops the account creation when this is set and the request
+    // did not carry `requestSignUp` — the register page sets that, the login
+    // page does not. Setting `disableSignUp` instead would shut sign-ups out.
+    expect(providerConfig().disableImplicitSignUp).toBe(true);
+    expect(providerConfig().disableSignUp).toBeUndefined();
+  });
 });
 
 // ─── The id_token as a profile ───────────────────────────────────────────────

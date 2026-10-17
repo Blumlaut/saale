@@ -148,6 +148,10 @@ export function telegramOidcPlugins() {
           // provider unless discovery supplied an issuer and a JWKS to verify
           // it against.
           requireIdTokenVerification: true,
+          // Signing in proves an account exists; it does not create one. The
+          // register page asks with `requestSignUp`, and that is the only
+          // place a Telegram account can come from.
+          disableImplicitSignUp: true,
           // The account key is the Telegram user id, not the OAuth `sub`.
           accountSubject: ({ profile }) => telegramUserIdFromClaims(profile) ?? "",
           getUserInfo: async ({ idToken }) => {

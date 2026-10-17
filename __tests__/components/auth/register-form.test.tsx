@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import RegisterPage from "@/app/auth/register/page";
+import { RegisterForm } from "@/app/auth/register/register-form";
 import { authClient } from "@/lib/auth-client";
 import { fetchJson } from "@/lib/http";
 import { USERNAME_RULES } from "@/lib/auth/username";
@@ -14,18 +14,25 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/http", () => ({ fetchJson: vi.fn() }));
 
 vi.mock("@/lib/auth-client", () => ({
-  authClient: { signUp: { email: vi.fn() } },
+  authClient: {
+    signUp: { email: vi.fn() },
+    signIn: { social: vi.fn() },
+  },
 }));
 
 const signUpEmail = vi.mocked(authClient.signUp.email);
+const signInSocial = vi.mocked(authClient.signIn.social);
+
+const telegramOn = { telegram: { enabled: true } };
+const telegramOff = { telegram: { enabled: false } };
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(fetchJson).mockResolvedValue({ enabled: true });
 });
 
-async function renderForm() {
-  render(<RegisterPage />);
+async function renderForm(props: { telegram: { enabled: boolean } } = telegramOff) {
+  render(<RegisterForm {...props} />);
   return screen.findByLabelText("Username");
 }
 
@@ -107,5 +114,41 @@ describe("sign-up form", () => {
 
     expect(await screen.findByText("Passwords do not match")).toBeInTheDocument();
     expect(signUpEmail).not.toHaveBeenCalled();
+  });
+
+  it("offers a Telegram sign-up here, where an account may be created", async () => {
+    signInSocial.mockResolvedValue({ data: null, error: null } as never);
+    await renderForm(telegramOn);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign up with Telegram" }));
+
+    // The login page's button must not carry this: creating the account is the
+    // difference between a sign-up and a sign-in.
+    await waitFor(() =>
+      expect(signInSocial).toHaveBeenCalledWith({
+        provider: "telegram-oidc",
+        requestSignUp: true,
+        callbackURL: "/dashboard/chat",
+        errorCallbackURL: "/auth/login",
+      }),
+    );
+  });
+
+  it("offers no Telegram sign-up on an instance without it", async () => {
+    await renderForm(telegramOff);
+
+    expect(screen.queryByRole("button", { name: /Telegram/ })).not.toBeInTheDocument();
+  });
+
+  it("reports a Telegram sign-up that cannot be started", async () => {
+    signInSocial.mockResolvedValue({
+      data: null,
+      error: { message: "Sign-ups are disabled" },
+    } as never);
+    await renderForm(telegramOn);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign up with Telegram" }));
+
+    expect(await screen.findByText("Sign-ups are disabled")).toBeInTheDocument();
   });
 });
