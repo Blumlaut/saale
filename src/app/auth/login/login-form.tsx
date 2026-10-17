@@ -21,6 +21,12 @@ export interface TelegramLoginOptions {
   enabled: boolean;
 }
 
+export interface LoginFormProps {
+  telegram: TelegramLoginOptions;
+  /** Whether someone with no account yet could create one here — the copy for a failed Telegram login depends on it. */
+  signupsEnabled: boolean;
+}
+
 function ErrorBanner({ message }: { message: string }) {
   return (
     <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-full px-4 py-2.5 text-sm">
@@ -149,11 +155,13 @@ function TwoFactorForm({ onVerified }: { onVerified: () => void }) {
   );
 }
 
-function LoginFields({ telegram }: { telegram: TelegramLoginOptions }) {
+function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // A Telegram login that fails comes back here with better-auth's error code.
-  const [error, setError] = useState(() => telegramLoginError(searchParams?.get("error")) ?? "");
+  const [error, setError] = useState(
+    () => telegramLoginError(searchParams?.get("error"), { signupsEnabled }) ?? "",
+  );
   const [loading, setLoading] = useState(false);
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
@@ -168,7 +176,10 @@ function LoginFields({ telegram }: { telegram: TelegramLoginOptions }) {
     setTelegramLoading(true);
     setError("");
 
-    // Success hands the browser to Telegram, so only a failure comes back.
+    // Implicit sign-up is off on this provider, so an unlinked Telegram account
+    // comes back as an error instead of a new user; the register page is where
+    // one can be created. Success hands the browser to Telegram, leaving only
+    // a failure to answer here.
     const { error: signInError } = await authClient.signIn.social({
       provider: TELEGRAM_OIDC_PROVIDER_ID,
       callbackURL: DASHBOARD_URL,
@@ -306,10 +317,10 @@ function LoginFields({ telegram }: { telegram: TelegramLoginOptions }) {
  * Reads its error from the query string (`useSearchParams`), which is why the
  * page renders it inside a Suspense boundary.
  */
-export function LoginForm({ telegram }: { telegram: TelegramLoginOptions }) {
+export function LoginForm({ telegram, signupsEnabled }: LoginFormProps) {
   return (
     <Suspense fallback={null}>
-      <LoginFields telegram={telegram} />
+      <LoginFields telegram={telegram} signupsEnabled={signupsEnabled} />
     </Suspense>
   );
 }

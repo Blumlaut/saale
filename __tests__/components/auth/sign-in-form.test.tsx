@@ -26,8 +26,9 @@ const signInUsername = vi.mocked(authClient.signIn.username);
 const signInEmail = vi.mocked(authClient.signIn.email);
 const signInSocial = vi.mocked(authClient.signIn.social);
 
-const telegramOff = { telegram: { enabled: false } };
-const telegramOn = { telegram: { enabled: true } };
+const telegramOff = { telegram: { enabled: false }, signupsEnabled: true };
+const telegramOn = { telegram: { enabled: true }, signupsEnabled: true };
+const signupsClosed = { telegram: { enabled: true }, signupsEnabled: false };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -139,6 +140,8 @@ describe("sign-in form", () => {
         errorCallbackURL: "/auth/login",
       }),
     );
+    // Signing in must not ask better-auth to create the account it cannot find.
+    expect(vi.mocked(signInSocial).mock.calls[0]?.[0]).not.toHaveProperty("requestSignUp");
   });
 
   it("offers no Telegram button on an instance without it", () => {
@@ -152,6 +155,20 @@ describe("sign-in form", () => {
     render(<LoginForm {...telegramOn} />);
 
     expect(screen.getByText(/not linked to a Saale account/)).toBeInTheDocument();
+  });
+
+  it("sends an unlinked Telegram login to the register page, not to a new account", () => {
+    query.current = new URLSearchParams({ error: "signup_disabled" });
+    render(<LoginForm {...telegramOn} />);
+
+    expect(screen.getByText(/Sign up with Telegram to create one/)).toBeInTheDocument();
+  });
+
+  it("says sign-ups are shut when the unlinked login has nowhere to go", () => {
+    query.current = new URLSearchParams({ error: "signup_disabled" });
+    render(<LoginForm {...signupsClosed} />);
+
+    expect(screen.getByText(/sign-ups are not open/)).toBeInTheDocument();
   });
 
   it("shows the error message when Telegram cannot be started", async () => {
