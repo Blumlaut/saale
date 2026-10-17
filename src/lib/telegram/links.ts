@@ -46,22 +46,64 @@ export function hashLinkCode(code: string): string {
   return createHash("sha256").update(code).digest("hex");
 }
 
-/** Why a link code could not be redeemed. */
-export type ConsumeLinkCodeFailure =
+/** Why a Telegram identity could not be linked. */
+export type LinkFailure =
   /** Unknown, already used, or past its expiry. */
   | "expired"
   /** The sending Telegram account is already linked to a different Saale user. */
   | "already_linked";
 
+/** The reasons a link code can be refused (the code-less paths never expire). */
+export type ConsumeLinkCodeFailure = LinkFailure;
+
 export type ConsumeLinkCodeResult =
   { ok: true; link: TelegramLinkInfo } | { ok: false; reason: ConsumeLinkCodeFailure };
 
-/** Internal signal used to roll the redemption transaction back. */
-class LinkCodeRejected extends Error {
-  constructor(readonly reason: ConsumeLinkCodeFailure) {
+export type LinkTelegramResult =
+  { ok: true; link: TelegramLinkInfo } | { ok: false; reason: LinkFailure };
+
+/** Internal signal used to roll the link-writing transaction back. */
+class LinkRejected extends Error {
+  constructor(readonly reason: LinkFailure) {
     super(reason);
-    this.name = "LinkCodeRejected";
+    this.name = "LinkRejected";
   }
+}
+
+/**
+ * Write the link itself, inside the caller's transaction.
+ *
+ * Every way a Telegram identity can become bound to a Saale user goes through
+ * here, so the two rules that keep a shared bot from being a shared account
+ * hold everywhere: an identity another user already holds is never re-pointed,
+ * and a user's own previous link is replaced rather than duplicated
+ * (`userId` and `telegramUserId` are both unique).
+ */
+async function bindLink(
+  tx: Prisma.TransactionClient,
+  params: {
+    userId: string;
+    telegramUserId: bigint;
+    telegramChatId: bigint;
+    displayName: string | null;
+  },
+): Promise<TelegramLinkInfo> {
+  const existing = await tx.telegramLink.findUnique({
+    where: { telegramUserId: params.telegramUserId },
+  });
+  if (existing && existing.userId !== params.userId) throw new LinkRejected("already_linked");
+
+  await tx.telegramLink.deleteMany({ where: { userId: params.userId } });
+
+  return tx.telegramLink.create({
+    data: {
+      botId: TELEGRAM_BOT_ID,
+      userId: params.userId,
+      telegramUserId: params.telegramUserId,
+      telegramChatId: params.telegramChatId,
+      displayName: params.displayName,
+    },
+  });
 }
 
 /**
@@ -112,38 +154,54 @@ export async function consumeLinkCode(params: {
         .delete({ where: { codeHash } })
         .catch((err: unknown) => {
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
-            throw new LinkCodeRejected("expired");
+            throw new LinkRejected("expired");
           }
           throw err;
         });
 
-      if (claim.expiresAt <= now) throw new LinkCodeRejected("expired");
+      if (claim.expiresAt <= now) throw new LinkRejected("expired");
 
-      const existing = await tx.telegramLink.findUnique({ where: { telegramUserId } });
-      if (existing && existing.userId !== claim.userId) {
-        // Deliberately not a takeover: silently re-pointing the link would hand
-        // this Telegram account someone else's Saale data on a forwarded code.
-        throw new LinkCodeRejected("already_linked");
-      }
-
-      // One Telegram identity per user: re-linking replaces this user's own
-      // previous account (the user is authenticated, so this is their choice).
-      await tx.telegramLink.deleteMany({ where: { userId: claim.userId } });
-
-      return tx.telegramLink.create({
-        data: {
-          botId: TELEGRAM_BOT_ID,
-          userId: claim.userId,
-          telegramUserId,
-          telegramChatId,
-          displayName,
-        },
+      return bindLink(tx, {
+        userId: claim.userId,
+        telegramUserId,
+        telegramChatId,
+        displayName,
       });
     });
 
     return { ok: true, link };
   } catch (err) {
-    if (err instanceof LinkCodeRejected) return { ok: false, reason: err.reason };
+    if (err instanceof LinkRejected) return { ok: false, reason: err.reason };
+    throw err;
+  }
+}
+
+/**
+ * Bind a Telegram identity a login proved control of.
+ *
+ * Telegram's OpenID Connect flow proves the same thing a redeemed link code
+ * does — control of that Telegram account — so it writes the same link, which
+ * is what lets a login be used from either side: link once in Settings and you
+ * can sign in with Telegram, sign in with Telegram and the bot already talks to
+ * your account.
+ *
+ * The chat id is the user id: OAuth carries no message to read a chat from, and
+ * a private chat with a user is addressed by that user's id.
+ */
+export async function linkTelegramFromOidc(params: {
+  userId: string;
+  telegramUserId: bigint;
+  displayName: string | null;
+}): Promise<LinkTelegramResult> {
+  const { userId, telegramUserId, displayName } = params;
+
+  try {
+    const link = await prisma.$transaction((tx) =>
+      bindLink(tx, { userId, telegramUserId, telegramChatId: telegramUserId, displayName }),
+    );
+    return { ok: true, link };
+  } catch (err) {
+    if (err instanceof LinkRejected) return { ok: false, reason: err.reason };
     throw err;
   }
 }

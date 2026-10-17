@@ -18,7 +18,12 @@ const link: TelegramLink = {
   linkedAt: "2024-01-01T00:00:00.000Z",
 };
 
-const bot: TelegramBotStatus = { configured: true, enabled: true, username: "saale_bot" };
+const bot: TelegramBotStatus = {
+  configured: true,
+  enabled: true,
+  username: "saale_bot",
+  loginEnabled: true,
+};
 
 const linkCode: TelegramLinkCode = {
   code: "abcDEF123_-GHIJKL456_-mnopqr789_",
@@ -120,7 +125,7 @@ describe("TelegramBox", () => {
 describe("TelegramLinkPanel", () => {
   it("tells the user when the instance has no bot, and offers no code", () => {
     const { onCreateCode } = renderPanel({
-      bot: { configured: false, enabled: false, username: null },
+      bot: { configured: false, enabled: false, username: null, loginEnabled: false },
     });
 
     expect(screen.getByText(/No Telegram bot is set up on this instance/)).toBeInTheDocument();

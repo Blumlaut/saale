@@ -2,25 +2,37 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import LoginPage from "@/app/auth/login/page";
+import { LoginForm } from "@/app/auth/login/login-form";
 import { authClient } from "@/lib/auth-client";
 
+const { router, query } = vi.hoisted(() => ({
+  router: { push: vi.fn(), refresh: vi.fn() },
+  query: { current: new URLSearchParams() },
+}));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => router,
+  useSearchParams: () => query.current,
 }));
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
-    signIn: { email: vi.fn(), username: vi.fn() },
+    signIn: { email: vi.fn(), username: vi.fn(), social: vi.fn() },
     twoFactor: { verifyTotp: vi.fn(), verifyBackupCode: vi.fn() },
   },
 }));
 
 const signInUsername = vi.mocked(authClient.signIn.username);
 const signInEmail = vi.mocked(authClient.signIn.email);
+const signInSocial = vi.mocked(authClient.signIn.social);
 
-beforeEach(() => vi.clearAllMocks());
+const telegramOff = { telegram: { enabled: false } };
+const telegramOn = { telegram: { enabled: true } };
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  query.current = new URLSearchParams();
+});
 
 function submitCredentials(identifier: string, password = "correct horse") {
   fireEvent.change(screen.getByLabelText("Username"), { target: { value: identifier } });
@@ -30,7 +42,7 @@ function submitCredentials(identifier: string, password = "correct horse") {
 
 describe("sign-in form", () => {
   it("marks the identifier and password so password managers see both fields", () => {
-    render(<LoginPage />);
+    render(<LoginForm {...telegramOff} />);
 
     const identifier = screen.getByLabelText("Username");
     const password = screen.getByLabelText("Password");
@@ -52,7 +64,7 @@ describe("sign-in form", () => {
 
   it("signs in with a username", async () => {
     signInUsername.mockResolvedValue({ data: null, error: null } as never);
-    render(<LoginPage />);
+    render(<LoginForm {...telegramOff} />);
 
     submitCredentials("ada.lovelace");
 
@@ -66,7 +78,7 @@ describe("sign-in form", () => {
 
   it("routes an email address to email sign-in", async () => {
     signInEmail.mockResolvedValue({ data: null, error: null } as never);
-    render(<LoginPage />);
+    render(<LoginForm {...telegramOff} />);
 
     submitCredentials("ada@example.com");
 
@@ -80,7 +92,7 @@ describe("sign-in form", () => {
 
   it("trims the identifier before routing it", async () => {
     signInUsername.mockResolvedValue({ data: null, error: null } as never);
-    render(<LoginPage />);
+    render(<LoginForm {...telegramOff} />);
 
     submitCredentials("  ada.lovelace  ");
 
@@ -96,7 +108,7 @@ describe("sign-in form", () => {
       data: null,
       error: { message: "Invalid username or password" },
     } as never);
-    render(<LoginPage />);
+    render(<LoginForm {...telegramOff} />);
 
     submitCredentials("ada.lovelace");
 
@@ -106,11 +118,51 @@ describe("sign-in form", () => {
 
   it("asks for a two-factor code after a password-only sign-in", async () => {
     signInUsername.mockResolvedValue({ data: { twoFactorRedirect: true }, error: null } as never);
-    render(<LoginPage />);
+    render(<LoginForm {...telegramOff} />);
 
     submitCredentials("ada.lovelace");
 
     expect(await screen.findByLabelText("Authenticator code")).toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
+  it("hands the browser to Telegram when that sign-in is offered", async () => {
+    signInSocial.mockResolvedValue({ data: null, error: null } as never);
+    render(<LoginForm {...telegramOn} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Telegram" }));
+
+    await waitFor(() =>
+      expect(signInSocial).toHaveBeenCalledWith({
+        provider: "telegram-oidc",
+        callbackURL: "/dashboard/chat",
+        errorCallbackURL: "/auth/login",
+      }),
+    );
+  });
+
+  it("offers no Telegram button on an instance without it", () => {
+    render(<LoginForm {...telegramOff} />);
+
+    expect(screen.queryByRole("button", { name: /Telegram/ })).not.toBeInTheDocument();
+  });
+
+  it("explains a Telegram failure the callback sent back", () => {
+    query.current = new URLSearchParams({ error: "account_not_linked" });
+    render(<LoginForm {...telegramOn} />);
+
+    expect(screen.getByText(/not linked to a Saale account/)).toBeInTheDocument();
+  });
+
+  it("shows the error message when Telegram cannot be started", async () => {
+    signInSocial.mockResolvedValue({
+      data: null,
+      error: { message: "Provider not found" },
+    } as never);
+    render(<LoginForm {...telegramOn} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Telegram" }));
+
+    expect(await screen.findByText("Provider not found")).toBeInTheDocument();
   });
 });

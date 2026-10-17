@@ -23,6 +23,10 @@ vi.mock("@/lib/telegram/bot", () => ({
   getTelegramBot: (...args: unknown[]) => mockGetTelegramBot(...args),
 }));
 
+vi.mock("@/lib/telegram/oidc", () => ({
+  getTelegramLoginStatus: vi.fn(),
+}));
+
 vi.mock("@/lib/telegram/links", () => ({
   issueLinkCode: (...args: unknown[]) => mockIssueLinkCode(...args),
   unlinkUser: (...args: unknown[]) => mockUnlinkUser(...args),
@@ -31,6 +35,7 @@ vi.mock("@/lib/telegram/links", () => ({
 }));
 
 import * as auth from "@/lib/auth";
+import { getTelegramLoginStatus } from "@/lib/telegram/oidc";
 import { DELETE, GET, POST } from "@/app/api/integrations/telegram/route";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -79,6 +84,14 @@ const link = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getTelegramLoginStatus).mockResolvedValue({
+    configured: true,
+    clientId: "1",
+    botId: "1",
+    botUsername: "saale_bot",
+    enabled: false,
+    redirectUri: "http://localhost/api/auth/callback/telegram-oidc",
+  });
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -101,7 +114,7 @@ describe("GET /api/integrations/telegram", () => {
     const body = await (await GET()).json();
 
     expect(body.integration).toEqual({
-      bot: { configured: false, enabled: false, username: null },
+      bot: { configured: false, enabled: false, username: null, loginEnabled: false },
       link: null,
     });
   });
@@ -117,6 +130,7 @@ describe("GET /api/integrations/telegram", () => {
       configured: true,
       enabled: true,
       username: "saale_bot",
+      loginEnabled: false,
     });
     expect(body.integration.link).toEqual({
       telegramUserId: "9007199254740993",
@@ -140,7 +154,26 @@ describe("GET /api/integrations/telegram", () => {
       configured: true,
       enabled: false,
       username: "saale_bot",
+      loginEnabled: false,
     });
+  });
+
+  it("tells the user when the linked account can also sign in", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(bot);
+    mockGetLinkByUserId.mockResolvedValue(link);
+    vi.mocked(getTelegramLoginStatus).mockResolvedValue({
+      configured: true,
+      clientId: "1",
+      botId: "1",
+      botUsername: "saale_bot",
+      enabled: true,
+      redirectUri: "http://localhost/api/auth/callback/telegram-oidc",
+    });
+
+    const body = await (await GET()).json();
+
+    expect(body.integration.bot.loginEnabled).toBe(true);
   });
 
   it("scopes the link lookup to the authenticated user", async () => {

@@ -17,7 +17,10 @@ import { usernameClient } from "better-auth/client/plugins";
 // The production options run the "first user becomes admin" database hook
 // through the app's prisma client. Nothing here should touch a real database.
 vi.mock("@/lib/db", () => ({
-  prisma: { user: { count: async () => 2, update: async () => ({}) } },
+  prisma: {
+    user: { count: async () => 2, update: async () => ({}) },
+    adminSettings: { findUnique: async () => ({ signupsEnabled: true }) },
+  },
 }));
 
 import { auth } from "@/auth";

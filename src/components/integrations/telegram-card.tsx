@@ -79,6 +79,7 @@ export function TelegramBox({
             </p>
             <p className="text-muted-foreground mt-0.5 text-xs">
               Linked {new Date(link.linkedAt).toLocaleDateString()}
+              {bot.loginEnabled ? " · you can sign in with Telegram too" : ""}
             </p>
           </div>
           <DropdownMenu>
@@ -194,7 +195,7 @@ export function TelegramLinkPanel({
           <p className="text-muted-foreground text-sm">
             {linked
               ? "Get a link code to connect a different Telegram account. It replaces the one currently linked."
-              : `Saale talks to you through a shared Telegram bot${bot.username ? ` (@${bot.username})` : ""}. Get a link code, send it to the bot with /start, and your Telegram account is connected.`}
+              : `Saale talks to you through a shared Telegram bot${bot.username ? ` (@${bot.username})` : ""}. Get a link code, send it to the bot with /start, and your Telegram account is connected.${bot.loginEnabled ? " That link is also how Telegram signs you in." : ""}`}
           </p>
           <Button
             className="liquid-glass-accent h-9 rounded-full text-xs font-medium"

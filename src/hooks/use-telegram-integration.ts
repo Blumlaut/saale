@@ -9,6 +9,8 @@ export interface TelegramBotStatus {
   enabled: boolean;
   /** Bot @username (without the @), when known. */
   username: string | null;
+  /** Whether this instance also offers signing in with the linked account. */
+  loginEnabled: boolean;
 }
 
 /** This user's linked Telegram account. */
@@ -34,7 +36,7 @@ export interface TelegramLinkCode {
 }
 
 const NOT_CONFIGURED: TelegramIntegration = {
-  bot: { configured: false, enabled: false, username: null },
+  bot: { configured: false, enabled: false, username: null, loginEnabled: false },
   link: null,
 };
 
