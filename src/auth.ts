@@ -11,6 +11,8 @@ import { admin, twoFactor } from "better-auth/plugins";
 import { username } from "better-auth/plugins/username";
 import { prisma } from "@/lib/db";
 import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
+import { ADMIN_CREATE_USER_PATH, assertSignupsAllowed } from "@/lib/auth/signups";
+import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
 import {
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
@@ -49,7 +51,7 @@ export const auth = betterAuth({
     // one could not be signed into — both entry points must carry it.
     // Format and uniqueness are enforced by the username plugin itself.
     before: createAuthMiddleware(async (ctx) => {
-      const createdByAdmin = ctx.path === "/admin/create-user";
+      const createdByAdmin = ctx.path === ADMIN_CREATE_USER_PATH;
       if (ctx.path !== "/sign-up/email" && !createdByAdmin) return;
 
       const body = ctx.body as { username?: unknown; data?: { username?: unknown } } | undefined;
@@ -62,6 +64,11 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        before: async (_user, context) => {
+          // Applied here rather than in a middleware so it covers every path
+          // that creates a user, whether or not a form was involved.
+          await assertSignupsAllowed(context);
+        },
         after: async (user) => {
           const count = await prisma.user.count();
           if (count <= 1) {
@@ -78,6 +85,16 @@ export const auth = betterAuth({
         // by the plugin immediately afterwards.
         after: async (user, context) => {
           await revokeSessionsOnTwoFactorEnable(user, context);
+        },
+      },
+    },
+    account: {
+      create: {
+        // A Telegram login is also a link: the account row is the first moment
+        // the Saale user and the Telegram identity belong together, and the
+        // bot routes messages by that link, not by the session.
+        after: async (account) => {
+          await linkTelegramFromOidcLogin(account);
         },
       },
     },
@@ -101,5 +118,7 @@ export const auth = betterAuth({
       // `name` already carries the handle as typed; no second display field.
       displayUsername: false,
     }),
+    // Absent (no provider, no login) unless the instance has OIDC credentials.
+    ...telegramOidcPlugins(),
   ],
 });

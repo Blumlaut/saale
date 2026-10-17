@@ -10,6 +10,7 @@ const {
   mockRemoveTelegramBot,
   mockTelegramLinkCount,
   mockRequireAdmin,
+  mockGetTelegramLoginStatus,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
   mockSaveTelegramBot: vi.fn(),
@@ -17,6 +18,7 @@ const {
   mockRemoveTelegramBot: vi.fn(),
   mockTelegramLinkCount: vi.fn(),
   mockRequireAdmin: vi.fn(),
+  mockGetTelegramLoginStatus: vi.fn(),
 }));
 
 vi.mock("@/app/api/admin/settings/auth", () => ({
@@ -25,6 +27,10 @@ vi.mock("@/app/api/admin/settings/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: { telegramLink: { count: (...args: unknown[]) => mockTelegramLinkCount(...args) } },
+}));
+
+vi.mock("@/lib/telegram/oidc", () => ({
+  getTelegramLoginStatus: (...args: unknown[]) => mockGetTelegramLoginStatus(...args),
 }));
 
 vi.mock("@/lib/telegram/bot", () => ({
@@ -37,6 +43,16 @@ vi.mock("@/lib/telegram/bot", () => ({
 import { DELETE, GET, PATCH, POST } from "@/app/api/admin/telegram/route";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Telegram sign-in's state as the route reports it. */
+const loginStatus = {
+  configured: true,
+  clientId: "123456789",
+  botId: "123456789",
+  botUsername: "saale_bot",
+  enabled: true,
+  redirectUri: "https://saale.example.com/api/auth/callback/telegram-oidc",
+};
 
 function authenticate(role: "admin" | "user" = "admin") {
   if (role === "admin") {
@@ -72,6 +88,7 @@ const bot = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockTelegramLinkCount.mockResolvedValue(0);
+  mockGetTelegramLoginStatus.mockResolvedValue(loginStatus);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -100,6 +117,9 @@ describe("GET /api/admin/telegram", () => {
 
     expect(body.bot).toEqual({ configured: false });
     expect(mockTelegramLinkCount).not.toHaveBeenCalled();
+    // Sign-in's state is reported even with no bot: it is what explains the
+    // misconfiguration.
+    expect(body.login).toEqual(loginStatus);
   });
 
   it("reports the bot's identity and reach, never its token", async () => {
@@ -120,6 +140,21 @@ describe("GET /api/admin/telegram", () => {
     });
     expect(JSON.stringify(body)).not.toContain("enc(token)");
     expect(JSON.stringify(body)).not.toContain("secret");
+    expect(body.login).toEqual(loginStatus);
+  });
+
+  it("spells out why Telegram sign-in is off when the client id is another bot", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(bot);
+    mockGetTelegramLoginStatus.mockResolvedValue({
+      ...loginStatus,
+      clientId: "987654321",
+      enabled: false,
+    });
+
+    const body = await (await GET()).json();
+
+    expect(body.login).toMatchObject({ configured: true, enabled: false, clientId: "987654321" });
   });
 });
 

@@ -37,9 +37,12 @@ export {
   unlinkUser,
   updateLinkDisplayName,
   setLinkSession,
+  linkTelegramFromOidc,
   type TelegramLinkInfo,
   type ConsumeLinkCodeFailure,
   type ConsumeLinkCodeResult,
+  type LinkFailure,
+  type LinkTelegramResult,
 } from "./links";
 
 export {

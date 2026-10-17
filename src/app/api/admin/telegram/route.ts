@@ -9,6 +9,7 @@ import {
   setTelegramBotEnabled,
   type TelegramBotConfig,
 } from "@/lib/telegram/bot";
+import { getTelegramLoginStatus, type TelegramLoginStatus } from "@/lib/telegram/oidc";
 
 /**
  * The shared Telegram bot's configuration.
@@ -36,6 +37,27 @@ async function serializeBot(bot: TelegramBotConfig | null) {
 }
 
 /**
+ * Telegram sign-in's state, with the reason it is off spelled out.
+ *
+ * This is the only place the mismatch is visible: on the login page it just
+ * means no button.
+ */
+async function serializeLogin(): Promise<TelegramLoginStatus> {
+  const login = await getTelegramLoginStatus();
+
+  if (login.configured && !login.enabled) {
+    console.warn(
+      login.botId === null
+        ? "Telegram login is configured, but no enabled bot is set up to link accounts to"
+        : "Telegram login is configured with a client id that is not the configured bot's id:",
+      { clientId: login.clientId, botId: login.botId },
+    );
+  }
+
+  return login;
+}
+
+/**
  * GET /api/admin/telegram — the bot's current configuration and reach.
  */
 export async function GET() {
@@ -43,7 +65,8 @@ export async function GET() {
   if (!authResult.ok) return authResult.response;
 
   const bot = await getTelegramBot();
-  return NextResponse.json({ bot: await serializeBot(bot) });
+  const login = await serializeLogin();
+  return NextResponse.json({ bot: await serializeBot(bot), login });
 }
 
 /**
@@ -75,6 +98,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       bot: await serializeBot(bot),
+      login: await serializeLogin(),
       webhookRegistered,
     });
   } catch (err) {
@@ -113,7 +137,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const bot = await setTelegramBotEnabled(enabled);
-  return NextResponse.json({ bot: await serializeBot(bot) });
+  return NextResponse.json({ bot: await serializeBot(bot), login: await serializeLogin() });
 }
 
 /**

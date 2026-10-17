@@ -168,6 +168,7 @@ import {
   getLinkByUserId,
   hashLinkCode,
   issueLinkCode,
+  linkTelegramFromOidc,
   unlinkUser,
   updateLinkDisplayName,
 } from "@/lib/telegram/links";
@@ -216,6 +217,75 @@ describe("Telegram link codes", () => {
         displayName: null,
       }),
     ).toEqual({ ok: false, reason: "expired" });
+  });
+});
+
+describe("Telegram links from a Telegram login", () => {
+  beforeEach(() => {
+    fake.codes.clear();
+    fake.links.length = 0;
+  });
+
+  it("binds the identity the login proved, addressed by its own id", async () => {
+    const result = await linkTelegramFromOidc({
+      userId,
+      telegramUserId,
+      displayName: "Ada",
+    });
+
+    expect(result.ok).toBe(true);
+    // A login carries no message to read a chat id from; a private chat with a
+    // user is addressed by that user's id.
+    expect(fake.links).toHaveLength(1);
+    expect(fake.links[0]).toMatchObject({
+      botId: "global",
+      userId,
+      telegramUserId,
+      telegramChatId: telegramUserId,
+      displayName: "Ada",
+    });
+    expect(await getLinkByTelegramUserId(telegramUserId)).not.toBeNull();
+  });
+
+  it("signing in again leaves one link, refreshed in place", async () => {
+    await linkTelegramFromOidc({ userId, telegramUserId, displayName: "Ada" });
+    await linkTelegramFromOidc({ userId, telegramUserId, displayName: "Ada Lovelace" });
+
+    expect(fake.links).toHaveLength(1);
+    expect(fake.links[0]!.displayName).toBe("Ada Lovelace");
+  });
+
+  it("moves the user's own link to the account they signed in with", async () => {
+    await linkTelegramFromOidc({ userId, telegramUserId, displayName: "Ada" });
+
+    const other = BigInt("555000111");
+    await linkTelegramFromOidc({ userId, telegramUserId: other, displayName: "Ada alt" });
+
+    expect(fake.links).toHaveLength(1);
+    expect(fake.links[0]!.telegramUserId).toBe(other);
+    expect(fake.links[0]!.telegramChatId).toBe(other);
+  });
+
+  it("refuses a Telegram account that is already linked to someone else", async () => {
+    await linkTelegramFromOidc({ userId: otherUserId, telegramUserId, displayName: "Owner" });
+
+    const result = await linkTelegramFromOidc({
+      userId,
+      telegramUserId,
+      displayName: "Impostor",
+    });
+
+    expect(result).toEqual({ ok: false, reason: "already_linked" });
+    expect(fake.links).toHaveLength(1);
+    expect(await getLinkByUserId(otherUserId)).not.toBeNull();
+    expect(await getLinkByUserId(userId)).toBeNull();
+  });
+
+  it("keeps an id beyond the safe integer range intact", async () => {
+    await linkTelegramFromOidc({ userId, telegramUserId, displayName: null });
+
+    const stored = await getLinkByUserId(userId);
+    expect(stored!.telegramUserId.toString()).toBe("9007199254740993");
   });
 });
 

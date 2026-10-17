@@ -19,7 +19,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
-import { AlertCircle, ExternalLink, Loader2, MessageCircle } from "lucide-react";
+import { AlertCircle, Check, Copy, ExternalLink, Loader2, MessageCircle } from "lucide-react";
+import type { TelegramLoginStatus } from "@/lib/telegram/oidc";
 
 interface AdminTelegramBot {
   configured: boolean;
@@ -33,7 +34,84 @@ interface AdminTelegramBot {
 
 interface SaveResponse {
   bot: AdminTelegramBot;
+  login: TelegramLoginStatus;
   webhookRegistered: boolean;
+}
+
+/**
+ * Whether users can sign in with Telegram, and what is left to configure.
+ *
+ * The credentials live in the environment, so this is a read-only report: it
+ * exists because a half-done setup shows up nowhere else — the login page just
+ * leaves the button out.
+ */
+function TelegramLoginBlock({ login }: { login: TelegramLoginStatus }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyRedirectUri = () => {
+    navigator.clipboard
+      .writeText(login.redirectUri)
+      .then(() => {
+        setCopied(true);
+        toast.success("Redirect URL copied");
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch((err) => {
+        console.error("Failed to copy the Telegram redirect URL:", err);
+        toast.error("Could not copy the URL");
+      });
+  };
+
+  return (
+    <div className="border-border/60 space-y-2 border-t pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Label className="text-sm font-medium">Sign in with Telegram</Label>
+        <Badge variant={login.enabled ? "secondary" : "outline"} className="rounded-full">
+          {login.enabled ? "Available" : login.configured ? "Misconfigured" : "Not set up"}
+        </Badge>
+      </div>
+
+      {login.configured && !login.enabled && (
+        <p className="text-destructive text-xs">
+          {login.botId
+            ? `TELEGRAM_OIDC_CLIENT_ID is ${login.clientId}, but this bot's id is ${login.botId} — sign-in is off until they match.`
+            : "Sign-in is off until this bot is switched on, since a login has nothing to link an account to otherwise."}
+        </p>
+      )}
+
+      <p className="text-muted-foreground text-xs">
+        In{" "}
+        <a
+          href="https://t.me/BotFather"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline underline-offset-2"
+        >
+          @BotFather
+          <ExternalLink className="ml-0.5 inline-block h-3 w-3" />
+        </a>{" "}
+        open the bot, then <span className="text-foreground">Login Widget</span> and add the
+        site&apos;s origin plus the redirect URL below. Copy the Client ID and Client Secret it
+        shows into <code className="font-mono">TELEGRAM_OIDC_CLIENT_ID</code> and{" "}
+        <code className="font-mono">TELEGRAM_OIDC_CLIENT_SECRET</code>, then restart. Telegram only
+        sends an authorization code to a registered URL — an unregistered one comes back in the URL
+        fragment, where the app never sees it.
+      </p>
+
+      <div className="liquid-glass-inner flex items-center justify-between gap-3 rounded-2xl border-0 px-3 py-1.5">
+        <code className="font-mono text-xs break-all">{login.redirectUri}</code>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          onClick={copyRedirectUri}
+          aria-label="Copy the Telegram redirect URL"
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -45,6 +123,7 @@ interface SaveResponse {
  */
 export function TelegramBotPanel() {
   const [bot, setBot] = useState<AdminTelegramBot | null>(null);
+  const [login, setLogin] = useState<TelegramLoginStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
@@ -55,8 +134,11 @@ export function TelegramBotPanel() {
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchJson<{ bot: AdminTelegramBot }>("/api/admin/telegram");
+      const data = await fetchJson<{ bot: AdminTelegramBot; login: TelegramLoginStatus }>(
+        "/api/admin/telegram",
+      );
       setBot(data.bot);
+      setLogin(data.login);
     } catch (err) {
       console.error("Failed to load the Telegram bot configuration:", err);
       setBot({ configured: false });
@@ -77,6 +159,7 @@ export function TelegramBotPanel() {
     try {
       const data = await postJson<SaveResponse>("/api/admin/telegram", { token: token.trim() });
       setBot(data.bot);
+      setLogin(data.login);
       setToken("");
       if (data.webhookRegistered) {
         toast.success("Telegram bot saved");
@@ -97,8 +180,12 @@ export function TelegramBotPanel() {
   const toggleEnabled = useCallback(async (enabled: boolean) => {
     setToggling(true);
     try {
-      const data = await patchJson<{ bot: AdminTelegramBot }>("/api/admin/telegram", { enabled });
+      const data = await patchJson<{ bot: AdminTelegramBot; login: TelegramLoginStatus }>(
+        "/api/admin/telegram",
+        { enabled },
+      );
       setBot(data.bot);
+      setLogin(data.login);
     } catch (err) {
       console.error("Failed to toggle the Telegram bot:", err);
       toast.error("Failed to change the bot's state");
@@ -197,6 +284,8 @@ export function TelegramBotPanel() {
             >
               Remove bot
             </Button>
+
+            {login && <TelegramLoginBlock login={login} />}
           </div>
         ) : (
           <div className="space-y-3 px-4 py-3">
