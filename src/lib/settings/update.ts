@@ -8,13 +8,15 @@
  * session being rebuilt.
  *
  * Scope is re-checked here, not only in the tool: an admin property is refused
- * for a caller whose `User.role` is not "admin", whatever path reached this
+ * for a caller whose role holds no admin access, whatever path reached this
  * function.
  */
 
 import { prisma } from "@/lib/db";
 import { Prisma, type AdminSettings, type AppSettings } from "@prisma/client";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
+import { isAdminUser } from "@/lib/permissions/check";
+import { normalizeFeatureOverrides, type FeatureOverrides } from "@/lib/permissions/features";
 import {
   ADMIN_PROPERTIES,
   coveredColumns,
@@ -58,10 +60,7 @@ export interface SettingsFilter {
 // ─── Access ──────────────────────────────────────────────────────────────────
 
 /** Whether the user is an admin. Read per call — a role can change. */
-export async function isAdminUser(userId: string): Promise<boolean> {
-  const { isAdminUser: check } = await import("@/lib/permissions/check");
-  return check(userId);
-}
+export { isAdminUser };
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
@@ -311,35 +310,31 @@ export async function applyAdminSettingsPatch(
   return settings;
 }
 
-// ─── Feature gating (internal columns, admin-set) ────────────────────────────
+// ─── Feature access (admin-set, internal column) ─────────────────────────────
+//
+// `AppSettings.features` is deliberately not a user property: it overrides
+// feature gating, so exposing it to `applyUserSettingsPatch` would let a user
+// switch on everything an admin turned off. Only the admin routes write it.
 
-/** Persist a per-user feature override (sparse: only explicit false). */
-export async function setUserFeatures(
-  userId: string,
-  features: Record<string, boolean>,
-): Promise<void> {
-  const sparse: Record<string, boolean> = {};
-  for (const [k, v] of Object.entries(features)) {
-    if (v === false) sparse[k] = false;
+/** Persist an account's feature overrides and rebuild its pooled sessions. */
+export async function setUserFeatures(userId: string, features: FeatureOverrides): Promise<void> {
+  const wanted = normalizeFeatureOverrides(features);
+  const current = await prisma.appSettings.findUnique({
+    where: { userId },
+    select: { features: true },
+  });
+  if (JSON.stringify(normalizeFeatureOverrides(current?.features)) === JSON.stringify(wanted)) {
+    return;
   }
-  const value = Object.keys(sparse).length ? (sparse as Prisma.InputJsonValue) : Prisma.DbNull;
+
+  const value = Object.keys(wanted).length ? (wanted as Prisma.InputJsonValue) : Prisma.DbNull;
   await prisma.appSettings.upsert({
     where: { userId },
     create: { userId, features: value },
     update: { features: value },
   });
-}
 
-/** Persist instance-wide default features (sparse: only explicit false). */
-export async function setDefaultFeatures(features: Record<string, boolean>): Promise<void> {
-  const sparse: Record<string, boolean> = {};
-  for (const [k, v] of Object.entries(features)) {
-    if (v === false) sparse[k] = false;
-  }
-  const value = Object.keys(sparse).length ? (sparse as Prisma.InputJsonValue) : Prisma.DbNull;
-  await prisma.adminSettings.upsert({
-    where: { id: "global" },
-    create: { id: "global", featureDefaults: value },
-    update: { featureDefaults: value },
-  });
+  // Feature gating decides which tools a pooled session gets, so the account's
+  // sessions have to be rebuilt for the change to reach the next turn.
+  await evictUserSessions(userId);
 }

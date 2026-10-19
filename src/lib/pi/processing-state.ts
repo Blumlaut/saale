@@ -9,6 +9,7 @@ import {
 import { createUserMcpExtension } from "@/lib/mcp/servers";
 import { createCodemodeApprovalExtension } from "./codemode-approval";
 import { createMcpToolPolicyExtension } from "./mcp-tool-policy";
+import { hasFeature } from "@/lib/permissions/check";
 import { createSessionSettings } from "./settings";
 import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
 import type { ApprovalRequest } from "./tool-approval-gate";
@@ -188,7 +189,11 @@ export async function createAgentResourceLoader(
 
   if (options.interactive) {
     const interactive = options.interactive;
-    const mcp = await createUserMcpExtension(interactive.userId);
+    // Without the MCP feature the user's servers are never connected, so no MCP
+    // tool reaches the model through codemode either.
+    const mcp = (await hasFeature(interactive.userId, "mcp"))
+      ? await createUserMcpExtension(interactive.userId)
+      : null;
 
     // The script gate needs the servers' policies: a script reaches MCP tools
     // like any other, and whether one of those calls asks is resolved the same

@@ -10,7 +10,7 @@ import { fetchJson, patchJson } from "@/lib/http";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { TelegramBotPanel } from "@/components/admin/telegram-bot-panel";
 import { Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
-import { FEATURES } from "@/lib/permissions/statements";
+import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 
 interface AdminSettings {
   signupsEnabled: boolean;
@@ -37,7 +37,7 @@ export default function AdminSettingsPage() {
       .then((data) => {
         setSettings(data.settings);
         setSignupsEnabled(data.settings.signupsEnabled);
-        setFeatureDefaults((data.settings.featureDefaults as Record<string, boolean>) ?? {});
+        setFeatureDefaults(data.settings.featureDefaults ?? {});
         const modelStr =
           data.settings.globalModelProvider && data.settings.globalModelName
             ? `${data.settings.globalModelProvider}/${data.settings.globalModelName}`
@@ -45,7 +45,10 @@ export default function AdminSettingsPage() {
         setGlobalModelId(modelStr);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        console.error("Failed to load admin settings:", err);
+        setLoading(false);
+      });
   }, []);
 
   // Auto-clear save status
@@ -67,7 +70,8 @@ export default function AdminSettingsPage() {
         featureDefaults,
       });
       setSaveStatus("success");
-    } catch {
+    } catch (err) {
+      console.error("Failed to save admin settings:", err);
       setSaveStatus("error");
     }
     setSaving(false);
@@ -140,22 +144,32 @@ export default function AdminSettingsPage() {
             </GlassPanelContent>
           </GlassPanel>
 
-          {/* Default features */}
+          {/* Default features — regular accounts that have no override of their own */}
           <GlassPanel>
             <GlassPanelHeader title="Default Features" />
             <GlassPanelContent className="p-0">
+              <p className="text-muted-foreground border-b px-4 py-3 text-xs">
+                Applied to every regular account without its own switches. Admin accounts always
+                have everything.
+              </p>
               <div className="divide-y">
-                {FEATURES.map((feature) => (
-                  <div key={feature} className="flex items-center justify-between px-4 py-3">
-                    <Label className="text-sm font-medium">{feature}</Label>
-                    <Switch
-                      checked={featureDefaults[feature] !== false}
-                      onCheckedChange={(v) =>
-                        setFeatureDefaults((prev) => ({ ...prev, [feature]: v }))
-                      }
-                    />
-                  </div>
-                ))}
+                {FEATURES.map((feature) => {
+                  const definition = FEATURE_DEFINITIONS[feature];
+                  return (
+                    <div key={feature} className="flex items-start justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <Label className="text-sm font-medium">{definition.label}</Label>
+                        <p className="text-muted-foreground text-xs">{definition.description}</p>
+                      </div>
+                      <Switch
+                        checked={featureDefaults[feature] ?? definition.defaultOn}
+                        onCheckedChange={(v) =>
+                          setFeatureDefaults((prev) => ({ ...prev, [feature]: v }))
+                        }
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </GlassPanelContent>
           </GlassPanel>

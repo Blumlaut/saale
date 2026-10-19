@@ -6,24 +6,33 @@ import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { useSessionRole } from "@/hooks/use-session-role";
+import { roleHasAction } from "@/lib/permissions/roles";
+import type { AdminAction } from "@/lib/permissions/statements";
 import { ChevronRight, Bot, Users, Settings, ArrowLeft, type LucideIcon } from "lucide-react";
 
 export interface AdminNavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** The admin slice the page needs; a role without it never sees the item. */
+  action: AdminAction;
 }
 
 /** The admin panel's nav items — shared by the desktop sidebar and the mobile bottom bar. */
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
-  { href: "/admin/models", label: "Models", icon: Bot },
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
+  { href: "/admin/models", label: "Models", icon: Bot, action: "models" },
+  { href: "/admin/users", label: "Users", icon: Users, action: "users" },
+  { href: "/admin/settings", label: "Settings", icon: Settings, action: "settings" },
 ];
 
 export function AdminNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const role = useSessionRole();
+  const items = role
+    ? ADMIN_NAV_ITEMS.filter((item) => roleHasAction(role, "admin", item.action))
+    : [];
 
   return (
     <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
@@ -44,7 +53,7 @@ export function AdminNav() {
 
           {/* Nav Items */}
           <div className="space-y-0.5">
-            {ADMIN_NAV_ITEMS.map((item) => {
+            {items.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
               const Icon = item.icon;
 

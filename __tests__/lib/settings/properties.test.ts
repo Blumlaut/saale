@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { Prisma, type AppSettings } from "@prisma/client";
+import { Prisma, type AdminSettings, type AppSettings } from "@prisma/client";
 import {
   ADMIN_PROPERTIES,
   ALL_PROPERTIES,
@@ -61,6 +61,20 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     toolExposure: null,
     sidebarItems: null,
     features: null,
+    updatedAt: new Date(0),
+    ...overrides,
+  };
+}
+
+/** A bare AdminSettings row with Prisma's defaults. */
+function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
+  return {
+    id: "global",
+    signupsEnabled: true,
+    globalModelProvider: "",
+    globalModelName: "",
+    globalProviderModels: null,
+    featureDefaults: null,
     updatedAt: new Date(0),
     ...overrides,
   };
@@ -189,6 +203,13 @@ describe("settings validation", () => {
     expect(accepts("tools.policy.bash", "maybe")).toBe(false);
   });
 
+  it("validates the default feature switches by name", () => {
+    expect(accepts("admin.featureDefaults", { council: true })).toBe(true);
+    expect(accepts("admin.featureDefaults", {})).toBe(true);
+    expect(accepts("admin.featureDefaults", { council: "on" })).toBe(false);
+    expect(accepts("admin.featureDefaults", { not_a_feature: true })).toBe(false);
+  });
+
   it("requires provider:model for model references", () => {
     expect(accepts("models.default", "anthropic:claude-sonnet-4")).toBe(true);
     expect(accepts("models.default", "openrouter:anthropic/claude-sonnet-4")).toBe(true);
@@ -242,6 +263,21 @@ describe("settings projections", () => {
     // Writing the default again drops the entry rather than storing it.
     const back = apply(property, off, true);
     expect(back.defaultToolConfig).toBe(Prisma.DbNull);
+  });
+
+  it("stores default feature switches sparsely and clears the column", () => {
+    const property = findProperty("admin.featureDefaults")!;
+    if (property.scope !== "admin") throw new Error("expected an admin property");
+    const row = adminRow({
+      featureDefaults: { council: true, nope: true, mail: "yes" } as never,
+    });
+
+    // Unknown names and non-booleans never survive a read or a write.
+    expect(property.read(row)).toEqual({ council: true });
+    expect(property.write(row, { mail: false, nope: true })).toEqual({
+      featureDefaults: { mail: false },
+    });
+    expect(property.write(row, {})).toEqual({ featureDefaults: Prisma.DbNull });
   });
 
   it("merges tool exposure without disturbing other categories", () => {

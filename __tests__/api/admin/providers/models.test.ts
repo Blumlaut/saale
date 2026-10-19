@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
-vi.mock("@/app/api/admin/settings/auth", () => ({
-  requireAdmin: vi.fn(),
+vi.mock("@/lib/auth", () => ({
+  requirePermission: vi.fn(),
 }));
 
 vi.mock("@/lib/pi/models", () => ({
@@ -11,7 +11,7 @@ vi.mock("@/lib/pi/models", () => ({
   buildAdminModelList: vi.fn(),
 }));
 
-import * as adminAuth from "@/app/api/admin/settings/auth";
+import { requirePermission } from "@/lib/auth";
 import * as piModels from "@/lib/pi/models";
 import { GET } from "@/app/api/admin/providers/models/route";
 
@@ -41,7 +41,7 @@ function stubRuntime(models: ReturnType<typeof model>[], names: Record<string, s
 describe("GET /api/admin/providers/models", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
+    vi.mocked(requirePermission).mockResolvedValue({
       ok: true,
       user: { id: "admin-1" },
     } as never);
@@ -49,7 +49,7 @@ describe("GET /api/admin/providers/models", () => {
   });
 
   it("returns 401 when the caller is not an admin", async () => {
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
+    vi.mocked(requirePermission).mockResolvedValue({
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });

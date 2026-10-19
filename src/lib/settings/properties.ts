@@ -51,6 +51,7 @@ import {
 import { ALL_TOOL_INFOS, type ToolPolicy } from "@/lib/pi/tool-infos";
 import { getAllPurposes } from "@/lib/pi/purposes";
 import { normalizeToolExposure } from "@/lib/pi/tool-exposure-rules";
+import { FEATURES, normalizeFeatureOverrides } from "@/lib/permissions/features";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -491,6 +492,9 @@ const providerModelsSchema = z.record(
   }),
 );
 
+/** Feature switches keyed by feature name; unknown names are refused. */
+const featureOverridesSchema = z.partialRecord(z.enum(FEATURES), z.boolean());
+
 const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
   {
     key: "admin.signupsEnabled",
@@ -541,14 +545,14 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     group: GROUP.admin,
     label: "Default features",
     description:
-      "Default feature set for new regular-user accounts, as an object mapping feature name to boolean. Set to null for all features on.",
+      "Feature switches applied to every regular account that has no override of its own, keyed by feature name. Absent keys keep the built-in default (council is off). Set to null for the built-in defaults.",
     columns: ["featureDefaults"],
     apply: "sessions",
     scope: "admin",
-    schema: z.record(z.string(), z.boolean()),
-    read: (row) => row.featureDefaults,
+    schema: featureOverridesSchema,
+    read: (row) => normalizeFeatureOverrides(row.featureDefaults),
     write: (_row, value) => ({
-      featureDefaults: value === null ? Prisma.DbNull : (value as Prisma.InputJsonValue),
+      featureDefaults: orDbNull(normalizeFeatureOverrides(value)),
     }),
   },
 ];

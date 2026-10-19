@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { ADMIN_NAV_ITEMS } from "@/components/admin/admin-nav";
-import { useIsAdmin } from "@/hooks/use-is-admin";
+import { useSessionRole } from "@/hooks/use-session-role";
+import { roleHasAction } from "@/lib/permissions/roles";
 
 interface MobileNavItem {
   href: string;
@@ -27,12 +28,17 @@ function isItemActive(href: string, pathname: string): boolean {
 export function MobileNav() {
   const pathname = usePathname();
   const { visibleItems } = useSidebarNav();
-  const isAdmin = useIsAdmin();
+  const role = useSessionRole();
+  const isAdmin = role ? roleHasAction(role, "admin", "access") : false;
   const inAdminPanel = pathname.startsWith("/admin");
+
+  const adminItems = role
+    ? ADMIN_NAV_ITEMS.filter((item) => roleHasAction(role, "admin", item.action))
+    : [];
 
   const items: MobileNavItem[] = inAdminPanel
     ? [
-        ...ADMIN_NAV_ITEMS.map(({ href, label, icon }) => ({ href, label, icon })),
+        ...adminItems.map(({ href, label, icon }) => ({ href, label, icon })),
         { href: "/dashboard/chat", label: "Dashboard", icon: Home },
       ]
     : [

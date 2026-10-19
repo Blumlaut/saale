@@ -18,8 +18,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { fetchJson, postJson, patchJson } from "@/lib/http";
 import { authClient } from "@/lib/auth-client";
-import { ROLE_NAMES } from "@/lib/permissions/roles";
-import { FEATURES } from "@/lib/permissions/statements";
+import { useSessionRole } from "@/hooks/use-session-role";
+import { ROLE_LABELS, ROLE_NAMES, isAdminRole, roleHasAction } from "@/lib/permissions/roles";
+import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
 import {
   Users,
@@ -42,9 +43,18 @@ interface AdminUser {
   createdAt: string;
 }
 
+interface UserFeatures {
+  features: Record<string, boolean>;
+  readOnly: boolean;
+}
+
 export default function AdminUsersPage() {
+  const role = useSessionRole();
+  const can = (action: string) => role !== null && roleHasAction(role, "user", action);
+
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
 
@@ -62,6 +72,8 @@ export default function AdminUsersPage() {
   const [editUsername, setEditUsername] = useState("");
   const [editRole, setEditRole] = useState<string>("user");
   const [editFeatures, setEditFeatures] = useState<Record<string, boolean>>({});
+  const [featuresState, setFeaturesState] = useState<"loading" | "ready" | "error">("loading");
+  const [featuresReadOnly, setFeaturesReadOnly] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const createUsernameValid = isValidUsername(createUsername);
@@ -82,6 +94,11 @@ export default function AdminUsersPage() {
         `/api/auth/admin/list-users?limit=200${search ? `&searchValue=${encodeURIComponent(search)}&searchField=email` : ""}`,
       );
       setUsers(data.users ?? []);
+      setLoadError(false);
+    } catch (err) {
+      console.error("Failed to load users:", err);
+      setUsers([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -117,7 +134,8 @@ export default function AdminUsersPage() {
       setCreateRole("user");
       setSaveStatus("success");
       await loadUsers();
-    } catch {
+    } catch (err) {
+      console.error("Failed to create user:", err);
       setSaveStatus("error");
     }
     setCreating(false);
@@ -128,10 +146,19 @@ export default function AdminUsersPage() {
     setEditUsername(user.username ?? "");
     setEditRole(user.role ?? "user");
     setEditFeatures({});
+    setFeaturesState("loading");
+    setFeaturesReadOnly(isAdminRole(user.role ?? "user"));
     setShowEdit(true);
-    fetchJson<{ features: Record<string, boolean> }>(`/api/admin/users/${user.id}/features`)
-      .then((data) => setEditFeatures(data.features ?? {}))
-      .catch((err) => console.error("Failed to load user features:", err));
+    fetchJson<UserFeatures>(`/api/admin/users/${user.id}/features`)
+      .then((data) => {
+        setEditFeatures(data.features);
+        setFeaturesReadOnly(data.readOnly);
+        setFeaturesState("ready");
+      })
+      .catch((err) => {
+        console.error("Failed to load user features:", err);
+        setFeaturesState("error");
+      });
   };
 
   const handleEdit = async () => {
@@ -147,18 +174,23 @@ export default function AdminUsersPage() {
           data: { username },
         });
       }
-      // Set role
-      await postJson("/api/auth/admin/set-role", {
-        userId: editUser.id,
-        role: editRole,
-      });
-      // Set features
-      await patchJson(`/api/admin/users/${editUser.id}/features`, { features: editFeatures });
+      if (editRole !== editUser.role) {
+        await postJson("/api/auth/admin/set-role", {
+          userId: editUser.id,
+          role: editRole,
+        });
+      }
+      if (featuresState === "ready" && !featuresReadOnly && !isAdminRole(editRole)) {
+        await patchJson(`/api/admin/users/${editUser.id}/features`, {
+          features: editFeatures,
+        });
+      }
       setShowEdit(false);
       setEditUser(null);
       setSaveStatus("success");
       await loadUsers();
-    } catch {
+    } catch (err) {
+      console.error("Failed to update user:", err);
       setSaveStatus("error");
     }
     setEditing(false);
@@ -193,7 +225,8 @@ export default function AdminUsersPage() {
       setDeleteUser(null);
       setSaveStatus("success");
       await loadUsers();
-    } catch {
+    } catch (err) {
+      console.error("Failed to delete user:", err);
       setSaveStatus("error");
     }
     setDeleting(false);
@@ -244,6 +277,8 @@ export default function AdminUsersPage() {
               size="icon"
               className="h-8 w-8 md:w-auto md:px-3"
               onClick={() => setShowCreate(true)}
+              disabled={!can("create")}
+              title={can("create") ? "Add a user" : "Your role cannot create users"}
             >
               <Plus className="h-4 w-4" />
               <span className="hidden md:inline">Add</span>
@@ -255,74 +290,91 @@ export default function AdminUsersPage() {
           {users.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
               <Users className="text-muted-foreground/50 mb-3 h-8 w-8" />
-              <p className="text-sm font-medium">No users found</p>
+              <p className="text-sm font-medium">
+                {loadError ? "Could not load users" : "No users found"}
+              </p>
               <p className="text-muted-foreground mt-1 text-xs">
-                {search ? "Try a different search term" : "Add a user to get started"}
+                {loadError
+                  ? "The user list could not be fetched — try reloading the page"
+                  : search
+                    ? "Try a different search term"
+                    : "Add a user to get started"}
               </p>
             </div>
           ) : (
-            users.map((user, i) => (
-              <div key={user.id}>
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <div className="bg-muted/50 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold">
-                    {(user.name ?? user.email)[0]?.toUpperCase() ?? "?"}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">{user.name ?? "—"}</span>
-                      {user.role && user.role !== "user" && (
-                        <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
-                          {user.role}
-                        </Badge>
-                      )}
-                      {user.banned && (
-                        <Badge variant="destructive" className="rounded-full px-1.5 text-[10px]">
-                          banned
-                        </Badge>
-                      )}
+            users.map((user, i) => {
+              const adminTarget = isAdminRole(user.role ?? "user");
+              const canImpersonate = can("impersonate") && !adminTarget;
+              return (
+                <div key={user.id}>
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <div className="bg-muted/50 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold">
+                      {(user.name ?? user.email)[0]?.toUpperCase() ?? "?"}
                     </div>
-                    <span className="text-muted-foreground truncate text-xs">
-                      {user.username ? `@${user.username} · ${user.email}` : user.email}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{user.name ?? "—"}</span>
+                        {user.role && user.role !== "user" && (
+                          <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
+                            {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] ?? user.role}
+                          </Badge>
+                        )}
+                        {user.banned && (
+                          <Badge variant="destructive" className="rounded-full px-1.5 text-[10px]">
+                            banned
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-muted-foreground truncate text-xs">
+                        {user.username ? `@${user.username} · ${user.email}` : user.email}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleImpersonate(user)}
+                        disabled={impersonating === user.id || !canImpersonate}
+                        title={
+                          adminTarget
+                            ? "Cannot impersonate admins"
+                            : canImpersonate
+                              ? "Impersonate this user"
+                              : "Your role cannot impersonate"
+                        }
+                      >
+                        {impersonating === user.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <UserCog className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => openEdit(user)}
+                        title="Edit this user"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive h-8 w-8"
+                        onClick={() => openDelete(user)}
+                        disabled={!can("delete")}
+                        title={can("delete") ? "Delete this user" : "Your role cannot delete users"}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => handleImpersonate(user)}
-                      disabled={impersonating === user.id || user.role !== "user"}
-                      title={
-                        user.role !== "user" ? "Cannot impersonate admins" : "Impersonate this user"
-                      }
-                    >
-                      {impersonating === user.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <UserCog className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => openEdit(user)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive h-8 w-8"
-                      onClick={() => openDelete(user)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  {i < users.length - 1 && <Separator className="px-4" />}
                 </div>
-                {i < users.length - 1 && <Separator className="px-4" />}
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </GlassPanel>
@@ -376,14 +428,14 @@ export default function AdminUsersPage() {
             <div className="space-y-2">
               <Label>Role</Label>
               <div className="flex flex-wrap gap-2">
-                {ROLE_NAMES.map((role) => (
+                {ROLE_NAMES.map((name) => (
                   <Button
-                    key={role}
-                    variant={createRole === role ? "default" : "outline"}
+                    key={name}
+                    variant={createRole === name ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setCreateRole(role)}
+                    onClick={() => setCreateRole(name)}
                   >
-                    {role}
+                    {ROLE_LABELS[name]}
                   </Button>
                 ))}
               </div>
@@ -421,6 +473,7 @@ export default function AdminUsersPage() {
                 spellCheck={false}
                 placeholder="ada.lovelace"
                 aria-invalid={Boolean(editUsername) && !editUsernameValid}
+                disabled={!can("update")}
               />
               <p
                 className={
@@ -435,33 +488,58 @@ export default function AdminUsersPage() {
             <div className="space-y-2">
               <Label>Role</Label>
               <div className="flex flex-wrap gap-2">
-                {ROLE_NAMES.map((role) => (
+                {ROLE_NAMES.map((name) => (
                   <Button
-                    key={role}
-                    variant={editRole === role ? "default" : "outline"}
+                    key={name}
+                    variant={editRole === name ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setEditRole(role)}
+                    onClick={() => setEditRole(name)}
+                    disabled={!can("set-role")}
                   >
-                    {role}
+                    {ROLE_LABELS[name]}
                   </Button>
                 ))}
               </div>
+              {!can("set-role") && (
+                <p className="text-muted-foreground text-xs">Your role cannot change roles.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Features</Label>
-              <div className="max-h-48 space-y-1 overflow-y-auto rounded border p-2">
-                {FEATURES.map((feature) => (
-                  <div key={feature} className="flex items-center justify-between">
-                    <span className="text-xs">{feature}</span>
-                    <Switch
-                      checked={editFeatures[feature] !== false}
-                      onCheckedChange={(v) =>
-                        setEditFeatures((prev) => ({ ...prev, [feature]: v }))
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
+              {featuresState === "loading" ? (
+                <div className="flex items-center justify-center rounded border py-6">
+                  <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                </div>
+              ) : featuresState === "error" ? (
+                <p className="text-destructive text-xs">
+                  Could not load this account&apos;s features.
+                </p>
+              ) : (
+                <div className="max-h-56 space-y-1 overflow-y-auto rounded border p-2">
+                  {FEATURES.map((feature) => (
+                    <div key={feature} className="flex items-start justify-between gap-3 py-1">
+                      <div className="min-w-0">
+                        <span className="text-xs font-medium">
+                          {FEATURE_DEFINITIONS[feature].label}
+                        </span>
+                        <p className="text-muted-foreground text-[11px] leading-tight">
+                          {FEATURE_DEFINITIONS[feature].description}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={editFeatures[feature] !== false}
+                        disabled={featuresReadOnly}
+                        onCheckedChange={(v) =>
+                          setEditFeatures((prev) => ({ ...prev, [feature]: v }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {featuresReadOnly && (
+                <p className="text-muted-foreground text-xs">Admins always have every feature.</p>
+              )}
             </div>
             {editUser && <div className="text-muted-foreground text-xs">{editUser.email}</div>}
           </div>

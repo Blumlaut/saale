@@ -358,8 +358,8 @@ model AdminSettings {
   /// switch (`enabled`) is what turns a provider off, so saving a list without
   /// touching a provider cannot switch it off by accident.
   globalProviderModels   Json?
-  /// Default feature set for new regular-user accounts: { "mail": true, ... }.
-  /// Sparse — absent means "all features on".
+  /// Feature switches for regular accounts that have no override of their own:
+  /// { "council": true }. Sparse — absent keys keep the built-in default.
   featureDefaults        Json?
   updatedAt              DateTime @updatedAt
 
@@ -384,7 +384,8 @@ model AppSettings {
   toolPolicies         Json?                  // Per-tool approval policies: { "bash": "ask", "mail_send": "off", ... }
   toolExposure         Json?                  // Per-category how tools reach the model: { "email": "codemode", "jobs": "deferred" }. Sparse — absent = "direct".
   sidebarItems         Json?                  // Sidebar layout, in display order: [{ "id": "chat", "hidden": false }, ...]. null = default order, everything visible
-  /// Per-user feature overrides (sparse): { "mail": false } disables mail for this account.
+  /// This account's feature switches (sparse): { "mail": false }. Absent keys
+  /// follow the instance defaults.
   features              Json?
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
