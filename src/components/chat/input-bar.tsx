@@ -302,7 +302,7 @@ export function InputBar({
   }, [value, autoResize]);
 
   return (
-    <div className="border-border/30 relative border-t pt-2">
+    <div className="bg-muted border-border relative border-t pt-2">
       {commandMenuOpen && (
         <SlashCommandMenu
           commands={commandMatches}
@@ -368,7 +368,7 @@ export function InputBar({
         </div>
       )}
 
-      <div className="liquid-glass-inner relative flex items-center gap-2 rounded-none border-0 px-3 py-2 md:rounded-2xl">
+      <div className="bg-background border-input relative flex items-center gap-2 rounded-none border px-3 py-2 md:rounded-2xl">
         {/* Tools toggle button */}
         {hasToolToggle && (
           <DropdownMenu>
