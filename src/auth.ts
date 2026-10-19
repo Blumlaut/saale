@@ -10,6 +10,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, twoFactor } from "better-auth/plugins";
 import { username } from "better-auth/plugins/username";
 import { prisma } from "@/lib/db";
+import { saaleAccessControl } from "@/lib/permissions/statements";
+import { SAAL_ROLES } from "@/lib/permissions/roles";
 import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
 import { ADMIN_CREATE_USER_PATH, assertSignupsAllowed } from "@/lib/auth/signups";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
@@ -103,6 +105,8 @@ export const auth = betterAuth({
     admin({
       defaultRole: "user",
       adminRoles: ["admin"],
+      ac: saaleAccessControl,
+      roles: SAAL_ROLES,
     }),
     twoFactor({
       issuer: "Saale",

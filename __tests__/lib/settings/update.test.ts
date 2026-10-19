@@ -56,6 +56,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     toolPolicies: null,
     toolExposure: null,
     sidebarItems: null,
+    features: null,
     updatedAt: new Date(0),
     ...overrides,
   };
@@ -68,6 +69,7 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
     globalModelProvider: "",
     globalModelName: "",
     globalProviderModels: null,
+    featureDefaults: null,
     updatedAt: new Date(0),
     ...overrides,
   };

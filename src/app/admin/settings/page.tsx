@@ -11,12 +11,14 @@ import { fetchJson, patchJson } from "@/lib/http";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { TelegramBotPanel } from "@/components/admin/telegram-bot-panel";
 import { Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
+import { FEATURES } from "@/lib/permissions/statements";
 
 interface AdminSettings {
   signupsEnabled: boolean;
   globalModelProvider: string;
   globalModelName: string;
   globalProviderModels: Record<string, unknown> | null;
+  featureDefaults: Record<string, boolean> | null;
 }
 
 export default function AdminSettingsPage() {
@@ -28,6 +30,7 @@ export default function AdminSettingsPage() {
   // Local state for toggles
   const [signupsEnabled, setSignupsEnabled] = useState(true);
   const [globalModelId, setGlobalModelId] = useState("");
+  const [featureDefaults, setFeatureDefaults] = useState<Record<string, boolean>>({});
 
   // Load admin settings
   useEffect(() => {
@@ -35,6 +38,7 @@ export default function AdminSettingsPage() {
       .then((data) => {
         setSettings(data.settings);
         setSignupsEnabled(data.settings.signupsEnabled);
+        setFeatureDefaults((data.settings.featureDefaults as Record<string, boolean>) ?? {});
         const modelStr =
           data.settings.globalModelProvider && data.settings.globalModelName
             ? `${data.settings.globalModelProvider}/${data.settings.globalModelName}`
@@ -61,13 +65,14 @@ export default function AdminSettingsPage() {
         signupsEnabled,
         globalModelProvider: globalModelId ? provider : "",
         globalModelName: globalModelId ? modelParts.join("/") : "",
+        featureDefaults,
       });
       setSaveStatus("success");
     } catch {
       setSaveStatus("error");
     }
     setSaving(false);
-  }, [signupsEnabled, globalModelId]);
+  }, [signupsEnabled, globalModelId, featureDefaults]);
 
   if (loading) {
     return (
@@ -132,6 +137,26 @@ export default function AdminSettingsPage() {
                   {!globalModelId && <Brain className="text-muted-foreground h-4 w-4" />}
                   <ModelPicker value={globalModelId} onChange={setGlobalModelId} />
                 </div>
+              </div>
+            </GlassPanelContent>
+          </GlassPanel>
+
+          {/* Default features */}
+          <GlassPanel>
+            <GlassPanelHeader title="Default Features" />
+            <GlassPanelContent className="p-0">
+              <div className="divide-y">
+                {FEATURES.map((feature) => (
+                  <div key={feature} className="flex items-center justify-between px-4 py-3">
+                    <Label className="text-sm font-medium">{feature}</Label>
+                    <Switch
+                      checked={featureDefaults[feature] !== false}
+                      onCheckedChange={(v) =>
+                        setFeatureDefaults((prev) => ({ ...prev, [feature]: v }))
+                      }
+                    />
+                  </div>
+                ))}
               </div>
             </GlassPanelContent>
           </GlassPanel>

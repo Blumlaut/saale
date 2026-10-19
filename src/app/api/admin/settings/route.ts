@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "./auth";
+import { requirePermission } from "@/lib/auth";
 import { applyAdminSettingsPatch, ensureAdminSettings, SettingsError } from "@/lib/settings/update";
 import type { AdminSettings } from "@prisma/client";
 
@@ -11,6 +11,7 @@ function serializeSettings(settings: AdminSettings) {
     globalModelProvider: settings.globalModelProvider,
     globalModelName: settings.globalModelName,
     globalProviderModels: settings.globalProviderModels,
+    featureDefaults: settings.featureDefaults,
   };
 }
 
@@ -18,7 +19,7 @@ function serializeSettings(settings: AdminSettings) {
  * GET /api/admin/settings — Get admin settings
  */
 export async function GET() {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "settings");
   if (!authResult.ok) return authResult.response;
 
   const settings = await ensureAdminSettings();
@@ -33,7 +34,7 @@ export async function GET() {
  * the only writer of `AdminSettings` and re-checks that the caller is an admin.
  */
 export async function PATCH(request: NextRequest) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "settings");
   if (!authResult.ok) return authResult.response;
 
   let body: unknown;

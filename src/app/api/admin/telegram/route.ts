@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/app/api/admin/settings/auth";
+import { requirePermission } from "@/lib/auth";
 import {
   getTelegramBot,
   removeTelegramBot,
@@ -61,7 +61,7 @@ async function serializeLogin(): Promise<TelegramLoginStatus> {
  * GET /api/admin/telegram — the bot's current configuration and reach.
  */
 export async function GET() {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "telegram");
   if (!authResult.ok) return authResult.response;
 
   const bot = await getTelegramBot();
@@ -74,7 +74,7 @@ export async function GET() {
  * Body: { token: string }
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "telegram");
   if (!authResult.ok) return authResult.response;
 
   let body: unknown;
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
  * Body: { enabled: boolean }
  */
 export async function PATCH(request: NextRequest) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "telegram");
   if (!authResult.ok) return authResult.response;
 
   let body: unknown;
@@ -144,7 +144,7 @@ export async function PATCH(request: NextRequest) {
  * DELETE /api/admin/telegram — remove the bot and every link.
  */
 export async function DELETE() {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "telegram");
   if (!authResult.ok) return authResult.response;
 
   const removed = await removeTelegramBot();

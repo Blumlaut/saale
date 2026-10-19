@@ -9,7 +9,10 @@ export function useIsAdmin(): boolean {
 
   useEffect(() => {
     fetchJson<{ user?: { role?: string | null } }>("/api/auth/get-session")
-      .then((data) => setIsAdmin(data.user?.role === "admin"))
+      .then((data) => {
+        const role = data.user?.role ?? "user";
+        setIsAdmin(role !== "user");
+      })
       .catch((err) => console.error("Failed to check admin status:", err));
   }, []);
 

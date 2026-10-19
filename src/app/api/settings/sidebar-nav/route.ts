@@ -10,6 +10,7 @@ import {
   type SidebarNavItemId,
 } from "@/lib/navigation/sidebar-nav";
 import { canUseCouncil } from "@/lib/council/access";
+import { hasFeature } from "@/lib/permissions/check";
 import { applyUserSettingsPatch, SettingsError } from "@/lib/settings/update";
 
 const sidebarNavEntrySchema = z.object({
@@ -43,7 +44,19 @@ const patchBodySchema = z.object({
  * offered as a toggle.
  */
 async function unavailableNavIds(userId: string): Promise<SidebarNavItemId[]> {
-  return (await canUseCouncil(userId)) ? [] : ["council"];
+  const unavailable: SidebarNavItemId[] = [];
+  if (!(await canUseCouncil(userId))) unavailable.push("council");
+  const featureMap: Record<string, string> = {
+    mail: "mail",
+    calendar: "calendar",
+    tasks: "tasks",
+    jobs: "jobs",
+    infra: "infra",
+  };
+  for (const [feature, navId] of Object.entries(featureMap)) {
+    if (!(await hasFeature(userId, feature))) unavailable.push(navId as SidebarNavItemId);
+  }
+  return unavailable;
 }
 
 function restrict(entries: SidebarNavEntry[], unavailable: SidebarNavItemId[]): SidebarNavEntry[] {

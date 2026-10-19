@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowUp, Clock, Loader2, Paperclip, Pencil, X } from "lucide-react";
-import { stripAttachmentPromptText } from "@/lib/file-attachment";
+import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import type { Message } from "./types";
 
 /**

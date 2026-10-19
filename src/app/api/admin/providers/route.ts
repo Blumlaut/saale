@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { requireAdmin } from "../settings/auth";
+import { requirePermission } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { fetchOpenAIModels, buildGlobalModelRuntime } from "@/lib/pi/models";
@@ -26,7 +26,7 @@ const ROW_COLUMNS = {
  * the global configuration has credentials for.
  */
 export async function GET() {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
   const [rows, { modelRuntime }] = await Promise.all([
@@ -72,7 +72,7 @@ export async function GET() {
  * authenticate.
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
 
 /** DELETE /api/admin/providers — remove the global provider's credentials. */
 export async function DELETE(request: NextRequest) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
   const { searchParams } = new URL(request.url);

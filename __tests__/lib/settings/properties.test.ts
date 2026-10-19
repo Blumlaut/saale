@@ -60,6 +60,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     toolPolicies: null,
     toolExposure: null,
     sidebarItems: null,
+    features: null,
     updatedAt: new Date(0),
     ...overrides,
   };
@@ -82,7 +83,7 @@ function userProperty(key: string): UserProperty {
 
 describe("settings registry coverage", () => {
   const INTERNAL: Record<string, string[]> = {
-    AppSettings: ["id", "userId", "updatedAt"],
+    AppSettings: ["id", "userId", "updatedAt", "features"],
     AdminSettings: ["id", "updatedAt"],
   };
 

@@ -343,3 +343,21 @@ export async function requireTaskOwner(taskId: string): Promise<
 
   return { ok: true, task, userId: authResult.user.id };
 }
+
+/**
+ * Require a permission for the current session. Returns 401/403 on failure.
+ */
+export async function requirePermission(
+  resource: "admin" | "feature",
+  action: string,
+): Promise<{ ok: true; user: { id: string } } | { ok: false; response: NextResponse }> {
+  const session = await getSession();
+  if (!session?.user) {
+    return { ok: false, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  const { hasPermission } = await import("@/lib/permissions/check");
+  if (!(await hasPermission(session.user.id, resource, action))) {
+    return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+  return { ok: true, user: { id: session.user.id } };
+}
