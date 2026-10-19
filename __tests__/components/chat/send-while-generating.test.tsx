@@ -201,6 +201,11 @@ const queueStrip = () => screen.getByRole("group", { name: "Queued messages" });
 beforeAll(() => {
   vi.stubGlobal("EventSource", MockEventSource);
   vi.stubGlobal("fetch", vi.fn(fetchMock));
+  // jsdom has no matchMedia, which the header's useIsMobile queries.
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+  );
 });
 
 beforeEach(() => {

@@ -708,6 +708,48 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await page.locator('[data-slot="sheet-content"]').waitFor({ state: "visible" });
     },
   },
+  {
+    name: "chat · linked watchers",
+    path: "/dashboard/chat",
+    sources: ["src/components/chat/session-links-panel.tsx"],
+    mock: async (page) => {
+      // The header button only appears when the session has linked watchers,
+      // so the listing is stubbed — the guardrail is the panel's layout, not
+      // the watcher data.
+      await page.route(/\/api\/chat\/sessions\/[^/]+\/watchers/, (route) =>
+        route.fulfill({
+          json: {
+            watchers: [
+              {
+                id: "e2e-watch-1",
+                name: "deploy-watch",
+                enabled: true,
+                cronExpression: "*/5 * * * *",
+                lastTickAt: NOW,
+                lastFiredAt: NOW,
+                lastError: "fetch failed: ECONNRESET",
+                fireCount: 3,
+              },
+              {
+                id: "e2e-watch-2",
+                name: "inbox-digest",
+                enabled: false,
+                cronExpression: "0 * * * *",
+                lastTickAt: null,
+                lastFiredAt: null,
+                lastError: null,
+                fireCount: 0,
+              },
+            ],
+          },
+        }),
+      );
+    },
+    open: async (page) => {
+      await gotoChatSession(page, await ensureChatSession(page));
+      await click(page, 'button[title="Linked watchers"]');
+    },
+  },
 
   // ── Settings ──────────────────────────────────────────────────────────────
   {
