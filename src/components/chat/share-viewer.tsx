@@ -14,6 +14,7 @@ import { RedactedToolCall } from "./redacted-tool-call";
 import { categoryToolMark, type ToolMark } from "./tool-mark-model";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { groupMessages } from "@/lib/chat/group-messages";
+import { stripAttachmentPromptText } from "@/lib/file-attachment";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import type { Message, ToolCallData } from "./types";
@@ -168,15 +169,19 @@ function ShareMessageList({ messages }: { messages: Message[] }) {
 }
 
 function ShareUserMessage({ message }: { message: Message }) {
+  const displayContent = message.attachments?.length
+    ? stripAttachmentPromptText(message.content)
+    : message.content;
+
   return (
     <div className="flex flex-row-reverse gap-3">
       <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
         <User className="h-4 w-4" />
       </div>
       <div className="max-w-[85%] min-w-0">
-        {message.content && (
+        {displayContent && (
           <div className="liquid-glass-inner rounded-2xl px-4 py-3">
-            <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+            <div className="text-sm whitespace-pre-wrap">{displayContent}</div>
           </div>
         )}
         <div className="mt-1 text-right text-xs">
