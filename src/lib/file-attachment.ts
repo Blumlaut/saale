@@ -157,3 +157,19 @@ export function buildAttachmentPromptText(attachments: AttachmentPromptEntry[]):
     })
     .join("\n");
 }
+
+const ATTACHMENT_LINE = /^\[(?:Image|File) attached: .*\]$/;
+
+/**
+ * Remove attachment reference lines from a message's content for display.
+ * The lines exist so the model knows where uploaded files live; the UI
+ * renders attachments separately as thumbnails/chips, so showing the lines
+ * too is noise.
+ */
+export function stripAttachmentPromptText(content: string): string {
+  return content
+    .split("\n")
+    .filter((line) => !ATTACHMENT_LINE.test(line))
+    .join("\n")
+    .trim();
+}
