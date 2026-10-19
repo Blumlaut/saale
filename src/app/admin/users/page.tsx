@@ -15,8 +15,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { fetchJson, postJson } from "@/lib/http";
+import { Switch } from "@/components/ui/switch";
+import { fetchJson, postJson, patchJson } from "@/lib/http";
 import { authClient } from "@/lib/auth-client";
+import { ROLE_NAMES } from "@/lib/permissions/roles";
+import { FEATURES } from "@/lib/permissions/statements";
 import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
 import {
   Users,
@@ -50,14 +53,15 @@ export default function AdminUsersPage() {
   const [createUsername, setCreateUsername] = useState("");
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
-  const [createRole, setCreateRole] = useState<"user" | "admin">("user");
+  const [createRole, setCreateRole] = useState<string>("user");
   const [creating, setCreating] = useState(false);
 
   // Edit user dialog
   const [showEdit, setShowEdit] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [editUsername, setEditUsername] = useState("");
-  const [editRole, setEditRole] = useState<"user" | "admin">("user");
+  const [editRole, setEditRole] = useState<string>("user");
+  const [editFeatures, setEditFeatures] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState(false);
 
   const createUsernameValid = isValidUsername(createUsername);
@@ -122,8 +126,12 @@ export default function AdminUsersPage() {
   const openEdit = (user: AdminUser) => {
     setEditUser(user);
     setEditUsername(user.username ?? "");
-    setEditRole((user.role ?? "user") as "user" | "admin");
+    setEditRole(user.role ?? "user");
+    setEditFeatures({});
     setShowEdit(true);
+    fetchJson<{ features: Record<string, boolean> }>(`/api/admin/users/${user.id}/features`)
+      .then((data) => setEditFeatures(data.features ?? {}))
+      .catch((err) => console.error("Failed to load user features:", err));
   };
 
   const handleEdit = async () => {
@@ -144,6 +152,8 @@ export default function AdminUsersPage() {
         userId: editUser.id,
         role: editRole,
       });
+      // Set features
+      await patchJson(`/api/admin/users/${editUser.id}/features`, { features: editFeatures });
       setShowEdit(false);
       setEditUser(null);
       setSaveStatus("success");
@@ -260,9 +270,9 @@ export default function AdminUsersPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium">{user.name ?? "—"}</span>
-                      {user.role === "admin" && (
+                      {user.role && user.role !== "user" && (
                         <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
-                          admin
+                          {user.role}
                         </Badge>
                       )}
                       {user.banned && (
@@ -281,11 +291,9 @@ export default function AdminUsersPage() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => handleImpersonate(user)}
-                      disabled={impersonating === user.id || user.role === "admin"}
+                      disabled={impersonating === user.id || user.role !== "user"}
                       title={
-                        user.role === "admin"
-                          ? "Cannot impersonate admins"
-                          : "Impersonate this user"
+                        user.role !== "user" ? "Cannot impersonate admins" : "Impersonate this user"
                       }
                     >
                       {impersonating === user.id ? (
@@ -367,23 +375,17 @@ export default function AdminUsersPage() {
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
-              <div className="flex gap-2">
-                <Button
-                  variant={createRole === "user" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCreateRole("user")}
-                  className="flex-1"
-                >
-                  User
-                </Button>
-                <Button
-                  variant={createRole === "admin" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCreateRole("admin")}
-                  className="flex-1"
-                >
-                  Admin
-                </Button>
+              <div className="flex flex-wrap gap-2">
+                {ROLE_NAMES.map((role) => (
+                  <Button
+                    key={role}
+                    variant={createRole === role ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCreateRole(role)}
+                  >
+                    {role}
+                  </Button>
+                ))}
               </div>
             </div>
           </div>
@@ -432,23 +434,33 @@ export default function AdminUsersPage() {
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
-              <div className="flex gap-2">
-                <Button
-                  variant={editRole === "user" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setEditRole("user")}
-                  className="flex-1"
-                >
-                  User
-                </Button>
-                <Button
-                  variant={editRole === "admin" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setEditRole("admin")}
-                  className="flex-1"
-                >
-                  Admin
-                </Button>
+              <div className="flex flex-wrap gap-2">
+                {ROLE_NAMES.map((role) => (
+                  <Button
+                    key={role}
+                    variant={editRole === role ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEditRole(role)}
+                  >
+                    {role}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Features</Label>
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded border p-2">
+                {FEATURES.map((feature) => (
+                  <div key={feature} className="flex items-center justify-between">
+                    <span className="text-xs">{feature}</span>
+                    <Switch
+                      checked={editFeatures[feature] !== false}
+                      onCheckedChange={(v) =>
+                        setEditFeatures((prev) => ({ ...prev, [feature]: v }))
+                      }
+                    />
+                  </div>
+                ))}
               </div>
             </div>
             {editUser && <div className="text-muted-foreground text-xs">{editUser.email}</div>}
