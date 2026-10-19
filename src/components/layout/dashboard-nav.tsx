@@ -374,7 +374,7 @@ export function DashboardNav() {
       <div className="border-border/60 mt-4 border-t px-3 pt-3">
         <div className="flex items-center justify-between">
           <p className="console-label">
-            Sale{" "}
+            Saale{" "}
             <span className="text-muted-foreground/70 font-mono tracking-normal normal-case">
               v0.1.0
             </span>
