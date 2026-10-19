@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireAdmin } from "../../settings/auth";
+import { requirePermission } from "@/lib/auth";
 import { buildAdminModelList } from "@/lib/pi/models";
 import { definesProviderModels } from "@/lib/providers/config";
 
@@ -13,7 +13,7 @@ import { definesProviderModels } from "@/lib/providers/config";
  * list to be switched back on.
  */
 export async function GET() {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
   const { models: available, modelRuntime } = await buildAdminModelList();

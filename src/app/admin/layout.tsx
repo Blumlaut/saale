@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { hasPermission } from "@/lib/permissions/check";
 import { AppShell } from "@/components/layout/app-shell";
 import { AdminNav } from "@/components/admin/admin-nav";
 
@@ -17,7 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/auth/login");
   }
 
-  if (session.user?.role !== "admin") {
+  if (!(await hasPermission(session.user.id, "admin", "access"))) {
     redirect("/dashboard/chat");
   }
 

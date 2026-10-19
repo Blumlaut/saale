@@ -536,6 +536,21 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
       globalProviderModels: value === null ? Prisma.DbNull : (value as Prisma.InputJsonValue),
     }),
   },
+  {
+    key: "admin.featureDefaults",
+    group: GROUP.admin,
+    label: "Default features",
+    description:
+      "Default feature set for new regular-user accounts, as an object mapping feature name to boolean. Set to null for all features on.",
+    columns: ["featureDefaults"],
+    apply: "sessions",
+    scope: "admin",
+    schema: z.record(z.string(), z.boolean()),
+    read: (row) => row.featureDefaults,
+    write: (_row, value) => ({
+      featureDefaults: value === null ? Prisma.DbNull : (value as Prisma.InputJsonValue),
+    }),
+  },
 ];
 
 // ─── Registry ────────────────────────────────────────────────────────────────

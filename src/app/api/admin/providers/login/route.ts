@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/app/api/admin/settings/auth";
+import { requirePermission } from "@/lib/auth";
 import {
   cancelLoginResponse,
   loginStateResponse,
@@ -12,19 +12,19 @@ import {
  */
 
 export async function POST(request: Request) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
   return startLoginResponse({ kind: "global" }, request);
 }
 
 export async function GET(request: Request) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
   return loginStateResponse({ kind: "global" }, request);
 }
 
 export async function DELETE(request: Request) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
   return cancelLoginResponse({ kind: "global" }, request);
 }

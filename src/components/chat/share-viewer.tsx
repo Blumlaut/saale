@@ -14,7 +14,7 @@ import { RedactedToolCall } from "./redacted-tool-call";
 import { categoryToolMark, type ToolMark } from "./tool-mark-model";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { groupMessages } from "@/lib/chat/group-messages";
-import { stripAttachmentPromptText } from "@/lib/file-attachment";
+import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import type { Message, ToolCallData } from "./types";

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { requireAdmin } from "../../settings/auth";
+import { requirePermission } from "@/lib/auth";
 import { parseVisionEdit } from "@/lib/providers/capabilities";
 import {
   detectAndStoreProviderCapabilities,
@@ -35,7 +35,7 @@ async function findGlobalProviderKey(provider: string) {
  * automatic detection.
  */
 export async function PATCH(request: NextRequest) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
@@ -66,7 +66,7 @@ export async function PATCH(request: NextRequest) {
  * its models can do and store the answers.
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireAdmin();
+  const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();

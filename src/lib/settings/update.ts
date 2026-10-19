@@ -13,7 +13,7 @@
  */
 
 import { prisma } from "@/lib/db";
-import type { AdminSettings, AppSettings } from "@prisma/client";
+import { Prisma, type AdminSettings, type AppSettings } from "@prisma/client";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 import {
   ADMIN_PROPERTIES,
@@ -59,11 +59,8 @@ export interface SettingsFilter {
 
 /** Whether the user is an admin. Read per call — a role can change. */
 export async function isAdminUser(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-  return user?.role === "admin";
+  const { isAdminUser: check } = await import("@/lib/permissions/check");
+  return check(userId);
 }
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
@@ -312,4 +309,37 @@ export async function applyAdminSettingsPatch(
   const settings = await prisma.adminSettings.update({ where: { id: "global" }, data: update });
   if (evicts) await evictUserSessions(actorUserId);
   return settings;
+}
+
+// ─── Feature gating (internal columns, admin-set) ────────────────────────────
+
+/** Persist a per-user feature override (sparse: only explicit false). */
+export async function setUserFeatures(
+  userId: string,
+  features: Record<string, boolean>,
+): Promise<void> {
+  const sparse: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(features)) {
+    if (v === false) sparse[k] = false;
+  }
+  const value = Object.keys(sparse).length ? (sparse as Prisma.InputJsonValue) : Prisma.DbNull;
+  await prisma.appSettings.upsert({
+    where: { userId },
+    create: { userId, features: value },
+    update: { features: value },
+  });
+}
+
+/** Persist instance-wide default features (sparse: only explicit false). */
+export async function setDefaultFeatures(features: Record<string, boolean>): Promise<void> {
+  const sparse: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(features)) {
+    if (v === false) sparse[k] = false;
+  }
+  const value = Object.keys(sparse).length ? (sparse as Prisma.InputJsonValue) : Prisma.DbNull;
+  await prisma.adminSettings.upsert({
+    where: { id: "global" },
+    create: { id: "global", featureDefaults: value },
+    update: { featureDefaults: value },
+  });
 }

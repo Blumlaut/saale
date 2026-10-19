@@ -277,3 +277,39 @@ describe("buildAttachmentPromptText", () => {
     expect(text).toContain("b.png");
   });
 });
+
+// ─── stripAttachmentPromptText ───────────────────────────────────────────────
+
+describe("stripAttachmentPromptText", () => {
+  it("removes a single image line and keeps the user text", () => {
+    const content =
+      "invert the colours\n[Image attached: shot.png (image/png) at /home/u/uploads/shot.png]";
+    expect(attachmentsModule.stripAttachmentPromptText(content)).toBe("invert the colours");
+  });
+
+  it("removes every attachment line across multiple files", () => {
+    const content = [
+      "do a thing",
+      "[File attached: report.pdf (application/pdf) at /home/u/uploads/report.pdf]",
+      "[Image attached: shot.png (image/png)]",
+    ].join("\n");
+    expect(attachmentsModule.stripAttachmentPromptText(content)).toBe("do a thing");
+  });
+
+  it("returns an empty string when the content is only attachment lines", () => {
+    const content = "[Image attached: shot.png (image/png) at /home/u/uploads/shot.png]";
+    expect(attachmentsModule.stripAttachmentPromptText(content)).toBe("");
+  });
+
+  it("leaves content without attachment lines unchanged (except surrounding trim)", () => {
+    const content = "just plain text\nwith two lines";
+    expect(attachmentsModule.stripAttachmentPromptText(content)).toBe(content);
+  });
+
+  it("only strips lines that are exactly an attachment reference", () => {
+    const content = "see [Image attached: real] in the notes\n[File attached: a.pdf (x)]";
+    expect(attachmentsModule.stripAttachmentPromptText(content)).toBe(
+      "see [Image attached: real] in the notes",
+    );
+  });
+});
