@@ -132,26 +132,21 @@ export async function downloadAndProcessTelegramFile(
 
 /**
  * Build a text description for a file attachment to include in the prompt.
+ *
+ * Media captions arrive as the message's own text (`messageCaption`), so the
+ * description covers the attachment only — appending the caption here would
+ * repeat it in the prompt.
  */
-export function buildFilePromptText(
-  processedFile: ProcessedFile,
-  caption: string | undefined,
-): string {
-  const parts: string[] = [];
-
-  if (caption) {
-    parts.push(caption);
-  }
-
+export function buildFilePromptText(processedFile: ProcessedFile): string {
   if (processedFile.imageData) {
-    parts.push(`[Image attached: ${processedFile.fileName} (${processedFile.mimeType})]`);
-  } else if (processedFile.filePath) {
-    parts.push(
-      `[File attached: ${processedFile.fileName} (${processedFile.mimeType}) at ${processedFile.filePath}]`,
-    );
+    return `[Image attached: ${processedFile.fileName} (${processedFile.mimeType})]`;
   }
 
-  return parts.join(" ");
+  if (processedFile.filePath) {
+    return `[File attached: ${processedFile.fileName} (${processedFile.mimeType}) at ${processedFile.filePath}]`;
+  }
+
+  return "";
 }
 
 /** The file a `show_file` call sent the user, or null for another tool's call. */

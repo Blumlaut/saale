@@ -137,7 +137,6 @@ vi.mock("@/lib/pi/session", () => ({
 vi.mock("@/lib/telegram/files", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/telegram/files")>()),
   downloadAndProcessTelegramFile: vi.fn(),
-  buildFilePromptText: vi.fn(() => ""),
   sendSharedFileToTelegram: h.sendSharedFileToTelegram,
 }));
 
@@ -162,6 +161,7 @@ import { createAgentSession } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { sendTelegramMessage } from "@/lib/telegram/client";
+import { downloadAndProcessTelegramFile } from "@/lib/telegram/files";
 import {
   attachTelegramSession,
   interruptTelegramChat,
@@ -390,6 +390,48 @@ describe("processTelegramMessage — latest message wins", () => {
 
     // The run fully settled and left no active entry behind.
     expect(isTelegramSessionActive(USER, chatId)).toBe(false);
+  });
+});
+
+describe("processTelegramMessage — attachments", () => {
+  async function runWithAttachment(
+    chatId: bigint,
+    fileName: string,
+  ): Promise<ReturnType<typeof makeFakeSession>["fake"]> {
+    vi.mocked(downloadAndProcessTelegramFile).mockResolvedValue({
+      imageData: { type: "image", data: "QUJD", mimeType: "image/jpeg" },
+      mimeType: "image/jpeg",
+      fileName,
+    });
+
+    const { session, fake } = makeFakeSession([{ type: "agent_settled" }]);
+    vi.mocked(createAgentSession).mockResolvedValue({ session } as never);
+
+    await processTelegramMessage({
+      ...baseParams(chatId),
+      messageText: "",
+      messageCaption: "do the rear tyres fit?",
+      fileInfo: { fileId: "f1", mimeType: "image/jpeg" },
+      replyToMessageId: 11,
+      messageSeq: nextMessageSeq(USER, chatId),
+      ...makeDone(),
+    });
+
+    return fake;
+  }
+
+  it("keeps the caption once in the stored message and the prompt", async () => {
+    const chatId = nextChatId();
+    setupPrisma(chatId);
+
+    const fake = await runWithAttachment(chatId, "tyres.jpg");
+
+    const stored = h.prisma.chatMessage.create.mock.calls[0]?.[0]?.data?.content as string;
+    expect(stored).toBe("do the rear tyres fit?\n[Image attached: tyres.jpg (image/jpeg)]");
+    expect(stored.match(/do the rear tyres fit\?/g)).toHaveLength(1);
+
+    const prompt = (fake.prompt.mock.calls[0] as unknown as [string])?.[0];
+    expect(prompt.match(/do the rear tyres fit\?/g)).toHaveLength(1);
   });
 });
 
