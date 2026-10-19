@@ -28,6 +28,7 @@ import { toolMark } from "./tool-marks";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages, type MessageGroup } from "@/lib/chat/group-messages";
+import { stripAttachmentPromptText } from "@/lib/file-attachment";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
 import { formatFileSize, cn } from "@/lib/utils";
@@ -569,6 +570,12 @@ function UserMessageItem({
     url: att.storageId.startsWith("temp-") ? undefined : `/api/chat/attachments/${att.storageId}`,
   }));
 
+  // The server appends a file-reference line per attachment so the model can
+  // find the file — redundant here, since the attachments render on their own.
+  const displayContent = message.attachments?.length
+    ? stripAttachmentPromptText(message.content)
+    : message.content;
+
   if (isEditing) {
     return (
       <div className="flex flex-row-reverse gap-3">
@@ -688,9 +695,9 @@ function UserMessageItem({
         )}
 
         {/* Text content (only when there's text) */}
-        {message.content && (
+        {displayContent && (
           <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
-            <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+            <div className="text-sm whitespace-pre-wrap">{displayContent}</div>
           </div>
         )}
         {/* Timestamp + edit button */}

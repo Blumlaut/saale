@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowUp, Clock, Loader2, Paperclip, Pencil, X } from "lucide-react";
+import { stripAttachmentPromptText } from "@/lib/file-attachment";
 import type { Message } from "./types";
 
 /**
@@ -106,8 +107,17 @@ export function QueuedMessages({
                   {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs" title={message.content}>
-                    {message.content}
+                  <p
+                    className="truncate text-xs"
+                    title={
+                      message.attachments?.length
+                        ? stripAttachmentPromptText(message.content)
+                        : message.content
+                    }
+                  >
+                    {message.attachments?.length
+                      ? stripAttachmentPromptText(message.content)
+                      : message.content}
                   </p>
                   {message.attachments && message.attachments.length > 0 && (
                     <p className="text-muted-foreground flex items-center gap-1 text-[11px]">
