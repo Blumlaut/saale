@@ -248,36 +248,40 @@ describe("downloadAndProcessTelegramFile", () => {
 
 describe("buildFilePromptText", () => {
   it("points the agent at the container path for documents", () => {
-    const text = filesModule.buildFilePromptText(
-      {
-        filePath: "/home/u12345678/telegram_files/contract.pdf",
-        size: 1234,
-        mimeType: "application/pdf",
-        fileName: "contract.pdf",
-      },
-      "can you review this?",
-    );
+    const text = filesModule.buildFilePromptText({
+      filePath: "/home/u12345678/telegram_files/contract.pdf",
+      size: 1234,
+      mimeType: "application/pdf",
+      fileName: "contract.pdf",
+    });
 
     expect(text).toBe(
-      "can you review this? [File attached: contract.pdf (application/pdf) at /home/u12345678/telegram_files/contract.pdf]",
+      "[File attached: contract.pdf (application/pdf) at /home/u12345678/telegram_files/contract.pdf]",
     );
   });
 
   it("announces image attachments without a path", () => {
-    const text = filesModule.buildFilePromptText(
-      {
-        imageData: { type: "image", data: "QUJD", mimeType: "image/jpeg" },
-        mimeType: "image/jpeg",
-        fileName: "screenshot.jpg",
-      },
-      undefined,
-    );
+    const text = filesModule.buildFilePromptText({
+      imageData: { type: "image", data: "QUJD", mimeType: "image/jpeg" },
+      mimeType: "image/jpeg",
+      fileName: "screenshot.jpg",
+    });
 
     expect(text).toBe("[Image attached: screenshot.jpg (image/jpeg)]");
   });
 
+  it("leaves the caption to the caller so it is not repeated", () => {
+    const text = filesModule.buildFilePromptText({
+      imageData: { type: "image", data: "QUJD", mimeType: "image/jpeg" },
+      mimeType: "image/jpeg",
+      fileName: "screenshot.jpg",
+    });
+
+    expect(text).not.toContain("can you review this?");
+  });
+
   it("returns empty string when there is nothing to describe", () => {
-    const text = filesModule.buildFilePromptText({ mimeType: "x", fileName: "x" }, undefined);
+    const text = filesModule.buildFilePromptText({ mimeType: "x", fileName: "x" });
     expect(text).toBe("");
   });
 });

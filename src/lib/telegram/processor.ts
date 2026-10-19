@@ -167,7 +167,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
 
   // Build final prompt text (caption + file description for media messages)
   if (processedFile) {
-    const filePromptText = buildFilePromptText(processedFile, messageCaption);
+    const filePromptText = buildFilePromptText(processedFile);
     promptText = promptText ? `${promptText}\n${filePromptText}` : filePromptText;
   }
 
