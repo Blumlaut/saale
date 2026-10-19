@@ -7,8 +7,9 @@ vi.mock("@/lib/auth", () => ({
   requireSession: vi.fn(async () => ({ ok: true, user: { id: "user-1" } })),
 }));
 
-vi.mock("@/lib/settings/update", () => ({
-  isAdminUser: vi.fn(async () => true),
+const mockHasFeature = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true));
+vi.mock("@/lib/permissions/check", () => ({
+  hasFeature: (...args: unknown[]) => mockHasFeature(...args),
 }));
 
 vi.mock("@/lib/council/store", () => ({
@@ -47,7 +48,6 @@ vi.mock("@/lib/council/events", () => ({
 }));
 
 import { requireSession } from "@/lib/auth";
-import { isAdminUser } from "@/lib/settings/update";
 import { getCouncil } from "@/lib/council/store";
 import { CouncilBusyError, startCouncilRun } from "@/lib/council/run";
 import { postRoomMessage } from "@/lib/council/persist";
@@ -105,7 +105,7 @@ const params = Promise.resolve({ councilId: "council-1" });
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(requireSession).mockResolvedValue({ ok: true, user: { id: "user-1" } } as any);
-  vi.mocked(isAdminUser).mockResolvedValue(true);
+  mockHasFeature.mockResolvedValue(true);
   vi.mocked(getCouncil).mockResolvedValue(COUNCIL as any);
   vi.mocked(startCouncilRun).mockResolvedValue({ runId: "run-1" } as any);
 });
@@ -182,8 +182,8 @@ describe("POST /api/council/[councilId]/messages", () => {
     expect(response.status).toBe(404);
   });
 
-  it("hides the whole endpoint from a non-admin", async () => {
-    vi.mocked(isAdminUser).mockResolvedValue(false);
+  it("hides the whole endpoint from an account without the council feature", async () => {
+    mockHasFeature.mockResolvedValue(false);
     const response = await POST(post({ content: "hello" }), { params });
     expect(response.status).toBe(404);
     expect(getCouncil).not.toHaveBeenCalled();

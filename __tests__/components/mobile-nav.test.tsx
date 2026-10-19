@@ -107,7 +107,10 @@ describe("MobileNav", () => {
     renderNav();
 
     await waitFor(() => expect(labels()).toHaveLength(7));
-    expect(consoleError).toHaveBeenCalledWith("Failed to check admin status:", expect.anything());
+    expect(consoleError).toHaveBeenCalledWith(
+      "Failed to load the session role:",
+      expect.anything(),
+    );
     consoleError.mockRestore();
   });
 });

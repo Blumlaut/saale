@@ -3,7 +3,8 @@ import type { ToolConfig, ToolCategoryKey, ToolExposureConfig } from "./tool-cat
 import { DEFAULT_TOOL_EXPOSURE, TOOL_CATEGORIES } from "./tool-categories";
 import { findToolInfo } from "./tool-infos";
 import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
-import { loadUserFeatures } from "@/lib/permissions/features";
+import { loadUserFeatures } from "@/lib/permissions/feature-access";
+import { featureForToolCategory } from "@/lib/permissions/features";
 import { withAbortSignal } from "./tool-abort";
 import { createChatTools, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
@@ -152,28 +153,13 @@ export async function resolveTools(
   // Feature gating: an account without a feature must not get its tools, even if
   // the user's tool config still says "enabled".
   const features = await loadUserFeatures(userId);
-  const featureForCategory: Record<string, string> = {
-    email: "mail",
-    contacts: "mail",
-    calendar: "calendar",
-    tasks: "tasks",
-    jobs: "jobs",
-    chatSearch: "chatSearch",
-    telegram: "telegram",
-    web: "web",
-    memory: "memory",
-    agentJobs: "agentJobs",
-    watchers: "watchers",
-    infra: "infra",
-    terminal: "terminal",
-  };
 
   // Backward compat: map legacy keys to terminal
   const terminalEnabled =
     (config.terminal ||
       (config as Record<string, boolean>).files ||
       (config as Record<string, boolean>).bash) &&
-    features.terminal !== false;
+    features.terminal;
 
   // ── Terminal tools (shell + file ops via open-terminal) ───────────────
   if (terminalEnabled && isTerminalConfigured()) {
@@ -191,8 +177,10 @@ export async function resolveTools(
     // Skip terminal — handled above
     if (category.key === "terminal") continue;
 
-    const feature = featureForCategory[category.key];
-    if (feature && features[feature] === false) continue;
+    // Every category belongs to a feature; a category with no owner is a
+    // registry mistake, so it stays ungated.
+    const feature = featureForToolCategory(category.key);
+    if (feature && !features[feature]) continue;
 
     if (config[category.key]) {
       const factory = TOOL_FACTORIES[category.key];

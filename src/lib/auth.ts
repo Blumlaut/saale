@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/permissions/check";
+import type { PermissionResource } from "@/lib/permissions/statements";
 import { headers } from "next/headers";
 
 /**
@@ -348,14 +350,13 @@ export async function requireTaskOwner(taskId: string): Promise<
  * Require a permission for the current session. Returns 401/403 on failure.
  */
 export async function requirePermission(
-  resource: "admin" | "feature",
+  resource: PermissionResource,
   action: string,
 ): Promise<{ ok: true; user: { id: string } } | { ok: false; response: NextResponse }> {
   const session = await getSession();
   if (!session?.user) {
     return { ok: false, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
-  const { hasPermission } = await import("@/lib/permissions/check");
   if (!(await hasPermission(session.user.id, resource, action))) {
     return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }

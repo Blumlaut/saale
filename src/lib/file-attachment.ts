@@ -158,5 +158,4 @@ export function buildAttachmentPromptText(attachments: AttachmentPromptEntry[]):
     .join("\n");
 }
 
-
 export { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";

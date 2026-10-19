@@ -9,8 +9,9 @@ import {
   type SidebarNavEntry,
   type SidebarNavItemId,
 } from "@/lib/navigation/sidebar-nav";
-import { canUseCouncil } from "@/lib/council/access";
-import { hasFeature } from "@/lib/permissions/check";
+import { isCouncilEnabled } from "@/lib/council/flag";
+import { loadUserFeatures } from "@/lib/permissions/feature-access";
+import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { applyUserSettingsPatch, SettingsError } from "@/lib/settings/update";
 
 const sidebarNavEntrySchema = z.object({
@@ -44,17 +45,14 @@ const patchBodySchema = z.object({
  * offered as a toggle.
  */
 async function unavailableNavIds(userId: string): Promise<SidebarNavItemId[]> {
+  const features = await loadUserFeatures(userId);
   const unavailable: SidebarNavItemId[] = [];
-  if (!(await canUseCouncil(userId))) unavailable.push("council");
-  const featureMap: Record<string, string> = {
-    mail: "mail",
-    calendar: "calendar",
-    tasks: "tasks",
-    jobs: "jobs",
-    infra: "infra",
-  };
-  for (const [feature, navId] of Object.entries(featureMap)) {
-    if (!(await hasFeature(userId, feature))) unavailable.push(navId as SidebarNavItemId);
+  for (const key of FEATURES) {
+    const navId = FEATURE_DEFINITIONS[key].navId;
+    if (!navId) continue;
+    // The council also has a deployment flag of its own.
+    const enabled = key === "council" ? features[key] && isCouncilEnabled() : features[key];
+    if (!enabled) unavailable.push(navId);
   }
   return unavailable;
 }

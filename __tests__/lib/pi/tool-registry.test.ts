@@ -88,8 +88,16 @@ vi.mock("@/lib/pi/tools/infra-tools", () => ({
   ]),
 }));
 
+// Feature gating is a database lookup; these cases are about the categories.
+const ALL_FEATURES_ON = Object.fromEntries(FEATURES.map((key) => [key, true])) as FeatureMap;
+vi.mock("@/lib/permissions/feature-access", () => ({
+  loadUserFeatures: vi.fn(async () => ALL_FEATURES_ON),
+}));
+
 // Import after mocks
 import { resolveTools } from "@/lib/pi/tool-registry";
+import { loadUserFeatures } from "@/lib/permissions/feature-access";
+import { FEATURES, type FeatureMap } from "@/lib/permissions/features";
 import * as terminalClient from "@/lib/terminal/client";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
 
@@ -125,6 +133,14 @@ describe("resolveTools", () => {
     agentJobs: false,
     infra: false,
   };
+
+  it("drops a category whose feature is switched off", async () => {
+    vi.mocked(loadUserFeatures).mockResolvedValueOnce({ ...ALL_FEATURES_ON, mail: false });
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, email: true }, options);
+
+    expect(tools.map((tool) => tool.name)).not.toContain("mail_list");
+  });
 
   it("makes every resolved tool end when the run is aborted", async () => {
     // Pi awaits tool execution and only checks the abort signal between tool

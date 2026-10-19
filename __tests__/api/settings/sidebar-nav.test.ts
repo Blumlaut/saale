@@ -28,15 +28,18 @@ vi.mock("@/lib/pi/agent-pool", () => ({
   evictUserSessions: vi.fn().mockResolvedValue(0),
 }));
 
-// The route drops nav items this user may not open (the council entry, which is
-// admin-only). Default: allowed, with `mockCanUseCouncil` flipped per case.
-const mockCanUseCouncil = vi.fn(async (..._args: unknown[]) => true);
-vi.mock("@/lib/council/access", () => ({
-  canUseCouncil: (...args: unknown[]) => mockCanUseCouncil(...args),
+// The route drops nav items the account's feature set does not include.
+// Default: everything on, with individual switches flipped per case.
+const mockLoadUserFeatures = vi.fn(async (..._args: unknown[]) =>
+  Object.fromEntries(FEATURE_KEYS.map((key) => [key, true])),
+);
+vi.mock("@/lib/permissions/feature-access", () => ({
+  loadUserFeatures: (...args: unknown[]) => mockLoadUserFeatures(...args),
 }));
 
 import { GET, PATCH } from "@/app/api/settings/sidebar-nav/route";
 import { SIDEBAR_NAV_ITEM_IDS } from "@/lib/navigation/sidebar-nav";
+import { FEATURES as FEATURE_KEYS } from "@/lib/permissions/features";
 
 const USER_ID = "user-1";
 
@@ -66,7 +69,9 @@ function lastUpdate(): UpdateArgs {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockCanUseCouncil.mockResolvedValue(true);
+  mockLoadUserFeatures.mockResolvedValue(
+    Object.fromEntries(FEATURE_KEYS.map((key) => [key, true])),
+  );
   auth();
   mockUpsert.mockResolvedValue({ id: "settings-1", userId: USER_ID, sidebarItems: null });
   mockUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -103,8 +108,11 @@ describe("GET /api/settings/sidebar-nav", () => {
     expect(body.items.find((item: { id: string }) => item.id === "council").hidden).toBe(true);
   });
 
-  it("drops a nav item this user may not open", async () => {
-    mockCanUseCouncil.mockResolvedValue(false);
+  it("drops a nav item whose feature is off", async () => {
+    mockLoadUserFeatures.mockResolvedValue({
+      ...Object.fromEntries(FEATURE_KEYS.map((key) => [key, true])),
+      council: false,
+    });
     mockFindUnique.mockResolvedValue({
       sidebarItems: [
         { id: "chat", hidden: false },

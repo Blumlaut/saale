@@ -14,17 +14,17 @@ vi.mock("@/lib/crypto", () => ({
   decrypt: vi.fn().mockReturnValue(""),
 }));
 
-vi.mock("@/app/api/admin/settings/auth", () => ({
-  requireAdmin: vi.fn(),
+vi.mock("@/lib/auth", () => ({
+  requirePermission: vi.fn(),
 }));
 
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
-import * as adminAuth from "@/app/api/admin/settings/auth";
+import { requirePermission } from "@/lib/auth";
 import { PATCH, POST } from "@/app/api/admin/providers/capabilities/route";
 
 const asAdmin = () =>
-  vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
+  vi.mocked(requirePermission).mockResolvedValue({
     ok: true,
     user: { id: "admin-1" },
   } as never);
@@ -95,7 +95,7 @@ describe("PATCH /api/admin/providers/capabilities", () => {
     const catalog = await PATCH(patch({ provider: "anthropic", modelId: "claude", vision: true }));
     expect(catalog.status).toBe(400);
 
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
+    vi.mocked(requirePermission).mockResolvedValue({
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
@@ -159,7 +159,7 @@ describe("POST /api/admin/providers/capabilities", () => {
   });
 
   it("requires an admin session", async () => {
-    vi.mocked(adminAuth.requireAdmin).mockResolvedValue({
+    vi.mocked(requirePermission).mockResolvedValue({
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });

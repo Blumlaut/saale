@@ -9,7 +9,7 @@ const {
   mockSetTelegramBotEnabled,
   mockRemoveTelegramBot,
   mockTelegramLinkCount,
-  mockRequireAdmin,
+  mockRequirePermission,
   mockGetTelegramLoginStatus,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
@@ -17,12 +17,12 @@ const {
   mockSetTelegramBotEnabled: vi.fn(),
   mockRemoveTelegramBot: vi.fn(),
   mockTelegramLinkCount: vi.fn(),
-  mockRequireAdmin: vi.fn(),
+  mockRequirePermission: vi.fn(),
   mockGetTelegramLoginStatus: vi.fn(),
 }));
 
-vi.mock("@/app/api/admin/settings/auth", () => ({
-  requireAdmin: (...args: unknown[]) => mockRequireAdmin(...args),
+vi.mock("@/lib/auth", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -56,9 +56,9 @@ const loginStatus = {
 
 function authenticate(role: "admin" | "user" = "admin") {
   if (role === "admin") {
-    mockRequireAdmin.mockResolvedValue({ ok: true, user: { id: "admin-1" } });
+    mockRequirePermission.mockResolvedValue({ ok: true, user: { id: "admin-1" } });
   } else {
-    mockRequireAdmin.mockResolvedValue({
+    mockRequirePermission.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
     });

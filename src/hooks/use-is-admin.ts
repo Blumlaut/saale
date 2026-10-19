@@ -1,20 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchJson } from "@/lib/http";
+import { useSessionRole } from "@/hooks/use-session-role";
+import { roleHasAdminAccess } from "@/lib/permissions/roles";
 
-/** Whether the signed-in user has the admin role; false until the session is checked. */
+/** Whether the signed-in account may open the admin panel; false until the session is checked. */
 export function useIsAdmin(): boolean {
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    fetchJson<{ user?: { role?: string | null } }>("/api/auth/get-session")
-      .then((data) => {
-        const role = data.user?.role ?? "user";
-        setIsAdmin(role !== "user");
-      })
-      .catch((err) => console.error("Failed to check admin status:", err));
-  }, []);
-
-  return isAdmin;
+  const role = useSessionRole();
+  return role ? roleHasAdminAccess(role) : false;
 }
