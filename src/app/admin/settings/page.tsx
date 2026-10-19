@@ -5,7 +5,6 @@ import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
 import { ModelPicker } from "@/components/shared/model-picker";
@@ -163,30 +162,6 @@ export default function AdminSettingsPage() {
 
           {/* Shared Telegram bot */}
           <TelegramBotPanel />
-
-          {/* Info */}
-          <GlassPanel>
-            <GlassPanelHeader title="About" />
-            <GlassPanelContent>
-              <div className="text-muted-foreground space-y-3 text-sm">
-                <p>
-                  <span className="text-foreground font-medium">Model Providers</span> — Configure
-                  which AI models are available globally in the Models tab.
-                </p>
-                <Separator />
-                <p>
-                  <span className="text-foreground font-medium">Users</span> — Manage user accounts,
-                  roles, and access in the Users tab.
-                </p>
-                <Separator />
-                <p>
-                  <span className="text-foreground font-medium">Telegram</span> — One bot for the
-                  whole instance. Users link their own Telegram account to it in Settings →
-                  Integrations.
-                </p>
-              </div>
-            </GlassPanelContent>
-          </GlassPanel>
         </div>
       </PageScroll>
     </Page>
