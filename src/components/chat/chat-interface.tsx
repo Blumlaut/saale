@@ -30,11 +30,14 @@ import { useChatSessionState } from "./use-chat-session-state";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import type { Message, ApprovalData, TokenUsage } from "./types";
 import { ChatHeader } from "./chat-header";
+import { SessionLinksPanel, SessionLinksSheet, useSessionLinks } from "./session-links-panel";
 import { useChatStream } from "./use-chat-stream";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { CommandSheet } from "./command-sheet";
 import { getCommandMeta } from "@/lib/commands/catalog";
 import { parseCommand } from "@/lib/commands/parse";
 import type { CommandOutcome, CommandPrompt } from "@/lib/commands/types";
+import { cn } from "@/lib/utils";
 
 /** Response of `POST /api/chat/sessions/:id/command`. */
 type CommandApiResponse =
@@ -53,6 +56,10 @@ export function ChatInterface({
   onNewChat: () => void;
 }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
+  // Watchers bound to this conversation — feeds the Linked button/panel.
+  const { links } = useSessionLinks(sessionId);
+  const [linksOpen, setLinksOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   // Messages waiting in the send queue (submitted while Pi was working).
   const [queuedMessages, setQueuedMessages] = useState<Message[]>([]);
@@ -762,91 +769,107 @@ export function ChatInterface({
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div
-      data-slot="chat-drop-zone"
-      className="relative flex min-h-0 flex-1 flex-col"
-      {...dropZoneProps}
-    >
-      <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
-        <ChatHeader
-          sessionTitle={sessionTitle}
-          editingTitle={editingTitle}
-          titleDraft={titleDraft}
-          temporaryMode={temporaryMode}
-          isLoading={isLoading}
-          sessionId={sessionId}
-          modelId={modelId}
-          thinkingLevel={thinkingLevel}
-          onTitleChange={setTitleDraft}
-          onStartEditing={() => {
-            setEditingTitle(true);
-            setTitleDraft(sessionTitle);
-          }}
-          onCancelEditing={() => {
-            setEditingTitle(false);
-            setTitleDraft(sessionTitle);
-          }}
-          onSaveTitle={saveTitle}
-          onModelChange={setModelId}
-          onThinkingChange={setThinkingLevel}
-          onTemporaryChange={onTemporaryChange}
-          onNewChat={onNewChat}
+    <div className="relative flex min-h-0 flex-1 md:gap-4">
+      <div
+        data-slot="chat-drop-zone"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+        {...dropZoneProps}
+      >
+        <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
+          <ChatHeader
+            sessionTitle={sessionTitle}
+            editingTitle={editingTitle}
+            titleDraft={titleDraft}
+            temporaryMode={temporaryMode}
+            isLoading={isLoading}
+            sessionId={sessionId}
+            modelId={modelId}
+            thinkingLevel={thinkingLevel}
+            onTitleChange={setTitleDraft}
+            onStartEditing={() => {
+              setEditingTitle(true);
+              setTitleDraft(sessionTitle);
+            }}
+            onCancelEditing={() => {
+              setEditingTitle(false);
+              setTitleDraft(sessionTitle);
+            }}
+            onSaveTitle={saveTitle}
+            onModelChange={setModelId}
+            onThinkingChange={setThinkingLevel}
+            onTemporaryChange={onTemporaryChange}
+            onNewChat={onNewChat}
+            linksCount={links?.length ?? 0}
+            linksOpen={linksOpen}
+            onToggleLinks={() => setLinksOpen((open) => !open)}
+          />
+
+          <div className="flex min-h-0 flex-1 flex-col">
+            <MessageList
+              ref={messageListRef}
+              messages={messages}
+              isLoading={isLoading}
+              isCompacting={isCompacting}
+              onEditMessage={handleEditMessage}
+              onSendMessage={handleSuggestionSend}
+              onQuoteSelection={handleQuoteSelection}
+              pendingApprovals={pendingApprovals}
+              onApprovalResolved={handleApprovalResolved}
+              sessionId={sessionId}
+              activeTool={activeTool}
+              retry={retryNotice}
+              compactActivity={compactActivity}
+            />
+          </div>
+        </GlassPanel>
+
+        <QueuedMessages
+          messages={queuedMessages}
+          sendingId={sendingQueuedId}
+          paused={queuePaused}
+          onEdit={handleEditQueued}
+          onSendNow={handleSendQueuedNow}
+          onCancel={handleCancelQueued}
         />
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <MessageList
-            ref={messageListRef}
-            messages={messages}
-            isLoading={isLoading}
-            isCompacting={isCompacting}
-            onEditMessage={handleEditMessage}
-            onSendMessage={handleSuggestionSend}
-            onQuoteSelection={handleQuoteSelection}
-            pendingApprovals={pendingApprovals}
-            onApprovalResolved={handleApprovalResolved}
-            sessionId={sessionId}
-            activeTool={activeTool}
-            retry={retryNotice}
-            compactActivity={compactActivity}
-          />
+        <InputBar
+          ref={inputBarRef}
+          onSend={handleSend}
+          onCommand={handleCommandPick}
+          value={draft}
+          onValueChange={setDraft}
+          isLoading={isLoading}
+          onStop={handleStop}
+          toolConfig={toolConfig}
+          onToggleTool={toggleTool}
+          tokenUsage={tokenUsage}
+          isCompacting={isCompacting}
+          onCompact={handleCompact}
+        />
+
+        <CommandSheet
+          open={commandPrompt !== null}
+          onOpenChange={(open) => {
+            if (!open) setCommandPrompt(null);
+          }}
+          prompt={commandPrompt?.prompt ?? null}
+          busy={commandBusy}
+          onSelect={handleCommandChoice}
+        />
+
+        {isDragging && <FileDropOverlay />}
+      </div>
+
+      {/* Linked panel — desktop: inline, mobile: bottom sheet. Hidden until
+          the header button opens it; the button itself only shows when there
+          is something to show. */}
+      {linksOpen && links !== null && (
+        <div className={cn("w-72 shrink-0", isMobile && "hidden")}>
+          <SessionLinksPanel links={links} onClose={() => setLinksOpen(false)} />
         </div>
-      </GlassPanel>
+      )}
 
-      <QueuedMessages
-        messages={queuedMessages}
-        sendingId={sendingQueuedId}
-        paused={queuePaused}
-        onEdit={handleEditQueued}
-        onSendNow={handleSendQueuedNow}
-        onCancel={handleCancelQueued}
-      />
-
-      <InputBar
-        ref={inputBarRef}
-        onSend={handleSend}
-        onCommand={handleCommandPick}
-        value={draft}
-        onValueChange={setDraft}
-        isLoading={isLoading}
-        onStop={handleStop}
-        toolConfig={toolConfig}
-        onToggleTool={toggleTool}
-        tokenUsage={tokenUsage}
-        isCompacting={isCompacting}
-        onCompact={handleCompact}
-      />
-
-      <CommandSheet
-        open={commandPrompt !== null}
-        onOpenChange={(open) => {
-          if (!open) setCommandPrompt(null);
-        }}
-        prompt={commandPrompt?.prompt ?? null}
-        busy={commandBusy}
-        onSelect={handleCommandChoice}
-      />
-
-      {isDragging && <FileDropOverlay />}
+      {isMobile && <SessionLinksSheet links={links} open={linksOpen} onOpenChange={setLinksOpen} />}
     </div>
   );
 }

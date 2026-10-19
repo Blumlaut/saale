@@ -6,13 +6,22 @@ import { ModelPicker } from "@/components/shared/model-picker";
 import { ThinkingSelector } from "./thinking-selector";
 import { MobileSessionSheet } from "./mobile-session-sheet";
 import { TemporaryToggle } from "./temporary-toggle";
-import { Loader2, Settings2, ChevronDown, Ghost, Pencil, MessageSquarePlus } from "lucide-react";
+import {
+  Loader2,
+  Settings2,
+  ChevronDown,
+  Ghost,
+  Pencil,
+  MessageSquarePlus,
+  Radar,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ShareButton } from "./share-button";
+import { cn } from "@/lib/utils";
 
 interface ChatHeaderProps {
   sessionTitle: string;
@@ -31,6 +40,9 @@ interface ChatHeaderProps {
   onThinkingChange: (value: string) => void;
   onTemporaryChange: (checked: boolean) => void;
   onNewChat: () => void;
+  linksCount: number;
+  linksOpen: boolean;
+  onToggleLinks: () => void;
 }
 
 /**
@@ -55,6 +67,9 @@ export function ChatHeader({
   onThinkingChange,
   onTemporaryChange,
   onNewChat,
+  linksCount,
+  linksOpen,
+  onToggleLinks,
 }: ChatHeaderProps) {
   const [provider, ...modelParts] = modelId.split("/");
   const modelName = modelParts.join("/");
@@ -105,8 +120,26 @@ export function ChatHeader({
 
       {/* Temporary mode, model & thinking selectors, new chat */}
       <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
+        {linksCount > 0 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "relative h-8 w-8 shrink-0 rounded-full md:h-9",
+              linksOpen && "bg-accent/70 text-foreground",
+            )}
+            onClick={onToggleLinks}
+            title="Linked watchers"
+            aria-pressed={linksOpen}
+          >
+            <Radar className="h-4 w-4" />
+            <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[10px] leading-none">
+              {linksCount}
+            </span>
+          </Button>
+        )}
         <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
-        <div className="hidden items-center gap-1 md:flex">
+        <div className={cn("items-center gap-1", linksOpen ? "hidden" : "hidden md:flex")}>
           <ModelPicker value={modelId} onChange={onModelChange} />
           <ThinkingSelector
             value={thinkingLevel}
@@ -115,7 +148,7 @@ export function ChatHeader({
             modelName={modelName || undefined}
           />
         </div>
-        <div className="md:hidden">
+        <div className={cn(linksOpen ? "flex" : "md:hidden")}>
           <DropdownMenu>
             <DropdownMenuTrigger>
               <span className="hover:bg-accent/60 inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors">
