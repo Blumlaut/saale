@@ -33,6 +33,7 @@ const MEMORIES_TAB = "src/app/dashboard/settings/tabs/memories-tab.tsx";
 const MCP_TAB = "src/app/dashboard/settings/tabs/mcp-tab.tsx";
 const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
+const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const SESSION_SIDEBAR = "src/components/chat/session-sidebar.tsx";
 const SETTINGS = "/dashboard/settings";
 
@@ -827,10 +828,25 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     mock: mockProviderSignIn,
     open: async (page) => {
       await openSettingsTab(page, "AI & Models");
+      await click(page, 'button:has-text("Add provider")');
       await click(page, 'button:has-text("Sign in")');
       await page.locator(':text("Connect OpenCode Zen"):visible').first().waitFor({
         timeout: 10_000,
       });
+    },
+  },
+  {
+    name: "settings · add provider",
+    path: SETTINGS,
+    sources: [PROVIDER_ADD_SHEET],
+    mock: mockProviderSignIn,
+    open: async (page) => {
+      await openSettingsTab(page, "AI & Models");
+      await click(page, 'button:has-text("Add provider")');
+      await page
+        .locator('input[aria-label="Search providers"]:visible')
+        .first()
+        .waitFor({ timeout: 10_000 });
     },
   },
   {
