@@ -4,7 +4,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronDown, Lightbulb, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
-import { THINKING_LEVEL_OPTIONS, type ThinkingLevelSetting } from "@/lib/pi/thinking-levels";
+import {
+  isPiThinkingLevel,
+  THINKING_LEVEL_OPTIONS,
+  type ThinkingLevelSetting,
+} from "@/lib/pi/thinking-levels";
 
 interface ThinkingSelectorProps {
   value: ThinkingLevelSetting | string;
@@ -63,9 +67,10 @@ export function ThinkingSelector({
 
   const selectedLevel = THINKING_LEVEL_OPTIONS.find((l) => l.id === value);
 
-  // Check if current level is unsupported
+  // "default" never reaches Pi as a level, so it cannot be unsupported.
   const isLevelUnsupported =
-    Boolean(modelProvider && modelName && availableLevels?.length) &&
+    isPiThinkingLevel(value) &&
+    Boolean(availableLevels?.length) &&
     !availableLevels!.includes(value);
 
   return (
