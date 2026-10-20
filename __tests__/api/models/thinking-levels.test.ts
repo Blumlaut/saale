@@ -12,6 +12,7 @@ vi.mock("@/lib/pi/models", () => ({
 
 vi.mock("@earendil-works/pi-ai", () => ({
   getSupportedThinkingLevels: vi.fn(),
+  clampThinkingLevel: vi.fn(),
 }));
 
 import * as auth from "@/lib/auth";
@@ -368,6 +369,68 @@ describe("GET /api/models/thinking-levels", () => {
     );
 
     await expect(GET(request)).rejects.toThrow("Invalid model configuration");
+  });
+
+  /* ── Clamping ── */
+
+  it("asks Pi what an unsupported level clamps to", async () => {
+    const mockModel = {
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+      provider: "anthropic",
+      reasoning: true,
+    };
+
+    vi.mocked(auth.requireSession).mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    vi.mocked(models.buildModelRuntime).mockResolvedValue({
+      modelRuntime: { getModel: vi.fn().mockReturnValue(mockModel) } as never,
+      models: [],
+    });
+    vi.mocked(piAi.getSupportedThinkingLevels).mockReturnValue(["low", "high", "max"]);
+    vi.mocked(piAi.clampThinkingLevel).mockReturnValue("high");
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/models/thinking-levels?provider=anthropic&model=claude-sonnet-4&level=medium",
+      ),
+    );
+    const body = await response.json();
+
+    expect(piAi.clampThinkingLevel).toHaveBeenCalledWith(mockModel, "medium");
+    expect(body.clampedLevel).toBe("high");
+    expect(body.levels).toEqual(["low", "high", "max"]);
+  });
+
+  it("omits the clamp when no level is asked for", async () => {
+    const mockModel = {
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+      provider: "anthropic",
+      reasoning: true,
+    };
+
+    vi.mocked(auth.requireSession).mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    vi.mocked(models.buildModelRuntime).mockResolvedValue({
+      modelRuntime: { getModel: vi.fn().mockReturnValue(mockModel) } as never,
+      models: [],
+    });
+    vi.mocked(piAi.getSupportedThinkingLevels).mockReturnValue(["off"]);
+
+    const withoutLevel = await GET(
+      new NextRequest(
+        "http://localhost/api/models/thinking-levels?provider=anthropic&model=claude-sonnet-4",
+      ),
+    );
+    // "default" is not a Pi level, so there is nothing to clamp either.
+    const withDefault = await GET(
+      new NextRequest(
+        "http://localhost/api/models/thinking-levels?provider=anthropic&model=claude-sonnet-4&level=default",
+      ),
+    );
+
+    expect((await withoutLevel.json()).clampedLevel).toBeUndefined();
+    expect((await withDefault.json()).clampedLevel).toBeUndefined();
+    expect(piAi.clampThinkingLevel).not.toHaveBeenCalled();
   });
 
   /* ── User isolation ── */

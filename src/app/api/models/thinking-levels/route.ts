@@ -1,12 +1,17 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { requireSession } from "@/lib/auth";
 import { buildModelRuntime } from "@/lib/pi/models";
+import { isPiThinkingLevel } from "@/lib/pi/thinking-levels";
 
 /**
  * GET /api/models/thinking-levels — Returns available thinking levels for a model.
- * ?provider=anthropic&model=claude-sonnet-4-20250514
+ * ?provider=anthropic&model=claude-sonnet-4-20250514&level=medium
+ *
+ * `level` is optional: when given, the response carries what Pi would actually
+ * run for it, so the UI can say where an unsupported level lands instead of
+ * reimplementing Pi's clamping.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireSession();
@@ -19,6 +24,8 @@ export async function GET(request: NextRequest) {
   if (!provider || !modelId) {
     return NextResponse.json({ error: "Missing provider or model parameter" }, { status: 400 });
   }
+
+  const level = searchParams.get("level");
 
   const { modelRuntime } = await buildModelRuntime(authResult.user.id);
   const model = modelRuntime.getModel(provider, modelId);
@@ -34,5 +41,6 @@ export async function GET(request: NextRequest) {
     model: modelId,
     reasoning: model.reasoning,
     levels: availableLevels,
+    ...(isPiThinkingLevel(level) ? { clampedLevel: clampThinkingLevel(model, level) } : {}),
   });
 }

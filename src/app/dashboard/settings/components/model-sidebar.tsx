@@ -6,12 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getAllPurposes } from "@/lib/pi/purposes";
-import {
-  DEFAULT_THINKING_LEVEL_SETTING,
-  isPiThinkingLevel,
-  THINKING_LEVEL_OPTIONS,
-} from "@/lib/pi/thinking-levels";
-import { useState, useEffect } from "react";
+import { DEFAULT_THINKING_LEVEL_SETTING, thinkingLevelOptionsFor } from "@/lib/pi/thinking-levels";
+import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
 import type { UserSettings } from "../types";
 
 /** Icons are presentation-only — the level list itself lives in one place. */
@@ -19,11 +15,6 @@ const THINKING_LEVEL_ICONS: Record<string, typeof Zap> = {
   default: Sparkles,
   off: Zap,
 };
-
-const ALL_THINKING_LEVELS = THINKING_LEVEL_OPTIONS.map((level) => ({
-  ...level,
-  icon: THINKING_LEVEL_ICONS[level.id] ?? Brain,
-}));
 
 interface ModelSidebarProps {
   settings: UserSettings | null;
@@ -48,52 +39,18 @@ export function ModelSidebar({
 }: ModelSidebarProps) {
   const purposes = getAllPurposes();
 
-  // Fetch available thinking levels for the current model
-  const [availableLevels, setAvailableLevels] = useState<string[]>([]);
-  const [supportsThinking, setSupportsThinking] = useState(true);
-
-  useEffect(() => {
-    if (!effectiveModel || activePurpose !== "__default__") {
-      setAvailableLevels([]);
-      setSupportsThinking(true);
-      return;
-    }
-
-    let cancelled = false;
-    fetch(
-      `/api/models/thinking-levels?provider=${encodeURIComponent(effectiveModel.provider)}&model=${encodeURIComponent(effectiveModel.model)}`,
-    )
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled) return;
-        setAvailableLevels(data.levels ?? []);
-        setSupportsThinking(data.reasoning ?? false);
-      })
-      .catch((err) => {
-        console.error("Failed to fetch thinking levels:", err);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveModel, activePurpose]);
-
-  // Filter thinking levels based on what the model supports
-  // "default" means "don't override Pi", so it is always selectable.
-  const filteredLevels =
-    effectiveModel && activePurpose === "__default__"
-      ? ALL_THINKING_LEVELS.filter((l) => l.id === "default" || availableLevels.includes(l.id))
-      : ALL_THINKING_LEVELS;
-
-  // Check if current thinking level is unsupported. "default" is not a level
-  // handed to Pi, so it always resolves to something the model can run.
+  // Thinking levels are only asked for while the default model is in play.
   const currentLevel = settings?.defaultThinkingLevel || DEFAULT_THINKING_LEVEL_SETTING;
-  const isLevelUnsupported =
-    Boolean(effectiveModel) &&
-    activePurpose === "__default__" &&
-    isPiThinkingLevel(currentLevel) &&
-    availableLevels.length > 0 &&
-    !availableLevels.includes(currentLevel);
+  const thinkingLevels = useModelThinkingLevels(
+    activePurpose === "__default__" ? effectiveModel?.provider : null,
+    activePurpose === "__default__" ? effectiveModel?.model : null,
+    currentLevel,
+  );
+
+  const filteredLevels = thinkingLevelOptionsFor(thinkingLevels.levels).map((level) => ({
+    ...level,
+    icon: THINKING_LEVEL_ICONS[level.id] ?? Brain,
+  }));
 
   return (
     <div className="w-full lg:w-[260px]">
@@ -218,18 +175,19 @@ export function ModelSidebar({
               <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 Thinking
               </Label>
-              {!supportsThinking && (
+              {thinkingLevels.reasoning === false && (
                 <span className="text-muted-foreground text-[10px]">Not supported</span>
               )}
             </div>
 
             {/* Warning if current level is unsupported */}
-            {isLevelUnsupported && (
+            {thinkingLevels.unsupported && (
               <div className="flex items-start gap-2 rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />
                 <p className="text-xs text-yellow-500/90">
-                  &quot;{currentLevel}&quot; is not supported by this model. It will be clamped to
-                  the nearest available level.
+                  {thinkingLevels.clampedLevel
+                    ? `"${currentLevel}" is not supported by this model and will be clamped to "${thinkingLevels.clampedLevel}".`
+                    : `"${currentLevel}" is not supported by this model and will be clamped.`}
                 </p>
               </div>
             )}

@@ -7,12 +7,17 @@ import {
   isThinkingLevelSetting,
   normalizeThinkingLevelSetting,
   thinkingLevelOption,
+  thinkingLevelOptionsFor,
 } from "@/lib/pi/thinking-levels";
 
 describe("THINKING_LEVEL_OPTIONS", () => {
   it("offers 'default' alongside every level Pi accepts", () => {
     const ids = THINKING_LEVEL_OPTIONS.map((o) => o.id);
     expect(ids).toEqual(["default", ...PI_THINKING_LEVELS]);
+  });
+
+  it("keeps Pi's order, cheapest to deepest", () => {
+    expect(PI_THINKING_LEVELS).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
   });
 
   it("has a label and description for every option", () => {
@@ -54,6 +59,22 @@ describe("thinkingLevelOption", () => {
     const options = { model: "m", ...thinkingLevelOption("high") };
     expect(options).toEqual({ model: "m", thinkingLevel: "high" });
     expect({ model: "m", ...thinkingLevelOption("default") }).toEqual({ model: "m" });
+  });
+});
+
+describe("thinkingLevelOptionsFor", () => {
+  it("offers every level while the model's levels are unknown", () => {
+    expect(thinkingLevelOptionsFor(null)).toEqual(THINKING_LEVEL_OPTIONS);
+  });
+
+  it("drops levels the model lacks but keeps 'default'", () => {
+    const ids = thinkingLevelOptionsFor(["low", "high", "max"]).map((o) => o.id);
+    expect(ids).toEqual(["default", "low", "high", "max"]);
+  });
+
+  it("matches on the exact level, not a prefix", () => {
+    const ids = thinkingLevelOptionsFor(["high", "xhigh"]).map((o) => o.id);
+    expect(ids).toEqual(["default", "high", "xhigh"]);
   });
 });
 
