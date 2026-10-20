@@ -16,7 +16,6 @@ import {
   Brain,
   Shield,
   Plug,
-  Server,
 } from "lucide-react";
 import { AccountTab } from "./tabs/account-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
@@ -27,7 +26,6 @@ import { AppearanceTab } from "./tabs/appearance-tab";
 import { ToolsTab } from "./tabs/tools-tab";
 import { MemoriesTab } from "./tabs/memories-tab";
 import { IntegrationsTab } from "./tabs/integrations-tab";
-import { McpTab } from "./tabs/mcp-tab";
 import type { UserSettings } from "./types";
 
 const SETTINGS_TABS = [
@@ -39,7 +37,6 @@ const SETTINGS_TABS = [
   "memories",
   "account",
   "integrations",
-  "mcp",
   "tools",
 ] as const;
 
@@ -55,7 +52,8 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlTab = searchParams.get("tab");
-  const activeTab: SettingsTab = isSettingsTab(urlTab) ? urlTab : "ai";
+  const activeTab: SettingsTab =
+    urlTab === "mcp" ? "integrations" : isSettingsTab(urlTab) ? urlTab : "ai";
 
   const handleTabChange = (tab: string) => {
     if (isSettingsTab(tab)) {
@@ -166,10 +164,6 @@ export default function SettingsPage() {
               <Plug className="h-4 w-4" />
               Integrations
             </TabsTrigger>
-            <TabsTrigger value="mcp" className="gap-2">
-              <Server className="h-4 w-4" />
-              MCP
-            </TabsTrigger>
             <TabsTrigger value="tools" className="gap-2">
               <Wrench className="h-4 w-4" />
               Tools
@@ -220,10 +214,6 @@ export default function SettingsPage() {
 
         <TabsContent value="integrations" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
           <IntegrationsTab />
-        </TabsContent>
-
-        <TabsContent value="mcp" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
-          <McpTab />
         </TabsContent>
 
         <TabsContent value="tools" className="min-h-0 flex-1 space-y-6 overflow-y-auto">

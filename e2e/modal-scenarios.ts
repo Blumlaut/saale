@@ -902,7 +902,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MCP_SHEET],
     mock: mockMcpServers,
     open: async (page) => {
-      await openSettingsTab(page, "MCP");
+      await openSettingsTab(page, "Integrations");
       await click(page, '[aria-label="Add server"]');
     },
   },
@@ -912,7 +912,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MCP_TAB],
     mock: mockMcpServers,
     open: async (page) => {
-      await openSettingsTab(page, "MCP");
+      await openSettingsTab(page, "Integrations");
       await click(page, '[aria-label="Remove homeassistant"]');
     },
   },

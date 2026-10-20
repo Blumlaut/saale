@@ -20,6 +20,7 @@ import { useTelegramIntegration } from "@/hooks/use-telegram-integration";
 import { useGitHubIntegration } from "@/hooks/use-github-integration";
 import { TelegramBox, TelegramLinkDialog } from "@/components/integrations/telegram-card";
 import { GitHubBox, GitHubConnectDialog } from "@/components/integrations/github-card";
+import { McpTab } from "./mcp-tab";
 
 /** Delete confirmation descriptions per integration */
 const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
@@ -133,6 +134,8 @@ export function IntegrationsTab() {
           </div>
         </GlassPanelContent>
       </GlassPanel>
+
+      <McpTab />
 
       {/* Link / relink — same dialog, the panel adapts to the current state */}
       <TelegramLinkDialog
