@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Page, PageTabStrip } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
@@ -29,7 +30,39 @@ import { IntegrationsTab } from "./tabs/integrations-tab";
 import { McpTab } from "./tabs/mcp-tab";
 import type { UserSettings } from "./types";
 
+const SETTINGS_TABS = [
+  "ai",
+  "persona",
+  "email",
+  "calendar",
+  "appearance",
+  "memories",
+  "account",
+  "integrations",
+  "mcp",
+  "tools",
+] as const;
+
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+function isSettingsTab(value: string | null): value is SettingsTab {
+  return value !== null && (SETTINGS_TABS as readonly string[]).includes(value);
+}
+
 export default function SettingsPage() {
+  // The tab lives in the query string so refresh and back/forward keep the
+  // user on the page they were on instead of snapping back to the first tab.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const urlTab = searchParams.get("tab");
+  const activeTab: SettingsTab = isSettingsTab(urlTab) ? urlTab : "ai";
+
+  const handleTabChange = (tab: string) => {
+    if (isSettingsTab(tab)) {
+      router.replace(`/dashboard/settings?tab=${tab}`);
+    }
+  };
+
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -93,7 +126,11 @@ export default function SettingsPage() {
 
   return (
     <Page>
-      <Tabs defaultValue="ai" className="flex min-h-0 flex-1 flex-col">
+      <Tabs
+        value={activeTab}
+        onValueChange={handleTabChange}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         {/* Tab strip — pinned, swipe-scrollable, no visible scrollbar */}
         <PageTabStrip className="pb-1">
           <TabsList>
