@@ -42,9 +42,15 @@ import { GET, POST } from "@/app/api/admin/roles/route";
 import { DELETE, PATCH } from "@/app/api/admin/roles/[roleName]/route";
 import { BUILTIN_ROLES } from "@/lib/permissions/roles";
 
-const support = BUILTIN_ROLES.find((role) => role.name === "support")!;
 const admin = BUILTIN_ROLES.find((role) => role.name === "admin")!;
-const userManager = BUILTIN_ROLES.find((role) => role.name === "user-manager")!;
+const basicUser = BUILTIN_ROLES.find((role) => role.name === "user")!;
+
+/** A caller allowed to manage some accounts, but not to grant more than that. */
+const limitedCaller = {
+  admin: ["access", "users"],
+  user: ["list", "get"],
+  session: [],
+};
 
 const helpdesk = {
   name: "helpdesk",
@@ -100,9 +106,21 @@ describe("GET /api/admin/roles", () => {
   });
 
   it("counts the accounts holding each role, including combined roles", async () => {
+    const custom = (name: string) => ({
+      name,
+      label: name,
+      description: "",
+      permissions: { admin: ["access"], user: [], session: [] },
+      builtin: false,
+    });
+    mocks.loadRoleDefinitions.mockResolvedValue([
+      ...BUILTIN_ROLES,
+      custom("reviewer"),
+      custom("editor"),
+    ]);
     mocks.findUsers.mockResolvedValue([
-      { role: "support" },
-      { role: "support,user-manager" },
+      { role: "reviewer" },
+      { role: "reviewer,editor" },
       { role: "user" },
     ]);
 
@@ -114,8 +132,8 @@ describe("GET /api/admin/roles", () => {
       ]),
     );
 
-    expect(byName.support).toBe(2);
-    expect(byName["user-manager"]).toBe(1);
+    expect(byName.reviewer).toBe(2);
+    expect(byName.editor).toBe(1);
     expect(byName.user).toBe(1);
     expect(byName.admin).toBe(0);
   });
@@ -151,10 +169,7 @@ describe("POST /api/admin/roles", () => {
   });
 
   it("refuses to grant a permission the caller does not hold", async () => {
-    mocks.getRoleAccess.mockResolvedValue({
-      role: "user-manager",
-      permissions: userManager.permissions,
-    });
+    mocks.getRoleAccess.mockResolvedValue({ role: "helpdesk", permissions: limitedCaller });
 
     const response = await POST(
       post({
@@ -219,10 +234,7 @@ describe("PATCH /api/admin/roles/[roleName]", () => {
 
   it("refuses grants the caller does not hold", async () => {
     mocks.findUnique.mockResolvedValue({ ...helpdesk });
-    mocks.getRoleAccess.mockResolvedValue({
-      role: "user-manager",
-      permissions: userManager.permissions,
-    });
+    mocks.getRoleAccess.mockResolvedValue({ role: "helpdesk", permissions: limitedCaller });
 
     const response = await PATCH(
       patch("helpdesk", { permissions: { admin: ["models"], user: [], session: [] } }),
@@ -260,9 +272,9 @@ describe("PATCH /api/admin/roles/[roleName]", () => {
 
 describe("DELETE /api/admin/roles/[roleName]", () => {
   it("refuses to delete a built-in role", async () => {
-    mocks.findUnique.mockResolvedValue({ ...support });
+    mocks.findUnique.mockResolvedValue({ ...basicUser });
 
-    const response = await DELETE(remove("support"), params("support"));
+    const response = await DELETE(remove("user"), params("user"));
 
     expect(response.status).toBe(400);
     expect(mocks.delete).not.toHaveBeenCalled();
@@ -270,7 +282,7 @@ describe("DELETE /api/admin/roles/[roleName]", () => {
 
   it("refuses to delete a role that is still assigned", async () => {
     mocks.findUnique.mockResolvedValue({ ...helpdesk });
-    mocks.findUsers.mockResolvedValue([{ role: "helpdesk" }, { role: "support,helpdesk" }]);
+    mocks.findUsers.mockResolvedValue([{ role: "helpdesk" }, { role: "editor,helpdesk" }]);
 
     const response = await DELETE(remove("helpdesk"), params("helpdesk"));
     const body = await response.json();

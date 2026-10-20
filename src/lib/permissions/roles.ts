@@ -83,17 +83,13 @@ export const IMMUTABLE_ROLES = ["admin", "user"] as const;
 const ALL_USER_ACTIONS = [...USER_ACTIONS];
 const ALL_SESSION_ACTIONS = [...SESSION_ACTIONS];
 
-/** Account management without impersonation — impersonating is its own power. */
-const USER_MANAGER_ACTIONS = ALL_USER_ACTIONS.filter(
-  (action) => action !== "impersonate" && action !== "impersonate-admins",
-);
-
 /**
  * Seeded into the `Role` table on first read, and kept as the fallback for a
  * process that has not loaded the table yet.
  *
- * `admin` is the only role in the plugin's `adminRoles`, so it is the only one
- * that can be impersonated or is treated as an admin user by the plugin.
+ * Only the two anchors ship: everything else is created by an admin. `admin` is
+ * the only role in the plugin's `adminRoles`, so it is the only one that can be
+ * impersonated or is treated as an admin user by the plugin.
  */
 export const BUILTIN_ROLES: readonly RoleDefinition[] = [
   {
@@ -105,35 +101,6 @@ export const BUILTIN_ROLES: readonly RoleDefinition[] = [
       admin: [...ADMIN_ACTIONS],
       user: ALL_USER_ACTIONS,
       session: ALL_SESSION_ACTIONS,
-    },
-  },
-  {
-    name: "models-manager",
-    label: "Models manager",
-    description: "Default models, provider connections and instance settings.",
-    builtin: true,
-    permissions: { admin: ["access", "models", "providers", "settings"], user: [], session: [] },
-  },
-  {
-    name: "user-manager",
-    label: "User manager",
-    description: "Create, edit and delete accounts, and assign roles.",
-    builtin: true,
-    permissions: {
-      admin: ["access", "users"],
-      user: USER_MANAGER_ACTIONS,
-      session: ["list", "revoke", "delete"],
-    },
-  },
-  {
-    name: "support",
-    label: "Support",
-    description: "Look accounts up and reset their passwords.",
-    builtin: true,
-    permissions: {
-      admin: ["access", "users", "settings"],
-      user: ["list", "get", "set-password"],
-      session: ["list"],
     },
   },
   {
