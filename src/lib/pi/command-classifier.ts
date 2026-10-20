@@ -4,7 +4,7 @@
  * Used by the infra_exec tool's "auto" approval policy to auto-approve safe commands
  * and require user approval for risky ones.
  *
- * This is a heuristic classifier — it parses the first command in a pipeline and checks
+ * This is a heuristic classifier. it parses the first command in a pipeline and checks
  * against known safe/risky patterns. When in doubt, it classifies as "risky".
  */
 
@@ -297,7 +297,7 @@ const ALWAYS_RISKY = new Set([
 const RISKY_PATTERNS: { pattern: RegExp; reason: string }[] = [
   // Append redirect (>>)
   { pattern: /\s>>\s/, reason: "append redirect (>>)" },
-  // Overwrite redirect (>) — but not >>
+  // Overwrite redirect (>). but not >>
   { pattern: /\s>\s*(?!>)/, reason: "overwrite redirect (>)" },
   // Here-docs (can be used to create files)
   { pattern: /<<-?\s*['"]?EOF['"]?/, reason: "here-document" },
@@ -367,7 +367,7 @@ export function classifyCommand(command: string): CommandClassification {
     return { safety: "safe", reason: `"${baseCommand}" is read-only` };
   }
 
-  // Unknown command — err on the side of caution
+  // Unknown command. err on the side of caution
   return { safety: "risky", reason: `"${baseCommand}" is not in the safe command list` };
 }
 

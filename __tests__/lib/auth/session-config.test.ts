@@ -68,7 +68,7 @@ describe("sessionCookieAttributes", () => {
   it("stays sendable when an installed app is launched", () => {
     // A cold start of an installed app is a cross-site top-level navigation.
     // SameSite=Strict is withheld on it, which signs the user out on every
-    // launch — the whole point of keeping this cookie Lax.
+    // launch  the whole point of keeping this cookie Lax.
     expect(sessionCookieAttributes().sameSite).toBe("lax");
   });
 

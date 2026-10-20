@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * The bulk endpoint is what the sidebar's "delete selected chats" hits. It has
- * to keep the batch bounded, reject junk ids before the loop, and — above all —
+ * to keep the batch bounded, reject junk ids before the loop, and  above all
  * pass the signed-in user through, since that is the only thing scoping every
  * id in the batch to its owner.
  */

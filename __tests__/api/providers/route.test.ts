@@ -55,7 +55,7 @@ describe("POST /api/providers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authed();
-    // Discovery against a local endpoint — no models returned.
+    // Discovery against a local endpoint  no models returned.
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) })),
@@ -370,7 +370,7 @@ describe("GET /api/providers", () => {
       (entry: { id: string }) => entry.id === "cloudflare-ai-gateway",
     );
 
-    // Pi's name, Pi's model count, Pi's auth method — nothing hand-maintained.
+    // Pi's name, Pi's model count, Pi's auth method  nothing hand-maintained.
     expect(cloudflare).toMatchObject({
       name: "Cloudflare AI Gateway",
       modelCount: 54,

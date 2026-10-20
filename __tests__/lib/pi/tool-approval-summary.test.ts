@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock prisma — the resolver must look up the user's own records only.
+// Mock prisma  the resolver must look up the user's own records only.
 vi.mock("@/lib/db", () => ({
   prisma: {
     calendarEvent: { findFirst: vi.fn() },
@@ -47,7 +47,7 @@ describe("resolveApprovalSummary", () => {
       subject: "Re: Invoice",
     });
 
-    expect(summary).toBe('Send email to jane@example.com — "Re: Invoice"');
+    expect(summary).toBe('Send email to jane@example.com. "Re: Invoice"');
     expect(prisma.calendarEvent.findFirst).not.toHaveBeenCalled();
     expect(prisma.emailMessage.findMany).not.toHaveBeenCalled();
   });
@@ -60,7 +60,7 @@ describe("resolveApprovalSummary", () => {
 
     const summary = await resolveApprovalSummary(USER, "calendar_delete", { id: "evt_1" });
 
-    expect(summary).toMatch(/^Delete event "Team lunch" — Mar 5, 2026/);
+    expect(summary).toMatch(/^Delete event "Team lunch". Mar 5, 2026/);
     expect(prisma.calendarEvent.findFirst).toHaveBeenCalledWith({
       where: { id: "evt_1", calendar: { account: { userId: USER } } },
       select: { summary: true, dtStart: true },
@@ -111,7 +111,7 @@ describe("resolveApprovalSummary", () => {
       ids: ["m1", "m2"],
     });
 
-    expect(summary).toBe('Delete 2 emails — "Re: Invoice #42" from jane@example.com (and 1 more)');
+    expect(summary).toBe('Delete 2 emails. "Re: Invoice #42" from jane@example.com (and 1 more)');
     expect(prisma.emailMessage.findMany).toHaveBeenCalledWith({
       where: { id: { in: ["m1", "m2"] }, account: { userId: USER } },
       select: { subject: true, fromEmail: true },
@@ -126,7 +126,7 @@ describe("resolveApprovalSummary", () => {
       folder: "Archive",
     });
 
-    expect(summary).toBe('Move 1 email to "Archive" — "News" from n@x.com');
+    expect(summary).toBe('Move 1 email to "Archive". "News" from n@x.com');
   });
 
   it("resolves chat_respond to the chat title", async () => {
@@ -194,7 +194,7 @@ describe("resolveApprovalSummary", () => {
     expect(summary).toBeNull();
   });
 
-  it("never throws — a DB failure degrades to null", async () => {
+  it("never throws  a DB failure degrades to null", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     prisma.task.findFirst.mockRejectedValue(new Error("db down"));
 

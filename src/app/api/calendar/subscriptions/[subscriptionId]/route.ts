@@ -6,7 +6,7 @@ import { encrypt } from "@/lib/crypto";
 import { syncSubscription } from "@/lib/calendar/subscription-sync";
 
 /**
- * PATCH /api/calendar/subscriptions/:id — Update a subscription
+ * PATCH /api/calendar/subscriptions/:id. Update a subscription
  */
 export async function PATCH(
   request: NextRequest,
@@ -45,7 +45,7 @@ export async function PATCH(
 }
 
 /**
- * POST /api/calendar/subscriptions/:id/sync — Trigger immediate sync
+ * POST /api/calendar/subscriptions/:id/sync. Trigger immediate sync
  */
 export async function POST(
   _request: NextRequest,
@@ -70,7 +70,7 @@ export async function POST(
 }
 
 /**
- * DELETE /api/calendar/subscriptions/:id — Delete a subscription
+ * DELETE /api/calendar/subscriptions/:id. Delete a subscription
  */
 export async function DELETE(
   _request: NextRequest,

@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (!definition || !definition.enabled) {
-    // Definition deleted or disabled — stop the repeatable job so it doesn't
+    // Definition deleted or disabled. stop the repeatable job so it doesn't
     // keep firing, then skip silently (matching QueueTask deleted-job handling).
     if (!definition) {
       console.warn(
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       userId: definition.userId,
     });
 
-    // A one-off schedule is consumed by this run — clearing runAt stops the
+    // A one-off schedule is consumed by this run. clearing runAt stops the
     // delayed job from being re-added on the next worker restart.
     if (definition.runAt) {
       await prisma.agentDefinition

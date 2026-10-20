@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Shared mock queue instance — the real scheduling helpers in @/lib/queue
+// Shared mock queue instance  the real scheduling helpers in @/lib/queue
 // call `new Queue(...)`, so the mock must return the same instance every time.
 const { mockAdd, mockRemoveJobScheduler, mockUpsertJobScheduler } = vi.hoisted(() => ({
   mockAdd: vi.fn(),
@@ -539,7 +539,7 @@ describe("createJobTools", () => {
       vi.mocked(mockQueueTask.delete).mockResolvedValue({});
       mockRemoveJobScheduler.mockRejectedValue(new Error("Redis error"));
 
-      // Should still succeed — scheduler removal failure is logged, not thrown
+      // Should still succeed  scheduler removal failure is logged, not thrown
       const result = await callExecute(ctx.jobDelete.execute, { id: "job-1" });
       const text = JSON.parse((result.content[0] as { type: string; text: string }).text);
       expect(text.deleted).toBe(true);

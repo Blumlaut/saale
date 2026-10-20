@@ -42,7 +42,7 @@ export function groupMessages(messages: Message[]): MessageGroup[] {
       }
       groups.push({ type: "assistant-group", messages: turnMessages });
     } else {
-      // Unknown role — skip defensively.
+      // Unknown role. skip defensively.
       i++;
     }
   }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Check, Download, Share } from "lucide-react";
 
-/** Chromium's install prompt event — not part of lib.dom, so it is declared here. */
+/** Chromium's install prompt event. not part of lib.dom, so it is declared here. */
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -29,8 +29,8 @@ function isIos(): boolean {
  * "Install Saale" card.
  *
  * Lives in Settings rather than the app shell: an install banner would spend
- * vertical space on every mobile page — the exact trade-off AGENTS.md rejects
- * for page titles — and would put the mobile layout guardrails at the mercy of
+ * vertical space on every mobile page. the exact trade-off AGENTS.md rejects
+ * for page titles. and would put the mobile layout guardrails at the mercy of
  * when the browser decides to fire `beforeinstallprompt`.
  *
  * Renders nothing when the current browser offers no install path at all.
@@ -59,7 +59,7 @@ export function InstallAppCard() {
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     window.addEventListener("appinstalled", onInstalled);
 
-    // Safari never fires `beforeinstallprompt` — it needs manual instructions.
+    // Safari never fires `beforeinstallprompt`. it needs manual instructions.
     setState(isIos() ? "ios" : "unavailable");
 
     return () => {

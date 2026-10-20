@@ -8,7 +8,7 @@ import type { Message } from "@/components/chat/types";
 
 /**
  * Auto-scroll: the list follows the tail while armed, and the user's own scroll
- * always wins — including a wheel tick small enough to leave the view inside the
+ * always wins  including a wheel tick small enough to leave the view inside the
  * "at bottom" band, which is exactly how a stream used to pull the view back down
  * under a reader. The jump-to-bottom button and the imperative handle re-arm it.
  */

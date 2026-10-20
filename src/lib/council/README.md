@@ -1,12 +1,12 @@
 # Council
 
-A room of named agents — each with its own model — that work one goal together.
+A room of named agents. each with its own model. that work one goal together.
 
 A council has a **brief** (what it is for) and **members** (name, model, optional
 role, optional tool overrides). The owner speaks into the room; members speak
 only through a `council_post` **tool call**, so every message in the room was a
 deliberate act rather than a turn's closing text. When a member posts, the
-members it addresses are woken and run — in parallel, or one at a time in
+members it addresses are woken and run. in parallel, or one at a time in
 round-robin mode. Each member keeps its own private reasoning, tool calls and
 unsent closing text, all of which the owner can read on that member's subpage.
 
@@ -18,7 +18,7 @@ pauses), or the room simply goes quiet.
 
 | File              | What it is                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------------------ |
-| `flag.ts`         | `COUNCIL_ENABLED` — the module-level switch                                                      |
+| `flag.ts`         | `COUNCIL_ENABLED`. the module-level switch                                                       |
 | `access.ts`       | Who may use it (admins only); 404 otherwise                                                      |
 | `config.ts`       | Limits, defaults, quorum maths, orchestration and threshold vocabularies                         |
 | `mentions.ts`     | `@name` / `@all` / `@user` parsing and resolution                                                |
@@ -47,24 +47,24 @@ and `src/components/council/`.
 
 Each council gets a **dedicated Open Terminal account**. The council's key is
 passed as `X-User-Id`, which Open Terminal maps to its own Linux user whose home
-is `chmod 2770` — so a council cannot read the owner's home and the owner cannot
+is `chmod 2770`. so a council cannot read the owner's home and the owner cannot
 read the sandbox. That is the boundary; it is kernel-enforced, verified against a
 live container at design time, and it is why the council does not simply get a
 subdirectory of the user's home.
 
 On top of it:
 
-- **Path confinement** (`sandbox.ts`) — every path a file tool is handed is
+- **Path confinement** (`sandbox.ts`). every path a file tool is handed is
   normalised and refused when it leaves the sandbox. Defence in depth: the
   account is what actually stops a symlink or a shell from reaching the user's
   files.
-- **The mode check** (`ensureCouncilSandbox`) — the container must answer `id -un`
+- **The mode check** (`ensureCouncilSandbox`). the container must answer `id -un`
   with the account derived from the key. Without `OPEN_TERMINAL_MULTI_USER=true`
   `X-User-Id` is ignored and everything would run as the owner, so the run refuses
   to start instead.
-- **No credentials** — no `GH_TOKEN`, no user MCP servers, no environment beyond
+- **No credentials**. no `GH_TOKEN`, no user MCP servers, no environment beyond
   the container's own.
-- **Excluded tools** — `show_file` (reads a file the owner uploaded to a chat)
+- **Excluded tools**. `show_file` (reads a file the owner uploaded to a chat)
   and the chat-history tools are removed from a member's session whatever the
   council's tool selection says.
 
@@ -76,7 +76,7 @@ account` in memory and does not re-check `/etc/passwd`, so that id would fail
   forever afterwards (`sudo: unknown user`); `ensureCouncilSandbox` therefore
   re-provisions through an id that resolves to the same account, which the
   container has not cached.
-- Deleting a council does not stop a run that is in flight — stop it first. The
+- Deleting a council does not stop a run that is in flight. stop it first. The
   run's writes then fail (the rows are gone) and are logged.
 - The terminal container is shared with the owner's own workspace by design of
   `OPEN_TERMINAL_MULTI_USER`: `/tmp` and `/proc` are visible to every account in
@@ -93,7 +93,7 @@ account` in memory and does not re-check `/etc/passwd`, so that id would fail
   record says `timeout`.
 - Stop and the budgets never wait for `session.abort()` to resolve. It resolves
   only once the agent is idle, and a turn stuck in a tool that ignores the abort
-  signal — or a provider stream that never closes after the server went away —
+  signal. or a provider stream that never closes after the server went away
   keeps it busy indefinitely. The run ends on its own decision and lets the
   abort land in the background. A turn that is completely silent (no tokens, no
   thinking, no tool activity) for 10 minutes is ended as a failed turn by the
@@ -116,26 +116,26 @@ Nothing outside the module depends on it. To remove the feature:
    `src/app/api/council/`, `src/app/dashboard/council/`,
    `src/types/council.ts`, `__tests__/lib/council/`, `__tests__/api/council/` and
    the council entries in `e2e/`.
-2. `src/lib/navigation/sidebar-nav.ts` — drop `"council"` from
+2. `src/lib/navigation/sidebar-nav.ts`. drop `"council"` from
    `SIDEBAR_NAV_ITEM_IDS` and the definitions map (`defaultHidden` itself is
    generic and can stay).
-3. `src/components/layout/sidebar-nav-icons.ts` — drop the `council` icon.
-4. `src/app/api/settings/sidebar-nav/route.ts` — drop `unavailableNavIds`/`restrict`
+3. `src/components/layout/sidebar-nav-icons.ts`. drop the `council` icon.
+4. `src/app/api/settings/sidebar-nav/route.ts`. drop `unavailableNavIds`/`restrict`
    (or the whole council branch).
-5. `src/lib/queue/index.ts` — drop `COUNCIL_SWEEP_*` and `scheduleCouncilSweep`;
-   `src/lib/queue/worker.ts` — drop the router branch, the scheduler call and the
+5. `src/lib/queue/index.ts`. drop `COUNCIL_SWEEP_*` and `scheduleCouncilSweep`;
+   `src/lib/queue/worker.ts`. drop the router branch, the scheduler call and the
    `isCouncilEnabled` import; `src/app/api/council/execute/route.ts` goes with
    step 1.
-6. `src/lib/terminal/client.ts` — `executeContainerCommand` is only used by the
+6. `src/lib/terminal/client.ts`. `executeContainerCommand` is only used by the
    council's account cleanup.
 7. Prisma: drop the `// ─── Council ───` models, the `councils` back-relation on
    `User`, and generate a migration.
-8. `e2e/modal-scenarios.ts` — drop the council scenarios.
-9. `docker-compose.yml` and `.env.example` — drop the `COUNCIL_ENABLED` entries.
+8. `e2e/modal-scenarios.ts`. drop the council scenarios.
+9. `docker-compose.yml` and `.env.example`. drop the `COUNCIL_ENABLED` entries.
 
 `src/lib/files/` and `src/components/files/` are **not** part of the module and
 stay: they are a generic workspace browser. Only two things in them are
-council-aware — the `council:` branch in `src/lib/files/request.ts` (and its
+council-aware. the `council:` branch in `src/lib/files/request.ts` (and its
 import of `src/lib/council/files.ts`) and the page under
 `src/app/dashboard/council/<id>/files/`.
 

@@ -6,7 +6,7 @@ import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
  * Chat viewport guardrail.
  *
  * On phones the chat view owns the whole window (`.full-bleed` in globals.css)
- * instead of floating as a card inside the shell gutter — that gutter is what
+ * instead of floating as a card inside the shell gutter  that gutter is what
  * made a phone show a "window" of dead space around an otherwise edge-to-edge
  * app. Desktop keeps the console gutter and its rounded panels: there is room
  * for both the floating navigation and the view.
@@ -17,7 +17,7 @@ import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
 let session: E2ESession | null = null;
 let sessionId = "";
 
-/** Create a chat session to open — the chat layout only renders with one. */
+/** Create a chat session to open  the chat layout only renders with one. */
 async function createSession(browser: Browser): Promise<string> {
   const ctx = await browser.newContext({ storageState: session!.storageState });
   const page = await ctx.newPage();
@@ -110,7 +110,7 @@ test.describe("chat full-bleed layout", () => {
         expect(radius, "the full-bleed chat surface is rounded").toBe(0);
 
         // The bottom nav is fixed over the shell, so the composer has to end
-        // above it — a full-bleed view must not hand its input row to the nav.
+        // above it  a full-bleed view must not hand its input row to the nav.
         expect(composer, "no composer rendered").not.toBeNull();
         expect(nav, "no bottom nav rendered").not.toBeNull();
         expect(

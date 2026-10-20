@@ -30,7 +30,7 @@ function message(overrides: Partial<Message> & { id: string }): Message {
   };
 }
 
-/** `turns` user/assistant pairs — two renderable groups per turn. */
+/** `turns` user/assistant pairs  two renderable groups per turn. */
 function transcript(turns: number): Message[] {
   const messages: Message[] = [];
   for (let i = 0; i < turns; i++) {

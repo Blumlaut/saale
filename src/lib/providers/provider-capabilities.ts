@@ -1,9 +1,9 @@
 /**
- * Persistence for one model's settings — what it accepts, and how big its window
+ * Persistence for one model's settings. what it accepts, and how big its window
  * and output cap are.
  *
  * Shared by the user and admin capability routes, which differ only in how they
- * find the provider key they act on — the validation, probing and merging are
+ * find the provider key they act on. the validation, probing and merging are
  * the same, and a fix belongs in one place.
  *
  * Server-only: it reads the stored key and writes back to it.
@@ -29,7 +29,7 @@ import { parseModelLimitEdit } from "@/lib/providers/limits";
 export function rejectUnconfigurableProvider(provider: unknown): string | null {
   if (typeof provider !== "string" || provider.length === 0) return "provider is required";
   if (!definesProviderModels(provider)) {
-    return "Model capabilities can only be set for the OpenAI-compatible endpoint — Pi's catalog describes every other provider's models";
+    return "Model capabilities can only be set for the OpenAI-compatible endpoint. Pi's catalog describes every other provider's models";
   }
   return null;
 }
@@ -48,7 +48,7 @@ export interface ModelSettingsEdit {
  * Validate an edit to one model's settings.
  *
  * Vision is a capability, the two limits are numbers, and an omitted key means
- * "leave it as stored" — the editor writes one field at a time.
+ * "leave it as stored". the editor writes one field at a time.
  */
 export function parseModelSettingsEdit(body: {
   modelId?: unknown;
@@ -79,8 +79,8 @@ export function parseModelSettingsEdit(body: {
 }
 
 /**
- * Record one model's vision flag and limits, leaving every other model — and
- * every field the edit does not mention — alone.
+ * Record one model's vision flag and limits, leaving every other model. and
+ * every field the edit does not mention. alone.
  */
 export async function setProviderModelSettings(options: {
   keyId: string;
@@ -119,7 +119,7 @@ export interface CapabilityDetectionSummary {
   visionModels: number;
   /** Models the provider lists. */
   modelCount: number;
-  /** Models left unprobed — the endpoint could not answer, or the budget ran out. */
+  /** Models left unprobed. the endpoint could not answer, or the budget ran out. */
   unprobed: number;
 }
 
@@ -129,7 +129,7 @@ export interface CapabilityDetectionSummary {
  * Detection overwrites what it answered for and leaves the rest alone: the
  * endpoint knows what it loaded, but a model it said nothing about must not
  * forget a limit or flag the user set by hand. Nothing is written when the
- * endpoint answered nothing at all (the usual case — only llama.cpp reports
+ * endpoint answered nothing at all (the usual case. only llama.cpp reports
  * capabilities), so an import of an ordinary OpenAI-compatible endpoint does
  * not rewrite the stored map to say the same thing.
  */
@@ -145,7 +145,7 @@ export async function detectAndStoreProviderCapabilities(options: {
   const modelIds = options.modelIds ?? listing.models.map((model) => model.id);
 
   // What the listing already stated, so the sweep only pays for what it cannot
-  // learn there — and pays nothing at all behind a load-on-demand proxy.
+  // learn there. and pays nothing at all behind a load-on-demand proxy.
   const reported: ModelCapabilityMap = {};
   for (const model of listing.models) {
     if (Object.keys(model.capabilities).length > 0) reported[model.id] = model.capabilities;

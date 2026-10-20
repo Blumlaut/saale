@@ -7,8 +7,8 @@ import { WifiOff } from "lucide-react";
 /**
  * Offline fallback.
  *
- * `public/sw.js` precaches this page — including the styles and fonts it
- * references — and serves it for any navigation that fails, so it must stay
+ * `public/sw.js` precaches this page. including the styles and fonts it
+ * references. and serves it for any navigation that fails, so it must stay
  * free of network calls and authenticated data.
  */
 export default function OfflinePage() {

@@ -11,7 +11,7 @@ import {
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
 
 /**
- * PATCH /api/chat/sessions/:sessionId/messages/:messageId — Edit a user message.
+ * PATCH /api/chat/sessions/:sessionId/messages/:messageId. Edit a user message.
  *
  * Updates the message in place, deletes all messages after it,
  * and returns a stream URL for the new AI response.
@@ -55,11 +55,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Only user messages can be edited" }, { status: 400 });
   }
   // Editing here rewrites history and deletes everything after the message.
-  // A queued message has no history yet — it is edited (and deleted) through
+  // A queued message has no history yet. it is edited (and deleted) through
   // /queue/:messageId instead.
   if (message.queuedAt) {
     return NextResponse.json(
-      { error: "Message is queued — edit it from the send queue." },
+      { error: "Message is queued. edit it from the send queue." },
       { status: 409 },
     );
   }
@@ -74,7 +74,7 @@ export async function PATCH(
   // Sanitize content
   const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
-  // Position of this message among the session's saved user messages — the
+  // Position of this message among the session's saved user messages. the
   // prompt path uses it to find the transcript entry the edit replaced.
   const savedUserMessages = await prisma.chatMessage.findMany({
     where: { sessionId, role: "user", queuedAt: null },
@@ -111,7 +111,7 @@ export async function PATCH(
   await setPendingPrompt(sessionId, messageId);
 
   // The agent transcript is append-only and still holds the messages this edit
-  // deleted, so the connection that prompts must rewind it first — otherwise
+  // deleted, so the connection that prompts must rewind it first. otherwise
   // the model reads the edited text as a new message after the old one.
   await setPendingHistoryRewind(sessionId, {
     messageId,

@@ -29,7 +29,7 @@ function formatTokens(count: number): string {
  *
  * Uses Pi's context accounting (`contextTokens`), never the summed token
  * totals: `input` excludes prompt-cache reads, so a cached conversation would
- * read as almost empty. Returns null when Pi has no usable number yet — right
+ * read as almost empty. Returns null when Pi has no usable number yet. right
  * after a compaction, until the next response.
  */
 export function contextPercent(usage: TokenUsage | null): number | null {
@@ -38,7 +38,7 @@ export function contextPercent(usage: TokenUsage | null): number | null {
 }
 
 /**
- * Circular token usage indicator — sits inside the input bar.
+ * Circular token usage indicator. sits inside the input bar.
  * Always visible (empty ring when no data), fills based on context usage.
  * Clickable to trigger manual compaction with confirmation.
  */
@@ -56,7 +56,7 @@ export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleP
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  // Fill from Pi's context accounting — see contextPercent.
+  // Fill from Pi's context accounting. see contextPercent.
   const percent = contextPercent(usage);
   const contextWindow = usage?.contextWindow ?? 0;
   const dashOffset = circumference - ((percent ?? 0) / 100) * circumference;
@@ -75,7 +75,7 @@ export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleP
     }
   }, [isCompacting]);
 
-  // Tooltip content — keep it short and scannable.
+  // Tooltip content. keep it short and scannable.
   const tooltipLines: string[] = [];
   if (usage) {
     tooltipLines.push(

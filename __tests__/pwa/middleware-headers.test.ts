@@ -6,7 +6,7 @@ import { middleware } from "@/middleware";
 
 /**
  * The service worker only installs if the CSP lets a same-origin worker load,
- * and it only updates if the browser is allowed to revalidate `/sw.js` — a
+ * and it only updates if the browser is allowed to revalidate `/sw.js`  a
  * cached worker script would pin installed clients to a stale deployment.
  */
 

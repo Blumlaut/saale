@@ -1,5 +1,5 @@
 /**
- * Per-category tool exposure (`AppSettings.toolExposure`) — the server side.
+ * Per-category tool exposure (`AppSettings.toolExposure`). the server side.
  *
  * The normalization rules live in `tool-exposure-rules.ts` (pure) and are
  * re-exported here so callers keep importing them from one place.

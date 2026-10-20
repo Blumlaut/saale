@@ -208,7 +208,7 @@ export function MachineNotesDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
-          {/* Header — pinned */}
+          {/* Header. pinned */}
           <DialogHeader className="border-border/50 shrink-0 gap-1 border-b px-4 py-3 sm:px-5">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
@@ -219,7 +219,7 @@ export function MachineNotesDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Body — list + editor, each scrolls internally */}
+          {/* Body. list + editor, each scrolls internally */}
           <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[15rem_minmax(0,1fr)]">
             {/* Notes list */}
             <div
@@ -271,7 +271,7 @@ export function MachineNotesDialog({
                     <FileText className="text-muted-foreground h-5 w-5" />
                     <p className="text-muted-foreground text-xs">
                       {notes.length === 0
-                        ? "No notes yet — add the first one."
+                        ? "No notes yet. add the first one."
                         : "No notes in this category."}
                     </p>
                   </div>
@@ -358,7 +358,7 @@ export function MachineNotesDialog({
                     )}
                   </div>
 
-                  {/* Fields — scroll internally */}
+                  {/* Fields. scroll internally */}
                   <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4">
                     {saveError && (
                       <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg px-3 py-2 text-sm">
@@ -408,7 +408,7 @@ export function MachineNotesDialog({
                     </div>
                   </div>
 
-                  {/* Footer — pinned */}
+                  {/* Footer. pinned */}
                   <DialogFooter className="border-border/50 -mx-0 -mb-0 shrink-0 rounded-none border-t p-3 sm:px-4 sm:py-3">
                     <Button
                       type="button"

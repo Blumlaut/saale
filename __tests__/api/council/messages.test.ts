@@ -152,7 +152,7 @@ describe("POST /api/council/[councilId]/messages", () => {
     const body = await response.json();
     expect(body.runStarted).toBe(false);
     expect(body.running).toBe(true);
-    // The message is in the room either way — the working loop picks it up.
+    // The message is in the room either way  the working loop picks it up.
     expect(postRoomMessage).toHaveBeenCalled();
   });
 

@@ -5,8 +5,8 @@ import { bootstrapSession, type E2ESession } from "./utils";
 /**
  * Chat multi-select guardrail.
  *
- * Chats are picked by tapping them — hold on touch, ctrl/⌘-click with a pointer
- * — and while picking, a row is a single target: a tap on the selection box, on
+ * Chats are picked by tapping them  hold on touch, ctrl/⌘-click with a pointer
+ *  and while picking, a row is a single target: a tap on the selection box, on
  * the row's padding, or right beside the text all pick the same chat. Rows are
  * ~50px tall and thumbs are not precise, so the hit area is measured and tapped
  * rather than assumed, and the gestures are driven with real touch events.
@@ -64,7 +64,7 @@ function row(page: Page, title: string) {
   return page.locator('[data-slot="session-row"]:visible').filter({ hasText: title }).first();
 }
 
-/** The one control inside the row — what a tap has to reach. */
+/** The one control inside the row  what a tap has to reach. */
 function rowToggle(page: Page, title: string) {
   return row(page, title).locator("button").first();
 }
@@ -125,7 +125,7 @@ test.describe("chat multi-select", () => {
             : geometry.outer[edge] - geometry.inner[edge];
         expect(
           untappable,
-          `the row leaves its ${edge} edge untappable — a tap there selects nothing`,
+          `the row leaves its ${edge} edge untappable  a tap there selects nothing`,
         ).toBeLessThanOrEqual(1);
       }
 

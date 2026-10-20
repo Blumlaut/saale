@@ -223,7 +223,7 @@ describe("sanitizeEmailHtml", () => {
     const input = '<div style="color: #000; background: #000"><p>Invisible text</p></div>';
     const result = sanitizeEmailHtml(input);
     expect(result).toContain("email-content");
-    // Inline styles are preserved — CSS in globals.css handles readability
+    // Inline styles are preserved  CSS in globals.css handles readability
     expect(result).toContain("color");
   });
 

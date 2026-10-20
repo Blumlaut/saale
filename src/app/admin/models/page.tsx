@@ -446,7 +446,7 @@ export default function AdminModelsPage() {
                                   )}
                                   title={
                                     model.vision
-                                      ? "Can see images — click to turn that off"
+                                      ? "Can see images. click to turn that off"
                                       : "Mark this model as able to see images"
                                   }
                                   disabled={savingVision === `${provider.id}:${model.id}`}

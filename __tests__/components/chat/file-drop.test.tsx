@@ -13,7 +13,7 @@ import { installMemoryStorage } from "../../helpers/memory-storage";
  *
  * The composer already takes files through the paperclip and through a paste;
  * a drop is the third way in and has to land in the same pending strip. The
- * drag also has to be *claimed* — an unhandled file drop makes the browser
+ * drag also has to be *claimed*  an unhandled file drop makes the browser
  * navigate the tab to the file, which would throw away the draft and any
  * running generation.
  */
@@ -98,7 +98,7 @@ function droppedFile(name: string, type = "text/csv", size = 16) {
  * Dispatch a drag event the way a browser emits it.
  *
  * jsdom drops `relatedTarget` (and `dataTransfer`) from the event init, so
- * both are attached to a plain event — `relatedTarget` is what distinguishes
+ * both are attached to a plain event  `relatedTarget` is what distinguishes
  * "moved onto another element inside the zone" from "left the window".
  */
 function dispatchDrag(
@@ -123,7 +123,7 @@ function dispatchDrag(
 
 /**
  * The drop zone is the chat column wrapping the surface, the queue strip and
- * the composer — i.e. the surface panel's parent.
+ * the composer  i.e. the surface panel's parent.
  */
 function dropZone(container: HTMLElement): HTMLElement {
   const zone = container.querySelector(".glass-panel")?.parentElement;
@@ -188,7 +188,7 @@ describe("dropping files on the chat", () => {
     dispatchDrag(zone, "dragenter", { files: csv });
     expect(screen.getByText("Drop files to attach")).toBeInTheDocument();
 
-    // Crossing a child fires another enter/leave pair — the hint must not
+    // Crossing a child fires another enter/leave pair  the hint must not
     // flicker, and a leave that is still inside the zone must not clear it.
     const composer = screen.getByPlaceholderText("Message Saale...");
     dispatchDrag(composer, "dragenter", { files: csv });
@@ -208,7 +208,7 @@ describe("dropping files on the chat", () => {
 
     expect(screen.queryByText("Drop files to attach")).toBeNull();
     // An internal drag (selected text, the sidebar's own reorder) keeps its
-    // browser default — the zone must not claim it.
+    // browser default  the zone must not claim it.
     expect(enter.defaultPrevented).toBe(false);
     expect(drop.defaultPrevented).toBe(false);
   });
@@ -220,7 +220,7 @@ describe("dropping files on the chat", () => {
 
     const drop = dispatchDrag(zone, "drop", { files: [pdf] });
 
-    // The drop is claimed — the browser must not open the file.
+    // The drop is claimed  the browser must not open the file.
     expect(drop.defaultPrevented).toBe(true);
     expect(screen.queryByText("Drop files to attach")).toBeNull();
     // …and the file waits in the composer strip, not somewhere else.

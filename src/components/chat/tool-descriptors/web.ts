@@ -14,7 +14,7 @@ const MAX_ERROR = 200;
 const MAX_URL = 50;
 /**
  * A domain is also a badge label, where it shares the row with the card's
- * title — so it is capped harder there than in the detail.
+ * title. so it is capped harder there than in the detail.
  */
 const MAX_BADGE_DOMAIN = 24;
 
@@ -107,7 +107,7 @@ function fetchModel(toolCall: ToolCallData, meta: WebFetchMeta): ToolCardModel {
   };
 }
 
-/** Trim, collapse whitespace and truncate — for any value shown in the card. */
+/** Trim, collapse whitespace and truncate. for any value shown in the card. */
 function sanitize(value: string, max: number): string {
   return truncate(value.trim().replace(/\s+/g, " "), max);
 }

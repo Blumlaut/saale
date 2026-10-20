@@ -6,7 +6,7 @@ import { downloadFile } from "@/lib/download";
  * Downloads have to leave the app document alone.
  *
  * A same-window anchor click is what left Firefox for Android (custom tabs and
- * installed web apps) on about:blank with the app replaced — bugzilla 1919827
+ * installed web apps) on about:blank with the app replaced  bugzilla 1919827
  * and 1953287, both still open. The helper therefore routes the request through
  * a hidden frame instead: the navigation happens in a nested context the user
  * never sees.
@@ -68,7 +68,7 @@ describe("downloadFile", () => {
 
   it("does nothing without a document (server render)", () => {
     const doc = globalThis.document;
-    // @ts-expect-error — simulating the server render, where there is no DOM.
+    // @ts-expect-error  simulating the server render, where there is no DOM.
     delete globalThis.document;
 
     try {

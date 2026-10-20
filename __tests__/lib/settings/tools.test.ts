@@ -69,7 +69,7 @@ describe("settings_list", () => {
     const groups = body.groups as { group: string; keys: string[] }[];
     expect(groups.map((entry) => entry.group).sort()).toEqual(["models", "theme"]);
     expect(groups.flatMap((entry) => entry.keys).sort()).toEqual(["models.default", "theme"]);
-    // The index is key-only — values come from the per-group listing.
+    // The index is key-only  values come from the per-group listing.
     expect(JSON.stringify(body)).not.toContain("anthropic:claude-sonnet-4");
   });
 

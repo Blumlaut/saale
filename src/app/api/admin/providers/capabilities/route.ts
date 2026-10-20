@@ -28,7 +28,7 @@ async function findGlobalProviderKey(provider: string) {
 }
 
 /**
- * PATCH /api/admin/providers/capabilities — Record what one model of a global
+ * PATCH /api/admin/providers/capabilities. Record what one model of a global
  * provider can do and how big its window is.
  *
  * Body: `{ provider, modelId, vision?, contextWindow?, maxOutputTokens? }`. A
@@ -62,7 +62,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * POST /api/admin/providers/capabilities — Ask a global provider's endpoint what
+ * POST /api/admin/providers/capabilities. Ask a global provider's endpoint what
  * its models can do and store the answers.
  */
 export async function POST(request: NextRequest) {

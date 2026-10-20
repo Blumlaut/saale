@@ -37,7 +37,7 @@ export function SlashCommandMenu({
             type="button"
             role="option"
             aria-selected={active}
-            // Keep the caret in the textarea — the picker must not steal focus.
+            // Keep the caret in the textarea. the picker must not steal focus.
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onHighlight(index)}
             onClick={() => onSelect(meta.name)}

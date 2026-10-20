@@ -93,7 +93,7 @@ describe("claimNextQueuedMessage", () => {
     );
     expect(mockUpdateMany).toHaveBeenCalledWith({
       where: { id: "msg-older", sessionId: SESSION_ID, queuedAt: { not: null } },
-      // Delivered: out of the queue, and positioned by the delivery — the
+      // Delivered: out of the queue, and positioned by the delivery  the
       // turns of the run it waited behind were saved after it was typed.
       data: { queuedAt: null, createdAt: expect.any(Date) },
     });
@@ -161,7 +161,7 @@ describe("claimQueuedMessage", () => {
   });
 
   it("stamps the delivery as the message's conversation position", async () => {
-    // The queue-time createdAt is when the user typed the message — before the
+    // The queue-time createdAt is when the user typed the message  before the
     // reply it waited behind was saved. Delivery is what puts it in the
     // conversation, so the delivery time has to win.
     mockUpdateMany.mockResolvedValue({ count: 1 });

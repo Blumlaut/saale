@@ -142,7 +142,7 @@ describe("saveTelegramBot", () => {
 
     const result = await saveTelegramBot({ token, adminUserId: "admin-1" });
 
-    // Stored anyway — the worker retries registration on its next startup with
+    // Stored anyway  the worker retries registration on its next startup with
     // the secret that is now in the database.
     expect(result.webhookRegistered).toBe(false);
     expect(mockTelegramBot.upsert).toHaveBeenCalled();
@@ -172,7 +172,7 @@ describe("setTelegramBotEnabled", () => {
     expect(bot.enabled).toBe(false);
     expect(mockDeleteWebhook).toHaveBeenCalledWith(`enc(${token})`);
     expect(mockRegisterWebhook).not.toHaveBeenCalled();
-    // Pausing must not unlink anyone — nothing may delete a link here.
+    // Pausing must not unlink anyone  nothing may delete a link here.
     expect(mockTelegramLink.count).not.toHaveBeenCalled();
   });
 

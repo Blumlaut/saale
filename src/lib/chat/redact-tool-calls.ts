@@ -1,15 +1,15 @@
 /**
  * Tool-call redaction for public share links.
  *
- * A `/share/<token>` URL is world-readable, so everything a tool call carries —
+ * A `/share/<token>` URL is world-readable, so everything a tool call carries
  * absolute paths, hostnames and SSH users, command output, file contents and
- * diffs, mail, calendar entries, memory hits, other chats — must be removed
+ * diffs, mail, calendar entries, memory hits, other chats. must be removed
  * before the payload is serialized. Redaction therefore happens here, on the
  * server: filtering in the share viewer would still ship the raw results to an
  * anonymous browser, where they are one devtools tab away.
  *
  * The policy is an allow-list. A tool with no entry below is not "safe by
- * default" — its arguments and result are dropped like every other tool's, and
+ * default". its arguments and result are dropped like every other tool's, and
  * only `redacted` (built from text this file owns, plus a handful of numeric
  * counts) crosses the boundary. A new tool therefore cannot leak by omission.
  *
@@ -18,7 +18,7 @@
 
 import { extractToolMetaBlock } from "./tool-meta";
 
-/** The persisted shape redaction reads — a subset of `SavedToolCall`. */
+/** The persisted shape redaction reads. a subset of `SavedToolCall`. */
 export interface RedactableToolCall {
   id: string;
   name: string;
@@ -35,7 +35,7 @@ export interface RedactedToolCall {
   result: undefined;
   error: undefined;
   isError: boolean | undefined;
-  /** The only detail a share page shows — never derived from the result body. */
+  /** The only detail a share page shows. never derived from the result body. */
   redacted: string;
 }
 
@@ -43,7 +43,7 @@ interface SummaryRule {
   text: string;
   /**
    * Appends "· N <one|many>" when the tool's meta block carries this numeric
-   * field. Both forms are spelled out — deriving one from the other gets
+   * field. Both forms are spelled out. deriving one from the other gets
    * "matches" wrong.
    */
   count?: { field: string; one: string; many: string };
@@ -51,7 +51,7 @@ interface SummaryRule {
 
 /**
  * One line per tool. Text is written by hand so nothing is copied out of a
- * result — only the optional count is read from the tool's own metadata.
+ * result. only the optional count is read from the tool's own metadata.
  *
  * Every tool in `ALL_TOOL_INFOS` needs an entry; a test fails when a new tool
  * lands without one, so the summary is always a decision rather than a fallback.
@@ -203,7 +203,7 @@ export function summarizeToolCallForShare(name: string, result: string | undefin
  *
  * Arguments are dropped wholesale rather than filtered: they carry paths,
  * queries, recipients and message bodies, and a public reader never needs one.
- * Errors are dropped too — the failing call's message routinely quotes the
+ * Errors are dropped too. the failing call's message routinely quotes the
  * path or command that caused it.
  */
 export function redactToolCallForShare(toolCall: RedactableToolCall): RedactedToolCall {

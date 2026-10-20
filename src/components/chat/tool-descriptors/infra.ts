@@ -472,12 +472,12 @@ function machineName(name: string): string {
   return truncate(name, MAX_MACHINE);
 }
 
-/** "host" or "host:port" — the default port stays implicit. */
+/** "host" or "host:port". the default port stays implicit. */
 function connection(host: string, port: number): string {
   return port !== 22 ? `${truncate(host, MAX_HOST)}:${port}` : truncate(host, MAX_HOST);
 }
 
-/** The first line of captured output — the card shows a preview, not a log. */
+/** The first line of captured output. the card shows a preview, not a log. */
 function firstLine(output: string): string {
   return output.split("\n")[0] ?? "";
 }

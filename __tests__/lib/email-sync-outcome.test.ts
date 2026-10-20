@@ -94,7 +94,7 @@ describe("syncEmailAccount outcome recording", () => {
         lastSyncErrorAt: expect.any(Date),
       },
     });
-    // lastSyncedAt stays untouched — nothing was synced.
+    // lastSyncedAt stays untouched  nothing was synced.
     expect(
       vi
         .mocked(prisma.emailAccount.update)

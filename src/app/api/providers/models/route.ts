@@ -12,8 +12,8 @@ import { definesProviderModels } from "@/lib/providers/config";
 import { readEndpointRow } from "@/lib/providers/endpoint";
 
 /**
- * GET /api/providers/models — Returns available models based on user's configured providers.
- * ?includeDisabled=true — include disabled models (for settings page)
+ * GET /api/providers/models. Returns available models based on user's configured providers.
+ * ?includeDisabled=true. include disabled models (for settings page)
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireSession();

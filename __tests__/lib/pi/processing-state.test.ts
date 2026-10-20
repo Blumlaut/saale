@@ -11,14 +11,14 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Be concise and direct");
     expect(prompt).not.toContain("Custom instructions");
     // Terminal and memory default on, and the tools are resolved with those same
-    // defaults — so the prompt must describe them without being asked.
+    // defaults  so the prompt must describe them without being asked.
     expect(prompt).toContain("A Terminal is available");
     expect(prompt).toContain("persistent memory system");
   });
 
   it("always tells the model how to reach hidden tools", () => {
     // Pi's own "use codemode to batch calls" guideline lives in the default
-    // system prompt, which a custom prompt replaces — so Saale states it here.
+    // system prompt, which a custom prompt replaces  so Saale states it here.
     for (const config of [undefined, {}, { terminal: false, memory: false }]) {
       const prompt = buildAgentSystemPrompt(config ? { toolConfig: config } : {});
       expect(prompt).toContain("Tool use:");
@@ -183,7 +183,7 @@ describe("createSystemPromptLoader", () => {
     const loader = await createSystemPromptLoader(multiLine, dir);
 
     expect(loader.getSystemPrompt()).toBe(multiLine);
-    // Inline prompt — no file source, no append prompt
+    // Inline prompt  no file source, no append prompt
     expect(loader.getSystemPromptSource()).toBeUndefined();
     expect(loader.getAppendSystemPrompt()).toEqual([]);
   });
@@ -201,7 +201,7 @@ describe("createSystemPromptLoader", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "saale-loader-"));
     const loader = await createSystemPromptLoader("test prompt", dir);
 
-    // Exactly one extension — Saale's inline codemode. Discovery of the host's
+    // Exactly one extension  Saale's inline codemode. Discovery of the host's
     // Pi directory is off, so nothing from the machine can be loaded.
     const extensions = loader.getExtensions().extensions;
     expect(extensions).toHaveLength(1);

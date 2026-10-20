@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * `chat_respond` runs a real agent turn in another chat. The guards are the
  * important part: it must never run a chat the user does not own, never run
  * the caller's own chat (that session is already running), and never start a
- * second run on a busy chat — the reply is awaited, so a queued message would
+ * second run on a busy chat  the reply is awaited, so a queued message would
  * just deadlock the caller.
  */
 

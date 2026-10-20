@@ -6,10 +6,10 @@ import { getUploadsDir } from "@/lib/uploads";
 interface PooledSession {
   session: AgentSession;
   sessionDir: string;
-  lastPromptedMessageId: string | null; // ChatMessage.id from DB — prevents double-prompting
+  lastPromptedMessageId: string | null; // ChatMessage.id from DB. prevents double-prompting
   /** True while a prompt() call for this session is in flight (same-process race guard). */
   promptInFlight: boolean;
-  lastActive: number; // Date.now() — for idle eviction
+  lastActive: number; // Date.now(). for idle eviction
 }
 
 const pool = new Map<string, PooledSession>();
@@ -18,7 +18,7 @@ const pool = new Map<string, PooledSession>();
  * Creations in flight, keyed like the pool.
  *
  * Creating a session is slow (it loads the transcript and builds the tool
- * registry), and two requests for the same chat can overlap — a message sent
+ * registry), and two requests for the same chat can overlap. a message sent
  * while /compact is still spinning up its session. Without single-flight, both
  * callers would find the pool empty, create their own AgentSession over the
  * same JSONL file, and the second would overwrite the first's pool entry: two
@@ -29,7 +29,7 @@ const pendingCreations = new Map<string, Promise<PooledSession>>();
 
 /**
  * Bumped by teardown. A creation that started before a teardown must not pool
- * its session afterwards — that would resurrect a pool that was just cleared.
+ * its session afterwards. that would resurrect a pool that was just cleared.
  */
 let poolGeneration = 0;
 
@@ -38,7 +38,7 @@ let poolGeneration = 0;
  *
  * Lives alongside the pool so it survives across requests for the same session.
  * The approval wrapper (baked into pooled agents) captures this dispatcher by
- * session key — not by closure — so it always emits to the current active
+ * session key. not by closure. so it always emits to the current active
  * connection, not a stale one from a previous request.
  *
  * Access via getDispatcher(sessionId) / wireDispatcher(sessionId, controller, encoder).
@@ -145,7 +145,7 @@ export async function createAndPool(
 
 /**
  * Remove a session from the pool and dispose its agent.
- * The session file on disk is preserved — the agent can be recreated later.
+ * The session file on disk is preserved. the agent can be recreated later.
  *
  * The pool key is "userId:sessionId" but dispatchers are keyed by sessionId,
  * so we extract the sessionId from the pool key for cleanup.
@@ -188,7 +188,7 @@ export async function evictIdle(): Promise<void> {
     await clearSessionResources(sessionId);
   }
 
-  // Hard cap — evict the oldest sessions that are not running. A session with a
+  // Hard cap. evict the oldest sessions that are not running. A session with a
   // run in flight (or one about to prompt, e.g. a message deferred until a
   // compaction ends) must never be disposed: that aborts the run and drops the
   // client's stream.
@@ -233,8 +233,8 @@ export function getPoolKeys(): string[] {
  *
  * The agent's model, tools and extensions (the user's MCP servers among them)
  * are fixed when the session is built, so changing a user-wide setting means
- * rebuilding. Sessions with a run in flight are left alone — disposing one
- * aborts the run — and pick up the change the next time they are rebuilt.
+ * rebuilding. Sessions with a run in flight are left alone. disposing one
+ * aborts the run. and pick up the change the next time they are rebuilt.
  */
 export async function evictUserSessions(userId: string): Promise<number> {
   const prefix = `${userId}:`;
@@ -266,7 +266,7 @@ export async function clearPool(): Promise<void> {
 }
 
 /**
- * Graceful shutdown — dispose all agents and clear the pool.
+ * Graceful shutdown. dispose all agents and clear the pool.
  * Call this during process shutdown to ensure clean resource release.
  */
 export async function shutdown(): Promise<void> {
@@ -283,7 +283,7 @@ export async function shutdown(): Promise<void> {
   }
 }
 
-// Periodic eviction — runs every 5 minutes
+// Periodic eviction. runs every 5 minutes
 const timer = setInterval(
   () => {
     evictIdle().catch((err) => {

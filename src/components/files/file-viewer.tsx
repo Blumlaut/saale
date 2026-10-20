@@ -29,7 +29,7 @@ export interface FileViewerProps {
  *
  * Text comes back as text and images render inline; anything else offers the
  * download instead of pretending to render it. The bytes arrive through the raw
- * endpoint, which serves executable types as plain text — that is what makes
+ * endpoint, which serves executable types as plain text. that is what makes
  * showing an agent-written HTML file here safe.
  */
 export function FileViewer({ target, entry, onClose }: FileViewerProps) {

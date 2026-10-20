@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
  *
  * The message is the entire handover: the script's value is the only evidence
  * the agent has that anything happened, so it has to arrive intact and readable
- * — including for a value that is awkward to render.
+ *  including for a value that is awkward to render.
  */
 
 vi.mock("@/lib/db", () => ({ prisma: {} }));
@@ -42,7 +42,7 @@ describe("buildWakeMessage", () => {
 
   it("still produces a message when the value cannot be rendered as JSON", () => {
     // A sandbox value is JSON by construction, so this guards the runner's
-    // contract rather than an expected input — the wake must not be lost to it.
+    // contract rather than an expected input  the wake must not be lost to it.
     const circular: Record<string, unknown> = { host: "web-1" };
     circular.self = circular;
 

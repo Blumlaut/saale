@@ -5,11 +5,11 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
  *
  * Two responsibilities:
  *
- * 1. **Interrupt on new message** — when a new message arrives while a
+ * 1. **Interrupt on new message**. when a new message arrives while a
  *    generation is running, the old session is aborted and the new message
  *    is processed immediately.
  *
- * 2. **Latest message wins for bursts** — each incoming message gets a
+ * 2. **Latest message wins for bursts**. each incoming message gets a
  *    monotonically increasing sequence number for its chat. A run checks
  *    `isLatestMessage()` when it starts (after taking the chat lock) and
  *    again right before prompting, so messages superseded while queued
@@ -17,14 +17,14 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
  *    and sending their own reply.
  *
  * Runs register in two stages: `beginTelegramRun()` when the run starts
- * (the Pi session does not exist yet — setup takes seconds) and
+ * (the Pi session does not exist yet. setup takes seconds) and
  * `attachTelegramSession()` once the session is created. An interrupt
  * during the first stage cannot abort anything; the run notices its
  * supersession at the pre-prompt checkpoint and bails on its own.
  *
  * Key: `${userId}:${telegramChatId}` (matches the Telegram chat identity).
  *
- * Process-local only — Telegram webhooks are sequential per chat so no
+ * Process-local only. Telegram webhooks are sequential per chat so no
  * cross-process coordination is needed.
  */
 
@@ -38,7 +38,7 @@ interface RegisteredRun {
 }
 
 const runs = new Map<string, RegisteredRun>();
-/** Latest message sequence per chat — bumped by the webhook per incoming message. */
+/** Latest message sequence per chat. bumped by the webhook per incoming message. */
 const latestSeq = new Map<string, number>();
 
 const ABORT_TIMEOUT_MS = 30_000;
@@ -105,7 +105,7 @@ export function attachTelegramSession(
  *
  * Used by a run that bailed out at a supersession checkpoint: the chat lock
  * guarantees the entry belongs to that run (no other run can be active for
- * the chat), and there is nothing left to interrupt — the entry must not
+ * the chat), and there is nothing left to interrupt. the entry must not
  * linger as "active" if the superseding message never starts a run.
  */
 export function clearTelegramRun(userId: string, telegramChatId: bigint): void {
@@ -117,7 +117,7 @@ export function clearTelegramRun(userId: string, telegramChatId: bigint): void {
  *
  * Identity-checked: only removes the entry if it still belongs to THIS
  * session. When a run is interrupted, the new run may register under the
- * same chat key before the old run's cleanup executes — the old run's
+ * same chat key before the old run's cleanup executes. the old run's
  * late unregister must not delete the new run's entry.
  */
 export function unregisterTelegramSession(
@@ -147,7 +147,7 @@ export function wasTelegramSessionInterrupted(session: AgentSession): boolean {
  *
  * - Marks the run interrupted (it reports "cancelled" and sends no reply).
  * - Aborts the Pi session if it exists. A run still in pre-session setup
- *   (`session: null`) cannot be aborted — it notices its supersession at the
+ *   (`session: null`) cannot be aborted. it notices its supersession at the
  *   pre-prompt checkpoint and bails on its own, settling `done`.
  * - Waits for the run to settle, giving up after ABORT_TIMEOUT_MS so a stuck
  *   predecessor cannot block the new message indefinitely.
@@ -182,7 +182,7 @@ export async function interruptTelegramChat(userId: string, telegramChatId: bigi
 }
 
 /**
- * Graceful shutdown — abort all active sessions.
+ * Graceful shutdown. abort all active sessions.
  * Call during process shutdown.
  */
 export function shutdownTelegramSessions(): void {

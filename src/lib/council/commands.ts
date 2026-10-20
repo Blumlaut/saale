@@ -10,7 +10,7 @@
  *
  * Both run one short command and read its result. Polling a long-running command
  * requires the identity that started it, so a command still running when the
- * wait expires reports a null exit code — callers must treat that as "not
+ * wait expires reports a null exit code. callers must treat that as "not
  * confirmed", never as success.
  */
 
@@ -26,7 +26,7 @@ export interface CouncilCommandResult {
 }
 
 export interface TerminalCommandOptions {
-  /** Identity to run as — a sandbox key, or omitted for the container's own. */
+  /** Identity to run as. a sandbox key, or omitted for the container's own. */
   userId?: string;
   sessionId?: string;
   cwd?: string;
@@ -37,7 +37,7 @@ export interface TerminalCommandOptions {
  * An account name that is safe to interpolate into a command.
  *
  * Open Terminal derives names as `[a-z0-9]+`, optionally behind
- * `OPEN_TERMINAL_USER_PREFIX` — which operators do use, and which may contain
+ * `OPEN_TERMINAL_USER_PREFIX`. which operators do use, and which may contain
  * `-`, `_` or `.`. The leading character is never a separator (the container
  * refuses what is not `[A-Za-z0-9_]` first), so a name that starts with a digit
  * or a dash is a corrupt value or a bug, never something to run. Everything

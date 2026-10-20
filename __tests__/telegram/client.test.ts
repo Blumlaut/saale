@@ -198,7 +198,7 @@ describe("splitMarkdownV2", () => {
       "A".repeat(2000), // paragraph 1
       "",
       `*${"B".repeat(2000)}`, // bold opens
-      "tail*", // bold closes — a naive 4096 cut lands in here
+      "tail*", // bold closes  a naive 4096 cut lands in here
       "",
       "C".repeat(2000), // paragraph 2
     ].join("\n");
@@ -286,13 +286,13 @@ describe("splitMarkdownV2", () => {
 
 /**
  * Build a realistic note in the style of the production failure: dense with
- * dots, backticks, backslashes and dashes — characters the MarkdownV2
+ * dots, backticks, backslashes and dashes  characters the MarkdownV2
  * converter escapes with backslashes, inflating the output well beyond the
  * raw length.
  */
 function buildEscapeDenseNote(): string {
   const lines: string[] = [
-    "Three notes — all updates to pre-existing notes. Exact wording as stored:",
+    "Three notes  all updates to pre-existing notes. Exact wording as stored:",
     "",
     '*1. "Config & Credentials" (category: credentials)*',
     "",
@@ -316,7 +316,7 @@ describe("escape bloat regression", () => {
     const converted = convertToTelegramMarkdown(raw, "escape");
 
     // Preconditions proving the bug: converted text is longer than a single
-    // message, and escaping a raw 4096-char slice (what the old code did —
+    // message, and escaping a raw 4096-char slice (what the old code did
     // split raw, convert per chunk) already overflows the limit.
     expect(converted.length).toBeGreaterThan(TELEGRAM_MAX_MESSAGE_LENGTH);
     expect(converted.length - raw.length).toBeGreaterThan(300);
@@ -533,7 +533,7 @@ describe("buildWebhookUrl", () => {
     delete process.env.APP_URL;
     process.env[envVar] = value;
 
-    // One shared bot means one webhook path — it names the instance, not a user.
+    // One shared bot means one webhook path  it names the instance, not a user.
     expect(buildWebhookUrl()).toBe(
       `${envVar === "VERCEL_URL" ? "https://" : ""}${value}/api/integrations/telegram/webhook`,
     );

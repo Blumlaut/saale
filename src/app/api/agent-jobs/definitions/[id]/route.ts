@@ -12,7 +12,7 @@ import {
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 
 /**
- * GET /api/agent-jobs/definitions/:id — Get a single definition
+ * GET /api/agent-jobs/definitions/:id. Get a single definition
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -51,7 +51,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 /**
- * PATCH /api/agent-jobs/definitions/:id — Update a definition
+ * PATCH /api/agent-jobs/definitions/:id. Update a definition
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -109,7 +109,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     nextRunAt = null;
   }
 
-  // The Telegram chat agent name is reserved — renaming to it would silently
+  // The Telegram chat agent name is reserved. renaming to it would silently
   // hijack the telegram definition lookup (which matches by name).
   if (name !== undefined && isReservedAgentName(name)) {
     return NextResponse.json({ error: RESERVED_AGENT_NAME_ERROR }, { status: 400 });
@@ -172,7 +172,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 /**
- * DELETE /api/agent-jobs/definitions/:id — Delete a definition (and its runs)
+ * DELETE /api/agent-jobs/definitions/:id. Delete a definition (and its runs)
  */
 export async function DELETE(
   _request: NextRequest,
@@ -189,7 +189,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // System-managed definitions are owned by Saale — deleting one would just
+  // System-managed definitions are owned by Saale. deleting one would just
   // make the next Telegram message recreate it with defaults.
   if (existing.systemManaged) {
     return NextResponse.json({ error: SYSTEM_MANAGED_ERROR }, { status: 403 });

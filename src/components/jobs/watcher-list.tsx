@@ -449,7 +449,7 @@ export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
                     <p className="text-muted-foreground mt-1 text-xs">
                       {selected.grantAll
                         ? "Every enabled tool."
-                        : "None — this script only reads tools that never ask."}
+                        : "None. this script only reads tools that never ask."}
                     </p>
                   ) : (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">

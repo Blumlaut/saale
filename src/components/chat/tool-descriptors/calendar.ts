@@ -88,7 +88,7 @@ function eventRow(event: CalendarEvent): ToolRowModel {
   };
 }
 
-/** A month, day and time — or just the date for an all-day event. */
+/** A month, day and time. or just the date for an all-day event. */
 function formatEventTime(dtStart: string, allDay: boolean): string {
   const date = new Date(dtStart);
   if (isNaN(date.getTime())) return "";

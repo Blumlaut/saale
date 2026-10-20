@@ -210,7 +210,7 @@ function harness(options: {
       const session = new FakeAgentSession();
       sessions.set(memberId, session);
 
-      // The member's real tools, driven by the scripted behaviour — so mentions,
+      // The member's real tools, driven by the scripted behaviour  so mentions,
       // wakes and votes travel the same path the model's calls do.
       const tools = createCouncilTools(sessionOptions.toolContext);
       const byName = new Map(tools.map((tool) => [tool.name, tool]));
@@ -264,7 +264,7 @@ const eventsOf = (events: Array<{ event: string; data: any }>, name: string) =>
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("runCouncilLoop — parallel", () => {
+describe("runCouncilLoop  parallel", () => {
   it("wakes the member a post addresses, and ends when the owner is addressed", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
@@ -518,7 +518,7 @@ describe("runCouncilLoop — parallel", () => {
   });
 });
 
-describe("runCouncilLoop — budgets", () => {
+describe("runCouncilLoop  budgets", () => {
   it("stops on a token budget once a turn has been paid for", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
@@ -599,7 +599,7 @@ describe("runCouncilLoop — budgets", () => {
   });
 });
 
-describe("runCouncilLoop — stopping early", () => {
+describe("runCouncilLoop  stopping early", () => {
   it("stops before the first turn when an abort has been requested", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn")],
@@ -642,7 +642,7 @@ describe("runCouncilLoop — stopping early", () => {
     // The failure this guards: `abort()` resolves only once the agent is idle,
     // and a turn stuck in a tool that ignores the abort signal (or a provider
     // stream that never closes) keeps it busy forever. Awaiting the abort left
-    // the run `running` — Stop did nothing and the watchdog saw a heartbeat.
+    // the run `running`  Stop did nothing and the watchdog saw a heartbeat.
     const h = harness({
       members: [MEMBER("a", "acorn")],
       openingMemberIds: null,
@@ -801,7 +801,7 @@ describe("runCouncilLoop — stopping early", () => {
   });
 });
 
-describe("runCouncilLoop — preemption of an addressed member (parallel mode)", () => {
+describe("runCouncilLoop  preemption of an addressed member (parallel mode)", () => {
   it("ends a turn at the next tool boundary when the member is addressed, and re-runs it addressed", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
@@ -839,7 +839,7 @@ describe("runCouncilLoop — preemption of an addressed member (parallel mode)",
         },
         b: async (turn) => {
           await new Promise((resolve) => setTimeout(resolve, 15));
-          await turn.post("@acorn quick one — the plan moved to plan2.md");
+          await turn.post("@acorn quick one  the plan moved to plan2.md");
         },
       },
     });
@@ -852,7 +852,7 @@ describe("runCouncilLoop — preemption of an addressed member (parallel mode)",
 
     const acornTurns = h.room.turns.filter((turn) => turn.memberName === "acorn");
     expect(acornTurns).toHaveLength(2);
-    // The first turn ended at the boundary on purpose — not an error.
+    // The first turn ended at the boundary on purpose  not an error.
     expect(acornTurns[0]!.record.status).toBe("preempted");
     expect(acornTurns[0]!.record.error).toBeNull();
     // Its partial transcript is kept on the turn.
@@ -945,7 +945,7 @@ describe("runCouncilLoop — preemption of an addressed member (parallel mode)",
   });
 });
 
-describe("runCouncilLoop — the owner speaking mid-run", () => {
+describe("runCouncilLoop  the owner speaking mid-run", () => {
   it("wakes the member the owner addressed while the room was working", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],
@@ -1031,7 +1031,7 @@ describe("runCouncilLoop — the owner speaking mid-run", () => {
   });
 });
 
-describe("runCouncilLoop — round-robin", () => {
+describe("runCouncilLoop  round-robin", () => {
   it("runs members in order, round after round, until a round is silent", async () => {
     const order: string[] = [];
     const h = harness({
@@ -1057,7 +1057,7 @@ describe("runCouncilLoop — round-robin", () => {
     const outcome = await h.run();
 
     expect(outcome.stopReason).toBe("no-pending-work");
-    // Round 1 posts, round 2 is silent — so each member takes exactly two turns.
+    // Round 1 posts, round 2 is silent  so each member takes exactly two turns.
     expect(order).toEqual(["acorn", "blade", "cobalt", "acorn", "blade", "cobalt"]);
     expect(outcome.turnCount).toBe(6);
     expect(h.room.messagesFrom("acorn")).toHaveLength(1);
@@ -1115,7 +1115,7 @@ describe("runCouncilLoop — round-robin", () => {
   });
 });
 
-describe("runCouncilLoop — the record it keeps", () => {
+describe("runCouncilLoop  the record it keeps", () => {
   it("records each turn's prompt inputs, transcript and cost", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn")],
@@ -1211,7 +1211,7 @@ describe("runCouncilLoop — the record it keeps", () => {
     const outcome = await h.run();
 
     expect(outcome.turnCount).toBe(3);
-    // 100 counted, one read failed, then the cumulative 350 — never 100+350.
+    // 100 counted, one read failed, then the cumulative 350  never 100+350.
     expect(outcome.inputTokens).toBe(350);
     expect(outcome.cost).toBeCloseTo(0.05);
     expect(h.room.progress.at(-1)).toMatchObject({ inputTokens: 350, turnCount: 3 });

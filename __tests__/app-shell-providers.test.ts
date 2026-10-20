@@ -9,14 +9,14 @@ import { describe, expect, it } from "vitest";
  * provider, so rendering them anywhere but the shell (`AppShell`) takes a whole
  * route down. That is exactly how every `/admin/*` page shipped broken
  * ("useSidebarNav must be used within a SidebarNavProvider"), with lint,
- * typecheck and the unit suite all green — none of them look at React context
+ * typecheck and the unit suite all green  none of them look at React context
  * wiring. This test does, statically, so the wiring cannot regress silently.
  */
 
 const REPO_ROOT = join(__dirname, "..");
 const SHELL = "src/components/layout/app-shell.tsx";
 
-/** Components that require `SidebarNavProvider` — only the shell may render them. */
+/** Components that require `SidebarNavProvider`  only the shell may render them. */
 const PROVIDER_BOUND_NAVS = ["<MobileNav", "<DashboardNav"];
 
 function walk(dir: string, files: string[] = []): string[] {
@@ -43,13 +43,13 @@ describe("app shell providers", () => {
       .filter((path) => {
         const source = readFileSync(join(REPO_ROOT, path), "utf-8");
         const rendersNav = PROVIDER_BOUND_NAVS.some((nav) => source.includes(nav));
-        // Handing the nav to the shell as a prop is fine — it renders inside.
+        // Handing the nav to the shell as a prop is fine  it renders inside.
         return rendersNav && !source.includes("<AppShell");
       });
 
     expect(
       offenders,
-      `${offenders.join(", ")} renders a nav that needs SidebarNavProvider — ` +
+      `${offenders.join(", ")} renders a nav that needs SidebarNavProvider  ` +
         `render it through AppShell (${SHELL}) instead`,
     ).toEqual([]);
   });

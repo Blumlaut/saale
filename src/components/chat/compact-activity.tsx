@@ -18,7 +18,7 @@ import type { ToolCallData } from "./types";
  * long turn grows without bound. Here a run of steps is summarised instead: the
  * newest reasoning shown inline (replaced as the next step starts) and one
  * running tool count. Both lines expand into the same detail the step-by-step
- * view shows, so nothing is lost — it is deferred.
+ * view shows, so nothing is lost. it is deferred.
  *
  * The count and the icons update in place rather than appending, which is what
  * keeps the transcript from growing while the turn is still running.
@@ -29,13 +29,13 @@ import type { ToolCallData } from "./types";
  * which is a blink.
  *
  * The leaf renderer and the mark are injected, so the share page gets the same
- * row with redacted leaves and category marks without any owner card — or the
- * routing table — becoming reachable from it.
+ * row with redacted leaves and category marks without any owner card. or the
+ * routing table. becoming reachable from it.
  */
 
 /** Characters of the newest reasoning shown before it is cut off. */
 const SNIPPET_CHARS = 80;
-/** Marks on screen at once — a sliding window over a run of any length. */
+/** Marks on screen at once. a sliding window over a run of any length. */
 const VISIBLE_MARKS = 3;
 /**
  * One slot: a mark (`h-3.5`) plus a 4px gap. In rem, so the pitch follows the
@@ -44,16 +44,16 @@ const VISIBLE_MARKS = 3;
 const SLOT_REM = 1.125;
 
 export interface CompactActivityProps {
-  /** The run's reasoning, oldest step first — one entry per step that reasoned. */
+  /** The run's reasoning, oldest step first. one entry per step that reasoned. */
   reasoning: readonly string[];
   /** The work those steps did, in call order. */
   toolCalls: readonly ToolCallData[];
   /**
-   * The turn this run belongs to is still being worked on — true across its tool
+   * The turn this run belongs to is still being worked on. true across its tool
    * runs, false once its final reply starts (that reply is its own block).
    */
   isActive: boolean;
-  /** How one call in the run renders — the owner's card, or the redacted one. */
+  /** How one call in the run renders. the owner's card, or the redacted one. */
   renderCall: ToolCallRenderer;
   /** How a call is marked in the sliding window. */
   markOf: (toolCall: ToolCallData) => ToolMark;
@@ -76,7 +76,7 @@ export function CompactActivity({
   );
 }
 
-/** "Thought process: …" — the newest reasoning, full text one click down. */
+/** "Thought process: …". the newest reasoning, full text one click down. */
 function ReasoningRow({
   reasoning,
   isActive,
@@ -85,7 +85,7 @@ function ReasoningRow({
   isActive: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // The step the row is currently showing is the newest one — so a replacement
+  // The step the row is currently showing is the newest one. so a replacement
   // is exactly a change in how many steps reasoned, never a token arriving.
   // Keying the line on that count replays the entrance when it is replaced and
   // leaves the streaming text alone, which is what makes it cheap.
@@ -130,7 +130,7 @@ function ReasoningRow({
   );
 }
 
-/** "Used 7 tools" — a running count and a sliding window of tool marks. */
+/** "Used 7 tools". a running count and a sliding window of tool marks. */
 function ToolsRow({
   toolCalls,
   renderCall: RenderCall,

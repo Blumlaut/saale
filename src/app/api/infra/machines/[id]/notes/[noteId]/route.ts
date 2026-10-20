@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * PATCH /api/infra/machines/[id]/notes/[noteId] — Update a note
+ * PATCH /api/infra/machines/[id]/notes/[noteId]. Update a note
  */
 export async function PATCH(
   request: NextRequest,
@@ -52,7 +52,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/infra/machines/[id]/notes/[noteId] — Delete a note
+ * DELETE /api/infra/machines/[id]/notes/[noteId]. Delete a note
  */
 export async function DELETE(
   _request: NextRequest,

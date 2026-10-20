@@ -22,7 +22,7 @@ const ROW_COLUMNS = {
 } as const;
 
 /**
- * GET /api/admin/providers — every provider Pi can talk to, and which of them
+ * GET /api/admin/providers. every provider Pi can talk to, and which of them
  * the global configuration has credentials for.
  */
 export async function GET() {
@@ -65,7 +65,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/admin/providers — configure the *global* OpenAI-compatible endpoint.
+ * POST /api/admin/providers. configure the *global* OpenAI-compatible endpoint.
  *
  * Every other provider is configured by signing in to it
  * (`POST /api/admin/providers/login`), because Pi owns how those providers
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Only the OpenAI-compatible endpoint is configured here — sign in to a provider instead",
+          "Only the OpenAI-compatible endpoint is configured here. sign in to a provider instead",
       },
       { status: 400 },
     );
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PATCH /api/admin/providers — Update the global endpoint's model defaults
+ * PATCH /api/admin/providers. Update the global endpoint's model defaults
  * without touching its API key (so the UI never has to re-submit a stored
  * credential).
  */
@@ -199,7 +199,7 @@ export async function PATCH(request: NextRequest) {
   });
 }
 
-/** DELETE /api/admin/providers — remove the global provider's credentials. */
+/** DELETE /api/admin/providers. remove the global provider's credentials. */
 export async function DELETE(request: NextRequest) {
   const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;

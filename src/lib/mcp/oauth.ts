@@ -147,7 +147,7 @@ function delay(ms: number): Promise<void> {
  * Run `fn` while no other process refreshes this server's tokens.
  *
  * Refresh tokens often rotate: two refreshes that both send the old token lose
- * the grant. The lock is best-effort — a refusal only lets two refreshes
+ * the grant. The lock is best-effort. a refusal only lets two refreshes
  * overlap, which the store's own "token changed meanwhile" check usually saves.
  */
 async function withRefreshLock<T>(serverId: string, fn: () => Promise<T>): Promise<T> {
@@ -437,7 +437,7 @@ export interface McpOAuthStartResult {
  * Begin a sign-in: discover the authorization server, register a client when
  * needed, and produce the URL the user's browser must open.
  *
- * A server whose grant is still refreshable is completed here instead — the
+ * A server whose grant is still refreshable is completed here instead. the
  * same rule Pi's CLI applies to `/mcp` sign-in.
  */
 export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOAuthStartResult> {

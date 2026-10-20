@@ -159,7 +159,7 @@ export function RunStatus({
   connected,
   enabledMemberCount,
 }: RunStatusProps) {
-  // Elapsed wall clock, ticked locally — the run's own start time is a timestamp.
+  // Elapsed wall clock, ticked locally. the run's own start time is a timestamp.
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!running || !run?.startedAt) {
@@ -190,7 +190,7 @@ export function RunStatus({
         {councilStatus === "waiting" && (
           <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
             <UserCheck className="h-3 w-3" />
-            The room is waiting for you — reply below to continue.
+            The room is waiting for you. reply below to continue.
           </span>
         )}
         {stopLabel && !running && (
@@ -267,7 +267,7 @@ function numberOrUndefined(value: string): number | undefined {
 }
 
 /**
- * Convene — starts a run, with an optional per-run budget that overrides the
+ * Convene. starts a run, with an optional per-run budget that overrides the
  * council's own for this run only. Left blank, the council's ceilings apply.
  */
 export function ConveneButton({ disabled, pending, onConvene, defaults }: ConveneButtonProps) {

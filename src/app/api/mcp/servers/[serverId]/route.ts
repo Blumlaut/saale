@@ -19,7 +19,7 @@ async function findOwnedServer(userId: string, serverId: string) {
 }
 
 /**
- * PATCH /api/mcp/servers/:serverId — update a server.
+ * PATCH /api/mcp/servers/:serverId. update a server.
  *
  * An omitted field keeps its current value; `token: ""` clears the stored
  * token, any other string replaces it.
@@ -102,7 +102,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/mcp/servers/:serverId — remove a server.
+ * DELETE /api/mcp/servers/:serverId. remove a server.
  */
 export async function DELETE(
   _request: NextRequest,

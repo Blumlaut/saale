@@ -5,14 +5,14 @@
  * (`mail_send`, `mcp__docs__search`) or, when the name is not a valid
  * identifier, by the raw name (`tools["my-tool"]`). Both forms are read here.
  *
- * The source is the only record of a script's tool use — the calls it makes are
- * not assistant message content, so they are gone on reload — which is why the
+ * The source is the only record of a script's tool use. the calls it makes are
+ * not assistant message content, so they are gone on reload. which is why the
  * transcript card and the approval gate read the same source through this same
  * module.
  *
  * This is a lexical read, not a parse: a name the source merely mentions (in a
  * string, in a comment, assigned to a variable and called later) counts as
- * reached. That is deliberate — the only way to be wrong is to cover a call that
+ * reached. That is deliberate. the only way to be wrong is to cover a call that
  * never happens.
  */
 
@@ -34,7 +34,7 @@ const DYNAMIC_REFERENCE = /\btools\s*\[(?!\s*["'])|(?:\bALL_TOOLS\b|\bsearchTool
 export interface ScriptToolReferences {
   /**
    * Keys the script indexes `tools` with, in first-use order and without
-   * duplicates. A key is an identifier or a raw tool name — only the registry
+   * duplicates. A key is an identifier or a raw tool name. only the registry
    * knows which tool either one means (see the codemode approval gate).
    */
   keys: string[];
@@ -61,15 +61,15 @@ export function readScriptToolReferences(code: string): ScriptToolReferences {
  * Tool names the script's keys name.
  *
  * A key is the tool's codemode identifier (`mail_send`, `mcp__docs__search`) or
- * its raw name (`tools["my-tool"]`), and one string can be both — `my-tool`
- * becomes the identifier `my_tool`, which another tool may already be called —
+ * its raw name (`tools["my-tool"]`), and one string can be both. `my-tool`
+ * becomes the identifier `my_tool`, which another tool may already be called
  * so a key resolves to every name it could mean. Covering a name the script
  * never calls costs nothing; missing one it does call is what puts a call the
  * user already approved back in front of them.
  *
  * Shared by every caller that has to decide what a script reaches: the chat
  * approval gate, the transcript card, and a watcher's tool grant. They must
- * agree — a script the gate reads one way and a grant reads another is exactly
+ * agree. a script the gate reads one way and a grant reads another is exactly
  * the disagreement this module exists to make impossible.
  */
 export function resolveReferencedTools(

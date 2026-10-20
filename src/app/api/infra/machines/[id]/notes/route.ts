@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/infra/machines/[id]/notes — List notes for a machine
+ * GET /api/infra/machines/[id]/notes. List notes for a machine
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 /**
- * POST /api/infra/machines/[id]/notes — Create a note
+ * POST /api/infra/machines/[id]/notes. Create a note
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();

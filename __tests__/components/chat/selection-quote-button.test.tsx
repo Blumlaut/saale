@@ -5,7 +5,7 @@ import { render, screen, fireEvent, act, cleanup } from "@testing-library/react"
 import { useRef } from "react";
 import { SelectionQuoteButton } from "@/components/chat/selection-quote-button";
 
-// jsdom does not implement Range.getBoundingClientRect — browsers always
+// jsdom does not implement Range.getBoundingClientRect  browsers always
 // do. The button only needs *some* rect to compute its (unasserted) offset.
 Range.prototype.getBoundingClientRect = function () {
   return {
@@ -179,7 +179,7 @@ describe("SelectionQuoteButton", () => {
     selectText(message, 4, 9);
 
     const button = screen.getByRole("button", { name: "Quote selection into your reply" });
-    // Below-placement (28px) would hang off the 30px-tall panel — clamp it in.
+    // Below-placement (28px) would hang off the 30px-tall panel  clamp it in.
     expect(button.style.top).toBe("6px");
   });
 

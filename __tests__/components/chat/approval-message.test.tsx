@@ -32,13 +32,13 @@ describe("ApprovalMessage", () => {
     render(
       <ApprovalMessage
         sessionId="cs-1"
-        approval={makeApproval({ summary: 'Send email to jane@example.com — "Re: Invoice"' })}
+        approval={makeApproval({ summary: 'Send email to jane@example.com. "Re: Invoice"' })}
         onResolved={() => {}}
       />,
     );
 
     expect(screen.getByText("Send Email")).toBeInTheDocument();
-    expect(screen.getByText('Send email to jane@example.com — "Re: Invoice"')).toBeInTheDocument();
+    expect(screen.getByText('Send email to jane@example.com. "Re: Invoice"')).toBeInTheDocument();
     expect(screen.getByText("Awaiting approval")).toBeInTheDocument();
   });
 
@@ -134,7 +134,7 @@ describe("ApprovalMessage", () => {
     render(<ApprovalMessage sessionId="cs-1" approval={makeApproval()} onResolved={() => {}} />);
 
     // No server summary → the argument-derived one from the catalog
-    expect(screen.getByText('Send email to jane@example.com — "Re: Invoice"')).toBeInTheDocument();
+    expect(screen.getByText('Send email to jane@example.com. "Re: Invoice"')).toBeInTheDocument();
   });
 
   it("falls back to the raw tool name and humanized keys for unknown tools", () => {

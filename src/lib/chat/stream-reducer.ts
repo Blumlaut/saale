@@ -43,9 +43,9 @@ export type StreamAction =
   | { type: "turn_end"; turnId: string; text?: string; thinking?: string | null }
   /** `receivedAt` is the client clock when the event arrived (see `Message.savedAt`). */
   | { type: "message_saved"; turnId: string; messageId: string; receivedAt?: number }
-  /** The SDK discarded a failed turn to retry it — drop the live bubble. */
+  /** The SDK discarded a failed turn to retry it. drop the live bubble. */
   | { type: "turn_discarded"; turnId: string; messageId: string | null }
-  /** Generation finished (done/error) — drop live streaming turns. */
+  /** Generation finished (done/error). drop live streaming turns. */
   | { type: "generation_done" };
 
 export interface StreamState {
@@ -132,7 +132,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           }),
         };
       }
-      // Dedupe — the same tool call may be re-delivered on reconnect.
+      // Dedupe. the same tool call may be re-delivered on reconnect.
       if (existing.toolCalls?.some((tc) => tc.id === action.toolCallId)) return state;
       return {
         ...state,
@@ -229,7 +229,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         // this turn: `agent_end` finalizes a run by updating an existing row,
         // and a reload can deliver that row while its turn still streams. Its
         // text and reasoning are the newest, so move them onto the row and drop
-        // the bubble — dropping the content instead blanks the step until the
+        // the bubble. dropping the content instead blanks the step until the
         // next reload, and keeping both duplicates the row.
         return {
           rootMessageId,
@@ -243,7 +243,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
                 thinking: turn.thinking,
                 errorMessage: turn.errorMessage ?? m.errorMessage,
                 // The row carries this turn now, so the turn's later events have
-                // to find it — unless it is already identified by its own turn.
+                // to find it. unless it is already identified by its own turn.
                 turnId: m.turnId ?? turn.turnId,
               },
             ];

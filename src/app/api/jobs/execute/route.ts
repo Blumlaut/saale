@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    // Minimal job stub — processJob only accesses job.data
+    // Minimal job stub. processJob only accesses job.data
     const mockJob = {
       id: typeof jobId === "number" ? jobId : Number(jobId),
       name: "execute",

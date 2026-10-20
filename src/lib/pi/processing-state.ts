@@ -15,12 +15,12 @@ import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
 /**
- * Identity and response-style rules — always present, independent of tools.
+ * Identity and response-style rules. always present, independent of tools.
  */
 const IDENTITY_PROMPT = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
 
 Guidelines:
-- Be concise and direct — get to the point without unnecessary preamble.
+- Be concise and direct. get to the point without unnecessary preamble.
 - Write naturally, like a capable colleague, not a generic AI.
 - Use bullet points or short paragraphs when listing things.
 - When uncertain, say so briefly rather than guessing.
@@ -31,7 +31,7 @@ Guidelines:
  *
  * Most categories are hidden behind codemode by default, and Pi's own
  * "use codemode to batch calls" guideline only exists in its default system
- * prompt — which a custom prompt replaces. Without this, the model sees the
+ * prompt. which a custom prompt replaces. Without this, the model sees the
  * `codemode` tool but is never told that the tools it needs are inside it.
  *
  * The line about results is what keeps a payload out of the script text: a
@@ -39,12 +39,12 @@ Guidelines:
  * run by the time that is discovered.
  */
 export const TOOLS_PROMPT = `Tool use:
-Most of your tools are not listed to you. The ones that are listed are entry points to their area, not the whole set: before you act in an area whose tools you cannot see, and before you tell the user you cannot do something, look for them. Reach every tool by writing a short JavaScript script with the \`codemode\` tool — \`await tools.<name>({ ...args })\` — and call \`await searchTools("what you need")\` inside it to find the rest (\`ALL_TOOLS\` lists everything), including the tools of the user's MCP servers. Batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. Only the script's output comes back to you.
-A call resolves to the tool's value, so read its fields (\`r.exitCode\`, \`r.stdout\`) rather than matching text against the whole result — a result echoes the arguments it was called with. Keep a result in a variable, or carry it into a later script with \`store(key, value)\` and \`load(key)\`; never paste it into the script text, where one stray quote or brace stops the script parsing.`;
+Most of your tools are not listed to you. The ones that are listed are entry points to their area, not the whole set: before you act in an area whose tools you cannot see, and before you tell the user you cannot do something, look for them. Reach every tool by writing a short JavaScript script with the \`codemode\` tool. \`await tools.<name>({ ...args })\`. and call \`await searchTools("what you need")\` inside it to find the rest (\`ALL_TOOLS\` lists everything), including the tools of the user's MCP servers. Batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. Only the script's output comes back to you.
+A call resolves to the tool's value, so read its fields (\`r.exitCode\`, \`r.stdout\`) rather than matching text against the whole result. a result echoes the arguments it was called with. Keep a result in a variable, or carry it into a later script with \`store(key, value)\` and \`load(key)\`; never paste it into the script text, where one stray quote or brace stops the script parsing.`;
 
 /** Capability: shell + files via the terminal tool. */
-const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. Files the user uploads in chat are placed in the \`uploads/\` directory of the working directory — read them from there when the user refers to an attached file.
-Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes — each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.`;
+const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. Files the user uploads in chat are placed in the \`uploads/\` directory of the working directory. read them from there when the user refers to an attached file.
+Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes. each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.`;
 
 /** Capability: persistent memory. Defaults on. */
 const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, use \`memory_search\` to look it up before answering; \`memory_index\` lists what collections exist. Save durable facts and preferences the user states with \`memory_create\`, correct or extend what you already hold with \`memory_update\`, and \`memory_delete\` removes a memory that is wrong or stale.`;
@@ -60,24 +60,24 @@ const MEMORY_PROMPT = `You have a persistent memory system. If the user referenc
  * repeat the contract because agent jobs run on their own system prompt.
  */
 const INFRA_PROMPT = `Infrastructure notes:
-You can manage the user's registered machines over SSH. Each machine has a set of notes: the durable record of what that machine is right now — services, paths, configuration, quirks and credentials. Read them (\`infra_notes_list\`) before you inspect or change a machine; they are the source of truth, not a scratchpad.
+You can manage the user's registered machines over SSH. Each machine has a set of notes: the durable record of what that machine is right now. services, paths, configuration, quirks and credentials. Read them (\`infra_notes_list\`) before you inspect or change a machine; they are the source of truth, not a scratchpad.
 
 Files move between a machine and your workspace with \`infra_download_file\` (into the workspace, where the local file tools can read and change them) and \`infra_upload_file\` (back to the machine). Use them for binary files and files too large to read as text.
 
 When you write or update a note:
-- Record only facts you have verified are true now. Never record plans, intentions, TODOs, proposals or "we should…" — if it is not in place yet, it is not a note.
-- Record stable facts, not values that move on their own: ephemeral addresses, process IDs, free-disk figures, raw command output, or a version mid-upgrade. Capture the durable truth underneath — "nginx serves :80 on the docker network", not the output of the command that revealed it.
+- Record only facts you have verified are true now. Never record plans, intentions, TODOs, proposals or "we should…". if it is not in place yet, it is not a note.
+- Record stable facts, not values that move on their own: ephemeral addresses, process IDs, free-disk figures, raw command output, or a version mid-upgrade. Capture the durable truth underneath. "nginx serves :80 on the docker network", not the output of the command that revealed it.
 - Keep each topic in exactly one note. List the machine's notes first and update the matching note by id; create a new note only when no existing note covers the topic.
 - A stale note is worse than no note. When reality changes, rewrite the affected note in the same turn; when a note stops being true and nothing replaces it, delete it.
 - Not every task earns a note. Write one only when you have learned durable knowledge that is not already recorded.`;
 
 /** Capability: reaching the user on Telegram between conversations. */
-const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram_send\` — it goes to their own Telegram chat, and the recipient cannot be chosen. It is the only way to tell them something after this conversation ends, so use it whenever they ask to be reminded or told about something. It arrives on their phone: keep it short, self-contained, and only send it when it is worth interrupting them.`;
+const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram_send\`. it goes to their own Telegram chat, and the recipient cannot be chosen. It is the only way to tell them something after this conversation ends, so use it whenever they ask to be reminded or told about something. It arrives on their phone: keep it short, self-contained, and only send it when it is worth interrupting them.`;
 
 /**
  * Capability: giving an outreach message a time to go out.
  *
- * Only composed when agent jobs are available too — a message that must be sent
+ * Only composed when agent jobs are available too. a message that must be sent
  * later needs a schedule behind it, and naming `agent_job_create` to a session
  * without it would describe a tool the model cannot call.
  */
@@ -100,8 +100,8 @@ export function buildAgentSystemPrompt(options: {
 
   // Resolve through the category registry, exactly as `resolveTools` does: an
   // absent key means the category sits at its default, not off. Reading the raw
-  // snapshot with `=== true` dropped the Terminal block — and with it any mention
-  // of `write` — for every chat whose stored `toolConfig` was null.
+  // snapshot with `=== true` dropped the Terminal block. and with it any mention
+  // of `write`. for every chat whose stored `toolConfig` was null.
   const terminalEnabled =
     isCategoryEnabled(toolConfig, "terminal") ||
     toolConfig.files === true ||
@@ -129,11 +129,11 @@ export function buildAgentSystemPrompt(options: {
  * pi v0.86 derives the system prompt from the resource loader: the loader's
  * `systemPrompt` becomes the prompt's preamble section and is replayed from
  * the transcript, so it survives the SDK's per-turn prompt resolution. Pass
- * the result to `createAgentSession` as `resourceLoader` — it does NOT reload
+ * the result to `createAgentSession` as `resourceLoader`. it does NOT reload
  * a caller-provided loader, hence the `reload()` here.
  *
  * Discovery (extensions, skills, prompt templates, themes, context files) is
- * disabled — Saale builds its own prompts and runs headless — along with the
+ * disabled. Saale builds its own prompts and runs headless. along with the
  * host's Pi settings (see `createSessionSettings`).
  *
  * For sessions that can call tools, use `createAgentResourceLoader` (this is
@@ -161,7 +161,7 @@ export interface AgentResourceOptions {
   /**
    * The user behind the tools Pi registers after the session exists.
    *
-   * `codemode` comes from its extension and MCP tools from the user's servers —
+   * `codemode` comes from its extension and MCP tools from the user's servers
    * both are registered at `session_start`, so neither passes through
    * `wrapTool` and each needs a gate of its own. Passing this connects those
    * servers and gates every registered tool with the user's approval policies;
@@ -225,7 +225,7 @@ export async function createAgentResourceLoader(
     noThemes: true,
     noContextFiles: true,
     // An empty list, not an omitted option: Pi otherwise *discovers*
-    // `<agentDir>/APPEND_SYSTEM.md`, which is `getAgentDir()` — the host's Pi
+    // `<agentDir>/APPEND_SYSTEM.md`, which is `getAgentDir()`. the host's Pi
     // directory. Its owner's text would be appended to every tenant's prompt.
     appendSystemPrompt: [],
   });
@@ -240,7 +240,7 @@ export const DEFAULT_EXTENSION_TOOLS = ["codemode"];
  * Start a session's extensions and enable the tools Saale runs with them.
  *
  * Pi emits `session_start` only from `bindExtensions()`; without this call the
- * extensions never activate — the user's MCP servers never connect and Pi's
+ * extensions never activate. the user's MCP servers never connect and Pi's
  * `codemode` tool (registered inactive) is never enabled. It must run once per
  * session, after `createAgentSession`.
  */

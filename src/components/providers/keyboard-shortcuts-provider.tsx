@@ -23,37 +23,37 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
       const tag = (e.target as HTMLElement)?.tagName;
       const isInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 
-      // Cmd/Ctrl + N — New chat
+      // Cmd/Ctrl + N. New chat
       if (mod && e.key.toLowerCase() === "n") {
         e.preventDefault();
         router.push("/dashboard/chat");
       }
 
-      // Cmd/Ctrl + 1 — Chat
+      // Cmd/Ctrl + 1. Chat
       if (mod && e.key === "1") {
         e.preventDefault();
         router.push("/dashboard/chat");
       }
 
-      // Cmd/Ctrl + 2 — Mail
+      // Cmd/Ctrl + 2. Mail
       if (mod && e.key === "2") {
         e.preventDefault();
         router.push("/dashboard/mail");
       }
 
-      // Cmd/Ctrl + 3 — Jobs
+      // Cmd/Ctrl + 3. Jobs
       if (mod && e.key === "3") {
         e.preventDefault();
         router.push("/dashboard/jobs");
       }
 
-      // Cmd/Ctrl + , — Settings
+      // Cmd/Ctrl + ,. Settings
       if (mod && e.key === ",") {
         e.preventDefault();
         router.push("/dashboard/settings");
       }
 
-      // / — Focus search (when not in input)
+      // /. Focus search (when not in input)
       if (e.key === "/" && !isInput) {
         e.preventDefault();
         // Dispatch custom event for search bar to listen

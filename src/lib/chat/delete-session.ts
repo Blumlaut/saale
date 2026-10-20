@@ -1,10 +1,10 @@
 /**
- * Deleting a chat — shared by the delete route (the sidebar action, the
+ * Deleting a chat. shared by the delete route (the sidebar action, the
  * sendBeacon on tab close) and the `chat_delete` tool, so a chat removed by an
  * agent is cleaned up exactly like one removed from the UI.
  *
  * Order of operations:
- * 1. Verify ownership (`userId` in the query — an id-only delete would let a
+ * 1. Verify ownership (`userId` in the query. an id-only delete would let a
  *    guessed id remove another user's chat)
  * 2. Delete attachment files from disk (fails fast, leaving the DB intact)
  * 3. Delete the session row (cascade removes messages + attachment records +
@@ -54,7 +54,7 @@ export async function deleteChatSession(userId: string, sessionId: string): Prom
   }
 
   // The cascade removes the watcher rows, but their tick schedulers are BullMQ
-  // state the database cannot reach — collect the ids before, unschedule after.
+  // state the database cannot reach. collect the ids before, unschedule after.
   const watcherIds = await prisma.scriptWatcher
     .findMany({ where: { sessionId, userId }, select: { id: true } })
     .then((watchers) => watchers.map((watcher) => watcher.id));
@@ -82,7 +82,7 @@ export async function deleteChatSession(userId: string, sessionId: string): Prom
  * Delete several of a user's chats.
  *
  * A chat that cannot be removed (an id from another account, a file that will
- * not unlink) must not abort the batch — the caller gets back what went and
+ * not unlink) must not abort the batch. the caller gets back what went and
  * what did not, so it can leave the failures selected for a retry.
  */
 export async function deleteChatSessions(

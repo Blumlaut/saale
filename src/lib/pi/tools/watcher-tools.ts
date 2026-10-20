@@ -17,7 +17,7 @@ import { previewScript, previewWatcherTick } from "@/lib/watchers/tick";
  *
  * A watcher is a durable, unattended capability: its script runs on a schedule
  * and can call the user's tools without anyone watching. Managing one runs on
- * the model's own say-so — testing runs in a sandbox without recording or
+ * the model's own say-so. testing runs in a sandbox without recording or
  * waking anyone, and deleting only stops a tick the user can recreate. The gate
  * is the *script* instead: a script whose calls need approval is created locked
  * and starts running when the user approves it on the Watchers page, and a
@@ -35,7 +35,7 @@ const SCRIPT_CONTRACT = [
   "(`ALL_TOOLS` lists every tool); a tool reached that way cannot be read from the source,",
   "so the user approves every tool the script could call instead of the ones it names.",
   "A call resolves to the tool's value, so read its fields (`r.exitCode`, `r.stdout`).",
-  "Never match a marker against a whole result — it echoes the arguments it was called with —",
+  "Never match a marker against a whole result. it echoes the arguments it was called with ",
   "and never paste a result into the script text: keep it in a variable, or in `store()`.",
   "Timers, `fetch`, `require` and `process` do not exist.",
 ].join(" ");
@@ -204,7 +204,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         sessionId: Type.Optional(
           Type.String({
             description:
-              "The conversation the script will report into — scopes chat-aware tools. Defaults to this conversation.",
+              "The conversation the script will report into. scopes chat-aware tools. Defaults to this conversation.",
           }),
         ),
       }),
@@ -256,7 +256,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
     defineStructuredTool({
       name: "watcher_create",
       label: "Create Watcher",
-      description: `Create a script watcher: it runs a script on a cron schedule and wakes you only when the script returns something. Use it for anything you would otherwise poll for on a timer — checking a mailbox, a remote host, a feed — where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} A script that calls a tool needing approval is created paused: the watcher starts ticking once the user approves its script on the Watchers page, so tell them it is waiting. A script that only calls tools which never ask runs from the moment you create it.`,
+      description: `Create a script watcher: it runs a script on a cron schedule and wakes you only when the script returns something. Use it for anything you would otherwise poll for on a timer. checking a mailbox, a remote host, a feed. where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} A script that calls a tool needing approval is created paused: the watcher starts ticking once the user approves its script on the Watchers page, so tell them it is waiting. A script that only calls tools which never ask runs from the moment you create it.`,
       parameters: Type.Object({
         name: Type.String({ description: "Watcher name (max 100 chars, unique per user)." }),
         script: Type.String({ description: `The script body. ${SCRIPT_CONTRACT}` }),
@@ -411,7 +411,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
       name: "watcher_ticks",
       label: "Watcher Tick Log",
       description:
-        "Read a watcher's recent ticks — what its script returned, what it printed, and any error. This is how to see why a watcher is not reporting: a predicate that never matches looks the same as nothing happening.",
+        "Read a watcher's recent ticks. what its script returned, what it printed, and any error. This is how to see why a watcher is not reporting: a predicate that never matches looks the same as nothing happening.",
       parameters: Type.Object({
         watcherId: Type.String({ description: "Watcher id." }),
         limit: Type.Optional(Type.Number({ description: "How many ticks to read (default 10)." })),

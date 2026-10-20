@@ -139,7 +139,7 @@ describe("System-managed agent definitions", () => {
       expect(response.status).toBe(200);
       const call = mockAgentDefinition.create.mock.calls[0]![0];
       expect(call.data.runAt).toEqual(new Date("2026-05-01T15:00:00Z"));
-      // runAt wins over cron — one-off and recurring are mutually exclusive
+      // runAt wins over cron  one-off and recurring are mutually exclusive
       expect(call.data.cronExpression).toBeNull();
     });
 

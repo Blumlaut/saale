@@ -2,7 +2,7 @@
  * Stopping a run that is already in flight.
  *
  * A run's loop lives in the web process and holds model calls open for minutes,
- * so "stop" cannot be a database write the loop notices at leisure — it has to
+ * so "stop" cannot be a database write the loop notices at leisure. it has to
  * reach the loop wherever it is running. A Redis flag does that regardless of
  * which replica handled the route or whether the run was dispatched by the
  * watchdog, and it is checked both at every turn boundary and by the in-flight

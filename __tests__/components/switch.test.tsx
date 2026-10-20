@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
  * thumb MUST also be fixed pixel sized (`size-[16px]` / `size-[12px]`). A rem-based
  * thumb (`size-4` / `size-3`) shrinks with the responsive root font-size on mobile
  * (14px vs 17px on desktop), and since the checked translate is `calc(100% - 2px)`
- * — a percentage of the thumb's own width — the thumb ends up short of the track's
+ *  a percentage of the thumb's own width  the thumb ends up short of the track's
  * right edge on small viewports (the "switch circle not at the very right edge" bug).
  */
 function expectFixedPxThumb(root: Element, expected: "16px" | "12px") {

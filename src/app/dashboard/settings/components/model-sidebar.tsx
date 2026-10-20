@@ -10,7 +10,7 @@ import { DEFAULT_THINKING_LEVEL_SETTING, thinkingLevelOptionsFor } from "@/lib/p
 import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
 import type { UserSettings } from "../types";
 
-/** Icons are presentation-only — the level list itself lives in one place. */
+/** Icons are presentation-only. the level list itself lives in one place. */
 const THINKING_LEVEL_ICONS: Record<string, typeof Zap> = {
   default: Sparkles,
   off: Zap,

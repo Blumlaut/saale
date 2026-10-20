@@ -15,7 +15,7 @@ export interface LongPressHandlers {
   onPointerUp: () => void;
   onPointerCancel: () => void;
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
-  /** The gesture that just ended was a hold. Consumes the flag — call it once, first thing in `onClick`. */
+  /** The gesture that just ended was a hold. Consumes the flag. call it once, first thing in `onClick`. */
   consumeLongPress: () => boolean;
 }
 
@@ -23,7 +23,7 @@ export interface LongPressHandlers {
  * Press-and-hold gesture for touch (and pen) rows.
  *
  * Pointer events cover mouse, touch and pen with one code path. The hold is
- * dropped when the finger moves — that is a scroll, not a selection — and the
+ * dropped when the finger moves. that is a scroll, not a selection. and the
  * browser's own long-press menu is suppressed on touch so it cannot cover the
  * list that is being selected.
  */
@@ -35,7 +35,7 @@ export function useLongPress(onLongPress: () => void): LongPressHandlers {
   const heldRef = useRef(false);
 
   // Read the latest handler when the timer fires, not the one from the render
-  // that started the press — a re-render in between must not replay stale state.
+  // that started the press. a re-render in between must not replay stale state.
   useEffect(() => {
     handlerRef.current = onLongPress;
   });

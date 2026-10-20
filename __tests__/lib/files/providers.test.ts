@@ -150,7 +150,7 @@ describe("local file provider", () => {
     });
 
     await provider.remove(path.join(root, "notes"));
-    // A folder an agent deleted is gone, not empty — the same thing the
+    // A folder an agent deleted is gone, not empty  the same thing the
     // terminal backend reports, so the UI can say so once.
     await expect(provider.list(path.join(root, "notes"))).rejects.toThrow(/ENOENT/);
   });

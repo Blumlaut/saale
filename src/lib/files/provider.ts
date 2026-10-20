@@ -1,8 +1,8 @@
 /**
  * The workspace abstraction the file browser is built on.
  *
- * A provider answers the same questions for every backend — list, stat, read,
- * write, create, rename, remove — so the routes, the zip builder and the UI
+ * A provider answers the same questions for every backend. list, stat, read,
+ * write, create, rename, remove. so the routes, the zip builder and the UI
  * never learn whether the bytes live in the terminal container or in the app's
  * own uploads volume. Adding "a user's own files" later is a third
  * implementation, not a second browser.

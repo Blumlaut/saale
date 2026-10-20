@@ -11,7 +11,7 @@ import { Loader2, Send } from "lucide-react";
 export interface ComposerProps {
   councilId: string;
   members: CouncilMemberView[];
-  /** The room is working — the message joins the run in flight. */
+  /** The room is working. the message joins the run in flight. */
   running: boolean;
   /** The room paused on a question addressed to the owner. */
   waiting: boolean;
@@ -70,7 +70,7 @@ export function Composer({ councilId, members, running, waiting, onPosted }: Com
             waiting
               ? "Answer the room to resume the run…"
               : running
-                ? "Steer the council — a message wakes whoever it addresses…"
+                ? "Steer the council. a message wakes whoever it addresses…"
                 : "Give the council something to do…"
           }
           rows={2}

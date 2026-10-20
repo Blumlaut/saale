@@ -14,7 +14,7 @@ import {
 } from "@/lib/mcp/shared";
 
 /**
- * GET /api/mcp/servers — the user's configured MCP servers.
+ * GET /api/mcp/servers. the user's configured MCP servers.
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -36,7 +36,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/mcp/servers — add a server.
+ * POST /api/mcp/servers. add a server.
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

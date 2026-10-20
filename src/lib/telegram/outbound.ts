@@ -13,7 +13,7 @@ const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
  * follow-up reply has context.
  *
  * Jobs run in their own in-memory Pi session, so without this the Telegram
- * chat agent never sees what the job told the user — replying to the message
+ * chat agent never sees what the job told the user. replying to the message
  * reads as amnesia. Recording it:
  *
  *  - writes a `ChatMessage` row (assistant) so the web UI shows the same
@@ -24,7 +24,7 @@ const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
  *    message for the model).
  *
  * No-ops when the user has no link or the link has no session yet (they have
- * never messaged the bot) — there is nothing to attach the message to, and the
+ * never messaged the bot). there is nothing to attach the message to, and the
  * reply-to context injection covers that case.
  */
 export async function recordTelegramJobOutput(params: {
@@ -43,7 +43,7 @@ export async function recordTelegramJobOutput(params: {
     data: { sessionId, role: "assistant", content },
   });
 
-  // New chat content — advance lastActivityAt so the session list sorts it
+  // New chat content. advance lastActivityAt so the session list sorts it
   // correctly and the chat's expiry window restarts.
   await prisma.chatSession
     .update({ where: { id: sessionId }, data: { lastActivityAt: new Date() } })

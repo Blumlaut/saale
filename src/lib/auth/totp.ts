@@ -7,12 +7,12 @@ const BASE32_RE = /^[A-Z2-7]+$/;
 
 /**
  * Extract the base32 secret from an `otpauth://` URI.
- * Returns null when the URI is malformed or carries no usable secret —
+ * Returns null when the URI is malformed or carries no usable secret
  * the UI must fall back to asking for a fresh URI instead of guessing.
  */
 export function parseTotpSecret(totpUri: string): string | null {
   // `otpauth:` is a non-special URL scheme, so the type segment ("totp")
-  // is not part of the pathname — parse the query string directly.
+  // is not part of the pathname. parse the query string directly.
   if (typeof totpUri !== "string" || !totpUri.startsWith("otpauth://totp/")) return null;
   const queryIndex = totpUri.indexOf("?");
   if (queryIndex === -1) return null;

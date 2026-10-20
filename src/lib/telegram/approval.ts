@@ -53,7 +53,7 @@ export async function sendTelegramApprovalRequest(
     (covered.length > 0
       ? `\n\n<b>One approval covers:</b> ${escapeHtml(covered.join(", "))}` +
         (request.batch?.dynamic
-          ? `\n<i>It can also call tools by name — those ask on their own.</i>`
+          ? `\n<i>It can also call tools by name. those ask on their own.</i>`
           : "")
       : "") +
     `\n\n<code>${escapeHtml(request.toolName)}</code> · session ${request.sessionId.slice(0, 8)}...\n\n` +
@@ -101,7 +101,7 @@ export async function sendTelegramApprovalRequest(
  * Delete a previously sent approval card.
  *
  * Deletion is owned by the run that sent the card (see
- * createApprovalCardTracker) — the card goes away when the approval
+ * createApprovalCardTracker). the card goes away when the approval
  * resolves on ANY path (Telegram button, web UI, timeout, interrupt).
  */
 export async function deleteTelegramApprovalMessage(
@@ -121,14 +121,14 @@ export async function deleteTelegramApprovalMessage(
  *
  * User isolation: the press must come from the Telegram account linked to the
  * user who owns the session. One bot serves every user, so the card's presence
- * proves nothing — a forwarded message keeps its buttons, and without this
+ * proves nothing. a forwarded message keeps its buttons, and without this
  * check any user of the bot could resolve someone else's approval. The
  * `telegramUserId` comes from Telegram's own callback payload, not from
  * anything the sender can forge.
  *
  * The approval card itself is deleted by the run's card tracker (which
  * observes the `tool_approval_resolved` session bus event this resolution
- * publishes) — not here — so every resolution path removes the card.
+ * publishes). not here. so every resolution path removes the card.
  *
  * @returns true if the callback was handled, false if it was not an approval callback.
  */

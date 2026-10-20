@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { resolveImagePath } from "@/lib/image-attachment";
 
 /**
- * GET /api/chat/attachments/:id — Serve a stored image attachment.
+ * GET /api/chat/attachments/:id. Serve a stored image attachment.
  *
  * Authenticates the user, verifies ownership of the parent chat session,
  * and serves the file with appropriate caching headers.
@@ -42,7 +42,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return new NextResponse("Not found", { status: 404 });
   }
 
-  // Resolve the user from the chat session (not the auth session — could differ if sharing)
+  // Resolve the user from the chat session (not the auth session. could differ if sharing)
   const userId = attachment.message.session.userId;
 
   try {
@@ -53,7 +53,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       "Content-Type": attachment.mimeType,
       "Cache-Control": "public, max-age=86400, immutable",
       "Content-Length": String(buffer.length),
-      // Attachments can be any file type the user uploaded — never let the
+      // Attachments can be any file type the user uploaded. never let the
       // browser sniff the content into something executable.
       "X-Content-Type-Options": "nosniff",
     };

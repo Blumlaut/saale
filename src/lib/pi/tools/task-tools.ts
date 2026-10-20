@@ -9,7 +9,7 @@ import {
   findDuplicateTasks,
 } from "@/lib/tasks/task-api-helpers";
 
-/** A task as every task tool reports it — the shared wire shape from taskToResponse. */
+/** A task as every task tool reports it. the shared wire shape from taskToResponse. */
 const taskSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -132,7 +132,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
       name: "task_update",
       label: "Update Task",
       description:
-        "Update an existing task — change title, priority, due date, or mark as completed.",
+        "Update an existing task. change title, priority, due date, or mark as completed.",
       parameters: Type.Object({
         taskId: Type.String({ description: "Task ID." }),
         title: Type.Optional(Type.String()),
@@ -217,7 +217,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
         ),
         dueBefore: Type.Optional(
           Type.String({
-            description: "ISO date — tasks due before this date.",
+            description: "ISO date. tasks due before this date.",
           }),
         ),
         tag: Type.Optional(Type.String({ description: "Filter by tag." })),
@@ -274,7 +274,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
           };
         }
 
-        // No query — use Prisma ORM for structured filters
+        // No query. use Prisma ORM for structured filters
         const where: Record<string, unknown> = { userId };
 
         if (params.status) where.status = params.status;
@@ -306,7 +306,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
     defineStructuredTool({
       name: "task_delete",
       label: "Delete Task",
-      description: "Permanently delete a task. Use sparingly — prefer marking as completed.",
+      description: "Permanently delete a task. Use sparingly. prefer marking as completed.",
       parameters: Type.Object({
         taskId: Type.String({ description: "Task ID." }),
       }),

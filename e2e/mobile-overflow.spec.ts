@@ -9,10 +9,10 @@ import { COUNCIL_ROUTES, mockCouncilWorkspace } from "./council-mocks";
  * Runs every dashboard/admin route at phone widths and asserts the app-shell
  * contract from AGENTS.md ("No External Scroll"):
  *
- *   1. The body/viewport never scrolls — all scrolling is internal.
+ *   1. The body/viewport never scrolls  all scrolling is internal.
  *   2. No element may extend past the right edge of the viewport unless it is
  *      contained by a scrollable ancestor (e.g. a swipe-scrollable tab strip).
- *   3. Visible tab strips must never be squeezed — triggers overflowing their
+ *   3. Visible tab strips must never be squeezed  triggers overflowing their
  *      own list means labels overlap and clip (the classic `w-full` tab bug).
  *   4. Content taller than the viewport must be reachable: after scrolling
  *      every internal scroll container, the last interactive element must be
@@ -20,7 +20,7 @@ import { COUNCIL_ROUTES, mockCouncilWorkspace } from "./council-mocks";
  *
  * The test seeds a small amount of long-named content through the real API so
  * the layout is exercised with data that *would* overflow if truncation/min-w-0
- * handling regressed. Seeding failures are ignored — the structural checks run
+ * handling regressed. Seeding failures are ignored  the structural checks run
  * regardless.
  */
 
@@ -38,7 +38,7 @@ const ADMIN_PAGES = ["/admin/models", "/admin/users", "/admin/roles", "/admin/se
 
 /**
  * Every route this spec measures: the dashboard, the councils (whose API is
- * mocked — a council run costs model calls and measures nothing extra) and the
+ * mocked  a council run costs model calls and measures nothing extra) and the
  * admin pages.
  */
 const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
@@ -75,7 +75,7 @@ async function measureLayout(page: Page): Promise<LayoutViolations> {
     };
 
     // 1. Document-level horizontal overflow (the shell clips, so scrollWidth
-    //    alone misses clipped overflow — still worth asserting).
+    //    alone misses clipped overflow  still worth asserting).
     result.documentOverflow = Math.max(doc.scrollWidth, document.body.scrollWidth) > innerW + 2;
 
     // 2. Elements extending past the right edge, unless contained by a
@@ -103,7 +103,7 @@ async function measureLayout(page: Page): Promise<LayoutViolations> {
 
     // 3. Visible tab strips must not be squeezed (scrollWidth > clientWidth
     //    means triggers overflow their own list → overlapping labels).
-    //    base-ui renders a hidden measurement copy — ignore zero-size lists.
+    //    base-ui renders a hidden measurement copy  ignore zero-size lists.
     result.squeezedTabStrips = [...document.querySelectorAll('[data-slot="tabs-list"]')].filter(
       (l) => {
         const r = l.getBoundingClientRect();
@@ -111,7 +111,7 @@ async function measureLayout(page: Page): Promise<LayoutViolations> {
       },
     ).length;
 
-    // 4. The body must never scroll — scrolling is internal to panels.
+    // 4. The body must never scroll  scrolling is internal to panels.
     result.bodyScrolls = doc.scrollHeight > doc.clientHeight + 2;
 
     // 5. Reachability: scroll every internal scroll container to the bottom and
@@ -168,7 +168,7 @@ async function assertRoute(
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.waitForTimeout(400); // settle lazy transitions / polling
 
-    // A shell that throws in render still satisfies every measurement below —
+    // A shell that throws in render still satisfies every measurement below
     // the error boundary is a well-behaved full-height panel. That is how
     // /admin/* shipped broken (missing sidebar provider → 500), so assert the
     // route itself rendered, and that nothing bounced us elsewhere.
@@ -184,10 +184,10 @@ async function assertRoute(
       `${path}: elements extend past viewport: ${v.offenders.join(", ")}`,
     ).toEqual([]);
     expect(v.squeezedTabStrips, `${path}: tab strip triggers are squeezed/overlapping`).toBe(0);
-    expect(v.bodyScrolls, `${path}: body scrolls — content must scroll inside a panel`).toBe(false);
+    expect(v.bodyScrolls, `${path}: body scrolls  content must scroll inside a panel`).toBe(false);
     expect(
       v.lastElementReachable,
-      `${path}: last interactive element (${v.lastElementLabel}) unreachable — page lacks an internal scroll container`,
+      `${path}: last interactive element (${v.lastElementLabel}) unreachable  page lacks an internal scroll container`,
     ).toBe(true);
   } finally {
     await ctx.close();

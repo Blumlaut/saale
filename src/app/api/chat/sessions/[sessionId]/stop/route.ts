@@ -4,10 +4,10 @@ import { requireChatSessionOwner } from "@/lib/auth";
 import { stopChatGeneration } from "@/lib/chat/stop-generation";
 
 /**
- * POST /api/chat/sessions/:sessionId/stop — explicitly cancel an in-progress
+ * POST /api/chat/sessions/:sessionId/stop. explicitly cancel an in-progress
  * generation.
  *
- * Different from client disconnect (navigation/refresh) — this is a
+ * Different from client disconnect (navigation/refresh). this is a
  * user-initiated "stop" that aborts the LLM, clears the active session flag
  * immediately, and pauses the send queue until the user sends or pushes
  * something. The work lives in `stopChatGeneration` so the `/stop` slash

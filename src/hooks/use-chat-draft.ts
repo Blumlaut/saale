@@ -6,7 +6,7 @@ import { loadDraft, saveDraft } from "@/lib/chat/draft";
 /**
  * Per-session composer draft, persisted to localStorage.
  *
- * The stored draft is read in an effect (not during render) — the server
+ * The stored draft is read in an effect (not during render). the server
  * renders an empty composer, so hydrating from storage while rendering would
  * mismatch. Writes are debounced to keep keystrokes off localStorage's
  * synchronous path, with an unmount flush so navigating away mid-word never

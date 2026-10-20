@@ -73,7 +73,7 @@ const USER_ID = "user-1";
 let tmpRoot: string;
 
 // `vi.resetModules()` forces a fresh import of the route, which pulls in its
-// whole module graph — seconds of transform/import work, enough to blow the
+// whole module graph  seconds of transform/import work, enough to blow the
 // default 10s hook budget on a loaded machine.
 beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-msg-upload-"));

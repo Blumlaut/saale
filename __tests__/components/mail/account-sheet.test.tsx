@@ -78,7 +78,7 @@ describe("AccountSheet server detection", () => {
 
     expect(imapHost().value).toBe("");
     expect(smtpHost().value).toBe("");
-    // The settings stay open — nothing was detected, so nothing may look "done".
+    // The settings stay open  nothing was detected, so nothing may look "done".
     expect(screen.queryByRole("button", { name: /Edit server settings/ })).toBeNull();
   });
 
@@ -108,7 +108,7 @@ describe("AccountSheet server detection", () => {
     renderSheet();
 
     await fillEmail("user@fastmail.com");
-    await screen.findByText(/Detected via DNS — settings filled in/);
+    await screen.findByText(/Detected via DNS. settings filled in/);
 
     expect(screen.getByRole("button", { name: /Edit server settings/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Edit server settings/ }));

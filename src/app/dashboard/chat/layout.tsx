@@ -37,7 +37,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
     }
   }, [sessionId, syncTemporary]);
 
-  // Toggle handler — patches current session if one is active
+  // Toggle handler. patches current session if one is active
   const handleToggleTemporary = useCallback(
     async (checked: boolean) => {
       setTemporaryMode(checked);
@@ -62,15 +62,15 @@ export default function ChatLayout({ children: _children }: { children: React.Re
 
   return (
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
-      {/* Content: sidebar + main — edge to edge on phones, console gutter on
+      {/* Content: sidebar + main. edge to edge on phones, console gutter on
           desktop (see `.full-bleed` in globals.css) */}
       <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
-        {/* Sidebar — desktop only */}
+        {/* Sidebar. desktop only */}
         <div className="hidden w-64 shrink-0 md:block">
           <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
         </div>
 
-        {/* Main area — flex column so ChatInterface can flex-1 to fill height */}
+        {/* Main area. flex column so ChatInterface can flex-1 to fill height */}
         <div className="flex min-w-0 flex-1 flex-col">
           {sessionId ? (
             <ChatInterface

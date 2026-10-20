@@ -42,7 +42,7 @@ function extractMessageContent(message: Record<string, unknown>): {
     return { text: message.text as string };
   }
 
-  // Photo messages — use the largest available size
+  // Photo messages. use the largest available size
   if (message.photo && Array.isArray(message.photo) && message.photo.length > 0) {
     const photos = message.photo as Array<{
       file_id: string;
@@ -90,7 +90,7 @@ function extractMessageContent(message: Record<string, unknown>): {
 /**
  * Read a `/start` (or `/link`) deep-link payload from a message.
  *
- * Returns the payload — empty string for a bare `/start` — or null when the
+ * Returns the payload. empty string for a bare `/start`. or null when the
  * message is not one of those commands.
  */
 function parseLinkPayload(text: string): string | null {
@@ -117,7 +117,7 @@ function senderDisplayName(from: { first_name?: string; last_name?: string }): s
  *   refused. Nothing in the message body can name a different account.
  * - Inline button presses are verified against the same link, because a
  *   forwarded card keeps its buttons and one bot now serves every user.
- * - Only private chats are processed — a shared, discoverable bot in a group
+ * - Only private chats are processed. a shared, discoverable bot in a group
  *   would run one member's message against another member's account in front
  *   of everyone.
  */
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
   const { encryptedToken } = botConfig;
 
-  // 4. Handle callback queries (inline button presses — tool approval, command prompts)
+  // 4. Handle callback queries (inline button presses. tool approval, command prompts)
   const callbackQuery = update.callback_query as
     | {
         id: string;
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
     // Without the presser we cannot tell whose decision this is, and guessing
     // would be exactly the cross-account leak this design exists to prevent.
     if (!callbackQuery.from) {
-      console.error("Telegram callback query arrived without a sender — ignoring it");
+      console.error("Telegram callback query arrived without a sender. ignoring it");
       return NextResponse.json({ ok: true });
     }
 
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
     if (approvalResult.handled) {
       if (approvalResult.message) await answer(approvalResult.message, "approval");
     } else {
-      // Not an approval callback — try a slash-command prompt's button.
+      // Not an approval callback. try a slash-command prompt's button.
       const commandResult = await handleCommandPromptCallback(
         callbackQuery.data,
         presserId,
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
   };
 
   // 6. Linking. A link code is redeemed either as `/start <code>` (the deep
-  //    link's payload, or typed on another device) or as a bare code — Telegram
+  //    link's payload, or typed on another device) or as a bare code. Telegram
   //    auto-sends `/start` when the chat opens, so users naturally just send
   //    the token and expect that to work.
   const rawText = content.text ?? "";
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // 7. Resolve the sender's Saale account. Unlinked senders are refused here —
+  // 7. Resolve the sender's Saale account. Unlinked senders are refused here
   //    there is no path from a message to an account other than this lookup.
   const link = await getLinkByTelegramUserId(telegramUserId);
   if (!link) {
@@ -275,7 +275,7 @@ export async function POST(request: NextRequest) {
 
   const userId = link.userId;
 
-  // 8. Slash commands — declared once in the shared registry and dispatched
+  // 8. Slash commands. declared once in the shared registry and dispatched
   //    through it, so a command behaves identically here and in the web chat.
   //    Only names the registry knows are intercepted; anything else (including
   //    paths like `/dashboard/chat`) still reaches the agent as a normal message.

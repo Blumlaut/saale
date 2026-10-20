@@ -11,8 +11,8 @@ import { prisma } from "@/lib/db";
 import { resolveModelForPurpose, splitModelReference } from "@/lib/pi/model-resolution";
 
 /**
- * Model references reach us in two shapes — Saale's `provider:modelId` (jobs,
- * Telegram) and Pi's canonical `provider/modelId` — over model ids that
+ * Model references reach us in two shapes  Saale's `provider:modelId` (jobs,
+ * Telegram) and Pi's canonical `provider/modelId`  over model ids that
  * themselves contain both characters. Getting the provider boundary wrong
  * silently resolves to a model the runtime does not have.
  */

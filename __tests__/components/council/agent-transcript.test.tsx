@@ -11,7 +11,7 @@ import type { CouncilMessageView, CouncilTurnView } from "@/types/council";
  *
  * The behaviour that matters: it shows the reasoning and every tool call a turn
  * made, it labels what woke the turn with the room messages those seqs point
- * at, and it marks the closing `finalText` as *not sent* — the whole reason the
+ * at, and it marks the closing `finalText` as *not sent*  the whole reason the
  * subpage exists is that a member's closing text never reaches the room.
  */
 

@@ -69,7 +69,7 @@ export function createContactTools(userId: string): ToolDefinition[] {
       name: "contacts_list",
       label: "List Contacts",
       description:
-        "List the user's contact book — names, email addresses, company, notes, and when mail was last sent to each. Use it before sending mail when the user refers to someone by name.",
+        "List the user's contact book. names, email addresses, company, notes, and when mail was last sent to each. Use it before sending mail when the user refers to someone by name.",
       parameters: Type.Object({
         limit: Type.Optional(
           Type.Integer({

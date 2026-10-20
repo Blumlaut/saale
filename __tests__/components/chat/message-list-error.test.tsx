@@ -82,7 +82,7 @@ describe("MessageList provider errors", () => {
 
   it("shows no inline working indicator when no retry is in flight", () => {
     // Waiting on the LLM or a tool result is covered by the composer's stop
-    // button — the transcript must not duplicate it with a spinner of its own.
+    // button  the transcript must not duplicate it with a spinner of its own.
     render(
       <MessageList messages={[message({ id: "u1", role: "user", content: "hi" })]} isLoading />,
     );

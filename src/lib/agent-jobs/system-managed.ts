@@ -10,7 +10,7 @@
  *   causes it to be recreated with defaults.
  *
  * Consequently the name is reserved (no user-created job may use it) and the
- * definition is locked against edits, deletion, and manual runs — enforced in
+ * definition is locked against edits, deletion, and manual runs. enforced in
  * both the REST API and the AI tools.
  */
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Shared mock queue instance — `getQueue()` must return the same instance
+// Shared mock queue instance  `getQueue()` must return the same instance
 // every call so assertions can observe `upsertJobScheduler`/`add`.
 const {
   mockAdd,
@@ -16,7 +16,7 @@ const {
   mockGetJobSchedulers: vi.fn(),
 }));
 
-// Mock Prisma — factory must be self-contained (hoisted to top of file)
+// Mock Prisma  factory must be self-contained (hoisted to top of file)
 vi.mock("@/lib/db", () => ({
   prisma: {
     agentDefinition: {

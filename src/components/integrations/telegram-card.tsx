@@ -40,7 +40,7 @@ import { IntegrationBox } from "./integration-box";
 /**
  * The Telegram box on the Integrations tab.
  *
- * There is no bot token, no whitelist and no notification-chat picker — a
+ * There is no bot token, no whitelist and no notification-chat picker. a
  * link is one user and one private chat. So the box shows either the linked
  * account (with relink/unlink behind the menu) or a button into the link
  * dialog.
@@ -56,7 +56,7 @@ export function TelegramBox({
   bot: TelegramBotStatus;
   unlinking: boolean;
   onUnlink: () => void;
-  /** Opens the link dialog — first link or relink, the panel adapts. */
+  /** Opens the link dialog. first link or relink, the panel adapts. */
   onLink: () => void;
 }) {
   return (
@@ -222,7 +222,7 @@ export function TelegramLinkPanel({
             <span className="text-foreground font-medium">
               {bot.username ? `@${bot.username}` : "the bot"}
             </span>
-            . Just the code is enough — Telegram sends <code className="font-mono">/start</code> on
+            . Just the code is enough. Telegram sends <code className="font-mono">/start</code> on
             its own when you open the chat. Tapping the button below does it for you.
           </p>
 
@@ -285,7 +285,7 @@ export function TelegramLinkDialog({
   linkError: string | null;
   linked: boolean;
   onCreateCode: () => void;
-  /** Called on close — the integration is re-fetched so a redeemed code shows up. */
+  /** Called on close. the integration is re-fetched so a redeemed code shows up. */
   onDone: () => void;
 }) {
   return (

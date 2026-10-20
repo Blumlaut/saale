@@ -67,7 +67,7 @@ export function extractToolMetaBlock(result: string | undefined): ToolMetaBlock 
 /**
  * The metadata block as a typed shape.
  *
- * `T` is never validated — the block is written by our own tools, and every
+ * `T` is never validated. the block is written by our own tools, and every
  * caller narrows on its `type` discriminant before reading a field.
  */
 export function extractToolMeta<T extends { type?: string }>(result: string | undefined): T | null {

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { generateShareToken } from "@/lib/chat/share";
 
 /**
- * GET /api/chat/sessions/:sessionId/share — Get current share state.
+ * GET /api/chat/sessions/:sessionId/share. Get current share state.
  */
 export async function GET(
   _request: NextRequest,
@@ -28,9 +28,9 @@ export async function GET(
 }
 
 /**
- * POST /api/chat/sessions/:sessionId/share — Enable sharing for a chat session.
+ * POST /api/chat/sessions/:sessionId/share. Enable sharing for a chat session.
  *
- * Returns the share URL. Idempotent — calling again returns the existing token.
+ * Returns the share URL. Idempotent. calling again returns the existing token.
  */
 export async function POST(
   _request: NextRequest,
@@ -41,7 +41,7 @@ export async function POST(
   const authResult = await requireChatSessionOwner(sessionId);
   if (!authResult.ok) return authResult.response;
 
-  // Already shared — return existing token
+  // Already shared. return existing token
   if (authResult.session.shared && authResult.session.shareToken) {
     return NextResponse.json({
       ok: true,
@@ -65,7 +65,7 @@ export async function POST(
 }
 
 /**
- * DELETE /api/chat/sessions/:sessionId/share — Disable sharing for a chat session.
+ * DELETE /api/chat/sessions/:sessionId/share. Disable sharing for a chat session.
  *
  * Clears the share token and sets shared = false.
  */

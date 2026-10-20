@@ -10,8 +10,8 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 // The real SDK is kept (its `defineTool` is what builds the member's tools) and
-// only the two things a unit test cannot run — creating a session and the
-// transcript manager — are replaced.
+// only the two things a unit test cannot run  creating a session and the
+// transcript manager  are replaced.
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
   return {

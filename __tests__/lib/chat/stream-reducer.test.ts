@@ -80,7 +80,7 @@ describe("streamReducer", () => {
     expect(s.messages).toHaveLength(1);
     s = streamReducer(s, { type: "thinking", turnId: "t1", thinking: "hmm" });
     expect(s.messages[0]!.thinking).toBe("hmm");
-    // A later empty event only means "no reasoning yet" — it must not wipe what
+    // A later empty event only means "no reasoning yet"  it must not wipe what
     // is on screen (for a saved row that would take a reload to bring back).
     s = streamReducer(s, { type: "thinking", turnId: "t1", thinking: "" });
     expect(s.messages[0]!.thinking).toBe("hmm");
@@ -239,11 +239,11 @@ describe("streamReducer", () => {
 /**
  * A mid-run reconnect replays the session buffer, so turns the client already
  * has are delivered again. `message_saved` renames a turn's bubble to its DB
- * row, which is what made those replayed events unrecognisable — they were
+ * row, which is what made those replayed events unrecognisable  they were
  * applied to a message that no longer existed, creating a second copy of a step
  * the user was already looking at.
  */
-describe("streamReducer — replay after a turn is saved", () => {
+describe("streamReducer  replay after a turn is saved", () => {
   /** One step: thinking, its tool call, its text, then its DB row. */
   const step = (n: number): StreamAction[] => [
     { type: "turn_start", turnId: `t${n}`, startedAt: `2026-01-01T00:00:0${n}.000Z` },
@@ -357,7 +357,7 @@ describe("streamReducer — replay after a turn is saved", () => {
   it("moves a folded turn's content onto the row it was saved into", () => {
     // `agent_end` finalizes a run by UPDATING an existing row, and a reload can
     // deliver that row while its turn is still streaming. The row is on screen
-    // under the turn's id, so the newest text belongs on it — dropping the
+    // under the turn's id, so the newest text belongs on it  dropping the
     // bubble's content would blank the step until the next reload.
     let s = state([msg({ id: "a1", role: "assistant", content: "first answer" })], "a1");
     s = streamReducer(s, { type: "turn_start", turnId: "t2" });

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * Stop must reach every run that is in flight, not only one that happens to be
  * inside the agent loop at the moment it is pressed. A prompt deferred to a
  * compaction (or a run the pool has claimed but not started) has
- * `promptInFlight` set while `isStreaming` is false — gating the abort on
+ * `promptInFlight` set while `isStreaming` is false  gating the abort on
  * `isStreaming` left those runs untouched, so Stop looked like a no-op.
  */
 
@@ -84,7 +84,7 @@ describe("stopChatGeneration", () => {
   });
 
   it("still clears the flag when the run is only known through Redis", async () => {
-    // The run lives in another process, so there is no local session to abort —
+    // The run lives in another process, so there is no local session to abort
     // but Stop must not silently do nothing.
     mockIsSessionActive.mockResolvedValue(true);
     mockGet.mockReturnValue(undefined);

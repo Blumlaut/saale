@@ -1,5 +1,5 @@
 /**
- * Feature registry — every switchable module, with the strings and wiring that
+ * Feature registry. every switchable module, with the strings and wiring that
  * describe it.
  *
  * Client-safe on purpose: the admin users/settings screens render these labels
@@ -146,7 +146,7 @@ export function defaultFeatures(): FeatureMap {
   return out;
 }
 
-/** Every feature on — what an admin account always gets. */
+/** Every feature on. what an admin account always gets. */
 export function allFeatures(): FeatureMap {
   const out = {} as FeatureMap;
   for (const key of FEATURES) out[key] = true;

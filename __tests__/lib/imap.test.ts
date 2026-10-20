@@ -151,7 +151,7 @@ describe("syncMessageFlags", () => {
       isRead: true,
     });
 
-    // Should not throw — UID conversion should work
+    // Should not throw  UID conversion should work
     expect(prisma.emailAccount.findUnique).toHaveBeenCalled();
   });
 

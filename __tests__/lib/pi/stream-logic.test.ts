@@ -43,7 +43,7 @@ describe("decideStreamAction", () => {
     it('prompts the message a "send now" claimed, even though it registered a run', () => {
       // Pushing a queued message on a stopped chat releases the queue hold,
       // claims the message, and registers the session so the reconnect prompts
-      // it. The claim must win over the generation flag it just set — treat
+      // it. The claim must win over the generation flag it just set  treat
       // that as "a run is already going", and the chat never resumes (the
       // message sits in the conversation unanswered).
       const action = decideStreamAction({
@@ -183,7 +183,7 @@ describe("decideStaleGenerationAction", () => {
   });
 
   it("stops watching once the run finished on its own", () => {
-    // A buffered done means every client already settled — closing the stream
+    // A buffered done means every client already settled  closing the stream
     // here would only add a pointless reconnect.
     expect(decideStaleGenerationAction({ ...base, bufferTailIsTerminal: true })).toBe("stop");
   });

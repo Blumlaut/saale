@@ -17,7 +17,7 @@ const MAX_RESULT = 1000;
  * The fallback card, for every tool without a descriptor of its own.
  *
  * It reads only a tool's name, arguments and result, so it is also what a
- * descriptor falls back to when a result carries nothing it understands — a
+ * descriptor falls back to when a result carries nothing it understands. a
  * call showing its raw arguments beats a call that vanishes from the
  * transcript.
  */

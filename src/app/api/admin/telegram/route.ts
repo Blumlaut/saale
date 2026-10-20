@@ -15,7 +15,7 @@ import { getTelegramLoginStatus, type TelegramLoginStatus } from "@/lib/telegram
  * The shared Telegram bot's configuration.
  *
  * Admin-scoped: the bot is instance infrastructure now, so its token is only
- * reachable here. The token is never echoed back — responses carry the bot's
+ * reachable here. The token is never echoed back. responses carry the bot's
  * identity and state, which is all the UI needs to render.
  */
 
@@ -58,7 +58,7 @@ async function serializeLogin(): Promise<TelegramLoginStatus> {
 }
 
 /**
- * GET /api/admin/telegram — the bot's current configuration and reach.
+ * GET /api/admin/telegram. the bot's current configuration and reach.
  */
 export async function GET() {
   const authResult = await requirePermission("admin", "telegram");
@@ -70,7 +70,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/admin/telegram — save a bot token.
+ * POST /api/admin/telegram. save a bot token.
  * Body: { token: string }
  */
 export async function POST(request: NextRequest) {
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       webhookRegistered,
     });
   } catch (err) {
-    // getMe() rejecting means the token is wrong — that is the admin's input,
+    // getMe() rejecting means the token is wrong. that is the admin's input,
     // not a server fault.
     const message = err instanceof Error ? err.message : "Failed to validate the bot token";
     console.error("Failed to save the shared Telegram bot:", err);
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PATCH /api/admin/telegram — switch the bot on or off.
+ * PATCH /api/admin/telegram. switch the bot on or off.
  * Body: { enabled: boolean }
  */
 export async function PATCH(request: NextRequest) {
@@ -141,7 +141,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * DELETE /api/admin/telegram — remove the bot and every link.
+ * DELETE /api/admin/telegram. remove the bot and every link.
  */
 export async function DELETE() {
   const authResult = await requirePermission("admin", "telegram");

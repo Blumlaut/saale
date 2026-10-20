@@ -39,7 +39,7 @@ import {
 /**
  * Base the SDK's file tools resolve paths against when they are handed no tool
  * context. Remote paths are rejected unless absolute, so this is only ever a
- * fallback — a host session cwd must never leak into a remote path.
+ * fallback. a host session cwd must never leak into a remote path.
  */
 const REMOTE_ROOT = "/";
 
@@ -51,7 +51,7 @@ const MAX_FILE_PREVIEW_CHARS = 200;
 
 /**
  * Bound a diff so one large edit cannot flood the transcript. The model made
- * the edits — the diff is for the user, and the first screen is what matters.
+ * the edits. the diff is for the user, and the first screen is what matters.
  */
 function truncateDiff(diff: string): string {
   if (diff.length <= MAX_DIFF_CHARS) return diff;
@@ -59,7 +59,7 @@ function truncateDiff(diff: string): string {
 }
 
 /**
- * The local workspace a download lands in — the only filesystem on this side
+ * The local workspace a download lands in. the only filesystem on this side
  * that the agent's file tools can read and edit. It lives in the Open Terminal
  * container, so a transfer without a configured terminal has nowhere to go.
  */
@@ -75,7 +75,7 @@ function requireWorkspace(userId: string): string {
 /**
  * Resolve a workspace path to the absolute path the agent's file tools use.
  * A relative path resolves against the workspace root; anything that escapes
- * that root is refused — a transfer must never touch another part of the
+ * that root is refused. a transfer must never touch another part of the
  * container.
  */
 function resolveWorkspacePath(homeDir: string, path: string): string {
@@ -88,7 +88,7 @@ function resolveWorkspacePath(homeDir: string, path: string): string {
 
 /**
  * Stat a workspace file through Open Terminal. The API has no stat endpoint,
- * so this reads the parent listing and picks the entry out of it — enough to
+ * so this reads the parent listing and picks the entry out of it. enough to
  * reject a directory or an oversize file before its bytes are fetched.
  */
 async function statWorkspaceFile(userId: string, absolutePath: string): Promise<{ size: number }> {
@@ -204,7 +204,7 @@ const UPLOAD_FILE_SCHEMA = Type.Object({
   uploaded: Type.Boolean(),
 });
 
-/** One note, without its body — what the list shows. */
+/** One note, without its body. what the list shows. */
 const NOTE_SUMMARY_SCHEMA = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -321,7 +321,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
   });
 
   // Pi's argument shim repairs `edits` sent as a JSON string or as a single
-  // object, and otherwise returns the arguments untouched — so the extra `id`
+  // object, and otherwise returns the arguments untouched. so the extra `id`
   // field survives it even though its declared return type does not mention it.
   const prepareEditArguments = remoteEditTool.prepareArguments as
     ((args: unknown) => Static<typeof editParameters>) | undefined;
@@ -546,7 +546,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_exec",
       label: "Execute Command",
       description:
-        "Run a shell command on a remote machine via SSH. Connects, executes, collects output, and disconnects. Default timeout is 30 seconds — increase for longer commands. Output is truncated at 50KB.",
+        "Run a shell command on a remote machine via SSH. Connects, executes, collects output, and disconnects. Default timeout is 30 seconds. increase for longer commands. Output is truncated at 50KB.",
       parameters: Type.Object({
         id: Type.String({ description: "Machine ID." }),
         command: Type.String({
@@ -627,7 +627,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
     defineStructuredTool({
       name: "infra_read_file",
       label: "Read Remote File",
-      description: `Read a file from a remote machine over SFTP. Supports text files and images (jpg, png, gif, webp) — images are sent as attachments. Text output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first); use offset/limit for larger files. Read a file before \`infra_edit_file\`: edits are matched against the file's exact current content.`,
+      description: `Read a file from a remote machine over SFTP. Supports text files and images (jpg, png, gif, webp). images are sent as attachments. Text output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first); use offset/limit for larger files. Read a file before \`infra_edit_file\`: edits are matched against the file's exact current content.`,
       ...(remoteReadTool.promptSnippet ? { promptSnippet: remoteReadTool.promptSnippet } : {}),
       ...(remoteReadTool.promptGuidelines
         ? { promptGuidelines: remoteReadTool.promptGuidelines }
@@ -649,7 +649,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         }
 
         // The SDK resolves a relative path against the session's cwd, which is
-        // a host path — that would silently read a path that is meaningless on
+        // a host path. that would silently read a path that is meaningless on
         // the remote machine. Remote paths are absolute by contract.
         if (!params.path.startsWith("/")) {
           throw new Error(
@@ -691,7 +691,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         };
 
         return {
-          // Pi's blocks are kept intact — an image read is an attachment, not
+          // Pi's blocks are kept intact. an image read is an attachment, not
           // something to stringify. The metadata rides along as one more block.
           value: {
             machine: machine.name,
@@ -715,7 +715,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_write_file",
       label: "Write Remote File",
       description:
-        "Write content to a file on a remote machine via SFTP, replacing the file's entire contents. Creates parent directories if needed. For a change to part of an existing file, use `infra_edit_file` instead — sending the whole file back is expensive and risks dropping everything you did not mean to touch.",
+        "Write content to a file on a remote machine via SFTP, replacing the file's entire contents. Creates parent directories if needed. For a change to part of an existing file, use `infra_edit_file` instead. sending the whole file back is expensive and risks dropping everything you did not mean to touch.",
       parameters: Type.Object({
         id: Type.String({ description: "Machine ID." }),
         path: Type.String({
@@ -774,9 +774,9 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_edit_file",
       label: "Edit Remote File",
       description:
-        "Edit a file on a remote machine with exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the file's current content — read it with `infra_read_file` first. When changing several places in one file, send one call with multiple entries in edits[] instead of several calls. Prefer this over `infra_write_file` for any change to an existing file.",
+        "Edit a file on a remote machine with exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the file's current content. read it with `infra_read_file` first. When changing several places in one file, send one call with multiple entries in edits[] instead of several calls. Prefer this over `infra_write_file` for any change to an existing file.",
       // The prompt guidance Pi ships with its edit tool, minus its TUI
-      // renderers — a headless host never draws them.
+      // renderers. a headless host never draws them.
       ...(remoteEditTool.promptSnippet ? { promptSnippet: remoteEditTool.promptSnippet } : {}),
       ...(remoteEditTool.promptGuidelines
         ? { promptGuidelines: remoteEditTool.promptGuidelines }
@@ -799,7 +799,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         }
 
         // The SDK resolves a relative path against the session's cwd, which is
-        // a host path — that would silently target a path that is meaningless
+        // a host path. that would silently target a path that is meaningless
         // on the remote machine. Remote paths are absolute by contract.
         if (!params.path.startsWith("/")) {
           throw new Error(
@@ -1126,7 +1126,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_notes_upsert",
       label: "Upsert Machine Note",
       description:
-        "Create or update a machine note. Notes record only what the machine is right now: verified present-state facts — never plans, intentions, TODOs, command output, or values that change on their own (ephemeral addresses, process IDs, versions mid-upgrade). To avoid duplicates, call `infra_notes_list` first and pass the existing note's `id` when one already covers the topic; omit `id` only when creating a note for a topic that has none. When reality changes, update the note; when a note is no longer true and nothing replaces it, delete it.",
+        "Create or update a machine note. Notes record only what the machine is right now: verified present-state facts. never plans, intentions, TODOs, command output, or values that change on their own (ephemeral addresses, process IDs, versions mid-upgrade). To avoid duplicates, call `infra_notes_list` first and pass the existing note's `id` when one already covers the topic; omit `id` only when creating a note for a topic that has none. When reality changes, update the note; when a note is no longer true and nothing replaces it, delete it.",
       parameters: Type.Object({
         machineId: Type.String({ description: "Machine ID." }),
         title: Type.String({ description: "Note title." }),
@@ -1170,7 +1170,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
 
         let note;
         if (params.id) {
-          // Update existing — verify it belongs to this machine
+          // Update existing. verify it belongs to this machine
           const existing = await prisma.infraNote.findFirst({
             where: { id: params.id, machineId: params.machineId },
           });

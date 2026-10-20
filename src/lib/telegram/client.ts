@@ -4,7 +4,7 @@ import { decrypt } from "@/lib/crypto";
 import { listCommands } from "@/lib/commands/catalog";
 import { TELEGRAM_MAX_MESSAGE_LENGTH, splitMarkdownV2, splitPlainText } from "./message-split";
 
-/** Webhook endpoint — a single path, since there is a single bot. */
+/** Webhook endpoint. a single path, since there is a single bot. */
 const WEBHOOK_PATH = "/api/integrations/telegram/webhook";
 
 /** Telegram's caption ceiling; a longer one is rejected along with the file. */
@@ -47,7 +47,7 @@ export function getPublicBaseUrl(): string {
 /**
  * Build the webhook URL Telegram should deliver updates to.
  *
- * The URL is constant — it identifies the instance, not a user — so the
+ * The URL is constant. it identifies the instance, not a user. so the
  * `webhookSecret` header is what actually authenticates a delivery.
  */
 export function buildWebhookUrl(): string {
@@ -73,7 +73,7 @@ export async function validateBotToken(botToken: string) {
   const me = await bot.api.getMe();
 
   if (!me.is_bot) {
-    throw new Error("Invalid bot token — this is not a bot account");
+    throw new Error("Invalid bot token. this is not a bot account");
   }
 
   return {
@@ -115,7 +115,7 @@ export async function registerWebhook(
     drop_pending_updates: false,
   });
 
-  // A bot menu is a nicety — never let it fail the webhook registration.
+  // A bot menu is a nicety. never let it fail the webhook registration.
   await registerBotCommands(encryptedToken).catch((err) => {
     console.error("Failed to register the shared Telegram command menu:", err);
   });
@@ -135,8 +135,8 @@ export async function deleteWebhook(encryptedToken: string): Promise<boolean> {
 /**
  * Where a sender who has not linked an account is told to go.
  *
- * There is no bot owner to whitelist them any more — the bot belongs to the
- * instance — so the instruction has to be self-service.
+ * There is no bot owner to whitelist them any more. the bot belongs to the
+ * instance. so the instruction has to be self-service.
  */
 export function buildLinkRequiredMessage(): string {
   return (
@@ -148,7 +148,7 @@ export function buildLinkRequiredMessage(): string {
 
 /** Confirmation that a link code was redeemed. Sent with parse_mode "HTML". */
 export function buildLinkSuccessMessage(): string {
-  return `✅ <b>Linked.</b>\n\nYour Telegram account is now connected to Saale — just send a message to talk to your agent.`;
+  return `✅ <b>Linked.</b>\n\nYour Telegram account is now connected to Saale. just send a message to talk to your agent.`;
 }
 
 /** Why a link code was refused, for the sender. Sent with parse_mode "HTML". */
@@ -185,7 +185,7 @@ export async function sendTelegramMessage(
   const bot = createBot(encryptedToken);
   const parseMode: "HTML" | "Markdown" | "MarkdownV2" = options?.parseMode ?? "MarkdownV2";
 
-  // Convert Markdown to Telegram's MarkdownV2 using a proper parser — the
+  // Convert Markdown to Telegram's MarkdownV2 using a proper parser. the
   // whole text first, then split the converted output. telegram-markdown-v2
   // uses remark to build an AST, so unmatched formatting chars (like a stray
   // "*" in "*arr apps") are safely escaped instead of breaking the parse.
@@ -239,7 +239,7 @@ export async function sendTelegramFile(
   const bot = createBot(encryptedToken);
   const chat = Number(chatId);
 
-  // The caption is decoration on the file itself — a parse error in it would
+  // The caption is decoration on the file itself. a parse error in it would
   // cost the user the file, so it travels as plain text.
   const caption = options?.caption?.trim().slice(0, TELEGRAM_MAX_CAPTION_LENGTH);
   const params = caption ? { caption } : {};
@@ -254,7 +254,7 @@ export async function sendTelegramFile(
       return result.message_id;
     } catch (err) {
       // Telegram only renders a photo it can lay out (dimension and aspect
-      // ratio ceilings) — the same bytes still arrive as a document.
+      // ratio ceilings). the same bytes still arrive as a document.
       console.warn(`Telegram refused "${file.fileName}" as a photo, sending a document:`, err);
     }
   }
@@ -274,7 +274,7 @@ export async function sendTelegramFile(
  */
 export async function sendTypingIndicator(encryptedToken: string, chatId: bigint): Promise<void> {
   const bot = createBot(encryptedToken);
-  // Fire-and-forget — errors are logged but don't break the flow
+  // Fire-and-forget. errors are logged but don't break the flow
   bot.api.sendChatAction(Number(chatId), "typing").catch((err) => {
     console.error("Failed to send typing indicator:", err);
   });

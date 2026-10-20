@@ -95,7 +95,7 @@ export function queueTaskSchedulerId(jobId: string): string {
 }
 
 /**
- * Schedule a QueueTask as a BullMQ job scheduler — the v6 replacement for
+ * Schedule a QueueTask as a BullMQ job scheduler. the v6 replacement for
  * repeatable jobs. Only schedules when the job is enabled and its config has a
  * cronExpression.
  */
@@ -329,7 +329,7 @@ export interface WatcherSchedule {
 /**
  * Schedule a watcher's ticks.
  *
- * Cron granularity is one minute, which is also the fastest a watcher can poll —
+ * Cron granularity is one minute, which is also the fastest a watcher can poll
  * the tick itself is a sandbox run, not a model call, but there is no point
  * polling faster than the queue can schedule.
  */
@@ -355,7 +355,7 @@ export async function unscheduleWatcher(watcherId: string): Promise<void> {
 
 /**
  * (Re)sync a watcher's schedule with its current state. Use after
- * create/update — a changed cron needs the old scheduler gone first, or both
+ * create/update. a changed cron needs the old scheduler gone first, or both
  * patterns would fire.
  */
 export async function syncWatcherSchedule(watcher: WatcherSchedule): Promise<void> {
@@ -450,8 +450,8 @@ export async function scheduleCouncilSweep(intervalMinutes: number): Promise<str
  * Remove BullMQ v5 repeatable jobs that v6 treats as job schedulers of their own.
  *
  * v5 stored repeatable jobs in the same ZSET that v6 reads as job schedulers.
- * Entries created with an explicit `repeat.key` keep working — the key is the
- * scheduler id, so `removeJobScheduler` still finds it — but a keyless one got
+ * Entries created with an explicit `repeat.key` keep working. the key is the
+ * scheduler id, so `removeJobScheduler` still finds it. but a keyless one got
  * an md5 key that v6 adopts as a separate scheduler, firing alongside the
  * scheduler that replaced it. Filtering by job name and keeping the current
  * scheduler id makes this idempotent.

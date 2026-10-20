@@ -126,7 +126,7 @@ describe("SseDispatcher", () => {
 
     it("does not duplicate events delivered live during the replay", async () => {
       // The bus delivers id 5 live while the buffer query is in flight;
-      // the buffer then returns the same event — it must be delivered once.
+      // the buffer then returns the same event  it must be delivered once.
       const mock = createMockController();
       mockGetBufferedEvents.mockResolvedValue([
         { id: 5, event: "token", data: { text: "once" } },
@@ -180,7 +180,7 @@ describe("SseDispatcher", () => {
       const mock = createMockController();
       await dispatcher.subscribe(mock.controller, mock.encoder, -1);
 
-      // id 5 arrives live; the replay then re-delivers it — dropped.
+      // id 5 arrives live; the replay then re-delivers it  dropped.
       emitLive(dispatcher, 5, "token", { text: "first" });
       emitLive(dispatcher, 5, "token", { text: "first" });
       // But a NEW event with an id BELOW 5 (post-reset) must still flow.

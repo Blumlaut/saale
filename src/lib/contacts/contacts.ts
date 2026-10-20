@@ -15,7 +15,7 @@ const NAMED_ADDRESS = /^(?:"([^"]*)"|([^<]*))?\s*<([^<>]+)>$/;
  * Parse one recipient string into name + email.
  *
  * Accepts `Name <email>`, `"Name" <email>`, and bare `email`. Throws on
- * values with no valid email part — callers pass user-typed or agent-supplied
+ * values with no valid email part. callers pass user-typed or agent-supplied
  * strings, so silent acceptance of garbage is how a bad address reaches SMTP.
  */
 export function parseRecipient(raw: string): { name: string | null; email: string } {
@@ -138,14 +138,14 @@ export async function getContact(userId: string, id: string) {
 // ─── Mutations ───────────────────────────────────────────────────────────────
 
 // The unique key is exact-match, but email addresses are case-insensitive in
-// practice — normalise at every write boundary so "John@X.com" and
+// practice. normalise at every write boundary so "John@X.com" and
 // "john@x.com" cannot become two rows.
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 /**
- * Whether a display name is just the email's local part — i.e. a fallback
+ * Whether a display name is just the email's local part. i.e. a fallback
  * generated when no real name was known, safe to upgrade later.
  */
 function isFallbackName(name: string, email: string): boolean {
@@ -154,7 +154,7 @@ function isFallbackName(name: string, email: string): boolean {
 
 /**
  * Create a contact. Returns `null` when the email already exists for this
- * user — callers decide between a 409 and an upsert.
+ * user. callers decide between a 409 and an upsert.
  */
 export async function createContact(
   userId: string,
@@ -188,7 +188,7 @@ export interface UpsertContactInput extends z.infer<typeof contactCreateSchema> 
  * Create a contact, or refresh the existing row for the same email.
  *
  * Name handling: a real name always overwrites; a local-part fallback fills in
- * only when the stored name is itself a fallback — it never replaces a name
+ * only when the stored name is itself a fallback. it never replaces a name
  * the user typed. Company and notes are filled when empty, never overwritten.
  */
 export async function upsertContact(userId: string, data: UpsertContactInput): Promise<ContactDto> {
@@ -229,7 +229,7 @@ export async function updateContact(
   id: string,
   data: z.infer<typeof contactUpdateSchema>,
 ): Promise<ContactDto> {
-  // Scope by userId first — a raw id is attacker-guessable across users.
+  // Scope by userId first. a raw id is attacker-guessable across users.
   const existing = await prisma.contact.findFirst({ where: { id, userId } });
   if (!existing) throw new Error("Contact not found");
   const contact = await prisma.contact.update({
@@ -252,7 +252,7 @@ export async function deleteContact(userId: string, id: string): Promise<boolean
 /**
  * Teach the contact book from a send. Every recipient becomes a contact row:
  * new addresses are created (name falls back to the email's local part),
- * existing ones get their name/lastSentAt refreshed. Never throws — a broken
+ * existing ones get their name/lastSentAt refreshed. Never throws. a broken
  * book must not fail the send.
  */
 export async function learnContactsFromSend(
@@ -261,7 +261,7 @@ export async function learnContactsFromSend(
   cc?: string[],
 ): Promise<void> {
   try {
-    // Deduplicate on the normalised email — `Jane <a@x.co>` in `to` and
+    // Deduplicate on the normalised email. `Jane <a@x.co>` in `to` and
     // `a@x.co` in `cc` are the same recipient.
     const seen = new Set<string>();
     for (const raw of [...to, ...(cc ?? [])]) {
@@ -278,7 +278,7 @@ export async function learnContactsFromSend(
 }
 
 /**
- * Most recent recipients from the user's Sent folders — the "recent"
+ * Most recent recipients from the user's Sent folders. the "recent"
  * suggestions for the compose picker. Returns bare emails with a name only
  * when the stored address carried one.
  */

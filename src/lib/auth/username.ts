@@ -1,5 +1,5 @@
 /**
- * Username rules — the handle used to sign in.
+ * Username rules. the handle used to sign in.
  *
  * A username is stored lowercased, so `Ada.Lovelace` and `ada.lovelace` are the
  * same account. Allowed characters: letters, numbers, dots, dashes, underscores.

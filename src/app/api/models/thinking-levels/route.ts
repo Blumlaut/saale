@@ -6,7 +6,7 @@ import { buildModelRuntime } from "@/lib/pi/models";
 import { isPiThinkingLevel } from "@/lib/pi/thinking-levels";
 
 /**
- * GET /api/models/thinking-levels — Returns available thinking levels for a model.
+ * GET /api/models/thinking-levels. Returns available thinking levels for a model.
  * ?provider=anthropic&model=claude-sonnet-4-20250514&level=medium
  *
  * `level` is optional: when given, the response carries what Pi would actually

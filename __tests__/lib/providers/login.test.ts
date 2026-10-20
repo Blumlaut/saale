@@ -234,7 +234,7 @@ describe("provider sign-in transport", () => {
         _authType: string,
         interaction: { prompt: (prompt: { type: string; message: string }) => Promise<string> },
       ) => {
-        // A prompt that is never answered — the user closes the sheet instead.
+        // A prompt that is never answered  the user closes the sheet instead.
         await interaction.prompt({ type: "manual_code", message: "Paste the code" });
         return { type: "api_key", key: "never" };
       },

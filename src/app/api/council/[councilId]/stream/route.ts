@@ -19,14 +19,14 @@ const SSE_HEADERS = {
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 
 /**
- * GET /api/council/[councilId]/stream — the room's live events.
+ * GET /api/council/[councilId]/stream. the room's live events.
  *
  * Carries what a repaint needs, not the room itself: `message` means "the room
  * moved, fetch it", and the thinking/tool-call events are for the members' live
  * state. The client rebuilds the room from the REST route, so a reconnecting tab
  * cannot end up with a room that only exists in its own event replay.
  *
- * The bus is the chat stream's, keyed by the council id — cross-process publish,
+ * The bus is the chat stream's, keyed by the council id. cross-process publish,
  * monotonic event ids and a replay buffer for `Last-Event-ID`, all without a
  * second implementation of the same thing.
  *

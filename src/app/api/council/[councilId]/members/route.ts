@@ -5,7 +5,7 @@ import { memberInputSchema } from "@/lib/council/schema";
 import { MAX_MEMBERS } from "@/lib/council/config";
 import { addMember, getCouncil } from "@/lib/council/store";
 
-/** POST /api/council/[councilId]/members — add a member to a council. */
+/** POST /api/council/[councilId]/members. add a member to a council. */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ councilId: string }> },

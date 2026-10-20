@@ -12,7 +12,7 @@ import type { UserSettings } from "../types";
 
 interface AppearanceTabProps {
   settings: UserSettings | null;
-  /** Persist a partial change immediately — a toggle takes effect on the spot. */
+  /** Persist a partial change immediately. a toggle takes effect on the spot. */
   onPatch: (patch: Partial<UserSettings>) => Promise<void>;
   saving: boolean;
 }
@@ -60,9 +60,7 @@ export function AppearanceTab({ settings, onPatch, saving }: AppearanceTabProps)
               <div className="min-w-0">
                 <Label htmlFor="compact-activity">Compact activity</Label>
                 <p className="text-muted-foreground mt-1 text-sm">
-                  Show a turn&apos;s reasoning and tool calls as one line each — a running tool
-                  count with the tools&apos; own icons — instead of a card per step. Each line
-                  expands to the full detail.
+                  Compact each turn&apos;s reasoning and tool calls into one expandable line.
                 </p>
               </div>
               <span className="flex shrink-0 items-center gap-2 pt-1">

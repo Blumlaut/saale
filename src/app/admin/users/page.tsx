@@ -256,7 +256,7 @@ export default function AdminUsersPage() {
 
   return (
     <Page className="gap-0">
-      {/* User list — fills height, owns its toolbar (search + add) */}
+      {/* User list. fills height, owns its toolbar (search + add) */}
       <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
         <div className="border-border/30 flex shrink-0 items-center gap-2 border-b px-4 py-2">
           <Input
@@ -309,7 +309,7 @@ export default function AdminUsersPage() {
               </p>
               <p className="text-muted-foreground mt-1 text-xs">
                 {loadError
-                  ? "The user list could not be fetched — try reloading the page"
+                  ? "The user list could not be fetched. try reloading the page"
                   : search
                     ? "Try a different search term"
                     : "Add a user to get started"}
@@ -327,7 +327,7 @@ export default function AdminUsersPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">{user.name ?? "—"}</span>
+                        <span className="truncate text-sm font-medium">{user.name ?? ""}</span>
                         {user.role && user.role !== "user" && (
                           <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
                             {roleLabel(roles, user.role)}

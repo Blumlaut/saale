@@ -310,7 +310,7 @@ describe("redactStoredToolCalls", () => {
  * Guards that keep redaction true for tools that do not exist yet.
  *
  * Both sweeps read `ALL_TOOL_INFOS`, the catalog the UI and the tool registry
- * are built from, so a tool added there is covered the moment it lands — no
+ * are built from, so a tool added there is covered the moment it lands  no
  * one has to remember this file.
  */
 describe("catalog coverage", () => {

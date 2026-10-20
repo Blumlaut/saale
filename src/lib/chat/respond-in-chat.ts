@@ -2,21 +2,21 @@
  * `chat_respond`: post a message into another chat as the user, run that
  * chat's agent, and return its reply.
  *
- * This is a full agent run in the target chat — not a plain insert — so an
+ * This is a full agent run in the target chat. not a plain insert. so an
  * assistant can hold a conversation with itself across chats (hand work to
  * another conversation, leave an answer there, keep a long thread going).
  *
  * Guards worth knowing about:
  * - the target chat must belong to the user, and must not be the caller's own
  *   chat (a session cannot be prompted while it is already running);
- * - a busy target is refused rather than queued — the caller is waiting for a
+ * - a busy target is refused rather than queued. the caller is waiting for a
  *   reply, and two runs over one transcript would fight over it. Because the
  *   caller's own session is registered active for the whole run, this also
  *   makes cross-chat loops (A → B → A) impossible.
  *
  * The target's own approval cards are published on the target's session bus,
  * so a tool it wants to run with an `ask` policy is confirmed by whoever is
- * watching that chat — the caller only sees the outcome (a denial becomes part
+ * watching that chat. the caller only sees the outcome (a denial becomes part
  * of the reply).
  */
 
@@ -32,7 +32,7 @@ export interface RespondInChatOptions {
   userId: string;
   /** The chat to post into. */
   sessionId: string;
-  /** The caller's own chat — it may not answer itself. */
+  /** The caller's own chat. it may not answer itself. */
   callerSessionId?: string | null;
   /** The message to post as the user. */
   message: string;
@@ -52,7 +52,7 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
   const message = options.message.trim();
   if (!message) throw new Error("message must not be empty");
   if (options.callerSessionId && options.callerSessionId === options.sessionId) {
-    throw new Error("A chat cannot respond to itself — post into a different chat");
+    throw new Error("A chat cannot respond to itself. post into a different chat");
   }
 
   const chatSession = await prisma.chatSession.findFirst({
@@ -76,7 +76,7 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
   // lookup; the pool entry's own flag is the authoritative same-process guard.
   // Claim before writing anything, so a refused call leaves no stray message.
   if (entry.promptInFlight) {
-    throw new Error(`Chat "${chatSession.title}" is busy — try again once it is idle`);
+    throw new Error(`Chat "${chatSession.title}" is busy. try again once it is idle`);
   }
   entry.promptInFlight = true;
 
@@ -138,10 +138,10 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
 async function assertIdle(userId: string, sessionId: string, title: string): Promise<void> {
   const pooled = getPoolEntry(getPoolKey(userId, sessionId));
   if (pooled?.promptInFlight || pooled?.session.isStreaming === true) {
-    throw new Error(`Chat "${title}" is busy — try again once it is idle`);
+    throw new Error(`Chat "${title}" is busy. try again once it is idle`);
   }
   if (await isSessionActive(userId, sessionId)) {
-    throw new Error(`Chat "${title}" is busy — try again once it is idle`);
+    throw new Error(`Chat "${title}" is busy. try again once it is idle`);
   }
 }
 

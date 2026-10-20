@@ -67,7 +67,7 @@ const AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
  * Process an incoming Telegram message.
  *
  * Uses a file-based persistent Pi session so the agent has full conversation
- * history across messages — no manual context assembly needed.
+ * history across messages. no manual context assembly needed.
  *
  * Supports text messages, photos, and document files. Images are passed
  * directly to the vision model; documents are uploaded into the terminal
@@ -75,7 +75,7 @@ const AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
  */
 export async function processTelegramMessage(params: ProcessTelegramMessageParams): Promise<void> {
   // One run per chat: two overlapping runs share a transcript directory and can
-  // both create the chat's session (see `withChatLock`). Latest message wins —
+  // both create the chat's session (see `withChatLock`). Latest message wins
   // a run superseded by a newer message bails out at its checkpoints instead
   // of running to completion (see `isLatestMessage`).
   return withChatLock(`${params.userId}:${params.telegramChatId}`, async () => {
@@ -83,8 +83,8 @@ export async function processTelegramMessage(params: ProcessTelegramMessageParam
       await runTelegramMessage(params);
     } finally {
       // The run is fully settled (success, error, abort, or supersession).
-      // interruptTelegramChat() awaits this promise, so every exit path —
-      // including a setup failure before the run registers — must resolve it.
+      // interruptTelegramChat() awaits this promise, so every exit path
+      // including a setup failure before the run registers. must resolve it.
       params.processingDone?.resolve();
     }
   });
@@ -96,9 +96,9 @@ interface ProcessTelegramMessageParams {
     telegramChatId: bigint,
   ) => void;
   processingDone?: { resolve: () => void };
-  /** This message's sequence for its chat — the run drops out if a newer message supersedes it. */
+  /** This message's sequence for its chat. the run drops out if a newer message supersedes it. */
   messageSeq: number;
-  /** Settles when this run has fully settled — registered for interrupt waits. */
+  /** Settles when this run has fully settled. registered for interrupt waits. */
   donePromise?: Promise<void>;
   userId: string;
   encryptedToken: string;
@@ -129,19 +129,19 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   } = params;
 
   // Register this run as the chat's active run BEFORE the slow setup below
-  // (DB upsert, model resolution, session creation take seconds) — an
+  // (DB upsert, model resolution, session creation take seconds). an
   // incoming message must be able to supersede the run even while the Pi
   // session does not exist yet.
   beginTelegramRun(userId, telegramChatId, donePromise ?? new Promise<void>(() => {}));
 
   // Latest message wins: a newer message for this chat arrived while we were
-  // waiting for the chat lock. Drop this run before doing any work — the
+  // waiting for the chat lock. Drop this run before doing any work. the
   // newer message is the one that gets processed (and replied to).
   if (!isLatestMessage(userId, telegramChatId, messageSeq)) {
     console.warn(
       `Dropping superseded Telegram message (seq ${messageSeq}, msg ${replyToMessageId}, chat ${telegramChatId})`,
     );
-    // Remove our entry — nothing left to interrupt (the superseding message
+    // Remove our entry. nothing left to interrupt (the superseding message
     // overwrites the entry when its run starts).
     clearTelegramRun(userId, telegramChatId);
     return;
@@ -161,7 +161,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
       processedFile = await downloadAndProcessTelegramFile(telegramBot, userId, fileInfo);
     } catch (err) {
       console.error(`Failed to download Telegram file:`, err);
-      // Continue without the file — the text/caption is still processed
+      // Continue without the file. the text/caption is still processed
     }
   }
 
@@ -180,7 +180,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   await saveUserMessage(sessionId, promptText);
 
   // 4. Save attachment record only if a file was saved to disk.
-  // Telegram images are base64-only (no file on disk) — their data is
+  // Telegram images are base64-only (no file on disk). their data is
   // already embedded in the message content, so no attachment record needed.
   // Telegram documents are saved to disk and need a record for cleanup.
   if (processedFile && processedFile.filePath) {
@@ -292,7 +292,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   );
 
   // Every resolution path publishes `tool_approval_resolved` on the session
-  // bus — resolving the card from that event covers Telegram button
+  // bus. resolving the card from that event covers Telegram button
   // presses, web-UI decisions, approval timeouts, and interrupts.
   const approvalBusSub = subscribeSessionEvents(sessionId, (evt) => {
     if (evt.event !== "tool_approval_resolved") return;
@@ -305,7 +305,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     return undefined;
   });
 
-  // Approval channel — a card in the Telegram chat. Shared by the tool wrapper
+  // Approval channel. a card in the Telegram chat. Shared by the tool wrapper
   // and the MCP tool gate.
   const emitApprovalRequest = (request: ApprovalRequest) => {
     sendTelegramApprovalRequest(userId, request)
@@ -319,7 +319,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
       });
   };
 
-  // Build the approval wrapper — every tool goes through the gate
+  // Build the approval wrapper. every tool goes through the gate
   const approvalWrapper = createToolApprovalGate({
     userId,
     sessionId,
@@ -357,14 +357,14 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
 
   await startSessionExtensions(session);
 
-  // Mark the run as running — startedAt is when the agent actually starts
+  // Mark the run as running. startedAt is when the agent actually starts
   // (the run record was created earlier as "pending").
   await prisma.agentRun.update({
     where: { id: run.id },
     data: { status: "running", startedAt: new Date() },
   });
 
-  // 10. Wire the shared session event tracker — it persists assistant
+  // 10. Wire the shared session event tracker. it persists assistant
   //     messages to the DB and publishes live stream events (turn_start,
   //     token, thinking, tool_start/end, turn_end, message_saved, done) on
   //     the session event bus so web observers see this generation live.
@@ -375,13 +375,13 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   });
 
   // Telegram-specific send state. DB persistence + stream events are handled
-  // by the tracker above — this subscription only sends messages to Telegram.
+  // by the tracker above. this subscription only sends messages to Telegram.
   let turnIndex = 0;
   let currentTurnText = "";
 
   // Track which turns have already had their text flushed to Telegram
   // (happens in message_update when a tool call appears, so text arrives
-  // before the approval request — not after at turn_end).
+  // before the approval request. not after at turn_end).
   const flushedTurnTexts = new Set<number>();
 
   // Track which tool calls have already had a summary sent to Telegram
@@ -414,13 +414,13 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     });
   }
 
-  // Checkpoint — a newer message may have arrived during the slow setup
+  // Checkpoint. a newer message may have arrived during the slow setup
   // above, before the Pi session existed (so the webhook's interrupt could
   // not abort it). Latest message wins: dispose the session, skip the prompt,
   // and treat the run as interrupted (cancelled, no reply).
   const superseded = !isLatestMessage(userId, telegramChatId, messageSeq);
   if (superseded) {
-    console.warn(`Telegram run ${run.id} superseded before prompt (seq ${messageSeq}) — skipping`);
+    console.warn(`Telegram run ${run.id} superseded before prompt (seq ${messageSeq}). skipping`);
     stopTyping();
     session.dispose();
   }
@@ -429,7 +429,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     if (!superseded) {
       try {
         await new Promise<void>((resolve, reject) => {
-          // Idle timeout — fires only if the session goes completely silent
+          // Idle timeout. fires only if the session goes completely silent
           // (hung model, stuck tool). Every agent event resets the window, so
           // an actively working agent can run longer than the idle window.
           const idleTimeout = createAgentIdleTimeout({
@@ -456,7 +456,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
                 const msg = event.message as { content: unknown[] };
                 currentTurnText = extractCumulativeText(msg.content);
 
-                // Flush text NOW when a tool call appears — the approval request
+                // Flush text NOW when a tool call appears. the approval request
                 // fires inside tool.execute() (before tool_execution_start), so we
                 // need the agent's response text to arrive BEFORE the approval.
                 const hasToolCall = msg.content.some(
@@ -501,7 +501,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
               }
 
               case "tool_execution_end": {
-                // A file the agent showed follows the answer to the phone —
+                // A file the agent showed follows the answer to the phone
                 // the tool's own result carries no bytes, so it is read back
                 // from the workspace here.
                 const sharedFile = sharedFiles.get(event.toolCallId);
@@ -536,7 +536,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
                   : currentTurnText;
 
                 // Send non-empty text to Telegram (skip if already flushed in message_update
-                // when a tool call was detected — that ensures text arrives before approval).
+                // when a tool call was detected. that ensures text arrives before approval).
                 if (text.trim() && !flushedTurnTexts.has(turnIndex)) {
                   sendTelegramMessage(
                     encryptedToken,
@@ -587,14 +587,14 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
                 break;
               }
 
-              // agent_end only means the current run iteration stopped — the
+              // agent_end only means the current run iteration stopped. the
               // SDK may still retry, auto-compact, or continue the run. The
               // settled event is the "completely finished" signal (TUI parity),
               // and the only safe place to decide the run's outcome: an overflow
               // failure reports `willRetry: false` (compaction handles it, not
               // retry) and is followed by a compact-and-continue, so deciding
               // here would report an error for a run whose answer arrives a
-              // moment later — and drop it, because the listener is gone.
+              // moment later. and drop it, because the listener is gone.
               case "agent_settled": {
                 idleTimeout.clear();
                 unsubscribe();
@@ -606,7 +606,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
                 break;
               }
 
-              // A provider failure does not throw — it ends the assistant
+              // A provider failure does not throw. it ends the assistant
               // message with stopReason "error". Record it per attempt; the
               // settled handler decides. `willRetry` runs are skipped because
               // their failure is provisional and the retry reports its own.
@@ -635,7 +635,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
           }
 
           // Send the user message to the agent (with images if available).
-          // session.prompt() — the TUI path — runs the SDK's pre-prompt
+          // session.prompt(). the TUI path. runs the SDK's pre-prompt
           // compaction check and post-run processing (retry, auto-compaction,
           // overflow continue) and resolves when the session settles. The
           // system prompt comes from the resource loader above, so the
@@ -656,14 +656,14 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
 
     // Detect interruption BEFORE cleanup: a new message aborting this run
     // marks it in the registry (the old entry may already have been
-    // overwritten — in that narrow race the run counts as completed).
+    // overwritten. in that narrow race the run counts as completed).
     // `superseded` covers the checkpoint path, where the run bailed before
     // the session was attached to the registry entry.
     const interrupted = superseded || wasTelegramSessionInterrupted(session);
 
     // For single-turn responses (no turn_end fired), make sure the text is
     // still delivered to Telegram. The tracker handles the DB save.
-    // Interrupted runs are superseded by the new message's response —
+    // Interrupted runs are superseded by the new message's response
     // a stale partial reply would only confuse the user.
     if (!interrupted && turnIndex === 0 && currentTurnText.trim() && !flushedTurnTexts.has(0)) {
       await sendTelegramMessage(
@@ -772,7 +772,7 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
     //
     // `agentJobs` is granted for the same "always" reason: a user talking to
     // the bot is the most likely place to ask for something to happen later
-    // ("remind me at 9"). Without it the request can only be refused — the
+    // ("remind me at 9"). Without it the request can only be refused. the
     // chat has no way to schedule anything, and the web UI is a trip away.
     const existingToolConfig = (definition.toolConfig as Record<string, boolean> | null) ?? {};
     if (existingToolConfig.terminal !== true || existingToolConfig.agentJobs !== true) {
@@ -825,7 +825,7 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
  * Compact a Telegram chat session.
  *
  * Recreates the Pi session from persistent JSONL files and runs compaction.
- * The caller (the `/compact` command handler) renders the outcome — nothing is
+ * The caller (the `/compact` command handler) renders the outcome. nothing is
  * sent to Telegram from here, so the web and Telegram paths can share one
  * command definition.
  */
@@ -966,7 +966,7 @@ async function isSessionExpired(sessionId: string): Promise<boolean> {
     take: 1,
   });
 
-  // No messages at all means the session was created but never used — expired.
+  // No messages at all means the session was created but never used. expired.
   return (
     lastMessage == null || lastMessage.createdAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now()
   );
@@ -976,7 +976,7 @@ async function isSessionExpired(sessionId: string): Promise<boolean> {
  * Find or create the Saale chat session this link talks through.
  *
  * The link remembers its session, because a link is exactly one user and one
- * private chat — there is no per-chat row to look up. Sessions still expire
+ * private chat. there is no per-chat row to look up. Sessions still expire
  * after six hours of inactivity so a stale thread starts clean instead of
  * carrying an unbounded history.
  */
@@ -1032,7 +1032,7 @@ async function saveUserMessage(sessionId: string, content: string): Promise<void
     },
   });
 
-  // Real chat activity — advance lastActivityAt so the session list sorts/
+  // Real chat activity. advance lastActivityAt so the session list sorts/
   // displays this chat correctly (updatedAt alone is unreliable here: the
   // tracker only writes the session when the run settles, so a processing
   // error would leave it stale).

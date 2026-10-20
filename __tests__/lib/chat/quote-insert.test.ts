@@ -33,7 +33,7 @@ describe("insertQuote", () => {
   it("appends the quote at the end of a non-empty draft", () => {
     const result = insertQuote("fix this", "hello", 8);
     expect(result.value).toBe("fix this\n\n> hello\n");
-    // Caret sits after the trailing newline — ready for the question.
+    // Caret sits after the trailing newline  ready for the question.
     expect(result.cursor).toBe(result.value.length);
   });
 

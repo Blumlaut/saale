@@ -52,7 +52,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     if (asChild && React.isValidElement(props.children)) {
       // `children` is the element being cloned, so it must not be forwarded as
-      // a prop — doing so replaces the clone's own content with itself and
+      // a prop. doing so replaces the clone's own content with itself and
       // nests an <a> inside an <a>.
       const { children, ...rest } = props;
       const child = children as React.ReactElement<

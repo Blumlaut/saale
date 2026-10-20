@@ -12,7 +12,7 @@
  *   import { resetMockRedis } from "../../helpers/in-memory-redis";
  *   beforeEach(() => resetMockRedis());
  *
- * No external server or binary is needed — everything lives in module state.
+ * No external server or binary is needed  everything lives in module state.
  */
 
 // ─── Shared state ────────────────────────────────────────────────────────────

@@ -296,7 +296,7 @@ describe("triggerAgentRun output delivery", () => {
         deliveryError: "Telegram output is configured but no Telegram bot is connected.",
       }),
     });
-    // The agent still runs — the messages are worth keeping either way.
+    // The agent still runs  the messages are worth keeping either way.
     expect(executeAgentRun).toHaveBeenCalledWith("run-1", expect.anything(), userId, undefined);
   });
 

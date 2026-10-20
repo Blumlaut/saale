@@ -24,7 +24,7 @@ interface DeleteResult {
 
 /**
  * Connect to a CalDAV server for a calendar account.
- * Returns a DAVClient instance — caller is responsible for cleanup.
+ * Returns a DAVClient instance. caller is responsible for cleanup.
  */
 export async function connectCalDAV(accountId: string): Promise<{
   client: DAVClient;

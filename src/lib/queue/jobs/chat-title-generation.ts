@@ -117,7 +117,7 @@ Output JSON only:
         newTitle = parsed.title.replace(/\0/g, "").slice(0, 50).trim();
       }
     } catch {
-      // Parse failed — skip
+      // Parse failed. skip
     }
 
     if (newTitle && newTitle !== session.title) {

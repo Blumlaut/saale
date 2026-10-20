@@ -6,7 +6,7 @@ import { encrypt } from "@/lib/crypto";
 import { syncSubscription } from "@/lib/calendar/subscription-sync";
 
 /**
- * GET /api/calendar/subscriptions — List user's ICS subscriptions
+ * GET /api/calendar/subscriptions. List user's ICS subscriptions
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -42,7 +42,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/calendar/subscriptions — Create a new ICS subscription
+ * POST /api/calendar/subscriptions. Create a new ICS subscription
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * DELETE /api/calendar/subscriptions — Bulk delete (not used, individual delete is via [id])
+ * DELETE /api/calendar/subscriptions. Bulk delete (not used, individual delete is via [id])
  */
 export async function DELETE() {
   return NextResponse.json({ error: "Method not allowed" }, { status: 405 });

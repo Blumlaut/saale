@@ -69,7 +69,7 @@ describe("settleQueuedMessage", () => {
 
   it("keeps the position the server published when the SSE update wins the race", () => {
     // The queue_update for the enqueue arrived first, and another message was
-    // queued after it — re-appending would jump ours past that one.
+    // queued after it  re-appending would jump ours past that one.
     const saved = msg("db-1");
     const list = [saved, msg("db-2")];
 

@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
  * Class list for an action attached to a list row (the row's ⋯ menu, a delete
  * button). Pointer devices get a quiet row whose action appears on hover or
  * keyboard focus; touch devices can never hover, so the action stays visible
- * there — otherwise it is simply unreachable on a phone.
+ * there. otherwise it is simply unreachable on a phone.
  */
 export const ROW_ACTION =
   "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100";

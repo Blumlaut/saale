@@ -155,7 +155,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
           continue;
         }
 
-        // Fetch only headers (envelope + flags) — bodies are fetched on-demand
+        // Fetch only headers (envelope + flags). bodies are fetched on-demand
         const fetchOpts: Record<string, unknown> = {
           uid: true,
           envelope: true,
@@ -192,7 +192,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
           response?: unknown;
         };
         // Folders that appear in LIST but don't actually exist (e.g. sieve
-        // virtual folders on Mailcow) — skip silently
+        // virtual folders on Mailcow). skip silently
         if (folderErr.responseText?.includes("doesn't exist")) {
           // eslint-disable-next-line no-console -- debug logging
           console.log(`[email-sync] Skipping non-existent folder ${folder}`);
@@ -254,7 +254,7 @@ export async function syncEmailAccount(accountId: string): Promise<{
   return { newMessages, updatedMessages, errors };
 }
 
-/** Longest error string kept on the account row — enough to identify the cause. */
+/** Longest error string kept on the account row. enough to identify the cause. */
 const MAX_SYNC_ERROR_LENGTH = 500;
 
 /**

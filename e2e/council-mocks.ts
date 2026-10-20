@@ -13,8 +13,8 @@ import type {
  *
  * A room renders the values most likely to overflow a phone: a council name in
  * a toolbar, member posts carrying file paths and digests, a private turn trace
- * with tool arguments. The fixtures therefore carry hostile ones — a long name,
- * an unbreakable 64-character digest, a deep sandbox path — rather than
+ * with tool arguments. The fixtures therefore carry hostile ones  a long name,
+ * an unbreakable 64-character digest, a deep sandbox path  rather than
  * comfortable placeholders, because a fixture that cannot overflow tests
  * nothing.
  *

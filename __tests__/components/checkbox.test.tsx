@@ -64,7 +64,7 @@ describe("Checkbox", () => {
     const root = container.querySelector('[data-slot="checkbox"]')!;
     const classes = root.className;
 
-    // The checked fill must be driven by `data-checked` (base-ui) — the Radix
+    // The checked fill must be driven by `data-checked` (base-ui)  the Radix
     // `data-state-checked` attribute is never emitted and would leave the
     // checkbox unstyled when checked (the bug this test guards against).
     expect(classes).toContain("data-checked:bg-primary");

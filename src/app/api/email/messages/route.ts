@@ -29,7 +29,7 @@ async function collectTrashFolders(userId: string, accountId?: string): Promise<
     if (trashFolder) {
       trashNames.add(trashFolder);
     } else {
-      // Account hasn't synced yet — use fallback names
+      // Account hasn't synced yet. use fallback names
       for (const name of KNOWN_TRASH_FOLDERS) {
         trashNames.add(name);
       }
@@ -39,7 +39,7 @@ async function collectTrashFolders(userId: string, accountId?: string): Promise<
 }
 
 /**
- * GET /api/email/messages — List emails across user's accounts
+ * GET /api/email/messages. List emails across user's accounts
  * Query params: accountId, folder, unread, starred, since, until, limit, offset, search, tag
  */
 export async function GET(request: NextRequest) {

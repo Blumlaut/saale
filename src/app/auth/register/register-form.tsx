@@ -73,7 +73,7 @@ export function RegisterForm({ telegram }: RegisterFormProps) {
     setError("");
     setSuccess("");
 
-    // The handle is the whole identity now — no separate full name. Store the
+    // The handle is the whole identity now. no separate full name. Store the
     // typed form as the display name and the normalized one as the handle.
     const username = normalizeUsername(data.username);
     if (!isValidUsername(username)) {

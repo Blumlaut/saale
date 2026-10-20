@@ -3,8 +3,8 @@
  *
  * The sandbox *is* the council's Open Terminal account (see `accounts.ts`): its
  * home directory, and the identity every command and file operation runs as.
- * Unix permissions are the boundary — the account cannot read the user's home,
- * and the user cannot read the sandbox — which is why the same three built-in
+ * Unix permissions are the boundary. the account cannot read the user's home,
+ * and the user cannot read the sandbox. which is why the same three built-in
  * tools a chat uses (`read`, `write`, `edit`, `bash`) are safe here without
  * being crippled.
  *
@@ -14,12 +14,12 @@
  *   still come from a model: a path is normalized and refused when it leaves the
  *   sandbox, so app-side paths (the uploads volume, `/etc`, another tenant's
  *   workspace) never reach the container. Textual, so a symlink can still point
- *   out of the sandbox and be followed — the account's permissions are what stop
+ *   out of the sandbox and be followed. the account's permissions are what stop
  *   that from reading anything it should not.
  * - **The mode check.** `ensureCouncilSandbox` verifies the container really
  *   mapped the sandbox key to its own account before anything runs. Without
  *   `OPEN_TERMINAL_MULTI_USER=true` Open Terminal ignores `X-User-Id` and every
- *   command would run as the user — the opposite of a sandbox — so it refuses
+ *   command would run as the user. the opposite of a sandbox. so it refuses
  *   instead.
  *
  * Concurrent writers need no lock here: Pi's `write` and `edit` already
@@ -50,7 +50,7 @@ export class CouncilSandboxEscapeError extends Error {
   constructor(requested: string) {
     super(
       `Path is outside the council sandbox and was refused: ${requested}. ` +
-        `Work inside the sandbox — paths are relative to it.`,
+        `Work inside the sandbox. paths are relative to it.`,
     );
     this.name = "CouncilSandboxEscapeError";
   }
@@ -59,8 +59,8 @@ export class CouncilSandboxEscapeError extends Error {
 /**
  * Resolve `path` inside `root`.
  *
- * The rule — collapse, pop `..`, refuse anything that is not the root or under
- * it — is shared with the file browser (`@/lib/files/paths`), so a member's tool
+ * The rule. collapse, pop `..`, refuse anything that is not the root or under
+ * it. is shared with the file browser (`@/lib/files/paths`), so a member's tool
  * argument and a browser request can never be judged by two different
  * implementations. `inside` is false when the result leaves the root.
  */
@@ -74,7 +74,7 @@ export function resolveSandboxPath(root: string, path: string): { path: string; 
  * The account is the boundary; this is what stops a tool argument from reaching
  * app-side paths (the uploads volume, `/etc`, another tenant's workspace) in the
  * first place. Textual, so a symlink can still point out of the sandbox and be
- * followed — the account's own permissions are what stop *that* from reading
+ * followed. the account's own permissions are what stop *that* from reading
  * anything it should not.
  */
 export function normalizeSandboxPath(root: string, path: string): string {
@@ -100,7 +100,7 @@ export interface CouncilSandbox {
  *
  * `sessionId` is the council's, not a member's: the sandbox account is shared by
  * every member (that is the point), and the terminal session it names only
- * affects the cwd Open Terminal remembers — every call here passes an explicit
+ * affects the cwd Open Terminal remembers. every call here passes an explicit
  * cwd or an absolute, already-resolved path.
  */
 export function createCouncilSandbox(options: {
@@ -123,7 +123,7 @@ export function createCouncilSandbox(options: {
   /**
    * A cwd that stays in the sandbox. `bash` needs one to run in, and refusing
    * the command outright would leave the model with a tool that cannot run at
-   * all — the root is the only safe answer for a cwd that points outside.
+   * all. the root is the only safe answer for a cwd that points outside.
    */
   const clampCwd = (requested: string | undefined): string => {
     if (!requested) return home;
@@ -163,7 +163,7 @@ export function createCouncilSandbox(options: {
  * The council's built-in file tools, bound to its sandbox.
  *
  * Built from Pi's own tool factories so truncation, image handling, exact-match
- * editing and diffing stay in the SDK — the sandbox only supplies the backend.
+ * editing and diffing stay in the SDK. the sandbox only supplies the backend.
  * `bash` uses the `AgentTool` form, which drops Pi's TUI renderers.
  */
 export function councilSandboxTools(sandbox: CouncilSandbox): {
@@ -205,7 +205,7 @@ function sameAccountIdentityKey(key: string): string {
  * `X-User-Id → account` in memory, and its cache says "already provisioned"
  * without re-checking `/etc/passwd`. An account that was deleted (a council
  * being cleaned up) is therefore remembered as existing, and every command for
- * that id fails with `sudo: unknown user` — permanently, since the cache lives
+ * that id fails with `sudo: unknown user`. permanently, since the cache lives
  * as long as the container. Asking under an id that resolves to the *same*
  * account is a different cache entry, so the container provisions it again; the
  * original id then works too.
@@ -247,7 +247,7 @@ export async function ensureCouncilSandbox(identity: CouncilSandboxIdentity): Pr
   const account = output.trim().split("\n").pop()?.trim() ?? "";
   if (account !== identity.account) {
     throw new Error(
-      `Council sandboxes require OPEN_TERMINAL_MULTI_USER=true — the sandbox identity resolved to ` +
+      `Council sandboxes require OPEN_TERMINAL_MULTI_USER=true. the sandbox identity resolved to ` +
         `"${account}" instead of "${identity.account}", so it would run in the user's workspace.`,
     );
   }
@@ -258,11 +258,11 @@ export async function ensureCouncilSandbox(identity: CouncilSandboxIdentity): Pr
  *
  * Best-effort and never throws: a council that is being deleted must not stay
  * behind because the container was briefly unreachable, but a cleanup that did
- * not happen is reported — a sandbox left on disk holds the members' work.
+ * not happen is reported. a sandbox left on disk holds the members' work.
  *
  * The fallback `rm -rf` exists because `userdel -r` refuses while a process of
  * that account is still running (a member's shell, a killed turn). The account
- * itself cannot be removed from inside a member's session — that needs the
+ * itself cannot be removed from inside a member's session. that needs the
  * container's own identity, which is what runs this.
  */
 export async function destroyCouncilSandbox(identity: CouncilSandboxIdentity): Promise<void> {

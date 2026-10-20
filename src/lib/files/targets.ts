@@ -4,7 +4,7 @@
  * The client sends one opaque token (`user`, or `council:<id>`); this module
  * turns it into a provider plus the metadata a header needs. Keeping the token
  * opaque means the browser component never learns what it is browsing, which is
- * what makes it reusable — a new kind of workspace is a new scheme here and a
+ * what makes it reusable. a new kind of workspace is a new scheme here and a
  * new page, not a new component.
  */
 
@@ -44,8 +44,8 @@ export interface OpenedFileTarget {
 /**
  * A user's own workspace.
  *
- * Prefers the terminal container when it is configured — that is where a user's
- * agents actually work — and falls back to the app's uploads volume otherwise,
+ * Prefers the terminal container when it is configured. that is where a user's
+ * agents actually work. and falls back to the app's uploads volume otherwise,
  * the same pair of locations the chat workspace routes use.
  *
  * `sessionId` rides along as Open Terminal's chat header, so the container's log

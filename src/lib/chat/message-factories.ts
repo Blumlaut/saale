@@ -4,10 +4,10 @@ import type { Message } from "@/components/chat/types";
  * Message factories and ID-prefix predicates shared by the chat UI.
  *
  * Message IDs encode where a message lives:
- * - `temp-*` (role user) — optimistic copy while POST /messages is in flight
- * - `temp-compaction-*` (role compaction) — optimistic compaction placeholder
- * - `streaming-{turnId}` — live assistant turn not yet saved to the DB
- * - anything else — a real DB message id
+ * - `temp-*` (role user). optimistic copy while POST /messages is in flight
+ * - `temp-compaction-*` (role compaction). optimistic compaction placeholder
+ * - `streaming-{turnId}`. live assistant turn not yet saved to the DB
+ * - anything else. a real DB message id
  *
  * The id is not the identity of a *turn*, only of its current row: the first
  * one is replaced by the second. `Message.turnId` is what survives that, so a

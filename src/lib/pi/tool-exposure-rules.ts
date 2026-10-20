@@ -1,12 +1,12 @@
 /**
  * Pure per-category tool exposure rules (`AppSettings.toolExposure`).
  *
- * The value is JSON a client can PATCH, and it is read on every session build —
+ * The value is JSON a client can PATCH, and it is read on every session build
  * so it is normalized in both directions: unknown categories and exposures are
  * dropped on write, and whatever is in the row is validated again on read.
  *
  * Every category has a default (`TOOL_CATEGORIES[].defaultExposure`), so only
- * deviations from that default are stored — the row stays sparse and holds just
+ * deviations from that default are stored. the row stays sparse and holds just
  * the categories the user moved.
  *
  * Split from `tool-exposure.ts` (which loads the row through Prisma) so the

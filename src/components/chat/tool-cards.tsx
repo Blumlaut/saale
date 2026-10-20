@@ -13,16 +13,16 @@ import type { ToolCardModel, ToolDescriptor } from "./tool-card-model";
 import type { ToolCallData } from "./types";
 
 /**
- * Tool-call routing — the one place a tool name becomes something renderable.
+ * Tool-call routing. the one place a tool name becomes something renderable.
  *
  * A route either describes a card (every normal tool) or is a bespoke
- * component. `show_file` is the only bespoke one: it is an attachment — a
- * preview and a download — rather than a report of what a call did, so it has
+ * component. `show_file` is the only bespoke one: it is an attachment. a
+ * preview and a download. rather than a report of what a call did, so it has
  * no card model to describe. Everything else is data in `./tool-descriptors`.
  *
  * The owner's path: `MessageList` renders `ToolCallGroup`, which resolves each
  * call through here. The share viewer renders `RedactedToolCall` directly, so a
- * descriptor added below can never reach a public page —
+ * descriptor added below can never reach a public page
  * `__tests__/share-redaction-coverage.test.ts` enforces that.
  */
 
@@ -82,7 +82,7 @@ const ROUTES: readonly ToolCardRoute[] = [
   route(codemodeDescriptor),
 ];
 
-/** The route that owns a tool name — the first match, as in the table. */
+/** The route that owns a tool name. the first match, as in the table. */
 function findRoute(name: string): ToolCardRoute | undefined {
   return ROUTES.find(
     (toolRoute) =>
@@ -111,7 +111,7 @@ export function describeToolCard(name: string, toolCall: ToolCallData): ToolCard
 export interface ToolCallSplit {
   /** Attachments: the files the turn is showing the user. Never collapsed. */
   attachments: ToolCallData[];
-  /** The rest — what the turn did. Collapsed into one row when there are several. */
+  /** The rest. what the turn did. Collapsed into one row when there are several. */
   work: ToolCallData[];
 }
 

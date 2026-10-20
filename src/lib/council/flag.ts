@@ -10,7 +10,7 @@
  * until the user enables it (see `SidebarNavItem.defaultHidden`), so the
  * feature is already invisible without the variable.
  *
- * Pure — no database or Node-only imports, so any layer can read it.
+ * Pure. no database or Node-only imports, so any layer can read it.
  */
 export function isCouncilEnabled(): boolean {
   return process.env.COUNCIL_ENABLED !== "0";

@@ -17,7 +17,7 @@ export interface ExtractedEvent {
  */
 const EXTRACT_EVENTS_PROMPT = `You are an event extraction assistant. Analyze the given email and determine if it describes a scheduled event, appointment, meeting, deadline, or time-bound commitment.
 
-If the email describes an event, extract the details in JSON format. Be conservative — only extract when you're confident about both the event nature and the date/time.
+If the email describes an event, extract the details in JSON format. Be conservative. only extract when you're confident about both the event nature and the date/time.
 
 Rules:
 - The startDate must be a valid ISO date (YYYY-MM-DD). Use the current date as reference for relative dates ("next Tuesday", "tomorrow").
@@ -210,7 +210,7 @@ function validateExtractedEvent(event: ExtractedEvent): boolean {
 
 /**
  * Check if an event with similar title and date already exists.
- * Scoped to the user's own calendars — never queries another user's events.
+ * Scoped to the user's own calendars. never queries another user's events.
  */
 async function checkDuplicate(
   event: ExtractedEvent,
@@ -260,7 +260,7 @@ async function checkDuplicate(
 
 /**
  * Create a calendar event from extracted data.
- * Scoped to the user's own calendars — never creates events in another user's calendar.
+ * Scoped to the user's own calendars. never creates events in another user's calendar.
  */
 async function createCalendarEvent(
   event: ExtractedEvent,

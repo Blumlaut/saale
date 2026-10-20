@@ -75,7 +75,7 @@ export interface CouncilDetail extends CouncilSummary {
   activeRun: CouncilRunView | null;
 }
 
-/** One member's turn inside a run — its private trace. */
+/** One member's turn inside a run. its private trace. */
 export interface CouncilTurnView {
   id: string;
   runId: string;
@@ -96,7 +96,7 @@ export interface CouncilTurnView {
   completedAt: string | null;
 }
 
-/** A message in the room — the shared read model, as the API returns it. */
+/** A message in the room. the shared read model, as the API returns it. */
 export interface CouncilMessageView {
   seq: number;
   memberId: string | null;

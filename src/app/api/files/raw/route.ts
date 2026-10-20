@@ -11,7 +11,7 @@ import { fileErrorResponse, openRequestTarget, resolveRequestPath } from "@/lib/
 /**
  * GET /api/files/raw?target=&path=&download=
  *
- * One file's bytes — inline for the viewer, as an attachment for Download.
+ * One file's bytes. inline for the viewer, as an attachment for Download.
  *
  * Three things matter here. The response is keyed by content and revalidated
  * (`no-cache` + a content ETag), because a workspace file is mutable while its
@@ -35,11 +35,11 @@ export async function GET(request: NextRequest) {
     const name = baseName(filePath);
     if (stat.size > MAX_DOWNLOAD_BYTES) {
       throw new FileLimitError(
-        `${name} is ${formatFileSize(stat.size)} — larger than the ${formatFileSize(MAX_DOWNLOAD_BYTES)} limit for opening a file here.`,
+        `${name} is ${formatFileSize(stat.size)}. larger than the ${formatFileSize(MAX_DOWNLOAD_BYTES)} limit for opening a file here.`,
       );
     }
     if (!download && stat.size > MAX_PREVIEW_BYTES) {
-      throw new FileLimitError(`${name} is too large to preview — download it instead.`);
+      throw new FileLimitError(`${name} is too large to preview. download it instead.`);
     }
 
     const file = await target.opened.provider.read(filePath);

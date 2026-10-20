@@ -31,7 +31,7 @@ export function ImpersonationBanner() {
       const data = await fetchJson<SessionData>("/api/auth/get-session");
       setSession(data);
     } catch {
-      // Ignore — not authenticated
+      // Ignore. not authenticated
     } finally {
       setLoading(false);
     }

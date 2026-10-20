@@ -75,7 +75,7 @@ async function implementedToolNames(): Promise<string[]> {
 /**
  * The catalog drives the settings UI, the approval gate and the share-redaction
  * rules, so a tool advertised there but never implemented shows a policy toggle
- * the user can set to no effect — the drift that hid `memory_delete`.
+ * the user can set to no effect  the drift that hid `memory_delete`.
  */
 describe("tool catalog ↔ implementation drift", () => {
   it("never advertises a tool that no factory implements", async () => {
@@ -174,8 +174,8 @@ function defaultExposureOf(name: string): ToolExposure {
  * The tools codemode lists to the model, rendered by Pi's own catalog.
  *
  * Pi builds that description in `prepareLoadout`, which a session calls whenever
- * the active tools change, so the check runs the real renderer — including its
- * token budget — rather than a re-implementation of it that could not fail.
+ * the active tools change, so the check runs the real renderer  including its
+ * token budget  rather than a re-implementation of it that could not fail.
  */
 async function listedToolNames(): Promise<Set<string>> {
   const exposureOf = defaultExposureOf;

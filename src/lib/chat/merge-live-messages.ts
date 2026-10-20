@@ -13,15 +13,15 @@ import { isStreamingMessage, isTempUserMessage } from "./message-factories";
  *
  * A DB snapshot fetched BEFORE a POST committed is stale: it lacks the
  * just-sent user message. Without preserving the temp copy, applying such a
- * snapshot reverts the UI to the empty state until the generation starts —
+ * snapshot reverts the UI to the empty state until the generation starts
  * the "sent message flashes, then the Start a conversation placeholder"
  * regression.
  *
  * Ordering: the merge keeps the server's conversation order (`createdAt`) and
  * slots the live turns into it. A live turn carries the server's turn start
  * (see `turn_start`), which is also the timestamp its DB row gets, so a
- * message delivered into the run mid-turn — a queued message pushed with "send
- * now", steered into the agent — lands after the turn it interrupted instead
+ * message delivered into the run mid-turn. a queued message pushed with "send
+ * now", steered into the agent. lands after the turn it interrupted instead
  * of above it. Appending live turns blindly would show exactly that inversion
  * to anyone watching (and a reload mid-run would keep showing it).
  *
@@ -42,7 +42,7 @@ import { isStreamingMessage, isTempUserMessage } from "./message-factories";
  * A turn saved while the snapshot was in flight is the same problem seen from
  * the start: `message_saved` renamed the bubble to a row the server had not
  * committed when it read the response, so the snapshot does not have it. Only
- * its `savedAt` (see `MergeOptions`) explains the absence — anything else the
+ * its `savedAt` (see `MergeOptions`) explains the absence. anything else the
  * snapshot lacks is really gone.
  */
 export interface MergeOptions {

@@ -34,7 +34,7 @@ export interface ModelLimitsTarget {
   /** What Pi sends today, resolved from every source. */
   contextWindow?: number | undefined;
   maxOutputTokens?: number | undefined;
-  /** What the user recorded for this model — empty fields inherit. */
+  /** What the user recorded for this model. empty fields inherit. */
   overrides?: { contextWindow?: number; maxOutputTokens?: number } | undefined;
   /** The endpoint-wide default the model falls back to. */
   endpointLimits: { contextWindow: number | null; maxOutputTokens: number | null } | null;
@@ -169,8 +169,8 @@ export function ModelLimitsSheet({
             </p>
 
             <p className="text-muted-foreground font-mono text-[11px]">
-              Now sending {target.contextWindow?.toLocaleString() ?? "—"} context /{" "}
-              {target.maxOutputTokens?.toLocaleString() ?? "—"} output
+              Now sending {target.contextWindow?.toLocaleString() ?? ""} context /{" "}
+              {target.maxOutputTokens?.toLocaleString() ?? ""} output
             </p>
 
             {(invalid || inverted) && (

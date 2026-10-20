@@ -5,7 +5,7 @@ process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef01
 
 import { _resetKey } from "@/lib/crypto";
 
-describe("GitHub client — token validation", () => {
+describe("GitHub client  token validation", () => {
   beforeEach(() => {
     _resetKey();
     vi.restoreAllMocks();
@@ -34,7 +34,7 @@ describe("GitHub client — token validation", () => {
   });
 });
 
-describe("GitHub client — env injection", () => {
+describe("GitHub client  env injection", () => {
   beforeEach(() => {
     _resetKey();
   });
@@ -52,7 +52,7 @@ describe("GitHub client — env injection", () => {
   });
 });
 
-describe("GitHub client — API URL construction", () => {
+describe("GitHub client  API URL construction", () => {
   it("builds correct API base URL", () => {
     const base = "https://api.github.com";
     const path = "/user";

@@ -16,7 +16,7 @@ function formatTokens(count: number): string {
 }
 
 /**
- * Compaction message — shows a collapsible summary of what was condensed.
+ * Compaction message. shows a collapsible summary of what was condensed.
  * Renders as a centered divider with the summary expandable on click.
  */
 export function CompactionMessage({

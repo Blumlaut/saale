@@ -55,7 +55,7 @@ describe("assertSignupsAllowed", () => {
     });
   });
 
-  it("refuses an admin-created account too — that path is an admin's job, not a sign-up", async () => {
+  it("refuses an admin-created account too  that path is an admin's job, not a sign-up", async () => {
     mockFindUnique.mockResolvedValue({ signupsEnabled: false });
 
     await expect(assertSignupsAllowed({ path: ADMIN_CREATE_USER_PATH })).resolves.toBeUndefined();

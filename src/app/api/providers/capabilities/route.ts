@@ -25,7 +25,7 @@ async function findProviderKey(userId: string, provider: string) {
 }
 
 /**
- * PATCH /api/providers/capabilities — Record what one model can do and how big
+ * PATCH /api/providers/capabilities. Record what one model can do and how big
  * its window is.
  *
  * Body: `{ provider, modelId, vision?, contextWindow?, maxOutputTokens? }`. A
@@ -60,7 +60,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * POST /api/providers/capabilities — Ask the endpoint what its models can do and
+ * POST /api/providers/capabilities. Ask the endpoint what its models can do and
  * store the answers.
  *
  * Detection is explicit rather than part of building the runtime: `/props` costs

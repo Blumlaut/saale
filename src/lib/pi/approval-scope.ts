@@ -3,7 +3,7 @@
  *
  * A tool that orchestrates other tools (`codemode`, whose script calls several)
  * can ask the user once for everything it is about to do. The calls it then
- * makes are *nested* — Pi ids them `<calling id>/<n>` — and each one would
+ * makes are *nested*. Pi ids them `<calling id>/<n>`. and each one would
  * otherwise ask again, because the gate that sees a nested call only knows the
  * call in front of it: it cannot tell whether the user just approved the parent.
  *
@@ -28,7 +28,7 @@ interface ScopeGrant {
 const grants = new Map<string, Map<string, ScopeGrant>>();
 
 /**
- * The call id and the ids of the calls it was nested in, innermost first —
+ * The call id and the ids of the calls it was nested in, innermost first
  * `call_a/2/1` is `["call_a/2/1", "call_a/2", "call_a"]`.
  */
 function callAndAncestors(toolCallId: string): string[] {
@@ -61,7 +61,7 @@ export function grantApprovalScope(options: {
   session.set(toolCallId, { tools: new Set(tools), expiresAt });
 }
 
-/** Forget a call's grant — called when the approved call finishes. */
+/** Forget a call's grant. called when the approved call finishes. */
 export function releaseApprovalScope(sessionId: string, toolCallId: string): void {
   const session = grants.get(sessionId);
   if (!session) return;
@@ -71,7 +71,7 @@ export function releaseApprovalScope(sessionId: string, toolCallId: string): voi
 
 /**
  * Whether the call `toolCallId` is covered by an approval granted to it or to a
- * call it was nested in — the approved call is covered along with everything it
+ * call it was nested in. the approved call is covered along with everything it
  * goes on to make. A grant covers a call by tool name: the same tool called
  * again under the approved parent is still covered, a different one is not.
  */

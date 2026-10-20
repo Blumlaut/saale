@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from "@/lib/queue";
 
 /**
- * PATCH /api/jobs/:jobId — Update a job
+ * PATCH /api/jobs/:jobId. Update a job
  */
 export async function PATCH(
   request: NextRequest,
@@ -34,7 +34,7 @@ export async function PATCH(
     data: updateData,
   });
 
-  // Sync the BullMQ repeatable job. Always resync — BullMQ does not update an
+  // Sync the BullMQ repeatable job. Always resync. BullMQ does not update an
   // existing scheduler with the same jobId, so cron/model/enabled changes are
   // applied by removing first, then re-adding if the job is still scheduled.
   await syncQueueTaskSchedule({
@@ -60,7 +60,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/jobs/:jobId — Delete a job
+ * DELETE /api/jobs/:jobId. Delete a job
  */
 export async function DELETE(
   _request: NextRequest,
@@ -82,7 +82,7 @@ export async function DELETE(
 }
 
 /**
- * POST /api/jobs/:jobId — Trigger manual run
+ * POST /api/jobs/:jobId. Trigger manual run
  */
 export async function POST(
   _request: NextRequest,

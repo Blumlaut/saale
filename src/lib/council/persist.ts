@@ -1,7 +1,7 @@
 /**
  * Council database access.
  *
- * Every query is scoped by `userId` — including the ones that address a row by
+ * Every query is scoped by `userId`. including the ones that address a row by
  * its own id, because an id alone is guessable and a council is a user's
  * private workspace. The child rows carry a denormalized `userId` for exactly
  * that reason (the same shape `AgentRun` uses).
@@ -99,7 +99,7 @@ export async function loadOwnerName(userId: string): Promise<string> {
  *
  * `UPDATE … RETURNING` rather than read-then-write: parallel members post at the
  * same time, and two messages that read the same counter would collide on the
- * `(councilId, seq)` unique index — or worse, silently take the same number and
+ * `(councilId, seq)` unique index. or worse, silently take the same number and
  * make the room ambiguous to read. Parameterized, so nothing is interpolated.
  */
 async function allocateSeq(councilId: string, userId: string): Promise<number> {
@@ -186,7 +186,7 @@ function toView(message: {
  *
  * `order` picks which end of the room the window comes from: `newest` (the
  * default) answers "what has just been said", `oldest` answers "read on from
- * here" — which is what a member asking for the room after a given message
+ * here". which is what a member asking for the room after a given message
  * means. Both return ascending, because the room reads that way.
  */
 export async function readRoomMessages(input: {
@@ -217,7 +217,7 @@ export async function readRoomMessages(input: {
  * A member that has been idle through a long run must be woken with what it
  * missed, and only the newest part of that fits in a prompt. Reporting the
  * skipped count is what lets the turn prompt say so instead of implying the
- * member has seen everything — a silently truncated room reads as a complete one.
+ * member has seen everything. a silently truncated room reads as a complete one.
  */
 export async function readRoomWindow(input: {
   councilId: string;
@@ -273,7 +273,7 @@ export interface CreateRunInput {
  * Take the run slot and create the run record.
  *
  * The status update is the reservation: it is conditional on a status that is
- * not `running`, so two clicks (or two replicas) cannot both start a run — the
+ * not `running`, so two clicks (or two replicas) cannot both start a run. the
  * loser's update matches no rows and is told the council is busy. No separate
  * lock is needed, and none could be more reliable than the row itself.
  */
@@ -427,7 +427,7 @@ export async function finishMemberTurn(turnId: string, data: FinishTurnInput): P
 /**
  * Runs left `running` by a process that went away.
  *
- * A run's loop lives in the web process, so a restart kills it silently — the
+ * A run's loop lives in the web process, so a restart kills it silently. the
  * row would otherwise claim to be running forever and block every later run
  * (the reservation refuses to start while the status is `running`). A heartbeat
  * older than `staleAfterMs` is the only evidence available, and marking it

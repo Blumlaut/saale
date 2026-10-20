@@ -4,7 +4,7 @@ import { withChatLock, pendingChatLocks } from "@/lib/telegram/chat-lock";
 /**
  * Telegram's webhook acknowledges an update and processes it in the
  * background, so two messages from one chat can be in flight at once. They
- * share the chat's transcript directory — and, for the first message, race to
+ * share the chat's transcript directory  and, for the first message, race to
  * create the chat's `ChatSession` row.
  */
 

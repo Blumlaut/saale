@@ -42,7 +42,7 @@ interface SaveResponse {
  * Whether users can sign in with Telegram, and what is left to configure.
  *
  * The credentials live in the environment, so this is a read-only report: it
- * exists because a half-done setup shows up nowhere else — the login page just
+ * exists because a half-done setup shows up nowhere else. the login page just
  * leaves the button out.
  */
 function TelegramLoginBlock({ login }: { login: TelegramLoginStatus }) {
@@ -74,7 +74,7 @@ function TelegramLoginBlock({ login }: { login: TelegramLoginStatus }) {
       {login.configured && !login.enabled && (
         <p className="text-destructive text-xs">
           {login.botId
-            ? `TELEGRAM_OIDC_CLIENT_ID is ${login.clientId}, but this bot's id is ${login.botId} — sign-in is off until they match.`
+            ? `TELEGRAM_OIDC_CLIENT_ID is ${login.clientId}, but this bot's id is ${login.botId}. sign-in is off until they match.`
             : "Sign-in is off until this bot is switched on, since a login has nothing to link an account to otherwise."}
         </p>
       )}
@@ -94,7 +94,7 @@ function TelegramLoginBlock({ login }: { login: TelegramLoginStatus }) {
         site&apos;s origin plus the redirect URL below. Copy the Client ID and Client Secret it
         shows into <code className="font-mono">TELEGRAM_OIDC_CLIENT_ID</code> and{" "}
         <code className="font-mono">TELEGRAM_OIDC_CLIENT_SECRET</code>, then restart. Telegram only
-        sends an authorization code to a registered URL — an unregistered one comes back in the URL
+        sends an authorization code to a registered URL. an unregistered one comes back in the URL
         fragment, where the app never sees it.
       </p>
 
@@ -117,8 +117,8 @@ function TelegramLoginBlock({ login }: { login: TelegramLoginStatus }) {
 /**
  * Admin configuration for the instance's shared Telegram bot.
  *
- * Users no longer bring their own bot — they link their Telegram account to
- * this one — so the token lives here, behind the admin API, and is never sent
+ * Users no longer bring their own bot. they link their Telegram account to
+ * this one. so the token lives here, behind the admin API, and is never sent
  * back to the browser.
  */
 export function TelegramBotPanel() {
@@ -165,9 +165,9 @@ export function TelegramBotPanel() {
         toast.success("Telegram bot saved");
       } else {
         // The token is valid (getMe passed) but Telegram would not accept the
-        // webhook — almost always an unreachable app URL. Say so instead of
+        // webhook. almost always an unreachable app URL. Say so instead of
         // reporting a success the user will discover is not one.
-        toast.warning("Bot saved, but Telegram rejected the webhook — check the app URL");
+        toast.warning("Bot saved, but Telegram rejected the webhook. check the app URL");
       }
     } catch (err) {
       console.error("Failed to save the Telegram bot token:", err);

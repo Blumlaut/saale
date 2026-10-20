@@ -14,7 +14,7 @@ type AccountSyncResult =
   | { accountId: string; synced: false; error: string };
 
 /**
- * POST /api/email/sync — Sync all enabled email accounts for the current user.
+ * POST /api/email/sync. Sync all enabled email accounts for the current user.
  * Fans out to syncEmailAccount for every enabled account owned by the user.
  * Returns 200 with per-account results if at least one account synced,
  * 500 with the aggregated error if every account failed.

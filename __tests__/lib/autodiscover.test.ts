@@ -205,7 +205,7 @@ describe("autodiscover", () => {
 
     const result = await autodiscover("user@example.com", { deps });
 
-    // 143 and 587 speak STARTTLS — reporting them as implicit TLS hangs the client.
+    // 143 and 587 speak STARTTLS  reporting them as implicit TLS hangs the client.
     expect(result.imap).toEqual({ host: "imap.example.com", port: 143, secure: false });
     expect(result.smtp).toEqual({ host: "smtp.example.com", port: 587, secure: false });
     expect(result.source).toBe("srv");

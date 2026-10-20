@@ -170,7 +170,7 @@ describe("codemode approval gate", () => {
     expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
     expect(request().toolName).toBe("codemode");
     expect(request().toolCallId).toBe(toolCallId);
-    // The calls that would each ask on their own — not the allowed one, and a
+    // The calls that would each ask on their own  not the allowed one, and a
     // tool reached twice is listed once.
     expect(batch()).toEqual({ tools: ["task_delete", "mail_send"], dynamic: false });
 

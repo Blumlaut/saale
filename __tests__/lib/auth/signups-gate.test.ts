@@ -2,7 +2,7 @@
  * The sign-up setting, enforced by the production auth options.
  *
  * Nothing else covers this: the register form asks the same question, but a
- * form is not a gate — the setting has to hold for the API too, including the
+ * form is not a gate  the setting has to hold for the API too, including the
  * paths that create an account without ever showing a form.
  */
 

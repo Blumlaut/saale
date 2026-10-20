@@ -20,7 +20,7 @@ import { VIEWPORTS, bootstrapSession, gotoAndSettle, type E2ESession } from "./u
 let session: E2ESession | null = null;
 
 test.describe("modal layout guardrails", () => {
-  // Bootstrap logs in and seeds fixtures — slower than a single page visit.
+  // Bootstrap logs in and seeds fixtures  slower than a single page visit.
   test.describe.configure({ timeout: 90_000 });
 
   test.beforeAll(async ({ browser, request }) => {
@@ -32,7 +32,7 @@ test.describe("modal layout guardrails", () => {
       const title = `${scenario.name} @ ${name}`;
 
       if (scenario.skip) {
-        test.skip(`${title} — ${scenario.skip}`, () => {});
+        test.skip(`${title}  ${scenario.skip}`, () => {});
         continue;
       }
 

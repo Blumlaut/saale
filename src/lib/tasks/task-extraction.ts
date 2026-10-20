@@ -15,7 +15,7 @@ export interface ExtractedTask {
  */
 const EXTRACT_TASKS_PROMPT = `You are a task extraction assistant. Analyze the given email and determine if it contains action items, to-dos, or follow-up tasks.
 
-If the email contains tasks, extract them in JSON format. Be conservative — only extract when you're confident about an action item.
+If the email contains tasks, extract them in JSON format. Be conservative. only extract when you're confident about an action item.
 
 Rules:
 - The title should be a concise action (e.g. "Review Q3 budget", "Reply to client about deadline")

@@ -4,7 +4,7 @@
  * A client sends a path; the server decides what it means. The rule is textual
  * and deliberately strict: `.` and empty segments collapse, `..` pops, a
  * relative path is taken from the root, and the result must be the root itself
- * or sit under it — compared with a separator (`/root/child`, never
+ * or sit under it. compared with a separator (`/root/child`, never
  * `/root-child`), because a bare `startsWith` would let a sibling directory
  * through.
  *
@@ -14,7 +14,7 @@
  * uploads volume it is a `realpath` check.
  *
  * This is the same rule the council sandbox applies to its members' tool
- * arguments — extracted here so both share one implementation rather than two
+ * arguments. extracted here so both share one implementation rather than two
  * that drift.
  */
 
@@ -29,7 +29,7 @@ function withoutTrailingSlash(root: string): string {
  * Resolve `path` inside `root`.
  *
  * `inside` is false when the result is neither the root nor under it, in which
- * case `path` is the root — callers that want to refuse use
+ * case `path` is the root. callers that want to refuse use
  * {@link requireWithinRoot} instead of inspecting this.
  */
 export function resolveWithinRoot(root: string, path: string): { path: string; inside: boolean } {
@@ -74,7 +74,7 @@ export function isWithinRoot(root: string, path: string): boolean {
  * `path` expressed relative to `root` (`""` for the root itself), or null when
  * it is outside `root`.
  *
- * A zip entry name is this value — which is why it is null rather than a
+ * A zip entry name is this value. which is why it is null rather than a
  * best-effort string: an entry name that had to climb out of the tree with `..`
  * must never be written into an archive.
  */
@@ -85,7 +85,7 @@ export function relativeToRoot(root: string, path: string): string | null {
   return path.slice(base.length + 1);
 }
 
-/** The last segment of a path — the display name of a file or folder. */
+/** The last segment of a path. the display name of a file or folder. */
 export function baseName(path: string): string {
   const base = withoutTrailingSlash(path);
   const index = base.lastIndexOf("/");
@@ -100,7 +100,7 @@ export function dirName(path: string): string {
 }
 
 /**
- * Whether a name may be created or renamed to — one segment, nothing clever.
+ * Whether a name may be created or renamed to. one segment, nothing clever.
  *
  * A backslash is refused even though Linux allows it in a file name: a client
  * that sends one means a path, and honouring that intent here would be the bug.

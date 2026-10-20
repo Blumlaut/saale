@@ -100,7 +100,7 @@ describe("interruptPendingApprovals", () => {
     expect(steer).toHaveBeenCalledWith("look at this", [
       { type: "image", data: "BASE64", mimeType: "image/png" },
     ]);
-    // The PDF is referenced by path in the content — never decoded.
+    // The PDF is referenced by path in the content  never decoded.
     expect(mockReadImage).toHaveBeenCalledTimes(1);
     expect(mockReadImage).toHaveBeenCalledWith("u1", "files/abc-screenshot.png");
   });
@@ -134,7 +134,7 @@ describe("interruptPendingApprovals", () => {
     expect(mockResolve).toHaveBeenCalledWith("s1", "tc1", false);
   });
 
-  it("falls back to the queue when the steer fails — the denials still stand", async () => {
+  it("falls back to the queue when the steer fails  the denials still stand", async () => {
     mockPending.mockResolvedValue([makeApproval("tc1")]);
     mockGet.mockReturnValue(makePooledSession(vi.fn().mockRejectedValue(new Error("boom"))));
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});

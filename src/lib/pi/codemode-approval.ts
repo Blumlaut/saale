@@ -1,14 +1,14 @@
 /**
  * Approval gate for `codemode`.
  *
- * `codemode` is registered by Pi's extension at `session_start` — after
- * `wrapTool` has already run over the session's tools — so neither its own call
+ * `codemode` is registered by Pi's extension at `session_start`. after
+ * `wrapTool` has already run over the session's tools. so neither its own call
  * nor the calls its script makes pass through the tool wrapper. This gate runs
  * on the `tool_call` event instead, which both go through.
  *
  * A script's calls each carry their own policy, so a batch of them would
  * otherwise put one card in front of the user per call. They are one decision:
- * the user reads the script once. So the script is the approval unit — one card
+ * the user reads the script once. So the script is the approval unit. one card
  * listing the calls that would ask on their own, and one click that stands in
  * for all of them (see `approval-scope.ts`).
  *
@@ -17,7 +17,7 @@
  *
  * - a tool whose policy is `ask` is listed and covered by the approval;
  * - a command-aware `auto` tool (`bash`, `infra_exec`) is not, because its
- *   decision is made from the command it is called with — which exists only at
+ *   decision is made from the command it is called with. which exists only at
  *   the call, where a card can show it;
  * - a tool the script reaches by a computed name is not in the list either, and
  *   asks for itself. The card says so, so an approval is never mistaken for a
@@ -25,7 +25,7 @@
  *
  * The gate also applies the user's own policy for `codemode` itself: `off`
  * blocks scripts outright (a decision no other gate could make, since nothing
- * else sees them), `ask` always asks, and `auto` — the default — asks only when
+ * else sees them), `ask` always asks, and `auto`. the default. asks only when
  * the script reaches a tool that would ask, so reading a mailbox in a script
  * costs no click at all.
  */
@@ -74,7 +74,7 @@ export function createCodemodeApprovalExtension(options: {
         };
       }
       // Allowed: the script runs as one step, and every call it makes follows
-      // its own policy — that is what the other gates are for.
+      // its own policy. that is what the other gates are for.
       if (policy === "allow") return undefined;
 
       if (await isAutoApproveActive(options.userId)) return undefined;

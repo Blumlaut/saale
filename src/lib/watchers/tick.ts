@@ -41,7 +41,7 @@ interface Evaluation {
   outcome: TickOutcome;
   /** The store as it would stand after this run. */
   nextStore: Record<string, unknown>;
-  /** True when the script reported something — the wake decision is separate. */
+  /** True when the script reported something. the wake decision is separate. */
   firing: boolean;
 }
 
@@ -127,7 +127,7 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
 
   const nextStore = applyStoreWrites(store, result.storeWrites);
 
-  // Nothing to report — the common case, and the reason a tick is cheap.
+  // Nothing to report. the common case, and the reason a tick is cheap.
   if (!isFiring(result.value)) {
     return {
       watcher,
@@ -217,8 +217,8 @@ async function pruneTicks(watcherId: string): Promise<void> {
 /**
  * Run one tick for a watcher.
  *
- * Never throws: every outcome — including a script that failed, a grant that no
- * longer holds, and a wake that could not be delivered — is a tick the log has
+ * Never throws: every outcome. including a script that failed, a grant that no
+ * longer holds, and a wake that could not be delivered. is a tick the log has
  * to show, so each one is recorded and returned.
  */
 export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
@@ -243,8 +243,8 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
     return recordTick({
       watcherId: watcher.id,
       outcome,
-      // A blocked tick records that it was blocked — a watcher that keeps
-      // refusing to run is exactly what the log is for — but moves no ledger.
+      // A blocked tick records that it was blocked. a watcher that keeps
+      // refusing to run is exactly what the log is for. but moves no ledger.
       store: evaluation.nextStore,
       advanceStore: outcome.status !== "blocked",
       fired: false,
@@ -326,7 +326,7 @@ export async function previewWatcherTick(watcherId: string): Promise<TickOutcome
 }
 
 /**
- * Run a script that is not a watcher yet — the authoring loop.
+ * Run a script that is not a watcher yet. the authoring loop.
  *
  * A script being written has no grant to check, so the decision that it may run
  * at all belongs to the tool policy that called this (`watcher_test` is allowed

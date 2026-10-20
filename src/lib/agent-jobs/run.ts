@@ -7,8 +7,8 @@ import { buildAgentOutputHandler } from "@/lib/agent-jobs/output";
  *
  * Two sources feed one column: the channel could not be resolved up front
  * (`preflightError`), or it resolved and then rejected the messages the run
- * produced (`runtimeErrors`). Both mean the same thing to a reader — the user
- * was never told — so they share `AgentRun.deliveryError`.
+ * produced (`runtimeErrors`). Both mean the same thing to a reader. the user
+ * was never told. so they share `AgentRun.deliveryError`.
  *
  * A successful send clears nothing: an earlier failure stays on the record
  * even if a later turn got through, because the run still owes the user
@@ -104,7 +104,7 @@ export async function triggerAgentRun(params: {
     outputChannel: definition.outputChannel,
   });
 
-  // Mark the run as running — startedAt is when execution actually starts
+  // Mark the run as running. startedAt is when execution actually starts
   // (the run record was created above as "pending"). A channel that cannot be
   // resolved is recorded now, so the run never reads as delivered.
   await prisma.agentRun.update({
@@ -126,7 +126,7 @@ export async function triggerAgentRun(params: {
     output,
   )
     .then(async (stats) => {
-      // A run whose output channel rejected every message still "completed" —
+      // A run whose output channel rejected every message still "completed"
       // the failure belongs on the record, or the job silently told nobody.
       await recordDeliveryFailures(run.id, output?.deliveryErrors?.(), deliveryError);
       await prisma.agentRun.update({

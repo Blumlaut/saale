@@ -1,12 +1,12 @@
 import type { LucideIcon } from "lucide-react";
 
 /**
- * Slash commands — one command system for every Saale surface.
+ * Slash commands. one command system for every Saale surface.
  *
  * A command is declared once in `catalog.ts` (metadata, safe to import from a
  * client component) and implemented once in `handlers/` (server-only). Each
- * surface renders an interactive command's prompt in its own idiom — the web
- * chat uses a sheet, the Telegram bot an inline keyboard — but both execute
+ * surface renders an interactive command's prompt in its own idiom. the web
+ * chat uses a sheet, the Telegram bot an inline keyboard. but both execute
  * the same handler through `executeCommand`.
  */
 
@@ -17,7 +17,7 @@ export interface CommandOption {
   value: string;
   label: string;
   description?: string;
-  /** The option currently in effect — the surfaces mark it as selected. */
+  /** The option currently in effect. the surfaces mark it as selected. */
   current?: boolean;
 }
 
@@ -35,13 +35,13 @@ export type CommandTone = "success" | "info" | "error";
 export type CommandRefresh = "messages" | "generation";
 
 export interface CommandOutcome {
-  /** Human-readable result — a toast on web, a reply on Telegram. */
+  /** Human-readable result. a toast on web, a reply on Telegram. */
   message: string;
   tone?: CommandTone;
   refresh?: CommandRefresh;
 }
 
-/** Command metadata — everything a surface needs to list or offer a command. */
+/** Command metadata. everything a surface needs to list or offer a command. */
 export interface CommandMeta {
   name: string;
   description: string;
@@ -51,7 +51,7 @@ export interface CommandMeta {
 
 interface CommandBaseContext {
   userId: string;
-  /** Text after the command name, trimmed — "" when the user gave none. */
+  /** Text after the command name, trimmed. "" when the user gave none. */
   args: string;
 }
 
@@ -65,7 +65,7 @@ export interface TelegramCommandContext extends CommandBaseContext {
   surface: "telegram";
   telegramChatId: bigint;
   encryptedToken: string;
-  /** The user's command message — replies point at it. */
+  /** The user's command message. replies point at it. */
   replyToMessageId?: number | undefined;
 }
 

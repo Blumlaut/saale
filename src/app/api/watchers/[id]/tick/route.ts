@@ -5,13 +5,13 @@ import { requireSession } from "@/lib/auth";
 import { previewWatcherTick, runWatcherTick } from "@/lib/watchers/tick";
 
 /**
- * POST /api/watchers/[id]/tick — run a watcher once, now.
+ * POST /api/watchers/[id]/tick. run a watcher once, now.
  *
  * Two modes, because they answer different questions:
  * - `preview: true` (the default) runs the script and reports what it returns
  *   without recording it or waking anyone. This is how a script is written: run
  *   it, look at the result, then decide to schedule it.
- * - `preview: false` is a real tick, recorded and — on a match — delivered.
+ * - `preview: false` is a real tick, recorded and. on a match. delivered.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();

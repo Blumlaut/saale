@@ -1,7 +1,7 @@
 /**
  * A workspace living inside the Open Terminal container.
  *
- * The app has no disk access to these files — the volume is mounted only into
+ * The app has no disk access to these files. the volume is mounted only into
  * that container, and each workspace is a Linux account whose home is `2770`, so
  * the kernel is the boundary. Every call therefore names the identity it runs
  * as: a council passes its sandbox key, a user passes their own id.
@@ -27,7 +27,7 @@ function toEpochMs(seconds: number): number {
 }
 
 export function createTerminalFileProvider(options: {
-  /** The workspace identity — a council's sandbox key, or a user's id. */
+  /** The workspace identity. a council's sandbox key, or a user's id. */
   identity: string;
   root: string;
   sessionId?: string;
@@ -66,7 +66,7 @@ export function createTerminalFileProvider(options: {
 
     async write(path: string, data: Buffer): Promise<void> {
       // The container's upload endpoint takes a file name and a target
-      // directory, not a path — it is how binary content reaches the volume.
+      // directory, not a path. it is how binary content reaches the volume.
       await terminal.uploadFile(baseName(path), data, { directory: dirName(path), ...user });
     },
 

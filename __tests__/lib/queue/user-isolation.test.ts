@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock Prisma — factory must be self-contained (hoisted to top of file)
+// Mock Prisma  factory must be self-contained (hoisted to top of file)
 vi.mock("@/lib/db", () => {
   const mockFn = vi.fn();
   return {

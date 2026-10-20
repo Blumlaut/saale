@@ -38,7 +38,7 @@ export function sanitizeFileName(name: string): string {
 /**
  * Validate an uploaded chat file.
  *
- * Any MIME type is accepted — files are stored per-user and only ever served
+ * Any MIME type is accepted. files are stored per-user and only ever served
  * back to the same user. Only size and emptiness are enforced.
  */
 export function validateChatFile(file: File): string | null {
@@ -60,7 +60,7 @@ export interface StoredChatFile {
   storageId: string;
   /** Path relative to the user workspace (e.g. "files/<uuid>-report.pdf"). */
   storagePath: string;
-  /** Sanitized original file name — used for the agent workspace copy. */
+  /** Sanitized original file name. used for the agent workspace copy. */
   safeName: string;
   width?: number;
   height?: number;
@@ -70,7 +70,7 @@ export interface StoredChatFile {
  * Store a chat attachment in the host-side user workspace.
  *
  * - Images: re-encoded to PNG (keeps vision token costs reasonable) under
- *   `images/<uuid>.png` — the existing flow, unchanged.
+ *   `images/<uuid>.png`. the existing flow, unchanged.
  * - Other files: original bytes under `files/<uuid>-<safeName>` (the UUID
  *   prefix means re-uploading the same name never overwrites an earlier
  *   message's copy).
@@ -117,7 +117,7 @@ export async function storeChatFile(
  * Returns the absolute container path when the terminal is configured, or
  * null when it is not (the agent has no file tools in that case, so there is
  * nowhere to deliver the file). Throws when the terminal is configured but
- * the upload fails — callers should surface that to the user.
+ * the upload fails. callers should surface that to the user.
  */
 export async function deliverChatFileToAgent(
   userId: string,

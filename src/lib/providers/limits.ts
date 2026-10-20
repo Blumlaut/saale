@@ -5,8 +5,8 @@
  *
  * Pi sends a model's `maxTokens` as the request's `max_tokens`, clamped to its
  * `contextWindow`, and compacts a conversation against that window. Providers
- * reject an out-of-range request outright — DeepSeek answers `400 Invalid
- * max_tokens value, the valid range of max_tokens is [1, 393216]` — so these
+ * reject an out-of-range request outright. DeepSeek answers `400 Invalid
+ * max_tokens value, the valid range of max_tokens is [1, 393216]`. so these
  * values must describe the real endpoint, never a guess. Neither can be read
  * from an OpenAI-compatible endpoint, so they are stored per provider and set by
  * the user (see `provider_api_key`).
@@ -28,7 +28,7 @@ import { definesProviderModels } from "./config";
 export const PI_DEFAULT_CONTEXT_WINDOW = 128_000;
 export const PI_DEFAULT_MAX_OUTPUT_TOKENS = 16_384;
 
-/** Upper bound for a configured limit (1B) — guards typos and numeric overflow. */
+/** Upper bound for a configured limit (1B). guards typos and numeric overflow. */
 const MAX_TOKEN_LIMIT = 1_000_000_000;
 
 /** Model limits a user configured for a provider (null = use Pi's default). */
@@ -83,7 +83,7 @@ export function parseProviderLimits(
   if ((contextWindow !== null || maxOutputTokens !== null) && !definesProviderModels(provider)) {
     return {
       error:
-        "Model limits can only be configured for the OpenAI-compatible endpoint — Pi's catalog states every other provider's limits",
+        "Model limits can only be configured for the OpenAI-compatible endpoint. Pi's catalog states every other provider's limits",
     };
   }
 
@@ -103,7 +103,7 @@ export interface ModelLimitEdit {
  * Validate the per-model limits in a request body.
  *
  * Unlike the endpoint defaults, an omitted field means "leave the stored value
- * alone" — the editor writes one field at a time, and clearing one must not
+ * alone". the editor writes one field at a time, and clearing one must not
  * reset the other.
  *
  * @returns the parsed edit, or an error message to return as a 400.

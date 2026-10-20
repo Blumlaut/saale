@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * The shared "one chat run" orchestration. The stream route and the
  * `chat_respond` tool both go through it, so the pieces that must not be
- * skipped — the approval gate on session creation, registering the generation,
- * wiring persistence — are pinned here.
+ * skipped  the approval gate on session creation, registering the generation,
+ * wiring persistence  are pinned here.
  */
 
 const mockGetPoolEntry = vi.fn();

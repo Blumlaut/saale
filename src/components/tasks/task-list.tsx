@@ -104,7 +104,7 @@ export function TaskList({
 
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-      {/* Toolbar — page actions, right-aligned; no page title */}
+      {/* Toolbar. page actions, right-aligned; no page title */}
       <div className="border-border/30 flex shrink-0 items-center justify-end border-b px-4 py-2">
         <Button variant="default" size="icon" className="h-8 w-8 md:w-auto md:px-3" onClick={onNew}>
           <Plus className="h-4 w-4" />

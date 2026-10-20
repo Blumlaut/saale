@@ -117,7 +117,7 @@ export default function TasksPage() {
 
   return (
     <Page className="gap-0">
-      {/* Task list — fills height, owns its toolbar, scrolls internally */}
+      {/* Task list. fills height, owns its toolbar, scrolls internally */}
       <div className="min-h-0 flex-1">
         <TaskList
           tasks={tasks}

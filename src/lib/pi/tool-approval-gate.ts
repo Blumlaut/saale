@@ -29,7 +29,7 @@ const RESOLVED_KEY_MIN_TTL_S = 30;
 /**
  * Pending approval promises: toolCallId → { resolve, timer }.
  *
- * Process-local fast path only — cross-process delivery happens through the
+ * Process-local fast path only. cross-process delivery happens through the
  * session event bus (see waitForApproval), so an approval requested by an
  * agent in process A can be resolved by the API route in process B and the
  * wait in A still completes.
@@ -43,7 +43,7 @@ interface PendingEntry {
  * How an approval request ended.
  *
  * `aborted` is kept apart from `denied`: the run was stopped while the user was
- * still deciding, so nothing was denied — recording a denial would blame the
+ * still deciding, so nothing was denied. recording a denial would blame the
  * user for a decision they never made, and the tool result would tell the model
  * the call was rejected when the whole run is over.
  */
@@ -85,7 +85,7 @@ export interface ApprovalRequest {
  * The calls one decision stands in for.
  *
  * A script announces the calls it is about to make, and the user approves them
- * with the script — see `codemode-approval.ts`. Only the calls it *covers* run
+ * with the script. see `codemode-approval.ts`. Only the calls it *covers* run
  * on that approval: a call to a tool that is not listed still asks on its own,
  * and `dynamic` says the list may not be the script's whole plan, so the card
  * never reads as a blanket approval.
@@ -98,7 +98,7 @@ export interface ApprovalBatch {
 }
 
 /**
- * The client payload for an approval request — the same shape whether it arrives
+ * The client payload for an approval request. the same shape whether it arrives
  * as a live `tool_approval_request` event or in the reconnect snapshot, so the
  * two cannot drift.
  */
@@ -129,7 +129,7 @@ export interface ApprovalResolutionData {
   toolCallId: string;
   toolName: string;
   approved: boolean;
-  /** The run ended before a decision — the card is gone, nothing was denied. */
+  /** The run ended before a decision. the card is gone, nothing was denied. */
   cancelled?: boolean;
   expiresAt: string;
 }
@@ -214,9 +214,9 @@ async function recordDecisionAndNotify(
  * - `resolveApproval` in this process (fast path)
  * - a `tool_approval_resolved` event on the session bus (any process: web
  *   UI, Telegram callback, another Next.js instance)
- * - the deadline (`expiresAt`) — denied; the denial is recorded and
+ * - the deadline (`expiresAt`). denied; the denial is recorded and
  *   announced so no stale approval can outlive the wait
- * - the abort signal (agent stopped) — the request is cancelled, not denied:
+ * - the abort signal (agent stopped). the request is cancelled, not denied:
  *   no decision is recorded for the user, but the card is closed so it cannot
  *   linger as "awaiting approval" after the run is gone
  *
@@ -230,7 +230,7 @@ export async function waitForApproval(
   signal?: AbortSignal,
 ): Promise<ApprovalOutcome> {
   // Fire-and-forget persistence: the key coordinates cross-process
-  // resolution. The wait itself must NEVER depend on Redis round-trips —
+  // resolution. The wait itself must NEVER depend on Redis round-trips
   // the deadline timer is armed synchronously below so a tool call can
   // never hang past its expiry even if Redis is slow or unavailable.
   void storeApprovalRequest(request);
@@ -282,7 +282,7 @@ export async function waitForApproval(
     /**
      * The run was stopped before the user decided. A decision that landed in
      * the meantime (another process, a Telegram tap) still wins; otherwise the
-     * request is recorded as cancelled — the user denied nothing.
+     * request is recorded as cancelled. the user denied nothing.
      */
     const concludeAsAborted = async () => {
       const decision = await readRecordedDecision(key);
@@ -451,7 +451,7 @@ export async function requestToolApproval(options: {
 
   // Persist BEFORE announcing the request: the SET is queued on the same
   // Redis connection ahead of the event publish (FIFO), so the key is
-  // visible before any client can learn about the request — clients that
+  // visible before any client can learn about the request. clients that
   // reconcile against Redis (approvals snapshot) can never miss it.
   void storeApprovalRequest(request);
 
@@ -493,7 +493,7 @@ export function wrapWithApprovalGate(
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
       const policy = await getPolicy(tool.name);
 
-      // Policy: "off" — tool is disabled. Never overridden, not even by
+      // Policy: "off". tool is disabled. Never overridden, not even by
       // auto-approve mode (/stfu): a disabled tool stays disabled.
       // Thrown, not returned: Pi's agent loop hardcodes `isError: false` for
       // any non-throwing tool result, so a returned error would reach the
@@ -503,13 +503,13 @@ export function wrapWithApprovalGate(
       }
 
       // Auto-approve mode (/stfu): accept tool use requests for this user
-      // until the window expires — bypasses "ask" and risky "auto"
+      // until the window expires. bypasses "ask" and risky "auto"
       // approvals, regardless of per-tool preferences.
       if (await isAutoApproveActive(userId)) {
         return originalExecute(toolCallId, params, signal, onUpdate, ctx);
       }
 
-      // Policy: "auto" — command-aware approval (infra_exec, bash)
+      // Policy: "auto". command-aware approval (infra_exec, bash)
       if (policy === "auto" && COMMAND_AWARE_TOOLS.has(tool.name)) {
         const command = (params as { command?: string }).command;
         const classification = command
@@ -536,10 +536,10 @@ export function wrapWithApprovalGate(
             );
           }
         }
-        // Safe command — proceed without approval
+        // Safe command. proceed without approval
       }
 
-      // Policy: "ask" — wait for user approval
+      // Policy: "ask". wait for user approval
       if (policy === "ask") {
         // …unless the user already approved it as part of the script that
         // announced it: that decision covers this call.
@@ -567,7 +567,7 @@ export function wrapWithApprovalGate(
         }
       }
 
-      // "allow", "auto" (safe), or approved — proceed
+      // "allow", "auto" (safe), or approved. proceed
       return originalExecute(toolCallId, params, signal, onUpdate, ctx);
     },
   };
@@ -604,7 +604,7 @@ export function createToolApprovalGate(options: {
 
 /**
  * Approval emitter for a chat session: publishes the request on the session
- * event bus, so every connected client — in any process — shows the approval
+ * event bus, so every connected client. in any process. shows the approval
  * card (the web UI, Telegram, an agent's own channel).
  */
 export function createChatApprovalEmitter(sessionId: string): (request: ApprovalRequest) => void {

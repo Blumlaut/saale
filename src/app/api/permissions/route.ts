@@ -5,7 +5,7 @@ import { getRoleAccess } from "@/lib/permissions/check";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/permissions — the caller's role names and merged grants.
+ * GET /api/permissions. the caller's role names and merged grants.
  *
  * The navs and admin screens use this to hide what the API would refuse; they
  * never see another account's grants.

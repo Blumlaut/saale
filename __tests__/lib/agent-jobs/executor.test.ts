@@ -48,7 +48,7 @@ describe("AgentOutput interface", () => {
       typing: vi.fn(),
     };
 
-    // Basic send — called with just content
+    // Basic send  called with just content
     output.send("Hello world");
     expect(output.send).toHaveBeenCalledTimes(1);
     const firstCall = output.send.mock.calls[0];
@@ -71,7 +71,7 @@ describe("AgentOutput interface", () => {
   });
 });
 
-describe("executor — output routing", () => {
+describe("executor  output routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -157,7 +157,7 @@ describe("executor — output routing", () => {
   });
 });
 
-describe("executor — helper functions", () => {
+describe("executor  helper functions", () => {
   it("extractText joins text blocks from content array", () => {
     const content: Record<string, unknown>[] = [
       { type: "text", text: "Hello " },
@@ -212,7 +212,7 @@ describe("executor — helper functions", () => {
   });
 });
 
-describe("executor — tool result normalization", () => {
+describe("executor  tool result normalization", () => {
   it("handles string results", () => {
     const result = "simple string";
     const normalized =
@@ -287,7 +287,7 @@ describe("executor — tool result normalization", () => {
   });
 });
 
-describe("executor — model resolution", () => {
+describe("executor  model resolution", () => {
   it("splits modelId into provider and name with colon separator", () => {
     const modelId = "anthropic:claude-sonnet-4-20250514";
     const [provider, ...nameParts] = modelId.split(":");
@@ -303,7 +303,7 @@ describe("executor — model resolution", () => {
   });
 });
 
-describe("executor — status transitions", () => {
+describe("executor  status transitions", () => {
   it("valid status progression: pending -> running -> completed", () => {
     const transitions: Array<{ from: string; to: string; valid: boolean }> = [
       { from: "pending", to: "running", valid: true },
@@ -332,7 +332,7 @@ describe("executor — status transitions", () => {
   });
 });
 
-describe("executor — timeout handling", () => {
+describe("executor  timeout handling", () => {
   it("timeout is set to 10 minutes", () => {
     const TIMEOUT_MS = 10 * 60_000;
     expect(TIMEOUT_MS).toBe(600_000);

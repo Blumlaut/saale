@@ -1,5 +1,5 @@
 /**
- * Thinking (reasoning) levels — one source of truth for the settings UI, the
+ * Thinking (reasoning) levels. one source of truth for the settings UI, the
  * chat selector and every place that hands a level to Pi.
  *
  * Pi owns the levels (`ThinkingLevel`) and the order; the labels and
@@ -10,7 +10,7 @@
  * other setting, but resolves to `undefined` so the level is omitted from the
  * SDK options entirely and Pi keeps its own choice (the level recorded in the
  * session, the user's Pi setting, or Pi's built-in default). Passing a level
- * explicitly always overrides that — including `"off"`, which is why `"off"`
+ * explicitly always overrides that. including `"off"`, which is why `"off"`
  * and `"default"` are distinct.
  */
 
@@ -34,7 +34,7 @@ export const PI_THINKING_LEVELS = Object.keys(LEVEL_TEXT) as PiThinkingLevel[];
 /** A stored thinking-level setting, including Saale's "let Pi decide". */
 export type ThinkingLevelSetting = PiThinkingLevel | "default";
 
-/** Stored when the user hasn't expressed a preference — Pi's own choice wins. */
+/** Stored when the user hasn't expressed a preference. Pi's own choice wins. */
 export const DEFAULT_THINKING_LEVEL_SETTING: ThinkingLevelSetting = "default";
 
 export interface ThinkingLevelOption {
@@ -54,7 +54,7 @@ export const THINKING_LEVEL_OPTIONS: readonly ThinkingLevelOption[] = [
  * which is not a capability but "don't override Pi".
  *
  * `available` is `getSupportedThinkingLevels()` for the model, or `null` while
- * that is unknown — an unknown model must not hide anything.
+ * that is unknown. an unknown model must not hide anything.
  */
 export function thinkingLevelOptionsFor(
   available: readonly string[] | null,
@@ -73,7 +73,7 @@ export function isThinkingLevelSetting(value: unknown): value is ThinkingLevelSe
   return value === "default" || isPiThinkingLevel(value);
 }
 
-/** Normalize an incoming setting for storage — unknown values mean "no opinion". */
+/** Normalize an incoming setting for storage. unknown values mean "no opinion". */
 export function normalizeThinkingLevelSetting(value: unknown): ThinkingLevelSetting {
   return isThinkingLevelSetting(value) ? value : DEFAULT_THINKING_LEVEL_SETTING;
 }

@@ -6,7 +6,7 @@ import { deleteChatSession } from "@/lib/chat/delete-session";
 import { syncPooledAgentSession } from "@/lib/pi/sync-pooled-session";
 
 /**
- * GET /api/chat/sessions/:sessionId — Get session details
+ * GET /api/chat/sessions/:sessionId. Get session details
  */
 export async function GET(
   _request: NextRequest,
@@ -27,7 +27,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/chat/sessions/:sessionId — Update session (title, model, etc.)
+ * PATCH /api/chat/sessions/:sessionId. Update session (title, model, etc.)
  */
 export async function PATCH(
   request: NextRequest,
@@ -54,7 +54,7 @@ export async function PATCH(
   if (toolConfig && JSON.stringify(toolConfig) !== JSON.stringify(authResult.session.toolConfig))
     data.toolConfig = toolConfig;
 
-  // A user-initiated change (e.g. renaming the chat) is real activity —
+  // A user-initiated change (e.g. renaming the chat) is real activity
   // advance lastActivityAt so the session list reflects the modification.
   if (Object.keys(data).length > 0) {
     data.lastActivityAt = new Date();
@@ -92,7 +92,7 @@ export async function PATCH(
  * Used by both DELETE and sendBeacon (POST with _method=DELETE).
  *
  * The work lives in `deleteChatSession` so the `chat_delete` tool removes a
- * chat exactly the same way — files, DB rows, pooled agent and transcript.
+ * chat exactly the same way. files, DB rows, pooled agent and transcript.
  */
 async function deleteSession(request: NextRequest, params: Promise<{ sessionId: string }>) {
   const { sessionId } = await params;
@@ -117,7 +117,7 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
 }
 
 /**
- * DELETE /api/chat/sessions/:sessionId — Delete a session and all its messages
+ * DELETE /api/chat/sessions/:sessionId. Delete a session and all its messages
  */
 export async function DELETE(
   request: NextRequest,
@@ -127,7 +127,7 @@ export async function DELETE(
 }
 
 /**
- * POST /api/chat/sessions/:sessionId — Method override for sendBeacon (DELETE via POST)
+ * POST /api/chat/sessions/:sessionId. Method override for sendBeacon (DELETE via POST)
  * sendBeacon only supports POST, so we accept _method=DELETE in the body.
  */
 export async function POST(

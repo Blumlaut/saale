@@ -6,7 +6,7 @@ import { bootstrapSession, type E2ESession } from "./utils";
  * Selection quote guardrail.
  *
  * Marking text in the transcript must surface a small "Quote" pill next to
- * the selection — pinned to the message *window*, not to the scrollable
+ * the selection  pinned to the message *window*, not to the scrollable
  * content. When the list was restructured so the jump-to-bottom button can
  * overlay the scroller, the pill kept its content-offset coordinates: in a
  * scrolled transcript it landed `scrollTop` pixels below the selection (off
@@ -25,7 +25,7 @@ let session: E2ESession | null = null;
 let sessionId = "";
 
 /**
- * The transcript comes from the database through the app's own client — no
+ * The transcript comes from the database through the app's own client  no
  * agent run is needed, and every message carries the same long word so the
  * test can mark a known target.
  */
@@ -43,7 +43,7 @@ async function seedTranscript(): Promise<void> {
       data: Array.from({ length: MESSAGE_COUNT }, (_, i) => ({
         sessionId,
         role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
-        content: `Turn ${i + 1} — ${WORD} keeps this line long enough to mark.`,
+        content: `Turn ${i + 1}  ${WORD} keeps this line long enough to mark.`,
         createdAt: new Date(base + i * 60_000),
       })),
     });
@@ -53,7 +53,7 @@ async function seedTranscript(): Promise<void> {
 }
 
 /**
- * The message window, the pill and the live selection — measured the way the
+ * The message window, the pill and the live selection  measured the way the
  * eye sees them. Both shells render this markup; only one is laid out.
  */
 async function geometry(page: Page) {
@@ -163,7 +163,7 @@ test.describe("selection quote", () => {
       // Let the list settle at the tail (auto-scroll) before moving it.
       await page.waitForTimeout(500);
 
-      // Read back to the middle of the transcript — the regression is invisible
+      // Read back to the middle of the transcript  the regression is invisible
       // at the tail only when `scrollTop` is zero.
       const scroll = await page.evaluate(() => {
         const el = [...document.querySelectorAll<HTMLElement>("[data-quoteable]")].find(
@@ -238,7 +238,7 @@ test.describe("selection quote", () => {
         `the pill (${JSON.stringify(g.pill)}) is not next to the selection (${JSON.stringify(g.range)})`,
       ).toBe(true);
 
-      // Unmark: click off in the header. The pill must fade out *in place* —
+      // Unmark: click off in the header. The pill must fade out *in place*
       // the old bug snapped it to the window's top-left corner for the fade.
       const styleTopWhileVisible = g.pillStyleTop!;
       expect(styleTopWhileVisible).not.toBe("0px");

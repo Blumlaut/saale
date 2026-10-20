@@ -61,7 +61,7 @@ describe("sendChatMessage", () => {
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get("content")).toBe("look");
     expect((init.body as FormData).getAll("files")).toHaveLength(1);
-    // No content-type header — the browser sets the multipart boundary.
+    // No content-type header  the browser sets the multipart boundary.
     expect(init.headers).toBeUndefined();
   });
 

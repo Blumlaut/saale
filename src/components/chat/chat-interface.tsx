@@ -59,7 +59,7 @@ export function ChatInterface({
 }) {
   const router = useRouter();
   const isMobile = useIsMobile();
-  // Watchers bound to this conversation — feeds the Linked button/panel.
+  // Watchers bound to this conversation. feeds the Linked button/panel.
   const { links } = useSessionLinks(sessionId);
   const [linksOpen, setLinksOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -73,7 +73,7 @@ export function ChatInterface({
   const [isLoading, setIsLoading] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Composer draft — persisted per session, so it survives navigation.
+  // Composer draft. persisted per session, so it survives navigation.
   const { draft, setDraft } = useChatDraft(sessionId);
   // The user's Appearance setting for how the transcript shows turn activity.
   const compactActivity = useCompactActivity();
@@ -92,13 +92,13 @@ export function ChatInterface({
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
-  // Tool Pi is running right now (from GET /messages — refresh recovery when
+  // Tool Pi is running right now (from GET /messages. refresh recovery when
   // the SSE buffer replay is unavailable). Cleared when the tool ends.
   const [activeTool, setActiveTool] = useState<{
     name: string | null;
     startedAt?: string | null;
   } | null>(null);
-  // Transient provider failure being retried by Pi — the composer's spinner
+  // Transient provider failure being retried by Pi. the composer's spinner
   // says nothing went wrong, so the backoff gets its own notice.
   const [retryNotice, setRetryNotice] = useState<{
     attempt: number;
@@ -134,8 +134,8 @@ export function ChatInterface({
   // Abort the in-flight send POST when the component unmounts.
   const abortRef = useRef<AbortController | null>(null);
 
-  // Whether the session is busy — a generation running, or a manual
-  // compaction holding it — readable from `handleSend` without making it
+  // Whether the session is busy. a generation running, or a manual
+  // compaction holding it. readable from `handleSend` without making it
   // depend on (and re-create on) every state change.
   const busyRef = useRef(isLoading || isCompacting);
 
@@ -173,7 +173,7 @@ export function ChatInterface({
       setQueuedMessages(data.queuedMessages ?? []);
       setQueuePaused(data.session?.queueHeld ?? false);
       setActiveTool(data.session?.activeTool ?? null);
-      // A generation the server knows about is in flight right now — spin the
+      // A generation the server knows about is in flight right now. spin the
       // composer's stop button even before the stream's first event arrives
       // (a refresh mid-run must not read as idle). Only ever raised here:
       // clearing belongs to the stream's `done` event.
@@ -227,7 +227,7 @@ export function ChatInterface({
     markDone,
     onGenerationEnd: () => {
       // The generation ended, so any in-flight retry did too. The send queue
-      // is drained server-side — this client only observes the result.
+      // is drained server-side. this client only observes the result.
       setRetryNotice(null);
     },
     onQueueUpdate: handleQueueUpdate,
@@ -263,7 +263,7 @@ export function ChatInterface({
 
   // ─── Slash commands ──────────────────────────────────────────────────────
   // Every command comes from the shared registry (see `src/lib/commands`),
-  // which the Telegram bot reads too — there is no web-only command list.
+  // which the Telegram bot reads too. there is no web-only command list.
 
   const applyCommandResult = useCallback(
     (result: CommandApiResponse) => {
@@ -281,7 +281,7 @@ export function ChatInterface({
 
       if (refresh === "messages") void loadMessages();
       if (refresh === "generation") {
-        // The server already cancelled the run — mirror the client half of
+        // The server already cancelled the run. mirror the client half of
         // `handleStop`: hold the queue and reconnect so the server re-decides.
         setQueuePaused(true);
         disconnect();
@@ -332,7 +332,7 @@ export function ChatInterface({
 
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
-      // A leading `/name` the registry knows is a command, not a message — run
+      // A leading `/name` the registry knows is a command, not a message. run
       // it instead of sending it to the model. Unknown `/foo` falls through and
       // reaches the agent like any other text.
       const parsed = parseCommand(content);
@@ -341,12 +341,12 @@ export function ChatInterface({
         return;
       }
 
-      // Sending means the user wants the newest turn — jump to the tail and
+      // Sending means the user wants the newest turn. jump to the tail and
       // re-arm auto-scroll, even mid-read of earlier history.
       messageListRef.current?.enableAutoScroll();
 
       const optimistic = makeTempUserMessage(content, files);
-      // While the session is busy — Pi generating, or a compaction holding it —
+      // While the session is busy. Pi generating, or a compaction holding it
       // the server queues the message (the composer's Queue button shows this
       // is what the send means), so the optimistic copy goes straight into the
       // queue strip. Showing it in the conversation first would flash it as
@@ -380,7 +380,7 @@ export function ChatInterface({
             setQueuedMessages((prev) => dropOptimistic(prev, optimistic));
             setDraft(content);
             toast.error("Could not send message", {
-              description: "The message is back in the input box — try again.",
+              description: "The message is back in the input box. try again.",
             });
             return;
           case "error":
@@ -412,7 +412,7 @@ export function ChatInterface({
             }
 
             if (result.steered) {
-              // The message denied the tool approval it arrived with — say so,
+              // The message denied the tool approval it arrived with. say so,
               // top-center: a bottom toast would cover the composer.
               toast.info("Tool approval denied", {
                 description:
@@ -428,7 +428,7 @@ export function ChatInterface({
             setMessages((prev) => settleSentMessage(prev, optimistic, saved));
             if (placement === "queue") setIsLoading(true);
 
-            // Connect to the SSE stream — the server prompts and streams
+            // Connect to the SSE stream. the server prompts and streams
             // events. A keep-alive observer connection is already open, but
             // it was decided when the chat was idle, so it never claims the
             // pending prompt. Reconnect to force the server to re-decide
@@ -440,10 +440,10 @@ export function ChatInterface({
           }
         }
       } catch (err) {
-        // Only undo the loading state this send raised — when the message was
+        // Only undo the loading state this send raised. when the message was
         // queued, the loading state belongs to the run that made it queue.
         if (placement === "conversation") setIsLoading(false);
-        // The message never reached the DB — drop the optimistic copy so a
+        // The message never reached the DB. drop the optimistic copy so a
         // failed send can't linger as a phantom (loadMessages preserves temp
         // user messages while a POST is in flight, so without this cleanup a
         // failure would leave it stuck forever). Skip on abort: that only
@@ -511,7 +511,7 @@ export function ChatInterface({
         );
         setQueuePaused(false);
         if (data.mode === "prompt") {
-          // Idle session: the prompt path takes over — reconnect so the server
+          // Idle session: the prompt path takes over. reconnect so the server
           // claims it and prompts immediately.
           setQueuedMessages((prev) => prev.filter((m) => m.id !== messageId));
           setIsLoading(true);
@@ -606,7 +606,7 @@ export function ChatInterface({
     // abort this process may not own: when the run is already dead (Saale
     // restarted mid-generation) or owned by another process, nothing will
     // ever publish the `done` this client is waiting for. Reconnecting makes
-    // the server re-decide with the flags cleared — a stopped session is told
+    // the server re-decide with the flags cleared. a stopped session is told
     // `done`, and one whose run is still aborting delivers the tracker's own
     // `done` on the new connection.
     void fetch(`/api/chat/sessions/${sessionId}/stop`, { method: "POST" })
@@ -633,7 +633,7 @@ export function ChatInterface({
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          // Known conditions — show user-friendly toast
+          // Known conditions. show user-friendly toast
           if (data.error === "already_compacted") {
             toast.info("Already compacted", {
               description: "This conversation was already compacted.",
@@ -662,8 +662,8 @@ export function ChatInterface({
       .finally(() => {
         setIsCompacting(false);
         // The compaction held the session, so anything sent during it is
-        // queued: reconnect so the server re-decides — its idle path drains
-        // the send queue — instead of leaving the messages in the strip.
+        // queued: reconnect so the server re-decides. its idle path drains
+        // the send queue. instead of leaving the messages in the strip.
         if (mountedRef.current) {
           disconnect();
           connect();
@@ -682,7 +682,7 @@ export function ChatInterface({
       // Unmounted mid-load (navigated away): connecting here would open a
       // stream no cleanup would ever close.
       if (cancelled) return;
-      // Always connect — the server decides what to do: prompt an unanswered
+      // Always connect. the server decides what to do: prompt an unanswered
       // message, observe a live generation (any process), or report done for
       // an idle chat. The connection stays open to pick up future
       // generations live.
@@ -741,7 +741,7 @@ export function ChatInterface({
 
   // Re-sync from the DB when the tab becomes visible again. The SSE keep-alive
   // connection self-heals on its own, but a server restart mid-generation can
-  // leave it silently stalled — a visibility refresh snaps the UI back to the
+  // leave it silently stalled. a visibility refresh snaps the UI back to the
   // true DB state without a full page reload.
   useEffect(() => {
     const onVisibility = () => {
@@ -781,7 +781,7 @@ export function ChatInterface({
       }
     };
 
-    // Tab close skips React unmount — pagehide is the only reliable signal
+    // Tab close skips React unmount. pagehide is the only reliable signal
     // there (sendBeacon exists exactly for this path).
     const onPageHide = (event: PageTransitionEvent) => {
       if (event.persisted) return; // bfcache: the visit resumes, keep the session
@@ -898,7 +898,7 @@ export function ChatInterface({
         {isDragging && <FileDropOverlay />}
       </div>
 
-      {/* Linked panel — desktop: inline, mobile: bottom sheet. Hidden until
+      {/* Linked panel. desktop: inline, mobile: bottom sheet. Hidden until
           the header button opens it; the button itself only shows when there
           is something to show. */}
       {linksOpen && links !== null && (

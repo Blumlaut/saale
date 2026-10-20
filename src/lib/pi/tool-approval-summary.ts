@@ -8,11 +8,11 @@ import { resolveToolSummary } from "./tool-summary-resolver";
  * The client-safe {@link summarizeToolAction} covers calls whose arguments
  * already say what they are about (to/subject for mail_send, title for
  * calendar_create, …). But several approval-worthy tools only carry an ID
- * (calendar_delete, task_delete, chat_respond, job_run, …) — the user cannot
+ * (calendar_delete, task_delete, chat_respond, job_run, …). the user cannot
  * judge "what is this about" from a bare ID, so this module resolves the
  * subject from the user's own records and folds it into the summary line.
  *
- * Every query is scoped to `userId` — an approval card must never leak
+ * Every query is scoped to `userId`. an approval card must never leak
  * another user's data, even if an attacker submits a guessed ID.
  */
 
@@ -41,7 +41,7 @@ const SUBJECT_RESOLVERS: Record<string, SubjectResolver> = {
     });
     if (!event) return null;
     const start = formatDateTimeValue(event.dtStart.toISOString());
-    return `Delete event "${event.summary}"${start ? ` — ${start}` : ""}`;
+    return `Delete event "${event.summary}"${start ? `. ${start}` : ""}`;
   },
   calendar_update: async (userId, args) => {
     // summarizeToolAction covers the case where the new title is in the args.
@@ -195,7 +195,7 @@ const SUBJECT_RESOLVERS: Record<string, SubjectResolver> = {
   },
 };
 
-/** "Delete 1 email — \"Re: Invoice\" from jane@example.com" (first of N for many). */
+/** "Delete 1 email. \"Re: Invoice\" from jane@example.com" (first of N for many). */
 function summarizeEmails(
   emails: { subject: string; fromEmail: string }[],
   verb: (n: number) => string,
@@ -203,7 +203,7 @@ function summarizeEmails(
   const n = emails.length;
   const first = emails[0];
   if (!first) return verb(n);
-  const head = verb(n) + ` — "${first.subject}" from ${first.fromEmail}`;
+  const head = verb(n) + `. "${first.subject}" from ${first.fromEmail}`;
   return n > 1 ? `${head} (and ${n - 1} more)` : head;
 }
 
@@ -212,7 +212,7 @@ function summarizeEmails(
  *
  * Combines the client-safe argument summary with, where the call only carries
  * an ID, a lookup of the referenced record in the user's own data. Never
- * throws — a failure simply yields null and the dialog falls back to the
+ * throws. a failure simply yields null and the dialog falls back to the
  * labeled arguments.
  */
 export async function resolveApprovalSummary(
@@ -221,7 +221,7 @@ export async function resolveApprovalSummary(
   args: Record<string, unknown>,
 ): Promise<string | null> {
   try {
-    // Infra tools resolve the machine name from an ID — the shared resolver
+    // Infra tools resolve the machine name from an ID. the shared resolver
     // already handles that and the catalog templates. Tools with a dedicated
     // subject resolver win (a template with an unresolved placeholder is
     // worse than no summary).

@@ -127,7 +127,7 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
       return;
     }
 
-    // Telegram has exactly one destination — the user's own linked chat — so
+    // Telegram has exactly one destination. the user's own linked chat. so
     // there is nothing to resolve. Channels that do have several targets take
     // an explicit ID.
     const resolvedOutputChannelId =

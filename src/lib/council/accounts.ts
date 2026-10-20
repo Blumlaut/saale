@@ -4,7 +4,7 @@
  * A council's file tools must not reach the user's home. Unix permissions give
  * that for free: Open Terminal's multi-user mode maps each `X-User-Id` to its
  * own Linux account whose home is `chmod 2770`, so the account owning a
- * *council's* workspace is a different account from the user's — neither can
+ * *council's* workspace is a different account from the user's. neither can
  * read the other. A council therefore gets a synthetic identity of its own
  * instead of borrowing the user's:
  *
@@ -31,7 +31,7 @@ import { containerAccountExists } from "./commands";
  *
  * Open Terminal builds a Linux username from the **first 8** alphanumeric
  * characters of the id it is handed, so the key is generated at exactly that
- * length — a longer key would be silently truncated, and two keys sharing their
+ * length. a longer key would be silently truncated, and two keys sharing their
  * first eight characters would be one account. Domain-separated from every
  * other hash in the app, and salted per attempt so a collision can step aside
  * deterministically instead of failing.
@@ -49,7 +49,7 @@ export interface CouncilSandboxIdentity {
   key: string;
   /** The Linux account the container maps it to. */
   account: string;
-  /** That account's home directory — the sandbox root. */
+  /** That account's home directory. the sandbox root. */
   home: string;
 }
 
@@ -65,13 +65,13 @@ const KEY_ATTEMPTS = 16;
  *
  * Two things can already own the derived account, and both are checked:
  * - another council (its key is stored), and
- * - an existing Linux account — the user's own, or one left behind by
- *   something else in the container — which `getent` reports.
+ * - an existing Linux account. the user's own, or one left behind by
+ *   something else in the container. which `getent` reports.
  *
  * The council keys are read instance-wide on purpose. This is the one place
  * that must be true globally rather than per user: the key names a Linux account
  * in a container shared by every tenant, so the query cannot be scoped to
- * `userId` without dropping the guarantee. Only the keys themselves are read —
+ * `userId` without dropping the guarantee. Only the keys themselves are read
  * eight random hex characters with no user data attached.
  *
  * With no container configured there is no sandbox at all, so only the stored

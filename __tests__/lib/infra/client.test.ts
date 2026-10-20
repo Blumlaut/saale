@@ -606,7 +606,7 @@ describe("executeCommand", () => {
         : Promise.resolve({
             stdout: response.stdout ?? "",
             stderr: response.stderr ?? "",
-            // `??` would turn an explicit null — a killed command — into 0.
+            // `??` would turn an explicit null  a killed command  into 0.
             code: response.code === undefined ? 0 : response.code,
             signal: response.signal === undefined ? null : response.signal,
           }),
@@ -731,7 +731,7 @@ describe("executeCommand", () => {
     const result = await executeCommand("machine-1", "user-1", "cat big.log", { maxOutput: 100 });
 
     expect(result.truncated).toBe(true);
-    expect(result.stdout).toContain("[output truncated — exceeded 100 byte limit]");
+    expect(result.stdout).toContain("[output truncated. exceeded 100 byte limit]");
   });
 
   it("gives up on a hanging command and tears the connection down", async () => {

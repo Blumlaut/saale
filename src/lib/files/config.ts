@@ -7,7 +7,7 @@
  * is written. Without ceilings, one large folder or one careless "upload the
  * toolchain" would be an out-of-memory kill rather than a clear refusal.
  *
- * Pure data — no Node or database imports — so the client can show the same
+ * Pure data. no Node or database imports. so the client can show the same
  * numbers the server enforces.
  */
 
@@ -27,7 +27,7 @@ export const MAX_UPLOAD_FILES = 20;
  * Largest total upload request.
  *
  * Multipart parsing buffers the whole request, so this is the real memory
- * ceiling — `MAX_UPLOAD_BYTES_PER_FILE × MAX_UPLOAD_FILES` would allow a
+ * ceiling. `MAX_UPLOAD_BYTES_PER_FILE × MAX_UPLOAD_FILES` would allow a
  * half-gigabyte body.
  */
 export const MAX_UPLOAD_TOTAL_BYTES = 64 * 1024 * 1024;

@@ -12,7 +12,7 @@ import {
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 
 /**
- * GET /api/mcp/oauth/callback — where an authorization server sends the browser
+ * GET /api/mcp/oauth/callback. where an authorization server sends the browser
  * after the user approves an MCP sign-in.
  *
  * This route is public on purpose: the browser arrives here from the provider,

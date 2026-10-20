@@ -94,7 +94,7 @@ export async function validateGitHubToken(token: string): Promise<{
   const data = user as Record<string, unknown>;
 
   if (!data.login) {
-    throw new Error("Invalid GitHub token — could not retrieve user info");
+    throw new Error("Invalid GitHub token. could not retrieve user info");
   }
 
   return {

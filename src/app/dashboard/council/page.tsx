@@ -32,7 +32,7 @@ import type { CouncilDetail, CouncilSummary } from "@/types/council";
 import { FolderOpen, Loader2, MoreVertical, Pencil, Plus, Trash2, Users } from "lucide-react";
 
 /**
- * The council list — a single full-height panel whose first row is the toolbar.
+ * The council list. a single full-height panel whose first row is the toolbar.
  * There is no page title; the nav names the page.
  */
 export default function CouncilPage() {
@@ -97,7 +97,7 @@ export default function CouncilPage() {
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
         <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-          {/* Toolbar — functional context left, actions right, icon-only on mobile */}
+          {/* Toolbar. functional context left, actions right, icon-only on mobile */}
           <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 md:px-6">
             <span className="console-label min-w-0 truncate">
               {councils.length === 0 ? "Councils" : `${councils.length} councils`}
@@ -125,7 +125,7 @@ export default function CouncilPage() {
             </div>
           </div>
 
-          {/* The list scrolls here — the only scroll region */}
+          {/* The list scrolls here. the only scroll region */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-10">

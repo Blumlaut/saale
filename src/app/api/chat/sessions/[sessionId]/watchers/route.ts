@@ -4,7 +4,7 @@ import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/chat/sessions/:sessionId/watchers — watchers bound to this
+ * GET /api/chat/sessions/:sessionId/watchers. watchers bound to this
  * conversation, for the chat's linked panel.
  */
 export async function GET(

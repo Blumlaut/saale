@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
  * The chat category's write tools. `chat_respond` runs an agent in another
- * chat — the caller's own chat id must reach it so it can refuse a self-run —
+ * chat  the caller's own chat id must reach it so it can refuse a self-run
  * and `chat_delete` delegates to the shared deletion helper. Both default to
  * the `ask` approval policy.
  */

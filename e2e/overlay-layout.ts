@@ -7,7 +7,7 @@ import { expect, type Page } from "@playwright/test";
  * and must never scroll horizontally as a whole:
  *
  *   1. The popup itself has no horizontal overflow (`scrollWidth <= clientWidth`)
- *      — if it does, the user has to scroll the *modal* sideways, which is the
+ *       if it does, the user has to scroll the *modal* sideways, which is the
  *      bug class this guards against (a long unbreakable key/URL/token widening
  *      the popup's auto-sized grid track).
  *   2. The popup box stays inside the viewport.
@@ -17,7 +17,7 @@ import { expect, type Page } from "@playwright/test";
  *
  * Root-cause fix for (1) lives in `src/components/ui/dialog.tsx`
  * (`*:min-w-0` on the popup's direct children). Leaf content must still wrap or
- * scroll on its own — see `AGENTS.md` → "Modals Must Fit".
+ * scroll on its own  see `AGENTS.md` → "Modals Must Fit".
  */
 
 /** Popups rendered by the shared overlay primitives. */
@@ -36,7 +36,7 @@ export async function waitForOverlay(page: Page): Promise<void> {
     .locator(OVERLAY_VISIBLE_SELECTOR)
     .last()
     .waitFor({ state: "visible", timeout: 10_000 });
-  // Sheets/dialogs animate in (fade + zoom, or a slide from off-screen) — measure
+  // Sheets/dialogs animate in (fade + zoom, or a slide from off-screen)  measure
   // the settled box, not a mid-flight transform.
   await page.waitForTimeout(350);
 }
@@ -81,7 +81,7 @@ export async function measureOverlay(page: Page): Promise<OverlayLayout> {
       return r.width > 0 && r.height > 0;
     };
     // Controls that hide their real input (Switch, Select, file inputs) park a
-    // 1px transparent input at the viewport origin — it is not layout content.
+    // 1px transparent input at the viewport origin  it is not layout content.
     const isLayoutContent = (el: Element) => {
       const r = el.getBoundingClientRect();
       if (r.width <= 1 || r.height <= 1) return false;
@@ -167,7 +167,7 @@ export async function expectOverlayFits(page: Page, label: string): Promise<void
   expect(m.present, `${label}: no overlay is open`).toBe(true);
   expect(
     m.scrollWidth,
-    `${label}: the overlay scrolls horizontally (${m.scrollWidth}px of content in ${m.clientWidth}px) — content is wider than the modal's bounds`,
+    `${label}: the overlay scrolls horizontally (${m.scrollWidth}px of content in ${m.clientWidth}px)  content is wider than the modal's bounds`,
   ).toBeLessThanOrEqual(m.clientWidth + 2);
   expect(
     Math.round(m.rect.left),

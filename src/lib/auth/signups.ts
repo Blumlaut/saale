@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 /**
  * Who may create an account.
  *
- * The register form asks, but a form is not a gate — the server decides, and it
+ * The register form asks, but a form is not a gate. the server decides, and it
  * has to decide the same way for every path that creates a user, including the
  * ones that never render a form (a Telegram login creates an account in a
  * redirect). This is that decision, in one place.

@@ -10,7 +10,7 @@ import type { ToolCallData } from "./types";
  * The tool calls one turn made.
  *
  * A turn persists every call it made, so a step that reached for four tools
- * would otherwise stack four cards between two sentences — the work therefore
+ * would otherwise stack four cards between two sentences. the work therefore
  * collapses into a single summary row, one click from the cards themselves.
  *
  * Files the agent *showed* the user are not work: they are the thing the user

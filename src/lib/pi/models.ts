@@ -65,7 +65,7 @@ async function getGlobalModelConfig() {
  *
  * The admin stores one entry per provider they have configured:
  *
- * - `enabled: false` is the provider switch — every model of that provider is
+ * - `enabled: false` is the provider switch. every model of that provider is
  *   off.
  * - a non-empty `models` list is an allowlist.
  * - anything else (no entry, or an entry without a model list) means "no
@@ -74,7 +74,7 @@ async function getGlobalModelConfig() {
  * An *empty* list deliberately means the same as no list. It used to mean "all
  * disabled", but the admin UI cannot tell an empty selection from a provider it
  * simply saved without touching, so a single Save silently switched off every
- * model of every provider the admin had not toggled — including a local
+ * model of every provider the admin had not toggled. including a local
  * endpoint's, which then also disappeared from the very list used to switch it
  * back on. Turning a provider off is what the provider switch (`enabled`) is
  * for.
@@ -142,7 +142,7 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
 /**
  * A model definition for an id returned by an OpenAI-compatible endpoint.
  *
- * Pi's `registerProvider` **replaces** a provider's model list — the extension's
+ * Pi's `registerProvider` **replaces** a provider's model list. the extension's
  * `models` are composed over the catalog, not merged into it
  * (`applyExtension` in the SDK's `provider-composer.js`), and a definition only
  * inherits `api`/`baseUrl` from the catalog entry it shadows. Everything else
@@ -153,7 +153,7 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
  * cost plus Pi's default limits hide the real context window.
  *
  * A catalog hit is therefore used verbatim; only genuinely unknown ids (a model
- * Pi has never heard of) fall back to conservative values — and a recorded
+ * Pi has never heard of) fall back to conservative values. and a recorded
  * capability or limit wins over both, because the endpoint that serves the
  * model (or the person running it) knows better than the catalog does.
  *
@@ -280,7 +280,7 @@ interface BuildRuntimeOptions {
  * enumerates a provider itself.
  *
  * Models are filtered by the global admin config (if any). `customTools` and
- * sessions are the caller's business — this is only the model world.
+ * sessions are the caller's business. this is only the model world.
  */
 async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions = {}) {
   const globalConfig = await getGlobalModelConfig();

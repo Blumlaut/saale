@@ -220,11 +220,11 @@ function EnableFlow({ onFinished, onCancel }: { onFinished: () => void; onCancel
       </div>
       <BackupCodesList codes={enableData?.backupCodes ?? []} />
       <p className="text-muted-foreground text-xs">
-        Store these codes somewhere safe — they are the only way to sign in if you lose your
+        Store these codes somewhere safe. they are the only way to sign in if you lose your
         authenticator.
       </p>
       <p className="text-muted-foreground text-xs">
-        Your other devices are signed out — sign in again with your authenticator where needed.
+        Your other devices are signed out. sign in again with your authenticator where needed.
       </p>
       <DialogFooter className="-mx-0 -mb-0 sm:justify-end">
         <Button onClick={onFinished}>Done</Button>

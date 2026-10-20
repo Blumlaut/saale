@@ -11,7 +11,7 @@ import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 
 /**
- * POST /api/email/draft — Generate an AI email draft reply
+ * POST /api/email/draft. Generate an AI email draft reply
  *
  * Uses a dedicated system prompt (no Pi agent noise) for clean email drafting.
  * Streams the response via SSE: token (cumulative text), done
@@ -81,11 +81,11 @@ export async function POST(request: NextRequest) {
     select: { emailWritingStyle: true },
   });
 
-  // Custom system prompt — focused purely on email drafting, no Pi agent noise
+  // Custom system prompt. focused purely on email drafting, no Pi agent noise
   // Incorporate user's custom writing style if defined
   const modeInstruction =
     mode === "forward"
-      ? `You are forwarding this email to someone else. Write a brief introductory note before the forwarded content. Do NOT include the original message body — only the intro note.`
+      ? `You are forwarding this email to someone else. Write a brief introductory note before the forwarded content. Do NOT include the original message body. only the intro note.`
       : `You are replying to this email. Write a natural response addressing the content of the original message.`;
 
   const userStyleInstructions =
@@ -100,15 +100,15 @@ ${modeInstruction}
 ${userStyleInstructions}
 
 Rules:
-- Write only the email body text — no explanations, no meta-commentary
+- Write only the email body text. no explanations, no meta-commentary
 - Match the tone of the original message (professional, casual, urgent, etc.)
 - Keep it concise and natural
 - Do not include greetings like "Dear X" or sign-offs unless they match the original tone
 - If the original message asks questions, answer them directly
 - If the original message makes a request, acknowledge it clearly
-- Output plain text only — no markdown formatting`;
+- Output plain text only. no markdown formatting`;
 
-  // Create a lightweight agent session — no tools, no thinking, just text completion
+  // Create a lightweight agent session. no tools, no thinking, just text completion
   const result: CreateAgentSessionResult = await createSaaleAgentSession(authResult.user.id, {
     sessionManager: SessionManager.inMemory(),
     modelRuntime,
@@ -159,7 +159,7 @@ Rules:
 
   const stream = new ReadableStream({
     start(controller) {
-      /** Idle window — a hung provider must not leave the stream open forever. */
+      /** Idle window. a hung provider must not leave the stream open forever. */
       const IDLE_TIMEOUT_MS = 10 * 60_000;
       let finished = false;
 
@@ -212,7 +212,7 @@ Rules:
 
         // One report per attempt: `agent_end` fires before any retry, and an
         // overflow failure (`willRetry: false`) is followed by a
-        // compact-and-continue — so the final attempt is what counts.
+        // compact-and-continue. so the final attempt is what counts.
         if (event.type === "agent_end" && !event.willRetry) {
           const lastAssistant = [...event.messages]
             .reverse()
@@ -223,8 +223,8 @@ Rules:
             : "";
         }
 
-        // Only `agent_settled` — after retries, compaction and any continuation
-        // — means the draft is complete. Closing on `agent_end` reported failed
+        // Only `agent_settled`. after retries, compaction and any continuation
+        //. means the draft is complete. Closing on `agent_end` reported failed
         // or truncated drafts as successful empty ones.
         if (event.type === "agent_settled") {
           if (lastAttemptError && !lastAttemptText) {
@@ -235,7 +235,7 @@ Rules:
         }
       });
 
-      // session.prompt() — not session.agent.prompt() — runs the SDK's preflight
+      // session.prompt(). not session.agent.prompt(). runs the SDK's preflight
       // and post-run processing (retries, overflow recovery, `agent_settled`).
       // The per-turn system prompt comes from the resource loader, so switching
       // to it does not reset the prompt the way agent.prompt() was thought to.

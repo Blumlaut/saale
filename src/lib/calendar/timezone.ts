@@ -13,7 +13,7 @@ import { TZDate } from "@date-fns/tz";
 /** ISO 8601 designator that makes a datetime absolute: `Z` or `±HH:MM`. */
 const EXPLICIT_OFFSET = /(?:[zZ]|[+-]\d{2}:?\d{2})$/;
 
-/** Naive ISO 8601 wall clock — date, optionally followed by a time. */
+/** Naive ISO 8601 wall clock. date, optionally followed by a time. */
 const WALL_CLOCK = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/;
 
 const DATE_PART = /^(\d{4})-(\d{2})-(\d{2})/;
@@ -162,7 +162,7 @@ export function toZonedDate(date: Date, timeZone: string): TZDate {
 
 /**
  * The wall clock `date` reads on `timeZone`'s clock, as a naive ISO string.
- * Inverse of {@link resolveEventDateTime} — used to re-anchor times.
+ * Inverse of {@link resolveEventDateTime}. used to re-anchor times.
  */
 export function formatWallClock(date: Date, timeZone: string): string {
   const zoned = toZonedDate(date, timeZone);

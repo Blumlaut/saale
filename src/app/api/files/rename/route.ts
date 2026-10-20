@@ -12,7 +12,7 @@ import {
 import { renameEntrySchema } from "@/lib/files/schema";
 
 /**
- * POST /api/files/rename?target= — rename or move one entry within a directory.
+ * POST /api/files/rename?target=. rename or move one entry within a directory.
  *
  * The destination is the entry's own parent plus the new name, so a rename can
  * never move a file out of the folder it was in (and never out of the workspace).

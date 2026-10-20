@@ -10,7 +10,7 @@ describe("getTagColor", () => {
     expect(color).toContain("text-");
   });
 
-  it("is deterministic — same tag always returns same color", () => {
+  it("is deterministic  same tag always returns same color", () => {
     const color1 = getTagColor("finance");
     const color2 = getTagColor("finance");
     const color3 = getTagColor("finance");

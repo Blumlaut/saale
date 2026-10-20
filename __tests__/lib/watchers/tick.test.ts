@@ -6,9 +6,9 @@ import type { ScriptWatcher } from "@prisma/client";
 /**
  * A tick end to end, with the real sandbox and a mocked database.
  *
- * The cases that matter are the ones where a tick must *not* wake the agent —
+ * The cases that matter are the ones where a tick must *not* wake the agent
  * a predicate that matched nothing, a cooldown still running, a script the user
- * has not approved — plus the one where the wake itself fails, because that is
+ * has not approved  plus the one where the wake itself fails, because that is
  * where a report can be silently lost.
  */
 
@@ -195,7 +195,7 @@ describe("runWatcherTick", () => {
     expect(outcome.status).toBe("cooldown");
     expect(wake).not.toHaveBeenCalled();
     expect(writtenTick()?.status).toBe("cooldown");
-    // The change was seen and dropped by design, so the ledger moves with it —
+    // The change was seen and dropped by design, so the ledger moves with it
     // otherwise the same burst would be delivered once the window opened.
     expect(writtenUpdate()?.store).toEqual({ last: "news" });
     expect(writtenUpdate()?.fireCount).toBeUndefined();
@@ -217,13 +217,13 @@ describe("runWatcherTick", () => {
 
   it("keeps the report pending when the wake cannot be delivered", async () => {
     findWatcher.mockResolvedValue(watcher({ store: { seen: ["a"] } }));
-    wake.mockRejectedValue(new Error('Chat "Inbox" is busy — try again once it is idle'));
+    wake.mockRejectedValue(new Error('Chat "Inbox" is busy  try again once it is idle'));
 
     const outcome = await runWatcherTick("w-1");
 
     expect(outcome.status).toBe("blocked");
     expect(outcome.reason).toContain("busy");
-    // Not fired, and — the point — the ledger did not move past a report the
+    // Not fired, and  the point  the ledger did not move past a report the
     // user never received, so the next tick reports it again.
     expect(writtenUpdate()?.fireCount).toBeUndefined();
     expect(writtenUpdate()?.store).toBeUndefined();

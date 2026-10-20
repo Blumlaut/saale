@@ -40,7 +40,7 @@ export function AccountTab() {
 
   const newPassword = watch("newPassword");
 
-  // Two-factor status — read from the session, refreshed after each dialog
+  // Two-factor status. read from the session, refreshed after each dialog
   const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean | null>(null);
   const [twoFactorDialog, setTwoFactorDialog] = useState<TwoFactorDialogMode | null>(null);
 
@@ -115,8 +115,7 @@ export function AccountTab() {
           <div>
             <h4 className="text-sm font-medium">Change Password</h4>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              Update your password to keep your account secure — your other devices will be signed
-              out
+              Update your password. Other devices will be signed out
             </p>
           </div>
 

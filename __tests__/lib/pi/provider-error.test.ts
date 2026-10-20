@@ -27,7 +27,7 @@ describe("extractProviderError", () => {
     expect(extractProviderError({ stopReason: "length", errorMessage: "truncated" })).toBeNull();
   });
 
-  it("ignores aborts — stopping a run is not a provider failure", () => {
+  it("ignores aborts  stopping a run is not a provider failure", () => {
     expect(
       extractProviderError({ stopReason: "aborted", errorMessage: "Request was aborted" }),
     ).toBe(null);

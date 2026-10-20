@@ -93,7 +93,7 @@ describe("ProviderAddSheet", () => {
       linked.compareDocumentPosition(available) & Node.DOCUMENT_POSITION_FOLLOWING,
       "a linked provider must come before an unlinked one",
     ).toBeTruthy();
-    expect(screen.getByText("Linked — 1")).toBeInTheDocument();
+    expect(screen.getByText("Linked. 1")).toBeInTheDocument();
   });
 
   it("leaves linked providers without a connect action, and says they are linked", () => {

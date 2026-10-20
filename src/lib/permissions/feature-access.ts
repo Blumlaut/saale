@@ -56,7 +56,7 @@ export async function loadUserFeatures(userId: string): Promise<FeatureMap> {
 }
 
 /**
- * The overrides that turn `baseline` into `wanted` — only the switches that
+ * The overrides that turn `baseline` into `wanted`. only the switches that
  * differ are stored, so an account keeps following the instance default for
  * everything an admin did not touch.
  */

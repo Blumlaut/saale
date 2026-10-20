@@ -29,11 +29,11 @@ export interface ApprovalData {
   /**
    * One-line "what is this call about", resolved server-side (ID-only
    * references look up the user's own records). Absent on pre-existing
-   * requests — the card re-derives one from the arguments.
+   * requests. the card re-derives one from the arguments.
    */
   summary?: string | null;
   /**
-   * The calls one decision stands in for, when it covers more than this call —
+   * The calls one decision stands in for, when it covers more than this call
    * a codemode script's approval covers the calls it announced. Mirrors
    * `ApprovalBatch` in `@/lib/pi/tool-approval-gate`.
    */
@@ -59,7 +59,7 @@ export interface CompactionData {
  * Token usage for a generation, as published by the session event tracker.
  *
  * `input`/`output`/`cacheRead`/`cacheWrite`/`total` are billed totals,
- * cumulative over the run — they exclude prompt-cache reads from `input`, so
+ * cumulative over the run. they exclude prompt-cache reads from `input`, so
  * they must never be used to gauge how full the context is. `contextTokens`
  * carries that instead (Pi's own context accounting).
  */
@@ -87,14 +87,14 @@ export interface Message {
   /**
    * The server turn that produced this message (client-side only). Live turns
    * are also identified by their `streaming-{turnId}` id, but `message_saved`
-   * renames them to their DB row — this tag survives that, so a replayed event
+   * renames them to their DB row. this tag survives that, so a replayed event
    * for a turn already on screen updates it instead of adding a second copy.
    */
   turnId?: string | undefined;
   /**
    * When this client learned the row id of a turn it streamed (client clock).
    * A reload's snapshot that was read before the save committed cannot contain
-   * the row, so the merge needs to tell "not committed yet" from "deleted" —
+   * the row, so the merge needs to tell "not committed yet" from "deleted"
    * only a save this recent explains the absence (see `mergeMessagesWithLive`).
    */
   savedAt?: number | undefined;

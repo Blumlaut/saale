@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { syncEmailAccount } from "@/lib/email/sync";
 
 /**
- * POST /api/email/accounts/:accountId/sync — Trigger manual sync
+ * POST /api/email/accounts/:accountId/sync. Trigger manual sync
  * Query params: full=true to force a full sync (ignore lastSyncedAt)
  */
 export async function POST(

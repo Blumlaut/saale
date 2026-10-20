@@ -162,7 +162,7 @@ describe("TelegramLinkPanel", () => {
     renderPanel({ linkCode });
 
     expect(screen.getByText(linkCode.code)).toBeInTheDocument();
-    // The instruction is to send the code itself — /start is Telegram's own
+    // The instruction is to send the code itself  /start is Telegram's own
     // first message, not something the user has to type.
     expect(screen.queryByText(new RegExp(`/start ${linkCode.code}`))).not.toBeInTheDocument();
 

@@ -3,8 +3,8 @@
  *
  * `show_file` shows the file to the chat that asked for it, and a Telegram run
  * sends the same bytes on to the user's phone. Both want the file from the same
- * place — the terminal container when it is configured, the app's uploads volume
- * otherwise — so the workspace, the path rule and the size ceiling live here
+ * place. the terminal container when it is configured, the app's uploads volume
+ * otherwise. so the workspace, the path rule and the size ceiling live here
  * rather than in either caller.
  *
  * The read is not the same operation as the file browser's: a browser streams
@@ -19,8 +19,8 @@ import { openUserFileTarget } from "./targets";
 /**
  * Largest file a caller may hand to a user.
  *
- * Binding is the chat channel with the lowest ceiling — Telegram's bot upload
- * limit — because a file the web chat can show but no other channel can deliver
+ * Binding is the chat channel with the lowest ceiling. Telegram's bot upload
+ * limit. because a file the web chat can show but no other channel can deliver
  * would be a `show_file` that works until the user leaves the browser. A
  * workspace read also returns the whole file as one buffer, so this is a memory
  * ceiling as much as a delivery one.
@@ -29,7 +29,7 @@ export const MAX_SHARED_FILE_BYTES = 50 * 1024 * 1024;
 
 /** A file read out of a workspace, ready to serve or upload. */
 export interface WorkspaceFile {
-  /** Last path segment — what a download or a Telegram document is named. */
+  /** Last path segment. what a download or a Telegram document is named. */
   fileName: string;
   mimeType: string;
   size: number;

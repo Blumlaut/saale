@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { generateICSBulk } from "@/lib/calendar/ics-export";
 
 /**
- * GET /api/calendar/export — Export events as .ics file
+ * GET /api/calendar/export. Export events as .ics file
  * Query params: from, to, calendarIds (comma-separated)
  */
 export async function GET(request: NextRequest) {

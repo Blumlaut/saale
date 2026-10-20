@@ -115,7 +115,7 @@ describe("PATCH /messages/:messageId", () => {
         data: expect.objectContaining({ content: "the edited text", editedAt: expect.any(Date) }),
       }),
     );
-    // Nothing is created — an edit must never add a message to the conversation.
+    // Nothing is created  an edit must never add a message to the conversation.
     expect(mockTx.chatMessage.deleteMany).toHaveBeenCalledWith({
       where: { sessionId: SESSION_ID, createdAt: { gt: storedMessage().createdAt } },
     });

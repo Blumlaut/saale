@@ -34,7 +34,7 @@ export interface SendMailResult {
  *
  * SMTP submission alone leaves Sent empty on most servers, so every send has to
  * append its own copy. A message that is already delivered must not be reported
- * as failed because the copy could not be filed — the caller gets `sentFolder:
+ * as failed because the copy could not be filed. the caller gets `sentFolder:
  * null` instead, so the user hears about it without the send being retried.
  */
 export async function sendMailForAccount(params: SendMailParams): Promise<SendMailResult> {

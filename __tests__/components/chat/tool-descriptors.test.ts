@@ -13,7 +13,7 @@ import type { ToolCallData } from "@/components/chat/types";
 /**
  * The card model every tool describes.
  *
- * Descriptors are pure — a tool call in, a model out — so these tests read the
+ * Descriptors are pure  a tool call in, a model out  so these tests read the
  * model instead of the DOM. That keeps them fast and, more importantly, lets
  * them pin down the *content* (labels, pluralisation, status tones, row data)
  * rather than whichever markup the renderer happens to produce.
@@ -50,7 +50,7 @@ describe("tool card routing", () => {
   /**
    * Tools whose results carry a format of their own. Everything else in the
    * catalog is deliberately generic, so a new descriptor has to be declared
-   * here — and a tool that silently loses its card fails the loop below.
+   * here  and a tool that silently loses its card fails the loop below.
    */
   const DESCRIBED = new Set([
     "show_file",

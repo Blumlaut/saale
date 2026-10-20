@@ -8,7 +8,7 @@ import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import type { Message } from "./types";
 
 /**
- * Send queue strip — messages submitted while Pi is still working.
+ * Send queue strip. messages submitted while Pi is still working.
  *
  * They are not part of the conversation yet: the server delivers them when the
  * current run finishes (or immediately, when the user pushes one). Each entry
@@ -25,7 +25,7 @@ export function QueuedMessages({
   messages: Message[];
   /** Message whose "send now" request is in flight. */
   sendingId?: string | null;
-  /** Generation stopped — these wait for the user (send now, or a new message). */
+  /** Generation stopped. these wait for the user (send now, or a new message). */
   paused?: boolean;
   onEdit: (messageId: string, content: string) => Promise<void>;
   onSendNow: (messageId: string) => Promise<void>;
@@ -62,7 +62,7 @@ export function QueuedMessages({
         </span>
         <span className="ml-auto hidden text-[11px] sm:inline">
           {paused
-            ? "Paused — send now, or send a new message"
+            ? "Paused. send now, or send a new message"
             : "Sent when the current response finishes"}
         </span>
       </div>
@@ -134,7 +134,7 @@ export function QueuedMessages({
                     onClick={() => void onSendNow(message.id)}
                     disabled={sendingId === message.id}
                     aria-label="Send this message now"
-                    title="Send now — before the current run finishes"
+                    title="Send now. before the current run finishes"
                   >
                     {sendingId === message.id ? <Loader2 className="animate-spin" /> : <ArrowUp />}
                   </Button>

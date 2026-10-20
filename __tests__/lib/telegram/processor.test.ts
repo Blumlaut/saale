@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 // These test the business logic (prompt building, context loading, etc.)
 // without mocking the full Pi agent SDK.
 
-describe("Telegram processor — prompt building", () => {
+describe("Telegram processor  prompt building", () => {
   it("returns just the message when no context", () => {
     const buildPrompt = (
       context: Array<{ role: string; content: string }>,
@@ -82,7 +82,7 @@ describe("Telegram processor — prompt building", () => {
   });
 });
 
-describe("Telegram processor — context loading", () => {
+describe("Telegram processor  context loading", () => {
   it("limits context to configured message count", () => {
     const CONTEXT_MESSAGE_COUNT = 20;
 
@@ -117,7 +117,7 @@ describe("Telegram processor — context loading", () => {
   });
 });
 
-describe("Telegram processor — chat session expiry", () => {
+describe("Telegram processor  chat session expiry", () => {
   it("6 hour expiry is correct in milliseconds", () => {
     const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
     expect(TELEGRAM_CHAT_EXPIRY_MS).toBe(21_600_000);
@@ -145,7 +145,7 @@ describe("Telegram processor — chat session expiry", () => {
   });
 });
 
-describe("Telegram processor — agent definition naming", () => {
+describe("Telegram processor  agent definition naming", () => {
   it("Telegram agent has a fixed name", () => {
     const TELEGRAM_AGENT_NAME = "Telegram Assistant";
     expect(TELEGRAM_AGENT_NAME).toBe("Telegram Assistant");
@@ -164,7 +164,7 @@ describe("Telegram processor — agent definition naming", () => {
   });
 });
 
-describe("Telegram processor — output handler", () => {
+describe("Telegram processor  output handler", () => {
   it("send handler calls both Telegram API and saves to ChatSession", async () => {
     const sendTelegramMessage = vi.fn().mockResolvedValue([123]);
     const chatMessageCreate = vi.fn().mockResolvedValue({});
@@ -228,7 +228,7 @@ describe("Telegram processor — output handler", () => {
   });
 });
 
-describe("Telegram processor — model resolution", () => {
+describe("Telegram processor  model resolution", () => {
   it("prefers user settings over admin defaults", () => {
     const userSettings = {
       defaultModelProvider: "anthropic",
@@ -295,7 +295,7 @@ describe("Telegram processor — model resolution", () => {
   });
 });
 
-describe("Telegram processor — run creation", () => {
+describe("Telegram processor  run creation", () => {
   it("run includes output channel fields from definition", () => {
     const definition = {
       id: "def-1",
@@ -345,7 +345,7 @@ describe("Telegram processor — run creation", () => {
   });
 });
 
-describe("Telegram processor — whitelist", () => {
+describe("Telegram processor  whitelist", () => {
   it("whitelist check prevents unauthorized access", () => {
     const whitelist = new Set<bigint>([BigInt(123), BigInt(456)]);
     expect(whitelist.has(BigInt(123))).toBe(true);

@@ -55,7 +55,7 @@ function postProcess(html: string): string {
     }
   }
 
-  // Strip bgcolor attributes — they survive CSS overrides and cause
+  // Strip bgcolor attributes. they survive CSS overrides and cause
   // unreadable text in dark mode (e.g. white bg with light text)
   const allElements = doc.querySelectorAll("[bgcolor]");
   for (const el of Array.from(allElements) as Element[]) {
@@ -187,7 +187,7 @@ export function sanitizeEmailHtml(html: string | null | undefined): string | nul
     // Sanitize DOM to prevent id/class injection attacks
     SANITIZE_DOM: true,
 
-    // Return string (default) — post-processing handles the rest
+    // Return string (default). post-processing handles the rest
     RETURN_DOM_FRAGMENT: false,
   });
 

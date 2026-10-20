@@ -11,7 +11,7 @@ interface CompactActivitySettings {
 /**
  * Whether the transcript should condense a turn's activity.
  *
- * Read once per chat mount from the user's settings — the transcript is the
+ * Read once per chat mount from the user's settings. the transcript is the
  * only consumer, and the settings page owns the write, so a subscription would
  * buy nothing. It starts compact because that is the stored default: a flash of
  * expanded cards is exactly what the setting exists to avoid.

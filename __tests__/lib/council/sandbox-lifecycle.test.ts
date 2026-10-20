@@ -79,7 +79,7 @@ describe("ensureCouncilSandbox", () => {
   it("re-provisions an account the container still has cached but no longer has", async () => {
     // The observed failure: the account was deleted with its council, and Open
     // Terminal's in-memory cache still claims it exists, so every command for the
-    // key fails with `sudo: unknown user` — forever, unless something asks under
+    // key fails with `sudo: unknown user`  forever, unless something asks under
     // an id that maps to the same account.
     probe
       .mockResolvedValueOnce({ exitCode: 1, output: `sudo: unknown user ${IDENTITY.account}` })
@@ -149,7 +149,7 @@ describe("destroyCouncilSandbox", () => {
     const commands = container.mock.calls.map((call) => call[0]);
     // Order matters: the group survives `userdel` only as long as the container's
     // own account is a member of it, so that membership is dropped before the
-    // group is — reverse the two and the group would not be deletable.
+    // group is  reverse the two and the group would not be deletable.
     expect(commands).toEqual([
       `sudo userdel -r ${IDENTITY.account} 2>&1`,
       `sudo rm -rf /home/${IDENTITY.account} 2>&1`,

@@ -1,12 +1,12 @@
 /**
- * Model reference parsing — shared by model resolution and the settings
+ * Model reference parsing. shared by model resolution and the settings
  * registry.
  *
  * A reference is `provider:modelId` (Saale's storage format) or
  * `provider/modelId` (Pi's canonical form).
  *
  * Only the FIRST separator is the provider boundary: model ids contain both
- * characters — `openrouter:anthropic/claude-sonnet-4`, `openai/gpt-5:exacto` —
+ * characters. `openrouter:anthropic/claude-sonnet-4`, `openai/gpt-5:exacto`
  * so splitting on a later one, or rewriting the id's own separator, changes
  * the model identity and the runtime can no longer resolve it.
  */

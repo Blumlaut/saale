@@ -22,7 +22,7 @@ const sidebarNavEntrySchema = z.object({
 const patchBodySchema = z.object({
   /**
    * Ordered layout. `null` clears the customization (default order, everything
-   * visible). Any item may be flagged hidden — normalization forces the pinned
+   * visible). Any item may be flagged hidden. normalization forces the pinned
    * ones (Settings) back to visible, so the sidebar can never end up empty.
    */
   items: z
@@ -39,8 +39,8 @@ const patchBodySchema = z.object({
  * Items this user may not open, whatever their stored layout says.
  *
  * The registry describes how an item renders; only the route that serves the
- * layout knows whether this particular user may use it. Filtering here — rather
- * than in each nav component — keeps the sidebar and the settings editor
+ * layout knows whether this particular user may use it. Filtering here. rather
+ * than in each nav component. keeps the sidebar and the settings editor
  * offering the same list, and an item whose page cannot be opened is never
  * offered as a toggle.
  */
@@ -64,7 +64,7 @@ function restrict(entries: SidebarNavEntry[], unavailable: SidebarNavItemId[]): 
 }
 
 /**
- * GET /api/settings/sidebar-nav — Get the user's sidebar layout
+ * GET /api/settings/sidebar-nav. Get the user's sidebar layout
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -84,7 +84,7 @@ export async function GET() {
 }
 
 /**
- * PATCH /api/settings/sidebar-nav — Save the user's sidebar layout
+ * PATCH /api/settings/sidebar-nav. Save the user's sidebar layout
  *
  * The layout lands in `AppSettings.sidebarItems` through the settings registry,
  * so this route never writes the table directly and the value is normalized the

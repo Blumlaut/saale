@@ -5,7 +5,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { ImpersonationBanner } from "@/components/layout/impersonation-banner";
 
-// All dashboard pages require auth and redirect if unauthenticated —
+// All dashboard pages require auth and redirect if unauthenticated
 // no point prerendering them as static content.
 export const dynamic = "force-dynamic";
 

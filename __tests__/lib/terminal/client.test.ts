@@ -83,7 +83,7 @@ describe("uploadFile", () => {
     expect(headers.Authorization).toBe("Bearer test-secret-key");
     expect(headers["X-User-Id"]).toBe("user-1");
     expect(headers["X-Session-Id"]).toBe("session-42");
-    // Multipart: fetch derives Content-Type from the FormData — a JSON
+    // Multipart: fetch derives Content-Type from the FormData  a JSON
     // content type would corrupt the request.
     expect(headers["Content-Type"]).toBeUndefined();
     expect(headers["content-type"]).toBeUndefined();
@@ -115,7 +115,7 @@ describe("uploadFile", () => {
         directory: "telegram_files",
         userId: "user-1",
       }),
-    ).rejects.toThrow("Open Terminal error 413: Payload Too Large — file exceeds the 50MB limit");
+    ).rejects.toThrow("Open Terminal error 413: Payload Too Large. file exceeds the 50MB limit");
   });
 
   it("throws even when the error body cannot be read", async () => {

@@ -21,7 +21,7 @@ export interface TaskResponse {
 }
 
 /**
- * Minimal shape accepted by taskToResponse — works with both
+ * Minimal shape accepted by taskToResponse. works with both
  * full Prisma Task records and raw query results (which may omit
  * userId, notifiedAt, etc.).
  */

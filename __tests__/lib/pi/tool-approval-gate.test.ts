@@ -8,7 +8,7 @@ import { publishSessionEvent } from "@/lib/pi/session-events";
 vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
 
 // The approval gate enriches requests with a resolved summary, which may
-// look up the referenced record. Tests run without a database — every
+// look up the referenced record. Tests run without a database  every
 // lookup resolves to "not found".
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -155,7 +155,7 @@ describe("tool-approval-gate", () => {
     it("resolves from a resolution event published by another process", async () => {
       // Simulates the web API route (or Telegram callback) resolving an
       // approval whose agent runs in a different process: no in-process
-      // promise exists here — only the session bus event can wake the wait.
+      // promise exists here  only the session bus event can wake the wait.
       const request = { ...makeRequest(), toolCallId: "tc-bus", sessionId: "session-bus" };
       const promise = waitForApproval(request);
 

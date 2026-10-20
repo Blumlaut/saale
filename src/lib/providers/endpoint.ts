@@ -3,7 +3,7 @@
  * endpoint.
  *
  * One endpoint per scope: a user's own row wins, otherwise they inherit the
- * global one, exactly as they inherit a provider credential — an admin's local
+ * global one, exactly as they inherit a provider credential. an admin's local
  * endpoint is usable by everyone, and its models must be pickable for everyone.
  *
  * Server-only: it reads the database and decrypts the stored key.

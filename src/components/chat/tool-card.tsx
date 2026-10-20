@@ -22,7 +22,7 @@ import type {
 /**
  * The one tool card.
  *
- * It renders a `ToolCardModel` and knows nothing about tools — no tool name
+ * It renders a `ToolCardModel` and knows nothing about tools. no tool name
  * appears in this file, and it has no per-tool branch anywhere. Everything a
  * specific tool needs is expressed as data by its descriptor (see
  * `./tool-descriptors`), so a card cannot drift from the others in spacing,
@@ -56,7 +56,7 @@ export function ToolCard({ model, children }: { model: ToolCardModel; children?:
       {/*
         The title is the card's identity, so it never truncates: the detail
         absorbs every pixel of pressure instead. That is only safe because a
-        title is short by construction — a descriptor names a tool, and the
+        title is short by construction. a descriptor names a tool, and the
         generic card caps the name of a tool it has never seen.
       */}
       <span className="shrink-0 text-xs font-medium">{model.title}</span>
@@ -424,7 +424,7 @@ function ToolTextBlock({ block }: { block: Extract<ToolCardBlock, { kind: "text"
   );
 }
 
-/** Row and badge hues — the only place the tone names become classes. */
+/** Row and badge hues. the only place the tone names become classes. */
 function toolToneClass(tone: ToolTone = "neutral"): string {
   switch (tone) {
     case "neutral":

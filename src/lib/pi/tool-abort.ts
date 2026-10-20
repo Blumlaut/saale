@@ -11,7 +11,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
  *
  * This races the tool against the signal so the call ends as soon as the run is
  * aborted. The tool itself keeps running in the background (its own cancellation,
- * if any — the terminal tools kill their command on the same signal — still
+ * if any. the terminal tools kill their command on the same signal. still
  * applies); what changes is that the run no longer waits for it.
  *
  * The rejection matches Pi's own wording for a cancelled tool call so the result
@@ -39,7 +39,7 @@ export function withAbortSignal(tool: ToolDefinition): ToolDefinition {
   return {
     ...tool,
     execute: (toolCallId, params, signal, onUpdate, ctx) => {
-      // No signal — nothing can be cancelled, so don't interfere.
+      // No signal. nothing can be cancelled, so don't interfere.
       if (!signal) {
         return originalExecute(toolCallId, params, signal, onUpdate, ctx);
       }

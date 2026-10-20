@@ -6,7 +6,7 @@
  *
  * 1. Pi emits `session_start` only from `bindExtensions()`, and registers
  *    `codemode` inactive. A session that is never bound has no codemode tool and
- *    connects no MCP servers — so `startSessionExtensions` must both bind and
+ *    connects no MCP servers  so `startSessionExtensions` must both bind and
  *    activate.
  * 2. Built-in tools must stay disabled: Saale supplies its own file/shell tools
  *    through Open Terminal, and activating Pi's would give the model the app
@@ -70,7 +70,7 @@ describe("agent extensions", () => {
     process.env.UPLOADS_DIR = "/tmp/saale-ext-test-uploads";
   });
 
-  it("keeps the built-in tools inactive — Saale supplies its own", async () => {
+  it("keeps the built-in tools inactive  Saale supplies its own", async () => {
     const session = await buildSession();
     try {
       expect(session.getActiveToolNames()).not.toContain("bash");
@@ -102,7 +102,7 @@ describe("agent extensions", () => {
     }
   });
 
-  it("is idempotent — a second bootstrap does not duplicate the tool", async () => {
+  it("is idempotent  a second bootstrap does not duplicate the tool", async () => {
     const session = await buildSession();
     try {
       await startSessionExtensions(session);

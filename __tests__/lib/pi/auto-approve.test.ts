@@ -13,7 +13,7 @@ import {
   STFU_DURATION_MS,
 } from "@/lib/pi/auto-approve";
 
-// The approval gate persists requests in Redis — use the in-memory stand-in.
+// The approval gate persists requests in Redis  use the in-memory stand-in.
 vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
 import { resetMockRedis } from "../../helpers/in-memory-redis";
 
@@ -74,7 +74,7 @@ describe("auto-approve (/stfu) module", () => {
     await enableAutoApprove("user-1");
     expect(await isAutoApproveActive("user-1")).toBe(true);
 
-    // Advance just past the 2h window — the Redis entry expires with its TTL.
+    // Advance just past the 2h window  the Redis entry expires with its TTL.
     await vi.advanceTimersByTimeAsync(STFU_DURATION_MS + 60_000);
     expect(await isAutoApproveActive("user-1")).toBe(false);
     expect(await getAutoApproveExpiry("user-1")).toBeNull();

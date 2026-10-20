@@ -4,17 +4,17 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 /**
  * Regression tests for the burst bug: when many messages are forwarded to a
  * Telegram chat in quick succession, the messages queued behind the chat lock
- * used to each run to completion and send their own reply — spammed into the
+ * used to each run to completion and send their own reply  spammed into the
  * chat at the end. Latest message must win: a run superseded by a newer
  * message bails out at its checkpoints (queued behind the lock, or still in
  * slow pre-session setup) and sends no reply.
  *
- * It also covers what the processor sends beside the reply — a file the agent
+ * It also covers what the processor sends beside the reply  a file the agent
  * showed goes on to the chat, which is what makes `show_file` mean anything on
  * a phone (the web UI fetches the file itself; Telegram cannot).
  *
  * Everything the processor imports is mocked except `./chat-lock` and
- * `./session-registry` — those are the units under test — and the `show_file`
+ * `./session-registry`  those are the units under test  and the `show_file`
  * recognition in `./files`, which the file test drives for real.
  */
 
@@ -202,7 +202,7 @@ function makeDone() {
 
 /**
  * A stand-in Pi session. Emits the given events (synchronously) when
- * `prompt()` is called — the real session emits asynchronously, but the
+ * `prompt()` is called  the real session emits asynchronously, but the
  * processor's handler order is what matters here.
  */
 function makeFakeSession(events: Array<Record<string, unknown>> = []) {
@@ -229,7 +229,7 @@ function makeFakeSession(events: Array<Record<string, unknown>> = []) {
 
 /** Existing link + session + definition, so the run takes the happy setup path. */
 function setupPrisma(chatId: bigint) {
-  // Partial mock values — `as never` follows the codebase's mocking convention.
+  // Partial mock values  `as never` follows the codebase's mocking convention.
   vi.mocked(prisma.telegramLink.findUnique).mockResolvedValue({
     id: "link-1",
     userId: "user-1",
@@ -266,7 +266,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("processTelegramMessage — latest message wins", () => {
+describe("processTelegramMessage  latest message wins", () => {
   it("drops messages superseded while queued behind the chat lock; only the latest runs", async () => {
     const chatId = nextChatId();
     setupPrisma(chatId);
@@ -285,7 +285,7 @@ describe("processTelegramMessage — latest message wins", () => {
     vi.mocked(createAgentSession).mockResolvedValue({ session } as never);
 
     // A burst: m1's run is in flight when m2 and m3's webhooks arrive, so
-    // their runs queue behind the chat lock — by the time they start, they
+    // their runs queue behind the chat lock  by the time they start, they
     // are no longer the latest message.
     const seq1 = nextMessageSeq(USER, chatId);
     const seq2 = nextMessageSeq(USER, chatId);
@@ -340,7 +340,7 @@ describe("processTelegramMessage — latest message wins", () => {
     setupPrisma(chatId);
 
     // Hold m1's run in slow setup (model runtime build) so a newer message
-    // can arrive while the Pi session does not exist yet — the webhook's
+    // can arrive while the Pi session does not exist yet  the webhook's
     // interrupt then has nothing to abort and relies on the checkpoint.
     let releaseBuild!: () => void;
     vi.mocked(buildModelRuntime).mockImplementationOnce(
@@ -364,14 +364,14 @@ describe("processTelegramMessage — latest message wins", () => {
     });
 
     // Wait until m1's run registered (at the start of the run, well before
-    // the Pi session exists) — the interrupt below is pre-session.
+    // the Pi session exists)  the interrupt below is pre-session.
     await waitFor(() => isTelegramSessionActive(USER, chatId));
 
     // m2's webhook: bump the sequence and supersede the active run.
     nextMessageSeq(USER, chatId);
     const interrupting = interruptTelegramChat(USER, chatId);
 
-    // m1's setup finishes — it must notice its supersession before prompting.
+    // m1's setup finishes  it must notice its supersession before prompting.
     releaseBuild();
     await processing;
     await interrupting;
@@ -393,7 +393,7 @@ describe("processTelegramMessage — latest message wins", () => {
   });
 });
 
-describe("processTelegramMessage — attachments", () => {
+describe("processTelegramMessage  attachments", () => {
   async function runWithAttachment(
     chatId: bigint,
     fileName: string,
@@ -435,7 +435,7 @@ describe("processTelegramMessage — attachments", () => {
   });
 });
 
-describe("processTelegramMessage — files the agent shows", () => {
+describe("processTelegramMessage  files the agent shows", () => {
   /** A run whose model calls one tool and settles. */
   async function runWithToolCall(
     chatId: bigint,

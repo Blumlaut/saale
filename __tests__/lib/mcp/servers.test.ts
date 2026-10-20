@@ -144,7 +144,7 @@ describe("toMcpServerConfig", () => {
       encryptedToken: null,
     });
     expect(config).not.toHaveProperty("description");
-    // Tools must stay reachable from codemode — never declared to the model.
+    // Tools must stay reachable from codemode  never declared to the model.
     expect(config.exposure).toBe("codemode");
   });
 });

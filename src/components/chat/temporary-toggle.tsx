@@ -32,7 +32,7 @@ export function TemporaryToggle({ checked, onChange }: TemporaryToggleProps) {
           size="sm"
           checked={checked}
           onCheckedChange={onChange}
-          title="Temporary chat — auto-deleted on close"
+          title="Temporary chat. auto-deleted on close"
         />
       </div>
       <Button
@@ -43,7 +43,7 @@ export function TemporaryToggle({ checked, onChange }: TemporaryToggleProps) {
           (checked ? "bg-accent/70 text-foreground" : "text-muted-foreground")
         }
         onClick={() => onChange(!checked)}
-        title="Temporary chat — auto-deleted on close"
+        title="Temporary chat. auto-deleted on close"
       >
         <Ghost className="h-4 w-4" />
       </Button>

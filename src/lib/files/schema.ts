@@ -2,7 +2,7 @@
  * Body schemas for the file endpoints.
  *
  * The target is not here: every route (reads and writes alike) takes it from
- * the query string, so authorization happens before a body is parsed — a caller
+ * the query string, so authorization happens before a body is parsed. a caller
  * cannot make the server do work on behalf of a workspace it may not touch.
  *
  * A name is validated here rather than in the route, so a separator or a `..` is

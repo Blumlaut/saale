@@ -12,13 +12,13 @@ import { claimPendingHistoryRewind, getPendingHistoryRewind } from "@/lib/redis"
  * append-only: `session.prompt()` always appends. After an edit, the transcript
  * still contains the old message and the replies the edit deleted, so simply
  * re-prompting sends the edited text as a NEW message following the deleted
- * conversation — the model sees both versions.
+ * conversation. the model sees both versions.
  *
  * Pi's own primitive for this is `navigateTree()` (the TUI's "edit an earlier
  * message" flow): pointing it at a user-message entry moves the leaf to that
  * entry's parent, so the next prompt replaces the message instead of appending
  * to it. Since pi v0.87 the SessionManager is canonical for the provider
- * context — every request is rebuilt from its projection — so moving the leaf
+ * context. every request is rebuilt from its projection. so moving the leaf
  * is the whole rewind; `navigateTree()` resyncs the agent's public state
  * itself. Never assign `session.agent.state.messages`: since v0.87 it does not
  * affect what future requests send.
@@ -61,7 +61,7 @@ export function transcriptUserMessages(session: AgentSession): SessionMessageEnt
  * Pick the transcript entry the edited message replaced.
  *
  * The DB's user messages and the transcript's user messages are written in the
- * same order, so the DB position is the primary signal — verified against the
+ * same order, so the DB position is the primary signal. verified against the
  * pre-edit content. When they drift (a prompt that failed before the SDK
  * recorded it, prompt-template expansion), fall back to the closest text match.
  * Returns null when the entry cannot be identified: a wrong guess would delete
@@ -105,7 +105,7 @@ async function rewindLeafBefore(session: AgentSession, entry: SessionMessageEntr
   if (entry.parentId) {
     await session.navigateTree(entry.parentId);
   } else {
-    // The first message has no parent entry to navigate to — reset the leaf
+    // The first message has no parent entry to navigate to. reset the leaf
     // directly and resync the agent's state from the (now empty) projection.
     sessionManager.resetLeaf();
     session.refreshContext();
@@ -116,7 +116,7 @@ async function rewindLeafBefore(session: AgentSession, entry: SessionMessageEntr
  * Rewind the session so the next prompt replaces the edited message.
  *
  * Returns false when the transcript holds no entry for it (e.g. it was never
- * prompted) — there is nothing to rewind and the prompt proceeds normally.
+ * prompted). there is nothing to rewind and the prompt proceeds normally.
  */
 export async function rewindSessionToMessage(
   session: AgentSession,
@@ -133,14 +133,14 @@ export async function rewindSessionToMessage(
  *
  * A run that dies mid-flight (process restart, crash, killed container) leaves
  * its prompt in the transcript but never a reply. The recovery path re-prompts
- * that message, and `session.prompt()` always appends — so without this the
+ * that message, and `session.prompt()` always appends. so without this the
  * model reads the same request twice and the transcript grows a duplicate turn.
  * Rewinding first makes the re-prompt replace the abandoned entry.
  *
  * The test is deliberately conservative: the transcript's newest user entry
  * must BE the leaf (nothing was recorded after it, so its run never replied)
  * and carry exactly this text. A prompt whose reply was recorded always has
- * entries after it, and a different message never matches — so a live
+ * entries after it, and a different message never matches. so a live
  * conversation is never rewritten on a guess.
  *
  * @param target.content - The stored content of the message about to be prompted.
@@ -166,7 +166,7 @@ export type RewindOutcome = "rewound" | "no-transcript-entry" | "nothing-pending
  * Apply the pending rewind for a message that is about to be prompted.
  *
  * The read is separated from the claim so a rewind can only ever be applied to
- * the message it was written for — consuming it while prompting an unrelated
+ * the message it was written for. consuming it while prompting an unrelated
  * one (a queued delivery, a stale-run recovery) would throw the edit away.
  * A failure is logged, never thrown: the prompt still has to go out.
  */

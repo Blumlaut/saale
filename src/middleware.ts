@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 /**
  * Rate limiting for API routes.
  *
- * Uses an in-memory Map — this is best-effort per-instance only.
+ * Uses an in-memory Map. this is best-effort per-instance only.
  * For cross-instance rate limiting, handle it at the reverse proxy level (nginx/Traefik).
  */
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();

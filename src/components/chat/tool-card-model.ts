@@ -7,7 +7,7 @@ import type { ToolStatus } from "./tool-status";
  *
  * A card is described, never written: a descriptor is a pure function from a
  * tool call to this model, and `ToolCard` renders any model. Nothing below
- * knows a tool name, so adding a tool means writing data — and every card gets
+ * knows a tool name, so adding a tool means writing data. and every card gets
  * the same header, badge, expander and spacing for free.
  */
 
@@ -66,7 +66,7 @@ export type ToolCardBlock =
       empty?: string;
     }
   | { kind: "facts"; items: readonly ToolFact[] }
-  /** A command's captured output — stdout and stderr share one box. */
+  /** A command's captured output. stdout and stderr share one box. */
   | { kind: "output"; stdout: string; stderr: string }
   | { kind: "diff"; lines: readonly string[]; max?: number }
   | { kind: "code"; text: string; label?: string; tone?: "muted" | "danger"; max?: number }
@@ -77,7 +77,7 @@ export type ToolCardBlock =
 export interface ToolCardModel {
   icon: LucideIcon;
   title: string;
-  /** One-line context beside the title — the command, query, path or title. */
+  /** One-line context beside the title. the command, query, path or title. */
   detail?: string;
   status: ToolStatus;
   /** Header link, e.g. the page a `web_fetch` opened. */
@@ -91,7 +91,7 @@ export interface ToolCardModel {
 /**
  * A tool family's card, in model form.
  *
- * `names` and `prefixes` are how the registry finds it — `prefixes` covers a
+ * `names` and `prefixes` are how the registry finds it. `prefixes` covers a
  * whole family (every `infra_*` tool) behind one descriptor.
  */
 export interface ToolDescriptor {

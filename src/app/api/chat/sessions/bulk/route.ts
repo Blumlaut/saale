@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { deleteChatSessions } from "@/lib/chat/delete-session";
 
-/** A batch this large is a client bug, not a workflow — refuse before the loop. */
+/** A batch this large is a client bug, not a workflow. refuse before the loop. */
 const MAX_BATCH = 100;
 
 const bodySchema = z.object({
@@ -12,7 +12,7 @@ const bodySchema = z.object({
 });
 
 /**
- * POST /api/chat/sessions/bulk — Delete several chats in one request.
+ * POST /api/chat/sessions/bulk. Delete several chats in one request.
  *
  * POST rather than DELETE because the ids travel in the request body. Every id
  * is resolved per user inside `deleteChatSessions`, which reports the ids that

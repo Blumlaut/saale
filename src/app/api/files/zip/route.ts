@@ -9,8 +9,8 @@ import { planZip, streamZip } from "@/lib/files/zip";
  * GET /api/files/zip?target=&dir=&path=…&includeDotfiles=
  *
  * The selection as one archive: `path` repeats, so any mix of files and folders
- * downloads together. Entry names are relative to `dir` — the folder being
- * browsed — which keeps the shape of the tree and makes collisions between
+ * downloads together. Entry names are relative to `dir`. the folder being
+ * browsed. which keeps the shape of the tree and makes collisions between
  * same-named files in different folders impossible.
  *
  * The selection is measured before anything is written: an oversized zip is a

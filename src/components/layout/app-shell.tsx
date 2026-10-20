@@ -3,7 +3,7 @@ import { KeyboardShortcutsProvider } from "@/components/providers/keyboard-short
 import { SidebarNavProvider } from "@/components/providers/sidebar-nav-provider";
 
 interface AppShellProps {
-  /** Desktop navigation — `DashboardNav`, `AdminNav`, … */
+  /** Desktop navigation. `DashboardNav`, `AdminNav`, … */
   nav: React.ReactNode;
   children: React.ReactNode;
   /** Optional banner pinned above the page content (e.g. impersonation notice). */
@@ -29,10 +29,10 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
             {nav}
             <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {banner}
-              {/* Page wrapper — flex-1 fills the remaining space */}
+              {/* Page wrapper. flex-1 fills the remaining space */}
               <div className="min-h-0 flex-1">
                 <div className="page-wrapper h-full">
-                  {/* Inner — h-full fills page-wrapper so child pages can flex-1 */}
+                  {/* Inner. h-full fills page-wrapper so child pages can flex-1 */}
                   <div className="flex h-full flex-col gap-6 overflow-hidden">{children}</div>
                 </div>
               </div>

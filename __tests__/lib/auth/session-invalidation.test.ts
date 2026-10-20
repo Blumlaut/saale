@@ -108,8 +108,8 @@ describe("session invalidation (integration)", () => {
     return rows.filter((row) => row.userId === userId);
   }
 
-  // The test instance's `testUser` object carries no id — the server assigns
-  // it at sign-up — so resolve it from the user table.
+  // The test instance's `testUser` object carries no id  the server assigns
+  // it at sign-up  so resolve it from the user table.
   async function userId(instance: Instance): Promise<string> {
     const users = (await instance.db.findMany({ model: "user" })) as Array<{ id: string }>;
     const user = users[0];

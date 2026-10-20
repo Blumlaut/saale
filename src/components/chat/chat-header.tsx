@@ -47,7 +47,7 @@ interface ChatHeaderProps {
 
 /**
  * The single chat toolbar: session title, temporary mode, sharing, model &
- * thinking level, and a new-chat action. There is no separate page header —
+ * thinking level, and a new-chat action. There is no separate page header
  * this row is the page header.
  */
 export function ChatHeader({
@@ -107,7 +107,7 @@ export function ChatHeader({
         </button>
       )}
       {temporaryMode && (
-        // Redundant on mobile — the toggle icon already shows the state, and
+        // Redundant on mobile. the toggle icon already shows the state, and
         // the label overflows narrow rows.
         <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:flex">
           <Ghost className="h-3 w-3" />

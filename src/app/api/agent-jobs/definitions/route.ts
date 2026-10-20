@@ -8,7 +8,7 @@ import { isReservedAgentName, RESERVED_AGENT_NAME_ERROR } from "@/lib/agent-jobs
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 
 /**
- * GET /api/agent-jobs/definitions — List user's agent job definitions
+ * GET /api/agent-jobs/definitions. List user's agent job definitions
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -100,7 +100,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/agent-jobs/definitions — Create a new agent job definition
+ * POST /api/agent-jobs/definitions. Create a new agent job definition
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

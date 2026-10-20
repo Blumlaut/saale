@@ -6,7 +6,7 @@ import { triggerAgentRun } from "@/lib/agent-jobs/run";
 import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 
 /**
- * GET /api/agent-jobs/definitions/:id/runs — List runs for a definition
+ * GET /api/agent-jobs/definitions/:id/runs. List runs for a definition
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 /**
- * POST /api/agent-jobs/definitions/:id/runs — Trigger a new run
+ * POST /api/agent-jobs/definitions/:id/runs. Trigger a new run
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     body = await request.json();
   } catch {
-    // No body — use definition's prompt
+    // No body. use definition's prompt
   }
   const promptOverride = (body?.prompt as string) || undefined;
 

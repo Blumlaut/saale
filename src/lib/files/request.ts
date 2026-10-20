@@ -9,7 +9,7 @@
  * This is the single place the generic file module reaches into the council
  * feature: the council target needs the council's sandbox identity and its
  * access rules. Removing the council module means deleting the import, the
- * `council:` branch below, and `src/lib/council/files.ts` — nothing else in
+ * `council:` branch below, and `src/lib/council/files.ts`. nothing else in
  * `src/lib/files` knows council exists.
  */
 
@@ -62,7 +62,7 @@ export async function openRequestTarget(
 /**
  * Resolve a caller-supplied path against an opened target.
  *
- * Empty, missing and `/` all mean the workspace root — that is how a browser
+ * Empty, missing and `/` all mean the workspace root. that is how a browser
  * opens, and "the root" of a workspace is not the root of the filesystem, which
  * stays refused.
  */

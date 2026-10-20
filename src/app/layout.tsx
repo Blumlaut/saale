@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   title: brand.name,
   description: brand.description,
   applicationName: brand.name,
-  // iOS ignores the manifest's display mode — these tags are how a home-screen
+  // iOS ignores the manifest's display mode. these tags are how a home-screen
   // install gets its own window and title.
   appleWebApp: {
     capable: true,

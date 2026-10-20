@@ -62,7 +62,7 @@ export const RECURRENCE_PRESETS: { label: string; pattern: RecurrencePattern }[]
 
 /**
  * Check if a date falls within a recurrence range.
- * This is a simplified check — for full expansion use a dedicated RRULE library.
+ * This is a simplified check. for full expansion use a dedicated RRULE library.
  */
 export function isWithinRecurrenceRange(
   date: Date,

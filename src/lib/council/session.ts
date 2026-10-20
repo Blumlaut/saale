@@ -4,7 +4,7 @@
  * Built by hand rather than through `createSaaleAgentSession` for one reason:
  * that wrapper pins a session's cwd to the *user's* terminal home, which is
  * precisely the workspace a council must not have. Everything else it does is
- * reproduced here — in-memory Saale settings instead of the host's Pi config,
+ * reproduced here. in-memory Saale settings instead of the host's Pi config,
  * and a system-prompt resource loader instead of Pi's base prompt.
  *
  * The session is in-memory and lives for one run: a member's durable record is
@@ -46,7 +46,7 @@ import { createCouncilTools, type CouncilToolContext } from "./tools";
  * Tools a council is never given, whatever its tool selection says.
  *
  * `show_file` ships with the terminal bundle but reads a file the *owner*
- * uploaded to a chat — the one thing the sandbox exists to keep out. The
+ * uploaded to a chat. the one thing the sandbox exists to keep out. The
  * chat-history tools act on a conversation the council is not part of; they are
  * resolved from the same category registry a chat uses, so they are recognised
  * by category rather than by listing their names here.
@@ -123,12 +123,12 @@ export async function createCouncilMemberSession(
   const model = modelRuntime.getModel(resolved.provider, resolved.name);
   if (!model) {
     throw new Error(
-      `Model ${resolved.provider}:${resolved.name} is not available for council member "${member.name}" — it may have been disabled or removed by the admin.`,
+      `Model ${resolved.provider}:${resolved.name} is not available for council member "${member.name}". it may have been disabled or removed by the admin.`,
     );
   }
 
   // A member's own selection wins over the council's; both override the
-  // council's defaults — which are its workspace and nothing else, not a chat's
+  // council's defaults. which are its workspace and nothing else, not a chat's
   // defaults (see COUNCIL_DEFAULT_TOOL_CONFIG).
   const toolConfig: Required<ToolConfig> = {
     ...COUNCIL_DEFAULT_TOOL_CONFIG,
@@ -172,7 +172,7 @@ export async function createCouncilMemberSession(
     // are the council's tool selection rather than a per-call question.
     resourceLoader: await createAgentResourceLoader({ prompt, cwd: sandbox.home }),
     // `createAgentSession` resolves `ctx.cwd` from here, and every tool path is
-    // resolved against it — this is what puts the member in its own workspace.
+    // resolved against it. this is what puts the member in its own workspace.
     cwd: sandbox.home,
     ...thinkingLevelOption(member.thinkingLevel),
   });

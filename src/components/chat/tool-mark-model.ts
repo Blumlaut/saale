@@ -11,7 +11,7 @@ export type ToolMark = { kind: "favicon"; url: string } | { kind: "icon"; icon: 
  * icon, else the generic wrench.
  *
  * `toolMark` (the owner's descriptor-aware mark) falls back to this, and the
- * share page uses it outright — every shared call is redacted, so no descriptor
+ * share page uses it outright. every shared call is redacted, so no descriptor
  * can ever read one. It lives here rather than in `tool-marks.ts` so importing
  * it does not drag the routing table and the owner's descriptors onto the share
  * surface (see `__tests__/share-redaction-coverage.test.ts`).

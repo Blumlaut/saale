@@ -274,7 +274,7 @@ export function MemoriesTab() {
               <p className="text-muted-foreground mt-1 text-sm">
                 Knowledge extracted from your conversations
                 {totalCount > 0
-                  ? ` — ${totalCount} memories in ${collections.length} collections`
+                  ? `. ${totalCount} memories in ${collections.length} collections`
                   : ""}
               </p>
             </div>

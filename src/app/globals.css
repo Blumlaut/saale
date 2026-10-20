@@ -133,19 +133,19 @@
     @apply border-border outline-ring/50;
   }
 
-  /* Flat console background — no gradients, the border carries the depth */
+  /* Flat console background. no gradients, the border carries the depth */
   body {
     @apply bg-background text-foreground font-sans;
   }
 
   html {
     @apply font-sans;
-    /* Scale base font with viewport — feels right on 1080p, bigger on 2K/4K */
+    /* Scale base font with viewport. feels right on 1080p, bigger on 2K/4K */
     font-size: clamp(14px, 1.15vw + 0.25rem, 17px);
   }
 }
 
-/* Console micro-label — small caps, wide tracking (section labels, footer) */
+/* Console micro-label. small caps, wide tracking (section labels, footer) */
 .console-label {
   font-size: 10px;
   font-weight: 600;
@@ -162,7 +162,7 @@
     padding: 0;
   }
 
-  /* Mobile shell — flex column, fixed to viewport. */
+  /* Mobile shell. flex column, fixed to viewport. */
   .mobile-shell {
     display: flex;
     flex-direction: column;
@@ -214,7 +214,7 @@ browser tab, so the values below degrade to exactly the previous padding. */
 
 A view that *is* the window (chat) marks its layout root with `.full-bleed`.
 On phones the gutter around the page is dropped so the view runs to the window
-edges instead of floating as a card inside it — the bottom nav keeps its
+edges instead of floating as a card inside it. the bottom nav keeps its
 clearance (3.5rem = its height) so the view never hides behind it, and device
 insets are preserved (an installed app still clears the notch, the status bar
 and the home indicator).
@@ -231,7 +231,7 @@ navigation *and* the view, so the chat is a card there, not a viewport. */
 /* ===== Scrollable tab strips =====
 
 Tab strips (TabsList inside overflow-x-auto) must stay swipe-scrollable but
-should not show a horizontal scrollbar — it overlaps the tabs on desktop
+should not show a horizontal scrollbar. it overlaps the tabs on desktop
 (where classic scrollbars take layout space) and looks glitchy. */
 .no-scrollbar {
   scrollbar-width: none;
@@ -244,7 +244,7 @@ should not show a horizontal scrollbar — it overlaps the tabs on desktop
 
 /* ===== App shell (desktop + mobile) ===== */
 
-/* Page wrapper — flex-1 fills <main>, overflow hidden so child pages
+/* Page wrapper. flex-1 fills <main>, overflow hidden so child pages
    manage their own internal scrolling. Pages that need full-height
    (chat) use flex-1. Pages with tall content (settings) use overflow-y-auto. */
 .page-wrapper {
@@ -276,7 +276,7 @@ should not show a horizontal scrollbar — it overlaps the tabs on desktop
 
 /* ===== Surface utilities (console / NASA-punk) =====
 
-Flat, bordered surfaces — no blur, no gradients, no specular highlights.
+Flat, bordered surfaces. no blur, no gradients, no specular highlights.
 Depth comes from the 1px border + elevation shadow on overlays only.
 
 These live in the `components` layer so Tailwind utilities (e.g. `hidden`,
@@ -308,7 +308,7 @@ kept from the old glass system so components don't need changes. */
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   }
 
-  /* Nested card — for content areas inside panels */
+  /* Nested card. for content areas inside panels */
   .liquid-glass-inner {
     background: var(--muted);
     border: 1px solid var(--border);
@@ -319,7 +319,7 @@ kept from the old glass system so components don't need changes. */
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  /* Pill — for buttons, badges, toggles */
+  /* Pill. for buttons, badges, toggles */
   .liquid-glass-pill {
     background: var(--secondary);
     border: 1px solid var(--border);
@@ -339,7 +339,7 @@ kept from the old glass system so components don't need changes. */
     background: rgba(255, 255, 255, 0.1);
   }
 
-  /* Accent — primary action surfaces (single-accent rule: orange only) */
+  /* Accent. primary action surfaces (single-accent rule: orange only) */
   .liquid-glass-accent {
     background: var(--primary);
     border: 1px solid var(--primary);
@@ -374,7 +374,7 @@ kept from the old glass system so components don't need changes. */
 
 /* ===== Syntax highlighting (rehype-highlight / hljs) ===== */
 
-/* Only apply inside markdown code blocks — uses our dark bg-[#1e1e2e] */
+/* Only apply inside markdown code blocks. uses our dark bg-[#1e1e2e] */
 .markdown-body .hljs {
   color: #abb2bf;
 }
@@ -437,7 +437,7 @@ kept from the old glass system so components don't need changes. */
   color: #e6c07b;
 }
 
-/* ===== Streaming indicator — subtle breathing dot ===== */
+/* ===== Streaming indicator. subtle breathing dot ===== */
 
 @keyframes pulse-dot {
   0%,
@@ -455,7 +455,7 @@ kept from the old glass system so components don't need changes. */
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
-/* ===== Response just arrived — sharp pop then dissolve ===== */
+/* ===== Response just arrived. sharp pop then dissolve ===== */
 
 @keyframes pop-dot {
   0% {
@@ -488,7 +488,7 @@ kept from the old glass system so components don't need changes. */
   }
 }
 
-/* ===== Email content — theme-aware readability ===== */
+/* ===== Email content. theme-aware readability ===== */
 
 /*
  * Emails ship with hardcoded inline colors (e.g. color:#000, background:#fff)
@@ -499,8 +499,8 @@ kept from the old glass system so components don't need changes. */
  *
  * Strategy:
  * - Light mode: keep text dark, backgrounds light (default for most emails)
- * - Dark mode: force text light, backgrounds dark — override email inline styles
- * - color-scheme: light dark — hints to browser for auto-link-color adaptation
+ * - Dark mode: force text light, backgrounds dark. override email inline styles
+ * - color-scheme: light dark. hints to browser for auto-link-color adaptation
  */
 
 .email-content {
@@ -542,7 +542,7 @@ kept from the old glass system so components don't need changes. */
   display: block;
 }
 
-/* --- Dark mode — override hardcoded email colors --- */
+/* --- Dark mode. override hardcoded email colors --- */
 
 /*
  * Nuke ALL backgrounds inside emails in dark mode.
@@ -555,7 +555,7 @@ kept from the old glass system so components don't need changes. */
   background-image: none !important;
 }
 
-/* Text color — force light text on everything */
+/* Text color. force light text on everything */
 .dark .email-content {
   color: #f0f0f0 !important;
 }
@@ -578,12 +578,12 @@ kept from the old glass system so components don't need changes. */
   color: #f0f0f0 !important;
 }
 
-/* Links — use a visible blue */
+/* Links. use a visible blue */
 .dark .email-content a {
   color: #60a5fa !important;
 }
 
-/* Tables — subtle alternating rows */
+/* Tables. subtle alternating rows */
 .dark .email-content table {
   border-collapse: collapse;
 }
@@ -606,7 +606,7 @@ kept from the old glass system so components don't need changes. */
   border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
-/* Code blocks — dark background for contrast */
+/* Code blocks. dark background for contrast */
 .dark .email-content code {
   background-color: rgba(0, 0, 0, 0.3) !important;
   color: #f0f0f0 !important;
@@ -620,9 +620,9 @@ kept from the old glass system so components don't need changes. */
 /*
  * Images must keep their original colors (they're not text).
  * The universal * selector above would strip their backgrounds too,
- * but images don't have CSS backgrounds — they're fine.
+ * but images don't have CSS backgrounds. they're fine.
  * Just ensure they don't overflow.
  */
 .dark .email-content img {
-  /* no overrides — images render as-is */
+  /* no overrides. images render as-is */
 }

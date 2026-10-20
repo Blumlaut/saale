@@ -5,7 +5,7 @@ import { redactStoredToolCalls } from "@/lib/chat/redact-tool-calls";
 import type { Prisma } from "@prisma/client";
 
 /**
- * POST /api/chat/sessions/share/:token/copy — Clone a shared session into the current user's account.
+ * POST /api/chat/sessions/share/:token/copy. Clone a shared session into the current user's account.
  *
  * Requires authentication. Creates a new ChatSession with all messages copied.
  * Idempotent: if the user already has a copy (tracked via sourceShareToken), returns existing session.

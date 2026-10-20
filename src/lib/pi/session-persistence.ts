@@ -4,12 +4,12 @@
  * Thin wrapper around SessionEventTracker: wires a tracker to a pooled agent
  * session for ONE run, and tracks the wiring so pool eviction can tear it down.
  *
- * The SSE stream route is purely an observer — all persistence and stream
+ * The SSE stream route is purely an observer. all persistence and stream
  * event publishing happens inside the tracker.
  *
  * A run ends in two steps: the tracker publishes `done` (after its pending DB
  * writes settle) and then unsubscribes. The next run must not start in that
- * window — a tracker wired mid-teardown would be replaced by the old entry's
+ * window. a tracker wired mid-teardown would be replaced by the old entry's
  * guard and the new run would go completely unpersisted, and two live trackers
  * would double-publish every stream event. `wireSessionPersistence` replaces a
  * stale tracker, and `waitForPersistenceTeardown` lets a caller (the send
@@ -68,7 +68,7 @@ export function wireSessionPersistence(
     userId,
     session,
     onDone: () => {
-      // A later run may already have wired its own tracker — only clear ours.
+      // A later run may already have wired its own tracker. only clear ours.
       if (persistenceMap.get(sessionId) !== state) return;
       persistenceMap.delete(sessionId);
       finish();

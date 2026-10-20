@@ -26,7 +26,7 @@ export async function saveCompactionMessage({
       },
     });
 
-    // A compaction summary is new chat content — advance lastActivityAt so
+    // A compaction summary is new chat content. advance lastActivityAt so
     // the session list reflects it.
     await prisma.chatSession
       .update({

@@ -2,7 +2,7 @@
  * Quote-reply context for Telegram messages.
  *
  * Telegram includes the full replied-to message in the update, so when the
- * user quote-replies we can hand the agent the exact context — even when the
+ * user quote-replies we can hand the agent the exact context. even when the
  * original was sent by a job (which lives outside the chat's Pi session) or
  * before a session rollover. Without this, replying to a job's message reads
  * to the agent as amnesia.
@@ -16,7 +16,7 @@ export interface QuotedMessageContext {
   fromName: string;
 }
 
-/** Longest quoted message replayed into the prompt — Telegram caps messages at 4096. */
+/** Longest quoted message replayed into the prompt. Telegram caps messages at 4096. */
 const MAX_QUOTED_CHARS = 2000;
 
 /** Extract the message a user is quote-replying to, if any. */

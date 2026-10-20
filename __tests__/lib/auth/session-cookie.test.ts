@@ -16,7 +16,7 @@ import {
  *
  * An installed app is launched by a cross-site top-level navigation and the
  * user's cookie jar is only as durable as the cookie it holds, so these two
- * properties have to hold for *every* sign-in path — a cookie that is withheld
+ * properties have to hold for *every* sign-in path  a cookie that is withheld
  * on launch (`SameSite=Strict`) or dropped when the browser closes (no
  * `Max-Age`) makes 2FA look like "log in again on every cold start".
  */
@@ -157,7 +157,7 @@ describe("session cookie issued after 2FA (integration)", () => {
     expect(attrs["samesite"]).toBe("lax");
     expect(attrs["httponly"]).toBeDefined();
 
-    // The cookie alone — nothing else from the verify round-trip — reopens the session.
+    // The cookie alone  nothing else from the verify round-trip  reopens the session.
     const restored = await instance.auth.api.getSession({
       headers: { cookie: cookieHeader(session) },
     });

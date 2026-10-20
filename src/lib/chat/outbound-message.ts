@@ -3,9 +3,9 @@ import type { Message } from "@/components/chat/types";
 /**
  * Placement and reconciliation of optimistic outbound messages.
  *
- * A message sent while the session is busy — Pi generating, or a manual
- * compaction holding the session — is queued server-side, so its optimistic
- * copy belongs in the composer's queue strip — never in the conversation.
+ * A message sent while the session is busy. Pi generating, or a manual
+ * compaction holding the session. is queued server-side, so its optimistic
+ * copy belongs in the composer's queue strip. never in the conversation.
  * Rendering it as a sent bubble first (which also pushes it behind the live
  * turn, replacing the streaming indicator with a bare "Thinking…" placeholder)
  * makes it flash as sent before it snaps into the queue.
@@ -61,7 +61,7 @@ export function settleQueuedMessage(
   return [...withoutOptimistic, saved];
 }
 
-/** Drop local-only copies — the send failed, or the server owns them now. */
+/** Drop local-only copies. the send failed, or the server owns them now. */
 export function dropOptimistic(list: Message[], ...messages: Message[]): Message[] {
   const ids = new Set(messages.map((m) => m.id));
   return list.filter((m) => !ids.has(m.id));

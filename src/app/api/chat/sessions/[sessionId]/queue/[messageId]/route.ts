@@ -20,15 +20,15 @@ import { readImageAsBase64 } from "@/lib/image-attachment";
 import type { ImageContent } from "@/lib/pi/message-replay";
 
 /**
- * /api/chat/sessions/:sessionId/queue/:messageId — act on one queued message.
+ * /api/chat/sessions/:sessionId/queue/:messageId. act on one queued message.
  *
  * A queued message has not reached the agent yet, so these actions are plain
- * queue edits — they never touch the conversation. Delivery is the stream
+ * queue edits. they never touch the conversation. Delivery is the stream
  * route's job (see its `drainQueue`).
  *
- * - PATCH  — rewrite the queued text before it is sent
- * - DELETE — cancel it (files included)
- * - POST   — send it now: steer it into the running agent, or hand it to the
+ * - PATCH . rewrite the queued text before it is sent
+ * - DELETE. cancel it (files included)
+ * - POST  . send it now: steer it into the running agent, or hand it to the
  *            prompt path when the session is idle
  */
 
@@ -99,7 +99,7 @@ export async function POST(
   await releaseSendQueue(sessionId);
 
   // Idle (nothing is generating): hand it to the prompt path exactly like a
-  // fresh POST /messages — the client's SSE reconnect claims and prompts it.
+  // fresh POST /messages. the client's SSE reconnect claims and prompts it.
   if (!(await isSessionActive(authResult.userId, sessionId))) {
     if (!(await claimQueuedMessage(sessionId, messageId))) {
       return NextResponse.json({ error: "Message is no longer queued" }, { status: 409 });
@@ -112,14 +112,14 @@ export async function POST(
 
   // A generation is running in this process: steer it into the agent, which
   // delivers the message as soon as the current turn finishes its tool calls
-  // — no waiting for the whole run, and no wasted work.
+  //. no waiting for the whole run, and no wasted work.
   const pooled = get(getPoolKey(authResult.userId, sessionId));
   if (!pooled || !pooled.session.isStreaming) {
     return NextResponse.json(
       {
         ok: false,
         delivered: false,
-        error: "Pi is busy elsewhere — the message stays queued and is sent next.",
+        error: "Pi is busy elsewhere. the message stays queued and is sent next.",
       },
       { status: 409 },
     );

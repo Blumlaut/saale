@@ -3,7 +3,7 @@
  *
  * Two passes, deliberately. The selection is walked and measured first, so a
  * selection that exceeds a ceiling is refused with a status and a sentence
- * instead of a download that stops halfway — a truncated archive is worse than
+ * instead of a download that stops halfway. a truncated archive is worse than
  * a refusal, because it looks like it worked. Only then are bytes streamed.
  *
  * Entries are read lazily, one at a time, as the archive is written:
@@ -21,7 +21,7 @@ import { formatFileSize } from "@/lib/utils";
 import { baseName, relativeToRoot } from "./paths";
 import { isDotfile, type FileProvider } from "./provider";
 
-/** Paths the caller selected — files, folders, or a mix of both. */
+/** Paths the caller selected. files, folders, or a mix of both. */
 export type ZipSelection = string;
 
 export interface ZipPlanEntry {
@@ -43,7 +43,7 @@ export interface ZipPlan {
 /**
  * Walk a selection and decide what the archive will contain.
  *
- * Every entry is named relative to `dir` — the folder being browsed — so a
+ * Every entry is named relative to `dir`. the folder being browsed. so a
  * selection spanning subfolders keeps its shape and two files of the same name
  * in different folders cannot collide. A selection that is not under `dir` is
  * refused: an entry name would otherwise have to climb out with `..`.

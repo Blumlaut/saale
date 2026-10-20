@@ -39,7 +39,7 @@ export function ThinkingSelector({
     <Popover>
       {/*
         PopoverTrigger renders as <button>. Never nest a <Button> (also <button>)
-        inside it — use a styled <span> instead to avoid hydration errors.
+        inside it. use a styled <span> instead to avoid hydration errors.
       */}
       <PopoverTrigger>
         <span

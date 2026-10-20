@@ -7,7 +7,7 @@ import { getRedis } from "@/lib/redis";
  * When active for a user, the tool approval gate auto-accepts every tool
  * call that would otherwise require approval ("ask" policy, and risky
  * commands under the "auto" policy) without asking. Tools disabled with
- * the "off" policy stay disabled — STFU never re-enables them.
+ * the "off" policy stay disabled. STFU never re-enables them.
  * The flag lives in Redis with a TTL equal to the window, so it expires
  * automatically and works across processes/restarts.
  */
@@ -52,7 +52,7 @@ export async function disableAutoApprove(userId: string): Promise<void> {
 
 /**
  * Get the auto-approve expiry timestamp for a user, or null when inactive.
- * The Redis TTL does the real expiry work — the stored value is only used
+ * The Redis TTL does the real expiry work. the stored value is only used
  * to surface the exact end time to the user.
  */
 export async function getAutoApproveExpiry(userId: string): Promise<number | null> {

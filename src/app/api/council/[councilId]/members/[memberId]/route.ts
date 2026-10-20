@@ -5,7 +5,7 @@ import { memberInputSchema } from "@/lib/council/schema";
 import { deleteMember, updateMember } from "@/lib/council/store";
 
 /**
- * PATCH /api/council/[councilId]/members/[memberId] — edit one member.
+ * PATCH /api/council/[councilId]/members/[memberId]. edit one member.
  *
  * A member with turns behind it is edited, not resurrected: `enabled` is how a
  * member is taken out of a council, because deleting it would leave the room's
@@ -31,7 +31,7 @@ export async function PATCH(
   }
 }
 
-/** DELETE /api/council/[councilId]/members/[memberId] — remove a member. */
+/** DELETE /api/council/[councilId]/members/[memberId]. remove a member. */
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ councilId: string; memberId: string }> },

@@ -193,7 +193,7 @@ function ShareUserMessage({ message }: { message: Message }) {
 }
 
 function ShareAssistantGroup({ messages }: { messages: Message[] }) {
-  // An errored turn is kept even when empty — the error notice is all there is.
+  // An errored turn is kept even when empty. the error notice is all there is.
   const visibleMessages = messages.filter(
     (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
   );
@@ -280,7 +280,7 @@ function ShareMessageBody({ message }: { message: Message }) {
 
 /**
  * Every shared call is inert, so none stands apart from the work the way a
- * `show_file` attachment does for the owner — the whole run folds into one row.
+ * `show_file` attachment does for the owner. the whole run folds into one row.
  */
 function shareToolCalls(toolCalls: readonly ToolCallData[]): CompactSplit {
   return { work: [...toolCalls], attachments: [] };

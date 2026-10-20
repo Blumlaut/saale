@@ -2,7 +2,7 @@
  * The role table, cached per process.
  *
  * better-auth's admin plugin authorizes synchronously at request time, so the
- * plugin is handed one map that this module keeps in step with the database —
+ * plugin is handed one map that this module keeps in step with the database
  * `loadRoleDefinitions()` is awaited by the auth hook before any auth request
  * runs, and the role API refreshes the map the moment a role is written.
  *
@@ -73,7 +73,7 @@ async function readRoles(): Promise<RoleDefinition[]> {
   return rows.map(toDefinition);
 }
 
-/** Reload the table now — used after a write so the next check sees it. */
+/** Reload the table now. used after a write so the next check sees it. */
 export async function refreshRoleDefinitions(): Promise<RoleDefinition[]> {
   try {
     const next = await readRoles();
@@ -94,7 +94,7 @@ export async function loadRoleDefinitions(): Promise<RoleDefinition[]> {
   return inFlight;
 }
 
-/** Reset the cache — tests only. */
+/** Reset the cache. tests only. */
 export function resetRoleCache(): void {
   definitions = [...BUILTIN_ROLES];
   seeded = false;

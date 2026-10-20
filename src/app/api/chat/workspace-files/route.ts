@@ -107,7 +107,7 @@ async function serveFromLocal(
 /**
  * Serve bytes from a workspace file.
  *
- * A workspace file is mutable but its URL is not — the path is the whole
+ * A workspace file is mutable but its URL is not. the path is the whole
  * identity, so an agent that rewrites `report.pdf` produces the exact same
  * request the browser already has cached. The response is therefore keyed by
  * content (ETag) and must be revalidated (`no-cache`): without that, clicking

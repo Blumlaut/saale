@@ -153,7 +153,7 @@ export default function CalendarPage() {
 
   return (
     <Page>
-      {/* Sidebar + calendar — scrolls internally */}
+      {/* Sidebar + calendar. scrolls internally */}
       <PageScroll>
         <div className="flex flex-col gap-4 md:flex-row">
           <CalendarSidebar accounts={accounts} onAccountsChange={loadAccounts} />
@@ -162,7 +162,7 @@ export default function CalendarPage() {
           <div className="min-w-0 flex-1">
             <GlassPanel>
               <GlassPanelContent className="space-y-4 p-4">
-                {/* Toolbar — two rows on narrow screens, one on md+ */}
+                {/* Toolbar. two rows on narrow screens, one on md+ */}
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => navigate(-1)}>

@@ -1,4 +1,4 @@
-/** Deterministic color for a tag string — maps to a small palette */
+/** Deterministic color for a tag string. maps to a small palette */
 const tagColors: readonly string[] = [
   "bg-violet-500/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-400",
   "bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-400",

@@ -132,7 +132,7 @@ export function GitHubBox({
 /**
  * The connect flow: paste a personal access token.
  *
- * The token never leaves this dialog — on close the form resets, so a half
+ * The token never leaves this dialog. on close the form resets, so a half
  * typed token is not reused by accident.
  */
 export function GitHubConnectDialog({
@@ -154,7 +154,7 @@ export function GitHubConnectDialog({
   success: boolean;
   saving: boolean;
   onSave: () => void;
-  /** Called when the dialog closes — resets the token form. */
+  /** Called when the dialog closes. resets the token form. */
   onClosed: () => void;
 }) {
   return (

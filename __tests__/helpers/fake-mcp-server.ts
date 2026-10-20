@@ -2,7 +2,7 @@
  * A minimal streamable-HTTP MCP server for tests.
  *
  * Answers the handshake (`initialize`, `tools/list`) with JSON-RPC over plain
- * JSON — what Pi's MCP client and the settings connection test both speak — so
+ * JSON  what Pi's MCP client and the settings connection test both speak  so
  * a test can exercise the real network path without an external server.
  */
 

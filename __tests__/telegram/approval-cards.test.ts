@@ -25,7 +25,7 @@ describe("createApprovalCardTracker", () => {
     expect(tracker.pendingCount).toBe(1);
   });
 
-  it("onResolved is idempotent — double resolution deletes exactly once", () => {
+  it("onResolved is idempotent  double resolution deletes exactly once", () => {
     const deleteCard = vi.fn().mockResolvedValue(undefined);
     const tracker = createApprovalCardTracker(deleteCard);
 
@@ -58,7 +58,7 @@ describe("createApprovalCardTracker", () => {
     expect(deleteCard).toHaveBeenCalledTimes(2);
   });
 
-  it("re-tracking a tool call replaces the old card — only the latest is deleted", () => {
+  it("re-tracking a tool call replaces the old card  only the latest is deleted", () => {
     const deleteCard = vi.fn().mockResolvedValue(undefined);
     const tracker = createApprovalCardTracker(deleteCard);
 

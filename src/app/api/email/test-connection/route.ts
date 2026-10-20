@@ -7,7 +7,7 @@ import { testImapConnection } from "@/lib/email/sync";
 import { testSmtpConnection } from "@/lib/email/smtp";
 
 /**
- * POST /api/email/test-connection — Test IMAP/SMTP connection without saving.
+ * POST /api/email/test-connection. Test IMAP/SMTP connection without saving.
  * When `accountId` is given and no password is supplied, the stored
  * credentials are used (needed when editing without changing the password).
  */

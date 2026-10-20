@@ -18,7 +18,7 @@ export interface ModelThinkingLevels {
  * What Pi allows for a model, asked of Pi rather than assumed locally.
  *
  * `levels` stays `null` when the lookup can't run or fails, which means "no
- * idea" — not "this model supports nothing". Treating the unknown state as an
+ * idea". not "this model supports nothing". Treating the unknown state as an
  * empty list left a thinking model with only "Default" to choose from, and
  * permanently so once the request failed.
  *

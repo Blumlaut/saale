@@ -2,7 +2,7 @@
  * Approval gate for MCP tools.
  *
  * Saale's tools are wrapped with `wrapWithApprovalGate` when the session is
- * created, but MCP tools are registered later by Pi's MCP extension — they
+ * created, but MCP tools are registered later by Pi's MCP extension. they
  * never pass through that wrapper. Without this, a user's approval policies
  * would silently not apply to the one tool set that reaches third-party
  * services: `ask` and `off` would be ignored and every call would run.
@@ -44,12 +44,12 @@ export function createMcpToolPolicyExtension(options: {
       }
 
       // Auto-approve mode (/stfu) accepts everything that would otherwise
-      // ask — never a tool the user turned off.
+      // ask. never a tool the user turned off.
       if (await isAutoApproveActive(options.userId)) return undefined;
       if (policy === "allow") return undefined;
 
       // The user already approved this call as part of a script that announced
-      // it — asking again would undo the one-click decision.
+      // it. asking again would undo the one-click decision.
       if (
         isApprovalScopeGranted({
           sessionId: options.sessionId,

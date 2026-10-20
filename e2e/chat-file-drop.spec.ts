@@ -5,7 +5,7 @@ import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
 /**
  * File drag & drop on the chat.
  *
- * Files reach the composer three ways — the paperclip, a paste, and a drop.
+ * Files reach the composer three ways  the paperclip, a paste, and a drop.
  * The drop is the only one that takes the whole view, so it is the only one
  * worth checking in a browser: the drop has to be *claimed* (an unhandled file
  * drop navigates the tab to the file), the hint has to appear while the drag
@@ -20,12 +20,12 @@ const DROP_HINT = "Drop files to attach";
 const COMPOSER = 'textarea[placeholder="Message Saale..."]';
 const DROP_ZONE = '[data-slot="chat-drop-zone"]';
 
-/** The app renders a desktop and a mobile shell — only one is ever visible. */
+/** The app renders a desktop and a mobile shell  only one is ever visible. */
 function visible(page: Page, selector: string): Locator {
   return page.locator(selector).filter({ visible: true }).first();
 }
 
-/** Create a chat session to open — the chat layout only renders with one. */
+/** Create a chat session to open  the chat layout only renders with one. */
 async function createSession(browser: Browser): Promise<string> {
   const ctx = await browser.newContext({ storageState: session!.storageState });
   const page = await ctx.newPage();
@@ -64,7 +64,7 @@ async function fileTransfer(page: Page, name: string, type: string) {
   );
 }
 
-/** Drag a file over `target` — the chat column, or anything inside it. */
+/** Drag a file over `target`  the chat column, or anything inside it. */
 async function dragFileOver(page: Page, target: Locator, name: string, type: string) {
   const dataTransfer = await fileTransfer(page, name, type);
   await target.dispatchEvent("dragenter", { dataTransfer });
@@ -100,7 +100,7 @@ test.describe("chat file drop", () => {
         // The hint covers the drop zone exactly, and widens nothing: a
         // full-bleed view that suddenly scrolls sideways is a regression.
         const geometry = await page.evaluate(() => {
-          // Both shells render this markup — only one of them is laid out.
+          // Both shells render this markup  only one of them is laid out.
           const laidOut = (selector: string) =>
             [...document.querySelectorAll<HTMLElement>(selector)].find(
               (el) => el.getBoundingClientRect().width > 0,

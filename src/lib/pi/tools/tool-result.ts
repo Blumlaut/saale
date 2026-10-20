@@ -3,7 +3,7 @@
  *
  * A tool result has two readers with different needs. The model reads `content`,
  * text that carries UI metadata and, for some tools, an echo of the call's own
- * arguments. A programmatic caller — a codemode script, a watcher tick — reads
+ * arguments. A programmatic caller. a codemode script, a watcher tick. reads
  * `structuredContent`, the value the tool actually computed.
  *
  * Pi hands `structuredContent` to programmatic callers only for tools that
@@ -35,7 +35,7 @@ export interface ToolOutcome<TValue, TDetails> {
   /** Blocks to place after the text, before the metadata. */
   content?: readonly (TextContent | ImageContent)[];
   /**
-   * UI metadata, appended to the text as its own JSON document — the tool's
+   * UI metadata, appended to the text as its own JSON document. the tool's
    * `_saale*Meta` block, key included. Never part of the value: it names what
    * the UI draws, not what the tool found, and absent fields are simply absent
    * once it is serialized.
@@ -95,7 +95,7 @@ export function defineStructuredTool<
       const content: (TextContent | ImageContent)[] = [];
 
       // An empty text block adds nothing to a result that carries blocks of its
-      // own — a remote image read has no text to show — but a result needs at
+      // own. a remote image read has no text to show. but a result needs at
       // least one block to be a result.
       if (text !== "" || blocks.length === 0) {
         content.push({ type: "text", text });
@@ -104,7 +104,7 @@ export function defineStructuredTool<
 
       if (outcome.meta) {
         // Appended to the text the model already reads, which is where a tool
-        // has always put it — one block per result, not two. A result whose text
+        // has always put it. one block per result, not two. A result whose text
         // is an attachment rather than prose gets the block on its own, and the
         // leading newline is what the transcript's separator would have been.
         const metaText = `\n${JSON.stringify(outcome.meta)}`;

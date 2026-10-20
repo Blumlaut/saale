@@ -24,7 +24,7 @@ const updateAccountSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: "No fields to update" });
 
 /**
- * PATCH /api/email/accounts/:accountId — Update an email account
+ * PATCH /api/email/accounts/:accountId. Update an email account
  */
 export async function PATCH(
   request: NextRequest,
@@ -84,7 +84,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/email/accounts/:accountId — Delete an email account
+ * DELETE /api/email/accounts/:accountId. Delete an email account
  */
 export async function DELETE(
   _request: NextRequest,

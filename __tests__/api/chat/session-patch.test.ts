@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
  *
  * The pool holds one AgentSession per chat whose model, thinking level and tool
  * loadout are fixed when it is built. Writing only to the database left the
- * running session on the old settings until eviction — up to 30 minutes — so a
+ * running session on the old settings until eviction  up to 30 minutes  so a
  * user who switched models kept getting answers from the previous one.
  */
 
@@ -96,7 +96,7 @@ beforeEach(() => {
   mockRemove.mockResolvedValue(undefined);
 });
 
-describe("PATCH session — live agent session", () => {
+describe("PATCH session  live agent session", () => {
   it("switches the model on the pooled agent session", async () => {
     const session = makeSession();
     mockGetPooledSession.mockReturnValue({ session });
@@ -131,7 +131,7 @@ describe("PATCH session — live agent session", () => {
 
   it("drops the pooled session when the tool loadout changes", async () => {
     // Tools are resolved from the config when the session is built, so the
-    // loadout cannot be changed in place — the next message rebuilds it.
+    // loadout cannot be changed in place  the next message rebuilds it.
     const session = makeSession();
     mockGetPooledSession.mockReturnValue({ session });
 

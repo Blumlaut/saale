@@ -4,7 +4,7 @@ import type { QueuedChatMessage } from "@/lib/chat/serialize-message";
 
 /**
  * Queued messages must be delivered exactly once, in order, without ever
- * stalling the queue or dropping a message — the cases below are the ones that
+ * stalling the queue or dropping a message  the cases below are the ones that
  * can go wrong when a run settles, a claim races another connection, or the
  * agent is already busy.
  */
@@ -94,7 +94,7 @@ describe("drainSendQueue", () => {
 
   it("counts a run that failed after delivery as delivered (no duplicate)", async () => {
     // A provider error inside the run is persisted by the caller, so the
-    // message must not be requeued — the user would see it twice.
+    // message must not be requeued  the user would see it twice.
     const { deps, delivered, restored } = makeDeps([message("msg-1")]);
     deps.run = vi.fn(async (msg: QueuedChatMessage) => {
       delivered.push(msg.id);

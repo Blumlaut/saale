@@ -6,7 +6,7 @@ import {
 
 /**
  * `serializeSharedChatMessage` is the only way a share payload is built, so it
- * is where the redaction of a shared chat has to hold — regardless of which
+ * is where the redaction of a shared chat has to hold  regardless of which
  * endpoint is asking.
  */
 function row(overrides: Partial<ShareableChatMessage> = {}): ShareableChatMessage {

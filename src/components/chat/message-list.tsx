@@ -90,7 +90,7 @@ const tailOffset = (el: HTMLElement) => Math.max(0, el.scrollHeight - el.clientH
  * Is the view sitting on the tail (within `band`)?
  *
  * Deliberately tight by default. A follow leaves the view clamped exactly at the
- * tail, so anything further away was moved by the user — and the old 80px "at
+ * tail, so anything further away was moved by the user. and the old 80px "at
  * bottom" band is what let auto-scroll re-arm itself from the user's own scroll
  * event and pull a wheel tick straight back down.
  */
@@ -98,7 +98,7 @@ const atTail = (el: HTMLElement, band = BOTTOM_EPSILON_PX) => tailOffset(el) - e
 
 /**
  * Rendering window. A long transcript is thousands of DOM nodes (markdown,
- * highlighting, tool cards), and every layout pass pays for all of them —
+ * highlighting, tool cards), and every layout pass pays for all of them
  * including the composer's per-keystroke autosize reflow. Only the tail is
  * rendered; earlier turns are revealed on demand.
  */
@@ -145,7 +145,7 @@ export const MessageList = memo(
       setAutoScroll(armed);
     }, []);
     /** The position the last scroll event reported. Every movement reaches us
-     * as a scroll event — ours, the user's, the browser's — and unlike a read
+     * as a scroll event. ours, the user's, the browser's. and unlike a read
      * after a programmatic scroll, a dispatched event is never stale. */
     const observedTopRef = useRef(0);
     const touchStartYRef = useRef<number | null>(null);
@@ -175,7 +175,7 @@ export const MessageList = memo(
     const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
 
     // ── Render window ────────────────────────────────────────────────────────
-    // `revealedFrom`: the user asked for earlier turns — that start stays frozen,
+    // `revealedFrom`: the user asked for earlier turns. that start stays frozen,
     // so a reveal is never undone under a reader's feet.
     // `pinnedStart`: the window held while they are scrolled away from the bottom.
     const [revealedFrom, setRevealedFrom] = useState<number | null>(null);
@@ -183,7 +183,7 @@ export const MessageList = memo(
     const tailStart = Math.max(0, groupedMessages.length - INITIAL_WINDOW_GROUPS);
     const windowStart = revealedFrom ?? (isAtBottom ? tailStart : (pinnedStart ?? tailStart));
 
-    // Track scroll position — arm/disarm auto-scroll with the scroll position
+    // Track scroll position. arm/disarm auto-scroll with the scroll position
     const handleScroll = useCallback(() => {
       const el = containerRef.current;
       if (!el) return;
@@ -230,7 +230,7 @@ export const MessageList = memo(
         const el = containerRef.current;
         if (!el) return;
         // A press in the scrollbar gutter (inside the container's box, outside
-        // its content area) starts a thumb drag — a scroll input like any other.
+        // its content area) starts a thumb drag. a scroll input like any other.
         const gutter = el.offsetWidth - el.clientWidth;
         if (gutter > 0 && e.nativeEvent.offsetX >= el.clientWidth) armAutoScroll(false);
       },
@@ -297,7 +297,7 @@ export const MessageList = memo(
     // Follow the tail on every content change while auto-scroll is armed.
     // Scrolling up disarms it (reading position is preserved through reloads);
     // the jump button, a send, or an approval re-arms it.
-    // Instant, not smooth — queued smooth scrolls lag a fast token stream,
+    // Instant, not smooth. queued smooth scrolls lag a fast token stream,
     // which is what made the old auto-scroll feel flaky.
     useEffect(() => {
       const el = containerRef.current;
@@ -307,7 +307,7 @@ export const MessageList = memo(
 
     if (messages.length === 0) {
       // While a generation is loading, never show the "Start a conversation"
-      // empty state — even a brief flash reads as a broken UI (e.g. during a
+      // empty state. even a brief flash reads as a broken UI (e.g. during a
       // race between a send and a DB reload, or while a queued message waits
       // for Pi to finish). Show the loading indicator instead.
       if (isLoading) {
@@ -357,7 +357,7 @@ export const MessageList = memo(
             <p className="text-muted-foreground mt-1 mb-6 text-sm">
               {hasJobs === false
                 ? "It looks like you don't have any jobs set up. Would you like me to create some for you?"
-                : "Ask anything — I can search emails, manage files, and run jobs."}
+                : "Ask anything. I can search emails, manage files, and run jobs."}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {suggestions.map((s) => (
@@ -383,7 +383,7 @@ export const MessageList = memo(
 
     // The run in flight, if any: the last assistant group while a response is
     // still coming. Deliberately group-scoped and not derived from a streaming
-    // message id — a turn keeps running while its tools do, and its message is
+    // message id. a turn keeps running while its tools do, and its message is
     // saved (losing the `streaming-` id) before those tools ever report back.
     const busyGroupKey = isLoading ? lastAssistantGroupId(visibleGroups) : null;
 
@@ -454,7 +454,7 @@ export const MessageList = memo(
             )}
 
             {/* Waiting on the LLM or a tool result needs no indicator of its
-              own — the composer's stop button spins while the run is in
+              own. the composer's stop button spins while the run is in
               flight. The retry notice is kept: a failing provider call is the
               one state the spinner can't tell. */}
             {isLoading && !isStreaming && retry && (
@@ -463,7 +463,7 @@ export const MessageList = memo(
                 <span className="min-w-0 text-sm break-words">
                   <span className="text-destructive font-medium">Provider error</span>{" "}
                   <span>
-                    {formatProviderError(retry.errorMessage).message} — retrying ({retry.attempt} of{" "}
+                    {formatProviderError(retry.errorMessage).message}. retrying ({retry.attempt} of{" "}
                     {retry.maxAttempts})...
                   </span>
                 </span>
@@ -482,7 +482,7 @@ export const MessageList = memo(
           )}
         </div>
 
-        {/* Jump to the tail — pinned to the message window, visible only while
+        {/* Jump to the tail. pinned to the message window, visible only while
           reading earlier turns */}
         <Button
           type="button"
@@ -571,7 +571,7 @@ function UserMessageItem({
   }));
 
   // The server appends a file-reference line per attachment so the model can
-  // find the file — redundant here, since the attachments render on their own.
+  // find the file. redundant here, since the attachments render on their own.
   const displayContent = message.attachments?.length
     ? stripAttachmentPromptText(message.content)
     : message.content;
@@ -579,7 +579,7 @@ function UserMessageItem({
   if (isEditing) {
     return (
       <div className="flex flex-row-reverse gap-3">
-        {/* Avatar is desktop-only — alignment (right = user) already identifies the speaker on mobile */}
+        {/* Avatar is desktop-only. alignment (right = user) already identifies the speaker on mobile */}
         <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
           <User className="h-4 w-4" />
         </div>
@@ -661,7 +661,7 @@ function UserMessageItem({
 
   return (
     <div className="group/message flex flex-row-reverse gap-3">
-      {/* Avatar is desktop-only — alignment (right = user) already identifies the speaker on mobile */}
+      {/* Avatar is desktop-only. alignment (right = user) already identifies the speaker on mobile */}
       <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
         <User className="h-4 w-4" />
       </div>
@@ -769,7 +769,7 @@ function AttachmentChip({
   );
 }
 
-/** The last assistant group of a transcript — the turn a run is working on. */
+/** The last assistant group of a transcript. the turn a run is working on. */
 function lastAssistantGroupId(groups: readonly MessageGroup[]): string | null {
   for (let i = groups.length - 1; i >= 0; i--) {
     const group = groups[i]!;
@@ -812,8 +812,8 @@ function AssistantMessageBody({
  * Renders a group of assistant turns as a single visual unit:
  * one avatar, all turns' content flowing naturally, one timestamp at bottom.
  *
- * `compactActivity` replaces the per-step transcript — a thinking block and a
- * tool card for every step the turn took — with one condensed line each. See
+ * `compactActivity` replaces the per-step transcript. a thinking block and a
+ * tool card for every step the turn took. with one condensed line each. See
  * `CompactActivity`.
  */
 function AssistantGroup({
@@ -822,7 +822,7 @@ function AssistantGroup({
   compactActivity,
 }: {
   messages: Message[];
-  /** The run is still working on this group — see `busyGroupKey`. */
+  /** The run is still working on this group. see `busyGroupKey`. */
   isBusy: boolean;
   compactActivity: boolean;
 }) {
@@ -841,7 +841,7 @@ function AssistantGroup({
   };
 
   // Filter out turns with no content at all. An errored turn is kept even when
-  // it is empty — the error notice is the only thing there is to show.
+  // it is empty. the error notice is the only thing there is to show.
   const visibleMessages = messages.filter(
     (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
   );
@@ -857,13 +857,13 @@ function AssistantGroup({
   const copyText = getAssistantCopyText(visibleMessages);
 
   // The turn the run is working on, if any. Only its rows report progress, and
-  // the flag is turn-scoped rather than per token — otherwise it drops every
+  // the flag is turn-scoped rather than per token. otherwise it drops every
   // time a step pauses to run a tool, and the row blinks.
   const activeTurnId = isBusy ? (visibleMessages[visibleMessages.length - 1]?.id ?? null) : null;
 
   return (
     <div className="group/message flex gap-3">
-      {/* Single avatar for the entire group — desktop-only, saves ~44px per group on mobile */}
+      {/* Single avatar for the entire group. desktop-only, saves ~44px per group on mobile */}
       <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
         <Bot className="h-4 w-4" />
       </div>
@@ -931,7 +931,7 @@ function AssistantGroup({
 
                 <AssistantMessageBody message={message} isStreaming={message.id === activeTurnId} />
 
-                {/* Tool calls — the turn's work collapses, its shared files do not */}
+                {/* Tool calls. the turn's work collapses, its shared files do not */}
                 {message.toolCalls && message.toolCalls.length > 0 && (
                   <ToolCallGroup toolCalls={message.toolCalls} />
                 )}

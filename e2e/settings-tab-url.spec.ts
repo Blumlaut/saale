@@ -8,7 +8,7 @@ import { bootstrapSession, type E2ESession } from "./utils";
  * The active tab lives in the query string (`?tab=...`) so a refresh or a
  * shared link lands on the tab the user was on instead of snapping back to
  * the first one. Tab switches use `router.replace`, so no per-tab history
- * entries are expected — only the URL itself is asserted.
+ * entries are expected  only the URL itself is asserted.
  */
 
 const DESKTOP = { width: 1280, height: 900 };

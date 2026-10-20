@@ -9,7 +9,7 @@ const MAX_TURNS_PAGE = 100;
 /**
  * GET /api/council/[councilId]/turns?memberId=…&runId=…
  *
- * A member's private turns — what woke it, what it reasoned, the tool calls it
+ * A member's private turns. what woke it, what it reasoned, the tool calls it
  * made and the closing text it never sent. `runId` narrows it to one run, which
  * is what the subpage's run selector does.
  */

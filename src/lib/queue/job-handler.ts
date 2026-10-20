@@ -32,7 +32,7 @@ export async function dispatchAiJob(
 ): Promise<string> {
   const modelInfo = await resolveModelForPurpose(userId, "jobs", options?.modelId);
 
-  // Build a minimal model runtime (no tools, no extensions — just the model)
+  // Build a minimal model runtime (no tools, no extensions. just the model)
   const { modelRuntime } = await buildModelRuntime(userId);
 
   let model;
@@ -42,7 +42,7 @@ export async function dispatchAiJob(
 
   const systemPrompt =
     options?.systemPrompt ??
-    `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
+    `You are an AI assistant processing automated jobs. Respond with valid JSON only. no markdown, no explanation, just the raw JSON object.`;
 
   const { session } = await createSaaleAgentSession(userId, {
     sessionManager: SessionManager.inMemory(),
@@ -54,7 +54,7 @@ export async function dispatchAiJob(
   });
 
   return new Promise((resolve, reject) => {
-    // Idle timeout — fires only if the session goes completely silent
+    // Idle timeout. fires only if the session goes completely silent
     // (hung model, dead connection). Every agent event resets the window.
     const idleTimeout = createAgentIdleTimeout({
       session,
@@ -69,8 +69,8 @@ export async function dispatchAiJob(
       },
     });
 
-    // Outcome of the last attempt. A provider failure does not throw — it ends
-    // the assistant message with stopReason "error" — so without this a failed
+    // Outcome of the last attempt. A provider failure does not throw. it ends
+    // the assistant message with stopReason "error". so without this a failed
     // job would "succeed" with an empty string and callers would silently do
     // nothing (e.g. a classifier returning no results).
     let text = "";
@@ -91,7 +91,7 @@ export async function dispatchAiJob(
         providerError = extractProviderError(lastMsg as ProviderErrorSource);
       }
 
-      // `agent_settled` — after retries, auto-compaction and any continuation —
+      // `agent_settled`. after retries, auto-compaction and any continuation
       // is the only point at which the run is over.
       if (event.type === "agent_settled") {
         idleTimeout.clear();
@@ -104,7 +104,7 @@ export async function dispatchAiJob(
       }
     });
 
-    // session.prompt() — not session.agent.prompt() — runs the SDK's preflight
+    // session.prompt(). not session.agent.prompt(). runs the SDK's preflight
     // and post-run processing (retry, auto-compaction, `agent_settled`). The
     // system prompt comes from the resource loader, so per-turn prompt
     // resolution keeps it.
@@ -133,7 +133,7 @@ export async function processJob(job: Job): Promise<void> {
   });
 
   if (!queueJob) {
-    // Job was deleted — remove the scheduler so it doesn't keep firing,
+    // Job was deleted. remove the scheduler so it doesn't keep firing,
     // then skip silently instead of throwing (which would cause retries).
     if (!runId) {
       getQueue()

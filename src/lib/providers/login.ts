@@ -3,7 +3,7 @@
  *
  * Pi already defines how every provider is authenticated: `provider.auth` holds
  * an api-key method and/or an OAuth method, and each one is an interactive
- * `login()` that asks for what it needs through an `AuthInteraction` — a prompt
+ * `login()` that asks for what it needs through an `AuthInteraction`. a prompt
  * for a value, a notification for the user. The Pi CLI renders that against its
  * terminal; Saale renders it against HTTP.
  *
@@ -38,12 +38,12 @@ const SESSION_TTL_SECONDS = 20 * 60;
  * How often a waiting flow looks for an answer and for a cancellation.
  *
  * A sign-in waits on the user, so a fraction of a second of latency is
- * irrelevant — and polling keeps every Redis command non-blocking, which a
+ * irrelevant. and polling keeps every Redis command non-blocking, which a
  * shared connection cannot afford (`BLPOP` would hold it for the whole wait).
  */
 const WAIT_POLL_MS = 250;
 
-/** Bounded event log — a flow emits a handful, but a bug must not grow the state. */
+/** Bounded event log. a flow emits a handful, but a bug must not grow the state. */
 const MAX_LOGIN_EVENTS = 50;
 
 /** Notification kinds Pi emits, as they cross the wire. */
@@ -101,7 +101,7 @@ function cancelKey(id: string): string {
   return `provider-login:${id}:cancel`;
 }
 
-/** Strip the ownership field — it never leaves the server. */
+/** Strip the ownership field. it never leaves the server. */
 function toPublicState(state: StoredLoginState): ProviderLoginState {
   const { owner: _owner, ...rest } = state;
   return rest;
@@ -127,7 +127,7 @@ function initialState(options: {
 }
 
 /**
- * A stable, per-scope installation id for providers that identify the client —
+ * A stable, per-scope installation id for providers that identify the client
  * "Sign in with ChatGPT" sends it as its agent host id.
  *
  * Pi derives one from its settings file; Saale has no such file, and the id must
@@ -290,7 +290,7 @@ async function runProviderLogin(options: {
   };
 
   /**
-   * Cancellation must reach a flow waiting on the network too — a device-code
+   * Cancellation must reach a flow waiting on the network too. a device-code
    * poll or a token exchange never reaches `prompt()` again.
    */
   const cancelWatch = setInterval(() => {
@@ -318,7 +318,7 @@ async function runProviderLogin(options: {
       ...state,
       status: "succeeded",
       prompt: null,
-      // Never the credential itself — the browser only needs to know it worked.
+      // Never the credential itself. the browser only needs to know it worked.
       events: [...state.events, { kind: "progress" as const, message: "Signed in." }].slice(
         -MAX_LOGIN_EVENTS,
       ),

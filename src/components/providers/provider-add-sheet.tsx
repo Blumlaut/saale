@@ -144,8 +144,8 @@ export function ProviderAddSheet({
             </SheetTitle>
             <SheetDescription className="text-muted-foreground text-xs">
               {step === "endpoint"
-                ? "Any server that speaks the OpenAI API — a local llama.cpp, Ollama or vLLM instance."
-                : "Linked providers are listed first — connect a new one, or unlink one you no longer use."}
+                ? "Any server that speaks the OpenAI API. a local llama.cpp, Ollama or vLLM instance."
+                : "Linked providers are listed first. connect a new one, or unlink one you no longer use."}
             </SheetDescription>
           </SheetHeader>
 
@@ -180,7 +180,7 @@ export function ProviderAddSheet({
 
                 {linked.length > 0 && (
                   <section>
-                    <div className="console-label px-4 pt-3 pb-1">Linked — {linked.length}</div>
+                    <div className="console-label px-4 pt-3 pb-1">Linked. {linked.length}</div>
                     {linked.map((entry, index) => (
                       <div key={entry.id}>
                         <CandidateRow
@@ -197,9 +197,7 @@ export function ProviderAddSheet({
 
                 {unlinked.length > 0 && (
                   <section>
-                    <div className="console-label px-4 pt-4 pb-1">
-                      Available — {unlinked.length}
-                    </div>
+                    <div className="console-label px-4 pt-4 pb-1">Available. {unlinked.length}</div>
                     {unlinked.map((entry, index) => (
                       <div key={entry.id}>
                         <CandidateRow
@@ -279,7 +277,7 @@ export function ProviderAddSheet({
                   These apply to every model this endpoint serves. One server can serve models with
                   different windows, so a single model can set its own in the model list. Leave a
                   field empty to use Pi&apos;s default ({PI_DEFAULT_CONTEXT_WINDOW.toLocaleString()}{" "}
-                  context / {PI_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()} output) — a larger cap
+                  context / {PI_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()} output). a larger cap
                   than the endpoint allows is rejected by the provider.
                 </p>
               </div>
@@ -354,7 +352,7 @@ function CandidateRow({
         </div>
         <span className="text-muted-foreground block truncate text-xs">
           {entry.modelCount} {entry.modelCount === 1 ? "model" : "models"}
-          {entry.baseUrl ? ` — ${entry.baseUrl}` : ""}
+          {entry.baseUrl ? `. ${entry.baseUrl}` : ""}
         </span>
       </div>
 

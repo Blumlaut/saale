@@ -10,7 +10,7 @@ import { MODAL_SCENARIOS } from "../e2e/modal-scenarios";
  * `e2e/modal-overflow.spec.ts` can only check the overlays it knows about, so a
  * newly added modal would slip through silently. This test closes that hole:
  * every file that renders an overlay popup must be registered in
- * `e2e/modal-scenarios.ts` — with an automated scenario, or with an explicit
+ * `e2e/modal-scenarios.ts`  with an automated scenario, or with an explicit
  * `skip` reason. Adding a modal therefore forces a decision about its layout.
  */
 
@@ -19,7 +19,7 @@ const REPO_ROOT = join(__dirname, "..");
 /** Overlay popups rendered by our own components (not Select/Popover/Menu popups). */
 const OVERLAY_RENDER = /<(DialogContent|AlertDialogContent|SheetContent)\b/;
 
-/** Shared primitives that *define* the overlays — nothing to cover. */
+/** Shared primitives that *define* the overlays  nothing to cover. */
 const PRIMITIVE_DIR = "src/components/ui/";
 
 function walk(dir: string, files: string[] = []): string[] {
@@ -140,7 +140,7 @@ describe("overlay coverage", () => {
   it("declares a base grid track on every grid inside an overlay", () => {
     // A bare `grid` (implicit `auto` track) is sized by its items' min-content, so
     // a long unbreakable string or a nowrap row can push the modal's content past
-    // its bounds — `grid-cols-1` (`minmax(0, 1fr)`) keeps the track inside.
+    // its bounds  `grid-cols-1` (`minmax(0, 1fr)`) keeps the track inside.
     const offenders = components.flatMap((path) =>
       bareGridClasses(readFileSync(join(REPO_ROOT, path), "utf-8")).map(
         (classes) => `${path}: "${classes}"`,

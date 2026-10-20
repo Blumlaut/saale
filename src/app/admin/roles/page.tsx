@@ -307,7 +307,7 @@ export default function AdminRolesPage() {
             )}
             {loadError && (
               <p className="text-destructive px-4 py-3 text-xs">
-                Could not load roles — showing the built-in set.
+                Could not load roles. showing the built-in set.
               </p>
             )}
           </div>

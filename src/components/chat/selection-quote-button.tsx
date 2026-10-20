@@ -18,7 +18,7 @@ interface SelectionState {
   text: string;
   /** Selection bounds relative to the container's *visible viewport*. The
       button is a sibling of the scroller, pinned to the non-scrolling
-      wrapper, so these are viewport offsets — adding `scrollTop` here would
+      wrapper, so these are viewport offsets. adding `scrollTop` here would
       push the button off the panel in any scrolled transcript. */
   top: number;
   bottom: number;
@@ -46,7 +46,7 @@ export function SelectionQuoteButton({
 }: SelectionQuoteButtonProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null);
   // Last position a selection produced. While the button fades out after the
-  // selection is cleared it must stay where it was — jumping to the corner
+  // selection is cleared it must stay where it was. jumping to the corner
   // during the opacity transition would flash it on screen.
   const [lastPos, setLastPos] = useState<SelectionState | null>(null);
 
@@ -67,7 +67,7 @@ export function SelectionQuoteButton({
       setSelection(null);
       return;
     }
-    // Only selections fully inside quoteable bubbles count — otherwise the
+    // Only selections fully inside quoteable bubbles count. otherwise the
     // captured text would mix message content with timestamps, avatars, or
     // the neighbouring bubble.
     const startEl = elementOf(range.startContainer);
@@ -93,7 +93,7 @@ export function SelectionQuoteButton({
   useEffect(() => {
     document.addEventListener("selectionchange", update);
     const container = containerRef.current;
-    // Scrolling desyncs the stored position from the selection — hide and
+    // Scrolling desyncs the stored position from the selection. hide and
     // let the next selection bring the button back.
     const onScroll = () => setSelection(null);
     container?.addEventListener("scroll", onScroll, { passive: true });
@@ -114,7 +114,7 @@ export function SelectionQuoteButton({
     onQuote(selection.text);
   }, [selection, onQuote]);
 
-  // ⌘/Ctrl+Shift+Q — only while a valid selection is on screen (a selection
+  // ⌘/Ctrl+Shift+Q. only while a valid selection is on screen (a selection
   // inside the composer textarea never registers, so it can't collide).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -131,7 +131,7 @@ export function SelectionQuoteButton({
   // fade-out happens in place instead of from the corner.
   const pos = selection ?? lastPos;
   // Above the selection by default; below when there is no room above. The
-  // wrapper does not scroll, so anything past its visible edge is clipped —
+  // wrapper does not scroll, so anything past its visible edge is clipped
   // clamp the placement into the container's viewport.
   const placeAbove = pos !== null && pos.top - GAP - BUTTON_HEIGHT >= 4;
   let top = pos === null ? 0 : placeAbove ? pos.top - GAP - BUTTON_HEIGHT : pos.bottom + GAP;
@@ -148,7 +148,7 @@ export function SelectionQuoteButton({
       aria-hidden={selection ? undefined : true}
       tabIndex={selection ? 0 : -1}
       title="Quote selection (⌘/Ctrl+Shift+Q)"
-      // Prevent the click from stealing focus — that would collapse the
+      // Prevent the click from stealing focus. that would collapse the
       // selection before onQuote could read it (kept in state, but still).
       onMouseDown={(e) => e.preventDefault()}
       onClick={quote}

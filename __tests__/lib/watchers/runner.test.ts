@@ -6,7 +6,7 @@ import { applyStoreWrites, isFiring, runWatcherScript } from "@/lib/watchers/run
 
 /**
  * The runner is the one place a watcher script actually executes, and it runs
- * the real QuickJS sandbox — not a stub. These cases pin the contract a script
+ * the real QuickJS sandbox  not a stub. These cases pin the contract a script
  * author depends on: it sees its tools, it sees its store, and `undefined`
  * means "nothing to report".
  */
@@ -41,7 +41,7 @@ function failingTool(name: string): ToolDefinition {
 }
 
 /**
- * A tool that declares an `outputSchema` and returns a value — the shape every
+ * A tool that declares an `outputSchema` and returns a value  the shape every
  * Saale tool now has.
  */
 function valueTool(
@@ -187,7 +187,7 @@ describe("runWatcherScript", () => {
     });
 
     // Timers do not exist in the sandbox, so a bare pending promise is provably
-    // deadlocked — the sandbox says so instead of waiting out the deadline.
+    // deadlocked  the sandbox says so instead of waiting out the deadline.
     expect(result.ok).toBe(false);
     expect(result.error).toContain("can never settle");
   });

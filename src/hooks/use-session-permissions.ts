@@ -28,7 +28,7 @@ function load(): Promise<SessionAccess | null> {
   return pending;
 }
 
-/** Drop the shared cache — tests only. */
+/** Drop the shared cache. tests only. */
 export function resetSessionPermissionsCache(): void {
   cached = null;
   pending = null;
@@ -37,7 +37,7 @@ export function resetSessionPermissionsCache(): void {
 /**
  * The account's grants, or null until the session resolves.
  *
- * The role decides what the navs and admin screens may offer — the API refuses
+ * The role decides what the navs and admin screens may offer. the API refuses
  * the same actions, so stale or missing grants only ever hide controls.
  */
 export function useSessionPermissions(): SessionAccess | null {

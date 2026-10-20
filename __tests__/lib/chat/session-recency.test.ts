@@ -29,7 +29,7 @@ describe("splitSessionsByActivity", () => {
 
     const { recent, older } = splitSessionsByActivity(sessions, NOW);
 
-    // Exactly at the cutoff still counts as recent — only *more* than the
+    // Exactly at the cutoff still counts as recent  only *more* than the
     // window of inactivity folds away.
     expect(recent.map((s) => s.id)).toEqual(["today", "two-days", "five-days"]);
     expect(older.map((s) => s.id)).toEqual(["six-days", "two-weeks"]);

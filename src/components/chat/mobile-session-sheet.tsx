@@ -5,7 +5,7 @@ import { PanelLeft } from "lucide-react";
 import { SessionSidebar } from "./session-sidebar";
 
 /**
- * Mobile session list — icon trigger + sheet. The trigger is a bare span
+ * Mobile session list. icon trigger + sheet. The trigger is a bare span
  * (SheetTrigger renders the button) so it can sit inside header rows without
  * nesting interactive elements.
  */

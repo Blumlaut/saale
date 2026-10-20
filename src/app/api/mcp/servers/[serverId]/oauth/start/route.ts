@@ -6,7 +6,7 @@ import { startMcpOAuthSignIn } from "@/lib/mcp/oauth";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 
 /**
- * POST /api/mcp/servers/:serverId/oauth/start — begin an OAuth sign-in.
+ * POST /api/mcp/servers/:serverId/oauth/start. begin an OAuth sign-in.
  *
  * Returns the URL the user's browser must open, or `succeeded` when the stored
  * refresh token was still good and no browser is needed.

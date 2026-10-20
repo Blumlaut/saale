@@ -4,7 +4,7 @@
  * Pi's resource loader *discovers* `<agentDir>/APPEND_SYSTEM.md` and appends it
  * to the system prompt as an `addendum` section. Saale passes the host's Pi
  * directory as `agentDir` (for settings), so an operator with that file would
- * otherwise have their text injected into every tenant's prompt — the same
+ * otherwise have their text injected into every tenant's prompt  the same
  * class of leak as the host's model credentials and MCP config.
  */
 
@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 
-const HOST_TEXT = "HOST OPERATOR ONLY — internal runbook";
+const HOST_TEXT = "HOST OPERATOR ONLY  internal runbook";
 
 function makeAgentDirWithAppendPrompt(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "saale-agentdir-"));

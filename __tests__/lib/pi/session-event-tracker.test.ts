@@ -76,7 +76,7 @@ function createFakeSession(
     },
     model: { contextWindow },
     compact: vi.fn().mockResolvedValue({ tokensBefore: 50 }),
-    // Pi's own context accounting — the tracker must publish this, not a sum
+    // Pi's own context accounting  the tracker must publish this, not a sum
     // of per-message usage.
     getContextUsage: () => ({
       tokens: options.contextTokens === undefined ? 42_000 : options.contextTokens,
@@ -379,7 +379,7 @@ describe("createSessionEventTracker", () => {
     // The live bubble and the row it becomes must agree on where the turn
     // sits in the conversation, otherwise a message delivered into the run
     // mid-turn sorts above the live bubble and then above the saved row (or
-    // vice versa) — the "send now jumps up one message" bug.
+    // vice versa)  the "send now jumps up one message" bug.
     const { published } = setup();
     mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
 
@@ -394,7 +394,7 @@ describe("createSessionEventTracker", () => {
       type: "message_update",
       message: { role: "assistant", content: [{ type: "text", text: "Working" }] },
     });
-    // The row is only written when the turn ends — long after it began.
+    // The row is only written when the turn ends  long after it began.
     await new Promise((resolve) => setTimeout(resolve, 20));
     session.emit({
       type: "turn_end",
@@ -511,7 +511,7 @@ describe("createSessionEventTracker", () => {
     const session = createFakeSession();
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
-    // A tool call persists active-tool state — it must NOT advance
+    // A tool call persists active-tool state  it must NOT advance
     // lastActivityAt (that would move the chat to the top of the list
     // without any real message activity).
     session.emit({
@@ -537,7 +537,7 @@ describe("createSessionEventTracker", () => {
       expect(data).not.toHaveProperty("lastActivityAt");
     }
 
-    // Assistant output (settled run) is real activity — it must advance it.
+    // Assistant output (settled run) is real activity  it must advance it.
     emitRun(session, "Hi");
     session.emit({ type: "agent_settled" });
 
@@ -820,7 +820,7 @@ describe("createSessionEventTracker", () => {
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
     // A provider failure is an assistant message with stopReason "error" and
-    // no content — Pi does not throw, so this is the only failure signal.
+    // no content  Pi does not throw, so this is the only failure signal.
     const failed = {
       role: "assistant",
       content: [],
@@ -885,7 +885,7 @@ describe("createSessionEventTracker", () => {
 
     // A cancelled request is reported exactly like a stream failure
     // (stopReason "error", errorMessage "terminated"), and the SDK marks it
-    // retryable — the retry is what the abort then cancels.
+    // retryable  the retry is what the abort then cancels.
     const aborted = {
       role: "assistant",
       content: [{ type: "text", text: "half an answer" }],
@@ -954,7 +954,7 @@ describe("createSessionEventTracker", () => {
     const session = createFakeSession();
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
-    // Attempt 1, turn 1: a real answer with a tool call — the SDK keeps this.
+    // Attempt 1, turn 1: a real answer with a tool call  the SDK keeps this.
     session.emit({ type: "agent_start" });
     session.emit({
       type: "message_update",
@@ -986,7 +986,7 @@ describe("createSessionEventTracker", () => {
     await flush();
 
     // Only the failed turn's row is removed (`_prepareRetry` drops just the
-    // last message) — the earlier turn stays part of the transcript.
+    // last message)  the earlier turn stays part of the transcript.
     expect(mockChatMessageDeleteMany).toHaveBeenCalledTimes(1);
     expect(mockChatMessageDeleteMany).toHaveBeenCalledWith({
       where: { id: "msg-2", sessionId: "s1" },
@@ -1102,7 +1102,7 @@ describe("createSessionEventTracker", () => {
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
     // The user presses Stop during a run that has no retries left, so Pi does
-    // not mark the attempt retryable — it looks exactly like a hard failure.
+    // not mark the attempt retryable  it looks exactly like a hard failure.
     const stopped = {
       role: "assistant",
       content: [{ type: "text", text: "half an answer" }],

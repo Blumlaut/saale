@@ -168,7 +168,7 @@ describe("upsertContact", () => {
       makeContact({ ...data }),
     );
 
-    // "jane" is the local part of jane@example.com — a fallback.
+    // "jane" is the local part of jane@example.com  a fallback.
     await upsertContact("user-1", { name: "jane", email: "jane@example.com" });
 
     expect(mockContact.update).toHaveBeenCalledWith(
@@ -267,7 +267,7 @@ describe("learnContactsFromSend", () => {
     );
   });
 
-  it("never throws when the book write fails — the send must go through", async () => {
+  it("never throws when the book write fails  the send must go through", async () => {
     mockContact.findUnique.mockRejectedValue(new Error("db down"));
     await expect(learnContactsFromSend("user-1", ["jane@example.com"])).resolves.toBeUndefined();
   });

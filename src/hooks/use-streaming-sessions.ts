@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 
 const STORAGE_KEY_STREAMING = "chat-streaming-sessions";
 const STORAGE_KEY_FINISHED = "chat-finished-sessions";
-const FINISH_ANIM_TIMEOUT = 650; // ms — matches pop-dot animation duration
-const STREAM_STALE_TIMEOUT = 60_000; // ms — auto-clear streaming dot after 60s
+const FINISH_ANIM_TIMEOUT = 650; // ms. matches pop-dot animation duration
+const STREAM_STALE_TIMEOUT = 60_000; // ms. auto-clear streaming dot after 60s
 
 interface StreamingEntry {
   id: string;

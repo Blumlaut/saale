@@ -59,7 +59,7 @@ export interface SettingsFilter {
 
 // ─── Access ──────────────────────────────────────────────────────────────────
 
-/** Whether the user is an admin. Read per call — a role can change. */
+/** Whether the user is an admin. Read per call. a role can change. */
 export { isAdminUser };
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ function matchesFilter(property: Property, filter: SettingsFilter | undefined): 
 /**
  * Every property the caller may see, with current values.
  *
- * Admin properties are included only for admins — a regular user must not even
+ * Admin properties are included only for admins. a regular user must not even
  * discover the global settings.
  */
 export async function listSettings(
@@ -231,7 +231,7 @@ function pickCovered(
 }
 
 /**
- * Apply a column-keyed patch — the shape the settings UI sends.
+ * Apply a column-keyed patch. the shape the settings UI sends.
  *
  * Each touched column is traced back to the properties that own it: the
  * property's own `read` projects a value out of the patched row, the schema

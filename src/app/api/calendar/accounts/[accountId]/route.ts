@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 
 /**
- * GET /api/calendar/accounts/:accountId — Get account details
+ * GET /api/calendar/accounts/:accountId. Get account details
  */
 export async function GET(
   _request: NextRequest,
@@ -72,7 +72,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/calendar/accounts/:accountId — Update a calendar account
+ * PATCH /api/calendar/accounts/:accountId. Update a calendar account
  */
 export async function PATCH(
   request: NextRequest,
@@ -108,7 +108,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/calendar/accounts/:accountId — Delete a calendar account
+ * DELETE /api/calendar/accounts/:accountId. Delete a calendar account
  */
 export async function DELETE(
   _request: NextRequest,

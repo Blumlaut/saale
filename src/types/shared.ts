@@ -74,7 +74,7 @@ export interface ScriptWatcher {
   grantedTools: string[];
   /** The script reaches tools by a computed name, so its grant covers everything callable. */
   grantAll: boolean;
-  /** The script changed after it was approved — it will not run until approved again. */
+  /** The script changed after it was approved. it will not run until approved again. */
   needsApproval: boolean;
   tickCount: number;
   fireCount: number;

@@ -5,8 +5,8 @@ import type { IntegrationManifest } from "@/lib/integrations/types";
 /**
  * Shared shell for the integration boxes on the Integrations tab.
  *
- * Every box answers the same three questions — what is this, is it connected,
- * and what can I do about it (a status line or a connect button) — so the tab
+ * Every box answers the same three questions. what is this, is it connected,
+ * and what can I do about it (a status line or a connect button). so the tab
  * reads as a fixed set of capabilities instead of a list to grow.
  */
 export function IntegrationBox({

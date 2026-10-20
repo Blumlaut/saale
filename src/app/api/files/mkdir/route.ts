@@ -10,7 +10,7 @@ import {
 } from "@/lib/files/request";
 import { createDirectorySchema } from "@/lib/files/schema";
 
-/** POST /api/files/mkdir?target= — a new folder inside the current directory. */
+/** POST /api/files/mkdir?target=. a new folder inside the current directory. */
 export async function POST(request: NextRequest) {
   try {
     const target = await openRequestTarget(request);

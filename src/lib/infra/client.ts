@@ -1,7 +1,7 @@
 /**
  * SSH client wrapper for infrastructure management.
  *
- * Per-command connect/disconnect — no persistent sessions.
+ * Per-command connect/disconnect. no persistent sessions.
  * Handles credential encryption/decryption, timeouts, and output limits.
  */
 
@@ -62,7 +62,7 @@ export interface ExecResult {
   stderr: string;
   /** Null when the command was killed by a signal rather than exiting. */
   exitCode: number | null;
-  /** The signal that killed it, when one did — the reason `exitCode` is null. */
+  /** The signal that killed it, when one did. the reason `exitCode` is null. */
   signal: string | null;
   timedOut: boolean;
   truncated: boolean;
@@ -108,7 +108,7 @@ export function generateSshKeyPair(): GeneratedKeyPair {
 /**
  * Resolve SSH connection config from a stored machine record.
  * Decrypts credentials and returns a node-ssh config.
- * Requires userId for user isolation — always verify ownership before connecting.
+ * Requires userId for user isolation. always verify ownership before connecting.
  */
 export async function resolveConnectionConfig(
   machineId: string,
@@ -213,7 +213,7 @@ export function truncateOutput(
   const truncated = raw.slice(0, lastNewline > 0 ? lastNewline : raw.length);
 
   return {
-    text: `${truncated}\n\n[output truncated — exceeded ${maxBytes} byte limit]`,
+    text: `${truncated}\n\n[output truncated. exceeded ${maxBytes} byte limit]`,
     truncated: true,
   };
 }
@@ -380,8 +380,8 @@ function sftpListDir(sftp: SFTPWrapper, path: string): Promise<SftpListEntry[]> 
 /**
  * The command's shell, reading the command from stdin.
  *
- * sshd runs an exec request through the login shell, so the request's text — the
- * whole command — lands in that shell's own process list. A command that hunts
+ * sshd runs an exec request through the login shell, so the request's text. the
+ * whole command. lands in that shell's own process list. A command that hunts
  * for its own name (`pkill -f health_scan.py`) then matches the shell running it
  * and kills the session mid-script, which arrives as a truncated result with a
  * null exit code. Writing the command to stdin instead leaves the process list
@@ -563,7 +563,7 @@ export async function readFileHead(
  * Read a file from a remote machine via SFTP, in full.
  *
  * Callers that hand the content back to the remote machine (editing) must use
- * this rather than the truncating {@link readFile} — writing a truncated copy
+ * this rather than the truncating {@link readFile}. writing a truncated copy
  * back would destroy the rest of the file.
  */
 export async function readFileRaw(

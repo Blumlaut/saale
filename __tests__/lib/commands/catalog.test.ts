@@ -9,7 +9,7 @@ import type { CommandSurface } from "@/lib/commands/types";
 
 /**
  * The catalog is what every surface renders from. Telegram imposes its own
- * constraints on command names and descriptions — a violation is rejected by
+ * constraints on command names and descriptions  a violation is rejected by
  * the Bot API at registration time, so it must fail here instead.
  */
 describe("command catalog", () => {
@@ -70,7 +70,7 @@ describe("command catalog", () => {
     );
     expect(searchCommands("web", "com").map((meta) => meta.name)).toEqual(["compact"]);
 
-    // No command name contains "approvals" — this only matches the stfu
+    // No command name contains "approvals"  this only matches the stfu
     // description, which is how the menu stays findable by intent.
     expect(searchCommands("web", "approvals").map((meta) => meta.name)).toEqual(["stfu"]);
 

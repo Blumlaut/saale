@@ -38,7 +38,7 @@ describe("sidebar nav registry", () => {
     const council = sidebarNavItem("council");
     expect(council.defaultHidden).toBe(true);
 
-    // A layout saved before the item existed still knows about it — hidden.
+    // A layout saved before the item existed still knows about it  hidden.
     const stored = [{ id: "chat", hidden: false }] as SidebarNavEntry[];
     const entries = normalizeSidebarNav(stored);
     expect(entries.find((entry) => entry.id === "council")?.hidden).toBe(true);
@@ -132,7 +132,7 @@ describe("normalizeSidebarNav", () => {
     for (const id of PINNED_SIDEBAR_NAV_IDS) {
       expect(entries.find((entry) => entry.id === id)?.hidden).toBe(false);
     }
-    // The pinned items are the only visible ones — the sidebar is never empty.
+    // The pinned items are the only visible ones  the sidebar is never empty.
     expect(visibleIds(entries)).toEqual([...PINNED_SIDEBAR_NAV_IDS]);
   });
 

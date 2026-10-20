@@ -1,6 +1,6 @@
 /**
  * HTTP surface of Pi's provider sign-in flows, shared by the user and admin
- * routes — the only difference between them is which credential scope they
+ * routes. the only difference between them is which credential scope they
  * write to, and who may call them.
  *
  * The browser starts a sign-in, then polls it: the flow asks for one thing at a
@@ -31,7 +31,7 @@ const answerBodySchema = z.object({
   value: z.string(),
 });
 
-/** POST — start a sign-in, returning the id to poll. */
+/** POST. start a sign-in, returning the id to poll. */
 export async function startLoginResponse(
   scope: ProviderScope,
   request: Request,
@@ -57,7 +57,7 @@ export async function startLoginResponse(
   }
 }
 
-/** GET — the state of a running sign-in. */
+/** GET. the state of a running sign-in. */
 export async function loginStateResponse(
   scope: ProviderScope,
   request: Request,
@@ -74,7 +74,7 @@ export async function loginStateResponse(
   return NextResponse.json({ state });
 }
 
-/** POST — answer the step the flow is waiting on. */
+/** POST. answer the step the flow is waiting on. */
 export async function answerLoginResponse(
   scope: ProviderScope,
   request: Request,
@@ -91,14 +91,14 @@ export async function answerLoginResponse(
     }
     return NextResponse.json({ state });
   } catch (err) {
-    // The flow has moved past the step that was answered — a stale tab, most
+    // The flow has moved past the step that was answered. a stale tab, most
     // likely. The caller polls the current state instead of retrying.
     const message = err instanceof Error ? err.message : "Failed to answer the sign-in";
     return NextResponse.json({ error: message }, { status: 409 });
   }
 }
 
-/** DELETE — cancel a running sign-in. */
+/** DELETE. cancel a running sign-in. */
 export async function cancelLoginResponse(
   scope: ProviderScope,
   request: Request,

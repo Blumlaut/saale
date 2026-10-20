@@ -8,7 +8,7 @@ import type { TokenUsage } from "@/components/chat/types";
 /**
  * The context ring is the only place a user can see how full the context is
  * (and the entry point to compaction), so its percentage must come from Pi's
- * context accounting — not from summed per-message usage, which excludes
+ * context accounting  not from summed per-message usage, which excludes
  * prompt-cache reads and reads near-zero for a cached conversation.
  */
 
@@ -70,7 +70,7 @@ describe("ContextCircle", () => {
     const ring = screen.getByRole("button");
     expect(ring).toHaveAttribute(
       "title",
-      "1.0K in / 500 out · 32.0K / 128.0K (25%) · Click to compact",
+      "Context 32.0K/128.0K (25%)\nIn 1.0K · Out 500\nClick to compact",
     );
     expect(ring).toHaveAttribute("aria-label", expect.stringContaining("25%"));
   });
@@ -102,7 +102,7 @@ describe("ContextCircle", () => {
 
     expect(screen.getByRole("button")).toHaveAttribute(
       "title",
-      "1.0K in / 500 out · Context usage unavailable · Click to compact",
+      "Context usage unavailable\nIn 1.0K · Out 500\nClick to compact",
     );
   });
 
@@ -110,7 +110,7 @@ describe("ContextCircle", () => {
     render(<ContextCircle usage={null} isCompacting={false} onCompact={() => {}} />);
 
     const ring = screen.getByRole("button");
-    expect(ring).toHaveAttribute("title", "No usage data yet · Click to compact");
+    expect(ring).toHaveAttribute("title", "No usage data yet\nClick to compact");
     const fill = ring.querySelectorAll("circle")[1];
     expect(fill?.getAttribute("strokeDashoffset")).toBe(fill?.getAttribute("strokeDasharray"));
   });
@@ -119,7 +119,7 @@ describe("ContextCircle", () => {
     const onCompact = vi.fn();
     render(<ContextCircle usage={usage()} isCompacting={false} onCompact={onCompact} />);
 
-    // Clicking must not compact immediately — compaction discards detail.
+    // Clicking must not compact immediately  compaction discards detail.
     fireEvent.click(screen.getByRole("button"));
     expect(onCompact).not.toHaveBeenCalled();
 
