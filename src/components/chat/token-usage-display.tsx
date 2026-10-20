@@ -75,22 +75,22 @@ export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleP
     }
   }, [isCompacting]);
 
-  // Tooltip content
-  const tooltipParts: string[] = [];
+  // Tooltip content — keep it short and scannable.
+  const tooltipLines: string[] = [];
   if (usage) {
-    tooltipParts.push(`${formatTokens(usage.input)} in / ${formatTokens(usage.output)} out`);
-    tooltipParts.push(
+    tooltipLines.push(
       percent !== null
-        ? `${formatTokens(usage.contextTokens ?? 0)} / ${formatTokens(contextWindow)} (${Math.round(percent)}%)`
+        ? `Context ${formatTokens(usage.contextTokens ?? 0)}/${formatTokens(contextWindow)} (${Math.round(percent)}%)`
         : "Context usage unavailable",
     );
+    tooltipLines.push(`In ${formatTokens(usage.input)} · Out ${formatTokens(usage.output)}`);
   } else {
-    tooltipParts.push("No usage data yet");
+    tooltipLines.push("No usage data yet");
   }
   if (!isCompacting) {
-    tooltipParts.push("Click to compact");
+    tooltipLines.push("Click to compact");
   }
-  const tooltip = tooltipParts.join(" · ");
+  const tooltip = tooltipLines.join("\n");
 
   return (
     <>
