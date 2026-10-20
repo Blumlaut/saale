@@ -10,6 +10,8 @@ import { FileDropOverlay } from "./file-drop-overlay";
 import { QueuedMessages } from "./queued-messages";
 import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
+import { loadDraft } from "@/lib/chat/draft";
+import { shouldAutoDeleteSession } from "@/lib/chat/auto-delete";
 import { useCompactActivity } from "@/hooks/use-compact-activity";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
@@ -695,11 +697,14 @@ export function ChatInterface({
     };
   }, [sessionId, connect, disconnect, loadMessages, loadSessionTitle]);
 
-  // Temporary session auto-delete on unmount (only after the tab has been
-  // open long enough to be a real visit, never while a generation runs, and
-  // never while the send queue still holds messages for it).
+  // Session auto-delete on leave: temporary sessions never persist, and a
+  // session that was never started (no messages, no draft) goes with the tab.
+  // The decision needs the refs below because it runs from an unmount
+  // cleanup, where React state values are stale.
   const temporaryRef = useRef(temporaryMode);
   const queuedCountRef = useRef(queuedMessages.length);
+  const messagesCountRef = useRef(messages.length);
+  const draftRef = useRef(draft);
   const mountTimeRef = useRef(0);
 
   useEffect(() => {
@@ -717,6 +722,14 @@ export function ChatInterface({
   useEffect(() => {
     queuedCountRef.current = queuedMessages.length;
   }, [queuedMessages]);
+
+  useEffect(() => {
+    messagesCountRef.current = messages.length;
+  }, [messages]);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   useEffect(() => {
     if (isLoading) {
@@ -742,11 +755,23 @@ export function ChatInterface({
 
   useEffect(() => {
     const mountedAt = mountTimeRef.current;
-    return () => {
-      const mountedFor = Date.now() - mountedAt;
-      if (mountedFor < 1000) return;
-      if (!temporaryRef.current || busyRef.current) return;
-      if (queuedCountRef.current > 0) return;
+
+    const tryAutoDelete = () => {
+      // In-memory draft state plus a storage read: the pagehide path skips
+      // React unmount, so the draft hook's unmount flush hasn't run there.
+      const hasDraft = draftRef.current !== "" || loadDraft(sessionId) !== "";
+      if (
+        !shouldAutoDeleteSession({
+          temporary: temporaryRef.current,
+          messageCount: messagesCountRef.current,
+          hasDraft,
+          busy: busyRef.current,
+          queuedCount: queuedCountRef.current,
+          mountedForMs: Date.now() - mountedAt,
+        })
+      ) {
+        return;
+      }
 
       const url = `${window.location.origin}/api/chat/sessions/${sessionId}`;
       if (navigator.sendBeacon) {
@@ -754,6 +779,19 @@ export function ChatInterface({
       } else {
         void fetch(url, { method: "DELETE" });
       }
+    };
+
+    // Tab close skips React unmount — pagehide is the only reliable signal
+    // there (sendBeacon exists exactly for this path).
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) return; // bfcache: the visit resumes, keep the session
+      tryAutoDelete();
+    };
+    window.addEventListener("pagehide", onPageHide);
+
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      tryAutoDelete();
     };
   }, [sessionId]);
 
