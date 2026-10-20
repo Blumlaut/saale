@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { ADMIN_NAV_ITEMS } from "@/components/admin/admin-nav";
-import { useSessionRole } from "@/hooks/use-session-role";
-import { roleHasAction } from "@/lib/permissions/roles";
+import { useSessionPermissions } from "@/hooks/use-session-permissions";
+import { hasGrant } from "@/lib/permissions/roles";
 
 interface MobileNavItem {
   href: string;
@@ -28,12 +28,12 @@ function isItemActive(href: string, pathname: string): boolean {
 export function MobileNav() {
   const pathname = usePathname();
   const { visibleItems } = useSidebarNav();
-  const role = useSessionRole();
-  const isAdmin = role ? roleHasAction(role, "admin", "access") : false;
+  const access = useSessionPermissions();
+  const isAdmin = access ? hasGrant(access.permissions, "admin", "access") : false;
   const inAdminPanel = pathname.startsWith("/admin");
 
-  const adminItems = role
-    ? ADMIN_NAV_ITEMS.filter((item) => roleHasAction(role, "admin", item.action))
+  const adminItems = access
+    ? ADMIN_NAV_ITEMS.filter((item) => hasGrant(access.permissions, "admin", item.action))
     : [];
 
   const items: MobileNavItem[] = inAdminPanel

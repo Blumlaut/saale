@@ -11,7 +11,7 @@ import { admin, twoFactor } from "better-auth/plugins";
 import { username } from "better-auth/plugins/username";
 import { prisma } from "@/lib/db";
 import { saaleAccessControl } from "@/lib/permissions/statements";
-import { SAAL_ROLES } from "@/lib/permissions/roles";
+import { AUTH_ROLES, loadRoleDefinitions } from "@/lib/permissions/role-cache";
 import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
 import { ADMIN_CREATE_USER_PATH, assertSignupsAllowed } from "@/lib/auth/signups";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
@@ -53,6 +53,10 @@ export const auth = betterAuth({
     // one could not be signed into — both entry points must carry it.
     // Format and uniqueness are enforced by the username plugin itself.
     before: createAuthMiddleware(async (ctx) => {
+      // The admin plugin validates role names and authorizes from `AUTH_ROLES`,
+      // which is loaded here so a custom role is never "non-existent".
+      await loadRoleDefinitions();
+
       const createdByAdmin = ctx.path === ADMIN_CREATE_USER_PATH;
       if (ctx.path !== "/sign-up/email" && !createdByAdmin) return;
 
@@ -106,7 +110,7 @@ export const auth = betterAuth({
       defaultRole: "user",
       adminRoles: ["admin"],
       ac: saaleAccessControl,
-      roles: SAAL_ROLES,
+      roles: AUTH_ROLES,
     }),
     twoFactor({
       issuer: "Saale",

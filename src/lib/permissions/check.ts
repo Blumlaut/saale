@@ -8,7 +8,8 @@
 import { prisma } from "@/lib/db";
 import { loadUserFeatures } from "./feature-access";
 import type { FeatureKey } from "./features";
-import { roleHasAction } from "./roles";
+import { loadRoleDefinitions } from "./role-cache";
+import { hasGrant, mergeRolePermissions, type RolePermissions } from "./roles";
 import type { PermissionResource } from "./statements";
 
 /** Look up a user's role string (comma-separated). */
@@ -17,13 +18,26 @@ export async function getUserRole(userId: string): Promise<string> {
   return user?.role ?? "user";
 }
 
+export interface RoleAccess {
+  role: string;
+  /** Everything the account's roles grant, merged. */
+  permissions: RolePermissions;
+}
+
+/** The account's role names and the grants they add up to. */
+export async function getRoleAccess(userId: string): Promise<RoleAccess> {
+  const [role, definitions] = await Promise.all([getUserRole(userId), loadRoleDefinitions()]);
+  return { role, permissions: mergeRolePermissions(definitions, role) };
+}
+
 /** Whether the account may perform an action on a resource. */
 export async function hasPermission(
   userId: string,
   resource: PermissionResource,
   action: string,
 ): Promise<boolean> {
-  return roleHasAction(await getUserRole(userId), resource, action);
+  const { permissions } = await getRoleAccess(userId);
+  return hasGrant(permissions, resource, action);
 }
 
 /** Convenience: may the account open the admin panel? */

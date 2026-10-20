@@ -34,7 +34,7 @@ const DASHBOARD_PAGES = [
   "/dashboard/settings",
 ];
 
-const ADMIN_PAGES = ["/admin/models", "/admin/users", "/admin/settings"];
+const ADMIN_PAGES = ["/admin/models", "/admin/users", "/admin/roles", "/admin/settings"];
 
 /**
  * Every route this spec measures: the dashboard, the councils (whose API is

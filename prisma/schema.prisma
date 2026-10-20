@@ -366,6 +366,29 @@ model AdminSettings {
   @@map("admin_settings")
 }
 
+// ─── Roles ─────────────────────────────────────────────────────
+
+/// A named permission bundle. `User.role` stores the name (comma-separated
+/// when an account holds several), so the row is what the navs, the admin
+/// routes and better-auth's own admin plugin authorize against.
+///
+/// The built-in roles are seeded from `src/lib/permissions/roles.ts` and may be
+/// edited, but only custom roles can be renamed or deleted.
+model Role {
+  /// Stored on the user record, e.g. "user-manager". Immutable once created.
+  name        String   @id
+  label       String
+  description String   @default("")
+  /// { "admin": ["users"], "user": ["list"], "session": [] } — sanitized on write.
+  permissions Json
+  /// Seeded from code; cannot be deleted, and `admin`/`user` cannot be edited.
+  builtin     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("Role")
+}
+
 // ─── App Settings ──────────────────────────────────────────────
 
 model AppSettings {

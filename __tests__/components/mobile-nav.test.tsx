@@ -4,6 +4,8 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { SidebarNavProvider } from "@/components/providers/sidebar-nav-provider";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { resetSessionPermissionsCache } from "@/hooks/use-session-permissions";
+import { BUILTIN_ROLES, mergeRolePermissions } from "@/lib/permissions/roles";
 
 const { pathnameRef } = vi.hoisted(() => ({
   pathnameRef: { current: "/dashboard/chat" },
@@ -13,14 +15,17 @@ vi.mock("next/navigation", () => ({
   usePathname: () => pathnameRef.current,
 }));
 
-/** Answer the layout GET and the session check depending on the URL. */
+/** Answer the layout GET and the permissions check depending on the URL. */
 function mockSession(role: string | null) {
+  const fixtures = mockPermissions();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/auth/get-session")) {
-        return new Response(JSON.stringify({ user: role ? { role } : {} }), { status: 200 });
+      if (url.includes("/api/permissions")) {
+        return role
+          ? new Response(JSON.stringify({ role, permissions: fixtures[role] }), { status: 200 })
+          : new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
       }
       return new Response(JSON.stringify({ items: [] }), { status: 200 });
     }),
@@ -41,8 +46,16 @@ function renderNav() {
   );
 }
 
+/** What /api/permissions would answer for a built-in role. */
+function mockPermissions(): Record<string, ReturnType<typeof mergeRolePermissions>> {
+  return Object.fromEntries(
+    BUILTIN_ROLES.map((role) => [role.name, mergeRolePermissions(BUILTIN_ROLES, role.name)]),
+  );
+}
+
 beforeEach(() => {
   pathnameRef.current = "/dashboard/chat";
+  resetSessionPermissionsCache();
   vi.clearAllMocks();
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -80,7 +93,9 @@ describe("MobileNav", () => {
     mockSession("admin");
     renderNav();
 
-    await waitFor(() => expect(labels()).toEqual(["Models", "Users", "Settings", "Dashboard"]));
+    await waitFor(() =>
+      expect(labels()).toEqual(["Models", "Users", "Roles", "Settings", "Dashboard"]),
+    );
 
     // The current admin page is flagged, and Dashboard links back to the app.
     const active = screen.getByRole("link", { name: /Users/ });
@@ -92,14 +107,12 @@ describe("MobileNav", () => {
     );
   });
 
-  it("falls back to the dashboard bar when the session check fails", async () => {
+  it("falls back to the dashboard bar when the permissions check fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/auth/get-session")) {
-          return new Response("{}", { status: 500 });
-        }
+        if (url.includes("/api/permissions")) return new Response("{}", { status: 500 });
         return new Response(JSON.stringify({ items: [] }), { status: 200 });
       }),
     );
@@ -108,7 +121,7 @@ describe("MobileNav", () => {
 
     await waitFor(() => expect(labels()).toHaveLength(7));
     expect(consoleError).toHaveBeenCalledWith(
-      "Failed to load the session role:",
+      "Failed to load session permissions:",
       expect.anything(),
     );
     consoleError.mockRestore();

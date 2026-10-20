@@ -19,6 +19,7 @@ import { createAccessControl } from "better-auth/plugins/access";
 export const ADMIN_ACTIONS = [
   "access",
   "users",
+  "roles",
   "models",
   "providers",
   "settings",
