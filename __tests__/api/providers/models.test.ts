@@ -18,14 +18,20 @@ vi.mock("@/lib/pi/models", () => ({
   buildModelRuntime: vi.fn(),
 }));
 
+vi.mock("@/lib/providers/endpoint", () => ({
+  readEndpointRow: vi.fn(),
+}));
+
 import * as auth from "@/lib/auth";
 import * as db from "@/lib/db";
 import * as models from "@/lib/pi/models";
+import * as endpoint from "@/lib/providers/endpoint";
 import { GET } from "@/app/api/providers/models/route";
 
 describe("GET /api/providers/models", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(endpoint.readEndpointRow).mockResolvedValue(null);
   });
 
   /* ── Auth ── */
@@ -145,6 +151,61 @@ describe("GET /api/providers/models", () => {
 
     expect(body.providers[0]).toMatchObject({ id: "custom", modelsConfigurable: true });
     expect(body.models.custom[0]).toMatchObject({ vision: true, contextWindow: 32_768 });
+  });
+
+  it("reports a per-model limit override alongside the resolved value", async () => {
+    vi.mocked(auth.requireSession).mockResolvedValue({
+      ok: true,
+      user: { id: "user-1" },
+    });
+    vi.mocked(models.buildModelRuntime).mockResolvedValue({
+      modelRuntime: {
+        getProvider: vi.fn().mockReturnValue({ id: "custom", name: "OpenAI-compatible" }),
+      } as never,
+      models: [
+        {
+          provider: "custom",
+          id: "big",
+          name: "big",
+          reasoning: false,
+          contextWindow: 131_072,
+          maxOutputTokens: 8_192,
+          vision: false,
+        },
+        {
+          provider: "custom",
+          id: "small",
+          name: "small",
+          reasoning: false,
+          contextWindow: 4_096,
+          maxOutputTokens: 4_096,
+          vision: false,
+        },
+      ],
+    });
+    vi.mocked(db.prisma.appSettings.findUnique).mockResolvedValue(null);
+    vi.mocked(endpoint.readEndpointRow).mockResolvedValue({
+      id: "key-1",
+      userId: "user-1",
+      baseUrl: "http://localhost:8080/v1",
+      encryptedKey: "enc()",
+      contextWindow: 131_072,
+      maxOutputTokens: 8_192,
+      modelCapabilities: { small: { contextWindow: 4_096 } },
+    });
+
+    const body = await (await GET(new NextRequest("http://localhost/api/providers/models"))).json();
+
+    // Only the model the user edited carries an override, and the endpoint's
+    // defaults are there for whatever a model leaves alone.
+    expect(body.models.custom[0]).toMatchObject({ id: "big", contextWindow: 131_072 });
+    expect(body.models.custom[0].overrides).toBeUndefined();
+    expect(body.models.custom[1]).toMatchObject({
+      id: "small",
+      contextWindow: 4_096,
+      overrides: { contextWindow: 4_096 },
+    });
+    expect(body.endpointLimits).toEqual({ contextWindow: 131_072, maxOutputTokens: 8_192 });
   });
 
   it("excludes disabled models by default", async () => {

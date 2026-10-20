@@ -33,9 +33,13 @@ export interface AvailableModel {
   reasoning: boolean;
   /** Whether the resolved model definition accepts image input. */
   vision?: boolean;
+  /** Context window Pi will compact against. */
   contextWindow?: number;
-  maxTokens?: number;
-  cost: { input: number; output: number };
+  /** Output cap Pi sends as the request's token budget. */
+  maxOutputTokens?: number;
+  /** Limits the user recorded for this model; an unset field inherits. */
+  overrides?: { contextWindow?: number; maxOutputTokens?: number };
+  cost?: { input: number; output: number };
 }
 
 export interface AvailableProvider {

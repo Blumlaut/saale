@@ -1,5 +1,6 @@
 /**
- * Persistence for per-model capabilities.
+ * Persistence for one model's settings — what it accepts, and how big its window
+ * and output cap are.
  *
  * Shared by the user and admin capability routes, which differ only in how they
  * find the provider key they act on — the validation, probing and merging are
@@ -9,17 +10,20 @@
  */
 
 import { prisma } from "@/lib/db";
-import { fetchOpenAIModels } from "@/lib/pi/models";
+import { fetchEndpointListing } from "@/lib/pi/models";
 import {
   detectModelCapabilities,
   mergeDetectedCapabilities,
   parseModelCapabilityMap,
+  parseVisionEdit,
   serializeModelCapabilityMap,
+  withModelLimits,
   withModelVision,
   withoutModelVision,
   type ModelCapabilityMap,
 } from "@/lib/providers/capabilities";
 import { definesProviderModels } from "@/lib/providers/config";
+import { parseModelLimitEdit } from "@/lib/providers/limits";
 
 /** Why a capability request cannot be served, or `null` when it can. */
 export function rejectUnconfigurableProvider(provider: unknown): string | null {
@@ -30,19 +34,72 @@ export function rejectUnconfigurableProvider(provider: unknown): string | null {
   return null;
 }
 
-/** Record one model's vision flag, or put it back on automatic detection. */
-export async function setProviderModelVision(options: {
+/** A validated edit to one model's settings. */
+export interface ModelSettingsEdit {
+  modelId: string;
+  /** Absent = leave as stored; `null` = back on automatic detection. */
+  vision?: boolean | null;
+  /** Absent = leave as stored; `null` = inherit the endpoint's default. */
+  contextWindow?: number | null;
+  maxOutputTokens?: number | null;
+}
+
+/**
+ * Validate an edit to one model's settings.
+ *
+ * Vision is a capability, the two limits are numbers, and an omitted key means
+ * "leave it as stored" — the editor writes one field at a time.
+ */
+export function parseModelSettingsEdit(body: {
+  modelId?: unknown;
+  vision?: unknown;
+  contextWindow?: unknown;
+  maxOutputTokens?: unknown;
+}): ModelSettingsEdit | { error: string } {
+  const vision = parseVisionEdit(body);
+  if ("error" in vision) return vision;
+
+  const limits = parseModelLimitEdit(body);
+  if ("error" in limits) return limits;
+
+  const edit: ModelSettingsEdit = { modelId: vision.modelId };
+  if (body.vision !== undefined) edit.vision = vision.vision;
+  if (limits.contextWindow !== undefined) edit.contextWindow = limits.contextWindow;
+  if (limits.maxOutputTokens !== undefined) edit.maxOutputTokens = limits.maxOutputTokens;
+
+  const changed =
+    edit.vision !== undefined ||
+    edit.contextWindow !== undefined ||
+    edit.maxOutputTokens !== undefined;
+  if (!changed) {
+    return { error: "vision, contextWindow or maxOutputTokens is required" };
+  }
+
+  return edit;
+}
+
+/**
+ * Record one model's vision flag and limits, leaving every other model — and
+ * every field the edit does not mention — alone.
+ */
+export async function setProviderModelSettings(options: {
   keyId: string;
   stored: unknown;
-  modelId: string;
-  /** `null` resets the model to automatic detection. */
-  vision: boolean | null;
+  edit: ModelSettingsEdit;
 }): Promise<ModelCapabilityMap> {
-  const stored = parseModelCapabilityMap(options.stored);
-  const modelCapabilities =
-    options.vision === null
-      ? withoutModelVision(stored, options.modelId)
-      : withModelVision(stored, options.modelId, options.vision);
+  let modelCapabilities = parseModelCapabilityMap(options.stored);
+
+  if (options.edit.vision !== undefined) {
+    modelCapabilities =
+      options.edit.vision === null
+        ? withoutModelVision(modelCapabilities, options.edit.modelId)
+        : withModelVision(modelCapabilities, options.edit.modelId, options.edit.vision);
+  }
+
+  modelCapabilities = withModelLimits(modelCapabilities, options.edit.modelId, {
+    contextWindow: options.edit.contextWindow,
+    maxOutputTokens: options.edit.maxOutputTokens,
+  });
 
   await prisma.providerApiKey.update({
     where: { id: options.keyId },
@@ -56,6 +113,8 @@ export interface CapabilityDetectionSummary {
   modelCapabilities: ModelCapabilityMap;
   /** Models the endpoint reported capabilities for. */
   detected: number;
+  /** Models it reported a context window for. */
+  contextWindows: number;
   /** How many of those accept images. */
   visionModels: number;
   /** Models the provider lists. */
@@ -69,8 +128,8 @@ export interface CapabilityDetectionSummary {
  *
  * Detection overwrites what it answered for and leaves the rest alone: the
  * endpoint knows what it loaded, but a model it said nothing about must not
- * forget a flag the user set by hand. Nothing is written when the endpoint
- * answered nothing at all (the usual case — only llama.cpp reports
+ * forget a limit or flag the user set by hand. Nothing is written when the
+ * endpoint answered nothing at all (the usual case — only llama.cpp reports
  * capabilities), so an import of an ordinary OpenAI-compatible endpoint does
  * not rewrite the stored map to say the same thing.
  */
@@ -82,11 +141,22 @@ export async function detectAndStoreProviderCapabilities(options: {
   /** Model ids to attribute answers to; discovered from the endpoint when omitted. */
   modelIds?: string[] | undefined;
 }): Promise<CapabilityDetectionSummary> {
-  const modelIds = options.modelIds ?? (await fetchOpenAIModels(options.baseUrl, options.apiKey));
+  const listing = await fetchEndpointListing(options.baseUrl, options.apiKey);
+  const modelIds = options.modelIds ?? listing.models.map((model) => model.id);
+
+  // What the listing already stated, so the sweep only pays for what it cannot
+  // learn there — and pays nothing at all behind a load-on-demand proxy.
+  const reported: ModelCapabilityMap = {};
+  for (const model of listing.models) {
+    if (Object.keys(model.capabilities).length > 0) reported[model.id] = model.capabilities;
+  }
+
   const detection = await detectModelCapabilities({
     baseUrl: options.baseUrl,
     apiKey: options.apiKey,
     modelIds,
+    reported,
+    loadOnDemand: listing.loadOnDemand,
   });
 
   const modelCapabilities = mergeDetectedCapabilities(
@@ -101,10 +171,12 @@ export async function detectAndStoreProviderCapabilities(options: {
     });
   }
 
+  const answered = Object.values(detection.capabilities);
   return {
     modelCapabilities,
-    detected: Object.keys(detection.capabilities).length,
-    visionModels: Object.values(detection.capabilities).filter((c) => c.vision === true).length,
+    detected: answered.length,
+    contextWindows: answered.filter((c) => c.contextWindow !== undefined).length,
+    visionModels: answered.filter((c) => c.vision === true).length,
     modelCount: modelIds.length,
     unprobed: detection.unprobed,
   };

@@ -16,12 +16,20 @@
  * projector it actually loaded — and set by the user where it cannot. What is
  * stored is what the model definition claims, so nothing decides per request
  * whether a picture is worth sending.
+ *
+ * The same map carries a model's token limits: one local server can serve a 4k
+ * model and a 128k one, and Pi needs the right window per model to know when to
+ * compact. An absent limit inherits the endpoint's default for that field.
  */
 
 /** What Saale knows about one discovered model. */
 export interface ModelCapabilities {
   /** Whether the model accepts image input. Absent = not known. */
   vision?: boolean;
+  /** Context window of this model. Absent = inherit the endpoint's default. */
+  contextWindow?: number;
+  /** Output cap for this model. Absent = inherit the endpoint's default. */
+  maxOutputTokens?: number;
 }
 
 /** Per-provider map of model id → capabilities. */
@@ -98,6 +106,24 @@ function visionFromProps(props: Record<string, unknown>): boolean | undefined {
   return typeof vision === "boolean" ? vision : undefined;
 }
 
+/**
+ * The context window of a llama.cpp server's loaded model, when it reports one.
+ *
+ * `n_ctx` is what the server was started with (`--ctx-size`), so it is the real
+ * limit a request has to fit in — older builds put it on the payload, newer ones
+ * inside `default_generation_settings`.
+ */
+function contextWindowFromProps(props: Record<string, unknown>): number | undefined {
+  const settings = props.default_generation_settings;
+  const nested =
+    typeof settings === "object" && settings !== null
+      ? (settings as Record<string, unknown>).n_ctx
+      : undefined;
+  const nCtx = typeof nested === "number" ? nested : props.n_ctx;
+  if (typeof nCtx !== "number" || !Number.isInteger(nCtx) || nCtx <= 0) return undefined;
+  return nCtx;
+}
+
 function toStringList(value: unknown): string[] {
   if (typeof value === "string") {
     return value
@@ -130,15 +156,15 @@ function propsIdentifyModel(props: Record<string, unknown>, modelId: string): bo
 }
 
 /**
- * Vision support for one model, or `undefined` when the endpoint cannot be made
- * to answer for it.
+ * What the endpoint reports about one model, or `undefined` when it cannot be
+ * made to answer for it.
  */
-async function probeVision(
+async function probeModel(
   baseUrl: string,
   apiKey: string | undefined,
   modelId: string,
   options: { plain: boolean; deadline: number },
-): Promise<boolean | undefined> {
+): Promise<ModelCapabilities | undefined> {
   const remaining = Math.min(PROBE_TIMEOUT_MS, options.deadline - Date.now());
   if (remaining <= 0) return undefined;
 
@@ -148,7 +174,13 @@ async function probeVision(
   const props = await fetchJsonObject(url, apiKey, remaining);
   if (!props) return undefined;
   if (!options.plain && !propsIdentifyModel(props, modelId)) return undefined;
-  return visionFromProps(props);
+
+  const capabilities: ModelCapabilities = {};
+  const vision = visionFromProps(props);
+  if (vision !== undefined) capabilities.vision = vision;
+  const contextWindow = contextWindowFromProps(props);
+  if (contextWindow !== undefined) capabilities.contextWindow = contextWindow;
+  return Object.keys(capabilities).length > 0 ? capabilities : undefined;
 }
 
 export interface CapabilityDetectionResult {
@@ -158,18 +190,118 @@ export interface CapabilityDetectionResult {
   unprobed: number;
 }
 
+/** What an endpoint's `/models` listing states about one of its models. */
+export interface ListedModel {
+  id: string;
+  /** Whatever the listing stated; empty when it said nothing. */
+  capabilities: ModelCapabilities;
+}
+
+export interface EndpointListing {
+  models: ListedModel[];
+  /**
+   * Whether the endpoint swaps models in on demand — llama-swap and the like
+   * answer a per-model `/props` probe by loading that model, evicting the one in
+   * use and taking as long as a load takes.
+   */
+  loadOnDemand: boolean;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 /**
- * Ask an OpenAI-compatible endpoint what its models can do.
+ * The context window a listing entry states, in the names servers use for it.
  *
- * Only llama.cpp answers today — its `/props` reports the projector it loaded,
- * per model when it serves a directory of them (`?model=`). Every other endpoint
- * falls through with an empty answer, which the UI presents as "set it by hand"
- * rather than as "no vision".
+ * vLLM reports `max_model_len`, LM Studio `max_context_length`, llama-swap
+ * `context_length`/`context_window` plus its own `meta.n_ctx`.
+ */
+function listedContextWindow(entry: Record<string, unknown>): number | undefined {
+  for (const key of ["context_length", "context_window", "max_model_len", "max_context_length"]) {
+    const value = positiveInteger(entry[key]);
+    if (value !== undefined) return value;
+  }
+  const meta = asRecord(entry.meta);
+  return positiveInteger(meta?.n_ctx) ?? positiveInteger(asRecord(meta?.llamaswap)?.n_ctx);
+}
+
+/** Whether a listing entry says the model takes images. */
+function listedVision(entry: Record<string, unknown>): boolean | undefined {
+  const capabilities = asRecord(entry.capabilities);
+  if (typeof capabilities?.vision === "boolean") return capabilities.vision;
+
+  const modalities = asRecord(entry.architecture)?.input_modalities;
+  if (Array.isArray(modalities)) return modalities.includes("image");
+
+  const meta = asRecord(entry.meta);
+  const vision =
+    asRecord(asRecord(meta?.llamaswap)?.modalities)?.vision ?? asRecord(meta?.modalities)?.vision;
+  return typeof vision === "boolean" ? vision : undefined;
+}
+
+/**
+ * Read an OpenAI-compatible `/models` payload.
+ *
+ * Most servers list ids and nothing else, but the ones that state a model's
+ * window or modalities save the user from typing them — and both llama-swap and
+ * vLLM state the window without loading anything.
+ */
+export function parseEndpointListing(payload: unknown): EndpointListing {
+  const data = asRecord(payload)?.data;
+  if (!Array.isArray(data)) return { models: [], loadOnDemand: false };
+
+  const models: ListedModel[] = [];
+  let loadOnDemand = false;
+
+  for (const raw of data) {
+    const entry = asRecord(raw);
+    const id = entry?.id;
+    if (typeof id !== "string" || id.length === 0) continue;
+
+    // llama-swap marks its own listing; a probe would load a model.
+    if (entry?.owned_by === "llama-swap" || asRecord(entry?.meta)?.llamaswap !== undefined) {
+      loadOnDemand = true;
+    }
+
+    const capabilities: ModelCapabilities = {};
+    const contextWindow = listedContextWindow(entry!);
+    if (contextWindow !== undefined) capabilities.contextWindow = contextWindow;
+    const vision = listedVision(entry!);
+    if (vision !== undefined) capabilities.vision = vision;
+
+    models.push({ id, capabilities });
+  }
+
+  return { models, loadOnDemand };
+}
+
+/**
+ * Ask an OpenAI-compatible endpoint what its models can do and how big each
+ * window is.
+ *
+ * Two sources, in order of cost. The listing is free (it was fetched anyway) and
+ * already answers for llama-swap, vLLM and LM Studio. `/props` is how a bare
+ * llama-server states the `n_ctx` it was started with, but it is only asked for
+ * models the listing left unknown, and never of a load-on-demand proxy — where
+ * the answer would cost a model swap.
+ *
+ * Everything else falls through with an empty answer, which the UI presents as
+ * "set it by hand" rather than as "no vision" and "no window".
  */
 export async function detectModelCapabilities(options: {
   baseUrl: string;
   apiKey?: string | undefined;
   modelIds: string[];
+  /** What the listing already stated, keyed by model id. */
+  reported?: ModelCapabilityMap | undefined;
+  /** Skip `/props` entirely — the endpoint loads models on demand. */
+  loadOnDemand?: boolean | undefined;
   budgetMs?: number;
 }): Promise<CapabilityDetectionResult> {
   const baseUrl = introspectionBaseUrl(options.baseUrl);
@@ -180,32 +312,45 @@ export async function detectModelCapabilities(options: {
       `Model capability detection skipped ${allModelIds.length - modelIds.length} of ${allModelIds.length} models at ${baseUrl} (probe cap ${MAX_PROBED_MODELS})`,
     );
   }
-  const deadline = Date.now() + (options.budgetMs ?? DETECTION_BUDGET_MS);
+
   const capabilities: ModelCapabilityMap = {};
+  for (const modelId of allModelIds) {
+    const reported = options.reported?.[modelId];
+    if (reported) capabilities[modelId] = { ...reported };
+  }
 
-  if (modelIds.length === 0) return { capabilities, unprobed: 0 };
+  // `/props` only adds what the listing could not say, and a proxy would charge
+  // a model load for the asking.
+  const unprobedIds = modelIds.filter(
+    (modelId) => !options.loadOnDemand && capabilities[modelId]?.vision === undefined,
+  );
+  if (unprobedIds.length === 0) {
+    return { capabilities, unprobed: allModelIds.length - Object.keys(capabilities).length };
+  }
 
-  if (modelIds.length === 1) {
+  const deadline = Date.now() + (options.budgetMs ?? DETECTION_BUDGET_MS);
+
+  if (allModelIds.length === 1) {
     // A single-model endpoint has exactly one `modalities` to report, and the
     // unparameterised probe answers for it — no name matching needed.
-    const modelId = modelIds[0]!;
-    const vision = await probeVision(baseUrl, options.apiKey, modelId, {
+    const modelId = unprobedIds[0]!;
+    const probed = await probeModel(baseUrl, options.apiKey, modelId, {
       plain: true,
       deadline,
     });
-    if (vision !== undefined) capabilities[modelId] = { vision };
+    if (probed) capabilities[modelId] = { ...capabilities[modelId], ...probed };
   } else {
-    for (let index = 0; index < modelIds.length; index += PROBE_CONCURRENCY) {
+    for (let index = 0; index < unprobedIds.length; index += PROBE_CONCURRENCY) {
       if (Date.now() >= deadline) break;
-      const batch = modelIds.slice(index, index + PROBE_CONCURRENCY);
+      const batch = unprobedIds.slice(index, index + PROBE_CONCURRENCY);
       const probed = await Promise.all(
         batch.map((modelId) =>
-          probeVision(baseUrl, options.apiKey, modelId, { plain: false, deadline }),
+          probeModel(baseUrl, options.apiKey, modelId, { plain: false, deadline }),
         ),
       );
       for (const [offset, modelId] of batch.entries()) {
-        const vision = probed[offset];
-        if (vision !== undefined) capabilities[modelId] = { vision };
+        const answer = probed[offset];
+        if (answer) capabilities[modelId] = { ...capabilities[modelId], ...answer };
       }
     }
   }
@@ -215,6 +360,11 @@ export async function detectModelCapabilities(options: {
   return { capabilities, unprobed: allModelIds.length - Object.keys(capabilities).length };
 }
 
+/** A token limit read out of stored JSON, or `undefined` when it is not one. */
+function storedTokenLimit(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 /** Read a capability map out of stored JSON, ignoring anything malformed. */
 export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
@@ -222,8 +372,16 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
   const map: ModelCapabilityMap = {};
   for (const [modelId, entry] of Object.entries(value)) {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
-    const vision = (entry as Record<string, unknown>).vision;
-    if (typeof vision === "boolean") map[modelId] = { vision };
+
+    const raw = entry as Record<string, unknown>;
+    const capabilities: ModelCapabilities = {};
+    if (typeof raw.vision === "boolean") capabilities.vision = raw.vision;
+    const contextWindow = storedTokenLimit(raw.contextWindow);
+    if (contextWindow !== undefined) capabilities.contextWindow = contextWindow;
+    const maxOutputTokens = storedTokenLimit(raw.maxOutputTokens);
+    if (maxOutputTokens !== undefined) capabilities.maxOutputTokens = maxOutputTokens;
+
+    if (Object.keys(capabilities).length > 0) map[modelId] = capabilities;
   }
   return map;
 }
@@ -232,6 +390,18 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
 export function configuredVision(map: ModelCapabilityMap, modelId: string): boolean | undefined {
   const vision = map[modelId]?.vision;
   return typeof vision === "boolean" ? vision : undefined;
+}
+
+/** The token limits recorded for a model, with nothing inherited. */
+export function configuredLimits(
+  map: ModelCapabilityMap,
+  modelId: string,
+): { contextWindow?: number; maxOutputTokens?: number } {
+  const entry = map[modelId];
+  const limits: { contextWindow?: number; maxOutputTokens?: number } = {};
+  if (typeof entry?.contextWindow === "number") limits.contextWindow = entry.contextWindow;
+  if (typeof entry?.maxOutputTokens === "number") limits.maxOutputTokens = entry.maxOutputTokens;
+  return limits;
 }
 
 /** A copy of `map` with `modelId`'s vision flag set. */
@@ -255,6 +425,35 @@ export function withoutModelVision(map: ModelCapabilityMap, modelId: string): Mo
 }
 
 /**
+ * A copy of `map` with some of `modelId`'s limits set.
+ *
+ * `null` clears one field so the model inherits the endpoint's default again; a
+ * field the caller omits is left exactly as stored.
+ */
+export function withModelLimits(
+  map: ModelCapabilityMap,
+  modelId: string,
+  limits: {
+    contextWindow?: number | null | undefined;
+    maxOutputTokens?: number | null | undefined;
+  },
+): ModelCapabilityMap {
+  const next = { ...map };
+  const entry: ModelCapabilities = { ...next[modelId] };
+
+  for (const field of ["contextWindow", "maxOutputTokens"] as const) {
+    const value = limits[field];
+    if (value === undefined) continue;
+    if (value === null) delete entry[field];
+    else entry[field] = value;
+  }
+
+  if (Object.keys(entry).length === 0) delete next[modelId];
+  else next[modelId] = entry;
+  return next;
+}
+
+/**
  * The stored form of a capability map.
  *
  * Prisma's JSON input rejects `undefined`, which an optional flag projects into
@@ -263,11 +462,17 @@ export function withoutModelVision(map: ModelCapabilityMap, modelId: string): Mo
  */
 export function serializeModelCapabilityMap(
   map: ModelCapabilityMap,
-): Record<string, Record<string, boolean>> {
-  const serialized: Record<string, Record<string, boolean>> = {};
+): Record<string, Record<string, boolean | number>> {
+  const serialized: Record<string, Record<string, boolean | number>> = {};
   for (const [modelId, capabilities] of Object.entries(map)) {
-    const entry: Record<string, boolean> = {};
+    const entry: Record<string, boolean | number> = {};
     if (typeof capabilities.vision === "boolean") entry.vision = capabilities.vision;
+    if (typeof capabilities.contextWindow === "number") {
+      entry.contextWindow = capabilities.contextWindow;
+    }
+    if (typeof capabilities.maxOutputTokens === "number") {
+      entry.maxOutputTokens = capabilities.maxOutputTokens;
+    }
     if (Object.keys(entry).length > 0) serialized[modelId] = entry;
   }
   return serialized;
@@ -276,15 +481,21 @@ export function serializeModelCapabilityMap(
 /**
  * Fold freshly detected capabilities into the stored ones.
  *
- * Detection wins where it answered — an explicit refresh asks the endpoint, and
- * the endpoint is the authority on what it loaded — while models it could not
- * answer for keep whatever the user (or a previous sweep) recorded.
+ * Detection wins per field where it answered — an explicit refresh asks the
+ * endpoint, and the endpoint is the authority on what it loaded — while
+ * everything it could not answer for keeps whatever the user (or a previous
+ * sweep) recorded. Merging per field rather than per model is what stops a
+ * detected vision flag from dropping a window the user typed by hand.
  */
 export function mergeDetectedCapabilities(
   stored: ModelCapabilityMap,
   detected: ModelCapabilityMap,
 ): ModelCapabilityMap {
-  return { ...stored, ...detected };
+  const merged: ModelCapabilityMap = { ...stored };
+  for (const [modelId, capabilities] of Object.entries(detected)) {
+    merged[modelId] = { ...merged[modelId], ...capabilities };
+  }
+  return merged;
 }
 
 /** Validate a capability edit from a request body. */

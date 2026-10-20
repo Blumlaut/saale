@@ -59,7 +59,10 @@ type DiscoveryInfo =
       kind: "detect";
       modelCount: number;
       detected: number;
+      /** How many of those accept images. */
       visionModels: number;
+      /** How many came with a context window. */
+      contextWindows: number;
       unprobed: number;
     };
 
@@ -261,10 +264,13 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
   };
 
   /**
-   * Ask the endpoint what its models can do (image input, today) and store the
-   * answers. A button rather than something automatic: most endpoints cannot
-   * answer at all — llama.cpp's `/props` is the one that can — so a failed probe
-   * must not be mistaken for "no model here sees images".
+   * Ask the endpoint about its models — the window each one runs at, and
+   * whether it takes images — and store the answers.
+   *
+   * A button rather than something automatic: a load-on-demand proxy like
+   * llama-swap charges a probe with a model load, so the sweep is the user's
+   * call, and a failed probe must not be mistaken for "no model here sees
+   * images".
    */
   const handleDetectCapabilities = async () => {
     setDetecting(CUSTOM_PROVIDER_ID);
@@ -273,6 +279,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         modelCount: number;
         detected: number;
         visionModels: number;
+        contextWindows: number;
         unprobed: number;
       }>(endpoints.capabilities, { provider: CUSTOM_PROVIDER_ID });
       setDiscoveryInfo({
@@ -280,6 +287,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         modelCount: data.modelCount,
         detected: data.detected,
         visionModels: data.visionModels,
+        contextWindows: data.contextWindows,
         unprobed: data.unprobed,
       });
       onChangedRef.current?.();
@@ -370,14 +378,18 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         )}
         {discoveryInfo?.kind === "detect" && discoveryInfo.detected === 0 && (
           <span className="flex items-center gap-1 text-xs text-amber-500">
-            <AlertCircle className="h-3.5 w-3.5" /> This endpoint reports no model capabilities —
-            set vision per model in the list above
+            <AlertCircle className="h-3.5 w-3.5" /> This endpoint says nothing about its models —
+            set the window and vision per model in the model list
           </span>
         )}
         {discoveryInfo?.kind === "detect" && discoveryInfo.detected > 0 && (
           <span className="flex items-center gap-1 text-xs text-emerald-500">
             <ScanEye className="h-3.5 w-3.5" />
-            {discoveryInfo.visionModels} of {discoveryInfo.modelCount} models accept images
+            {discoveryInfo.detected} of {discoveryInfo.modelCount} models described
+            {discoveryInfo.contextWindows > 0
+              ? `, ${discoveryInfo.contextWindows} with a window`
+              : ""}
+            {discoveryInfo.visionModels > 0 ? `, ${discoveryInfo.visionModels} with vision` : ""}
           </span>
         )}
       </div>
@@ -484,7 +496,7 @@ function ProviderRow({
                   ) : (
                     <ScanEye className="mr-2 h-3.5 w-3.5" />
                   )}
-                  Detect model capabilities
+                  Detect model limits
                 </DropdownMenuItem>
               </>
             )}

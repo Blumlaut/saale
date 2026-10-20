@@ -11,8 +11,13 @@ vi.mock("@/lib/pi/models", () => ({
   buildAdminModelList: vi.fn(),
 }));
 
+vi.mock("@/lib/providers/endpoint", () => ({
+  readEndpointRow: vi.fn(),
+}));
+
 import { requirePermission } from "@/lib/auth";
 import * as piModels from "@/lib/pi/models";
+import * as endpoint from "@/lib/providers/endpoint";
 import { GET } from "@/app/api/admin/providers/models/route";
 
 /** One model as `buildGlobalModelRuntime` reports it. */
@@ -23,6 +28,7 @@ function model(overrides: Record<string, unknown> = {}) {
     name: "Claude Sonnet",
     reasoning: true,
     contextWindow: 200_000,
+    maxOutputTokens: 64_000,
     vision: true,
     ...overrides,
   };
@@ -46,6 +52,7 @@ describe("GET /api/admin/providers/models", () => {
       user: { id: "admin-1" },
     } as never);
     stubRuntime([]);
+    vi.mocked(endpoint.readEndpointRow).mockResolvedValue(null);
   });
 
   it("returns 401 when the caller is not an admin", async () => {
@@ -77,8 +84,22 @@ describe("GET /api/admin/providers/models", () => {
       { id: "groq", name: "Groq", modelCount: 2, modelsConfigurable: false },
     ]);
     expect(body.models.groq).toEqual([
-      { id: "llama", name: "Llama", reasoning: false, vision: false },
-      { id: "qwen", name: "Qwen", reasoning: true, vision: false },
+      {
+        id: "llama",
+        name: "Llama",
+        reasoning: false,
+        vision: false,
+        contextWindow: 200_000,
+        maxOutputTokens: 64_000,
+      },
+      {
+        id: "qwen",
+        name: "Qwen",
+        reasoning: true,
+        vision: false,
+        contextWindow: 200_000,
+        maxOutputTokens: 64_000,
+      },
     ]);
   });
 
@@ -90,7 +111,14 @@ describe("GET /api/admin/providers/models", () => {
     const body = await (await GET()).json();
 
     expect(body.models.anthropic).toEqual([
-      { id: "deepseek-r1-distill", name: "Claude Sonnet", reasoning: false, vision: true },
+      {
+        id: "deepseek-r1-distill",
+        name: "Claude Sonnet",
+        reasoning: false,
+        vision: true,
+        contextWindow: 200_000,
+        maxOutputTokens: 64_000,
+      },
     ]);
   });
 
@@ -125,14 +153,55 @@ describe("GET /api/admin/providers/models", () => {
     const body = await (await GET()).json();
 
     expect(body.models.groq).toEqual([
-      { id: "llama", name: "Claude Sonnet", reasoning: true, vision: true },
+      {
+        id: "llama",
+        name: "Claude Sonnet",
+        reasoning: true,
+        vision: true,
+        contextWindow: 200_000,
+        maxOutputTokens: 64_000,
+      },
     ]);
     expect(piModels.buildAdminModelList).toHaveBeenCalled();
+  });
+
+  it("reports a per-model limit override and the endpoint defaults behind it", async () => {
+    stubRuntime(
+      [
+        model({
+          provider: "custom",
+          id: "local",
+          contextWindow: 32_768,
+          maxOutputTokens: 4_096,
+        }),
+      ],
+      { custom: "OpenAI-compatible" },
+    );
+    vi.mocked(endpoint.readEndpointRow).mockResolvedValue({
+      id: "key-1",
+      userId: null,
+      baseUrl: "http://localhost:8080/v1",
+      encryptedKey: "enc()",
+      contextWindow: 131_072,
+      maxOutputTokens: 8_192,
+      modelCapabilities: { local: { contextWindow: 32_768, maxOutputTokens: 4_096 } },
+    });
+
+    const body = await (await GET()).json();
+
+    // The override is priced in, and the endpoint's defaults are available for
+    // the fields a model leaves alone.
+    expect(body.models.custom[0]).toMatchObject({
+      contextWindow: 32_768,
+      maxOutputTokens: 4_096,
+      overrides: { contextWindow: 32_768, maxOutputTokens: 4_096 },
+    });
+    expect(body.endpointLimits).toEqual({ contextWindow: 131_072, maxOutputTokens: 8_192 });
   });
 
   it("returns an empty listing when the global configuration has no models", async () => {
     const body = await (await GET()).json();
 
-    expect(body).toEqual({ models: {}, providers: [] });
+    expect(body).toEqual({ models: {}, providers: [], endpointLimits: null });
   });
 });

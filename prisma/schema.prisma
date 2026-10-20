@@ -431,13 +431,16 @@ model ProviderApiKey {
   encryptedCredential String? @db.Text
   label          String   @default("") // optional label
   baseUrl        String?  // for custom OpenAI-compatible providers
-  /// Output token cap for this provider's models. null = Pi's model default.
+  /// Output token cap for every model this endpoint serves: a model that sets
+  /// its own in `modelCapabilities` overrides it, null = Pi's model default.
   maxOutputTokens Int?
-  /// Context window for this provider's models. null = Pi's model default.
+  /// Context window for every model this endpoint serves: a model that sets
+  /// its own in `modelCapabilities` overrides it, null = Pi's model default.
   contextWindow   Int?
-  /// Per-model capabilities (detected, or set by the user) for a provider whose
-  /// models Saale discovers from `/models`: { "<modelId>": { "vision": true } }.
-  /// A model with no entry here follows Pi's catalog, or claims text only.
+  /// Per-model settings (detected, or set by the user) for a provider whose
+  /// models Saale discovers from `/models`: { "<modelId>": { "vision": true,
+  /// "contextWindow": 32768, "maxOutputTokens": 8192 } }. A field a model leaves
+  /// out inherits the row's default, then Pi's catalog, then Pi.
   modelCapabilities Json?
   user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())

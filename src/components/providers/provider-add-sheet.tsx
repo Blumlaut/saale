@@ -247,7 +247,7 @@ export function ProviderAddSheet({
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Context window</Label>
+                    <Label className="text-xs">Context window (default)</Label>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -261,7 +261,7 @@ export function ProviderAddSheet({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Max output tokens</Label>
+                    <Label className="text-xs">Max output tokens (default)</Label>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -276,11 +276,11 @@ export function ProviderAddSheet({
                   </div>
                 </div>
                 <p className="text-muted-foreground text-[11px]">
-                  Limits are what Pi sends as the request&apos;s token budget for the models this
-                  endpoint serves. Leave them empty to use Pi&apos;s defaults (
-                  {PI_DEFAULT_CONTEXT_WINDOW.toLocaleString()} context /{" "}
-                  {PI_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()} output); a larger cap than the
-                  endpoint allows is rejected by the provider.
+                  These apply to every model this endpoint serves. One server can serve models with
+                  different windows, so a single model can set its own in the model list. Leave a
+                  field empty to use Pi&apos;s default ({PI_DEFAULT_CONTEXT_WINDOW.toLocaleString()}{" "}
+                  context / {PI_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()} output) — a larger cap
+                  than the endpoint allows is rejected by the provider.
                 </p>
               </div>
 

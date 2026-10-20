@@ -3,11 +3,11 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { parseVisionEdit } from "@/lib/providers/capabilities";
 import {
   detectAndStoreProviderCapabilities,
+  parseModelSettingsEdit,
   rejectUnconfigurableProvider,
-  setProviderModelVision,
+  setProviderModelSettings,
 } from "@/lib/providers/provider-capabilities";
 
 /** The authenticated user's provider key, scoped so no other tenant's is reachable. */
@@ -25,10 +25,12 @@ async function findProviderKey(userId: string, provider: string) {
 }
 
 /**
- * PATCH /api/providers/capabilities — Record what a model can do.
+ * PATCH /api/providers/capabilities — Record what one model can do and how big
+ * its window is.
  *
- * Body: `{ provider, modelId, vision }` — `vision: null` puts the model back on
- * automatic detection.
+ * Body: `{ provider, modelId, vision?, contextWindow?, maxOutputTokens? }`. A
+ * key the body omits is left as stored; `null` clears it, so the model inherits
+ * the endpoint's default again.
  */
 export async function PATCH(request: NextRequest) {
   const authResult = await requireSession();
@@ -40,7 +42,7 @@ export async function PATCH(request: NextRequest) {
   const providerError = rejectUnconfigurableProvider(body.provider);
   if (providerError) return NextResponse.json({ error: providerError }, { status: 400 });
 
-  const edit = parseVisionEdit(body);
+  const edit = parseModelSettingsEdit(body);
   if ("error" in edit) return NextResponse.json({ error: edit.error }, { status: 400 });
 
   const key = await findProviderKey(authResult.user.id, body.provider);
@@ -48,11 +50,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Provider is not configured" }, { status: 404 });
   }
 
-  const modelCapabilities = await setProviderModelVision({
+  const modelCapabilities = await setProviderModelSettings({
     keyId: key.id,
     stored: key.modelCapabilities,
-    modelId: edit.modelId,
-    vision: edit.vision,
+    edit,
   });
 
   return NextResponse.json({ provider: key.provider, modelCapabilities });

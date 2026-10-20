@@ -392,6 +392,74 @@ describe("buildModelRuntime", () => {
       });
     });
 
+    it("applies a per-model limit over the endpoint default and the catalog", async () => {
+      // One server, two windows: the endpoint default is 128k, and the model
+      // Pi's catalog over-reports at 200k is the one the endpoint serves at 32k.
+      stubEndpointRow({
+        contextWindow: 131_072,
+        maxOutputTokens: 8_192,
+        modelCapabilities: { "claude-sonnet": { contextWindow: 32_768 } },
+      });
+      stubModelListing(["local-model", "claude-sonnet"]);
+      const runtime = stubRuntime({
+        getModel: vi.fn((provider: string, id: string) =>
+          id === "claude-sonnet" ? catalogModel() : undefined,
+        ),
+      });
+
+      await buildModelRuntime("user-1");
+
+      const definition = vi.mocked(runtime.registerProvider).mock.calls[0]![1] as {
+        models: Record<string, unknown>[];
+      };
+      expect(definition.models.find((m) => m.id === "claude-sonnet")).toMatchObject({
+        contextWindow: 32_768,
+        maxTokens: 8_192,
+      });
+      // The model without an override keeps the endpoint's default.
+      expect(definition.models.find((m) => m.id === "local-model")).toMatchObject({
+        contextWindow: 131_072,
+        maxTokens: 8_192,
+      });
+    });
+
+    it("uses the window and vision the endpoint's own listing states", async () => {
+      // What llama-swap serves on /v1/models — verified against a live instance.
+      stubEndpointRow({});
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "qwen3.8-27b",
+                owned_by: "llama-swap",
+                capabilities: { vision: true },
+                context_length: 131_072,
+                meta: { n_ctx: 131_072, llamaswap: { type: "model" } },
+              },
+            ],
+          }),
+        }),
+      );
+      const runtime = stubRuntime();
+
+      await buildModelRuntime("user-1");
+
+      const definition = vi.mocked(runtime.registerProvider).mock.calls[0]![1] as {
+        models: Record<string, unknown>[];
+      };
+      expect(definition.models[0]).toMatchObject({
+        id: "qwen3.8-27b",
+        contextWindow: 131_072,
+        // Nobody configured an output cap, so Pi's default applies.
+        maxTokens: 16_384,
+        input: ["text", "image"],
+      });
+    });
+
     it("lets a recorded vision capability overrule the catalog", async () => {
       stubEndpointRow({ modelCapabilities: { "local-model": { vision: true } } });
       stubModelListing(["local-model"]);
