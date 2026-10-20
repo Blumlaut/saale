@@ -17,13 +17,13 @@ export interface ModalScenario {
   name: string;
   /** Route the overlay is opened from. */
   path: string;
-  /** Component file(s) rendering the overlay — verified by the coverage test. */
+  /** Component file(s) rendering the overlay  verified by the coverage test. */
   sources: string[];
   /** Opens the overlay from a freshly loaded page. */
   open?: (page: Page) => Promise<void>;
   /** Stubs installed before navigation (fixtures the app can't create offline). */
   mock?: (page: Page) => Promise<void>;
-  /** Documented reason this overlay can't be automated — the test is skipped. */
+  /** Documented reason this overlay can't be automated  the test is skipped. */
   skip?: string;
 }
 
@@ -38,13 +38,13 @@ const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
 const SESSION_SIDEBAR = "src/components/chat/session-sidebar.tsx";
 const SETTINGS = "/dashboard/settings";
 
-/** Realistic ED25519 public key — the content that used to widen the dialog. */
+/** Realistic ED25519 public key  the content that used to widen the dialog. */
 const SSH_PUBLIC_KEY =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL9lKcBGX0hVdN8nWmP4pQZaT7Rcj2sBvUyE1k6tZxQo saale@machine";
 
 const NOW = "2026-01-01T09:00:00.000Z";
 
-/** A valid 1×1 PNG — just enough for the lightbox to have a real image to show. */
+/** A valid 1×1 PNG  just enough for the lightbox to have a real image to show. */
 const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
@@ -58,7 +58,7 @@ const NOTE_CONTENT =
     4,
   );
 
-/** Locate the first *visible* match — the app renders a desktop and a mobile shell. */
+/** Locate the first *visible* match  the app renders a desktop and a mobile shell. */
 function visible(page: Page, selector: string) {
   return page.locator(selector).filter({ visible: true }).first();
 }
@@ -82,7 +82,7 @@ async function openSettingsTab(page: Page, tab: string) {
 
 /**
  * The e2e user has no endpoint of its own, and a per-model limit only exists
- * where Saale defines the models — so the list is stubbed with one.
+ * where Saale defines the models  so the list is stubbed with one.
  */
 async function mockConfigurableModels(page: Page) {
   await mockProviderSignIn(page);
@@ -752,7 +752,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: ["src/components/chat/session-links-panel.tsx"],
     mock: async (page) => {
       // The header button only appears when the session has linked watchers,
-      // so the listing is stubbed — the guardrail is the panel's layout, not
+      // so the listing is stubbed  the guardrail is the panel's layout, not
       // the watcher data.
       await page.route(/\/api\/chat\/sessions\/[^/]+\/watchers/, (route) =>
         route.fulfill({
@@ -847,7 +847,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsTab(page, "Integrations");
 
-      // Anchor on the mocked username — it only exists inside the GitHub box,
+      // Anchor on the mocked username  it only exists inside the GitHub box,
       // so the row menu is unambiguous even though the shell has its own menus.
       const box = page
         .locator("div")
@@ -962,7 +962,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsTab(page, "Integrations");
 
-      // Anchor on the mocked link's name — it only exists inside this card, so
+      // Anchor on the mocked link's name  it only exists inside this card, so
       // the row menu is unambiguous even though the shell has its own menus.
       // Filtering by the trigger too picks the card itself, not the inner div
       // that happens to hold the text.
@@ -994,7 +994,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "calendar · event details",
     path: "/dashboard/calendar",
     sources: ["src/components/calendar/event-view-sheet.tsx"],
-    skip: "requires an event on the grid — the e2e user has a local calendar but no seeded event",
+    skip: "requires an event on the grid  the e2e user has a local calendar but no seeded event",
   },
 
   // ── Mail ──────────────────────────────────────────────────────────────────
@@ -1132,13 +1132,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "admin · telegram bot",
     path: "/admin/settings",
     sources: ["src/components/admin/telegram-bot-panel.tsx"],
-    skip: "admin-only surface — the overlay needs a configured bot to render its trigger",
+    skip: "admin-only surface  the overlay needs a configured bot to render its trigger",
   },
   {
     name: "admin · user dialogs",
     path: "/admin/users",
     sources: ["src/app/admin/users/page.tsx"],
-    skip: "not automated yet — the admin overlays need their own `open` steps",
+    skip: "not automated yet  the admin overlays need their own `open` steps",
   },
   {
     name: "admin · add role",

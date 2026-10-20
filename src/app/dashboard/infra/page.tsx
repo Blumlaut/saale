@@ -48,7 +48,7 @@ export default function InfraPage() {
 
   return (
     <Page className="gap-0">
-      {/* Machine list — fills height, owns its toolbar, scrolls internally */}
+      {/* Machine list. fills height, owns its toolbar, scrolls internally */}
       <div className="min-h-0 flex-1">
         <MachineList
           key={refreshKey}

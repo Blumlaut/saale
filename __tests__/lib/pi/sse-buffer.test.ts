@@ -104,7 +104,7 @@ describe("bufferEvent", () => {
   it("handles Redis errors gracefully", async () => {
     mockRedisIncr.mockRejectedValueOnce(new Error("Redis down"));
 
-    // Should not throw — the error is caught and logged
+    // Should not throw  the error is caught and logged
     await expect(bufferEvent("session-1", "token", { text: "hello" })).rejects.toThrow(
       "Redis down",
     );
@@ -221,7 +221,7 @@ describe("clearBuffer", () => {
 
     expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:session-1");
     // The counter is intentionally preserved so event IDs stay monotonic
-    // across generations — clients reconnecting with a Last-Event-ID from a
+    // across generations  clients reconnecting with a Last-Event-ID from a
     // previous generation must keep receiving newer events.
     expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
   });
@@ -277,7 +277,7 @@ describe("SSE buffer lifecycle", () => {
     expect(afterFirst).toHaveLength(2);
     expect(afterFirst[0]!.id).toBe(2);
 
-    // Clear buffer (events only — counter survives)
+    // Clear buffer (events only  counter survives)
     await clearBuffer("session-1");
     expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:session-1");
     expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:session-1:counter");

@@ -49,7 +49,7 @@ describe("sign-in form", () => {
     const password = screen.getByLabelText("Password");
 
     // Mobile password managers only offer to fill a form whose identifier is
-    // hinted as `username` — `email` marks contact data and hides the password.
+    // hinted as `username`  `email` marks contact data and hides the password.
     expect(identifier).toHaveAttribute("autocomplete", "username");
     expect(identifier).toHaveAttribute("name", "username");
     expect(password).toHaveAttribute("autocomplete", "current-password");

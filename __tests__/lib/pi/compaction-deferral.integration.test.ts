@@ -13,8 +13,8 @@ import { createSystemPromptLoader } from "@/lib/pi/processing-state";
  * Prompting while a manual compaction is in progress (real SDK).
  *
  * Manual `/compact` runs in its own request, so a message that arrives while
- * it works always races it. Pi refuses such a prompt outright — "Cannot submit
- * a prompt while compaction is in progress" — which is what used to break the
+ * it works always races it. Pi refuses such a prompt outright  "Cannot submit
+ * a prompt while compaction is in progress"  which is what used to break the
  * chat: the run never started, nothing was answered, and the SSE connection
  * was torn down around the error.
  *
@@ -151,7 +151,7 @@ async function createCompactionSession() {
   const { session } = await createAgentSession({
     sessionManager: SessionManager.inMemory(),
     // A tiny recent-token budget, so even a one-turn conversation has
-    // something to compact — no need to build up real history.
+    // something to compact  no need to build up real history.
     settingsManager: SettingsManager.inMemory({
       compaction: { keepRecentTokens: 1, reserveTokens: 1 },
     }),
@@ -221,7 +221,7 @@ describe("manual compaction vs. an incoming prompt (real SDK)", () => {
       expect(result.summary).toContain("summary text");
 
       // The prompt was submitted after the summarization call, so the model saw
-      // the compacted conversation — and it was answered.
+      // the compacted conversation  and it was answered.
       expect(requestBodies).toHaveLength(3);
       expect(JSON.stringify(requestBodies[2])).toContain("sent during compaction");
 

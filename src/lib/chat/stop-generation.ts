@@ -5,7 +5,7 @@ import { requestSessionAbort } from "@/lib/pi/abort-request";
 /**
  * Explicitly cancel an in-progress generation.
  *
- * Different from client disconnect (navigation/refresh) — this is a
+ * Different from client disconnect (navigation/refresh). this is a
  * user-initiated "stop" that aborts the LLM, clears the active session flag
  * immediately, and pauses the send queue until the user sends or pushes
  * something.
@@ -18,13 +18,13 @@ export async function stopChatGeneration(userId: string, sessionId: string): Pro
   // Idempotent: nothing to cancel if the session is neither flagged active in
   // Redis nor streaming in this process. The flag is cross-process bookkeeping
   // and can be missing (an expired key, a Redis restart, a generation started
-  // before the flag was written) — the pooled session is the local truth, so a
+  // before the flag was written). the pooled session is the local truth, so a
   // stale flag must not make Stop a silent no-op.
   const isActive = await isSessionActive(userId, sessionId);
   const poolKey = getPoolKey(userId, sessionId);
   const pooled = get(poolKey);
   // `isStreaming` misses a run that is in flight but not yet inside the agent
-  // loop — a prompt deferred to a compaction, or one queued behind it — because
+  // loop. a prompt deferred to a compaction, or one queued behind it. because
   // `promptInFlight` is set as soon as the run claims the session. Either is a
   // run Stop must reach.
   const runInFlight = pooled !== undefined && (pooled.session.isStreaming || pooled.promptInFlight);
@@ -42,13 +42,13 @@ export async function stopChatGeneration(userId: string, sessionId: string): Pro
     requestSessionAbort(userId, sessionId);
     // Not awaited: `abort()` resolves only once the agent is idle, and a tool
     // that ignores the abort signal can keep it busy indefinitely. Stop has
-    // already landed — the flag is cleared below and the session's run settles
-    // on its own — so waiting here would only make Stop look like it did
+    // already landed. the flag is cleared below and the session's run settles
+    // on its own. so waiting here would only make Stop look like it did
     // nothing.
     void Promise.resolve(pooled.session.abort()).catch((err) => {
       console.error(`Failed to abort the chat run for session ${sessionId}:`, err);
     });
-    // Don't remove from pool — let it be reused for the next message
+    // Don't remove from pool. let it be reused for the next message
     // (eviction handles cleanup)
   }
 

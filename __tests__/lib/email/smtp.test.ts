@@ -89,7 +89,7 @@ describe("sendEmail", () => {
 
     expect(header(result.raw, "Cc")).toBe("cc@example.com");
     expect(header(result.raw, "Reply-To")).toBe("replies@example.com");
-    // Bcc belongs on the envelope only — it must never reach the archived copy.
+    // Bcc belongs on the envelope only  it must never reach the archived copy.
     expect(result.raw.toString()).not.toContain("bcc@example.com");
   });
 

@@ -5,7 +5,7 @@ import type { ToolCallData } from "./types";
  *
  * A card's badge always reports whether the call is running, succeeded or
  * failed. A card may supply a better *label* for a finished result ("exit 0",
- * "2 edits"), and — when the result knows better than the call's state — the
+ * "2 edits"), and. when the result knows better than the call's state. the
  * tone, but never a different status vocabulary.
  */
 export type ToolStatusTone = "running" | "success" | "danger";
@@ -41,7 +41,7 @@ export function toolStatus(
 /**
  * One badge for a run of calls: an error anywhere wins, then running, then done.
  *
- * A run that failed halfway has to say so — reporting a mixed run as "done"
+ * A run that failed halfway has to say so. reporting a mixed run as "done"
  * would hide the failure behind a collapsed row.
  */
 export function aggregateToolStatus(calls: readonly ToolCallData[]): ToolStatus {

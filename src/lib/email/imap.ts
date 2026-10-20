@@ -15,7 +15,7 @@ const FLAG_FLAGGED = "\\Flagged";
 
 /**
  * Connect to an IMAP server for an email account.
- * Returns an ImapFlow instance — caller is responsible for logout().
+ * Returns an ImapFlow instance. caller is responsible for logout().
  */
 export async function connectImap(accountId: string): Promise<{
   mailbox: ImapFlow;
@@ -125,7 +125,7 @@ export async function syncMessageFlags(
  * delivered message, so a server that does save its own copy (or a mail client
  * that later syncs) recognises the two as the same mail.
  *
- * Throws when no Sent folder can be resolved or the server refuses the append —
+ * Throws when no Sent folder can be resolved or the server refuses the append
  * the caller decides whether that should reach the user.
  */
 export async function appendSentCopy(params: {

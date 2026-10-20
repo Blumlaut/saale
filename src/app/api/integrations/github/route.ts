@@ -6,7 +6,7 @@ import { encrypt } from "@/lib/crypto";
 import { validateGitHubToken } from "@/lib/github";
 
 /**
- * GET /api/integrations/github — Get user's GitHub integration status
+ * GET /api/integrations/github. Get user's GitHub integration status
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -41,7 +41,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/integrations/github — Create or update GitHub integration
+ * POST /api/integrations/github. Create or update GitHub integration
  * Body: { token: string }
  */
 export async function POST(request: NextRequest) {
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PATCH /api/integrations/github — Update GitHub integration (enable/disable)
+ * PATCH /api/integrations/github. Update GitHub integration (enable/disable)
  * Body: { enabled: boolean }
  */
 export async function PATCH(request: NextRequest) {
@@ -145,7 +145,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * DELETE /api/integrations/github — Remove GitHub integration
+ * DELETE /api/integrations/github. Remove GitHub integration
  */
 export async function DELETE() {
   const authResult = await requireSession();

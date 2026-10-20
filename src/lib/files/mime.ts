@@ -147,7 +147,7 @@ export function resolveMimeType(name: string, reported?: string | null): string 
  *
  * An agent writes files in a workspace, and those bytes come back through this
  * app's own origin: an HTML file or a scripted SVG served as itself would be
- * stored XSS with the viewer's session. Inline, they are text — readable in the
+ * stored XSS with the viewer's session. Inline, they are text. readable in the
  * code view, inert in a browser. A download keeps the real type, because
  * `attachment` never renders.
  */

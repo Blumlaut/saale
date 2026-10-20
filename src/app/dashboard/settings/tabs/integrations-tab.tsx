@@ -109,7 +109,7 @@ export function IntegrationsTab() {
             </p>
           </div>
 
-          {/* One box per integration — connected status or a button to connect */}
+          {/* One box per integration. connected status or a button to connect */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <TelegramBox
               link={telegram.link}
@@ -137,7 +137,7 @@ export function IntegrationsTab() {
 
       <McpTab />
 
-      {/* Link / relink — same dialog, the panel adapts to the current state */}
+      {/* Link / relink. same dialog, the panel adapts to the current state */}
       <TelegramLinkDialog
         open={telegramDialogOpen}
         onOpenChange={setTelegramDialogOpen}

@@ -539,7 +539,7 @@ describe("createInfraTools", () => {
         name: "prod-web",
       });
       vi.mocked(client.executeCommand).mockResolvedValue({
-        stdout: "very long output\n\n[output truncated — exceeded 51200 byte limit]",
+        stdout: "very long output\n\n[output truncated  exceeded 51200 byte limit]",
         stderr: "",
         exitCode: 0,
         signal: null,

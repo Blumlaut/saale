@@ -2,7 +2,7 @@ import { stopChatGeneration } from "@/lib/chat/stop-generation";
 import { interruptTelegramChat, isTelegramSessionActive } from "@/lib/telegram/session-registry";
 import type { CommandHandler } from "../types";
 
-/** `/stop` — cancel whatever the agent is generating right now. */
+/** `/stop`. cancel whatever the agent is generating right now. */
 export const stopHandler: CommandHandler = {
   run: async (ctx) => {
     if (ctx.surface === "telegram") {

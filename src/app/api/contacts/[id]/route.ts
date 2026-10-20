@@ -9,7 +9,7 @@ import {
 } from "@/lib/contacts/contacts";
 
 /**
- * GET /api/contacts/[id] — Get a single contact
+ * GET /api/contacts/[id]. Get a single contact
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,7 +24,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 /**
- * PATCH /api/contacts/[id] — Update a contact
+ * PATCH /api/contacts/[id]. Update a contact
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -51,7 +51,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 /**
- * DELETE /api/contacts/[id] — Delete a contact
+ * DELETE /api/contacts/[id]. Delete a contact
  */
 export async function DELETE(
   _request: NextRequest,

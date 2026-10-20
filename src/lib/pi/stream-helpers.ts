@@ -17,10 +17,10 @@ export interface SaveAssistantMessageInput {
   parentMessageId?: string | null | undefined;
   /** When set, the existing message is updated instead of a new one created. */
   messageId?: string | undefined;
-  /** Provider error when the turn failed — drives the UI's error notice. */
+  /** Provider error when the turn failed. drives the UI's error notice. */
   errorMessage?: string | null | undefined;
   /**
-   * When the turn began — the row's conversation position. Defaults to now.
+   * When the turn began. the row's conversation position. Defaults to now.
    *
    * A turn's row is only written at `turn_end`, but its place in the
    * conversation is where the turn started: a message delivered into the run
@@ -35,7 +35,7 @@ export interface SaveAssistantMessageInput {
  *
  * Update semantics: a turn that failed mid-run is first created by `turn_end`
  * and then finalized by `agent_end`, so the last write replaces the whole
- * message — `errorMessage` is set to null when absent rather than left stale.
+ * message. `errorMessage` is set to null when absent rather than left stale.
  */
 export async function saveAssistantMessage(
   input: SaveAssistantMessageInput,

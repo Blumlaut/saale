@@ -1,7 +1,7 @@
 /**
  * Static catalog of all available tool names and descriptions.
  * Used by the settings UI to render per-tool policy selectors.
- * Client-safe — no server-only imports.
+ * Client-safe. no server-only imports.
  *
  * MUST stay in sync with the actual tool definitions in src/lib/pi/tools/.
  */
@@ -17,9 +17,9 @@ export function isToolPolicy(value: unknown): value is ToolPolicy {
 
 /**
  * What "auto" decides from the call itself, rather than from a name-level rule:
- * - infra_exec and bash: the command — safe ones (ls, cat, grep…) run, risky ones
+ * - infra_exec and bash: the command. safe ones (ls, cat, grep…) run, risky ones
  *   (rm, echo >>, sudo…) ask.
- * - codemode: the script — it asks only when the script reaches a tool that
+ * - codemode: the script. it asks only when the script reaches a tool that
  *   would ask on its own, so a script that only reads costs no click.
  * - Every other tool: behaves like "allow".
  */
@@ -46,7 +46,7 @@ export interface ToolInfo {
    * Inside a `codemode` category this is the listing decision: `"codemode"` puts
    * the tool in the catalog the model reads, `"deferred"` keeps it callable from
    * a script but out of that catalog, so it has to be found with `searchTools`.
-   * Only the read-only tools are listed — the model surveys what it can look at
+   * Only the read-only tools are listed. the model surveys what it can look at
    * before it does anything, and reaching for an action is a deliberate step.
    *
    * `__tests__/lib/pi/tool-catalog-drift.test.ts` requires every tool in a
@@ -109,7 +109,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Show a file as an attachment",
     // Ships with the terminal bundle (it reads through Open Terminal) and is
     // only available when terminal is configured, so it belongs to this
-    // category — which also keeps it declared rather than behind codemode.
+    // category. which also keeps it declared rather than behind codemode.
     category: "terminal",
     defaultPolicy: "allow",
   },
@@ -604,7 +604,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Create a scheduled script watcher",
     category: "watchers",
     // The durable half, but not the dangerous one: the watcher is what runs the
-    // script, and the script's approval is a gate of its own — a creation that
+    // script, and the script's approval is a gate of its own. a creation that
     // would need one lands paused for it. Managing watchers is otherwise the
     // model's own say-so.
     defaultPolicy: "allow",
@@ -616,7 +616,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Change a watcher's script or schedule",
     category: "watchers",
     // Changing a script still pauses the watcher until the user approves it on
-    // the Watchers page — only the tool call itself runs without a click.
+    // the Watchers page. only the tool call itself runs without a click.
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },
@@ -760,7 +760,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Change Setting",
     description: "Change one Saale setting",
     category: "settings",
-    // Changing a setting is consequential — it can widen the agent's own
+    // Changing a setting is consequential. it can widen the agent's own
     // permissions or rewrite the prompt. Ask unless the user opts out.
     defaultPolicy: "ask",
     defaultExposure: "deferred",
@@ -998,7 +998,7 @@ export interface ToolAction {
   /** One-line "what it does" from the catalog; empty for unknown tools. */
   description: string;
   /**
-   * One-line headline of the concrete call ("Send email to a@b — \"Subj\""),
+   * One-line headline of the concrete call ("Send email to a@b. \"Subj\""),
    * or null when it cannot be derived from the arguments alone.
    */
   summary: string | null;
@@ -1052,7 +1052,7 @@ type SummaryBuilder = (args: Record<string, unknown>) => string | null;
 
 /**
  * Per-tool one-line summary builders for tools whose arguments alone make the
- * call clear — mostly the tools that sit behind approval by default.
+ * call clear. mostly the tools that sit behind approval by default.
  * Tools with a catalog `summaryTemplate` take precedence over these.
  */
 const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
@@ -1060,7 +1060,7 @@ const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
     const to = Array.isArray(a.to) ? a.to.filter((v): v is string => typeof v === "string") : [];
     const subject = typeof a.subject === "string" ? a.subject : null;
     if (to.length === 0 && !subject) return null;
-    return `Send email${to.length ? ` to ${joinList(to)}` : ""}${subject ? ` — \"${subject}\"` : ""}`;
+    return `Send email${to.length ? ` to ${joinList(to)}` : ""}${subject ? `. \"${subject}\"` : ""}`;
   },
   mail_delete: (a) => {
     const count = Array.isArray(a.ids) ? a.ids.length : 0;
@@ -1080,21 +1080,21 @@ const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
     const title = typeof a.summary === "string" ? a.summary : null;
     if (!title) return null;
     const start = formatDateTimeValue(a.dtStart);
-    return `Create event \"${title}\"${start ? ` — ${start}` : ""}`;
+    return `Create event \"${title}\"${start ? `. ${start}` : ""}`;
   },
   calendar_update: (a) => {
     const title = typeof a.summary === "string" ? a.summary : null;
     return title ? `Update event \"${title}\"` : null;
   },
-  calendar_delete: () => null, // id-only — resolved server-side (event title)
+  calendar_delete: () => null, // id-only. resolved server-side (event title)
   task_create: (a) => {
     if (typeof a.title !== "string") return null;
     const due = formatDateTimeValue(a.dueDate);
     return `Create task \"${a.title}\"${due ? ` (due ${due})` : ""}`;
   },
   task_update: (a) => (typeof a.title === "string" ? `Update task \"${a.title}\"` : null), // id-only → server-side
-  task_delete: () => null, // id-only — resolved server-side (task title)
-  chat_respond: () => null, // id-only — resolved server-side (chat title)
+  task_delete: () => null, // id-only. resolved server-side (task title)
+  chat_respond: () => null, // id-only. resolved server-side (chat title)
   chat_create: (a) => {
     if (typeof a.message !== "string") return null;
     const firstLine = a.message.trim().split("\n")[0];
@@ -1102,7 +1102,7 @@ const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
     const short = firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
     return `Start a new chat: ${short}`;
   },
-  chat_delete: () => null, // id-only — resolved server-side (chat title)
+  chat_delete: () => null, // id-only. resolved server-side (chat title)
   read: (a) => (typeof a.path === "string" ? `Read ${a.path}` : null),
   write: (a) => (typeof a.path === "string" ? `Write ${a.path}` : null),
   edit: (a) => (typeof a.path === "string" ? `Edit ${a.path}` : null),
@@ -1120,24 +1120,24 @@ const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
     const short = firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine;
     return `Run codemode script: ${short}`;
   },
-  job_run: () => null, // id-only — resolved server-side (job name)
+  job_run: () => null, // id-only. resolved server-side (job name)
   job_enable: (a) => {
     if (typeof a.enabled !== "boolean") return null;
     return a.enabled ? "Enable a job" : "Disable a job"; // + job name server-side
   },
-  job_update: () => null, // id-only — resolved server-side (job name)
-  job_delete: () => null, // id-only — resolved server-side (job name)
+  job_update: () => null, // id-only. resolved server-side (job name)
+  job_delete: () => null, // id-only. resolved server-side (job name)
   agent_job_create: (a) => (typeof a.name === "string" ? `Create agent job \"${a.name}\"` : null),
-  agent_job_run: () => null, // id-only — resolved server-side (job name)
-  agent_job_update: () => null, // id-only — resolved server-side (job name)
-  agent_job_delete: () => null, // id-only — resolved server-side (job name)
+  agent_job_run: () => null, // id-only. resolved server-side (job name)
+  agent_job_update: () => null, // id-only. resolved server-side (job name)
+  agent_job_delete: () => null, // id-only. resolved server-side (job name)
 };
 
 /**
  * One-line headline for a concrete tool call, derived from its arguments.
  *
  * Prefers the catalog `summaryTemplate`, then the per-tool builder, else null
- * (id-only references are enriched server-side — see tool-approval-summary).
+ * (id-only references are enriched server-side. see tool-approval-summary).
  * Client-safe: no database access.
  */
 export function summarizeToolAction(
@@ -1155,7 +1155,7 @@ export function summarizeToolAction(
  * Describe a concrete tool call for the approval dialog:
  * friendly name, one-line summary, and labeled argument fields.
  *
- * Client-safe (no database access) — unknown tools (e.g. MCP) still get a
+ * Client-safe (no database access). unknown tools (e.g. MCP) still get a
  * labeled breakdown with humanized keys.
  */
 export function describeToolAction(toolName: string, args: Record<string, unknown>): ToolAction {

@@ -24,7 +24,7 @@ const ROW_COLUMNS = {
 } as const;
 
 /**
- * GET /api/providers — every provider Pi can talk to, and what this user has
+ * GET /api/providers. every provider Pi can talk to, and what this user has
  * configured (their own credentials, and the global ones they inherit).
  */
 export async function GET() {
@@ -76,7 +76,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    // The caller's own rows — Saale's own endpoint is configured from one.
+    // The caller's own rows. Saale's own endpoint is configured from one.
     // Which providers a user *inherits* is in `availableProviders.isGlobal`.
     providers: userRows.map((row) => ({
       ...row,
@@ -91,7 +91,7 @@ function displayName(providers: ProviderCatalogView[], provider: string): string
 }
 
 /**
- * POST /api/providers — configure Saale's own OpenAI-compatible endpoint.
+ * POST /api/providers. configure Saale's own OpenAI-compatible endpoint.
  *
  * Every other provider is configured by signing in to it
  * (`POST /api/providers/login`), because Pi owns how those providers
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Only the OpenAI-compatible endpoint is configured here — sign in to a provider instead",
+          "Only the OpenAI-compatible endpoint is configured here. sign in to a provider instead",
       },
       { status: 400 },
     );
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PATCH /api/providers — Update the endpoint's model limits without touching its
+ * PATCH /api/providers. Update the endpoint's model limits without touching its
  * API key (so the UI never has to re-submit a stored credential).
  */
 export async function PATCH(request: NextRequest) {
@@ -236,7 +236,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * DELETE /api/providers — Disconnect a provider.
+ * DELETE /api/providers. Disconnect a provider.
  *
  * The row *is* the credential for a provider Pi authenticates (Saale's
  * credential store reads it), so removing it signs the provider out.

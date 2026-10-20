@@ -128,7 +128,7 @@ describe("telegram session registry", () => {
     beginTelegramRun(USER, chatId, Promise.resolve());
     attachTelegramSession(USER, chatId, session);
 
-    // Another user, same chatId (different key) — nothing to delete.
+    // Another user, same chatId (different key)  nothing to delete.
     unregisterTelegramSession("other-user", chatId, session);
     expect(isTelegramSessionActive(USER, chatId)).toBe(true);
   });
@@ -214,7 +214,7 @@ describe("telegram session registry", () => {
       void interruptTelegramChat(USER, chatId);
       expect(wasTelegramSessionInterrupted(oldSession)).toBe(true);
 
-      // Old run's finally runs (identity-checked — no-op now)...
+      // Old run's finally runs (identity-checked  no-op now)...
       unregisterTelegramSession(USER, chatId, oldSession);
 
       // New run registers and must NOT inherit the interrupted flag.
@@ -253,7 +253,7 @@ describe("telegram session registry", () => {
     beginTelegramRun(USER, chatA, Promise.resolve());
     attachTelegramSession(USER, chatA, sessionA);
     beginTelegramRun(USER, chatB, Promise.resolve());
-    // Pre-session run — nothing to abort.
+    // Pre-session run  nothing to abort.
 
     shutdownTelegramSessions();
 

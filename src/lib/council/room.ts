@@ -1,13 +1,13 @@
 /**
  * The room's read model.
  *
- * One shape for a room message as everything outside the database sees it — the
+ * One shape for a room message as everything outside the database sees it. the
  * member tools, the turn prompt, the run loop and the room UI. A stored row has
  * more than this (ids, run bookkeeping, timestamps); readers get exactly these
  * fields, with mentions already resolved to names, because a name is what a
  * message displays and what a member is addressed by.
  *
- * Pure — no database or Node-only imports.
+ * Pure. no database or Node-only imports.
  */
 
 /** Who wrote a room message. */

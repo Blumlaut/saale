@@ -1,7 +1,7 @@
 /**
  * The provider catalog, read from Pi.
  *
- * Pi's model runtime already holds every provider it can talk to — id, display
+ * Pi's model runtime already holds every provider it can talk to. id, display
  * name, base URL, how each one authenticates, and how many models it serves.
  * Saale lists that rather than keeping a list of its own, so a provider Pi gains
  * appears in Saale's settings with nothing to change here.
@@ -73,8 +73,8 @@ function authMethods(provider: Provider): ProviderAuthMethod[] {
 /**
  * Every provider a scope can configure, with its current model count.
  *
- * A provider Pi serves no chat models for is left out — there would be nothing
- * to select — unless it is configured, so a stored credential always stays
+ * A provider Pi serves no chat models for is left out. there would be nothing
+ * to select. unless it is configured, so a stored credential always stays
  * visible (and removable) in the UI.
  */
 export function providerCatalog(modelRuntime: ModelRuntime): ProviderCatalogEntry[] {

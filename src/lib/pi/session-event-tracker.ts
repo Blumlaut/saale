@@ -4,7 +4,7 @@
  * Converts Pi agent lifecycle events into:
  *  - stream events published on the session event bus (turn_start, token,
  *    thinking, tool_start, tool_end, turn_end, message_saved, token_usage,
- *    compaction_*, done) so every connected SSE client — in any process —
+ *    compaction_*, done) so every connected SSE client. in any process
  *    observes the generation live, and
  *  - database writes (assistant messages, active tool state, token usage,
  *    message count, active-session bookkeeping).
@@ -13,10 +13,10 @@
  * the two code paths stay identical and any change applies everywhere.
  *
  * Lifecycle semantics mirror Pi's TUI (callers must use `session.prompt()`,
- * NOT `session.agent.prompt()` — the former runs the SDK's post-run
+ * NOT `session.agent.prompt()`. the former runs the SDK's post-run
  * processing): the agent run may STOP at `agent_end` but keep GOING (error
  * retry, auto-compaction + `agent.continue()` after overflow, queued
- * messages). `agent_settled` is the "completely finished" signal — only then
+ * messages). `agent_settled` is the "completely finished" signal. only then
  * does this tracker emit `done` and dispose. Compaction is triggered by the
  * SDK itself (pre-prompt and post-run checks); the tracker only observes the
  * `compaction_start`/`compaction_end` events and persists the summary.
@@ -24,16 +24,16 @@
  * fired more than once, double-compacts the session.
  *
  * Stream protocol (turnId-based):
- *  - `turn_start { turnId, startedAt }` — a new assistant turn begins, at the
+ *  - `turn_start { turnId, startedAt }`. a new assistant turn begins, at the
  *    server's timestamp for it (what the turn's DB row is stamped with too)
- *  - `token { turnId, text }` / `thinking { turnId, thinking }` — cumulative
+ *  - `token { turnId, text }` / `thinking { turnId, thinking }`. cumulative
  *  - `tool_start { turnId, toolCallId, toolName, args }`
- *  - `tool_update { turnId, toolCallId, partialResult }` — live progress from
+ *  - `tool_update { turnId, toolCallId, partialResult }`. live progress from
  *    a running tool (Pi's tool_execution_update, e.g. bash streaming output)
  *  - `tool_end { turnId, toolCallId, result, isError }`
- *  - `turn_end { turnId, text?, thinking? }` — turn finalized
- *  - `message_saved { turnId, messageId }` — swap temp ID for the DB ID
- *  - `done {}` — run settled (emitted on agent_settled after all DB saves settle)
+ *  - `turn_end { turnId, text?, thinking? }`. turn finalized
+ *  - `message_saved { turnId, messageId }`. swap temp ID for the DB ID
+ *  - `done {}`. run settled (emitted on agent_settled after all DB saves settle)
  */
 
 import crypto from "crypto";
@@ -89,12 +89,12 @@ export function createSessionEventTracker(
   let currentTurnId: string | null = null;
   // When the current assistant turn began. The row it becomes is written at
   // turn_end (after its tools ran), but its place in the conversation is here
-  // — see `saveAssistantMessage`'s `createdAt`.
+  //. see `saveAssistantMessage`'s `createdAt`.
   let currentTurnStartedAt: Date | null = null;
   let currentTurnText = "";
   let currentTurnThinking = "";
   let rootMessageId: string | null = null;
-  // Track the pending save promise from turn_end so agent_end can await it —
+  // Track the pending save promise from turn_end so agent_end can await it
   // without this, agent_end runs before the .then() microtask sets
   // rootMessageId, causing a duplicate message create.
   let lastTurnSavePromise: Promise<{ id: string }> | null = null;
@@ -108,7 +108,7 @@ export function createSessionEventTracker(
   // Tool call results tracking
   const toolCallResults = new Map<string, ToolCallResult>();
 
-  // Throttle map for tool_execution_update forwarding — bash emits output
+  // Throttle map for tool_execution_update forwarding. bash emits output
   // updates at ~100ms intervals; flooding the Redis buffer + SSE would be
   // wasteful. One forwarded update per tool call per second is plenty to
   // prove the run is alive and to show progress.
@@ -157,7 +157,7 @@ export function createSessionEventTracker(
    *
    * `session.prompt()` retries transient provider failures itself: on
    * `auto_retry_start` it removes the failed assistant message from its state
-   * and re-runs the turn. That makes the attempt's row provisional — it is not
+   * and re-runs the turn. That makes the attempt's row provisional. it is not
    * the run's outcome:
    *
    *  - It produced output the user already saw (a stream that died mid-answer,
@@ -165,7 +165,7 @@ export function createSessionEventTracker(
    *    that was on screen a moment ago.
    *  - It produced nothing (the usual failure: the request was rejected before
    *    the first token) → remove it. Keeping it would leave one phantom bubble
-   *    per attempt — three for a 429 that exhausts the retry budget — and the
+   *    per attempt. three for a 429 that exhausts the retry budget. and the
    *    client would hold a `rootMessageId` pointing at a row that is gone.
    */
   const finalizeProvisionalTurn = () => {
@@ -221,7 +221,7 @@ export function createSessionEventTracker(
   // ── Activity heartbeat: align the Redis active-flag with Pi's REAL state ──
   // `session.isStreaming` is Pi's ground truth. Events are only a proxy for
   // it, and a long tool call that emits nothing would let the flag's short
-  // liveness TTL expire mid-run — the 409 guard would stop blocking sends
+  // liveness TTL expire mid-run. the 409 guard would stop blocking sends
   // while Pi is genuinely busy, and a watcher would take the session for dead.
   // While Pi streams, refresh the flag on a cadence well inside that TTL.
   let activityTimer: ReturnType<typeof setInterval> | null = null;
@@ -254,7 +254,7 @@ export function createSessionEventTracker(
       //    runs are never replayed. The counter survives (see clearBuffer).
       case "agent_start": {
         agentEndPersisted = false;
-        // Any stop request from before this run is stale — it must not be able
+        // Any stop request from before this run is stale. it must not be able
         // to swallow this run's real failures (see abort-request.ts).
         clearSessionAbort(userId, sessionId);
         // Reset the buffer first, then publish the send queue's current state:
@@ -272,7 +272,7 @@ export function createSessionEventTracker(
       }
 
       // ── Turn start: the assistant turn begins here, before its first
-      //    token. Its row is only written at turn_end — stamping the row
+      //    token. Its row is only written at turn_end. stamping the row
       //    with the turn's start is what keeps the conversation in the order
       //    the turns actually happened in. ──
       case "turn_start": {
@@ -283,7 +283,7 @@ export function createSessionEventTracker(
       // ── Token usage tracking ───────────────────────────────────────────────
       // NO auto-compaction here. Compaction is the SDK's job: it checks the
       // REAL context size (last message usage vs. contextWindow - reserve)
-      // at run boundaries — before prompt submission and after agent_end —
+      // at run boundaries. before prompt submission and after agent_end
       // and on overflow it compacts and continues the run. Calling
       // session.compact() mid-run would abort the in-flight run, and the
       // cumulative counter below only grows, so a threshold check here would
@@ -300,7 +300,7 @@ export function createSessionEventTracker(
         totalCacheReadTokens += usage.cacheRead ?? 0;
         totalCacheWriteTokens += usage.cacheWrite ?? 0;
 
-        // Context size comes from Pi (see context-usage.ts) — NOT from the
+        // Context size comes from Pi (see context-usage.ts). NOT from the
         // counters above, which exclude cache reads and accumulate per turn.
         const context = readContextUsage(session);
 
@@ -588,13 +588,13 @@ export function createSessionEventTracker(
         if (event.result && !event.aborted) {
           // A manual compaction is started, and its summary persisted, by the
           // request that owns it (the /compact route). The tracker can still
-          // be subscribed while that happens — a prompt run aborted by the
-          // compaction settles after it began — and saving here as well would
+          // be subscribed while that happens. a prompt run aborted by the
+          // compaction settles after it began. and saving here as well would
           // put the same summary in the chat twice.
           if (event.reason !== "manual") {
             // Tracked as a pending save so `done` (emitted on agent_settled
             // after all saves settle) always lands after the summary is in
-            // the DB — late /messages fetches can't miss it.
+            // the DB. late /messages fetches can't miss it.
             pendingSaves.push(
               saveCompactionMessage({
                 sessionId,
@@ -627,11 +627,11 @@ export function createSessionEventTracker(
         break;
       }
 
-      // ── Agent run stopped — NOT necessarily finished ─────────────────────
+      // ── Agent run stopped. NOT necessarily finished ─────────────────────
       // Mirrors the TUI: agent_end only means the current loop iteration
       // ended. The SDK may still retry an error, run auto-compaction, or
       // continue the run (overflow recovery). So: finalize this run's last
-      // message, but do NOT emit `done`, unregister, or dispose — that all
+      // message, but do NOT emit `done`, unregister, or dispose. that all
       // happens on agent_settled.
       case "agent_end": {
         log("agent_end", `totalMessages=${event.messages.length}, turnIndex=${turnIndex}`);
@@ -640,7 +640,7 @@ export function createSessionEventTracker(
         // computed from the retry budget and whether the error is transient),
         // and retrying throws the assistant message away. This attempt is not
         // the outcome: keep what the user saw, drop an empty attempt, and
-        // report nothing — a retry may still succeed, and an abort lands here
+        // report nothing. a retry may still succeed, and an abort lands here
         // too (a cancelled request looks like any other stream failure).
         if (event.willRetry) {
           finalizeProvisionalTurn();
@@ -649,7 +649,7 @@ export function createSessionEventTracker(
 
         // A user-initiated stop is not a provider failure: Pi reports the
         // cancelled request as an error; Saale recorded the stop, so nothing is
-        // reported. This matters when the stop lands on the terminal attempt —
+        // reported. This matters when the stop lands on the terminal attempt
         // with the retry budget spent (or retries disabled) there is no
         // `willRetry` to mark the attempt provisional.
         if (wasSessionAbortRequested(userId, sessionId)) {
@@ -722,7 +722,7 @@ export function createSessionEventTracker(
       // retries, auto-compaction, queued continuations) are done. This is
       // the only safe moment to declare the generation finished: the
       // active-session flag, message count, `done` event, and tracker
-      // disposal all happen here — never on agent_end.
+      // disposal all happen here. never on agent_end.
       case "agent_settled": {
         log("agent_settled", `turns=${turnIndex}`);
         if (settledFinalized) break;
@@ -730,7 +730,7 @@ export function createSessionEventTracker(
         clearSessionAbort(userId, sessionId);
 
         // Unregister the active session and bump the message count once.
-        // Assistant output is real chat activity — advance lastActivityAt
+        // Assistant output is real chat activity. advance lastActivityAt
         // too (the UI's sort/display timestamp). Note: tool_execution_
         // start/end do NOT touch it, so tool calls alone never move a chat
         // to the top of the list.

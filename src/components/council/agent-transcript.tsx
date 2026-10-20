@@ -48,7 +48,7 @@ export interface AgentTranscriptProps {
  * One member's private transcript: every turn it took.
  *
  * A turn shows what woke it (the room messages it had not seen), its reasoning,
- * each tool call it made, and the closing text it produced — which was **not
+ * each tool call it made, and the closing text it produced. which was **not
  * sent** to the room. Members speak only through `council_post`, so this is the
  * only place that closing text is visible.
  */
@@ -135,7 +135,7 @@ export function AgentTranscript({ turns, messages = [], loading }: AgentTranscri
                         {message && (
                           <span className="text-muted-foreground">
                             {" "}
-                            — {excerpt(message.content)}
+                            . {excerpt(message.content)}
                           </span>
                         )}
                       </li>

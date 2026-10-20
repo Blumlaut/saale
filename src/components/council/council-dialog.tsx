@@ -55,7 +55,7 @@ interface MemberDraft {
   /** Set for a member that already exists on the server. */
   id?: string;
   name: string;
-  /** "provider/modelId" — the model picker's value format. */
+  /** "provider/modelId". the model picker's value format. */
   modelValue: string;
   thinkingLevel: string;
   instructions: string;
@@ -201,7 +201,7 @@ export function CouncilDialog({ open, onOpenChange, council, onSaved }: CouncilD
     orchestration,
     stopVoteThreshold,
     // Explicit booleans, because the stored config is an override on top of
-    // COUNCIL_DEFAULT_TOOL_CONFIG — an omitted key would silently fall back.
+    // COUNCIL_DEFAULT_TOOL_CONFIG. an omitted key would silently fall back.
     toolConfig: Object.fromEntries(TOOL_CATEGORIES.map((c) => [c.key, toolConfig[c.key] ?? false])),
     maxDurationSeconds: parseBudget(maxDurationSeconds) ?? null,
     maxTokens: parseBudget(maxTokens) ?? null,
@@ -527,8 +527,8 @@ export function CouncilDialog({ open, onOpenChange, council, onSaved }: CouncilD
               <Label>Tools</Label>
               <p className="text-muted-foreground text-xs">
                 Only the council&apos;s own workspace is on by default. Categories that reach your
-                own data — Email, Telegram, Tasks, Calendar, Memory, Infrastructure, Settings, Agent
-                jobs and Watchers — stay off until you switch them on for this council.
+                own data. Email, Telegram, Tasks, Calendar, Memory, Infrastructure, Settings, Agent
+                jobs and Watchers. stay off until you switch them on for this council.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

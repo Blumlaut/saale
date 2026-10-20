@@ -3,10 +3,10 @@
  *
  * The room has one addressing syntax: `@name` wakes a member, `@all` wakes
  * everyone and `@user` addresses the human. Members address each other through
- * it, and a message's mentions decide who runs next — so this module is the one
+ * it, and a message's mentions decide who runs next. so this module is the one
  * place the syntax is read, shared by the tools, the orchestrator and the UI.
  *
- * Pure — no database or Node-only imports, so the room can resolve handles
+ * Pure. no database or Node-only imports, so the room can resolve handles
  * client-side for the same preview the server would compute.
  */
 
@@ -24,7 +24,7 @@ export const MEMBER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
  * `@…` at a boundary, matching the longest run of handle characters.
  *
  * The leading `@` is captured separately so a match can be rejected when it is
- * really an email address (`you@example.com`) — a `@` preceded by a word
+ * really an email address (`you@example.com`). a `@` preceded by a word
  * character is part of a word, not an address to a member.
  */
 const MENTION_PATTERN = /(@)([A-Za-z0-9_-]+)/g;

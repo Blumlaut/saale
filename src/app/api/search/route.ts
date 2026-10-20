@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/search — Unified fuzzy search across chat and email.
+ * GET /api/search. Unified fuzzy search across chat and email.
  * Uses pg_trgm similarity for fuzzy matching and relevance ranking.
  *
  * Query params: q (required), type (optional: "all" | "chat" | "email"), limit
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   const trimmedQuery = query.trim();
 
-  // Search chat sessions — fuzzy match on title, rank by similarity
+  // Search chat sessions. fuzzy match on title, rank by similarity
   if (type === "all" || type === "chat") {
     const chatRows = await prisma.$queryRaw<
       Array<{
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Search emails — fuzzy match across subject/from/body, rank by weighted similarity
+  // Search emails. fuzzy match across subject/from/body, rank by weighted similarity
   if (type === "all" || type === "email") {
     const emailRows = await prisma.$queryRaw<
       Array<{

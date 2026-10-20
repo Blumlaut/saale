@@ -109,7 +109,7 @@ export default function CouncilMemberPage() {
                 </Badge>
               )}
               <span className="text-muted-foreground hidden truncate text-[11px] sm:inline">
-                private transcript — not visible to the room
+                private transcript. not visible to the room
               </span>
             </div>
 

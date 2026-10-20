@@ -27,7 +27,7 @@ export interface FilePromptSheetProps {
 }
 
 /**
- * One field, one action — used for both "New folder" and "Rename".
+ * One field, one action. used for both "New folder" and "Rename".
  *
  * They are the same interaction with different words, and a single component
  * means a single overlay to register and one place where a name is checked.

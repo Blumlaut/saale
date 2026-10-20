@@ -46,7 +46,7 @@ vi.mock("@/lib/telegram/bot", () => ({
 }));
 
 vi.mock("@/lib/telegram/links", () => ({
-  // Real pattern — the payload-shape gate is part of what's under test.
+  // Real pattern  the payload-shape gate is part of what's under test.
   LINK_CODE_PATTERN: /^[A-Za-z0-9_-]{32}$/,
   consumeLinkCode: (...args: unknown[]) => mockConsumeLinkCode(...args),
   getLinkByTelegramUserId: (...args: unknown[]) => mockGetLinkByTelegramUserId(...args),
@@ -196,7 +196,7 @@ describe("linking through the bot", () => {
     expect(CODE).toMatch(/^[A-Za-z0-9_-]{32}$/);
   });
 
-  it("tells an unlinked sender where to link — and processes nothing", async () => {
+  it("tells an unlinked sender where to link  and processes nothing", async () => {
     const response = await POST(update(messageUpdate()));
 
     expect(response.status).toBe(200);
@@ -242,7 +242,7 @@ describe("linking through the bot", () => {
     mockConsumeLinkCode.mockResolvedValue({ ok: true, link });
 
     // Telegram auto-sends /start when the chat opens, so the user naturally
-    // sends just the token — that has to work too.
+    // sends just the token  that has to work too.
     await POST(update(messageUpdate({ text: CODE })));
 
     expect(mockConsumeLinkCode).toHaveBeenCalledWith({
@@ -268,7 +268,7 @@ describe("linking through the bot", () => {
   });
 
   it("does not intercept a code-shaped string that is not a code", async () => {
-    // One character short of a code — a linked user's message stays a message.
+    // One character short of a code  a linked user's message stays a message.
     mockGetLinkByTelegramUserId.mockResolvedValue(link);
     await POST(update(messageUpdate({ text: CODE.slice(0, 31) })));
 
@@ -289,7 +289,7 @@ describe("linking through the bot", () => {
   it("does not look up a code that cannot be one", async () => {
     await POST(update(messageUpdate({ text: "/start hi" })));
 
-    // A short payload never reaches the database — only a real code shape does.
+    // A short payload never reaches the database  only a real code shape does.
     expect(mockConsumeLinkCode).not.toHaveBeenCalled();
     expect(fakeBot.api.sendMessage).toHaveBeenCalledWith(
       CHAT_ID,
@@ -340,7 +340,7 @@ describe("message routing", () => {
 
     expect(mockProcessTelegramMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        // Resolved from the link alone — nothing in the message names a user.
+        // Resolved from the link alone  nothing in the message names a user.
         userId: "user-1",
         telegramUserId: BigInt(SENDER_ID),
         telegramChatId: BigInt(CHAT_ID),
@@ -414,7 +414,7 @@ describe("inline button presses", () => {
 
     await POST(update(callback()));
 
-    // The presser id comes from Telegram's own payload — a forwarded card keeps
+    // The presser id comes from Telegram's own payload  a forwarded card keeps
     // its buttons, so the decision must be attributable to whoever pressed it.
     expect(mockHandleApprovalCallback).toHaveBeenCalledWith(
       "a:0123456789abcdef",
@@ -452,7 +452,7 @@ describe("inline button presses", () => {
     expect(mockHandleCommandPromptCallback).not.toHaveBeenCalled();
     expect(fakeBot.api.answerCallbackQuery).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "Telegram callback query arrived without a sender — ignoring it",
+      "Telegram callback query arrived without a sender. ignoring it",
     );
   });
 

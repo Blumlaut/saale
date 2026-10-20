@@ -266,7 +266,7 @@ export function ProviderLoginSheet({
                         variant="secondary"
                         className="h-auto w-full flex-col items-start gap-1 py-2.5 text-left whitespace-normal"
                         disabled={busy}
-                        // A choice is the answer — no separate submit.
+                        // A choice is the answer. no separate submit.
                         onClick={() => void submitAnswer(option.id)}
                       >
                         <span className="text-sm font-medium">{option.label}</span>
@@ -302,8 +302,8 @@ export function ProviderLoginSheet({
                 )}
                 {prompt.kind === "manual_code" && (
                   <p className="text-muted-foreground text-[11px]">
-                    Paste the final address from your browser — the page may not load, the code is
-                    in the address bar.
+                    Paste the final address from your browser. the page may not load, the code is in
+                    the address bar.
                   </p>
                 )}
               </div>

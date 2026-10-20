@@ -81,7 +81,7 @@ async function executeAgentJobViaApp(job: Job): Promise<unknown> {
  * Execute one watcher tick by calling the Next.js app's internal API.
  *
  * The tick needs the app's tool factories and the user's settings, and the app
- * is where the sandbox already runs for chats — the worker only schedules.
+ * is where the sandbox already runs for chats. the worker only schedules.
  */
 async function executeWatcherTickViaApp(job: Job): Promise<unknown> {
   return postToApp("/api/watchers/execute", {
@@ -132,7 +132,7 @@ async function retryUntilSuccess(
   while (true) {
     try {
       await fn();
-      console.log(`[worker] ${label} — ok`);
+      console.log(`[worker] ${label}. ok`);
       return;
     } catch (err) {
       console.error(

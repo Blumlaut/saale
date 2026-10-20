@@ -32,7 +32,7 @@ function buildSystemPrompt(options: {
  *
  * Anthropic's prompt cache requires byte-for-byte identical prefixes between
  * requests. If the system prompt, tools, or message history changes between
- * turns, the cache is invalidated — wasting tokens and increasing latency/cost.
+ * turns, the cache is invalidated  wasting tokens and increasing latency/cost.
  *
  * These tests verify that the payloads sent to the provider are deterministic
  * and stable across follow-up turns.
@@ -149,7 +149,7 @@ describe("tool definition stability", () => {
    * They should NOT change during the session's lifetime.
    *
    * The approval gate wrapper wraps the execute function, not the tool
-   * definition itself — so name, description, and parameters are stable.
+   * definition itself  so name, description, and parameters are stable.
    */
   it("tool definitions are stable across multiple resolutions", () => {
     // Same tool name → same policy
@@ -200,7 +200,7 @@ describe("tool definition stability", () => {
 describe("message content determinism", () => {
   /**
    * Tool results are normalized before storage and replay.
-   * The normalization must be deterministic — same input always produces
+   * The normalization must be deterministic  same input always produces
    * same output.
    */
   it("tool result normalization is deterministic", () => {
@@ -242,7 +242,7 @@ describe("message content determinism", () => {
    * The SDK's transformMessages inserts synthetic tool results for orphaned
    * tool calls. These include `timestamp: Date.now()` which is non-deterministic.
    *
-   * However, the timestamp field is NOT sent to the API — only role, toolCallId,
+   * However, the timestamp field is NOT sent to the API  only role, toolCallId,
    * toolName, content, and isError matter. The timestamp is internal metadata.
    *
    * This test verifies the fields that DO matter for the API payload are stable.
@@ -256,7 +256,7 @@ describe("message content determinism", () => {
         toolName,
         content: [{ type: "text" as const, text: "No result provided" }],
         isError: true as const,
-        timestamp: Date.now(), // Non-deterministic — but NOT sent to API
+        timestamp: Date.now(), // Non-deterministic  but NOT sent to API
       };
     }
 
@@ -270,7 +270,7 @@ describe("message content determinism", () => {
     expect(synthetic1.content).toEqual(synthetic2.content);
     expect(synthetic1.isError).toBe(synthetic2.isError);
 
-    // Timestamp is non-deterministic (not sent to API) — just verify it exists
+    // Timestamp is non-deterministic (not sent to API)  just verify it exists
     expect(typeof synthetic1.timestamp).toBe("number");
   });
 
@@ -278,12 +278,12 @@ describe("message content determinism", () => {
    * Message ordering must be deterministic. The SDK uses tree traversal
    * (buildSessionPath → buildContextEntries → sessionEntryToContextMessages).
    *
-   * Saale doesn't control this — it's internal to the SDK. But we verify
+   * Saale doesn't control this  it's internal to the SDK. But we verify
    * that our DB message fetch uses a stable ordering.
    */
   it("DB message fetch uses stable ordering", () => {
     // The stream route uses: orderBy: { createdAt: "asc" }
-    // This is deterministic — same messages always in same order
+    // This is deterministic  same messages always in same order
     const messages = [
       { id: "1", createdAt: new Date("2025-01-01T00:00:00Z"), role: "user" as const },
       { id: "2", createdAt: new Date("2025-01-01T00:00:01Z"), role: "assistant" as const },
@@ -337,7 +337,7 @@ describe("cache invalidation scenarios", () => {
     const prefix2 = JSON.stringify([turn1User, turn1Assistant]);
     expect(prefix1).toBe(prefix2);
 
-    // Full payload for turn 2 — the prefix messages should be identical
+    // Full payload for turn 2  the prefix messages should be identical
     const fullTurn2 = [turn1User, turn1Assistant, turn2User];
     expect(fullTurn2[0]).toEqual(turn1User);
     expect(fullTurn2[1]).toEqual(turn1Assistant);
@@ -395,7 +395,7 @@ describe("cache invalidation scenarios", () => {
   /**
    * Scenario: Redacted thinking blocks.
    *
-   * Redacted thinking is opaque encrypted content — must be preserved
+   * Redacted thinking is opaque encrypted content  must be preserved
    * byte-for-byte for same-model replay.
    */
   it("redacted thinking blocks are preserved deterministically", () => {
@@ -416,7 +416,7 @@ describe("cache invalidation scenarios", () => {
    * user message's last content block. On follow-up turns, the previous
    * user message's cache_control is moved to the NEW last user message.
    *
-   * This is correct behavior — the cache prefix includes everything up to
+   * This is correct behavior  the cache prefix includes everything up to
    * (but not including) the new content. The cache_control marker moves
    * with the boundary.
    *
@@ -550,7 +550,7 @@ describe("edge cases", () => {
    * It must be stable across calls.
    */
   it("job-handler default system prompt is stable", () => {
-    const defaultPrompt = `You are an AI assistant processing automated jobs. Respond with valid JSON only — no markdown, no explanation, just the raw JSON object.`;
+    const defaultPrompt = `You are an AI assistant processing automated jobs. Respond with valid JSON only  no markdown, no explanation, just the raw JSON object.`;
 
     expect(defaultPrompt).toBe(defaultPrompt);
     expect(defaultPrompt).not.toMatch(/\d{4}-\d{2}-\d{2}/);
@@ -568,7 +568,7 @@ describe("edge cases", () => {
     }): string {
       const modeInstruction =
         options.mode === "forward"
-          ? `You are forwarding this email to someone else. Write a brief introductory note before the forwarded content. Do NOT include the original message body — only the intro note.`
+          ? `You are forwarding this email to someone else. Write a brief introductory note before the forwarded content. Do NOT include the original message body  only the intro note.`
           : `You are replying to this email. Write a natural response addressing the content of the original message.`;
 
       const userStyleInstructions =
@@ -576,7 +576,7 @@ describe("edge cases", () => {
           ? `\n\nWriting style (defined by user):\n${options.writingStyle}`
           : "";
 
-      return `You are an email drafting assistant. Your only job is to write clear, concise email responses.\n\n${modeInstruction}\n${userStyleInstructions}\n\nRules:\n- Write only the email body text — no explanations, no meta-commentary`;
+      return `You are an email drafting assistant. Your only job is to write clear, concise email responses.\n\n${modeInstruction}\n${userStyleInstructions}\n\nRules:\n- Write only the email body text  no explanations, no meta-commentary`;
     }
 
     const config = { mode: "reply" as const, writingStyle: "Professional but friendly" };

@@ -1,7 +1,7 @@
 /**
  * Council constants and the small decisions derived from them.
  *
- * Pure data — no database or Node-only imports — so the room UI can import the
+ * Pure data. no database or Node-only imports. so the room UI can import the
  * same limits the orchestrator enforces. A value that could reasonably differ
  * per deployment belongs in an env var; these are the shape of the feature
  * itself (how many members, what a budget may be, how a vote resolves).
@@ -45,7 +45,7 @@ export const MAX_MEMBERS = 8;
  *
  * A chat's defaults (email, Telegram, memory, …) are the wrong defaults here. A
  * council runs unattended in parallel, so a tool that reaches the owner's data
- * — `telegram_send` messaging them, `mail_send` writing on their behalf — has to
+ *. `telegram_send` messaging them, `mail_send` writing on their behalf. has to
  * be a deliberate choice per council, not something inherited from the category
  * registry. Derived from `TOOL_CATEGORIES` so a new category arrives switched
  * off, and the council's stored `toolConfig` is an override on top of it.
@@ -77,7 +77,7 @@ export const MAX_ROOM_PAGE = 500;
  * How many room messages a single turn prompt carries.
  *
  * A member that has been asleep for a long run must be woken with what it
- * missed, but the oldest messages matter least — and the run's own budget is
+ * missed, but the oldest messages matter least. and the run's own budget is
  * the real bound on how much can accumulate. The window is applied newest-first.
  */
 export const TRANSCRIPT_WINDOW = 80;
@@ -96,7 +96,7 @@ export const TRANSCRIPT_MAX_CHARS = 60_000;
  * Length of a council's sandbox key, in characters.
  *
  * Open Terminal derives a Linux username by taking the first 8 alphanumeric
- * characters of `X-User-Id`, so a key longer than this is truncated — the whole
+ * characters of `X-User-Id`, so a key longer than this is truncated. the whole
  * key must fit for the account to be the one we think it is (see `accounts.ts`).
  */
 export const SANDBOX_KEY_LENGTH = 8;
@@ -110,7 +110,7 @@ export const WATCHDOG_GRACE_SECONDS = 90;
 /**
  * How often an in-flight turn asks whether the run was stopped.
  *
- * The loop checks between turns, but a turn can be minutes long — an owner who
+ * The loop checks between turns, but a turn can be minutes long. an owner who
  * presses Stop expects it to land while the model is still working, not after.
  */
 export const ABORT_POLL_MS = 750;
@@ -168,7 +168,7 @@ export const STOP_VOTE_THRESHOLDS: Array<{
 /**
  * Votes required to stop a run of `memberCount` enabled members.
  *
- * A council with no enabled members resolves to 0 — the run has nothing to do
+ * A council with no enabled members resolves to 0. the run has nothing to do
  * and is stopped as soon as it starts, rather than waiting for a vote that can
  * never arrive.
  */
@@ -203,7 +203,7 @@ export function normalizeStopVoteThreshold(value: unknown): StopVoteThreshold {
 /**
  * Read one budget ceiling from stored or submitted input.
  *
- * `undefined` and `null` mean "not set", so the fallback applies — a council
+ * `undefined` and `null` mean "not set", so the fallback applies. a council
  * (or a run) that was never given a ceiling inherits one. `0` means unlimited:
  * the column is nullable and a zero ceiling would stop the run the moment it
  * started, which is never what clearing a field means, so the value has to be

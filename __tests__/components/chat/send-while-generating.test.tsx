@@ -14,8 +14,8 @@ import { installMemoryStorage } from "../../helpers/memory-storage";
  * turn, swaps the streaming indicator for a bare "Thinking…" placeholder)
  * before it snaps into the queue.
  *
- * A manual compaction holds the session the same way — Pi refuses a prompt
- * until the summarization ends — so a message sent then queues too, and the
+ * A manual compaction holds the session the same way  Pi refuses a prompt
+ * until the summarization ends  so a message sent then queues too, and the
  * chat has to reconnect when the compaction ends so the server delivers it.
  */
 
@@ -127,7 +127,7 @@ function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     // "Send now": the message leaves the queue and enters the conversation.
     const delivered = queued.map((message) => ({
       ...message,
-      // Delivered after the turn above began (00:00:05) — as the server
+      // Delivered after the turn above began (00:00:05)  as the server
       // stamps it.
       createdAt: `2026-01-01T00:00:${30 + ++deliveryClock}.000Z`,
     }));
@@ -175,7 +175,7 @@ async function mountStream(): Promise<MockEventSource> {
 /**
  * Start a live generation: a streaming assistant turn.
  *
- * The server announces each turn with its start time — the client orders the
+ * The server announces each turn with its start time  the client orders the
  * live bubble by it, so messages delivered into the run land after it.
  */
 function startGeneration(stream: MockEventSource) {
@@ -255,7 +255,7 @@ describe("sending while Pi is generating", () => {
 
   it("moves the message into the queue strip when the server queues it anyway", async () => {
     // The client believes the session is idle (no stream events yet), so the
-    // message is optimistically shown as sent — but the server is busy.
+    // message is optimistically shown as sent  but the server is busy.
     await mountStream();
     sendFromComposer("just asking");
 
@@ -283,7 +283,7 @@ describe("sending while Pi is generating", () => {
     await waitFor(() => expect(within(queueStrip()).getByText("just asking")).toBeInTheDocument());
 
     // "Send now" steers the message into the running turn. The turn it
-    // interrupted began before the message, so it must stay above it — even
+    // interrupted began before the message, so it must stay above it  even
     // though the turn's own row doesn't exist yet.
     fireEvent.click(screen.getByRole("button", { name: "Send this message now" }));
 

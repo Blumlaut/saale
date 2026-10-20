@@ -1,15 +1,15 @@
 /**
  * Context-window occupancy for an agent session.
  *
- * `session.getContextUsage()` is Pi's own accounting — the same number the TUI
- * footer shows — and it is the only correct source for "how full is the
+ * `session.getContextUsage()` is Pi's own accounting. the same number the TUI
+ * footer shows. and it is the only correct source for "how full is the
  * context". Summing per-message `usage` cannot stand in for it:
  *
  *  - Providers report prompt-cache hits separately from `input` (`cacheRead`),
  *    so a warm cache makes an input+output sum look nearly empty even though
  *    the whole conversation is being re-sent.
  *  - `input` counts are cumulative across turns, while context size is the
- *    size of the *last* request — the two diverge with every turn.
+ *    size of the *last* request. the two diverge with every turn.
  *  - Providers that report no usage at all (many OpenAI-compatible endpoints)
  *    leave every sum at zero, while Pi falls back to estimating the projected
  *    transcript (~4 chars/token) so the indicator still moves.

@@ -44,7 +44,7 @@ import { cn, formatFileSize, ROW_ACTION } from "@/lib/utils";
 export interface FileBrowserProps {
   /** Workspace token the API understands: `user`, or `council:<id>`. */
   target: string;
-  /** Rendered first in the toolbar — e.g. a back link to the room. */
+  /** Rendered first in the toolbar. e.g. a back link to the room. */
   leading?: ReactNode;
   /** What to say when the workspace is empty. */
   emptyHint?: ReactNode;
@@ -68,7 +68,7 @@ function iconFor(entry: FileEntry) {
 /**
  * Browse, download and manage a workspace.
  *
- * The component knows nothing about what it is browsing — it is handed a target
+ * The component knows nothing about what it is browsing. it is handed a target
  * token and the server answers with a label, a root and the capabilities that
  * apply. That is what makes the same browser usable for a council's shared
  * workspace today and a user's own files next.
@@ -151,7 +151,7 @@ export function FileBrowser({ target, leading, emptyHint }: FileBrowserProps) {
       }}
       onDrop={onDrop}
     >
-      {/* Toolbar — workspace context left, actions right, icon-only on phones */}
+      {/* Toolbar. workspace context left, actions right, icon-only on phones */}
       <div className="flex shrink-0 items-center gap-1 border-b px-2 py-2 md:px-4">
         {leading}
 
@@ -256,7 +256,7 @@ export function FileBrowser({ target, leading, emptyHint }: FileBrowserProps) {
         </div>
       </div>
 
-      {/* Selection actions — only while something is selected */}
+      {/* Selection actions. only while something is selected */}
       {browser.selected.size > 0 && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2 md:px-6">
           <span className="console-label">{browser.selected.size} selected</span>
@@ -292,7 +292,7 @@ export function FileBrowser({ target, leading, emptyHint }: FileBrowserProps) {
         </div>
       )}
 
-      {/* The list scrolls here — the only scroll region */}
+      {/* The list scrolls here. the only scroll region */}
       <div
         className={cn(
           "min-h-0 flex-1 overflow-y-auto",
@@ -359,7 +359,7 @@ export function FileBrowser({ target, leading, emptyHint }: FileBrowserProps) {
                   </button>
 
                   <span className="text-muted-foreground hidden shrink-0 text-xs md:block">
-                    {entry.kind === "file" ? formatFileSize(entry.size) : "—"}
+                    {entry.kind === "file" ? formatFileSize(entry.size) : ""}
                   </span>
                   <span className="text-muted-foreground hidden shrink-0 text-xs lg:block">
                     {formatRelativeDate(new Date(entry.modified).toISOString())}

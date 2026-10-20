@@ -38,7 +38,7 @@ function infraMeta(meta: Record<string, unknown>): string {
   return `done\n${JSON.stringify({ _saaleInfraMeta: meta })}`;
 }
 
-/** The card's header toggle — the only button a collapsed card renders. */
+/** The card's header toggle  the only button a collapsed card renders. */
 function header(name: RegExp) {
   return screen.getByRole("button", { name });
 }
@@ -301,7 +301,7 @@ describe("tool card shell", () => {
       />,
     );
 
-    // Distinct label from the raw tool name — the header says what it is.
+    // Distinct label from the raw tool name  the header says what it is.
     expect(screen.getByText("Script")).toBeInTheDocument();
     expect(screen.getByText("List Emails · Web Search")).toBeInTheDocument();
     expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
@@ -386,7 +386,7 @@ describe("parallel tool calls", () => {
 });
 
 /**
- * `show_file` is not a report of a call — it is the file the agent handed the
+ * `show_file` is not a report of a call  it is the file the agent handed the
  * user. It therefore never folds into a run: one file is its own card, several
  * are a gallery, and both are open from the first render.
  */
@@ -481,7 +481,7 @@ describe("files the agent showed the user", () => {
 
   /**
    * The download has to leave the app document alone. A same-window anchor
-   * click — and before that, a blob: URL — is what replaces the app with
+   * click  and before that, a blob: URL  is what replaces the app with
    * about:blank on Firefox for Android (bugzilla 1919827, 1953287). The server
    * names the file, so the request only needs the URL.
    */
@@ -552,7 +552,7 @@ describe("ToolCallView with a redacted tool call", () => {
 
     expect(screen.getByText("Execute Command")).toBeInTheDocument();
     expect(screen.getByText("Ran a command in the terminal")).toBeInTheDocument();
-    // The owner's exec card header — proof the diversion happened.
+    // The owner's exec card header  proof the diversion happened.
     expect(screen.queryByText("Executed")).not.toBeInTheDocument();
   });
 
@@ -590,8 +590,8 @@ describe("ToolCallView with a redacted tool call", () => {
 /**
  * The render half of the guard.
  *
- * Driven by `ALL_TOOL_INFOS`, so a tool added to the catalog — and the card
- * that goes with it — is covered as soon as it lands. The payload carries the
+ * Driven by `ALL_TOOL_INFOS`, so a tool added to the catalog  and the card
+ * that goes with it  is covered as soon as it lands. The payload carries the
  * poisoned args and result a leak would have to come from, plus the `redacted`
  * field the share endpoints set.
  */

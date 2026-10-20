@@ -14,7 +14,7 @@ function buildDeepLink(botUsername: string, code: string): string {
 }
 
 /**
- * GET /api/integrations/telegram — this user's Telegram status.
+ * GET /api/integrations/telegram. this user's Telegram status.
  *
  * The bot token is deliberately absent: it is instance infrastructure now, and
  * only the admin route can read it.
@@ -51,7 +51,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/integrations/telegram — start linking this account.
+ * POST /api/integrations/telegram. start linking this account.
  *
  * Returns a one-time code plus a deep link that redeems it. The code is bound
  * to the caller, so sending it to the bot can only ever link *their* Telegram
@@ -97,7 +97,7 @@ export async function POST(_request: NextRequest) {
 }
 
 /**
- * DELETE /api/integrations/telegram — unlink this account.
+ * DELETE /api/integrations/telegram. unlink this account.
  *
  * Nothing is sent to Telegram, so the link disappears silently; the user can
  * relink at any time with a fresh code.

@@ -1,5 +1,5 @@
 /**
- * Tool category metadata — single source of truth.
+ * Tool category metadata. single source of truth.
  *
  * Every tool category is declared here with its display metadata.
  * - `ToolConfig` type is derived from this array
@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 
 export interface ToolCategory {
-  /** Unique key — matches ToolConfig property name */
+  /** Unique key. matches ToolConfig property name */
   key: string;
   /** Display name shown in UI toggles */
   label: string;
@@ -45,7 +45,7 @@ export interface ToolCategory {
 
 /**
  * Registry of all tool categories.
- * Source of truth — types, defaults, and UI all derive from here.
+ * Source of truth. types, defaults, and UI all derive from here.
  */
 export const TOOL_CATEGORIES: ToolCategory[] = [
   {
@@ -186,17 +186,17 @@ export const DEFAULT_TOOL_CONFIG: Record<ToolCategoryKey, boolean> = Object.from
 /**
  * How a category's tools reach the model.
  *
- * - `direct` — declared to the model and callable by name. Costs context on
+ * - `direct`. declared to the model and callable by name. Costs context on
  *   every request, whether or not the tools are used.
- * - `codemode` — not declared; listed in the `codemode` tool's catalog and
+ * - `codemode`. not declared; listed in the `codemode` tool's catalog and
  *   callable from a script. Costs context only through that catalog (bounded
  *   by codemode's inline budget) and the approval gate still applies.
- * - `deferred` — not declared and not listed; codemode scripts find it with
+ * - `deferred`. not declared and not listed; codemode scripts find it with
  *   `searchTools()`. Costs no context until the model looks for it.
  */
 export type ToolExposure = "direct" | "codemode" | "deferred";
 
-/** Per-category exposure. Sparse — an absent key means the category default. */
+/** Per-category exposure. Sparse. an absent key means the category default. */
 export type ToolExposureConfig = Partial<Record<ToolCategoryKey, ToolExposure>>;
 
 /**
@@ -205,7 +205,7 @@ export type ToolExposureConfig = Partial<Record<ToolCategoryKey, ToolExposure>>;
  * Saale hides the niche tool sets behind codemode by default: a chat that only
  * needs memory and the web should not pay for the email, jobs, calendar and
  * infra catalogs on every request. The three `direct` categories are the ones
- * an ordinary conversation reaches for most — flipping them to codemode would
+ * an ordinary conversation reaches for most. flipping them to codemode would
  * make the common case slower (a script per lookup) to save context it uses.
  */
 export const DEFAULT_TOOL_EXPOSURE: Record<ToolCategoryKey, ToolExposure> = Object.fromEntries(
@@ -217,7 +217,7 @@ export const DEFAULT_TOOL_EXPOSURE: Record<ToolCategoryKey, ToolExposure> = Obje
  *
  * Pi's default is 3000, and it fills cheapest-first by description length, so it
  * spent the budget on whichever tools happened to be worded shortest and dropped
- * the longest ones — which were the entry points (`mail_search`, `watcher_list`).
+ * the longest ones. which were the entry points (`mail_search`, `watcher_list`).
  * Only the read-only tools are listed now (see `ToolInfo.defaultExposure`), and
  * this covers all of them with room to spare; `tool-catalog-drift.test.ts` fails
  * if a newly listed tool no longer fits.
@@ -262,7 +262,7 @@ export function getToolCategory(key: string): ToolCategory | undefined {
  * Whether a category is enabled for a stored config that may not name it.
  *
  * A stored config is sparse and can predate a category, so an absent key means
- * the category sits at its registry default — not that it is off. Reading
+ * the category sits at its registry default. not that it is off. Reading
  * `config[key]` directly would switch every newly added category off for users
  * whose settings were saved earlier.
  */

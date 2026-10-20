@@ -6,7 +6,7 @@ import { getRedis } from "@/lib/redis";
 const NOTIFICATION_KEY = "notifications:";
 
 /**
- * GET /api/notifications — Get user's notifications
+ * GET /api/notifications. Get user's notifications
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/notifications — Send a notification (internal use)
+ * POST /api/notifications. Send a notification (internal use)
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PATCH /api/notifications — Mark notifications as read
+ * PATCH /api/notifications. Mark notifications as read
  */
 export async function PATCH(request: NextRequest) {
   const authResult = await requireSession();

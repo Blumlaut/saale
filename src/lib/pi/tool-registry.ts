@@ -25,7 +25,7 @@ import { createSettingsTools } from "@/lib/settings/tools";
 /**
  * Factory function that creates tools for a given category.
  *
- * `sessionId` is the session the tools are being resolved for — most
+ * `sessionId` is the session the tools are being resolved for. most
  * categories ignore it, but a tool that acts on chats needs to know which
  * chat it belongs to (a chat must not respond to itself).
  */
@@ -73,7 +73,7 @@ export interface ToolInfo {
  *
  * The settings UI reads names and descriptions off it, and the result-shape
  * test walks it to check what each tool promises a programmatic caller. Both
- * only build definitions — a tool touches the database when it runs, not when
+ * only build definitions. a tool touches the database when it runs, not when
  * it is created.
  */
 export function getAllToolDefinitions(userId: string, sessionId: string): ToolDefinition[] {
@@ -94,7 +94,7 @@ export function getAllToolDefinitions(userId: string, sessionId: string): ToolDe
 /**
  * Get all available tool names and descriptions.
  * Used by the settings UI to render per-tool policy selectors.
- * Does not require a userId — returns the static catalog of all tools.
+ * Does not require a userId. returns the static catalog of all tools.
  */
 export function getAllToolInfos(): ToolInfo[] {
   // Terminal tools (built-in Pi tools)
@@ -105,7 +105,7 @@ export function getAllToolInfos(): ToolInfo[] {
     { name: "bash", label: "Bash", description: "Execute shell commands" },
   ];
 
-  // Collect from all factories (using dummy ids — we only need names/descriptions)
+  // Collect from all factories (using dummy ids. we only need names/descriptions)
   const allTools: ToolInfo[] = [...terminalTools];
 
   for (const tool of getAllToolDefinitions("dummy", "dummy")) {
@@ -174,7 +174,7 @@ export async function resolveTools(
 
   // ── Custom tools (dispatched via registry) ────────────────────────────
   for (const category of TOOL_CATEGORIES) {
-    // Skip terminal — handled above
+    // Skip terminal. handled above
     if (category.key === "terminal") continue;
 
     // Every category belongs to a feature; a category with no owner is a
@@ -228,7 +228,7 @@ export async function resolveTools(
  * stay `direct`.
  *
  * The middle step is what splits a `codemode` category in two: its read-only
- * tools are listed in codemode's catalog and the rest are `deferred` — callable
+ * tools are listed in codemode's catalog and the rest are `deferred`. callable
  * from a script, but found with `searchTools` rather than advertised. See
  * `ToolInfo.defaultExposure`.
  */

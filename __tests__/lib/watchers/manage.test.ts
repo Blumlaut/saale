@@ -38,7 +38,7 @@ import { prisma } from "@/lib/db";
 
 /**
  * The watcher write rules. A watcher runs unattended, so what it accepts has to
- * be what the tick can actually act on — a cadence BullMQ cannot parse, or a
+ * be what the tick can actually act on  a cadence BullMQ cannot parse, or a
  * grant that no longer matches the script it was given for, are the two ways a
  * saved watcher becomes a silent one.
  */

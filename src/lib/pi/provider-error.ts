@@ -2,7 +2,7 @@
  * Provider error surfacing.
  *
  * A provider failure (bad request, rate limit, network drop) does NOT throw in
- * Pi — it ends the assistant message with `stopReason: "error"` and an
+ * Pi. it ends the assistant message with `stopReason: "error"` and an
  * `errorMessage` string. Without handling, a failed run persists an empty
  * assistant message and the user is left staring at a chat that never answered.
  *
@@ -24,11 +24,11 @@ export interface ProviderErrorSource {
 /**
  * Extract the provider error from an SDK assistant message.
  *
- * Only `stopReason: "error"` counts — `"aborted"` is Pi's own marker for a
+ * Only `stopReason: "error"` counts. `"aborted"` is Pi's own marker for a
  * run it cancelled (e.g. an abort during retry backoff) and carries no provider
  * fault. Note that a request cancelled mid-stream is NOT reported that way: it
  * arrives as `"error"` with a transport message like `"terminated"`, which is
- * why callers must only surface errors for terminal runs — see
+ * why callers must only surface errors for terminal runs. see
  * `finalizeProvisionalTurn` in the session event tracker.
  *
  * @returns The provider error text, or null when the turn did not fail.
@@ -57,7 +57,7 @@ export interface FormattedProviderError {
 const MESSAGE_KEYS = ["message", "detail", "error_description"];
 
 /**
- * Parse a JSON error body. Returns null when the text isn't JSON — the normal
+ * Parse a JSON error body. Returns null when the text isn't JSON. the normal
  * outcome for plain-text provider errors (`fetch failed`), not a failure.
  */
 function tryParseJson(text: string): unknown | null {
@@ -95,7 +95,7 @@ function findMessage(value: unknown, depth = 0): string | null {
  * with plain text, as `<status> <message>` (Anthropic:
  * `400 invalid_request_error: ...`). Raw JSON in a chat bubble is noise, so the
  * status is split off and the body's message extracted. Anything unrecognized is
- * shown verbatim — never hidden.
+ * shown verbatim. never hidden.
  *
  * @example
  * formatProviderError('400: {"message":"Invalid max_tokens value"}')
@@ -106,7 +106,7 @@ function findMessage(value: unknown, depth = 0): string | null {
 export function formatProviderError(raw: string): FormattedProviderError {
   const text = raw.trim();
 
-  // `<status>: <body>` — Pi's prefix for HTTP failures (may contain a JSON body
+  // `<status>: <body>`. Pi's prefix for HTTP failures (may contain a JSON body
   // with colons of its own, so split only on the first one). The colon is
   // optional: Anthropic-style errors use a space, which used to leave the raw
   // status glued to the message the user reads.

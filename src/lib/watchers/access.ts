@@ -14,7 +14,7 @@ import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import { watcherToolAccess, type ToolPolicies } from "./grant";
 
 export interface WatcherToolAccess {
-  /** Tools the script may call — everything enabled except what the user turned off. */
+  /** Tools the script may call. everything enabled except what the user turned off. */
   callable: Awaited<ReturnType<typeof resolveTools>>;
   callableNames: string[];
   toolPolicies: ToolPolicies;
@@ -28,7 +28,7 @@ export interface WatcherToolAccess {
  * chat may not respond to itself" rule a conversation is; an unbound watcher
  * passes its own id.
  *
- * The user's enabled categories decide which tools exist here — the same setting
+ * The user's enabled categories decide which tools exist here. the same setting
  * a conversation uses. Exposure is not consulted: it governs how a *model*
  * reaches a tool, and a watcher has no model in the loop.
  */

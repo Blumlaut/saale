@@ -2,14 +2,14 @@
  * What a council member is told.
  *
  * Two prompts per member: a **system prompt** describing the room and the
- * member's place in it, written once per session, and a **turn prompt** — the
- * user message of each turn — carrying what the member missed since its last
+ * member's place in it, written once per session, and a **turn prompt**. the
+ * user message of each turn. carrying what the member missed since its last
  * one. The split matters: the system prompt is replayed from the transcript on
  * every request, so anything that grows per turn belongs in the turn prompt.
  *
  * The one rule both prompts repeat is that the room only sees what the member
  * sends with `council_post`. A model's instinct is to end its turn with an
- * answer, and an unposted answer reaches nobody — so it is stated in the system
+ * answer, and an unposted answer reaches nobody. so it is stated in the system
  * prompt, in the tool description and in every turn prompt.
  *
  * The rules are written for the mode the run uses: a member that knows whether
@@ -23,7 +23,7 @@
  * the first move a post, because work nobody announced is work the others will
  * duplicate.
  *
- * Pure — no database or SDK imports, so the wording is unit-testable.
+ * Pure. no database or SDK imports, so the wording is unit-testable.
  */
 
 import type { CouncilOrchestration, StopVoteThreshold } from "./config";
@@ -45,7 +45,7 @@ export interface CouncilPromptContext {
   members: CouncilMemberSummary[];
   orchestration: CouncilOrchestration;
   stopVoteThreshold: StopVoteThreshold;
-  /** Votes needed to stop a run — resolved by the caller from the threshold. */
+  /** Votes needed to stop a run. resolved by the caller from the threshold. */
   stopVoteQuorum: number;
   /** The member's workspace, or null when the sandbox is unavailable. */
   sandboxPath: string | null;
@@ -81,22 +81,22 @@ function turnSentence(orchestration: CouncilOrchestration): string {
 function coordinationSentence(orchestration: CouncilOrchestration): string {
   return orchestration === "round-robin"
     ? "Say what you are taking before you change a shared file: turns come one at a time, and your post is how the next member knows to leave it to you."
-    : "Split the work in the room before you build anything. Everyone addressed is running at the same time as you, so nothing of yours is visible to the others until you post it: announce what you are taking before you touch a shared file, and read the room first with `council_read` — a claim may have landed while you were working.";
+    : "Split the work in the room before you build anything. Everyone addressed is running at the same time as you, so nothing of yours is visible to the others until you post it: announce what you are taking before you touch a shared file, and read the room first with `council_read`. a claim may have landed while you were working.";
 }
 
 /**
  * What a member does on a first turn that finds the room empty.
  *
  * The empty room is the case this rule exists for: a model reads the room,
- * finds nothing to respond to, and starts the work — silently, while every
+ * finds nothing to respond to, and starts the work. silently, while every
  * other member starts the same work. The room is the only shared state, so the
  * opening move has to be a post. What the others are doing while it posts
  * follows from the mode, so the rule is written per mode.
  */
 function openingSentence(orchestration: CouncilOrchestration): string {
   return orchestration === "round-robin"
-    ? "Nobody has posted yet. Post what you are taking on before you start anything — the members who follow you this round need to know what is left to them."
-    : `Nobody has posted yet, and the other members' first turns are starting at the same time as yours. Post what you are taking on before you start anything, and address it to the others with @${ALL_HANDLE} so it wakes them — work you have not announced is invisible to them, so two of you can be building the same thing.`;
+    ? "Nobody has posted yet. Post what you are taking on before you start anything. the members who follow you this round need to know what is left to them."
+    : `Nobody has posted yet, and the other members' first turns are starting at the same time as yours. Post what you are taking on before you start anything, and address it to the others with @${ALL_HANDLE} so it wakes them. work you have not announced is invisible to them, so two of you can be building the same thing.`;
 }
 
 /** The system prompt for one member, for the whole run. */
@@ -107,7 +107,7 @@ export function buildCouncilMemberPrompt(context: CouncilPromptContext): string 
   const roster = others.map((entry) => `@${entry.name}`).join(", ");
 
   const sections = [
-    `You are ${member.name}, one member of "${councilName}" — a small group of agents working one problem together in a shared room. Each member has its own model and its own reasoning; the room is where you act together.`,
+    `You are ${member.name}, one member of "${councilName}". a small group of agents working one problem together in a shared room. Each member has its own model and its own reasoning; the room is where you act together.`,
 
     `The council's goal:\n${brief}`,
 
@@ -115,19 +115,19 @@ export function buildCouncilMemberPrompt(context: CouncilPromptContext): string 
       ? `Your role in this council:\n${member.instructions.trim()}`
       : null,
 
-    `The members are ${roster ? `${roster} and you` : "you alone"}. Address a member by writing its @name in a message — that is what wakes it, and it is the only thing that does. @${ALL_HANDLE} addresses everyone and @${USER_HANDLE} addresses the human owner of this council. Nothing else reaches another member.`,
+    `The members are ${roster ? `${roster} and you` : "you alone"}. Address a member by writing its @name in a message. that is what wakes it, and it is the only thing that does. @${ALL_HANDLE} addresses everyone and @${USER_HANDLE} addresses the human owner of this council. Nothing else reaches another member.`,
 
     `How the room works:
-- The room only sees what you send with \`council_post\`. Your closing text at the end of a turn is **not** shown to anyone — it is kept privately for the owner to inspect. An answer you did not post was not delivered.
+- The room only sees what you send with \`council_post\`. Your closing text at the end of a turn is **not** shown to anyone. it is kept privately for the owner to inspect. An answer you did not post was not delivered.
 - Post when you have something the others need: a finding, a decision, a question, a file you wrote. Do not narrate your process.
 - The opening move of a run is a post, not work. If your first turn finds the room empty, nobody has spoken yet: say what you are taking on before you touch anything, so the others can divide the rest with you.
 - ${turnSentence(context.orchestration)}
-- Re-read the room with \`council_read\` whenever you need context you were not shown. An empty turn window means nothing new arrived — not that the room is empty.
+- Re-read the room with \`council_read\` whenever you need context you were not shown. An empty turn window means nothing new arrived. not that the room is empty.
 - When the goal is met, or the group is blocked, call \`council_vote_stop\` with your reason. ${quorumSentence(context.stopVoteThreshold, context.stopVoteQuorum)}. Do not vote to stop while there is work you can still do yourself.
 - Address the owner with @${USER_HANDLE} when the group needs a decision only they can make; that pauses the run.`,
 
     `Working together:
-- You share one private workspace with the other members${context.sandboxPath ? `: \`${context.sandboxPath}\`` : ""}. It is separate from the owner's own files — neither can read the other, and the owner cannot see what is in it unless you paste it into a message.
+- You share one private workspace with the other members${context.sandboxPath ? `: \`${context.sandboxPath}\`` : ""}. It is separate from the owner's own files. neither can read the other, and the owner cannot see what is in it unless you paste it into a message.
 - Work there with the file tools. Files are shared with the other members immediately, so say which file you changed when you post about it.
 ${others.length > 0 ? `- ${coordinationSentence(context.orchestration)}\n` : ""}- Keep posts short and specific. Long output belongs in a file, summarized in the post.`,
 
@@ -137,7 +137,7 @@ ${others.length > 0 ? `- ${coordinationSentence(context.orchestration)}\n` : ""}
   return sections.filter((section): section is string => section !== null).join("\n\n");
 }
 
-/** One room message as a turn prompt shows it — the shared read model. */
+/** One room message as a turn prompt shows it. the shared read model. */
 export type TurnMessage = RoomMessageView;
 
 export interface TurnSelection {
@@ -150,7 +150,7 @@ export interface TurnSelection {
  * Choose the messages a turn prompt carries: the newest in the window, capped by
  * characters as well as by count.
  *
- * Count alone is not a bound on size — messages may be thousands of characters
+ * Count alone is not a bound on size. messages may be thousands of characters
  * each, and a council whose transcript is long would spend its whole context on
  * room history. One message is always kept, however long, so a turn is never
  * prompted with nothing.
@@ -203,7 +203,7 @@ export interface TurnPromptOptions {
    */
   droppedBefore?: number;
   /**
-   * The newest room seq this member has already been shown — its read cursor.
+   * The newest room seq this member has already been shown. its read cursor.
    *
    * An empty window with a zero cursor means the room itself is empty; with a
    * non-zero one it means only that nothing new has landed. Naming which is
@@ -241,7 +241,7 @@ export function buildCouncilTurnPrompt(options: TurnPromptOptions): string {
   const droppedCount = selection.droppedEarlier + (options.droppedBefore ?? 0);
   const dropped =
     droppedCount > 0
-      ? `${droppedCount} older message${droppedCount === 1 ? "" : "s"} in the room ${droppedCount === 1 ? "is" : "are"} not shown — use \`council_read\` if you need ${droppedCount === 1 ? "it" : "them"}.`
+      ? `${droppedCount} older message${droppedCount === 1 ? "" : "s"} in the room ${droppedCount === 1 ? "is" : "are"} not shown. use \`council_read\` if you need ${droppedCount === 1 ? "it" : "them"}.`
       : null;
 
   // An empty window can mean two very different things, and saying only
@@ -260,7 +260,7 @@ export function buildCouncilTurnPrompt(options: TurnPromptOptions): string {
     body || "(nothing new)",
     alreadyRead,
     roomEmpty ? openingSentence(options.orchestration ?? "parallel") : null,
-    `\nNow act as ${memberName}. Post with \`council_post\` if you have something to say — remember that the others cannot see anything else you write, including your closing text.${options.sandboxPath ? ` Your workspace is \`${options.sandboxPath}\`.` : ""}`,
+    `\nNow act as ${memberName}. Post with \`council_post\` if you have something to say. remember that the others cannot see anything else you write, including your closing text.${options.sandboxPath ? ` Your workspace is \`${options.sandboxPath}\`.` : ""}`,
   ]
     .filter((part): part is string => part !== null)
     .join("\n\n");

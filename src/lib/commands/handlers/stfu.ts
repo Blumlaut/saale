@@ -7,7 +7,7 @@ import {
 import type { CommandHandler } from "../types";
 
 /**
- * `/stfu` — auto-accept every tool approval for a time box.
+ * `/stfu`. auto-accept every tool approval for a time box.
  *
  * The flag is per user and lives in Redis, so it applies to web *and* Telegram
  * runs from the moment it is set.
@@ -24,7 +24,7 @@ export const stfuHandler: CommandHandler = {
         : "Auto-accept every tool approval for 2 hours. Tools you disabled stay off.",
       options: [
         { value: "on", label: "Enable for 2 hours", current: !active },
-        // "stop" is the value the old Telegram argument used — keep it so
+        // "stop" is the value the old Telegram argument used. keep it so
         // `/stfu stop` keeps working for anyone who learned it.
         { value: "stop", label: "Turn off", current: active },
       ],
@@ -35,7 +35,7 @@ export const stfuHandler: CommandHandler = {
     if (value === "on") {
       const until = await enableAutoApprove(ctx.userId, STFU_DURATION_MS);
       return {
-        message: `STFU mode ON until ${formatTime(until)} — tool approvals are auto-accepted.`,
+        message: `STFU mode ON until ${formatTime(until)}. tool approvals are auto-accepted.`,
         tone: "success",
       };
     }

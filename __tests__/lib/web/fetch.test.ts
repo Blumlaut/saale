@@ -44,7 +44,7 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-describe("fetchUrl — reddit routing", () => {
+describe("fetchUrl  reddit routing", () => {
   let globalFetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {

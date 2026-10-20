@@ -60,7 +60,7 @@ describe("ensureTelegramAgentDefinition", () => {
   });
 
   it("grants agentJobs to an existing definition that predates it", async () => {
-    // A definition created before scheduling was granted — the upgrade must not
+    // A definition created before scheduling was granted  the upgrade must not
     // depend on the user re-creating their bot.
     mockAgentDefinition.findFirst.mockResolvedValue(
       definition({ toolConfig: { email: true, calendar: true, terminal: true } }),

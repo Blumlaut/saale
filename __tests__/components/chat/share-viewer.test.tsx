@@ -9,7 +9,7 @@ import type { Message, ToolCallData } from "@/components/chat/types";
  * The public share page renders the same condensed transcript the owner gets
  * with "Compact activity" on: a turn's steps fold into one "Used N tools" row,
  * and prose ends the run. The leaves are redacted, so opening a run can only
- * ever reveal the server-written summary — never the args or result behind it.
+ * ever reveal the server-written summary  never the args or result behind it.
  */
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -40,7 +40,7 @@ function call(
   };
 }
 
-/** One step of a turn — a child of the group's root step unless it is the root. */
+/** One step of a turn  a child of the group's root step unless it is the root. */
 function step(id: string, toolCalls: ToolCallData[], extra: Partial<Message> = {}): Message {
   return {
     id,
@@ -66,7 +66,7 @@ function renderShare(messages: Message[]) {
   );
 }
 
-/** The activity row's toggle — the count reports the whole run. */
+/** The activity row's toggle  the count reports the whole run. */
 function toolsRow(): HTMLElement {
   return screen.getByRole("button", { name: /Used \d+ tool/ });
 }
@@ -85,7 +85,7 @@ describe("share viewer tool calls", () => {
       step("a2", [call("t3", "web_fetch", "Fetched a web page")]),
     ]);
 
-    // One row for the whole run — not one collapsed row per step.
+    // One row for the whole run  not one collapsed row per step.
     expect(screen.getByText("Used 3 tools")).toBeInTheDocument();
     expect(screen.queryByText(/tool calls?/)).not.toBeInTheDocument();
 
@@ -145,7 +145,7 @@ describe("share viewer tool calls", () => {
       ]),
     ]);
 
-    // The failure is on the activity row itself — it is never behind a click.
+    // The failure is on the activity row itself  it is never behind a click.
     expect(screen.getByText("failed")).toBeInTheDocument();
   });
 

@@ -1,7 +1,7 @@
 /**
  * Sidebar navigation registry.
  *
- * Single source of truth for the dashboard nav — the desktop sidebar, the mobile
+ * Single source of truth for the dashboard nav. the desktop sidebar, the mobile
  * bottom bar, and the settings editor all resolve their items through this module.
  *
  * A user's own layout (display order + hidden items) is stored in
@@ -12,7 +12,7 @@
 
 /**
  * Items a user cannot hide. Settings is the only place the sidebar itself is
- * edited — hiding it would lock a user out of it.
+ * edited. hiding it would lock a user out of it.
  */
 export const PINNED_SIDEBAR_NAV_IDS = ["settings"] as const satisfies readonly SidebarNavItemId[];
 
@@ -43,7 +43,7 @@ export interface SidebarNavItem {
   /**
    * Registered but not part of the out-of-the-box sidebar: a layout that does
    * not mention the item starts with it hidden, so the user turns it on in
-   * Settings instead of turning it off. Availability is a separate question —
+   * Settings instead of turning it off. Availability is a separate question
    * an item only reaches the nav if the route that serves the layout says so.
    */
   defaultHidden?: boolean;
@@ -104,7 +104,7 @@ export function defaultSidebarNav(): SidebarNavEntry[] {
  *
  * Unknown ids and duplicates are dropped, items the layout doesn't mention are
  * appended in registry order at their default visibility, and pinned items
- * (Settings) are always forced back to visible — hiding them is not a valid
+ * (Settings) are always forced back to visible. hiding them is not a valid
  * layout.
  */
 export function normalizeSidebarNav(stored: unknown): SidebarNavEntry[] {

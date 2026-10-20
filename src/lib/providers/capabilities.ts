@@ -3,7 +3,7 @@
  * itself: a self-hosted OpenAI-compatible endpoint.
  *
  * Pi's catalog answers this for every hosted model it knows, but a model that is
- * only ever served by the user's own endpoint has no catalog entry — and a
+ * only ever served by the user's own endpoint has no catalog entry. and a
  * definition built from "id + name" alone still has to claim something. Claiming
  * text-only makes Pi strip every image out of the request (`transformMessages` →
  * `downgradeUnsupportedImages`), so a vision model imported from a local server
@@ -12,8 +12,8 @@
  * the request outright.
  *
  * Vision is therefore recorded per model: read from the endpoint where it can be
- * read — `llama-server` reports it in `/props` as `modalities.vision`, the
- * projector it actually loaded — and set by the user where it cannot. What is
+ * read. `llama-server` reports it in `/props` as `modalities.vision`, the
+ * projector it actually loaded. and set by the user where it cannot. What is
  * stored is what the model definition claims, so nothing decides per request
  * whether a picture is worth sending.
  *
@@ -41,7 +41,7 @@ export const DETECTION_BUDGET_MS = 5_000;
 /** Timeout for a single `/props` probe. */
 const PROBE_TIMEOUT_MS = 2_000;
 
-/** Probes in flight at once — a local server serves these trivially, but not 500 at once. */
+/** Probes in flight at once. a local server serves these trivially, but not 500 at once. */
 const PROBE_CONCURRENCY = 6;
 
 /** Models probed at most, so a huge catalog cannot turn a save into a sweep. */
@@ -55,7 +55,7 @@ function normalizeBaseUrl(baseUrl: string): string {
  * The server root a llama.cpp instance serves its introspection endpoints from.
  *
  * `/props`, `/slots` and `/health` live at the root, while the OpenAI-compatible
- * API — the URL a user configures as the provider base — is mounted under
+ * API. the URL a user configures as the provider base. is mounted under
  * `/v1`. Probing `${baseUrl}/props` therefore asks for `/v1/props`, which does
  * not exist, and every model comes back with no capabilities at all. Strip the
  * version segment so the probe reaches the real endpoint.
@@ -74,8 +74,8 @@ function authHeaders(apiKey: string | undefined): Record<string, string> {
 /**
  * Read a JSON object from a capability endpoint.
  *
- * A non-OK response is an answer ("no such endpoint"), not a failure — most
- * OpenAI-compatible servers have no `/props` at all — so it is not logged. A
+ * A non-OK response is an answer ("no such endpoint"), not a failure. most
+ * OpenAI-compatible servers have no `/props` at all. so it is not logged. A
  * transport error is logged: that one is worth knowing about.
  */
 async function fetchJsonObject(
@@ -110,7 +110,7 @@ function visionFromProps(props: Record<string, unknown>): boolean | undefined {
  * The context window of a llama.cpp server's loaded model, when it reports one.
  *
  * `n_ctx` is what the server was started with (`--ctx-size`), so it is the real
- * limit a request has to fit in — older builds put it on the payload, newer ones
+ * limit a request has to fit in. older builds put it on the payload, newer ones
  * inside `default_generation_settings`.
  */
 function contextWindowFromProps(props: Record<string, unknown>): number | undefined {
@@ -140,7 +140,7 @@ function toStringList(value: unknown): string[] {
  * Whether a `/props` payload provably describes `modelId`.
  *
  * A server that ignores the `?model=` parameter answers with whichever model it
- * has loaded — attributing that to every listed model would mark text-only ones
+ * has loaded. attributing that to every listed model would mark text-only ones
  * vision-capable, so an unprovable answer is treated as no answer.
  */
 function propsIdentifyModel(props: Record<string, unknown>, modelId: string): boolean {
@@ -151,7 +151,7 @@ function propsIdentifyModel(props: Record<string, unknown>, modelId: string): bo
   const normalized = modelPath.replace(/\\/g, "/").replace(/\/+$/, "");
   const segments = normalized.split("/");
   // Either the GGUF is named after the model, or it sits in a directory that is
-  // (`.../Qwen3-VL-8B/Qwen3-VL-8B-Q4_K_M.gguf` — how the router names its models).
+  // (`.../Qwen3-VL-8B/Qwen3-VL-8B-Q4_K_M.gguf`. how the router names its models).
   return segments[segments.length - 1] === modelId || segments[segments.length - 2] === modelId;
 }
 
@@ -200,7 +200,7 @@ export interface ListedModel {
 export interface EndpointListing {
   models: ListedModel[];
   /**
-   * Whether the endpoint swaps models in on demand — llama-swap and the like
+   * Whether the endpoint swaps models in on demand. llama-swap and the like
    * answer a per-model `/props` probe by loading that model, evicting the one in
    * use and taking as long as a load takes.
    */
@@ -249,7 +249,7 @@ function listedVision(entry: Record<string, unknown>): boolean | undefined {
  * Read an OpenAI-compatible `/models` payload.
  *
  * Most servers list ids and nothing else, but the ones that state a model's
- * window or modalities save the user from typing them — and both llama-swap and
+ * window or modalities save the user from typing them. and both llama-swap and
  * vLLM state the window without loading anything.
  */
 export function parseEndpointListing(payload: unknown): EndpointListing {
@@ -288,7 +288,7 @@ export function parseEndpointListing(payload: unknown): EndpointListing {
  * Two sources, in order of cost. The listing is free (it was fetched anyway) and
  * already answers for llama-swap, vLLM and LM Studio. `/props` is how a bare
  * llama-server states the `n_ctx` it was started with, but it is only asked for
- * models the listing left unknown, and never of a load-on-demand proxy — where
+ * models the listing left unknown, and never of a load-on-demand proxy. where
  * the answer would cost a model swap.
  *
  * Everything else falls through with an empty answer, which the UI presents as
@@ -300,7 +300,7 @@ export async function detectModelCapabilities(options: {
   modelIds: string[];
   /** What the listing already stated, keyed by model id. */
   reported?: ModelCapabilityMap | undefined;
-  /** Skip `/props` entirely — the endpoint loads models on demand. */
+  /** Skip `/props` entirely. the endpoint loads models on demand. */
   loadOnDemand?: boolean | undefined;
   budgetMs?: number;
 }): Promise<CapabilityDetectionResult> {
@@ -332,7 +332,7 @@ export async function detectModelCapabilities(options: {
 
   if (allModelIds.length === 1) {
     // A single-model endpoint has exactly one `modalities` to report, and the
-    // unparameterised probe answers for it — no name matching needed.
+    // unparameterised probe answers for it. no name matching needed.
     const modelId = unprobedIds[0]!;
     const probed = await probeModel(baseUrl, options.apiKey, modelId, {
       plain: true,
@@ -457,7 +457,7 @@ export function withModelLimits(
  * The stored form of a capability map.
  *
  * Prisma's JSON input rejects `undefined`, which an optional flag projects into
- * a map's type — and a model with nothing set is stored as nothing at all, so an
+ * a map's type. and a model with nothing set is stored as nothing at all, so an
  * "auto" model never looks like an explicit answer.
  */
 export function serializeModelCapabilityMap(
@@ -481,8 +481,8 @@ export function serializeModelCapabilityMap(
 /**
  * Fold freshly detected capabilities into the stored ones.
  *
- * Detection wins per field where it answered — an explicit refresh asks the
- * endpoint, and the endpoint is the authority on what it loaded — while
+ * Detection wins per field where it answered. an explicit refresh asks the
+ * endpoint, and the endpoint is the authority on what it loaded. while
  * everything it could not answer for keeps whatever the user (or a previous
  * sweep) recorded. Merging per field rather than per model is what stops a
  * detected vision flag from dropping a window the user typed by hand.

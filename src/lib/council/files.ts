@@ -2,13 +2,13 @@
  * A council's shared workspace, seen through the file browser.
  *
  * The workspace is one directory per council, owned by a Linux account derived
- * from the council's stored `sandboxKey` — every member works in it, so it is
+ * from the council's stored `sandboxKey`. every member works in it, so it is
  * the sandbox root itself that gets browsed, not a member's private folder.
  *
  * Two things this deliberately does *not* do: it does not touch the user's own
  * workspace (the identity passed to Open Terminal is the sandbox key, so the
  * kernel applies the sandbox's permissions, not the caller's), and it does not
- * decide who may look — that is `requireCouncilAccess` in the route, the same
+ * decide who may look. that is `requireCouncilAccess` in the route, the same
  * gate every other council endpoint uses.
  */
 

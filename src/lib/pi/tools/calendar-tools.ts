@@ -50,7 +50,7 @@ const calendarSearchSchema = Type.Object({
   events: Type.Array(calendarEventSchema),
 });
 
-/** The event a create reports — the full set of fields it writes back. */
+/** The event a create reports. the full set of fields it writes back. */
 const calendarCreatedEventSchema = Type.Object({
   id: Type.String(),
   uid: Type.String(),
@@ -67,7 +67,7 @@ const calendarCreateSchema = Type.Object({
   caldavPush: Type.String(),
 });
 
-/** The event an update reports — no uid, which the response does not carry. */
+/** The event an update reports. no uid, which the response does not carry. */
 const calendarUpdatedEventSchema = Type.Object({
   id: Type.String(),
   summary: Type.String(),

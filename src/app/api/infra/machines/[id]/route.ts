@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 
 /**
- * GET /api/infra/machines/[id] — Get a single machine
+ * GET /api/infra/machines/[id]. Get a single machine
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();
@@ -48,7 +48,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 /**
- * PATCH /api/infra/machines/[id] — Update a machine
+ * PATCH /api/infra/machines/[id]. Update a machine
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();
@@ -81,7 +81,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updateData.encryptedPass = encrypt(body.password);
     }
   } else {
-    // Keep existing auth method — only update credential if provided
+    // Keep existing auth method. only update credential if provided
     if (machine.authMethod === "key" && body.privateKey) {
       updateData.encryptedKey = encrypt(body.privateKey);
     }
@@ -124,7 +124,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 /**
- * DELETE /api/infra/machines/[id] — Remove a machine and its notes
+ * DELETE /api/infra/machines/[id]. Remove a machine and its notes
  */
 export async function DELETE(
   _request: NextRequest,

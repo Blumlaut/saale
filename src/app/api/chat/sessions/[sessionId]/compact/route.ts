@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { compactChatSession, type CompactChatErrorCode } from "@/lib/chat/compact-chat";
 
-/** HTTP mapping for the compaction failure reasons — see `compactChatSession`. */
+/** HTTP mapping for the compaction failure reasons. see `compactChatSession`. */
 const ERROR_STATUS: Record<CompactChatErrorCode, number> = {
   "no-model": 400,
   "already-compacted": 409,
@@ -17,7 +17,7 @@ const ERROR_CODE: Partial<Record<CompactChatErrorCode, string>> = {
 };
 
 /**
- * POST /api/chat/sessions/:sessionId/compact — manually compact the conversation.
+ * POST /api/chat/sessions/:sessionId/compact. manually compact the conversation.
  *
  * The work lives in `compactChatSession` so the `/compact` slash command
  * compacts a chat exactly the same way.

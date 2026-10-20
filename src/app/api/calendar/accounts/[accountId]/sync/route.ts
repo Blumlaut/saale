@@ -5,7 +5,7 @@ import { syncCalendarAccount } from "@/lib/calendar/sync";
 import { prisma } from "@/lib/db";
 
 /**
- * POST /api/calendar/accounts/:accountId/sync — Trigger immediate sync
+ * POST /api/calendar/accounts/:accountId/sync. Trigger immediate sync
  */
 export async function POST(
   _request: NextRequest,

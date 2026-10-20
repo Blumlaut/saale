@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * The shared chat-row creation. Two entry points now use it — the web POST
- * route and the `chat_create` tool — so the sanitizing and the optional-field
+ * The shared chat-row creation. Two entry points now use it  the web POST
+ * route and the `chat_create` tool  so the sanitizing and the optional-field
  * handling have to hold for both.
  */
 

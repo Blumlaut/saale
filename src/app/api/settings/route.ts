@@ -24,7 +24,7 @@ function serializeSettings(settings: AppSettings) {
 }
 
 /**
- * GET /api/settings — Get user settings
+ * GET /api/settings. Get user settings
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -36,11 +36,11 @@ export async function GET() {
 }
 
 /**
- * PATCH /api/settings — Update user settings
+ * PATCH /api/settings. Update user settings
  *
  * The body is a column-keyed patch. It is validated and written through the
  * settings registry (`applyUserSettingsPatch`), which is the only writer of
- * `AppSettings` — so a value cannot reach the row without passing the same
+ * `AppSettings`. so a value cannot reach the row without passing the same
  * validation the agent's `settings_set` tool uses.
  */
 export async function PATCH(request: NextRequest) {

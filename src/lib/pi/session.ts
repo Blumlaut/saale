@@ -25,7 +25,7 @@ function resolveToolConfig(config: ToolConfig | null | undefined): Required<Tool
 
 /**
  * Create terminal-backed Pi built-in tools (sandboxed via open-terminal).
- * Used when bash is enabled — all file ops go through the container.
+ * Used when bash is enabled. all file ops go through the container.
  * Injects GH_TOKEN into every command when GitHub integration is enabled.
  */
 export async function createTerminalScopedTools(

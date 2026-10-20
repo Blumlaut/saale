@@ -54,7 +54,7 @@ describe("createAgentIdleTimeout", () => {
     const onTimeout = vi.fn();
     createAgentIdleTimeout({ session, timeoutMs: 10_000, label: "test", onTimeout });
 
-    // The agent "works" for 60s, emitting an event every 2s — six times
+    // The agent "works" for 60s, emitting an event every 2s  six times
     // longer than the 10s idle window in total run time.
     for (let i = 0; i < 30; i++) {
       vi.advanceTimersByTime(2_000);

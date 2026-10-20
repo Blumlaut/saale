@@ -18,7 +18,7 @@ import {
 import type { Contact } from "@/types/shared";
 
 /**
- * Contact book — list, create/edit sheet and delete confirmation.
+ * Contact book. list, create/edit sheet and delete confirmation.
  * Rendered inside a tab on the mail page; manages its own data.
  */
 export function ContactsPanel() {

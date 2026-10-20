@@ -116,7 +116,7 @@ describe("chat session factory", () => {
       expect(mockCreatePersistentSession).toHaveBeenCalledTimes(1);
       const options = mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>;
 
-      // The gate is what enforces tool policies — it must reach the session,
+      // The gate is what enforces tool policies  it must reach the session,
       // and MCP tools (registered after the session exists) need the same
       // policies plus an approval channel of their own.
       expect(options.wrapTool).toBe(wrapTool);

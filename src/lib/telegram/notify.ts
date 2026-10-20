@@ -6,7 +6,7 @@ import { recordTelegramJobOutput } from "./outbound";
 /**
  * Proactive Telegram delivery.
  *
- * Everything that reaches the user *between* conversations goes through here —
+ * Everything that reaches the user *between* conversations goes through here
  * the `telegram_send` tool, task reminders, and agent job output. Centralising
  * it keeps three behaviours consistent:
  *
@@ -47,7 +47,7 @@ export interface TelegramDelivery {
  * Send a message to the user's linked chat and record it in that chat's
  * session so a reply has context.
  *
- * Recording failures are logged and swallowed — a message that would otherwise
+ * Recording failures are logged and swallowed. a message that would otherwise
  * arrive must not be held back because the session write failed.
  */
 export async function deliverTelegramMessage(params: {
@@ -82,7 +82,7 @@ export async function deliverTelegramMessage(params: {
  * Resolve the user's linked Telegram chat and deliver a message to it.
  *
  * This is the entry point for anything that reaches the user without a
- * conversation in progress. It never throws — inspect the result instead.
+ * conversation in progress. It never throws. inspect the result instead.
  *
  * @param params.userId - The Saale user to reach
  * @param params.content - Message text (Markdown; split automatically if long)

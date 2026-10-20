@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 
 /**
- * POST /api/calendar/accounts/:accountId/test-connection — Test CalDAV connection
+ * POST /api/calendar/accounts/:accountId/test-connection. Test CalDAV connection
  * For new accounts: accepts credentials in request body
  * For existing accounts: uses stored credentials
  */

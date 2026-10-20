@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 
 /**
- * GET /api/jobs/schemas — Return job type schemas with runtime data.
+ * GET /api/jobs/schemas. Return job type schemas with runtime data.
  * Populates select field options (e.g. email accounts) from the database.
  * Model fields use the shared ModelPicker component (no options needed here).
  */

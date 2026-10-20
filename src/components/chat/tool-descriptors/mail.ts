@@ -49,7 +49,7 @@ interface MailReadMeta {
 
 type MailMeta = MailListMeta | MailSearchMeta | MailReadMeta;
 
-/** Cards for the mail tools — all three are a list of emails with a heading. */
+/** Cards for the mail tools. all three are a list of emails with a heading. */
 export const mailToolDescriptor: ToolDescriptor = {
   names: ["mail_list", "mail_search", "mail_read"],
   describe(toolCall): ToolCardModel | null {

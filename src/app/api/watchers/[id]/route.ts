@@ -10,13 +10,13 @@ import {
   WatcherInputError,
 } from "@/lib/watchers/manage";
 
-/** The watcher, scoped to its owner — never looked up by id alone. */
+/** The watcher, scoped to its owner. never looked up by id alone. */
 async function findOwned(userId: string, id: string) {
   return prisma.scriptWatcher.findFirst({ where: { id, userId } });
 }
 
 /**
- * GET /api/watchers/[id] — one watcher with its recent ticks.
+ * GET /api/watchers/[id]. one watcher with its recent ticks.
  */
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();
@@ -53,7 +53,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 }
 
 /**
- * PATCH /api/watchers/[id] — edit a watcher.
+ * PATCH /api/watchers/[id]. edit a watcher.
  *
  * `approveScript` is what the dialog sends once the user has seen the consent
  * list for the script it is saving; without it a script change leaves the grant
@@ -112,7 +112,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 }
 
 /**
- * DELETE /api/watchers/[id] — remove a watcher and stop its ticks.
+ * DELETE /api/watchers/[id]. remove a watcher and stop its ticks.
  */
 export async function DELETE(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();

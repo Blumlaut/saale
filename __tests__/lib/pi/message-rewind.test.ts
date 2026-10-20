@@ -100,7 +100,7 @@ describe("findRewindEntry", () => {
 
   it("falls back to the content match when the transcript has drifted", () => {
     // A prompt that failed before the SDK recorded it shifts every later
-    // position — the content is the only reliable signal left.
+    // position  the content is the only reliable signal left.
     const entries = transcriptUserMessages(fakeSession(twoTurnBranch(), "a2").session);
 
     const found = findRewindEntry(entries, { userMessageIndex: 5, previousContent: "ALPHA" });
@@ -161,7 +161,7 @@ describe("rewindSessionToMessage", () => {
   it("resets the leaf when the first message is the leaf", async () => {
     // The first message has no parent entry to navigate to, so the rewind
     // resets the leaf directly and lets the session resync the agent's state
-    // from the (now empty) projection — pi v0.87's canonical SessionManager.
+    // from the (now empty) projection  pi v0.87's canonical SessionManager.
     const branch = [userEntry("u1", "ALPHA", null)];
     const { session, navigateTree, sessionManager, refreshContext } = fakeSession(branch, "u1");
 
@@ -283,7 +283,7 @@ describe("applyPendingHistoryRewind", () => {
 
     const outcome = await applyPendingHistoryRewind("session-1", session, "msg-9");
 
-    // Still pending for msg-2 — claiming it here would throw the edit away.
+    // Still pending for msg-2  claiming it here would throw the edit away.
     expect(outcome).toBe("nothing-pending");
     expect(mockClaimPendingHistoryRewind).not.toHaveBeenCalled();
     expect(navigateTree).not.toHaveBeenCalled();

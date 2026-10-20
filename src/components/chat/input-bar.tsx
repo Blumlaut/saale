@@ -38,10 +38,10 @@ interface PendingFile {
   previewUrl: string | null;
 }
 
-/** Imperative API — the message list quotes a selection into the caret. */
+/** Imperative API. the message list quotes a selection into the caret. */
 export interface InputBarHandle {
   insertQuote: (quote: string) => void;
-  /** Queue files for the next send — how the chat surface hands over a drop. */
+  /** Queue files for the next send. how the chat surface hands over a drop. */
   addFiles: (files: File[]) => void;
 }
 
@@ -51,7 +51,7 @@ interface InputBarProps {
   onSend: (message: string, files?: File[]) => void;
   /** Runs a slash command picked from the `/` menu. */
   onCommand?: (name: string) => void;
-  /** Current composer text — owned by the parent so drafts survive navigation. */
+  /** Current composer text. owned by the parent so drafts survive navigation. */
   value: string;
   onValueChange: (value: string) => void;
   isLoading: boolean;
@@ -85,7 +85,7 @@ export function InputBar({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Slash-command picker ────────────────────────────────────────────
-  // The query is non-null only while the composer holds a bare command name —
+  // The query is non-null only while the composer holds a bare command name
   // once the user types a space the menu closes and the text is just a message
   // (or `/name args`, which the chat interface parses on send).
   const commandQuery = COMMAND_QUERY_PATTERN.exec(value)?.[1] ?? null;
@@ -121,7 +121,7 @@ export function InputBar({
       const caret =
         el && document.activeElement === el ? (el.selectionStart ?? value.length) : value.length;
       const next = insertQuoteAtCaret(value, quote, caret);
-      if (next.value === value) return; // whitespace-only selection — nothing to insert
+      if (next.value === value) return; // whitespace-only selection. nothing to insert
       if (el) {
         // Set the DOM value synchronously (before the state round-trip) so
         // the caret placement below targets the new text, not the old.
@@ -139,7 +139,7 @@ export function InputBar({
 
   const canSend = value.trim().length > 0 || pendingFiles.length > 0;
   // A compaction holds the session too: what the composer sends now is queued,
-  // so it has to say so — even though Stop is only offered for a generation.
+  // so it has to say so. even though Stop is only offered for a generation.
   const willQueue = isLoading || !!isCompacting;
 
   /** Run the command picked from the menu, and hand the composer back. */
@@ -214,7 +214,7 @@ export function InputBar({
     }
   };
 
-  // Accept any file type — images are previewed as thumbnails, everything
+  // Accept any file type. images are previewed as thumbnails, everything
   // else as a file chip. The server stores it and the agent gets a copy in
   // its terminal workspace.
   const addFiles = useCallback((files: FileList | File[]) => {
@@ -259,7 +259,7 @@ export function InputBar({
 
   // React 19 no longer delegates the native `paste` event to onPaste, so
   // attach a DOM listener directly. Only real files (kind === "file") are
-  // captured — plain text pastes (kind "string") keep working as text.
+  // captured. plain text pastes (kind "string") keep working as text.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -398,7 +398,7 @@ export function InputBar({
           </DropdownMenu>
         )}
 
-        {/* File upload button — any file type */}
+        {/* File upload button. any file type */}
         <Button
           variant="ghost"
           size="icon"
@@ -416,7 +416,7 @@ export function InputBar({
           onChange={handleFileChange}
         />
 
-        {/* Textarea — stays editable while Pi works so messages can be queued */}
+        {/* Textarea. stays editable while Pi works so messages can be queued */}
         <Textarea
           ref={textareaRef}
           value={value}
@@ -457,7 +457,7 @@ export function InputBar({
           onClick={handleSubmit}
           disabled={!canSend}
           aria-label={willQueue ? "Queue message" : "Send message"}
-          title={willQueue ? "Queue — sent when the current response finishes" : undefined}
+          title={willQueue ? "Queue. sent when the current response finishes" : undefined}
         >
           {willQueue ? <ListPlus className="h-4 w-4" /> : <Send className="h-4 w-4" />}
         </Button>

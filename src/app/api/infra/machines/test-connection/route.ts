@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { testConnection } from "@/lib/infra/client";
 
 /**
- * POST /api/infra/machines/test-connection — Test SSH connectivity
+ * POST /api/infra/machines/test-connection. Test SSH connectivity
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

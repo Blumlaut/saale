@@ -501,8 +501,8 @@ describe("resolveTools", () => {
       expect(exposureOf(tools, "mail_read")).toBe("codemode");
       expect(exposureOf(tools, "job_list")).toBe("codemode");
       expect(exposureOf(tools, "settings_list")).toBe("codemode");
-      // A watcher is a thing the model must know it can look at — its list is
-      // listed — while creating one is an action it has to go and find.
+      // A watcher is a thing the model must know it can look at  its list is
+      // listed  while creating one is an action it has to go and find.
       expect(exposureOf(tools, "watcher_list")).toBe("codemode");
       expect(exposureOf(tools, "watcher_create")).toBe("deferred");
       // The rest of the catalog stays callable from a script but unlisted, so
@@ -522,7 +522,7 @@ describe("resolveTools", () => {
         exposure: { email: "direct", infra: "deferred" },
       });
 
-      // email is pulled back in front of the model — the user's choice for the
+      // email is pulled back in front of the model  the user's choice for the
       // category beats the per-tool split, both listed and unlisted tools.
       expect(exposureOf(tools, "mail_accounts")).toBeUndefined();
       expect(exposureOf(tools, "mail_read")).toBeUndefined();

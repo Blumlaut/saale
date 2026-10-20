@@ -290,7 +290,7 @@ describe("POST /api/providers/capabilities", () => {
 
     const response = await POST(post({ provider: "custom" }));
 
-    // Nothing was answered, so nothing is written — the stored map already says
+    // Nothing was answered, so nothing is written  the stored map already says
     // exactly as much as the endpoint did.
     expect(db.prisma.providerApiKey.update).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({

@@ -50,7 +50,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
 
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-      {/* Toolbar — search is functional context (left), actions right */}
+      {/* Toolbar. search is functional context (left), actions right */}
       <div className="border-border/30 flex shrink-0 items-center gap-2 border-b px-3 py-2 md:px-4">
         <div className="relative min-w-0 flex-1 md:max-w-xs">
           <Search className="text-muted-foreground/60 pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
@@ -75,7 +75,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
         </Button>
       </div>
 
-      {/* List — the only scroll region */}
+      {/* List. the only scroll region */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex h-full items-center justify-center">
@@ -88,7 +88,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
               <>
                 <p className="text-sm font-medium">No contacts yet</p>
                 <p className="text-muted-foreground mt-1 text-xs">
-                  Contacts are added automatically as you send mail — or add one manually.
+                  Contacts are added automatically as you send mail. or add one manually.
                 </p>
                 <Button variant="secondary" size="sm" className="mt-4" onClick={onAdd}>
                   New Contact

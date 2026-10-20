@@ -43,7 +43,7 @@ import { cn, ROW_ACTION } from "@/lib/utils";
 /**
  * Which providers this scope has linked, and how to link the rest.
  *
- * The list *is* Pi's provider catalog — Saale adds no providers of its own
+ * The list *is* Pi's provider catalog. Saale adds no providers of its own
  * except the OpenAI-compatible endpoint, which Pi cannot know about. Every other
  * row is connected by running Pi's own sign-in flow for that provider, so a
  * provider Pi gains is configurable here the day the package is updated.
@@ -83,7 +83,7 @@ interface ProviderConnectionsProps {
   onChanged?: () => void;
 }
 
-/** The API surface for each scope — the only difference between user and admin. */
+/** The API surface for each scope. the only difference between user and admin. */
 function endpointsFor(scope: "user" | "global") {
   const base = scope === "global" ? "/api/admin/providers" : "/api/providers";
   return {
@@ -98,7 +98,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
   const endpoints = useMemo(() => endpointsFor(scope), [scope]);
 
   // Held in a ref so a caller's inline callback cannot change `loadAll`'s
-  // identity — that would re-run the load effect on every render.
+  // identity. that would re-run the load effect on every render.
   const onChangedRef = useRef(onChanged);
   useEffect(() => {
     onChangedRef.current = onChanged;
@@ -158,7 +158,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
 
   /**
    * The caller's own endpoint row. A globally configured endpoint is an admin's
-   * — the form never prefills from it, so saving cannot copy it into a row of
+   *. the form never prefills from it, so saving cannot copy it into a row of
    * the caller's own by accident.
    */
   const endpointRow = rows.find((row) => row.provider === CUSTOM_PROVIDER_ID) ?? null;
@@ -187,7 +187,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
     setAddOpen(true);
   };
 
-  /** Unlink from inside the manage sheet — close it, then drop the credential. */
+  /** Unlink from inside the manage sheet. close it, then drop the credential. */
   const handleSheetDisconnect = (entry: ProviderCatalogView) => {
     setAddOpen(false);
     void handleDisconnect(entry.id);
@@ -195,7 +195,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
 
   const handleConnect = (entry: ProviderCatalogView, authType: ProviderAuthType) => {
     setAddOpen(false);
-    // Wait for the picker to slide away — two overlays at once is never right.
+    // Wait for the picker to slide away. two overlays at once is never right.
     loginTimer.current = setTimeout(() => {
       setLoginTarget({ providerId: entry.id, providerName: entry.name, authType });
     }, SHEET_EXIT_MS);
@@ -264,8 +264,8 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
   };
 
   /**
-   * Ask the endpoint about its models — the window each one runs at, and
-   * whether it takes images — and store the answers.
+   * Ask the endpoint about its models. the window each one runs at, and
+   * whether it takes images. and store the answers.
    *
    * A button rather than something automatic: a load-on-demand proxy like
    * llama-swap charges a probe with a model load, so the sweep is the user's
@@ -378,8 +378,8 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         )}
         {discoveryInfo?.kind === "detect" && discoveryInfo.detected === 0 && (
           <span className="flex items-center gap-1 text-xs text-amber-500">
-            <AlertCircle className="h-3.5 w-3.5" /> This endpoint says nothing about its models —
-            set the window and vision per model in the model list
+            <AlertCircle className="h-3.5 w-3.5" /> This endpoint says nothing about its models set
+            the window and vision per model in the model list
           </span>
         )}
         {discoveryInfo?.kind === "detect" && discoveryInfo.detected > 0 && (
@@ -464,7 +464,7 @@ function ProviderRow({
         </div>
         <span className="text-muted-foreground block truncate text-xs">
           {entry.modelCount} {entry.modelCount === 1 ? "model" : "models"}
-          {entry.baseUrl ? ` — ${entry.baseUrl}` : ""}
+          {entry.baseUrl ? `. ${entry.baseUrl}` : ""}
         </span>
       </div>
 

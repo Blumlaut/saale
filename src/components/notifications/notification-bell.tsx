@@ -73,7 +73,7 @@ export function NotificationBell() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      {/* PopoverTrigger renders as <button> — use a styled <span> to avoid nesting */}
+      {/* PopoverTrigger renders as <button>. use a styled <span> to avoid nesting */}
       <PopoverTrigger>
         <span className="hover:bg-accent/60 relative flex h-8 w-8 items-center justify-center rounded-full transition-colors">
           <Bell className="h-4 w-4" />

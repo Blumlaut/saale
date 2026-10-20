@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  * and the share viewer renders `RedactedToolCall`, so the two ways a future
  * change could put raw results on a public page are:
  *
- *   1. a new card — the share surface must not be able to reach one, and
+ *   1. a new card  the share surface must not be able to reach one, and
  *   2. a new endpoint that serializes another user's `toolCalls`.
  *
  * Both are checked here by reading the source, so neither depends on anyone
@@ -26,14 +26,14 @@ const TOOL_CARD_REGISTRY = "src/components/chat/tool-cards.tsx";
 /** The dispatcher that must route through the registry above. */
 const TOOL_CALL_VIEW = "src/components/chat/tool-call-view.tsx";
 
-/** The share card — allowed to be reachable from the share surface. */
+/** The share card  allowed to be reachable from the share surface. */
 const REDACTED_CARD = "src/components/chat/redacted-tool-call.tsx";
 
 /** Entry points of the public share surface. */
 const SHARE_ENTRIES = ["src/components/chat/share-viewer.tsx", "src/app/share/[token]/page.tsx"];
 
 /**
- * Shared modules a card is allowed to use — not cards themselves, so the share
+ * Shared modules a card is allowed to use  not cards themselves, so the share
  * card may reach them. `tool-card` renders a model and knows no tool name;
  * `tool-card-model` and `tool-status` are pure vocabulary.
  */
@@ -49,7 +49,7 @@ const NON_CARD_MODULES = [
  * Every module that reads the persisted `toolCalls` column. `owner` means the
  * caller can only ever read their own rows; `public` means the rows may belong
  * to someone else, so they must be redacted first. Adding a reader forces an
- * entry here — that is the point of the test.
+ * entry here  that is the point of the test.
  */
 const TOOL_CALL_READERS: Array<{
   path: string;
@@ -99,7 +99,7 @@ function importsOf(source: string): string[] {
 }
 
 /**
- * The card modules the owner's router pulls in — the cards themselves and the
+ * The card modules the owner's router pulls in  the cards themselves and the
  * descriptors behind them. Resolved to repo paths and discovered rather than
  * listed, so a descriptor added to the registry is covered without an edit
  * here.

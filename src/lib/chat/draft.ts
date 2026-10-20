@@ -1,5 +1,5 @@
 /**
- * Composer drafts (per chat session) — kept in localStorage so a half-typed
+ * Composer drafts (per chat session). kept in localStorage so a half-typed
  * message survives navigation, a reload, or a browser restart.
  *
  * Stored per session, so switching chats never drags a draft into the wrong
@@ -11,7 +11,7 @@
 
 const DRAFT_PREFIX = "saale:chat-draft:";
 
-/** Cap on retained drafts — oldest entries are dropped past this. */
+/** Cap on retained drafts. oldest entries are dropped past this. */
 const MAX_DRAFTS = 50;
 /** Mirror of the server-side message limit, so drafts cannot grow unbounded. */
 const MAX_DRAFT_CHARS = 100_000;

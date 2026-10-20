@@ -3,7 +3,7 @@
  *
  * A run is long, parallel and mostly invisible: members think, call tools and
  * post while the owner watches. The room streams over the chat's event bus
- * (`lib/pi/session-events`), keyed by the council id — it already provides
+ * (`lib/pi/session-events`), keyed by the council id. it already provides
  * cross-process publish/subscribe, a monotonic event id and a replay buffer, and
  * its Redis keys are namespaced by that id, so a council's events cannot meet a
  * chat's. Reimplementing that for councils would be 150 lines of the same code.

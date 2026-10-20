@@ -87,7 +87,7 @@ function MentionChips({
   );
 }
 
-/** One member's live activity while it works — thinking and tool calls. */
+/** One member's live activity while it works. thinking and tool calls. */
 function LiveActivity({ state }: { state: CouncilMemberLive }) {
   const hasThinking = Boolean(state.thinking && state.thinking.trim());
   const hasTools = state.toolCalls.length > 0;
@@ -137,7 +137,7 @@ function LiveActivity({ state }: { state: CouncilMemberLive }) {
 /**
  * The room's timeline: the owner's messages, each member's deliberate posts and
  * the system notices, in sequence order. Only the members' live activity
- * (thinking, tool calls) comes from the SSE stream — the messages themselves
+ * (thinking, tool calls) comes from the SSE stream. the messages themselves
  * are always refetched from the REST route.
  */
 export function MessageTimeline({
@@ -154,7 +154,7 @@ export function MessageTimeline({
   const atBottomRef = useRef(true);
   const memberIds = new Map(members.map((member) => [member.name.toLowerCase(), member.id]));
 
-  // Follow new messages, but only when the user is already at the bottom — a
+  // Follow new messages, but only when the user is already at the bottom. a
   // scroll-back to read should not be yanked away by a live run (this is what
   // the room does most of the time).
   useEffect(() => {

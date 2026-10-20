@@ -2,8 +2,8 @@
  * Which approval policy governs a call.
  *
  * One answer for every gate that has to give one. Saale gates tool calls in
- * three places — the wrapper around its own tools, the extension that catches
- * MCP tools, and the gate on `codemode` — and they must agree: a tool that is
+ * three places. the wrapper around its own tools, the extension that catches
+ * MCP tools, and the gate on `codemode`. and they must agree: a tool that is
  * gated on one path and runs unapproved on another is the bug this module
  * exists to make impossible.
  *
@@ -29,7 +29,7 @@ export interface ToolPolicyContext {
 
 /**
  * The policy that governs one MCP tool call: the user's policy for that exact
- * tool (`mcp__server__tool`), else the server's, else `ask` — fail closed, like
+ * tool (`mcp__server__tool`), else the server's, else `ask`. fail closed, like
  * any other unknown tool.
  */
 export function resolveMcpToolPolicy(options: {

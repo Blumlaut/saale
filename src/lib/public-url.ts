@@ -1,6 +1,6 @@
 /**
  * The URL Saale is reachable at from outside, used wherever a third party must
- * send a browser back to us — OAuth redirect URIs today.
+ * send a browser back to us. OAuth redirect URIs today.
  *
  * `BETTER_AUTH_URL` is the canonical value: it is the URL the app is actually
  * served from, the same one better-auth derives its cookie scheme from. The

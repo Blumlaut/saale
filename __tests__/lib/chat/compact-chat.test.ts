@@ -5,7 +5,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
  * `/compact` can be the request that brings a chat's agent into the pool (after
  * eviction, a restart, or a cold session). Tools are only approval-gated when
  * the session is built, so this path must build the same session the stream
- * route does — otherwise the pooled session runs tools without the user's
+ * route does  otherwise the pooled session runs tools without the user's
  * policy for the rest of its life.
  */
 
@@ -179,7 +179,7 @@ describe("compactChatSession", () => {
 
   it("keeps the session marked as compacting until the summary is generated", async () => {
     // Pi refuses a prompt while it compacts, so the session must read as busy
-    // for as long as the summarization runs — POST /messages queues on it.
+    // for as long as the summarization runs  POST /messages queues on it.
     let releaseCompact: (result: { summary: string; tokensBefore: number }) => void = () => {};
     mockCompact.mockImplementation(
       () =>
@@ -197,7 +197,7 @@ describe("compactChatSession", () => {
     releaseCompact({ summary: "Sum", tokensBefore: 1000 });
     await expect(pending).resolves.toEqual({ ok: true, tokensBefore: 1000 });
 
-    // Released once the session is free again — the queued messages are
+    // Released once the session is free again  the queued messages are
     // delivered from here on.
     expect(mockClearCompactionInProgress).toHaveBeenCalledWith(SESSION_ID);
   });

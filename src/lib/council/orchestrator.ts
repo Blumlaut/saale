@@ -4,8 +4,8 @@
  * A council is a room with a goal and a set of members; the loop's whole job is
  * to decide **who runs next** and to stop. It owns no database handle and no
  * model: the store, the session factory, the clock and the event sink all arrive
- * as `CouncilRunDeps`, which is what makes the scheduling — the part worth
- * getting right — testable without a container, a provider or a database.
+ * as `CouncilRunDeps`, which is what makes the scheduling. the part worth
+ * getting right. testable without a container, a provider or a database.
  *
  * Two modes, one stop condition:
  *
@@ -22,12 +22,12 @@
  * - **round-robin**: one member at a time, in list order, round after round.
  *
  * Members speak only through `council_post` (their closing text is not a room
- * message — see `tools.ts`), so every wake in this file comes from a message
+ * message. see `tools.ts`), so every wake in this file comes from a message
  * that was actually delivered.
  *
  * The loop stops on the first of:
  * - a stop vote reaching quorum (`consensus`)
- * - a member addressing the owner (`user-question` — the run pauses)
+ * - a member addressing the owner (`user-question`. the run pauses)
  * - the owner or the watchdog asking it to stop (`aborted`)
  * - a budget (wall clock, tokens, cost)
  * - nothing left to do: nobody addressed and nobody running (`no-pending-work`).
@@ -105,7 +105,7 @@ export interface CouncilRunPlan {
 export interface TurnRecord {
   /**
    * `preempted`: the turn was ended at a tool-call boundary because a message
-   * addressed the member mid-turn — not a failure, and not a finished answer.
+   * addressed the member mid-turn. not a failure, and not a finished answer.
    */
   status: "completed" | "preempted" | "error";
   thinking: string | null;
@@ -147,7 +147,7 @@ export interface CouncilRunStore {
   /**
    * Messages for `council_read`, oldest first. A cursor means "read on from
    * here"; without one the caller asked for the room, which is its newest
-   * messages — reading forward from 0 would answer with the room's *first*
+   * messages. reading forward from 0 would answer with the room's *first*
    * messages and make a long conversation look untouched.
    */
   messagesAfter(input: {
@@ -211,7 +211,7 @@ interface MemberState {
   plan: CouncilMemberPlan;
   /** Message seqs that woke this member and have not been consumed yet. */
   inbox: number[];
-  /** Highest room seq the member has been shown — its read cursor. */
+  /** Highest room seq the member has been shown. its read cursor. */
   cursor: number;
   session: CouncilMemberSession | null;
   /**
@@ -301,13 +301,13 @@ export async function runCouncilLoop(
   /**
    * The inbox as the turn's record shows it: real room messages only.
    *
-   * The opening wake carries no message of its own, so it is dropped — an entry
+   * The opening wake carries no message of its own, so it is dropped. an entry
    * the room cannot resolve would render as a message that does not exist.
    */
   const wakeReasons = (inbox: readonly number[]): number[] =>
     inbox.filter((seq) => seq !== OPENING_SEQ);
 
-  /** Room messages the loop did not post itself — i.e. the owner speaking. */
+  /** Room messages the loop did not post itself. i.e. the owner speaking. */
   let externalCursor = plan.startedAfterSeq;
 
   /**
@@ -316,7 +316,7 @@ export async function runCouncilLoop(
    * A running loop schedules from its in-memory inboxes, and the owner posts
    * straight to the database, so without this a message typed into a working
    * room would be read by nobody: the room would look like it ignored its owner.
-   * A message that addresses nobody wakes everyone — the owner addressing the
+   * A message that addresses nobody wakes everyone. the owner addressing the
    * room is talking to all of it.
    */
   const absorbExternalMessages = async (): Promise<void> => {
@@ -377,7 +377,7 @@ export async function runCouncilLoop(
    * stay busy far longer than the stop that ends it: a tool that ignores the
    * abort signal, or a provider whose stream never closes after the server it
    * was talking to went away, keeps `waitForIdle()` pending indefinitely.
-   * Awaiting that is what stranded the run — the loop sat in `abortAll` while
+   * Awaiting that is what stranded the run. the loop sat in `abortAll` while
    * the heartbeat kept the watchdog away, so neither Stop nor the wall-clock
    * budget could ever land. The run has already decided to stop; the abort is
    * requested and left to take effect on its own.
@@ -421,7 +421,7 @@ export async function runCouncilLoop(
         state.posted.seqs.push(message.seq);
         await deps.publish("message", message);
 
-        // Who this woke: everyone for @all, the named members otherwise — never
+        // Who this woke: everyone for @all, the named members otherwise. never
         // the author, so a member cannot put itself in a loop.
         const woke = (
           addressedAll ? participants : participants.filter((m) => memberIds.includes(m.id))
@@ -546,7 +546,7 @@ export async function runCouncilLoop(
 
     // A failed read is *not* an empty room. Prompting the member with nothing
     // after a failed read is how a member that has read a long room comes to
-    // act as if the room were empty — a mistake it cannot detect and the run
+    // act as if the room were empty. a mistake it cannot detect and the run
     // pays for. The turn fails instead; the cursor is left where it was, so the
     // member re-reads the same window if it runs again.
     const read = await deps.store
@@ -736,7 +736,7 @@ export async function runCouncilLoop(
    */
   async function shouldStop(): Promise<boolean> {
     if (stop) return true;
-    // A Redis hiccup must not end the run — the same tolerance the in-flight
+    // A Redis hiccup must not end the run. the same tolerance the in-flight
     // turn's abort poll has. The flag is re-checked between turns either way.
     const aborted = await deps.isAbortRequested().catch((err) => {
       console.error(`[council:${plan.runId}] Could not check for a stop request:`, err);
@@ -801,7 +801,7 @@ export async function runCouncilLoop(
   async function runRounds(): Promise<void> {
     let round = 0;
     while (!(await shouldStop())) {
-      // Everyone speaks each round, so a message from the owner needs no wake —
+      // Everyone speaks each round, so a message from the owner needs no wake
       // the members see it in their next turn. The cursor is advanced anyway, so
       // it is never re-read as if it were new.
       await absorbExternalMessages();
@@ -841,8 +841,8 @@ export async function runCouncilLoop(
       await postSystem("No enabled members, so this run has nothing to do.");
     } else {
       // The opening: the owner's message wakes the members it addressed, or all
-      // of them when it addressed nobody. Round-robin ignores inboxes — every
-      // member takes a turn — but the wakes are still recorded on the first turn.
+      // of them when it addressed nobody. Round-robin ignores inboxes. every
+      // member takes a turn. but the wakes are still recorded on the first turn.
       const opening = plan.openingMemberIds;
       const woken =
         opening === null ? participants : participants.filter((m) => opening.includes(m.id));
@@ -936,7 +936,7 @@ function deadlineWatch(timeoutMs: number | null, onExpire: () => void): StopWatc
  *
  * Polled rather than pushed: the request arrives on another request's stack
  * (another tab, another replica, the watchdog), and Redis is what carries it.
- * The stop itself never waits on `abort()` — see `abortAll`.
+ * The stop itself never waits on `abort()`. see `abortAll`.
  */
 function abortWatch(deps: CouncilRunDeps, onAbort: () => void): StopWatch {
   const pollMs = deps.abortPollMs ?? ABORT_POLL_MS;
@@ -981,8 +981,8 @@ function abortWatch(deps: CouncilRunDeps, onAbort: () => void): StopWatch {
  * Reject when a turn has gone completely silent.
  *
  * Budgets watch the *run*; this watches the *turn*. The loop heartbeats while a
- * turn is in flight, so a model whose server went away — or a tool that never
- * returns — leaves a run that looks perfectly alive and will not end on its own
+ * turn is in flight, so a model whose server went away. or a tool that never
+ * returns. leaves a run that looks perfectly alive and will not end on its own
  * until its wall-clock budget (which may be unlimited). Silence is the
  * evidence: every session event resets the window, so a turn that is still
  * streaming, still thinking or still running tools is never touched.
@@ -1029,7 +1029,7 @@ interface TurnTranscript {
  * The session's *final* assistant content is what carries the turn's thinking
  * and its tool calls, and `agent_end` is where Pi hands that over; the live
  * publishes are for the owner watching the room. `agent_settled` (not
- * `agent_end`) is the end of the turn — a run may continue after compaction —
+ * `agent_end`) is the end of the turn. a run may continue after compaction
  * but `prompt()` resolves on it, so this only has to stop listening.
  */
 function collectTurn(

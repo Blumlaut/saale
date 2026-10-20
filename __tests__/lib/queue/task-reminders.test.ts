@@ -111,7 +111,7 @@ describe("task_reminders handler", () => {
 
       expect(result).toEqual({ tasksScanned: 1, telegramSent: 0, notificationsSent: 1 });
       // Each of these means "this user has no reachable Telegram", which the
-      // in-app list covers — nothing to log.
+      // in-app list covers  nothing to log.
       expect(consoleErrorSpy).not.toHaveBeenCalled();
     },
   );

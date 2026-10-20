@@ -8,8 +8,8 @@
  * `notice` and `run_ended` mean "the room moved, refetch it from the REST
  * route", so a reconnecting tab cannot end up with a room that only exists in
  * its own event replay. What the stream owns is the state REST does not carry
- * while a run is in flight — each member's cumulative thinking, its live tool
- * calls and whether it is busy — plus the running budget totals.
+ * while a run is in flight. each member's cumulative thinking, its live tool
+ * calls and whether it is busy. plus the running budget totals.
  *
  * The connection self-heals: the browser's `EventSource` reconnects on a
  * transport error and sends `Last-Event-ID`, and the server replays its buffer,
@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RunBudget } from "@/lib/council/config";
 
-/** A tool call as it streams in — partial until its `end` event. */
+/** A tool call as it streams in. partial until its `end` event. */
 export interface CouncilLiveToolCall {
   toolCallId: string;
   tool: string;
@@ -71,7 +71,7 @@ export interface CouncilStreamEnded {
 
 export interface CouncilStreamOptions {
   councilId: string;
-  /** A room message or notice landed — refetch the room from REST. */
+  /** A room message or notice landed. refetch the room from REST. */
   onRoomChanged?: () => void;
   onRunStarted?: (run: CouncilStreamRun) => void;
   onRunEnded?: (ended: CouncilStreamEnded) => void;
@@ -152,7 +152,7 @@ export function useCouncilStream(options: CouncilStreamOptions): CouncilStreamSt
   const runIdRef = useRef<string | null>(null);
 
   // Callbacks live in a ref so the stream effect stays keyed on the council id
-  // alone — inline handlers would otherwise tear the connection down each render.
+  // alone. inline handlers would otherwise tear the connection down each render.
   const callbacksRef = useRef(options);
   useEffect(() => {
     callbacksRef.current = options;

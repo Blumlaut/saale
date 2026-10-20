@@ -9,19 +9,19 @@ import {
 } from "@/lib/chat/serialize-message";
 
 /**
- * Send queue — messages submitted while the session is busy: a generation is
+ * Send queue. messages submitted while the session is busy: a generation is
  * running, or a manual compaction holds it.
  *
  * A queued message is a normal ChatMessage row with `queuedAt` set: it is
  * excluded from the conversation (see `listQueuedMessages` callers) until it
  * is delivered, and rendered in the composer's queue strip instead. Delivery
  * is server-side (see the chat stream route's drain), so queued messages are
- * answered even when no client is connected — and it is delivery that takes
+ * answered even when no client is connected. and it is delivery that takes
  * the message into the conversation, `createdAt` included (see
  * `claimQueuedMessage`).
  */
 
-/** Send queue cap per session — a runaway client can't queue forever. */
+/** Send queue cap per session. a runaway client can't queue forever. */
 export const MAX_QUEUED_MESSAGES = 20;
 
 /** Claim attempts before giving up on a message another process grabbed. */
@@ -47,7 +47,7 @@ export async function countQueuedMessages(sessionId: string): Promise<number> {
  * Publish the queue's current contents to every connected client.
  *
  * Called after every user-facing queue mutation (enqueue, edit, cancel,
- * deliver). A run that is just starting also publishes a snapshot — see the
+ * deliver). A run that is just starting also publishes a snapshot. see the
  * session event tracker's `agent_start`.
  */
 export async function publishQueueUpdate(sessionId: string): Promise<void> {
@@ -69,7 +69,7 @@ export async function publishQueueUpdate(sessionId: string): Promise<void> {
  *
  * Delivering the message is what puts it in the conversation, so the delivery
  * time becomes its position there. The queue-time `createdAt` is when the user
- * typed it — before the turns of the run it waited behind were saved — so
+ * typed it. before the turns of the run it waited behind were saved. so
  * keeping it would sort the message into the middle of that run's reply.
  */
 export async function claimQueuedMessage(sessionId: string, messageId: string): Promise<boolean> {
@@ -97,7 +97,7 @@ export async function claimNextQueuedMessage(sessionId: string): Promise<QueuedC
     if (!next) return null;
 
     const queuedAt = next.queuedAt;
-    if (!queuedAt) return null; // Filtered out by the query — defensive only.
+    if (!queuedAt) return null; // Filtered out by the query. defensive only.
 
     if (await claimQueuedMessage(sessionId, next.id)) {
       // queuedAt keeps its original value: the caller can put the message back
@@ -106,7 +106,7 @@ export async function claimNextQueuedMessage(sessionId: string): Promise<QueuedC
     }
   }
 
-  console.error(`Could not claim a queued message for session ${sessionId} — contention`);
+  console.error(`Could not claim a queued message for session ${sessionId}. contention`);
   return null;
 }
 
@@ -114,7 +114,7 @@ export async function claimNextQueuedMessage(sessionId: string): Promise<QueuedC
  * Put a claimed message back at its former queue position.
  *
  * Used when a delivery attempt could not actually prompt (the pooled agent is
- * busy) — the message must not silently disappear from the conversation.
+ * busy). the message must not silently disappear from the conversation.
  */
 export async function restoreQueuedMessage(
   sessionId: string,
@@ -126,7 +126,7 @@ export async function restoreQueuedMessage(
     data: { queuedAt },
   });
   if (restored.count === 0) {
-    console.error(`Failed to requeue message ${messageId} — it is no longer claimable`);
+    console.error(`Failed to requeue message ${messageId}. it is no longer claimable`);
   }
 }
 
@@ -159,7 +159,7 @@ export async function updateQueuedMessageContent(
 
 /**
  * Drop a queued message and its attachments. Returns false when the message
- * is not queued (a delivered message must not be deleted through this path —
+ * is not queued (a delivered message must not be deleted through this path
  * the conversation may depend on it).
  */
 export async function removeQueuedMessage(

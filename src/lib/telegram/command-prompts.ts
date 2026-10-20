@@ -22,7 +22,7 @@ const PROMPT_PREFIX = "saale:command-prompt:";
 /** How long a prompt stays usable before the user must send the command again. */
 const PROMPT_TTL_S = 10 * 60;
 
-/** Options per keyboard page — 1 button per row, readable on a phone. */
+/** Options per keyboard page. 1 button per row, readable on a phone. */
 const OPTIONS_PER_PAGE = 6;
 
 /** Telegram caps `answerCallbackQuery` text at 200 characters. */
@@ -41,7 +41,7 @@ interface PromptSession {
   token: string;
   userId: string;
   command: string;
-  /** bigint as string — JSON cannot carry a bigint. */
+  /** bigint as string. JSON cannot carry a bigint. */
   telegramChatId: string;
   replyToMessageId?: number | undefined;
   title: string;
@@ -174,7 +174,7 @@ function promptText(session: PromptSession): string {
   if (session.description) lines.push("", escapeHtml(session.description));
   lines.push(
     "",
-    `<i>${totalPages > 1 ? `Page ${page + 1}/${totalPages} — t` : "T"}ap an option to apply it.</i>`,
+    `<i>${totalPages > 1 ? `Page ${page + 1}/${totalPages}. t` : "T"}ap an option to apply it.</i>`,
   );
   return lines.join("\n");
 }
@@ -274,7 +274,7 @@ export async function handleCommandPromptCallback(
     return { handled: true };
   }
 
-  // Page indicator button — acknowledge without changing anything.
+  // Page indicator button. acknowledge without changing anything.
   if (action === "n") {
     return { handled: true };
   }

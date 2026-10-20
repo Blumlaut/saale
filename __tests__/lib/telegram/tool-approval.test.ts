@@ -13,7 +13,7 @@ import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
 
 // The approval gate enriches requests with a resolved summary, which may
-// look up the referenced record. Tests run without a database — every
+// look up the referenced record. Tests run without a database  every
 // lookup resolves to "not found".
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -32,7 +32,7 @@ import { resetMockRedis } from "../../helpers/in-memory-redis";
 /**
  * These tests verify that the Telegram agent processor MUST wrap tools
  * with the approval gate. Without wrapping, tools with "ask" policy
- * execute without user consent — a critical security bug.
+ * execute without user consent  a critical security bug.
  *
  * The tests simulate the tool wrapping logic that the Telegram processor
  * should apply (via resolveTools' wrapWithApproval option).
@@ -58,7 +58,7 @@ function makeMockTool(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolResult = any;
 
-describe("Telegram tool approval gate — critical security", () => {
+describe("Telegram tool approval gate  critical security", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetMockRedis();
@@ -172,7 +172,7 @@ describe("Telegram tool approval gate — critical security", () => {
         };
       });
 
-      // This is what happens WITHOUT the approval gate — the tool runs immediately
+      // This is what happens WITHOUT the approval gate  the tool runs immediately
       const result = (await unwrappedTool.execute(
         "tc-nogate",
         { id: "machine-1", command: "uname -a" },
@@ -330,7 +330,7 @@ describe("Telegram tool approval gate — critical security", () => {
         "session-allow2",
         getPolicy,
         () => {
-          throw new Error("Should not emit approval — user set to 'allow'");
+          throw new Error("Should not emit approval  user set to 'allow'");
         },
       );
 

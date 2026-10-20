@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock prisma — $queryRaw is needed for the full-text search path
+// Mock prisma  $queryRaw is needed for the full-text search path
 vi.mock("@/lib/db", () => ({
   prisma: {
     task: {

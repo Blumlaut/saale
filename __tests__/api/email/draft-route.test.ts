@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
  * The draft route streams an SSE response. Because a provider failure does not
- * throw — it ends the assistant message with stopReason "error" — the stream
+ * throw  it ends the assistant message with stopReason "error"  the stream
  * used to emit `done` with empty text and close, so the UI reported a
  * successful, empty draft. A throw inside the listener (or a rejected prompt)
  * left the stream open forever instead.

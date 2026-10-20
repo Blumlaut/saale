@@ -8,9 +8,9 @@ import {
 /**
  * Sign-in to a provider, using Pi's own auth flow.
  *
- * POST   — start one; the body names the provider and the auth type
- * GET    — poll it (`?id=`)
- * DELETE — cancel it (`?id=`)
+ * POST  . start one; the body names the provider and the auth type
+ * GET   . poll it (`?id=`)
+ * DELETE. cancel it (`?id=`)
  */
 
 export async function POST(request: Request) {

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { buildTaskUpdateData } from "@/lib/tasks/task-api-helpers";
 
 /**
- * PATCH /api/tasks/bulk — Bulk update tasks (e.g. mark multiple as completed)
+ * PATCH /api/tasks/bulk. Bulk update tasks (e.g. mark multiple as completed)
  * Body: { ids: string[], updates: { status?, priority?, dueDate?, tags? } }
  */
 export async function PATCH(request: NextRequest) {

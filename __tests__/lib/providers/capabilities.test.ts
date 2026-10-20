@@ -465,7 +465,7 @@ describe("detectModelCapabilities", () => {
 
   it("leaves vision unknown when /props reports no modalities", async () => {
     // Older builds answer /props without a `modalities` block. That is missing
-    // information, not "no vision" — claiming text-only there would drop images
+    // information, not "no vision"  claiming text-only there would drop images
     // from a model that can see them.
     stubEndpoint({ "/props": { model_path: "/models/mystery.gguf", chat_template: "…" } });
 

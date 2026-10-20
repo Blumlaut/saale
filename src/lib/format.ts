@@ -31,7 +31,7 @@ export function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max - 1) + "…" : str;
 }
 
-/** Spell a count with its unit — `plural(1, "email", "emails")` → `"1 email"`. */
+/** Spell a count with its unit. `plural(1, "email", "emails")` → `"1 email"`. */
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }

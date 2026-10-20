@@ -6,7 +6,7 @@ import { fileErrorResponse, openRequestTarget, resolveRequestPath } from "@/lib/
 import { deleteEntrySchema } from "@/lib/files/schema";
 
 /**
- * POST /api/files/delete?target= — remove a file, or a folder and its contents.
+ * POST /api/files/delete?target=. remove a file, or a folder and its contents.
  *
  * Deleting is recursive where it applies, so the workspace root is refused here
  * rather than trusted to the UI: there is no undo, and "remove the whole

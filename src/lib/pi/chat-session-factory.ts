@@ -12,7 +12,7 @@ import { normalizeToolExposure } from "./tool-exposure";
  * The single place a chat session's Pi agent is created.
  *
  * Every entry point that can bring a chat's agent into the pool must build it
- * identically — most importantly the tool approval gate, which is applied to
+ * identically. most importantly the tool approval gate, which is applied to
  * the tool definitions at creation time and is the ONLY thing that enforces a
  * user's per-tool policies. A session created without it runs tools
  * unapproved for the rest of the pool entry's life (see `wrapTool`).
@@ -24,7 +24,7 @@ export interface ChatUserSettings {
   customInstructions: string | null;
   /** Per-tool approval policies, keyed by tool name. */
   toolPolicies: Record<string, string> | null;
-  /** Per-category exposure — how each category's tools reach the model. */
+  /** Per-category exposure. how each category's tools reach the model. */
   toolExposure: ToolExposureConfig | null;
 }
 
@@ -74,7 +74,7 @@ export interface CreateChatAgentSessionOptions {
   /** Per-category exposure (`AppSettings.toolExposure`). */
   toolExposure: ToolExposureConfig | null | undefined;
   /**
-   * Wraps every resolved tool. Always pass the approval gate — tools resolved
+   * Wraps every resolved tool. Always pass the approval gate. tools resolved
    * without it execute without the user's approval policy.
    */
   wrapTool: (tool: ToolDefinition) => ToolDefinition;
@@ -90,8 +90,8 @@ export interface CreateChatAgentSessionOptions {
  * Create (or resume) the Pi agent session backing a chat session.
  *
  * The agent's transcript lives in the chat's own directory, so a session that
- * was evicted from the pool resumes its full history — including compaction
- * state — from the JSONL file.
+ * was evicted from the pool resumes its full history. including compaction
+ * state. from the JSONL file.
  */
 export async function createChatAgentSession(
   options: CreateChatAgentSessionOptions,

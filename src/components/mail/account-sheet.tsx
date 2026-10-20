@@ -81,7 +81,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  /** Hosts the user typed themselves — autodiscovery must never overwrite those. */
+  /** Hosts the user typed themselves. autodiscovery must never overwrite those. */
   const editedRef = useRef({ imap: false, smtp: false });
 
   const resetForm = useCallback(() => {
@@ -115,7 +115,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
 
   /**
    * Apply a discovery result to the form. A server that was not found is
-   * cleared rather than left holding a previous value — a half-filled pair
+   * cleared rather than left holding a previous value. a half-filled pair
    * (IMAP from a stale default, SMTP from the probe) is the bug this guards.
    */
   const applyDiscovery = useCallback((result: Discovery) => {
@@ -242,13 +242,13 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
         }>("/api/email/accounts", payload);
         const syncErrors = created.sync?.errors ?? [];
         if (syncErrors.length > 0) {
-          // The account exists, but it is not usable yet — say so instead of
+          // The account exists, but it is not usable yet. say so instead of
           // closing the sheet as if the setup had worked.
           toast.error("Account saved, but the first sync failed", {
-            description: `${syncErrors[0]} — edit the account to fix its server settings.`,
+            description: `${syncErrors[0]}. edit the account to fix its server settings.`,
           });
         } else if (created.sync?.pending) {
-          toast.info("Account saved — the first sync is still running");
+          toast.info("Account saved. the first sync is still running");
         }
       }
 
@@ -313,23 +313,23 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                   {hasBothServers && !discovering && (
                     <p className="text-muted-foreground flex items-center gap-1 text-xs">
                       <Sparkles className="h-3 w-3" />
-                      {discoveryLabel} — settings filled in
+                      {discoveryLabel}. settings filled in
                     </p>
                   )}
                   {foundOne && !discovering && (
                     <p className="text-xs text-amber-600 dark:text-amber-500">
-                      {missingProtocol} settings not detected — enter them below
+                      {missingProtocol} settings not detected. enter them below
                     </p>
                   )}
                   {discovered && !discovered.failed && !hasBothServers && !foundOne && domain && (
                     <p className="text-muted-foreground text-xs">
-                      No IMAP/SMTP server found for {domain} — enter your provider&apos;s settings
+                      No IMAP/SMTP server found for {domain}. enter your provider&apos;s settings
                       below
                     </p>
                   )}
                   {discovered?.failed && (
                     <p className="text-xs text-amber-600 dark:text-amber-500">
-                      Settings lookup failed — enter your provider&apos;s server settings below
+                      Settings lookup failed. enter your provider&apos;s server settings below
                     </p>
                   )}
                 </div>
@@ -366,7 +366,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                 </Button>
               )}
 
-              {/* Server settings — always visible until *both* servers are known */}
+              {/* Server settings. always visible until *both* servers are known */}
               {(isEdit || showAdvanced || !hasBothServers) && (
                 <>
                   <Separator className="border-border/30" />

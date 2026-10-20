@@ -44,7 +44,7 @@ const fakeSession = {} as Parameters<typeof wireSessionPersistence>[2];
 beforeEach(() => {
   vi.clearAllMocks();
   trackers.length = 0;
-  // The store is module state shared across the file — clean it up.
+  // The store is module state shared across the file  clean it up.
   unwireSessionPersistence(SESSION_ID);
 });
 

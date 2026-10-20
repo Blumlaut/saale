@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 /**
- * POST /messages must never reject a message because the session is busy — it
+ * POST /messages must never reject a message because the session is busy  it
  * queues it instead (the stream route drains the queue when the session is free
  * again). "Busy" covers a running generation and a manual compaction holding
  * the session. These tests pin the states apart: a queued message has
@@ -134,7 +134,7 @@ describe("POST /messages while a generation is running", () => {
     expect(body.queued).toBe(true);
     expect(body.message.id).toBe("msg-1");
 
-    // Stored with queuedAt set — that is what keeps it out of the conversation
+    // Stored with queuedAt set  that is what keeps it out of the conversation
     // until the drain delivers it.
     expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -161,7 +161,7 @@ describe("POST /messages while a generation is running", () => {
 
     // The message joins the running turn: part of the conversation (no
     // queuedAt), reported as delivered with the steered flag, and it claims
-    // no prompt and registers no generation — the run is already active.
+    // no prompt and registers no generation  the run is already active.
     expect(res.status).toBe(200);
     expect(body.queued).toBe(false);
     expect(body.steered).toBe(true);

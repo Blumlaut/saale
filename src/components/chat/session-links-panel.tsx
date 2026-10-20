@@ -34,7 +34,7 @@ export interface SessionLink {
 }
 
 /**
- * Watchers bound to the open conversation — the data behind the header's
+ * Watchers bound to the open conversation. the data behind the header's
  * Linked button and its panel/sheet.
  */
 export function useSessionLinks(sessionId: string) {

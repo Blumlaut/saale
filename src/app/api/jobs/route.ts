@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { syncQueueTaskSchedule } from "@/lib/queue";
 
 /**
- * GET /api/jobs — List user's jobs
+ * GET /api/jobs. List user's jobs
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -75,7 +75,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/jobs — Create a new job
+ * POST /api/jobs. Create a new job
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

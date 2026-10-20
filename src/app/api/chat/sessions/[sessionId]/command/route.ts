@@ -4,10 +4,10 @@ import { requireChatSessionOwner } from "@/lib/auth";
 import { executeCommand } from "@/lib/commands/execute";
 
 /**
- * POST /api/chat/sessions/:sessionId/command — run a slash command.
+ * POST /api/chat/sessions/:sessionId/command. run a slash command.
  *
  * The web chat's only command entrypoint: the composer intercepts a leading
- * `/name`, posts it here, and renders whatever comes back — a prompt (the
+ * `/name`, posts it here, and renders whatever comes back. a prompt (the
  * command needs a choice) or an outcome. Telegram reaches the same
  * `executeCommand` through its own adapter, so a command is implemented once.
  *

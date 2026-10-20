@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  *
  * `model CouncilMessage {  id String @id @default(cuid())` lost the message's
  * `id` this way: every `prisma.councilMessage.create(...).id` became a type
- * error, and it only surfaced in a production build — the local client was
+ * error, and it only surfaced in a production build  the local client was
  * generated before the line was joined, so local typechecks passed.
  */
 function fieldsOnDeclarationLine(schema: string): string[] {

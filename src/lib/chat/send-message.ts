@@ -10,12 +10,12 @@ export type SendMessageResult =
   /** Accepted. `queued` means the session was busy (a generation running, or
    *  a compaction), so the message waits in the send queue instead of being
    *  prompted now. `steered` means the message was injected into a running
-   *  turn that was waiting on a tool approval — all pending approvals were
+   *  turn that was waiting on a tool approval. all pending approvals were
    *  denied for it. */
   | { kind: "ok"; message: Message; queued: boolean; steered?: boolean }
-  /** 409 — unexpected: the server queues instead of rejecting. */
+  /** 409. unexpected: the server queues instead of rejecting. */
   | { kind: "conflict" }
-  /** 404 — session gone; caller should navigate away. */
+  /** 404. session gone; caller should navigate away. */
   | { kind: "not-found" }
   /** Any other failure, with a human-readable message. */
   | { kind: "error"; message: string };

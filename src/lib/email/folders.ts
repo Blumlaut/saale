@@ -34,7 +34,7 @@ export async function discoverFolders(
 
     // Collect all folder paths (skip INBOX and \Noselect parent folders).
     // Use mb.path (full selectable path like "INBOX/Zapx") instead of mb.name
-    // (last segment only like "Zapx") — mailboxOpen() needs the full path.
+    // (last segment only like "Zapx"). mailboxOpen() needs the full path.
     for (const mb of mailboxes) {
       if (mb.name.toUpperCase() === "INBOX") continue;
       const attrs = mb.flags ?? new Set<string>();
@@ -91,8 +91,8 @@ export async function discoverFolders(
 /**
  * Resolve the mailbox a copy of a sent message belongs in.
  *
- * Prefers the `\Sent` mapping cached by the last sync — a send must not pay for
- * a LIST when the answer is already on the account row — and falls back to a
+ * Prefers the `\Sent` mapping cached by the last sync. a send must not pay for
+ * a LIST when the answer is already on the account row. and falls back to a
  * live LIST for accounts that have never synced.
  */
 export async function resolveSentFolder(

@@ -82,7 +82,7 @@ describe("sendTelegramToUser", () => {
 
     expect(result.ok).toBe(false);
     expect(result.reason).toBe("bot_not_configured");
-    // The message must name the fix — the agent repeats it to the user.
+    // The message must name the fix  the agent repeats it to the user.
     expect(result.error).toContain("admin");
     expect(mockSendTelegramMessage).not.toHaveBeenCalled();
   });
@@ -131,7 +131,7 @@ describe("sendTelegramToUser", () => {
   });
 
   it("never targets anyone but the caller", async () => {
-    // The recipient is resolved from the user id alone — there is no parameter
+    // The recipient is resolved from the user id alone  there is no parameter
     // through which a different chat could be named.
     await sendTelegramToUser({ userId, content: "hi" });
 

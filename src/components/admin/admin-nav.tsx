@@ -27,7 +27,7 @@ export interface AdminNavItem {
   action: AdminAction;
 }
 
-/** The admin panel's nav items — shared by the desktop sidebar and the mobile bottom bar. */
+/** The admin panel's nav items. shared by the desktop sidebar and the mobile bottom bar. */
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/models", label: "Models", icon: Bot, action: "models" },
   { href: "/admin/users", label: "Users", icon: Users, action: "users" },

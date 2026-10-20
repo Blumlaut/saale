@@ -33,7 +33,7 @@ const SERVER_NAME_PATTERN = /^(?!.*[-_]{2})[A-Za-z0-9_-]{1,64}$/;
  * Fold what the user typed into a name Pi can use, instead of refusing it.
  *
  * A server name is a segment of every tool name the server contributes, which
- * providers restrict to letters, digits, dashes and underscores — so the name
+ * providers restrict to letters, digits, dashes and underscores. so the name
  * "HA Admin" becomes `ha_admin`. Separator runs collapse (Pi treats `-` and `_`
  * as the same character) and anything else becomes an underscore.
  */

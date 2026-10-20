@@ -16,7 +16,7 @@ function serializeSettings(settings: AdminSettings) {
 }
 
 /**
- * GET /api/admin/settings — Get admin settings
+ * GET /api/admin/settings. Get admin settings
  */
 export async function GET() {
   const authResult = await requirePermission("admin", "settings");
@@ -28,7 +28,7 @@ export async function GET() {
 }
 
 /**
- * PATCH /api/admin/settings — Update admin settings
+ * PATCH /api/admin/settings. Update admin settings
  *
  * Written through the settings registry (`applyAdminSettingsPatch`), which is
  * the only writer of `AdminSettings` and re-checks that the caller is an admin.

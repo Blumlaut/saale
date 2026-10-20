@@ -1,13 +1,13 @@
 /**
  * The one provider Saale defines itself.
  *
- * Every other provider — its display name, its base URL, its models, and how it
- * authenticates — comes from Pi's own model runtime (`pi-ai`'s provider catalog
+ * Every other provider. its display name, its base URL, its models, and how it
+ * authenticates. comes from Pi's own model runtime (`pi-ai`'s provider catalog
  * plus a `ModelRuntime`'s registered providers), so a provider Pi adds appears
  * in Saale with nothing to change here. Pi cannot know about an endpoint the
  * user runs themselves, which is what this describes.
  *
- * Pure data — no database or Node-only imports, so client components can import
+ * Pure data. no database or Node-only imports, so client components can import
  * it directly.
  */
 

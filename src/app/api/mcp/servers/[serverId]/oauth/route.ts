@@ -14,7 +14,7 @@ import { evictUserSessions } from "@/lib/pi/agent-pool";
 const IDLE = "idle";
 
 /**
- * GET /api/mcp/servers/:serverId/oauth — the state of this server's sign-in,
+ * GET /api/mcp/servers/:serverId/oauth. the state of this server's sign-in,
  * which the settings sheet polls while the user is in the browser.
  */
 export async function GET(
@@ -43,7 +43,7 @@ export async function GET(
 }
 
 /**
- * DELETE /api/mcp/servers/:serverId/oauth — sign out. Drops the stored
+ * DELETE /api/mcp/servers/:serverId/oauth. sign out. Drops the stored
  * credentials and the browser state, so the next connection asks for a fresh
  * sign-in.
  */

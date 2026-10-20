@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { serializeSharedChatMessage } from "@/lib/chat/serialize-message";
 
 /**
- * GET /api/chat/sessions/share/:token/messages — Public endpoint for shared chats.
+ * GET /api/chat/sessions/share/:token/messages. Public endpoint for shared chats.
  *
  * No authentication required. Returns session metadata + messages.
  *

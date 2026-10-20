@@ -7,7 +7,7 @@ import { resolveEventTimeUpdate } from "@/lib/calendar/event-times";
 import type { ICSExportEvent } from "@/lib/calendar/ics-export";
 
 /**
- * GET /api/calendar/events/:eventId — Get a single event
+ * GET /api/calendar/events/:eventId. Get a single event
  */
 export async function GET(
   _request: NextRequest,
@@ -52,7 +52,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/calendar/events/:eventId — Update an event
+ * PATCH /api/calendar/events/:eventId. Update an event
  */
 export async function PATCH(
   request: NextRequest,
@@ -134,7 +134,7 @@ export async function PATCH(
     const result = await pushUpdateToCalDAV(event.calendarId, icsEvent);
     if (!result.success) {
       console.error(`Failed to push update to CalDAV: ${result.error}`);
-      // Don't fail the request — local update succeeded
+      // Don't fail the request. local update succeeded
     }
   }
 
@@ -151,7 +151,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/calendar/events/:eventId — Delete an event
+ * DELETE /api/calendar/events/:eventId. Delete an event
  */
 export async function DELETE(
   _request: NextRequest,
@@ -179,7 +179,7 @@ export async function DELETE(
     const result = await pushDeleteToCalDAV(event.calendarId, event.url);
     if (!result.success) {
       console.error(`Failed to push delete to CalDAV: ${result.error}`);
-      // Don't fail the request — proceed with local delete
+      // Don't fail the request. proceed with local delete
     }
   }
 

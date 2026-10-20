@@ -51,7 +51,7 @@ async function writeWorkspaceFile(name: string, content: Buffer | string): Promi
 
 // ─── Local workspace (no terminal container) ─────────────────────────────────
 
-describe("readWorkspaceFile — uploads volume", () => {
+describe("readWorkspaceFile  uploads volume", () => {
   it("reads a file with its name, size and type", async () => {
     const relative = await writeWorkspaceFile("reports/q3.pdf", Buffer.from("pdf-bytes"));
 
@@ -106,7 +106,7 @@ describe("readWorkspaceFile — uploads volume", () => {
 
 // ─── Terminal container ──────────────────────────────────────────────────────
 
-describe("readWorkspaceFile — Open Terminal", () => {
+describe("readWorkspaceFile  Open Terminal", () => {
   beforeEach(() => {
     mockIsConfigured.mockReturnValue(true);
     mockGetTerminalHomeDir.mockImplementation((id: string) => `/home/${id}`);

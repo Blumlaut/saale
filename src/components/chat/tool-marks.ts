@@ -10,7 +10,7 @@ export type { ToolMark };
  * otherwise the call's icon.
  *
  * A favicon beats an icon for a fetch because a run of fetches is a list of
- * *places* the turn read — the site is the identity, and every fetch card
+ * *places* the turn read. the site is the identity, and every fetch card
  * already leads with it. The icon comes from the call's own descriptor, so a
  * tool never wears a different mark in the compact row than on its card.
  */

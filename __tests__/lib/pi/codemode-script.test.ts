@@ -33,7 +33,7 @@ describe("readScriptToolReferences", () => {
 
   it("counts a reference the script calls later through a variable", () => {
     // `const t = tools.mail_list` is a reference to the callable, so the call it
-    // makes later is one the approval gate has to cover — reading only literal
+    // makes later is one the approval gate has to cover  reading only literal
     // `tools.x(` sites would miss it.
     const code = ["const send = tools.mail_send;", "await send({ to, subject });"].join("\n");
     expect(readScriptToolReferences(code).keys).toEqual(["mail_send"]);

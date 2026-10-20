@@ -181,7 +181,7 @@ const server = http.createServer((req, res) => {
 
     if (reply.kind === "hang") {
       // Deliberately never completes: only the client's abort ends it. (Do not
-      // hook req's "close" — that fires as soon as the request body is read.)
+      // hook req's "close"  that fires as soon as the request body is read.)
       openResponses.add(res);
       res.on("close", () => openResponses.delete(res));
       return;
@@ -305,7 +305,7 @@ describe("provider failures (real SDK)", () => {
     const messages = firstBody?.messages as Array<Record<string, unknown>> | undefined;
     const system = messages?.find((m) => m.role === "system");
     expect(system).toBeDefined();
-    // The loader's custom prompt is the preamble — Pi's coding-assistant
+    // The loader's custom prompt is the preamble  Pi's coding-assistant
     // base prompt must not appear.
     expect(JSON.stringify(system)).toContain("You are a test.");
     expect(JSON.stringify(system)).not.toContain("expert coding assistant");
@@ -388,7 +388,7 @@ describe("provider failures (real SDK)", () => {
     nextReply = () => ({ kind: "hang", text: HANGING_TEXT });
 
     // Aborting while the model streams leaves stopReason "aborted", which is not
-    // a provider failure — no stop record is needed for this case.
+    // a provider failure  no stop record is needed for this case.
     const { rows } = await runSession({ maxRetries: 0, abortAfterMs: 250 });
 
     expect(rows).toHaveLength(1);

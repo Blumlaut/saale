@@ -22,7 +22,7 @@ import { ChevronLeft, FolderOpen, Loader2, Square } from "lucide-react";
  * Desktop is a main column (timeline + composer) with a members rail on the
  * right; on phones the rail becomes a horizontally scrollable strip so it stays
  * reachable without hover. The room's messages always come from the REST route
- * — the SSE stream is only a signal to refetch plus the members' live state.
+ *. the SSE stream is only a signal to refetch plus the members' live state.
  */
 export default function CouncilRoomPage() {
   const params = useParams<{ councilId: string }>();
@@ -136,7 +136,7 @@ export default function CouncilRoomPage() {
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
         <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-          {/* Toolbar — back, room identity, then the run actions */}
+          {/* Toolbar. back, room identity, then the run actions */}
           <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 md:px-6">
             <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
               <Link href="/dashboard/council" aria-label="Back to councils">

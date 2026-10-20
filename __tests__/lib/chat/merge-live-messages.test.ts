@@ -103,11 +103,11 @@ describe("mergeMessagesWithLive", () => {
 
     const merged = mergeMessagesWithLive(db, prev);
 
-    // The DB copy replaces the optimistic placeholder — no duplicate.
+    // The DB copy replaces the optimistic placeholder  no duplicate.
     expect(merged.map((m) => m.id)).toEqual(["compaction-1"]);
   });
 
-  it("drops saved messages from prev — the DB snapshot wins", () => {
+  it("drops saved messages from prev  the DB snapshot wins", () => {
     const db = [makeMessage({ id: "db-1", content: "saved" })];
     const prev = [
       makeMessage({ id: "db-1", content: "saved" }),
@@ -151,7 +151,7 @@ describe("mergeMessagesWithLive", () => {
   it("keeps a turn saved while the snapshot was in flight", () => {
     // The snapshot was read before the save committed, but `message_saved`
     // renamed the bubble before the response landed. The row is on screen and
-    // in the DB, so keeping it is right — and its absence from the snapshot is
+    // in the DB, so keeping it is right  and its absence from the snapshot is
     // explained by the save's timing, not by a delete.
     const staleDb = [makeMessage({ id: "db-user", role: "user", content: "hi" })];
     const prev = [
@@ -166,7 +166,7 @@ describe("mergeMessagesWithLive", () => {
 
   it("drops a message the snapshot lacks when the save predates the request", () => {
     // Saved before the request, so a snapshot without it means it is gone from
-    // the DB — deleted, or truncated by editing an earlier message. Keeping it
+    // the DB  deleted, or truncated by editing an earlier message. Keeping it
     // would make those actions look like they did nothing.
     const db = [makeMessage({ id: "db-user", role: "user", content: "edited" })];
     const prev = [

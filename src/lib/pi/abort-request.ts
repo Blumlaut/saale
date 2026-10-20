@@ -1,8 +1,8 @@
 /**
  * In-process record of user-requested aborts.
  *
- * Pi reports a cancelled request exactly like a failed one — `stopReason:
- * "error"` with a transport message such as `"terminated"` — so a tracker
+ * Pi reports a cancelled request exactly like a failed one. `stopReason:
+ * "error"` with a transport message such as `"terminated"`. so a tracker
  * reading the message cannot tell "the user pressed stop" from "the connection
  * died". Saale knows, because it performs the abort itself: the stop route
  * records the request here, and the session event tracker uses it to avoid
@@ -10,8 +10,8 @@
  *
  * Scope is the process, which matches the agent pool: the request that serves
  * Stop runs in the same process as the generation and its tracker. A miss (a
- * different instance, a restart) only degrades to the previous behaviour —
- * showing an error for a cancellation — never to a hidden real failure: a mark
+ * different instance, a restart) only degrades to the previous behaviour
+ * showing an error for a cancellation. never to a hidden real failure: a mark
  * is consumed by the run that follows it and cleared when any new run starts.
  */
 

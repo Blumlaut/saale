@@ -70,7 +70,7 @@ export async function processAndStoreImage(
   const fullPath = path.join(getUploadsDir(), userId, storagePath);
 
   // Process with sharp: auto-orient, resize, convert to PNG.
-  // autoOrient() bakes the EXIF orientation into the pixels — phone photos
+  // autoOrient() bakes the EXIF orientation into the pixels. phone photos
   // store landscape pixels plus a rotation tag, and PNG cannot carry that
   // tag, so without this the LLM sees vertical photos lying on their side.
   const metadata = await sharp(fileBuffer)
@@ -123,7 +123,7 @@ export async function deleteImage(userId: string, storagePath: string): Promise<
   try {
     await fs.unlink(fullPath);
   } catch {
-    // File already gone — nothing to do
+    // File already gone. nothing to do
   }
 }
 
@@ -146,7 +146,7 @@ export async function deleteAllImages(userId: string, storagePaths: string[]): P
       try {
         await fs.unlink(fullPath);
       } catch (err) {
-        // File already gone — treat as success
+        // File already gone. treat as success
         if (err instanceof Error && "code" in err && err.code === "ENOENT") {
           return;
         }
@@ -195,12 +195,12 @@ export async function cleanupOrphanedImages(): Promise<number> {
           await fs.unlink(filePath);
           deletedCount++;
         } catch {
-          // File disappeared between scan and delete — fine
+          // File disappeared between scan and delete. fine
         }
       }
     }
   } catch {
-    // Uploads dir doesn't exist yet — nothing to clean
+    // Uploads dir doesn't exist yet. nothing to clean
   }
 
   return deletedCount;
@@ -241,11 +241,11 @@ async function readUserDirs(): Promise<
           });
         }
       } catch {
-        // images/ subdirectory doesn't exist for this user — skip
+        // images/ subdirectory doesn't exist for this user. skip
       }
     }
   } catch {
-    // Uploads dir doesn't exist — return empty
+    // Uploads dir doesn't exist. return empty
   }
 
   return entries;

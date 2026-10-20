@@ -24,7 +24,7 @@ interface RecipientInputProps {
 const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 60_000;
 
-// Contact book + recent recipients are identical for every field of a sheet —
+// Contact book + recent recipients are identical for every field of a sheet
 // one fetch per 60s, shared across To/Cc/Bcc instances.
 let cache: { at: number; suggestions: RecipientSuggestion[] } | null = null;
 let inFlight: Promise<RecipientSuggestion[]> | null = null;
@@ -103,7 +103,7 @@ export function RecipientInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // The dropdown only makes sense while typing at the end of the field —
+  // The dropdown only makes sense while typing at the end of the field
   // editing in the middle of a long list would clobber other entries.
   const caretAtEnd = useCallback(() => {
     const el = inputRef.current;
@@ -192,7 +192,7 @@ export function RecipientInput({
           select(filtered[highlight]);
         } else if (open && currentDraft(value)) {
           // Enter commits the half-typed recipient so the user can continue
-          // with the next one — it does not submit the form.
+          // with the next one. it does not submit the form.
           e.preventDefault();
           commitDraft();
         }

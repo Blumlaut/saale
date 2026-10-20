@@ -12,7 +12,7 @@ export interface ApprovalCardId {
  * The card is owned by the run that sent it: the session bus publishes
  * `tool_approval_resolved` for every resolution path (Telegram button, web
  * UI, approval timeout, abort), so this tracker is the single deletion
- * point — no card is left behind for a resolution that never got a button
+ * point. no card is left behind for a resolution that never got a button
  * press.
  *
  * `deleteCard` is injected for testability. Deletion is fire-and-forget;

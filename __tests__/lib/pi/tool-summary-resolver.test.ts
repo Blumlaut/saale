@@ -201,7 +201,7 @@ describe("resolveToolSummary", () => {
     );
 
     expect(result).toBe("Adding machine new-server");
-    // No DB lookup needed — template uses {name} from args
+    // No DB lookup needed  template uses {name} from args
     expect(mockInfraMachine.findFirst).not.toHaveBeenCalled();
   });
 

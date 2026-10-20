@@ -1,5 +1,5 @@
 /**
- * Creating, editing and approving watchers — the one place the rules live.
+ * Creating, editing and approving watchers. the one place the rules live.
  *
  * The API routes and the LLM's tools are two doors onto the same write, so the
  * validation, the grant and the scheduler sync happen here once. A route that
@@ -10,8 +10,8 @@
  * gate on the write path: the API is session-authenticated and the UI dialog
  * shows the consent list before saving, while a write from the model's tools
  * lands pending (`UNAPPROVED_SCRIPT_HASH`) unless the script needs no consent at
- * all — a watcher runs unattended, so its approval cannot come from the thing
- * that benefits from it. `checkGrant` then catches what moves afterwards — a
+ * all. a watcher runs unattended, so its approval cannot come from the thing
+ * that benefits from it. `checkGrant` then catches what moves afterwards. a
  * rewritten script through a path that skipped approval, a tool switched off, a
  * policy turned to `ask`.
  */
@@ -46,13 +46,13 @@ export class WatcherInputError extends Error {
 }
 
 /**
- * A cron field made of numbers and the operators that combine them — a bare
+ * A cron field made of numbers and the operators that combine them. a bare
  * wildcard, a step, a list, a range, or a range with a step.
  */
 const NUMERIC_TOKEN = /^[0-9*,\-/]+$/;
 
 /**
- * A cron field made of three-letter names — a single month or weekday, a range
+ * A cron field made of three-letter names. a single month or weekday, a range
  * of them, or a list of them. Names are what let a weekday or month field read
  * as English, and why the numeric rule alone cannot be the test.
  */
@@ -62,7 +62,7 @@ const NAMED_TOKEN = /^[A-Za-z]{3}(-[A-Za-z]{3})?(,[A-Za-z]{3}(-[A-Za-z]{3})?)*(\
  * Whether one field is something cron can parse.
  *
  * The charset alone is too loose: it would accept prose ("nope"), which BullMQ
- * then rejects at scheduling time — leaving a saved watcher that never ticks,
+ * then rejects at scheduling time. leaving a saved watcher that never ticks,
  * which is the failure this validation exists to catch at the write instead.
  */
 function isValidCronToken(token: string): boolean {
@@ -158,7 +158,7 @@ export interface WatcherFields {
  * Create a watcher, deriving its grant from the script.
  *
  * `approvedByUser` says whether a person read the script behind this write. The
- * API sets it — the dialog shows the consent list before saving — and the
+ * API sets it. the dialog shows the consent list before saving. and the
  * model's tool does not, so a script the model wrote only starts running once
  * the user has approved it on the Watchers page.
  *
@@ -275,7 +275,7 @@ async function validateFields(
  * A changed script does **not** re-earn its grant unless the caller says the
  * user approved it (`approveScript`). The API sets that because the user is
  * editing the script in front of them; the LLM's tools do not, so a model that
- * rewrites a watcher's script leaves it blocked until the user says yes — an
+ * rewrites a watcher's script leaves it blocked until the user says yes. an
  * approval must not be extendable by the thing it constrains.
  */
 export async function updateWatcher(params: {
@@ -363,7 +363,7 @@ async function grantedFor(
 /**
  * Approve the watcher's script as it currently stands.
  *
- * This is the user saying "yes, these calls" after a script changed — the same
+ * This is the user saying "yes, these calls" after a script changed. the same
  * decision the creation dialog carries, applied to an edit.
  */
 export async function approveWatcherScript(
@@ -430,7 +430,7 @@ export function needsScriptApproval(watcher: { script: string; scriptHash: strin
   return hashScript(watcher.script) !== watcher.scriptHash;
 }
 
-/** The shape every reader of a watcher gets — API, tools and UI alike. */
+/** The shape every reader of a watcher gets. API, tools and UI alike. */
 export interface SerializedWatcher {
   id: string;
   name: string;

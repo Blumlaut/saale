@@ -59,7 +59,7 @@ async function resolveInfraSummary(
       }
     }
 
-    // Machine not found — fall back without machineName
+    // Machine not found. fall back without machineName
     // (leaves {machineName} in output as a clear signal)
   }
 

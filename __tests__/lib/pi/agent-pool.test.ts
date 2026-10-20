@@ -158,7 +158,7 @@ describe("agent-pool", () => {
     it("shares one creation between concurrent callers", async () => {
       // Two requests for the same chat can overlap (a message sent while
       // /compact is still spinning up its session). Both must get the same
-      // AgentSession — two live sessions over one transcript silently fork it.
+      // AgentSession  two live sessions over one transcript silently fork it.
       const mockSession = createMockAgentSession();
       let releaseCreation = () => {};
       const createFn = vi.fn(
@@ -276,7 +276,7 @@ describe("agent-pool", () => {
       expect(getPoolSize()).toBe(0);
       expect(get(poolKey)).toBeUndefined();
       expect(mockSession.dispose).toHaveBeenCalled();
-      // The dispatcher is disposed WITHOUT touching Redis — the event buffer
+      // The dispatcher is disposed WITHOUT touching Redis  the event buffer
       // is cleared per-generation (see resetSessionEvents), not on pool
       // removal, so Last-Event-ID reconnects keep working.
       expect(mockRedisDel).not.toHaveBeenCalled();
@@ -327,7 +327,7 @@ describe("agent-pool", () => {
         session: asAgentSession(running),
         sessionDir: "/tmp/running",
       }));
-      // Oldest entry of all — a naive "evict the oldest" would pick it first.
+      // Oldest entry of all  a naive "evict the oldest" would pick it first.
       runningEntry.lastActive = 0;
 
       for (let i = 0; i < 101; i++) {
@@ -337,7 +337,7 @@ describe("agent-pool", () => {
         }));
       }
       // createAndPool enforces the cap on the way in, so the pool never grows
-      // past it — and the running session, the oldest entry of all, survives
+      // past it  and the running session, the oldest entry of all, survives
       // every pass.
       await evictIdle();
       expect(running.dispose).not.toHaveBeenCalled();

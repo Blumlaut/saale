@@ -334,7 +334,7 @@ export function McpServerSheet({
                 type="password"
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
-                placeholder={server?.hasToken ? "Stored — type to replace" : "Optional"}
+                placeholder={server?.hasToken ? "Type to replace stored value" : "Optional"}
                 autoComplete="off"
               />
               <p className="text-muted-foreground text-xs">
@@ -498,7 +498,7 @@ export function McpServerSheet({
                 <div className="flex items-center gap-2">
                   <CheckCircle className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 break-words">
-                    Connected to {testResult.serverName ?? "the server"} —{" "}
+                    Connected to {testResult.serverName ?? "the server"}:{" "}
                     {testResult.tools?.length ?? 0} tool
                     {testResult.tools?.length === 1 ? "" : "s"}
                   </span>

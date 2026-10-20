@@ -6,7 +6,7 @@ import { fetchMessageBody, syncMessageFlags, deleteMessage, moveMessage } from "
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /**
- * GET /api/email/messages/:messageId — Get a single email message (with body)
+ * GET /api/email/messages/:messageId. Get a single email message (with body)
  * Fetches body from IMAP on-demand if not yet stored.
  */
 export async function GET(
@@ -50,7 +50,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/email/messages/:messageId — Update message fields (star, read, tags)
+ * PATCH /api/email/messages/:messageId. Update message fields (star, read, tags)
  */
 export async function PATCH(
   request: NextRequest,

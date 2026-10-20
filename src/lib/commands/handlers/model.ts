@@ -7,7 +7,7 @@ import { ensureTelegramAgentDefinition } from "@/lib/telegram/processor";
 import type { CommandHandler, CommandOption } from "../types";
 
 /**
- * `/model` — pick the model a chat answers with.
+ * `/model`. pick the model a chat answers with.
  *
  * The choice is stored per surface: a web chat keeps its model on the
  * `ChatSession`, while Telegram chats share the system-managed "Telegram
@@ -77,7 +77,7 @@ function formatReference(resolved: { provider: string; name: string } | undefine
 /**
  * Every model the user can reach, with the one in effect marked.
  *
- * The provider prefix is only shown when the user has more than one provider —
+ * The provider prefix is only shown when the user has more than one provider
  * otherwise it is noise that makes a phone-width button wrap.
  */
 async function listModelOptions(userId: string, current: string | null): Promise<CommandOption[]> {

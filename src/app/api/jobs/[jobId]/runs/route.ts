@@ -4,7 +4,7 @@ import { requireJobOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/jobs/:jobId/runs — Get run history for a job
+ * GET /api/jobs/:jobId/runs. Get run history for a job
  */
 export async function GET(
   request: NextRequest,

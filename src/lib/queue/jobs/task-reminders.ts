@@ -66,7 +66,7 @@ export async function handler(params: {
     }
 
     // A user with no bot on the instance, a bot that is switched off, or no
-    // linked account is not a failure — falling back is the expected path.
+    // linked account is not a failure. falling back is the expected path.
     // Anything else means a configured channel dropped the message, which is
     // worth a log line.
     const expectedFallback: TelegramDeliveryFailure[] = [

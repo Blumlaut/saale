@@ -6,7 +6,7 @@ import { ensureUser, login } from "./utils";
  * PWA installability + offline fallback, against the real server.
  *
  * The unit suite covers the manifest object and the worker's logic in isolation;
- * this checks what the browser actually receives — served headers, the icon
+ * this checks what the browser actually receives  served headers, the icon
  * files, the `<head>` wiring, and a navigation that fails for real.
  */
 
@@ -29,7 +29,7 @@ async function cachedPathnames(page: Page) {
 
 /**
  * Waits until the worker controls the page *and* has finished precaching the
- * offline page — registering and precaching are separate async steps, and going
+ * offline page  registering and precaching are separate async steps, and going
  * offline in between would just exercise the inline fallback instead.
  */
 async function waitForOfflineCapable(page: Page) {
@@ -174,7 +174,7 @@ test.describe("service worker", () => {
 test.describe("installed app session", () => {
   /**
    * Launching an installed app is a top-level navigation started from outside
-   * the app's site — that is how the OS hands the `start_url` to the browser.
+   * the app's site  that is how the OS hands the `start_url` to the browser.
    * A `SameSite=Strict` session cookie is withheld on such a navigation, so the
    * app boots on the login screen even though the user never signed out; a
    * cookie without `Max-Age` dies when the app closes just the same. Both
@@ -201,7 +201,7 @@ test.describe("installed app session", () => {
     );
 
     // The launch document sits on another site, so the navigation it starts is
-    // cross-site — cookies for localhost are not sent to it.
+    // cross-site  cookies for localhost are not sent to it.
     const launcher = new URL(app);
     launcher.hostname = app.hostname === "localhost" ? "127.0.0.1" : "localhost";
     const launch = await page.goto(launcher.origin).catch((error: unknown) => {

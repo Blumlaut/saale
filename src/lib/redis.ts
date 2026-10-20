@@ -55,7 +55,7 @@ export async function isRateLimited(key: string): Promise<boolean> {
     }
     return current > RATE_LIMIT_MAX;
   } catch (err) {
-    // If Redis is down, don't block requests — log and allow through
+    // If Redis is down, don't block requests. log and allow through
     console.error("Rate limiter Redis error (allowing request):", err);
     return false;
   }
@@ -67,13 +67,13 @@ export async function isRateLimited(key: string): Promise<boolean> {
  * Redis-backed active session tracking, with liveness.
  *
  * A chat generation runs in whichever process owns the pooled agent (the web
- * process, or the worker running Telegram agents). Every other process — and
- * every connected SSE client — has to know whether it is still running.
+ * process, or the worker running Telegram agents). Every other process. and
+ * every connected SSE client. has to know whether it is still running.
  *
  * Liveness is carried by a short-TTL heartbeat key per session, refreshed by
  * the session event tracker while Pi streams:
  *
- *   `chat:gen_active:{userId}:{sessionId}` — TTL ACTIVE_SESSION_TTL_SECONDS
+ *   `chat:gen_active:{userId}:{sessionId}`. TTL ACTIVE_SESSION_TTL_SECONDS
  *
  * The short TTL is the crash detector. A process that dies mid-generation
  * (deploy, restart, OOM) simply stops refreshing, so the session reads as
@@ -91,7 +91,7 @@ const ACTIVE_SESSION_PREFIX = "active_sessions:";
 const ACTIVE_SESSION_KEY_PREFIX = "chat:gen_active:";
 const ACTIVE_SESSION_INDEX_TTL_SECONDS = 600;
 
-/** How long a generation's heartbeat stays valid — the crash-detection window. */
+/** How long a generation's heartbeat stays valid. the crash-detection window. */
 export const ACTIVE_SESSION_TTL_SECONDS = 30;
 
 /**
@@ -161,7 +161,7 @@ export async function getActiveSessions(userId: string): Promise<Set<string>> {
  * Redis-backed "a manual compaction holds this session" flag.
  *
  * Pi refuses to submit a prompt while a compaction runs, and `compact()`
- * aborts any generation it finds — so a compaction cannot masquerade as an
+ * aborts any generation it finds. so a compaction cannot masquerade as an
  * active session (unregistering one must never clear the other). It is a busy
  * state of its own: POST /messages consults it via `isSessionBusy`, so a
  * message sent mid-compaction is queued like one sent mid-generation instead
@@ -206,7 +206,7 @@ export async function clearCompactionInProgress(sessionId: string): Promise<void
 }
 
 /**
- * Is the session busy — a generation streaming, or a manual compaction holding
+ * Is the session busy. a generation streaming, or a manual compaction holding
  * it? Both refuse a prompt, so a message sent now has to wait in the send queue
  * instead of being prompted into a rejection.
  */
@@ -225,7 +225,7 @@ export async function isSessionBusy(userId: string, sessionId: string): Promise<
  *
  * POST /api/chat/sessions/:id/messages (and the edit route) save the user
  * message, register the session as active, and store the message ID here. The
- * SSE stream connection for that message is the expected prompter — this key
+ * SSE stream connection for that message is the expected prompter. this key
  * tells it so, and tells every other connection to just observe.
  */
 
@@ -279,7 +279,7 @@ const PENDING_REWIND_TTL_SECONDS = 600;
 export interface PendingHistoryRewind {
   /** The edited message, which is about to be prompted again. */
   messageId: string;
-  /** The message's content before the edit — locates its transcript entry. */
+  /** The message's content before the edit. locates its transcript entry. */
   previousContent: string;
   /** Position of the message among the session's saved user messages. */
   userMessageIndex: number;
@@ -344,7 +344,7 @@ export async function claimPendingHistoryRewind(
  * Stop means "nothing more until I say so": without this, the send queue's
  * drain would immediately deliver the messages that were queued during the run
  * the user just cancelled. The hold is cleared by the actions that express
- * "keep going" — a new message, or pushing a queued one.
+ * "keep going". a new message, or pushing a queued one.
  */
 
 const QUEUE_HOLD_PREFIX = "chat:queue_hold:";
@@ -386,7 +386,7 @@ export async function releaseSendQueue(sessionId: string): Promise<void> {
  *
  * Returns the claimed message ID, or null if there was nothing to claim.
  * Used by the stream route to arbitrate between concurrent connections that
- * both decided to prompt — exactly one wins the GETDEL.
+ * both decided to prompt. exactly one wins the GETDEL.
  */
 export async function claimPendingPrompt(sessionId: string): Promise<string | null> {
   try {

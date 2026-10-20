@@ -14,7 +14,7 @@ import { createSystemPromptLoader } from "@/lib/pi/processing-state";
  * belongs to whoever installed Pi there: it can set the thinking level,
  * compaction budgets, provider retries/timeouts, image handling and proxy for
  * every Saale session, and its `packages` list is resolved on every session
- * creation — an entry that needs installing turns each chat request into an
+ * creation  an entry that needs installing turns each chat request into an
  * npm install (and fails the request when it cannot).
  *
  * Each test below sets up such a file, asserts that Pi's own manager *does*
@@ -72,7 +72,7 @@ describe("session settings", () => {
 
   it("does not attribute Saale's provider traffic to pi", () => {
     // With telemetry on (Pi's default) provider requests carry Pi's
-    // attribution headers — HTTP-Referer/X-OpenRouter-Title to OpenRouter, a
+    // attribution headers  HTTP-Referer/X-OpenRouter-Title to OpenRouter, a
     // billing origin to NVIDIA, a User-Agent to Cloudflare.
     const settings = createSessionSettings();
     expect(settings.getEnableInstallTelemetry()).toBe(false);

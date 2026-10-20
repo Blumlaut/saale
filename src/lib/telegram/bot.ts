@@ -4,7 +4,7 @@ import { encrypt } from "@/lib/crypto";
 import { deleteWebhook, registerWebhook, validateBotToken } from "./client";
 
 /**
- * The shared Telegram bot — one per Saale instance, configured by an admin.
+ * The shared Telegram bot. one per Saale instance, configured by an admin.
  *
  * Users no longer bring their own bot; they link their Telegram account to
  * this one (see `links.ts`). That means the token is instance-wide
@@ -52,7 +52,7 @@ export interface SaveTelegramBotResult {
 /**
  * Store the bot token and publish the webhook.
  *
- * The token is validated against Telegram's `getMe` first — an invalid token
+ * The token is validated against Telegram's `getMe` first. an invalid token
  * would leave the instance with a bot that can never receive a message, and
  * the admin would find out only by messaging it.
  *
@@ -105,7 +105,7 @@ export async function saveTelegramBot(params: {
  * Switch the bot on or off.
  *
  * Turning it off deletes the webhook, so Telegram stops delivering updates
- * rather than us rejecting them one by one. Links are kept — an admin pausing
+ * rather than us rejecting them one by one. Links are kept. an admin pausing
  * the bot must not silently unlink every user.
  */
 export async function setTelegramBotEnabled(enabled: boolean): Promise<TelegramBotConfig> {

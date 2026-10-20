@@ -59,9 +59,9 @@ export interface ExecuteOptions {
   wait?: number;
   /** Return only the last N output entries. */
   tail?: number;
-  /** Saale user ID — passed as X-User-Id header for multi-user isolation. */
+  /** Saale user ID. passed as X-User-Id header for multi-user isolation. */
   userId: string;
-  /** Pi session ID — passed as X-Session-Id header for cwd persistence. */
+  /** Pi session ID. passed as X-Session-Id header for cwd persistence. */
   sessionId?: string;
 }
 
@@ -224,7 +224,7 @@ export class TerminalApiError extends Error {
     readonly statusText: string,
     readonly body: string,
   ) {
-    super(`Open Terminal error ${status}: ${statusText}${body ? ` — ${body}` : ""}`);
+    super(`Open Terminal error ${status}: ${statusText}${body ? `. ${body}` : ""}`);
     this.name = "TerminalApiError";
   }
 }
@@ -288,7 +288,7 @@ export async function executeCommand(
  *
  * A request without `X-User-Id` runs as the container's default account, which
  * provisions the per-user accounts and is therefore root-capable. That is an
- * app-side administrative identity — no tenant session may use it, and a
+ * app-side administrative identity. no tenant session may use it, and a
  * tenant's own account cannot escalate to it (a provisioned account needs a
  * password for `sudo`). Used to remove a council's sandbox account when the
  * council is deleted; see `lib/council/sandbox`.
@@ -403,7 +403,7 @@ export async function readFile(
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
-      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
+      `Open Terminal error ${response.status}: ${response.statusText}${body ? `. ${body}` : ""}`,
     );
   }
 
@@ -443,7 +443,7 @@ export async function readFileBinary(
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
-      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
+      `Open Terminal error ${response.status}: ${response.statusText}${body ? `. ${body}` : ""}`,
     );
   }
 
@@ -508,7 +508,7 @@ export async function uploadFile(
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
-      `Open Terminal error ${response.status}: ${response.statusText}${body ? ` — ${body}` : ""}`,
+      `Open Terminal error ${response.status}: ${response.statusText}${body ? `. ${body}` : ""}`,
     );
   }
 

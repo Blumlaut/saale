@@ -40,7 +40,7 @@ export const handlerMap = new Map(handlers.map((h) => [h.metadata.type, h])) as 
 
 /**
  * Derive the job type schemas from handler metadata.
- * This is the single source of truth — UI forms, tool descriptions, and validation all derive from here.
+ * This is the single source of truth. UI forms, tool descriptions, and validation all derive from here.
  */
 export const jobTypeSchemas: JobTypeSchema[] = handlers.map((h) => ({
   type: h.metadata.type,

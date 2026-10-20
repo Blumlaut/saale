@@ -66,7 +66,7 @@ export interface ProcessedFile {
  * For document files: saves the file and returns a path the agent can
  * actually reach:
  * - Open Terminal configured: uploaded into the user's workspace inside
- *   the container (the only filesystem the agent's file tools can see) —
+ *   the container (the only filesystem the agent's file tools can see)
  *   `filePath` is the container-absolute path.
  * - No Open Terminal: saved under UPLOADS_DIR (fallback).
  */
@@ -112,7 +112,7 @@ export async function downloadAndProcessTelegramFile(
   const safeName = path.basename(fileName.replace(/[^a-zA-Z0-9._-]/g, "_"));
 
   if (isTerminalConfigured()) {
-    // The agent's file tools run inside the Open Terminal container — the
+    // The agent's file tools run inside the Open Terminal container. the
     // host uploads directory is invisible to them, so upload the document
     // into the container's workspace instead.
     const result = await uploadFile(safeName, buffer, {
@@ -134,7 +134,7 @@ export async function downloadAndProcessTelegramFile(
  * Build a text description for a file attachment to include in the prompt.
  *
  * Media captions arrive as the message's own text (`messageCaption`), so the
- * description covers the attachment only — appending the caption here would
+ * description covers the attachment only. appending the caption here would
  * repeat it in the prompt.
  */
 export function buildFilePromptText(processedFile: ProcessedFile): string {

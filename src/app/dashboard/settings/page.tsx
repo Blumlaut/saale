@@ -129,7 +129,7 @@ export default function SettingsPage() {
         onValueChange={handleTabChange}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {/* Tab strip — pinned, swipe-scrollable, no visible scrollbar */}
+        {/* Tab strip. pinned, swipe-scrollable, no visible scrollbar */}
         <PageTabStrip className="pb-1">
           <TabsList>
             <TabsTrigger value="ai" className="gap-2">
@@ -171,7 +171,7 @@ export default function SettingsPage() {
           </TabsList>
         </PageTabStrip>
 
-        {/* Tab content — the only scroll region */}
+        {/* Tab content. the only scroll region */}
         <TabsContent value="ai" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
           <AiModelsTab
             settings={settings}

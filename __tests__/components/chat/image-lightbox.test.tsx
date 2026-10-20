@@ -48,7 +48,7 @@ describe("LightboxImage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything());
 
-    // Parent switches the controlled state — the dialog unmounts
+    // Parent switches the controlled state  the dialog unmounts
     rerender(<ImageLightbox open={false} onOpenChange={onOpenChange} src={SRC} alt="photo.png" />);
     expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
   });

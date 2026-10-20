@@ -26,7 +26,7 @@ export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptySt
 
   return (
     <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
-      {/* Compact control row — session list (mobile) + temporary mode */}
+      {/* Compact control row. session list (mobile) + temporary mode */}
       <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-1.5 md:px-4">
         <div className="shrink-0 md:hidden">
           <MobileSessionSheet onNewChat={handleNewChat} />
@@ -47,7 +47,7 @@ export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptySt
           {temporaryMode && (
             <span className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
               <Ghost className="h-3 w-3" />
-              Temporary mode — chat will be deleted on close
+              Temporary mode. chat will be deleted on close
             </span>
           )}
           <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>

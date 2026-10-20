@@ -2,7 +2,7 @@ import { compactChatSession } from "@/lib/chat/compact-chat";
 import { compactTelegramSession } from "@/lib/telegram/processor";
 import type { CommandHandler } from "../types";
 
-/** `/compact` — summarise the conversation to free up context. */
+/** `/compact`. summarise the conversation to free up context. */
 export const compactHandler: CommandHandler = {
   run: async (ctx) => {
     if (ctx.surface === "telegram") {

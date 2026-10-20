@@ -35,7 +35,7 @@ export interface SerializedMemory {
   updatedAt: string;
 }
 
-/** Collections are keys — case and padding must not split one into two. */
+/** Collections are keys. case and padding must not split one into two. */
 export function normalizeCollection(collection: string): string {
   return collection.trim().toLowerCase();
 }
@@ -116,7 +116,7 @@ export async function updateMemory(
   if (patch.content !== undefined) data.content = patch.content.trim();
   if (patch.tags !== undefined) data.tags = normalizeTags(patch.tags);
 
-  // Nothing to change — skip the write rather than bumping updatedAt.
+  // Nothing to change. skip the write rather than bumping updatedAt.
   if (Object.keys(data).length === 0) return existing;
 
   return prisma.memory.update({ where: { id, userId }, data });

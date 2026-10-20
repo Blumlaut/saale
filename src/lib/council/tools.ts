@@ -3,13 +3,13 @@
  *
  * The room is a shared log, and every tool here is a way of touching it:
  *
- * - `council_post` — the **only** way a member says anything. A member's closing
+ * - `council_post`. the **only** way a member says anything. A member's closing
  *   text at the end of its turn is deliberately not a room message: a model that
  *   ends a turn with an answer has not delivered it, and the room would read a
  *   conversation of half-messages. Posting is a decision, so it is an action.
- * - `council_read` — re-read the room. A member is shown what it missed when it
+ * - `council_read`. re-read the room. A member is shown what it missed when it
  *   is woken; this is for everything else.
- * - `council_vote_stop` — end the run on consensus (or on being blocked).
+ * - `council_vote_stop`. end the run on consensus (or on being blocked).
  *
  * The tools talk to the run through `CouncilToolContext` rather than to the
  * database, so the orchestrator owns persistence, wake routing and vote counting
@@ -30,10 +30,10 @@ import {
 } from "./mentions";
 import type { RoomMessageView } from "./room";
 
-/** Why a member wants to stop — recorded with the vote so the room can read it. */
+/** Why a member wants to stop. recorded with the vote so the room can read it. */
 export type StopVoteKind = "consensus" | "done" | "blocked";
 
-/** A room message as the tools report it — the shared read model. */
+/** A room message as the tools report it. the shared read model. */
 export type CouncilRoomMessage = RoomMessageView;
 
 export interface CouncilToolContext {
@@ -75,7 +75,7 @@ const postResultSchema = Type.Object({
   posted: Type.Boolean(),
   seq: Type.Integer({ description: "Room sequence number of the message." }),
   woke: Type.Array(Type.String(), {
-    description: "Members this message addressed — they now have it in their inbox.",
+    description: "Members this message addressed. they now have it in their inbox.",
   }),
   addressedUser: Type.Boolean({ description: "Whether the owner was addressed." }),
 });
@@ -128,7 +128,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
       name: "council_post",
       label: "Post to the Room",
       description:
-        "Post a message into the council room. This is the ONLY thing the other members and the owner ever see from you — the text you write when you finish your turn is not shown to anyone, so anything you want delivered must be posted here. " +
+        "Post a message into the council room. This is the ONLY thing the other members and the owner ever see from you. the text you write when you finish your turn is not shown to anyone, so anything you want delivered must be posted here. " +
         `Address a member by writing @name in the message: that is what wakes it and puts your message in its inbox. @${ALL_HANDLE} addresses everyone, @${USER_HANDLE} addresses the owner. ` +
         "Post a finding, a decision, a question or a hand-off, and keep it short; do not narrate your process or repeat what is already in the room.",
       parameters: Type.Object({
@@ -140,7 +140,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
       execute: async (_toolCallId, params) => {
         const content = params.content.trim();
         if (!content) {
-          throw new Error("A message cannot be empty — post something the others can act on.");
+          throw new Error("A message cannot be empty. post something the others can act on.");
         }
         if (content.length > MAX_MESSAGE_LENGTH) {
           throw new Error(
@@ -180,7 +180,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
                 }`
               : `Posted as #${seq}. Nobody was addressed, so nobody was woken${
                   resolution.addressesUser ? " (the owner was) " : ""
-                } — address a member with @name if you need a reply.`,
+                }. address a member with @name if you need a reply.`,
         };
       },
     }),
@@ -191,7 +191,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
       name: "council_read",
       label: "Read the Room",
       description:
-        "Read the council room. With `sinceSeq` it returns the messages posted after that one, oldest first; without one it returns the room's newest messages. Your turn already shows you what was posted since your last turn — use this to look further back, to re-read a message, or to see what a particular member has said.",
+        "Read the council room. With `sinceSeq` it returns the messages posted after that one, oldest first; without one it returns the room's newest messages. Your turn already shows you what was posted since your last turn. use this to look further back, to re-read a message, or to see what a particular member has said.",
       parameters: Type.Object({
         sinceSeq: Type.Optional(
           Type.Integer({
@@ -231,13 +231,13 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
           messages.length > 0
             ? messages.map((m) => `#${m.seq} ${m.authorName}: ${m.content}`).join("\n\n") +
               (newer > 0
-                ? `\n\n(${newer} newer message${newer === 1 ? "" : "s"} not shown — read on with sinceSeq: ${last}.)`
+                ? `\n\n(${newer} newer message${newer === 1 ? "" : "s"} not shown. read on with sinceSeq: ${last}.)`
                 : "")
             : lastSeq === 0
-              ? "The room has no messages yet — nobody has posted. Say what you are taking on with `council_post` before you start work."
+              ? "The room has no messages yet. nobody has posted. Say what you are taking on with `council_post` before you start work."
               : params.sinceSeq !== undefined
                 ? `Nothing has been posted after #${params.sinceSeq}. The room's newest message is #${lastSeq}.`
-                : `No messages matched${params.author ? ` from @${params.author}` : ""}. The room's newest message is #${lastSeq} — call \`council_read\` without \`sinceSeq\` for the newest messages.`;
+                : `No messages matched${params.author ? ` from @${params.author}` : ""}. The room's newest message is #${lastSeq}. call \`council_read\` without \`sinceSeq\` for the newest messages.`;
 
         return {
           value: {
@@ -265,7 +265,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
         "Vote to end the council run. Use it when the group has reached the goal, has nothing further it can usefully do, or is blocked and needs the owner. The run ends when enough members agree; until then the others keep working, so state your reason for the room to read.",
       parameters: Type.Object({
         reason: Type.String({
-          description: "Why the run should end — the others read this and may disagree.",
+          description: "Why the run should end. the others read this and may disagree.",
         }),
         kind: Type.Union(
           [Type.Literal("consensus"), Type.Literal("done"), Type.Literal("blocked")],
@@ -279,7 +279,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
       execute: async (_toolCallId, params) => {
         const reason = params.reason.trim();
         if (!reason) {
-          throw new Error("A stop vote needs a reason — the other members read it.");
+          throw new Error("A stop vote needs a reason. the other members read it.");
         }
 
         const result = await context.vote({ reason, kind: params.kind });
@@ -288,7 +288,7 @@ export function createCouncilTools(context: CouncilToolContext): ToolDefinition[
           value: { voted: true, ...result },
           text: result.stopped
             ? `Vote recorded (${result.votes}/${result.needed}). The run is ending.`
-            : `Vote recorded (${result.votes}/${result.needed}). The run continues — the other members have not all agreed.`,
+            : `Vote recorded (${result.votes}/${result.needed}). The run continues. the other members have not all agreed.`,
         };
       },
     }),

@@ -13,7 +13,7 @@ import { createSessionSettings } from "./settings";
  * which takes precedence over the cwd passed to `createReadTool` /
  * `createWriteTool`. With the terminal backend those resolved paths are
  * executed inside Open Terminal, so the session cwd must be a path that exists
- * there — the user's home. The JSONL transcript directory lives on this app's
+ * there. the user's home. The JSONL transcript directory lives on this app's
  * uploads volume, which Open Terminal cannot see: using it as the session cwd
  * made `write`/`edit` create `/app/uploads/...` inside the container, where the
  * unprivileged session user has no write access.

@@ -93,7 +93,7 @@ export function useChatSessionState(sessionId: string) {
 
   // ── Persist model/thinking changes (debounced) ─────────────────────────
   // IMPORTANT: this effect must be declared BEFORE the prev-ref sync effect
-  // below — effects run in declaration order, and the sync would otherwise
+  // below. effects run in declaration order, and the sync would otherwise
   // mask the change before the debounce gets to compare against it.
   useEffect(() => {
     if (!modelId && thinkingLevel === "off") return;

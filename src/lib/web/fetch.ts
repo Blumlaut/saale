@@ -4,7 +4,7 @@
  * Uses wreq-js for browser-grade TLS/HTTP2 impersonation and defuddle for
  * clean article/content extraction. Inspired by pi-smart-fetch (MIT licensed).
  *
- * Unlike pi-smart-fetch this is a plain library module — no Pi TUI or
+ * Unlike pi-smart-fetch this is a plain library module. no Pi TUI or
  * extension API dependencies.
  */
 
@@ -38,7 +38,7 @@ const MAX_REDIRECTS = 5;
 
 /**
  * Page titles served by bot-block interstitials that still return HTTP 200.
- * Observed with Reddit ("Welcome to Reddit" JS shell) — returning such a
+ * Observed with Reddit ("Welcome to Reddit" JS shell). returning such a
  * shell as successful content would feed the LLM a wall of CSS.
  */
 const BOT_BLOCK_TITLES = new Set(["Welcome to Reddit", "Reddit - The heart of the internet"]);
@@ -494,7 +494,7 @@ async function fetchWithRedirects(
       // return that as successful content.
       if (extracted.title && BOT_BLOCK_TITLES.has(extracted.title)) {
         return {
-          error: `Server returned a bot-block interstitial for ${url} (title: "${extracted.title}"). The site is blocking this server — try a different source.`,
+          error: `Server returned a bot-block interstitial for ${url} (title: "${extracted.title}"). The site is blocking this server. try a different source.`,
           code: "bot_block_page",
           phase: "loading",
           retryable: false,

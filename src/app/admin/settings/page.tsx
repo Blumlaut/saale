@@ -87,7 +87,7 @@ export default function AdminSettingsPage() {
 
   return (
     <Page>
-      {/* Pinned action row — status + Save, no title */}
+      {/* Pinned action row. status + Save, no title */}
       <PageToolbar>
         {saveStatus === "success" && (
           <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
@@ -144,7 +144,7 @@ export default function AdminSettingsPage() {
             </GlassPanelContent>
           </GlassPanel>
 
-          {/* Default features — regular accounts that have no override of their own */}
+          {/* Default features. regular accounts that have no override of their own */}
           <GlassPanel>
             <GlassPanelHeader title="Default Features" />
             <GlassPanelContent className="p-0">

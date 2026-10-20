@@ -1,7 +1,7 @@
 // Must be imported before betterAuth() is constructed: Next dev can evaluate
 // this module before .env is loaded, in which case better-auth would fall
 // back to its hardcoded default secret and cookies would be signed with a
-// different secret than other module instances — intermittently invalidating
+// different secret than other module instances. intermittently invalidating
 // sessions.
 import "dotenv/config";
 import { betterAuth } from "better-auth";
@@ -42,7 +42,7 @@ export const auth = betterAuth({
   advanced: {
     defaultCookieAttributes: sessionCookieAttributes(),
   },
-  // Session settings — one year, sliding: activity older than the refresh
+  // Session settings. one year, sliding: activity older than the refresh
   // window resets the expiry to the full TTL (see session-config.ts).
   session: {
     expiresIn: SESSION_EXPIRES_IN_SECONDS,
@@ -50,7 +50,7 @@ export const auth = betterAuth({
   },
   hooks: {
     // Usernames are the login handle, so a credential account created without
-    // one could not be signed into — both entry points must carry it.
+    // one could not be signed into. both entry points must carry it.
     // Format and uniqueness are enforced by the username plugin itself.
     before: createAuthMiddleware(async (ctx) => {
       // The admin plugin validates role names and authorizes from `AUTH_ROLES`,

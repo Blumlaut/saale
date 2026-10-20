@@ -6,7 +6,7 @@ import { encrypt } from "@/lib/crypto";
 import { generateSshKeyPair } from "@/lib/infra/client";
 
 /**
- * GET /api/infra/machines — List user's infrastructure machines
+ * GET /api/infra/machines. List user's infrastructure machines
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -44,7 +44,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/infra/machines — Register a new machine
+ * POST /api/infra/machines. Register a new machine
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

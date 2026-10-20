@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { autodiscover } from "@/lib/email/autodiscover";
 
 /**
- * POST /api/email/autodiscover — Auto-detect IMAP/SMTP settings for an email address
+ * POST /api/email/autodiscover. Auto-detect IMAP/SMTP settings for an email address
  *
  * Body: { email: string }
  * Response: { imap?: { host, port, secure }, smtp?: { host, port, secure }, source: "srv" | "probe" | null }

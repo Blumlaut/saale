@@ -26,7 +26,7 @@ export function serializeAttachment(a: ChatAttachment): AttachmentData {
   };
 }
 
-/** The columns a share payload is built from — select exactly these. */
+/** The columns a share payload is built from. select exactly these. */
 export type ShareableChatMessage = Pick<
   ChatMessage,
   | "id"
@@ -44,7 +44,7 @@ export type ShareableChatMessage = Pick<
  *
  * Redaction happens here rather than at each call site: this is the only way a
  * share payload is built, so a new share endpoint inherits it instead of having
- * to remember it. Attachments and thinking are dropped for the same reason —
+ * to remember it. Attachments and thinking are dropped for the same reason
  * they belong to the owner (compaction messages keep only their token count).
  */
 export function serializeSharedChatMessage(message: ShareableChatMessage): Message {

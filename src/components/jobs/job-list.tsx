@@ -142,7 +142,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
     }
   }, []);
 
-  // Refs for polling — avoids re-creating the interval when callbacks change
+  // Refs for polling. avoids re-creating the interval when callbacks change
   const loadJobsRef = useRef(loadJobs);
   const loadRunsRef = useRef(loadRuns);
   const selectedJobRef = useRef(selectedJob);
@@ -169,7 +169,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
     }
   }, [selectedJob, loadRuns]);
 
-  // Poll for job state updates every 5 seconds (silent — no loading states)
+  // Poll for job state updates every 5 seconds (silent. no loading states)
   // Uses refs so the effect runs only once on mount
   useEffect(() => {
     const interval = setInterval(() => {
@@ -185,7 +185,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
     setRunningId(jobId);
     try {
       await fetchJson(`/api/jobs/${jobId}`, { method: "POST" });
-      // Don't clear runningId here — the next silent poll will clear it
+      // Don't clear runningId here. the next silent poll will clear it
       // once the job is no longer in "running" status
     } catch {
       setRunningId(null);

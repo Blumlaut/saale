@@ -87,12 +87,12 @@ export async function createPersistentSession(options: {
   // session header); the *agent* cwd that tool paths resolve against is set by
   // `createSaaleAgentSession` to the Open Terminal home.
   const sessionManager = SessionManager.continueRecent(
-    options.sessionDir, // cwd — stored in session header
-    options.sessionDir, // sessionDir — where JSONL files are written
+    options.sessionDir, // cwd. stored in session header
+    options.sessionDir, // sessionDir. where JSONL files are written
   );
 
   const result = await createSaaleAgentSession(options.userId, {
-    sessionManager, // File-based — entries persist to JSONL
+    sessionManager, // File-based. entries persist to JSONL
     modelRuntime,
     noTools: "builtin",
     ...(model ? { model } : {}),
@@ -116,7 +116,7 @@ export async function createPersistentSession(options: {
     ...thinkingLevelOption(options.thinkingLevel),
   });
 
-  // Extensions connect on `session_start` — the user's MCP servers among them.
+  // Extensions connect on `session_start`. the user's MCP servers among them.
   await startSessionExtensions(result.session);
 
   return result;

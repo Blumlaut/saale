@@ -8,7 +8,7 @@ import { ToolCard } from "./tool-card";
 import { aggregateToolStatus } from "./tool-status";
 import type { ToolCallData } from "./types";
 
-/** How one call in a run renders — the owner's card, or the redacted one. */
+/** How one call in a run renders. the owner's card, or the redacted one. */
 export type ToolCallRenderer = ComponentType<{ toolCall: ToolCallData }>;
 
 /**
@@ -20,8 +20,8 @@ export type ToolCallRenderer = ComponentType<{ toolCall: ToolCallData }>;
  *
  * The caller supplies `renderCall`, which is the only difference between the
  * two surfaces: the transcript passes `ToolCallView` (the owner's cards), the
- * share viewer passes `RedactedToolCall`. Keeping the collapse here — rather
- * than in `ToolCallGroup`, which pulls in the owner's cards — is what lets a
+ * share viewer passes `RedactedToolCall`. Keeping the collapse here. rather
+ * than in `ToolCallGroup`, which pulls in the owner's cards. is what lets a
  * share page fold a run without an owner card becoming reachable from it (see
  * `__tests__/share-redaction-coverage.test.ts`).
  */

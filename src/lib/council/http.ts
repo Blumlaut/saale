@@ -4,7 +4,7 @@
  * Every council route does the same three things before it does anything else:
  * require a session, refuse unless the module is on and the caller is an admin,
  * and validate the body. Doing that once here keeps the routes to their own
- * logic — and keeps the answer to "who may read a council" identical across
+ * logic. and keeps the answer to "who may read a council" identical across
  * eight files.
  */
 

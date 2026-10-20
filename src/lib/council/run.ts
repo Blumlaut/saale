@@ -4,12 +4,12 @@
  * This is the module's lifecycle layer: it decides whether a run may start,
  * prepares the environment it needs, dispatches the loop, and writes the run's
  * outcome. The loop itself (`orchestrator.ts`) knows nothing about the database
- * or the container, so the two can be reasoned about — and tested — separately.
+ * or the container, so the two can be reasoned about. and tested. separately.
  *
  * A run is **fire-and-forget inside the app process**, exactly as an agent job
  * is: the route returns the run id immediately and the owner watches it over the
  * room's SSE stream. That is also why the loop heartbeats and the watchdog
- * exists — a restarted process leaves a `running` row behind, and the run slot
+ * exists. a restarted process leaves a `running` row behind, and the run slot
  * is held by that status.
  */
 
@@ -49,7 +49,7 @@ import {
 import { createCouncilMemberSession } from "./session";
 import { findRunningRun } from "./store";
 
-/** The council is already running — the caller should answer 409. */
+/** The council is already running. the caller should answer 409. */
 export class CouncilBusyError extends Error {
   constructor(councilId: string) {
     super(`Council ${councilId} is already running`);
@@ -57,7 +57,7 @@ export class CouncilBusyError extends Error {
   }
 }
 
-/** The council does not exist, or is not this user's — answer 404 either way. */
+/** The council does not exist, or is not this user's. answer 404 either way. */
 export class CouncilNotFoundError extends Error {
   constructor(councilId: string) {
     super(`Council ${councilId} not found`);
@@ -80,7 +80,7 @@ export interface StartRunInput {
   budget?: Partial<RunBudget> | undefined;
   /**
    * Members the opening message addressed. Null (or omitted) wakes every enabled
-   * member — the owner addressing nobody is asking the room as a whole.
+   * member. the owner addressing nobody is asking the room as a whole.
    */
   openingMemberIds?: string[] | null;
   /** The room message that started this run, for the record. */
@@ -263,7 +263,7 @@ export function effectiveToolConfig(
  * Ask a running council to stop.
  *
  * Resolves with the run that was asked, or null when nothing is running. The
- * request is a flag the loop polls, so this returns before the run has ended —
+ * request is a flag the loop polls, so this returns before the run has ended
  * the room's stream reports when it does.
  */
 export async function abortCouncilRun(input: {
@@ -316,7 +316,7 @@ function createRunStore(input: {
 
     // `council_read` with a cursor reads *forward* from where the member left
     // off (oldest first). Without one the member asked for the room itself,
-    // which is its newest messages — reading forward from 0 answered with the
+    // which is its newest messages. reading forward from 0 answered with the
     // room's first messages instead, so a long conversation looked untouched.
     messagesAfter: (read) =>
       readRoomMessages({

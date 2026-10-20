@@ -53,7 +53,7 @@ interface ChatSession {
   forkedFromSessionId?: string;
 }
 
-/** Answer of the bulk delete endpoint — ids that went, ids that did not. */
+/** Answer of the bulk delete endpoint. ids that went, ids that did not. */
 interface BulkDeleteResponse {
   deleted: string[];
   failed: Array<{ sessionId: string; error: string }>;
@@ -62,7 +62,7 @@ interface BulkDeleteResponse {
 /**
  * Broadcast that chats are gone. Both sidebars (the desktop panel and the
  * mobile sheet's) are mounted at once, so the other one has to prune the same
- * rows — and the ids travel with the event, so neither list needs a refetch.
+ * rows. and the ids travel with the event, so neither list needs a refetch.
  */
 const SESSIONS_DELETED_EVENT = "chat-sessions-deleted";
 
@@ -115,7 +115,7 @@ function SessionRow({
   });
 
   const handleActivate = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    // The hold already acted on this gesture — the browser's click follows it.
+    // The hold already acted on this gesture. the browser's click follows it.
     if (hold.consumeLongPress()) return;
     if (selecting || event.metaKey || event.ctrlKey) {
       event.preventDefault();
@@ -140,7 +140,7 @@ function SessionRow({
       onContextMenu={hold.onContextMenu}
     >
       {/* One target per row: while picking, the whole surface toggles, so a tap
-          that lands beside the box — or on the row's padding — still counts. */}
+          that lands beside the box. or on the row's padding. still counts. */}
       <button
         className={cn(
           "flex min-w-0 flex-1 items-center text-left",
@@ -233,8 +233,8 @@ export function SessionSidebar({
   const [loading, setLoading] = useState(true);
   const [olderOpen, setOlderOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
-  // The pending delete's ids — one from the row menu, several from the
-  // selection bar — so both paths run through the same confirmation.
+  // The pending delete's ids. one from the row menu, several from the
+  // selection bar. so both paths run through the same confirmation.
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
 
@@ -258,7 +258,7 @@ export function SessionSidebar({
   }, [fetchSessions, activeSessionId]); // refetch when active session changes
 
   // Renames happen elsewhere in the tree, deletions in whichever list was
-  // used — both events keep this list in step with the server.
+  // used. both events keep this list in step with the server.
   useEffect(() => {
     const onRenamed = () => fetchSessions();
     const onDeleted = (event: Event) => {
@@ -303,7 +303,7 @@ export function SessionSidebar({
         toast.error(
           ids.length === 1
             ? "Could not delete the chat"
-            : `Could not delete ${result.failed.length} of ${ids.length} chats — they are still selected`,
+            : `Could not delete ${result.failed.length} of ${ids.length} chats. they are still selected`,
         );
       }
     } catch (err) {
@@ -373,7 +373,7 @@ export function SessionSidebar({
         <h2 className="text-sm font-semibold">Conversations</h2>
       </div>
 
-      {/* New chat — mobile sheet only (the desktop header owns its own action) */}
+      {/* New chat. mobile sheet only (the desktop header owns its own action) */}
       {onNewChat && (
         <div className="border-border/30 border-b p-2">
           <Button
@@ -423,7 +423,7 @@ export function SessionSidebar({
         )}
       </div>
 
-      {/* Selection bar — pinned below the list, not above it: a row that jumps
+      {/* Selection bar. pinned below the list, not above it: a row that jumps
           out from under the finger would hand the click that follows a hold to
           a neighbour, and select a chat nobody touched. Out of reach of the
           sheet's own close button in the panel's top corner, too. */}
@@ -456,7 +456,7 @@ export function SessionSidebar({
 
       {/* One confirmation for both delete paths. Watchers ride along with the
           chat (the DB cascade removes them), so the box says so when any are
-          attached — otherwise the user loses scheduled jobs without a trace. */}
+          attached. otherwise the user loses scheduled jobs without a trace. */}
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
@@ -475,7 +475,7 @@ export function SessionSidebar({
                 <>
                   {" "}
                   This also deletes {pendingWatcherCount}{" "}
-                  {pendingWatcherCount === 1 ? "watcher" : "watchers"} — their scheduled checks stop
+                  {pendingWatcherCount === 1 ? "watcher" : "watchers"}. their scheduled checks stop
                   immediately.
                 </>
               )}{" "}

@@ -73,7 +73,7 @@ describe("FileBrowser", () => {
 
     expect(await screen.findByText("artifacts")).toBeInTheDocument();
     expect(screen.getByText("report.md")).toBeInTheDocument();
-    // The label comes from the API, not from the caller — that is what makes
+    // The label comes from the API, not from the caller  that is what makes
     // the same component work for any workspace.
     expect(screen.getAllByText("Launch review").length).toBeGreaterThan(0);
     expect(vi.mocked(fetchJson).mock.calls[0]?.[0]).toContain("target=council%3Ac1");
@@ -119,7 +119,7 @@ describe("FileBrowser", () => {
     fireEvent.click(await screen.findByLabelText("Select artifacts"));
     fireEvent.click(screen.getByText("notes.txt"), { shiftKey: true });
 
-    // From the anchor to the clicked row, inclusive — all three.
+    // From the anchor to the clicked row, inclusive  all three.
     expect(await screen.findByText("3 selected")).toBeInTheDocument();
   });
 

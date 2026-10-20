@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 /**
  * The command route is the web surface's only entrypoint. Authentication and
- * the context it builds are the route's own responsibility — the command
+ * the context it builds are the route's own responsibility  the command
  * itself (and every guardrail) lives behind `executeCommand`.
  */
 

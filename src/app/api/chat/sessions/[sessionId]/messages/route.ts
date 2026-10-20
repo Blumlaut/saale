@@ -32,7 +32,7 @@ import {
 } from "@/lib/file-attachment";
 
 /**
- * GET /api/chat/sessions/:sessionId/messages — Get messages for a session
+ * GET /api/chat/sessions/:sessionId/messages. Get messages for a session
  */
 export async function GET(
   _request: NextRequest,
@@ -44,7 +44,7 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
   const chatSession = authResult.session;
 
-  // Queued messages are not part of the conversation yet — they are rendered
+  // Queued messages are not part of the conversation yet. they are rendered
   // in the composer's queue strip until the server delivers them.
   const [messages, queuedMessages] = await Promise.all([
     prisma.chatMessage.findMany({
@@ -55,14 +55,14 @@ export async function GET(
     listQueuedMessages(sessionId),
   ]);
 
-  // Source of truth: Redis tracks active generations (ephemeral — cleared on crash).
+  // Source of truth: Redis tracks active generations (ephemeral. cleared on crash).
   // processingSince is a DB timestamp that survives crashes and must not be trusted.
   const isGenerating = await isSessionActive(authResult.userId, sessionId);
 
   // The active tool (if any) is persisted by the session event tracker at
   // tool_execution_start and cleared at tool_execution_end. It lets a client
-  // that connects/refreshes mid-tool — when the SSE buffer replay is
-  // unavailable (expired/trimmed) — show what Pi is running instead of a
+  // that connects/refreshes mid-tool. when the SSE buffer replay is
+  // unavailable (expired/trimmed). show what Pi is running instead of a
   // bare "Thinking…".
   const activeTool =
     isGenerating && chatSession.activeToolCallId
@@ -92,14 +92,14 @@ export async function GET(
 }
 
 /**
- * POST /api/chat/sessions/:sessionId/messages — Add a message (triggers streaming via SSE)
+ * POST /api/chat/sessions/:sessionId/messages. Add a message (triggers streaming via SSE)
  *
  * Accepts either:
  * - application/json: { content: string }
  * - multipart/form-data: { content: string, files: File[] }
  *
- * When the session is busy — a generation running, or a manual compaction
- * holding it — the message is queued instead of rejected: the row is saved with
+ * When the session is busy. a generation running, or a manual compaction
+ * holding it. the message is queued instead of rejected: the row is saved with
  * `queuedAt` set and the server delivers it when the session is free again (see
  * the chat stream route's drain). One exception: when tool approvals are
  * pending, the message counts as a denial of all of them and is steered into
@@ -161,7 +161,7 @@ export async function POST(
         const buffer = Buffer.from(await file.arrayBuffer());
         const stored = await storeChatFile(authResult.userId, buffer, file.name, mimeType);
 
-        // Throws when the terminal is configured but unreachable — a
+        // Throws when the terminal is configured but unreachable. a
         // non-image file would be useless to the agent without the copy.
         const agentPath = await deliverChatFileToAgent(authResult.userId, buffer, stored.safeName);
 
@@ -244,7 +244,7 @@ export async function POST(
       include: { attachments: true },
     });
 
-    // Update session metadata — sending a message is real chat activity, so
+    // Update session metadata. sending a message is real chat activity, so
     // also advance lastActivityAt (the UI's sort/display timestamp).
     const titleSource = sanitizedContent || attachments[0]?.fileName || "Attachment";
     await prisma.chatSession.update({
@@ -260,7 +260,7 @@ export async function POST(
     });
 
     // A queued message is delivered by the stream route's drain once the
-    // session is free again — it must not claim the prompt itself.
+    // session is free again. it must not claim the prompt itself.
     if (isBusy && interruptMode !== "steered") {
       await publishQueueUpdate(sessionId);
       return NextResponse.json({
@@ -270,7 +270,7 @@ export async function POST(
       });
     }
 
-    // Steered message: it is already inside the running turn — no pending
+    // Steered message: it is already inside the running turn. no pending
     // prompt to claim, no Redis generation to register (the run is active),
     // and the client's SSE connection is already observing this run. The
     // `steered` flag tells the client a tool approval was denied for this.
@@ -289,7 +289,7 @@ export async function POST(
     await registerActiveSession(authResult.userId, sessionId);
 
     // Claim the prompt: the SSE connection for this message is the expected
-    // prompter. The stream route atomically claims this key — exactly one
+    // prompter. The stream route atomically claims this key. exactly one
     // connection prompts, all others observe.
     await setPendingPrompt(sessionId, userMessage.id);
 
@@ -315,7 +315,7 @@ export async function POST(
 }
 
 /**
- * DELETE /api/chat/sessions/:sessionId/messages — Delete a message
+ * DELETE /api/chat/sessions/:sessionId/messages. Delete a message
  */
 export async function DELETE(
   request: NextRequest,
@@ -340,7 +340,7 @@ export async function DELETE(
   });
   const storagePaths = attachments.map((a) => a.storagePath);
 
-  // Delete image files from disk — throws if any deletion fails
+  // Delete image files from disk. throws if any deletion fails
   if (storagePaths.length > 0) {
     try {
       await deleteAllImages(authResult.userId, storagePaths);
@@ -363,7 +363,7 @@ export async function DELETE(
     where: { sessionId, id: messageId },
   });
 
-  // Deleting a message modifies the conversation — advance lastActivityAt so
+  // Deleting a message modifies the conversation. advance lastActivityAt so
   // the chat reflects the modification in the list ordering.
   await prisma.chatSession
     .update({

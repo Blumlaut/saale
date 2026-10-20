@@ -9,7 +9,7 @@ import OfflinePage from "@/app/offline/page";
 /**
  * The offline page is precached by the service worker and served with no network
  * available, so it must render its message from the HTML alone and offer a way
- * back — the retry cannot depend on anything but the browser.
+ * back  the retry cannot depend on anything but the browser.
  */
 
 const originalLocation = window.location;

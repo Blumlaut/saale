@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { createContact, listContacts, contactCreateSchema } from "@/lib/contacts/contacts";
 
 /**
- * GET /api/contacts — List contacts with optional search
+ * GET /api/contacts. List contacts with optional search
  * Query params: search, limit
  */
 export async function GET(request: NextRequest) {
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/contacts — Create a contact. 409 when the email already exists.
+ * POST /api/contacts. Create a contact. 409 when the email already exists.
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

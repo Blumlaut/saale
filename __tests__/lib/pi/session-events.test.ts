@@ -49,7 +49,7 @@ describe("session-events bus", () => {
     mockBufferEvent.mockResolvedValue(1);
     mockClearBuffer.mockResolvedValue(undefined);
     mockPublish.mockResolvedValue(1);
-    // NOTE: do NOT clear subscriberHandlers.message — the module-level
+    // NOTE: do NOT clear subscriberHandlers.message  the module-level
     // subscriber connection (and its message handler) persists across tests
     // within this file; deliverMessage must keep reaching it.
   });

@@ -16,7 +16,7 @@ export const fields = [
   {
     key: "maxSessionsPerRun",
     label: "Max sessions per run",
-    description: "Batch size — sessions processed per execution",
+    description: "Batch size. sessions processed per execution",
     type: "number" as const,
     default: 10,
     min: 1,
@@ -52,7 +52,7 @@ export async function handler(params: {
 
   // Find sessions with unprocessed messages.
   // Cursor: lastSummarizedAt vs lastActivityAt (real message activity). NOT
-  // updatedAt — the job itself writes to the session row (cursor/summary),
+  // updatedAt. the job itself writes to the session row (cursor/summary),
   // which bumps @updatedAt and would re-select the same sessions forever,
   // keeping their "last activity" perpetually fresh.
   const sessions = await prisma.$queryRaw<
@@ -95,7 +95,7 @@ export async function handler(params: {
     });
 
     if (newMessages.length === 0) {
-      // No new messages — advance cursor anyway
+      // No new messages. advance cursor anyway
       await prisma.chatSession.update({
         where: { id: session.id },
         data: { lastSummarizedAt: new Date() },
@@ -151,7 +151,7 @@ ${messagesText}
 Existing memory categories:
 ${existingCategories.length > 0 ? existingCategories.join(", ") : "(none yet)"}
 
-Existing memories (for deduplication — do not re-extract these):
+Existing memories (for deduplication. do not re-extract these):
 ${
   existingMemories.length > 0
     ? existingMemories
@@ -241,10 +241,10 @@ Output JSON:
       }
 
       if (bestOverlap > 0.5 && bestMatch) {
-        // Duplicate — skip
+        // Duplicate. skip
         continue;
       } else if (bestOverlap >= 0.25 && bestMatch) {
-        // Similar — merge content into existing
+        // Similar. merge content into existing
         await prisma.memory.update({
           where: { id: bestMatch.id },
           data: {

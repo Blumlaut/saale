@@ -15,7 +15,7 @@
  *   3. The dispatcher replays buffered events to new/reconnecting clients
  *      and dedupes the overlap with live pub/sub delivery by event ID.
  *
- * Redis pub/sub is best-effort — a dropped subscriber misses events — but
+ * Redis pub/sub is best-effort. a dropped subscriber misses events. but
  * the buffer is the recovery mechanism: any missed event is replayed on the
  * next (re)connect via Last-Event-ID.
  */
@@ -104,7 +104,7 @@ export async function publishSessionEvent(
  * overlap is deduped by event ID downstream).
  *
  * Returns an unsubscribe function. Subscriptions are refcounted per session
- * — the shared subscriber connection drops the channel when the last local
+ *. the shared subscriber connection drops the channel when the last local
  * listener unsubscribes.
  */
 export async function subscribeSessionEvents(

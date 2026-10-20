@@ -8,7 +8,7 @@ import { installMemoryStorage } from "../../helpers/memory-storage";
 
 /**
  * The hook is what makes the composer survive navigation: the draft is read
- * back on mount, written on a debounce, and flushed on the way out — so the
+ * back on mount, written on a debounce, and flushed on the way out  so the
  * last characters typed before navigating away are not lost.
  */
 
@@ -58,7 +58,7 @@ describe("useChatDraft", () => {
       result.current.setDraft("new text");
     });
 
-    // Nothing written yet — keystrokes stay off localStorage's sync path.
+    // Nothing written yet  keystrokes stay off localStorage's sync path.
     expect(window.localStorage.getItem(draftStorageKey("session-a"))).toBeNull();
 
     act(() => {

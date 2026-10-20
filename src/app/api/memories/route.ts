@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { createMemory, serializeMemory } from "@/lib/memory/store";
 
 /**
- * GET /api/memories — List user's memories with optional filters
+ * GET /api/memories. List user's memories with optional filters
  * Query params: collection, tag, search, limit, offset
  */
 export async function GET(request: NextRequest) {
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/memories — Create a new memory
+ * POST /api/memories. Create a new memory
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

@@ -223,7 +223,7 @@ describe("Telegram login configuration", () => {
     process.env.TELEGRAM_OIDC_CLIENT_SECRET = "secret-1";
 
     // better-auth drops the account creation when this is set and the request
-    // did not carry `requestSignUp` — the register page sets that, the login
+    // did not carry `requestSignUp`  the register page sets that, the login
     // page does not. Setting `disableSignUp` instead would shut sign-ups out.
     expect(providerConfig().disableImplicitSignUp).toBe(true);
     expect(providerConfig().disableSignUp).toBeUndefined();

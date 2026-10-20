@@ -2,8 +2,8 @@
  * Council reads and writes for the API and the room UI.
  *
  * Separate from `persist.ts`, which is the run loop's own narrow view of the
- * room: this module is everything a *browser* asks for — the list, the room, a
- * member's private turns — plus the writes the room's forms make. Every query is
+ * room: this module is everything a *browser* asks for. the list, the room, a
+ * member's private turns. plus the writes the room's forms make. Every query is
  * scoped by `userId`, and a miss reads as "not found" rather than "not yours".
  *
  * Rows are mapped to the wire shapes in `@/types/council` here rather than in the
@@ -27,7 +27,7 @@ import { normalizeOrchestration, normalizeStopVoteThreshold } from "./config";
 import { pickMemberName } from "./names";
 import type { CouncilCreateInput, CouncilUpdateInput, MemberInput } from "./schema";
 
-/** The request was well-formed but cannot be applied — a 400. */
+/** The request was well-formed but cannot be applied. a 400. */
 export class CouncilInputError extends Error {
   constructor(message: string) {
     super(message);
@@ -210,7 +210,7 @@ export async function listCouncils(userId: string): Promise<CouncilSummary[]> {
 }
 
 /**
- * A council's name and sandbox key — what the file browser needs to open its
+ * A council's name and sandbox key. what the file browser needs to open its
  * workspace, and nothing else.
  *
  * Separate from `getCouncil` so browsing a workspace does not load the members,
@@ -338,7 +338,7 @@ export async function listMemberTurns(
 /** A member row minus the parent ids, which the caller supplies. */
 type MemberData = Omit<Prisma.CouncilMemberUncheckedCreateInput, "councilId" | "userId">;
 
-/** A member as it will be stored — name resolved, nothing else decided. */
+/** A member as it will be stored. name resolved, nothing else decided. */
 function resolveMemberInput(
   input: MemberInput,
   takenNames: string[],
@@ -369,7 +369,7 @@ export async function createCouncil(
   userId: string,
   input: CouncilCreateInput,
 ): Promise<CouncilDetail> {
-  // The id is generated here because the sandbox key is derived from it — the
+  // The id is generated here because the sandbox key is derived from it. the
   // council's Linux account has to be decided before the row exists.
   const id = crypto.randomUUID();
   const sandboxKey = await allocateSandboxKey(userId, id);

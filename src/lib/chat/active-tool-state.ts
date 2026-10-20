@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
  * at `tool_execution_end`, so it survives only as long as the run that set it.
  * A generation that dies mid-flight (restart, crash, killed container) leaves
  * it set with nothing behind it, and the messages endpoint reports it as an
- * active tool for as long as the session looks busy — a phantom "Running …".
+ * active tool for as long as the session looks busy. a phantom "Running …".
  *
  * Recovery paths call this when they take over a session whose run is gone,
  * so a refresh never shows a tool that is not running, and a resumed run never

@@ -10,7 +10,7 @@ import { FileBrowser } from "@/components/files/file-browser";
 /**
  * A council's shared workspace.
  *
- * The same browser a user's own files will use — only the target token differs,
+ * The same browser a user's own files will use. only the target token differs,
  * so the workspace's identity, label and capabilities all come from the API
  * rather than from this page.
  */

@@ -3,8 +3,8 @@
  *
  * Pi detects images by sniffing the first bytes of a file, but its
  * `detectSupportedImageMimeTypeFromFile` takes a *path* and reads it with
- * `node:fs`. Backends that do not have the bytes on the local filesystem —
- * Open Terminal containers, remote machines over SFTP — read the header
+ * `node:fs`. Backends that do not have the bytes on the local filesystem
+ * Open Terminal containers, remote machines over SFTP. read the header
  * themselves and pass it here instead.
  */
 

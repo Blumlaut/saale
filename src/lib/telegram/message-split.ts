@@ -3,8 +3,8 @@
  *
  * Telegram enforces a hard limit of 4096 characters per message, measured in
  * UTF-16 code units (i.e. JS `String.length`). For MarkdownV2 the limit must
- * be computed on the *escaped* text — the backslashes added by the markdown
- * converter count toward the limit — so we split the converted output, not
+ * be computed on the *escaped* text. the backslashes added by the markdown
+ * converter count toward the limit. so we split the converted output, not
  * the raw markdown.
  *
  * A split chunk is only acceptable if it parses as MarkdownV2 on its own:
@@ -21,7 +21,7 @@ export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
  * bit must be clear (even parity) or an entity span would be left open and
  * Telegram rejects the message with "can't parse entities".
  *
- * Only unescaped occurrences toggle — `\*`, `\_` etc. are literal characters.
+ * Only unescaped occurrences toggle. `\*`, `\_` etc. are literal characters.
  */
 const ENTITY_BITS: Record<string, number> = {
   "*": 1,
@@ -80,7 +80,7 @@ export function splitPlainText(
       splitAt = remaining.lastIndexOf("\n", maxLength);
     }
     if (splitAt === -1) {
-      // No space found — force split at maxLength
+      // No space found. force split at maxLength
       splitAt = maxLength;
     }
 
@@ -146,7 +146,7 @@ function segmentBlocks(lines: string[]): Block[] {
  * every entity closed; falls back to any entity-balanced position, then to a
  * hard cut. Never cuts between a backslash and the character it escapes.
  *
- * This is the last-resort splitter — used when a single line (or an entity
+ * This is the last-resort splitter. used when a single line (or an entity
  * span) is longer than the whole limit.
  */
 function hardSplitLine(text: string, maxLength: number): string[] {
@@ -283,7 +283,7 @@ export function splitMarkdownV2(
         block.opening.length + 1 + block.content.join("\n").length + 1 + block.closing.length;
 
       if (fenceLen > maxLength) {
-        // A single code block is bigger than an entire message — re-wrap its
+        // A single code block is bigger than an entire message. re-wrap its
         // content in multiple fences.
         flush();
         chunks.push(...splitFenceBlock(block, maxLength));
@@ -295,7 +295,7 @@ export function splitMarkdownV2(
 
       // Fence content is literal: it carries no entity state, so parity is
       // untouched (an entity can never span across a fence in converted
-      // output — the converter escapes such unbalanced delimiters).
+      // output. the converter escapes such unbalanced delimiters).
       for (const line of [block.opening, ...block.content, block.closing]) {
         currentLen += (current.length > 0 ? 1 : 0) + line.length;
         current.push(line);
@@ -308,7 +308,7 @@ export function splitMarkdownV2(
 
     if (currentLen + addLen > maxLength) {
       if (current.length === 0) {
-        // A single line longer than the limit — hard split it.
+        // A single line longer than the limit. hard split it.
         chunks.push(...hardSplitLine(line, maxLength));
         continue;
       }

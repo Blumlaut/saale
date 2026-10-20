@@ -2,7 +2,7 @@
  * Display helpers for tool calls: readable argument formatting.
  *
  * `JSON.stringify` escapes newlines inside string values, so a multi-line shell
- * command or codemode script is stored — and rendered — as `"line1\nline2"`:
+ * command or codemode script is stored. and rendered. as `"line1\nline2"`:
  * a `<pre>` shows the literal backslash-n. String values are therefore printed
  * verbatim (their real newlines, no quotes) and everything else keeps its JSON
  * form.

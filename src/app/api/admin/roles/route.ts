@@ -22,7 +22,7 @@ const createBodySchema = z.object({
   permissions: z.unknown().optional(),
 });
 
-/** The first grant the caller does not hold, if any — nobody may grant more than they have. */
+/** The first grant the caller does not hold, if any. nobody may grant more than they have. */
 function ungrantableGrant(caller: RolePermissions, requested: RolePermissions): string | null {
   for (const resource of ["admin", "user", "session"] as const) {
     for (const action of requested[resource]) {
@@ -43,7 +43,7 @@ async function userCountsByRole(): Promise<Map<string, number>> {
 }
 
 /**
- * GET /api/admin/roles — every role the instance knows, built-in or custom.
+ * GET /api/admin/roles. every role the instance knows, built-in or custom.
  *
  * Labels are needed by the users screen too, so reading the list only needs
  * admin-panel access; changing a role needs the roles slice.
@@ -59,7 +59,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/admin/roles — create a custom role.
+ * POST /api/admin/roles. create a custom role.
  *
  * The caller can only hand out grants they hold themselves, so a delegated role
  * manager cannot promote a role (or themselves) above their own reach.

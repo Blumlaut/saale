@@ -138,7 +138,7 @@ describe("GET /api/integrations/telegram", () => {
       displayName: "Jane Doe",
       linkedAt: "2026-02-01T00:00:00.000Z",
     });
-    // The token is instance infrastructure — it must not reach a user's browser.
+    // The token is instance infrastructure  it must not reach a user's browser.
     expect(JSON.stringify(body)).not.toContain("enc");
     expect(JSON.stringify(body)).not.toContain("secret");
   });
@@ -239,7 +239,7 @@ describe("POST /api/integrations/telegram", () => {
 
     const body = await (await POST(postRequest())).json();
 
-    // The code is issued for the authenticated user — that binding is what
+    // The code is issued for the authenticated user  that binding is what
     // makes redeeming it in Telegram safe.
     expect(mockIssueLinkCode).toHaveBeenCalledWith(userId);
     expect(body.code).toBe("CODE_-abcDEF123_-abcDEF123_-abc");

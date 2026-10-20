@@ -7,9 +7,9 @@
  *   { "openai": { "enabled": true, "models": ["gpt-5"] } }
  *   { "groq": { "enabled": true } }
  *
- * The page works with a selection per provider instead — `undefined` for a
+ * The page works with a selection per provider instead. `undefined` for a
  * provider the admin never touched, an empty set for one switched off, and the
- * selected ids otherwise — because that is what the switches show.
+ * selected ids otherwise. because that is what the switches show.
  *
  * Keeping the conversion here (rather than inline in the page) is deliberate:
  * the difference between "nothing selected" and "not touched" is invisible in
@@ -17,7 +17,7 @@
  * switched off every model of every provider the admin had merely saved without
  * touching.
  *
- * Pure data — no database or Node-only imports, so the page can import it.
+ * Pure data. no database or Node-only imports, so the page can import it.
  */
 
 /** What one provider's entry holds. Mirrors the column's shape. */
@@ -44,7 +44,7 @@ export function fromGlobalProviderModels(stored: unknown): ProviderModelSelectio
     } else if (Array.isArray(config.models) && config.models.length > 0) {
       selection[providerId] = new Set(config.models);
     }
-    // Everything else — no entry, no list, or an empty list — is untouched.
+    // Everything else. no entry, no list, or an empty list. is untouched.
   }
   return selection;
 }

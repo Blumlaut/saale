@@ -10,7 +10,7 @@ import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
  * A stored `defaultToolConfig` is sparse and can predate a category: the row
  * only holds deviations, and a config written before a category existed does
  * not name it. The toggle must therefore read an absent key as the category's
- * registry default — otherwise a newly added category shows up switched off
+ * registry default  otherwise a newly added category shows up switched off
  * (and flipping the switch back on stores `true`, i.e. a no-op).
  */
 
@@ -101,7 +101,7 @@ describe("ToolsTab category toggles", () => {
 
 /**
  * Tools no category owns (`codemode`) are active whatever the category switches
- * say, so they get a policy of their own and no switch — a switch there would
+ * say, so they get a policy of their own and no switch  a switch there would
  * claim to govern them and would not.
  */
 describe("ToolsTab always-active tools", () => {
@@ -127,7 +127,7 @@ describe("ToolsTab always-active tools", () => {
     expect(switches).toHaveLength(TOOL_CATEGORIES.length);
 
     // No category is expanded, so the only policy select on the page is
-    // codemode's — and its default resolves to the Auto item, which is only
+    // codemode's  and its default resolves to the Auto item, which is only
     // offered where the gate decides from the call.
     const policies = screen.getAllByRole("combobox");
     expect(policies).toHaveLength(1);

@@ -10,7 +10,7 @@ import { bootstrapSession, type E2ESession } from "./utils";
  * layout must be shared by the desktop sidebar and the mobile bottom bar.
  *
  * The layout lives on the shared e2e user, so the file runs serially and resets
- * to the default before every test — otherwise one test's layout leaks into the
+ * to the default before every test  otherwise one test's layout leaks into the
  * next one's assertions.
  */
 
@@ -21,7 +21,7 @@ const MOBILE = { width: 375, height: 667 };
  * The default sidebar order.
  *
  * Opt-in items (Council) are registered but hidden until the user enables them,
- * so they are not part of the default order — `NAV_LABELS_ANY` is what a label
+ * so they are not part of the default order  `NAV_LABELS_ANY` is what a label
  * filter uses, so a visible Council item cannot slip past these assertions
  * unnoticed.
  */
@@ -61,7 +61,7 @@ async function sidebarOrder(page: Page): Promise<string[]> {
   }, NAV_LABELS_ANY);
 }
 
-/** An item of the desktop sidebar — Mail renders as a button, the rest as links. */
+/** An item of the desktop sidebar  Mail renders as a button, the rest as links. */
 function sidebarItem(page: Page, label: string) {
   const sidebar = page.locator("nav.sidebar-nav");
   return sidebar.getByRole(label === "Mail" ? "button" : "link", { name: label, exact: true });
@@ -74,7 +74,7 @@ async function mobileNavLabels(page: Page): Promise<string[]> {
   return (await bar.locator("a").allInnerTexts()).map((label) => label.trim());
 }
 
-/** The visible item ids as the server stores them — proves a save landed. */
+/** The visible item ids as the server stores them  proves a save landed. */
 async function persistedIds(ctx: BrowserContext): Promise<string[]> {
   const res = await ctx.request.get("/api/settings/sidebar-nav");
   const { items } = (await res.json()) as { items: { id: string; hidden: boolean }[] };
@@ -109,7 +109,7 @@ test.describe("sidebar customization", () => {
       await page.getByRole("button", { name: "Move Settings up" }).click();
     }
 
-    // Settings is first now — in the editor and in the sidebar itself.
+    // Settings is first now  in the editor and in the sidebar itself.
     await expect(page.getByRole("button", { name: "Move Settings up" })).toBeDisabled();
     await expect
       .poll(() => persistedIds(ctx))
@@ -157,7 +157,7 @@ test.describe("sidebar customization", () => {
 
     await page.getByRole("switch", { name: "Show Mail in the sidebar" }).click();
 
-    // Stored before the phone opens it — the desktop sidebar applies edits optimistically.
+    // Stored before the phone opens it  the desktop sidebar applies edits optimistically.
     await expect
       .poll(() => persistedIds(ctx))
       .toEqual(["chat", "calendar", "tasks", "jobs", "infra", "settings"]);
@@ -176,14 +176,14 @@ test.describe("sidebar customization", () => {
     const mobilePage = await mobile.newPage();
     await mobilePage.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
 
-    // Admins get the Admin item appended to the bar — it's not part of the layout.
+    // Admins get the Admin item appended to the bar  it's not part of the layout.
     const me = (await (await mobile.request.get("/api/auth/get-session")).json()) as {
       user?: { role?: string };
     };
     const expectedLabels = ["Chat", "Calendar", "Tasks", "Jobs", "Servers", "Settings"];
     if (me.user?.role === "admin") expectedLabels.push("Admin");
 
-    // The bar renders the default layout until the stored one arrives — poll.
+    // The bar renders the default layout until the stored one arrives  poll.
     await expect.poll(() => mobileNavLabels(mobilePage)).toEqual(expectedLabels);
     await mobile.close();
   });
@@ -257,7 +257,7 @@ test.describe("sidebar customization", () => {
     const chatSwitch = page.getByRole("switch", { name: "Show Chat in the sidebar" });
     await expect(chatSwitch).toBeDisabled();
     await expect(page.getByRole("switch", { name: "Show Mail in the sidebar" })).toBeEnabled();
-    // Settings itself can never be hidden — it's the only place the layout is edited.
+    // Settings itself can never be hidden  it's the only place the layout is edited.
     await expect(page.getByRole("switch", { name: "Show Settings in the sidebar" })).toBeDisabled();
 
     // The server coerces hidden pinned items back to visible, too.

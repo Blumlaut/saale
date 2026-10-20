@@ -5,7 +5,7 @@
  * read from the database, Pi's MCP extension connects to it during
  * `session_start`, and its tools become callable from codemode scripts. Every
  * earlier step (config building, the connection test, the approval gate) can
- * pass while this one is still broken — for example when a session is never
+ * pass while this one is still broken  for example when a session is never
  * bound, or when the loader ignores the user's servers.
  */
 

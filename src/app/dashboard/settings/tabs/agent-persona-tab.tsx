@@ -32,7 +32,7 @@ const CHAT_EXAMPLE_INSTRUCTIONS = [
   {
     title: "Ultra-Concise",
     instruction:
-      "Keep responses under 3 sentences unless the user asks for detail. Skip all pleasantries and introductions — start directly with the answer.",
+      "Keep responses under 3 sentences unless asked for detail. Start directly with the answer.",
   },
   {
     title: "Teach Don't Just Answer",
@@ -49,8 +49,7 @@ const EMAIL_EXAMPLE_STYLES = [
   },
   {
     title: "Casual & Friendly",
-    prompt:
-      "Write emails like a real person would — natural, warm, and conversational. Use contractions, keep things brief, and don't over-formalize. Match the sender's energy.",
+    prompt: "Write emails like a real person: warm, brief, and natural.",
   },
   {
     title: "Short & Direct",
@@ -226,7 +225,7 @@ export function AgentPersonaTab({
 
         {/* Chat Custom Instructions Section */}
         <PromptSection
-          title="Chat — Custom Instructions"
+          title="Custom chat instructions"
           description="These instructions are appended to Saale's default behavior. Use them to add specific rules, preferences, or formatting guidelines."
           icon={MessageSquare}
           label="Custom Instructions"

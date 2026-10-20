@@ -6,7 +6,7 @@ import { discoverCalendars } from "@/lib/calendar/caldav";
 import { prisma } from "@/lib/db";
 
 /**
- * POST /api/calendar/accounts/:accountId/discover — Discover remote calendars
+ * POST /api/calendar/accounts/:accountId/discover. Discover remote calendars
  */
 export async function POST(
   _request: NextRequest,

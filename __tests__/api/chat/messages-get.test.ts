@@ -80,7 +80,7 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
 
     const body = await get();
 
-    // The failed turn is delivered with its error and no content — the UI has
+    // The failed turn is delivered with its error and no content  the UI has
     // nothing else to show for it.
     expect(body.messages[1]).toMatchObject({
       id: "msg-1",

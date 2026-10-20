@@ -10,7 +10,7 @@ import { configuredVision, resolveModelInput } from "@/lib/providers/capabilitie
  * every image block out of a message when that list does not contain `image`
  * (`downgradeUnsupportedImages`, which is also what prints "[Current model does
  * not support images...]"). Saale builds those definitions, so this pins what it
- * writes to what Pi actually does with it — a vision model imported from a
+ * writes to what Pi actually does with it  a vision model imported from a
  * self-hosted endpoint must not be told about a picture that was never sent.
  */
 

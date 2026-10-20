@@ -32,7 +32,7 @@ interface WatcherDialogProps {
   watcher?: ScriptWatcher | null;
 }
 
-/** No conversation selected — the watcher runs a standalone agent run instead. */
+/** No conversation selected. the watcher runs a standalone agent run instead. */
 const NO_TARGET = "none";
 
 const CRON_PRESETS = [
@@ -50,7 +50,7 @@ const mails = await tools.mail_list({ folder: 'INBOX', limit: 20 });
 const fresh = mails.filter((m) => !seen.includes(m.uid));
 store('seen', [...seen, ...fresh.map((m) => m.uid)].slice(-200));
 
-// Returning nothing means "no news" — nobody is woken.
+// Returning nothing means "no news". nobody is woken.
 if (fresh.length === 0) return undefined;
 return { count: fresh.length, subjects: fresh.map((m) => m.subject) };`;
 
@@ -70,7 +70,7 @@ interface TestResult {
  * The consent list is the point of this dialog: a watcher runs unattended, so
  * the user reads the script and sees which tool calls it may make without being
  * asked again. The preview is fetched as the script changes, and the same list
- * is what gets recorded — there is no second, looser approval at run time.
+ * is what gets recorded. there is no second, looser approval at run time.
  */
 export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: WatcherDialogProps) {
   const [name, setName] = useState("");
@@ -335,7 +335,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             />
             <p className="text-muted-foreground text-xs">
               Runs on a schedule and costs no tokens. Return <code>undefined</code> when there is
-              nothing to report — that is the common case. Keep state between checks with{" "}
+              nothing to report. that is the common case. Keep state between checks with{" "}
               <code>store()</code> and <code>load()</code>.
             </p>
           </div>
@@ -362,7 +362,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
               <p className="text-muted-foreground mt-1.5 text-xs">
                 {preview?.grantAll
                   ? "This script reaches tools it does not name, so it may call any enabled tool. That is what you are approving."
-                  : "None — this script only calls tools that never ask for approval."}
+                  : "None. this script only calls tools that never ask for approval."}
               </p>
             ) : (
               <div className="mt-1.5 flex flex-wrap gap-1.5">

@@ -25,7 +25,7 @@ export async function createChatSession(options?: {
     const data = await fetchJson<{ settings: UserSettings }>("/api/settings");
     settings = data.settings ?? null;
   } catch {
-    // Ignore — session will be created without model info
+    // Ignore. session will be created without model info
   }
 
   const data = await postJson<{ session: { id: string } }>("/api/chat/sessions", {

@@ -5,7 +5,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
  *
  * Every session event (streamed tokens, thinking, tool execution, turns,
  * compaction) resets the window, so this is a bound on *silence*, not on total
- * run time — an actively working agent may run far longer than this.
+ * run time. an actively working agent may run far longer than this.
  */
 export const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
 
@@ -14,8 +14,8 @@ export const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 10 * 60_000;
  *
  * Unlike a wall-clock timeout, this only fires when the session has
  * produced NO events at all for `timeoutMs` (hung model, stuck tool, dead
- * connection). Any agent activity — streamed tokens, thinking, tool
- * execution, turns, compaction — resets the window, so an actively working
+ * connection). Any agent activity. streamed tokens, thinking, tool
+ * execution, turns, compaction. resets the window, so an actively working
  * agent can run for far longer than `timeoutMs` in total.
  *
  * Approval waits cannot outlive the window either: the approval gate
@@ -29,7 +29,7 @@ export interface AgentIdleTimeout {
    */
   noteActivity(): void;
   /**
-   * Stop the timer and detach from the session. Idempotent — safe to call
+   * Stop the timer and detach from the session. Idempotent. safe to call
    * from both success and error paths. Events arriving after `clear()` do
    * not re-arm the timer.
    */
@@ -69,7 +69,7 @@ export function createAgentIdleTimeout({
       resetUnsub?.();
       resetUnsub = undefined;
       console.error(
-        `${label}: no session events for ${Math.round(timeoutMs / 1000)}s — treating run as stalled`,
+        `${label}: no session events for ${Math.round(timeoutMs / 1000)}s. treating run as stalled`,
       );
       onTimeout();
     }, timeoutMs);

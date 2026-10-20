@@ -22,7 +22,7 @@ interface SidebarNavEditorProps {
   entries: SidebarNavEntry[];
   saving: boolean;
   error: string | null;
-  /** Called with the new layout — persists immediately. */
+  /** Called with the new layout. persists immediately. */
   onChange: (entries: SidebarNavEntry[]) => void;
   onReset: () => void;
 }
@@ -168,7 +168,7 @@ export function SidebarNavEditor({
                     aria-label={`Show ${item.label} in the sidebar`}
                     title={
                       isPinned
-                        ? "Settings can't be hidden — it's the only place this layout is edited"
+                        ? "Settings can't be hidden. it's the only place this layout is edited"
                         : isLastVisible
                           ? "At least one sidebar item must stay visible"
                           : undefined

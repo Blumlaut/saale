@@ -681,7 +681,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
           },
         });
 
-        // Update BullMQ scheduler — remove existing first, then re-add if scheduled
+        // Update BullMQ scheduler. remove existing first, then re-add if scheduled
         await syncQueueTaskSchedule({
           id: params.id,
           type: job.type,

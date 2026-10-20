@@ -4,7 +4,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 /**
  * `buildSessionDeps` assembles a session's tool list from two sources: the
  * caller's own tools and the tools resolved from the user's config. Both end up
- * in the same `customTools` array, so both must carry the same wrappers — the
+ * in the same `customTools` array, so both must carry the same wrappers  the
  * approval gate is applied here, and a tool that misses it executes without the
  * user ever being asked.
  */

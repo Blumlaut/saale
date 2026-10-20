@@ -7,7 +7,7 @@ import { InputBar } from "@/components/chat/input-bar";
 import { MessageList } from "@/components/chat/message-list";
 import type { Message } from "@/components/chat/types";
 
-// jsdom has no object URLs — stub the pair the InputBar uses for previews.
+// jsdom has no object URLs  stub the pair the InputBar uses for previews.
 beforeEach(() => {
   // jsdom has no layout, so scrollIntoView does not exist.
   Element.prototype.scrollIntoView = vi.fn();

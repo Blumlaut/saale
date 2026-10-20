@@ -7,7 +7,7 @@ import { definesProviderModels } from "@/lib/providers/config";
 import { readEndpointRow } from "@/lib/providers/endpoint";
 
 /**
- * GET /api/admin/providers/models — List every model the *global* provider
+ * GET /api/admin/providers/models. List every model the *global* provider
  * configuration could offer, for the admin page that enables or disables them
  * for every user.
  *

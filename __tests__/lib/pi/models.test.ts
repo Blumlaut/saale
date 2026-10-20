@@ -294,7 +294,7 @@ describe("buildModelRuntime", () => {
 
   it("inherits the global endpoint for a user who has none of their own", async () => {
     // An admin's local endpoint is usable by everyone, so its models have to be
-    // registered for everyone — reading only the user's own row hid them.
+    // registered for everyone  reading only the user's own row hid them.
     vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(null as never);
     vi.mocked(db.prisma.providerApiKey.findFirst).mockResolvedValue({
       baseUrl: "http://global-host:8080/v1",
@@ -424,7 +424,7 @@ describe("buildModelRuntime", () => {
     });
 
     it("uses the window and vision the endpoint's own listing states", async () => {
-      // What llama-swap serves on /v1/models — verified against a live instance.
+      // What llama-swap serves on /v1/models  verified against a live instance.
       stubEndpointRow({});
       vi.stubGlobal(
         "fetch",
@@ -502,7 +502,7 @@ describe("buildModelRuntime", () => {
 
       const { models } = await buildModelRuntime("user-1");
 
-      // A local server needs no key — dropping the whole endpoint over one bad
+      // A local server needs no key  dropping the whole endpoint over one bad
       // ciphertext would take its models away.
       expect(log).toHaveBeenCalledWith(
         expect.stringContaining("Failed to decrypt"),

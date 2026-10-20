@@ -4,7 +4,7 @@
  * A chat's agent is prompted from two places: the SSE stream route (a message
  * the user submitted) and the `chat_respond` tool (a message an agent posted
  * into another chat). Both must build, pool, register and persist the agent
- * identically — a step missing on one path shows up as a run that never
+ * identically. a step missing on one path shows up as a run that never
  * reaches the DB, a client that never settles, or a generation that Stop and
  * the stream supervisor cannot see.
  *
@@ -41,7 +41,7 @@ export type ChatRunLog = (tag: string, ...args: unknown[]) => void;
  *
  * Everything that shapes a session's tools is fixed at creation, so this is
  * also the only place the approval gate, the user's tool exposure and the MCP
- * approval channel are attached — a second construction path that forgot one
+ * approval channel are attached. a second construction path that forgot one
  * of them would silently run tools unapproved.
  */
 export async function ensureChatAgent(options: {
@@ -57,7 +57,7 @@ export async function ensureChatAgent(options: {
   const existing = getPoolEntry(poolKey);
 
   const entry = await createAndPool(poolKey, async () => {
-    options.log?.("pool", "miss — creating new agent");
+    options.log?.("pool", "miss. creating new agent");
 
     // Only on a miss: the settings and the gates they shape are baked into the
     // session, which is exactly why this is the one construction path.
@@ -91,7 +91,7 @@ export async function ensureChatAgent(options: {
  * connections observe instead of prompting, and Stop can find it), clear the
  * previous run's buffered events, and wire DB persistence + stream publishing.
  *
- * The caller must have set `entry.promptInFlight` first — that is the
+ * The caller must have set `entry.promptInFlight` first. that is the
  * same-process double-prompt guard.
  */
 export async function beginChatRun(options: {
@@ -102,7 +102,7 @@ export async function beginChatRun(options: {
   const { userId, sessionId, session } = options;
 
   // This run starts with no tool in flight. A previous run that died left its
-  // tool bookkeeping in the DB — clearing it keeps a refresh from showing a
+  // tool bookkeeping in the DB. clearing it keeps a refresh from showing a
   // phantom "Running …" until this run's first tool starts.
   await clearActiveToolState(sessionId, userId).catch((err) => {
     console.error(`Failed to clear stale active tool state for ${sessionId}:`, err);
@@ -120,10 +120,10 @@ export async function beginChatRun(options: {
 
 /**
  * Prompt a claimed agent and resolve when the run has fully settled
- * (`agent_settled` — after any error retry, auto-compaction, or queued
+ * (`agent_settled`. after any error retry, auto-compaction, or queued
  * continuation).
  *
- * Uses `session.prompt()` — the same path the Pi TUI uses — NOT
+ * Uses `session.prompt()`. the same path the Pi TUI uses. NOT
  * `session.agent.prompt()`: the session wrapper runs the SDK's pre-prompt
  * compaction check and post-run processing. A manual /compact can still be
  * holding the session, so the prompt defers to it instead of failing.
@@ -145,8 +145,8 @@ export async function dispatchChatRun(options: {
   const { entry } = options;
   options.log?.("prompt", "sending prompt");
 
-  // A run can go completely silent — a provider whose stream never closes after
-  // the server it was talking to went away, or a tool that never returns — and
+  // A run can go completely silent. a provider whose stream never closes after
+  // the server it was talking to went away, or a tool that never returns. and
   // `session.prompt()` would then never settle. `promptInFlight` stays set, the
   // send queue sees a busy session, and the chat can never send again, which is
   // exactly the state Stop is supposed to clear. Silence is the evidence: every

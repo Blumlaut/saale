@@ -3,7 +3,7 @@
  *
  * A plain `<a download>` or anchor click navigates, and that is what breaks on
  * Firefox for Android: the browser opens the file in the tab it was clicked
- * from — or hands it to the download manager and leaves the tab behind —
+ * from. or hands it to the download manager and leaves the tab behind
  * ending on `about:blank`, with the app gone (bugzilla 1919827 and 1953287,
  * both open). An installed web app and a home-screen shortcut are exactly the
  * contexts that hit it, because they get a custom tab with no way back.
@@ -17,7 +17,7 @@
 
 /**
  * How long the frame stays in the document. Long enough for the transfer to
- * start — the browser keeps a started download alive after the frame is gone —
+ * start. the browser keeps a started download alive after the frame is gone
  * and short enough that repeated clicks cannot pile up frames.
  */
 const FRAME_LIFETIME_MS = 60_000;

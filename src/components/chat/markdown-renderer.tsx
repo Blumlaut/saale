@@ -7,7 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
-/*  Markdown Renderer — liquid glass styling for every element        */
+/*  Markdown Renderer. liquid glass styling for every element        */
 /* ------------------------------------------------------------------ */
 
 interface MarkdownRendererProps {

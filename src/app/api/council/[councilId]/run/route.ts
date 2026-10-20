@@ -5,13 +5,13 @@ import { councilRunSchema } from "@/lib/council/schema";
 import { startCouncilRun } from "@/lib/council/run";
 
 /**
- * POST /api/council/[councilId]/run — convene the council.
+ * POST /api/council/[councilId]/run. convene the council.
  *
  * The budget in the body applies to *this* run; anything left out falls back to
  * the council's own values and then to the module defaults. `memberIds` is the
  * opening: naming members wakes only them, naming nobody wakes everyone.
  *
- * The run continues after this response — the caller follows it in the room.
+ * The run continues after this response. the caller follows it in the room.
  */
 export async function POST(
   request: NextRequest,

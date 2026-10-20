@@ -15,7 +15,7 @@
  *   3. explicit error, so the LLM stops retrying blocked fetches
  *
  * Content is always rendered as markdown, regardless of the format
- * requested — Reddit content only exists in structured form here.
+ * requested. Reddit content only exists in structured form here.
  */
 
 import { Defuddle } from "defuddle/node";
@@ -129,7 +129,7 @@ export function classifyRedditUrl(rawUrl: string): RedditTarget | null {
   // /r/<sub>/comments/<post>[/slug][/<comment>]
   if (segments[0] === "r" && segments[1] && segments[2] === "comments") {
     if (segments[3]) return { kind: "post", postId: segments[3], url: rawUrl };
-    // /r/<sub>/comments — post listing page
+    // /r/<sub>/comments. post listing page
     return { kind: "subreddit", subreddit: segments[1], url: rawUrl };
   }
   // Shortened form: /comments/<post>
@@ -311,7 +311,7 @@ function renderListingLine(index: number, post: ArcticPost): string[] {
   const title = postTitle(post);
   const date = formatRedditDate(post.created_utc);
   const lines = [
-    `${index}. **${title}** — by ${
+    `${index}. **${title}**. by ${
       post.author ? `u/${post.author}` : "[deleted]"
     }${date ? ` · ${date}` : ""}${
       post.score != null ? ` · score ${post.score}` : ""
@@ -331,7 +331,7 @@ function renderSubreddit(subreddit: string, posts: ArcticPost[]): string {
   const lines: string[] = [
     `# r/${subreddit}`,
     "",
-    `*Newest posts via Arctic Shift archive (scores are stale until ~36h after posting). Not "hot" sorting — Arctic Shift does not expose score-sorted feeds.*`,
+    `*Newest posts via Arctic Shift archive (scores are stale until ~36h after posting). Not "hot" sorting. Arctic Shift does not expose score-sorted feeds.*`,
     "",
   ];
   posts.forEach((post, i) => {
@@ -481,7 +481,7 @@ async function fetchUserTarget(target: {
 // ─── web.archive.org fallback ──────────────────────────────────
 
 /**
- * Rewrite www/reddit.com to old.reddit.com for the snapshot lookup —
+ * Rewrite www/reddit.com to old.reddit.com for the snapshot lookup
  * old reddit is server-rendered, so archived snapshots are extractable,
  * while new-UI snapshots are JS shells.
  */
@@ -679,7 +679,7 @@ export async function fetchRedditUrl(
       rawUrl,
       "reddit_unavailable",
       "loading",
-      `Reddit content unavailable for ${rawUrl}: Arctic Shift failed (${message}) and no usable web.archive.org snapshot exists. Reddit blocks this server's IP for direct fetches — try a different source.`,
+      `Reddit content unavailable for ${rawUrl}: Arctic Shift failed (${message}) and no usable web.archive.org snapshot exists. Reddit blocks this server's IP for direct fetches. try a different source.`,
     );
   }
 }

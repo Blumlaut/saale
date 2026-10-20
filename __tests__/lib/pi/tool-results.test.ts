@@ -6,7 +6,7 @@ import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
  * What every tool promises a programmatic caller.
  *
  * A codemode script and a watcher tick receive a tool's `structuredContent`, but
- * only for tools that declare an `outputSchema` — otherwise they get the
+ * only for tools that declare an `outputSchema`  otherwise they get the
  * model-facing text, which carries UI metadata and an echo of the call's own
  * arguments. A tool that skips the declaration is therefore not a cosmetic
  * omission: it hands scripts text they have to parse and can match against

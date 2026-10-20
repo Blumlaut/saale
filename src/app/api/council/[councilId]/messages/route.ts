@@ -16,14 +16,14 @@ import {
 import { MAX_ROOM_PAGE } from "@/lib/council/config";
 
 /**
- * POST /api/council/[councilId]/messages — the owner speaks into the room.
+ * POST /api/council/[councilId]/messages. the owner speaks into the room.
  *
  * The message is stored first and a run started second, because those are two
  * separate truths: the message is in the room whatever happens next, and a run
  * that cannot start (the council is already working, the sandbox is down) must
  * not lose what the owner said.
  *
- * A message posted while a run is in flight is picked up by that run — the loop
+ * A message posted while a run is in flight is picked up by that run. the loop
  * absorbs room messages it did not post itself and wakes whoever they address,
  * so speaking mid-run steers the room rather than waiting for it.
  */
@@ -111,7 +111,7 @@ export async function POST(
   }
 }
 
-/** GET /api/council/[councilId]/messages — the room, oldest first. */
+/** GET /api/council/[councilId]/messages. the room, oldest first. */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ councilId: string }> },

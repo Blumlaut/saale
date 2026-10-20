@@ -11,7 +11,7 @@ import { Type, type Static } from "typebox";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { listSettings, setSetting, SettingsError, type PropertyView } from "./update";
 
-/** Prefixes the model can filter on — a hint, not an allowlist. */
+/** Prefixes the model can filter on. a hint, not an allowlist. */
 const KEY_PREFIXES = [
   "theme",
   "models.default",
@@ -71,7 +71,7 @@ const settingsSetSchema = Type.Object({
   value: Type.Unknown(),
 });
 
-/** An index of every key, grouped, without values — cheap to read in full. */
+/** An index of every key, grouped, without values. cheap to read in full. */
 function groupProperties(
   properties: PropertyView[],
 ): { group: string; count: number; keys: string[] }[] {
@@ -157,7 +157,7 @@ export function createSettingsTools(userId: string): ToolDefinition[] {
         value: Type.Optional(
           Type.Unknown({
             description:
-              "The new value. Pass null to restore the default. Types must match the setting — see settings_list.",
+              "The new value. Pass null to restore the default. Types must match the setting. see settings_list.",
           }),
         ),
       }),

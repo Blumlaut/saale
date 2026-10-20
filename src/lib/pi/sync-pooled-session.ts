@@ -7,8 +7,8 @@ import { get as getPooledSession, getPoolKey, remove } from "@/lib/pi/agent-pool
  *
  * The pool holds one `AgentSession` per chat, and its model, thinking level and
  * tool loadout are fixed when it is built. Without this, a change made in the
- * UI would only take effect once that session was evicted — up to 30 minutes
- * idle, or a restart — so the chat kept answering with the previous model.
+ * UI would only take effect once that session was evicted. up to 30 minutes
+ * idle, or a restart. so the chat kept answering with the previous model.
  *
  * - Model: `session.setModel()` is Pi's own primitive. It validates that auth
  *   exists and records the change in the transcript, so a session that is later
@@ -17,7 +17,7 @@ import { get as getPooledSession, getPoolKey, remove } from "@/lib/pi/agent-pool
  *   supports and records the change. Saale's "default" means "no opinion", so
  *   there is nothing to apply.
  * - Tool config: tools are resolved from the config when the session is built,
- *   so the loadout cannot be changed in place — the session is dropped instead
+ *   so the loadout cannot be changed in place. the session is dropped instead
  *   and rebuilt on the next message. Never while a run is in flight: eviction
  *   disposes the session and would abort it.
  *
@@ -76,7 +76,7 @@ export async function syncPooledAgentSession(options: {
   if (toolsChanged) {
     if (pooled.session.isStreaming || pooled.promptInFlight) {
       console.warn(
-        `Tool config changed for a busy chat session ${sessionId} — the new loadout applies after the current run`,
+        `Tool config changed for a busy chat session ${sessionId}. the new loadout applies after the current run`,
       );
     } else {
       await remove(getPoolKey(userId, sessionId));

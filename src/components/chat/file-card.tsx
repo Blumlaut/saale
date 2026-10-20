@@ -146,7 +146,7 @@ function FileTypeIcon({ file }: { file: SharedFile }) {
   return <Icon className="text-muted-foreground h-4 w-4" />;
 }
 
-/** A shared file that could not be produced — the reason is the whole card. */
+/** A shared file that could not be produced. the reason is the whole card. */
 function SharedFileError({ file }: { file: SharedFile }) {
   return (
     <div className="liquid-glass-inner flex min-w-0 items-center gap-3 rounded-xl px-3 py-2">
@@ -220,7 +220,7 @@ function SharedImageTile({ file }: { file: SharedFile }) {
 /**
  * A `show_file` call: the file the assistant shared, as an attachment.
  *
- * Deliberately not a `ToolCard` — a shared file is not a report of what a call
+ * Deliberately not a `ToolCard`. a shared file is not a report of what a call
  * did, so it has no card model and nothing to collapse. The file itself
  * (preview, name, download) is the content.
  */

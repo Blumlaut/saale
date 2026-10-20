@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { taskToResponse } from "@/lib/tasks/task-api-helpers";
 
 /**
- * GET /api/tasks — List tasks with optional filters
+ * GET /api/tasks. List tasks with optional filters
  * Query params: status, priority, dueBefore, dueAfter, tag, source, sort, limit, offset
  */
 export async function GET(request: NextRequest) {
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/tasks — Create a new task
+ * POST /api/tasks. Create a new task
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

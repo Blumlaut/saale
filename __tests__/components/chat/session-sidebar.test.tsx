@@ -50,7 +50,7 @@ const SESSIONS = [
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-/** Server answer for a bulk delete — ids that went, ids that did not. */
+/** Server answer for a bulk delete  ids that went, ids that did not. */
 type BulkResponse = { deleted: string[]; failed: Array<{ sessionId: string; error: string }> };
 
 function mockSessions(sessions = SESSIONS, bulk?: BulkResponse) {
@@ -65,7 +65,7 @@ function mockSessions(sessions = SESSIONS, bulk?: BulkResponse) {
   vi.stubGlobal("fetch", fetchMock);
 }
 
-/** The row's main button — the click target that opens (or selects) a chat. */
+/** The row's main button  the click target that opens (or selects) a chat. */
 function rowButton(title: string) {
   return screen.getByText(title).closest("button") as HTMLElement;
 }
@@ -227,7 +227,7 @@ describe("SessionSidebar multi-select", () => {
 
     await waitFor(() => expect(screen.queryByText("Fresh chat")).not.toBeInTheDocument());
     expect(screen.queryByText("Recent chat")).not.toBeInTheDocument();
-    // The selection ends with the deleted chats — the toolbar goes back to a title.
+    // The selection ends with the deleted chats  the toolbar goes back to a title.
     expect(screen.getByText("Conversations")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/chat/sessions/bulk",
@@ -245,7 +245,7 @@ describe("SessionSidebar multi-select", () => {
     const box = rowButton("Recent chat").querySelector('[data-slot="selection-indicator"]');
     expect(box).not.toBeNull();
 
-    // The box is part of the row's single target — one tap, one toggle.
+    // The box is part of the row's single target  one tap, one toggle.
     fireEvent.click(box as HTMLElement);
     expect(screen.getByText("2 selected")).toBeInTheDocument();
 

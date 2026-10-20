@@ -20,7 +20,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
   const [expanded, setExpanded] = useState(true);
   const [showRawArgs, setShowRawArgs] = useState(false);
   // The card's own decision: the resolved badge must show what the user just
-  // clicked, not the (possibly stale) prop — the parent removes the card
+  // clicked, not the (possibly stale) prop. the parent removes the card
   // shortly after, but for a beat the badge is visible.
   const [decision, setDecision] = useState<boolean | null>(null);
 
@@ -46,7 +46,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error("Approval failed:", err);
-        // Already resolved elsewhere (another tab, Telegram, timeout) — the
+        // Already resolved elsewhere (another tab, Telegram, timeout). the
         // card is stale and can never be approved again; dismiss it so the
         // user isn't stuck with an unapprovable approval.
         setStatus("done");
@@ -75,7 +75,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
   // summary, then the catalog description.
   const headline = approval.summary || action.summary || action.description || null;
 
-  // Resolved state — compact single line
+  // Resolved state. compact single line
   if (status === "done") {
     return (
       <div className="liquid-glass-inner rounded-xl px-3 py-2">
@@ -100,7 +100,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
 
   return (
     <div className="liquid-glass-inner rounded-xl">
-      {/* Header — toggle expand/collapse */}
+      {/* Header. toggle expand/collapse */}
       <button
         className="flex w-full items-center gap-2 px-3 py-2 text-left"
         onClick={() => setExpanded(!expanded)}
@@ -137,7 +137,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
             </div>
           )}
 
-          {/* Raw arguments — full transparency, collapsed by default */}
+          {/* Raw arguments. full transparency, collapsed by default */}
           <div className="border-border/30 border-t">
             <button
               className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
@@ -223,7 +223,7 @@ function BatchList({ batch }: { batch: ApprovalBatchData }) {
       </div>
       {batch.dynamic && (
         <p className="text-muted-foreground text-[11px]">
-          The script can also pick tools by name while it runs — those ask on their own.
+          The script can also pick tools by name while it runs. those ask on their own.
         </p>
       )}
     </div>
@@ -282,7 +282,7 @@ function toInlineValue(value: unknown): string | null {
 
 /**
  * Clipped code block: shows the first few lines (or a length cap) with a
- * show-more toggle. Wraps instead of scrolling horizontally — the overlay
+ * show-more toggle. Wraps instead of scrolling horizontally. the overlay
  * must never scroll sideways, even at 320px.
  */
 function CodeBlock({ text }: { text: string }) {

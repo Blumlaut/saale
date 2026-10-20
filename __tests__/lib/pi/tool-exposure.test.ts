@@ -35,9 +35,9 @@ describe("normalizeToolExposure", () => {
   it("drops unknown categories, unknown exposures and entries at the default", () => {
     expect(
       normalizeToolExposure({
-        email: "codemode", // email's default — stored as absence
+        email: "codemode", // email's default  stored as absence
         web: "codemode", // a real deviation
-        jobs: "direct", // jobs defaults to codemode — a real deviation
+        jobs: "direct", // jobs defaults to codemode  a real deviation
         nope: "deferred", // not a category
         memory: "sometimes", // not an exposure
         calendar: 42,

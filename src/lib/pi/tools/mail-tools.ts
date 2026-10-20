@@ -604,7 +604,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
       parameters: Type.Object({
         query: Type.String({
           description:
-            'Search keyword(s). Use 1-2 words — each word is matched independently (OR logic). e.g. "invoice march" finds emails with either word.',
+            'Search keyword(s). Use 1-2 words. each word is matched independently (OR logic). e.g. "invoice march" finds emails with either word.',
         }),
         accountId: Type.Optional(
           Type.String({
@@ -781,7 +781,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
             : {}),
         });
 
-        // The learner never throws — the book must not fail the send.
+        // The learner never throws. the book must not fail the send.
         await learnContactsFromSend(userId, params.to);
 
         return {

@@ -6,7 +6,7 @@ import { useEffect } from "react";
  * Registers the offline service worker (see `public/sw.js`).
  *
  * Rendered once from the root layout. The registration URL carries the running
- * mode because Turbopack rewrites development chunk URLs in place — the worker
+ * mode because Turbopack rewrites development chunk URLs in place. the worker
  * skips asset caching in development so an edit can never be shadowed by a
  * stale bundle.
  */

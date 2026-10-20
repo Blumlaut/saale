@@ -10,7 +10,7 @@ import type { Message } from "@/components/chat/types";
 
 /**
  * Keystroke cost. The composer draft lives in ChatInterface, so every
- * character typed re-renders the parent — which must not re-render (or re-parse
+ * character typed re-renders the parent  which must not re-render (or re-parse
  * the markdown of) the transcript below it. The markdown-render counts below
  * cover the per-message memoization; the memo-identity check covers the list
  * itself, whose bailout a Profiler cannot observe.

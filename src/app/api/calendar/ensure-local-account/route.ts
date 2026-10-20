@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/calendar/ensure-local-account — Ensure the user has a local calendar account.
+ * GET /api/calendar/ensure-local-account. Ensure the user has a local calendar account.
  * Creates one if it doesn't exist, returns its details.
  */
 export async function GET() {

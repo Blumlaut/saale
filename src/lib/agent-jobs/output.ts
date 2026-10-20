@@ -24,14 +24,14 @@ export interface BuiltAgentOutput {
  * Build an output handler that routes agent run responses to an external
  * channel (e.g., Telegram) based on the job definition's `outputChannel`.
  *
- * Telegram has exactly one destination per user — their linked chat — so there
+ * Telegram has exactly one destination per user. their linked chat. so there
  * is nothing to choose: the handler resolves the caller's own link and sends
  * there. `AgentDefinition.outputChannelId` is therefore not consulted; it
  * remains for channels that do have several targets.
  *
  * Returns an empty result when no channel is configured (nothing to deliver is
  * not a failure), and an `error` when a channel *is* configured but cannot be
- * resolved. Delivery failures that happen later — Telegram rejecting the send —
+ * resolved. Delivery failures that happen later. Telegram rejecting the send
  * are collected by the handler and surfaced through
  * `AgentOutput.deliveryErrors()`, which the caller records after the run.
  */
@@ -46,7 +46,7 @@ export async function buildAgentOutputHandler(params: {
   }
 
   if (outputChannel !== "telegram") {
-    const error = `Output channel "${outputChannel}" is not supported yet — the run's output was not delivered.`;
+    const error = `Output channel "${outputChannel}" is not supported yet. the run's output was not delivered.`;
     console.warn(`[agent-jobs] ${error} (user ${userId})`);
     return { error };
   }
@@ -77,7 +77,7 @@ export async function buildAgentOutputHandler(params: {
   // Set once the agent has messaged this chat itself through `telegram_send`.
   // A run can have both an output channel and the tool (the category is on by
   // default), and then the agent's closing text is the same message it just
-  // sent — forwarding it would deliver everything twice. Once it has reached
+  // sent. forwarding it would deliver everything twice. Once it has reached
   // this chat itself, the runner leaves delivery to it.
   let selfDelivered = false;
   const targetChatId = chatId.toString();
@@ -102,7 +102,7 @@ export async function buildAgentOutputHandler(params: {
 
         // A successful send reports its chat, so a message to the user's own
         // chat silences this channel. There is no other target to compare
-        // against now — every telegram_send goes to the user's link.
+        // against now. every telegram_send goes to the user's link.
         const delivered = (call.structured as { chatId?: unknown } | undefined)?.chatId;
         if (typeof delivered === "string" && delivered !== targetChatId) return;
         selfDelivered = true;

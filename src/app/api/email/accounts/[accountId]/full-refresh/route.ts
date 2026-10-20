@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { syncEmailAccount } from "@/lib/email/sync";
 
 /**
- * POST /api/email/accounts/:accountId/full-refresh — Delete all synced messages and resync from scratch
+ * POST /api/email/accounts/:accountId/full-refresh. Delete all synced messages and resync from scratch
  */
 export async function POST(
   _request: NextRequest,

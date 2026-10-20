@@ -1,6 +1,6 @@
 /**
  * Usernames as the credential handle, end to end against the production auth
- * options — plugins, hooks, sign-up guard and validation included — running on
+ * options  plugins, hooks, sign-up guard and validation included  running on
  * the test harness's in-memory database.
  *
  * The behaviours pinned here all sit in wiring that no unit test can see:
@@ -68,7 +68,7 @@ async function buildInstance() {
   const { database: _adapter, ...productionOptions } = auth.options;
 
   // The harness types `testUser` from better-auth's core user model, which has
-  // no username — but the plugin refuses to create the test account without one.
+  // no username  but the plugin refuses to create the test account without one.
   const config = {
     clientOptions: { plugins: [usernameClient({ displayUsername: false })] },
     testUser: { username: TEST_HANDLE },

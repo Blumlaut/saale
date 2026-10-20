@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Shared mock queue instance — `getQueue()` must return the same instance
+// Shared mock queue instance  `getQueue()` must return the same instance
 // every call so assertions can observe the scheduler calls.
 const { mockUpsertJobScheduler, mockRemoveJobScheduler, mockGetJobSchedulers } = vi.hoisted(() => ({
   mockUpsertJobScheduler: vi.fn(),

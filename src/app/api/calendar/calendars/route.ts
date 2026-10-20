@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/calendar/calendars — List all calendars for the user
+ * GET /api/calendar/calendars. List all calendars for the user
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -46,7 +46,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/calendar/calendars — Create a new local calendar
+ * POST /api/calendar/calendars. Create a new local calendar
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
 
   if (!targetAccount) {
     return NextResponse.json(
-      { error: "Invalid account — only local accounts are supported" },
+      { error: "Invalid account. only local accounts are supported" },
       { status: 400 },
     );
   }

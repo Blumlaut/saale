@@ -63,7 +63,7 @@ describe("approval scopes", () => {
       expiresAt: Date.now() + 60_000,
     });
 
-    // The approved call itself is covered, and a call nested in it — but not a
+    // The approved call itself is covered, and a call nested in it  but not a
     // call whose id merely starts with the same characters.
     expect(
       isApprovalScopeGranted({ sessionId: SESSION, toolCallId: "call-c", toolName: "mail_send" }),

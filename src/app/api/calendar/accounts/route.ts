@@ -7,7 +7,7 @@ import { discoverCalendars } from "@/lib/calendar/caldav";
 import { syncCalendarAccount } from "@/lib/calendar/sync";
 
 /**
- * GET /api/calendar/accounts — List user's CalDAV accounts with their calendars
+ * GET /api/calendar/accounts. List user's CalDAV accounts with their calendars
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -68,7 +68,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/calendar/accounts — Create a new CalDAV account
+ * POST /api/calendar/accounts. Create a new CalDAV account
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       // Initial sync
       await syncCalendarAccount(account.id);
     } catch {
-      // Discovery or sync failed — account still exists, user can retry manually
+      // Discovery or sync failed. account still exists, user can retry manually
     }
   })();
 

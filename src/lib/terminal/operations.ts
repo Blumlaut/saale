@@ -35,7 +35,7 @@ function normalizeExitCode(exitCode: number | null): number | null {
  * - abort   → throws `aborted`         → "Command aborted"
  * - a null exit code (e.g. the container cleaned up the process) is passed
  *   through and reported by the tool as "Command terminated without an exit
- *   code" — pi v0.86 treats null as a failure, not partial success.
+ *   code". pi v0.86 treats null as a failure, not partial success.
  */
 async function pollCommand(
   processId: string,
@@ -68,7 +68,7 @@ async function pollCommand(
   /**
    * Abort handling. A poll can sit in a `wait` window of up to 5s, so waiting
    * for the next iteration to notice the signal would leave the command
-   * running — and the run waiting — for that whole window. The command is
+   * running. and the run waiting. for that whole window. The command is
    * killed immediately (force: a Stop means stop) and the in-flight poll is
    * raced against the signal so the run continues at once.
    */
@@ -112,7 +112,7 @@ async function pollCommand(
       }
       if (result.outcome === "error") {
         // The container dropped the process (e.g. it was cleaned up or the
-        // session was restarted) — reported as "terminated without an exit code".
+        // session was restarted). reported as "terminated without an exit code".
         if (result.error instanceof terminal.TerminalApiError && result.error.status === 404) {
           return { exitCode: null };
         }
@@ -141,10 +141,7 @@ async function pollCommand(
       // presenting a partial log as complete.
       if (status.truncated) {
         onData(
-          Buffer.from(
-            "\n[output truncated by the terminal — earlier output was dropped]\n",
-            "utf8",
-          ),
+          Buffer.from("\n[output truncated by the terminal. earlier output was dropped]\n", "utf8"),
         );
       }
 
@@ -167,9 +164,9 @@ async function pollCommand(
 // ─── Factory ────────────────────────────────────────────────────────────────
 
 interface TerminalOperationsOptions {
-  /** Saale user ID — used for multi-user isolation. */
+  /** Saale user ID. used for multi-user isolation. */
   userId: string;
-  /** Pi session ID — used for cwd persistence across tool calls. */
+  /** Pi session ID. used for cwd persistence across tool calls. */
   sessionId: string;
   /** Base working directory (user's home in the container). */
   cwd: string;
@@ -248,7 +245,7 @@ export function createTerminalOperations(opts: TerminalOperationsOptions): {
           ...common,
           cwd: callCwd ?? cwd,
           ...(commandEnv ? { env: commandEnv } : {}),
-          wait: 0, // Don't wait — we poll manually
+          wait: 0, // Don't wait. we poll manually
         });
 
         return pollCommand(result.id, userId, sessionId, {

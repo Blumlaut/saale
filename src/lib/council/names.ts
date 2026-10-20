@@ -2,13 +2,13 @@
  * Default member names.
  *
  * A member's name is also the handle other members address it by (`@name`), so
- * the default has to be a word a model can spell back — short, lowercase, one
+ * the default has to be a word a model can spell back. short, lowercase, one
  * token. This is a bundled wordlist rather than a generated phrase for exactly
  * that reason.
  *
  * Source: the EFF short wordlist ("eff_short_wordlist_1"), 1296 words chosen for
  * human-readable random identifiers, by the Electronic Frontier Foundation under
- * CC-BY-3.0 — <https://www.eff.org/files/2016/09/08/eff_short_wordlist_1.txt>.
+ * CC-BY-3.0. <https://www.eff.org/files/2016/09/08/eff_short_wordlist_1.txt>.
  * The 1113 entries below are that list after:
  *
  *   1. lowercasing and dropping anything not `[a-z]+` (1295 left),
@@ -19,13 +19,13 @@
  *      hand-checked blocklist of brands, proper nouns, insults and bodily words
  *      that read badly as a person's name (1113 left).
  *
- * The result is a pool of short concrete words — `acorn`, `blade`, `zebra`. To
+ * The result is a pool of short concrete words. `acorn`, `blade`, `zebra`. To
  * extend or replace it, edit the pool below; the tests assert every entry is a
  * usable handle.
  */
 
 /**
- * The pool, space-separated to keep the file small — split once at load rather
+ * The pool, space-separated to keep the file small. split once at load rather
  * than stored as 1113 string literals.
  */
 const WORDS = `acorn acre acts afar affix aged agile aging ahead aide aids aim ajar alias alike alive aloe
@@ -102,7 +102,7 @@ export const MEMBER_NAME_POOL: readonly string[] = WORDS.split(/\s+/);
  * Number a name that cannot be drawn from the pool.
  *
  * Only reachable when every pool entry is taken, which a council of at most
- * `MAX_MEMBERS` never reaches — it exists so the caller always gets a free,
+ * `MAX_MEMBERS` never reaches. it exists so the caller always gets a free,
  * valid handle rather than a duplicate the unique index would reject.
  */
 function numberedName(base: string, taken: Set<string>): string {
@@ -131,7 +131,7 @@ export function pickMemberName(
   return free[index]!;
 }
 
-/** Pick `count` distinct free names — for a council created with members at once. */
+/** Pick `count` distinct free names. for a council created with members at once. */
 export function pickMemberNames(
   count: number,
   taken: Iterable<string> = [],

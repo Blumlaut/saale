@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { _resetKey } from "@/lib/crypto";
 import { encrypt, decrypt } from "@/lib/crypto";
 
-describe("GitHub integration — crypto", () => {
+describe("GitHub integration  crypto", () => {
   beforeEach(() => {
     _resetKey();
   });

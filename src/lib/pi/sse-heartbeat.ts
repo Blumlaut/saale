@@ -47,10 +47,10 @@ export function createSseHeartbeat(
     try {
       controller.enqueue(encoder.encode(`event: ping\ndata: {"t":${now()}}\n\n`));
     } catch (err) {
-      // The controller is already closed — the stream was torn down while
+      // The controller is already closed. the stream was torn down while
       // this tick was in flight (client disconnected). Stop ticking instead
       // of throwing on a closed controller every interval. This is an
-      // expected lifecycle race, not an error — swallow it like the
+      // expected lifecycle race, not an error. swallow it like the
       // `stopped` early-exit guard above.
       if (isClosedControllerError(err)) {
         stopped = true;

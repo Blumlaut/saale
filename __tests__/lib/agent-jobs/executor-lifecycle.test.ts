@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * These drive the REAL event handling with a fake session, because the bug they
  * cover was invisible to the existing tests: the executor resolved on
  * `agent_end` (which fires once per attempt, before any retry) so a provider
- * failure — which does not throw — was reported as a completed run with empty
+ * failure  which does not throw  was reported as a completed run with empty
  * output, and any later rejection was a no-op on the settled promise.
  */
 
@@ -145,7 +145,7 @@ async function startRun(fake: ReturnType<typeof createFakeSession>) {
   return result;
 }
 
-describe("executeAgentRun — provider failures", () => {
+describe("executeAgentRun  provider failures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -284,7 +284,7 @@ describe("executeAgentRun — provider failures", () => {
     fake.emit({ type: "turn_end", message: FAILED_MESSAGE, toolResults: [] });
     fake.emit({ type: "agent_end", messages: [FAILED_MESSAGE], willRetry: true });
 
-    // Attempt 2 succeeds — the run must be reported as completed.
+    // Attempt 2 succeeds  the run must be reported as completed.
     fake.emit({ type: "agent_start" });
     fake.emit(TURN_END);
     fake.emit({ type: "agent_end", messages: [], willRetry: false });
@@ -337,7 +337,7 @@ describe("executeAgentRun — provider failures", () => {
     fake.emit({ type: "agent_settled" });
     await result.promise;
 
-    // dispose() cancels the cache warmer's timer and aborts the agent — without
+    // dispose() cancels the cache warmer's timer and aborts the agent  without
     // it they stay alive after the run.
     expect(fake.session.dispose).toHaveBeenCalledTimes(1);
   });
@@ -422,7 +422,7 @@ describe("executeAgentRun — provider failures", () => {
   });
 });
 
-describe("executeAgentRun — output delivery", () => {
+describe("executeAgentRun  output delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -445,7 +445,7 @@ describe("executeAgentRun — output delivery", () => {
     const output: AgentOutput = { send: vi.fn(), noteToolCall: vi.fn() };
     const result = await startRunWithOutput(fake, output);
 
-    // A tool-only turn produces no text, so `send` never sees this call — the
+    // A tool-only turn produces no text, so `send` never sees this call  the
     // handler needs it to know the agent reached the user itself.
     fake.emit({
       type: "tool_execution_start",

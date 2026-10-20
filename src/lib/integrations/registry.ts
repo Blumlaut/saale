@@ -2,7 +2,7 @@ import type { IntegrationManifest } from "./types";
 import { MessageCircle, GitFork } from "lucide-react";
 
 /**
- * Integration registry — the single source of truth for available integrations.
+ * Integration registry. the single source of truth for available integrations.
  *
  * To add a new integration:
  * 1. Add an entry here with metadata and API path

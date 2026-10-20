@@ -9,7 +9,7 @@ import { readMcpToken } from "@/lib/mcp/servers";
 import { validateMcpUrl } from "@/lib/mcp/shared";
 
 /**
- * POST /api/mcp/servers/:serverId/test — connect to a server and list its tools.
+ * POST /api/mcp/servers/:serverId/test. connect to a server and list its tools.
  *
  * `serverId` may be `new`, which tests the URL and token in the request body
  * before anything is stored. For a stored server the saved token is used

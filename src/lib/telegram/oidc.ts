@@ -8,7 +8,7 @@ import { TELEGRAM_OIDC_PROVIDER_ID } from "./login";
 export { TELEGRAM_OIDC_PROVIDER_ID };
 
 /**
- * Telegram OpenID Connect — signing in with the same bot that serves the chat.
+ * Telegram OpenID Connect. signing in with the same bot that serves the chat.
  *
  * Telegram has no plain OAuth, but it does publish an OIDC provider, and the
  * identity it hands back is the Telegram user id the Bot API also uses for
@@ -26,7 +26,7 @@ const TELEGRAM_OIDC_DISCOVERY_URL = "https://oauth.telegram.org/.well-known/open
 /**
  * `profile` is what carries the numeric user id (`openid` alone returns an
  * opaque `sub`), and `telegram:bot_access` is what lets the bot open the
- * conversation — without it a fresh login can read messages but never send
+ * conversation. without it a fresh login can read messages but never send
  * one until the user writes first.
  */
 const TELEGRAM_OIDC_SCOPES = ["openid", "profile", "telegram:bot_access"];
@@ -54,7 +54,7 @@ export function getTelegramOidcCredentials(): TelegramOidcCredentials | null {
 /**
  * Where Telegram sends the user back to.
  *
- * Must be registered verbatim in BotFather — an unregistered one makes
+ * Must be registered verbatim in BotFather. an unregistered one makes
  * Telegram fall back to returning the authorization code in the URL fragment,
  * where the server never sees it.
  */
@@ -186,7 +186,7 @@ export function telegramOidcPlugins() {
 export interface TelegramLoginStatus {
   /** Credentials are present, so better-auth registers the provider at all. */
   configured: boolean;
-  /** The client id this instance was deployed with — Telegram expects the bot's own id. */
+  /** The client id this instance was deployed with. Telegram expects the bot's own id. */
   clientId: string | null;
   /** The id of the configured, enabled bot that serves the chat. Null when there is none. */
   botId: string | null;
@@ -242,8 +242,8 @@ async function greetLinkedChat(bot: TelegramBotConfig, chatId: bigint): Promise<
  *
  * Runs as the `account.create.after` hook: it is the moment a Saale user and a
  * Telegram identity first belong together, whichever of the two arrived
- * second. Everything after that — the bot answering a message, the agent
- * sending one — reads the link, not the session.
+ * second. Everything after that. the bot answering a message, the agent
+ * sending one. reads the link, not the session.
  */
 export async function linkTelegramFromOidcLogin(account: {
   userId: string;

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock prisma — $queryRaw is needed for the full-text search path
+// Mock prisma  $queryRaw is needed for the full-text search path
 vi.mock("@/lib/db", () => ({
   prisma: {
     memory: {
@@ -244,7 +244,7 @@ describe("createMemoryTools", () => {
 
       await callExecute(search.execute, { query: "test", limit: 999 });
 
-      // The LIMIT clause is passed to $queryRaw — verify the call was made
+      // The LIMIT clause is passed to $queryRaw  verify the call was made
       expect(mockQueryRaw).toHaveBeenCalled();
     });
 

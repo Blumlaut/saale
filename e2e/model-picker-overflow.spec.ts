@@ -39,7 +39,7 @@ function mockModelsResponse() {
 let session: E2ESession | null = null;
 
 test.describe("Model picker overflow", () => {
-  // Bootstrap logs in and seeds fixtures — slower than a single page visit.
+  // Bootstrap logs in and seeds fixtures  slower than a single page visit.
   test.describe.configure({ timeout: 90_000 });
 
   test.beforeAll(async ({ browser, request }) => {
@@ -59,7 +59,7 @@ test.describe("Model picker overflow", () => {
       route.fulfill({ json: mockModelsResponse() }),
     );
 
-    // The header's model picker only renders for an active session — reuse an
+    // The header's model picker only renders for an active session  reuse an
     // existing one or seed it (idempotent, so repeated runs don't accumulate).
     const TITLE = "E2E model picker overflow";
     let sessionId: string | undefined;
@@ -81,7 +81,7 @@ test.describe("Model picker overflow", () => {
 
     // Mobile: open the ⚙️ header dropdown, then the model picker inside it.
     // The page mounts the mobile and desktop shells, so the gear trigger
-    // exists in duplicate (one hidden) — filter to the visible instance.
+    // exists in duplicate (one hidden)  filter to the visible instance.
     const gear = page
       .locator('[data-slot="dropdown-menu-trigger"]:visible')
       .filter({ has: page.locator(".lucide-settings-2") })
@@ -129,7 +129,7 @@ test.describe("Model picker overflow", () => {
     expect(popBox.x + popBox.width).toBeLessThanOrEqual(375);
 
     // The last option must be reachable by scrolling and remain inside the
-    // viewport — not rendered past the popover's bottom edge.
+    // viewport  not rendered past the popover's bottom edge.
     await viewport.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });

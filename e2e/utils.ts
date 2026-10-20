@@ -9,7 +9,7 @@ export const E2E_EMAIL = "e2e-mobile@saale.local";
 export const E2E_USERNAME = "e2e-mobile";
 export const E2E_PASSWORD = "TestPass123!";
 
-/** Phone widths every guardrail runs at — see AGENTS.md "Mobile-First Layouts". */
+/** Phone widths every guardrail runs at  see AGENTS.md "Mobile-First Layouts". */
 export const VIEWPORTS = [
   { name: "375px", width: 375, height: 667 }, // iPhone SE
   { name: "320px", width: 320, height: 667 }, // smallest common phone
@@ -147,7 +147,7 @@ export interface E2ESession {
  * Grant the shared e2e user the admin role.
  *
  * Only the first account in a database becomes admin (see the `user.create`
- * hook in `src/auth.ts`), and no API can promote the first admin — the better-auth
+ * hook in `src/auth.ts`), and no API can promote the first admin  the better-auth
  * admin endpoints require an admin session. So the suite grants the role itself,
  * against the database the app under test reads.
  *
@@ -155,7 +155,7 @@ export interface E2ESession {
  * human had signed up first: `/admin/models` shipped a crashing shell that no
  * test ever loaded.
  *
- * @throws when the database is unreachable or has no e2e user — pointing
+ * @throws when the database is unreachable or has no e2e user  pointing
  * `BASE_URL` at an app whose database this isn't means no admin coverage, which
  * must be a failure rather than a silent skip.
  */
@@ -168,7 +168,7 @@ async function grantAdminRole(): Promise<void> {
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error("e2e: DATABASE_URL is not set — the admin routes cannot be covered without it");
+    throw new Error("e2e: DATABASE_URL is not set  the admin routes cannot be covered without it");
   }
 
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
@@ -179,7 +179,7 @@ async function grantAdminRole(): Promise<void> {
     });
     if (updated.count === 0) {
       throw new Error(
-        `e2e: no ${E2E_EMAIL} row in ${connectionString} — is DATABASE_URL the database of the app under test?`,
+        `e2e: no ${E2E_EMAIL} row in ${connectionString}  is DATABASE_URL the database of the app under test?`,
       );
     }
   } finally {
@@ -189,7 +189,7 @@ async function grantAdminRole(): Promise<void> {
 
 /**
  * Create the e2e user (if needed), grant it the admin role, log in, seed stress
- * data and capture the session. Seeding runs through the logged-in context —
+ * data and capture the session. Seeding runs through the logged-in context
  * API routes are user-scoped and reject unauthenticated requests.
  */
 export async function bootstrapSession(

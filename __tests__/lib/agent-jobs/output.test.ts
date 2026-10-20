@@ -81,7 +81,7 @@ describe("buildAgentOutputHandler", () => {
   it("builds nothing, and reports nothing, when no output channel is set", async () => {
     const result = await buildAgentOutputHandler({ userId, outputChannel: null });
 
-    // No channel configured is not a failure — there was nothing to deliver.
+    // No channel configured is not a failure  there was nothing to deliver.
     expect(result).toEqual({});
     expect(mockGetTelegramBot).not.toHaveBeenCalled();
   });
@@ -131,18 +131,18 @@ describe("buildAgentOutputHandler", () => {
     const { output } = await buildAgentOutputHandler({ userId, outputChannel: "telegram" });
 
     expect(output!.send).toBeTypeOf("function");
-    await output!.send("Job finished — here is the report");
+    await output!.send("Job finished  here is the report");
 
     expect(mockSendTelegramMessage).toHaveBeenCalledWith(
       "enc-token",
       chatId,
-      "Job finished — here is the report",
+      "Job finished  here is the report",
     );
 
     // The outbound message is recorded so a reply to it has context.
     expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({
       userId,
-      content: "Job finished — here is the report",
+      content: "Job finished  here is the report",
     });
     expect(output!.deliveryErrors?.()).toEqual([]);
   });
@@ -184,7 +184,7 @@ describe("buildAgentOutputHandler", () => {
     const { output } = await buildAgentOutputHandler({ userId, outputChannel: "telegram" });
     await output!.send("hello");
 
-    // The session write is bookkeeping — it must never hold back the message.
+    // The session write is bookkeeping  it must never hold back the message.
     expect(mockSendTelegramMessage).toHaveBeenCalled();
     expect(output!.deliveryErrors?.()).toEqual([]);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -220,7 +220,7 @@ describe("buildAgentOutputHandler", () => {
       output!.noteToolCall?.(telegramSend("119075844"));
       await output!.send("Stand up");
 
-      // The tool already delivered it — forwarding the closing text would
+      // The tool already delivered it  forwarding the closing text would
       // message the user twice.
       expect(mockSendTelegramMessage).not.toHaveBeenCalled();
       expect(output!.deliveryErrors?.()).toEqual([]);
@@ -233,7 +233,7 @@ describe("buildAgentOutputHandler", () => {
       await output!.send("Stand up");
 
       // Absent evidence of a different target, assume the tool reached the
-      // user — a duplicate message is worse than none.
+      // user  a duplicate message is worse than none.
       expect(mockSendTelegramMessage).not.toHaveBeenCalled();
     });
 

@@ -139,7 +139,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         "Search the persistent memory store for facts, decisions, preferences, and other knowledge extracted from past conversations.",
       parameters: Type.Object({
         query: Type.String({
-          description: "Search query — use natural language or keywords.",
+          description: "Search query. use natural language or keywords.",
         }),
         collection: Type.Optional(
           Type.String({
@@ -150,7 +150,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         tags: Type.Optional(
           Type.Array(
             Type.String({
-              description: "Filter by tags — returns memories matching any of the given tags.",
+              description: "Filter by tags. returns memories matching any of the given tags.",
             }),
           ),
         ),
@@ -306,7 +306,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
             value: {
               created: false,
               reason:
-                "A memory with this title already exists in that collection — update it instead of creating a duplicate.",
+                "A memory with this title already exists in that collection. update it instead of creating a duplicate.",
               memory: serializeMemory(existing),
             },
             details: { id: existing.id, created: false },
@@ -333,7 +333,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
       name: "memory_update",
       label: "Update Memory",
       description:
-        "Correct or extend an existing memory by ID. Get IDs from memory_search or memory_index. Only the fields you pass are changed — content replaces the old text, it is not appended.",
+        "Correct or extend an existing memory by ID. Get IDs from memory_search or memory_index. Only the fields you pass are changed. content replaces the old text, it is not appended.",
       parameters: Type.Object({
         id: Type.String({
           description: "Memory ID to update.",

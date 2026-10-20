@@ -22,7 +22,7 @@ const FONT = "/_next/static/media/inter.woff2";
 const OFFLINE_PAGE_HTML = `<html><head><link rel="stylesheet" href="${CHUNK_CSS}"></head><body><h1>You&#x27;re offline</h1><script src="${CHUNK_JS}"></script></body></html>`;
 const STYLESHEET = `@font-face{src:url(${FONT})}`;
 
-/** Minimal `Response` — the worker only touches status, ok, headers, clone() and text(). */
+/** Minimal `Response`  the worker only touches status, ok, headers, clone() and text(). */
 class FakeResponse {
   readonly status: number;
   readonly headers: Record<string, string>;

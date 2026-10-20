@@ -282,7 +282,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                       {job.systemManaged ? (
                         <Lock
                           className="text-muted-foreground/60 mx-1 h-3.5 w-3.5"
-                          aria-label="Managed by Saale — locked"
+                          aria-label="Managed by Saale. locked"
                         />
                       ) : (
                         <>
@@ -352,7 +352,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                       <div className="text-muted-foreground bg-muted/50 flex items-start gap-2 rounded-lg border p-3 text-xs">
                         <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
-                          Managed by Saale — this job powers Telegram chat. Its configuration is
+                          Managed by Saale. this job powers Telegram chat. Its configuration is
                           locked; customize the chat in Settings.
                         </span>
                       </div>

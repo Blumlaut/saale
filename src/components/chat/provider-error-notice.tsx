@@ -7,7 +7,7 @@ import { formatProviderError } from "@/lib/pi/provider-error";
  * Provider error notice for a failed assistant turn.
  *
  * Rendered instead of (or below) the turn's text when the provider call itself
- * failed — the case where a chat would otherwise show an empty bubble and no
+ * failed. the case where a chat would otherwise show an empty bubble and no
  * explanation. The raw error is what's persisted; this makes it readable
  * without hiding anything: when the message is a shortening of the raw text,
  * the original follows in muted type.

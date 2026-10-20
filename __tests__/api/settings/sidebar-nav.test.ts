@@ -23,7 +23,7 @@ vi.mock("@/lib/db", () => ({
 
 // The route writes through the settings registry, which evicts pooled sessions
 // for session-affecting settings. Sidebar layout is not one of them, but the
-// module is imported either way — keep it out of the graph.
+// module is imported either way  keep it out of the graph.
 vi.mock("@/lib/pi/agent-pool", () => ({
   evictUserSessions: vi.fn().mockResolvedValue(0),
 }));
@@ -124,7 +124,7 @@ describe("GET /api/settings/sidebar-nav", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    // Not hidden — absent: offering a toggle for a page that cannot be opened is
+    // Not hidden  absent: offering a toggle for a page that cannot be opened is
     // what a filtered list avoids.
     expect(body.items.map((item: { id: string }) => item.id)).not.toContain("council");
     expect(body.items.map((item: { id: string }) => item.id)).toContain("chat");
@@ -223,7 +223,7 @@ describe("PATCH /api/settings/sidebar-nav", () => {
     expect(res.status).toBe(200);
     expect(body.items.find((item: { id: string }) => item.id === "settings").hidden).toBe(false);
 
-    // The stored layout is coerced too — only the pinned item survives.
+    // The stored layout is coerced too  only the pinned item survives.
     const written = lastUpdate().data.sidebarItems as { id: string; hidden: boolean }[];
     expect(written.filter((entry) => !entry.hidden).map((entry) => entry.id)).toEqual(["settings"]);
   });

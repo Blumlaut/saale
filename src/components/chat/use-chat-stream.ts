@@ -18,17 +18,17 @@ const WATCHDOG_TICK_MS = 15_000;
  *
  * Single source of truth: the `messages` array. Streaming messages are
  * identified by `streaming-{turnId}` (turnId is a server-generated UUID that
- * is unique across generations — unlike the old turn-index scheme, it can
+ * is unique across generations. unlike the old turn-index scheme, it can
  * never collide). `message_saved` swaps the temp ID for the real DB ID.
  *
  * The connection is a KEEP-ALIVE observer: it stays open after `done` so a
  * generation started from another tab/session (web or Telegram worker) is
  * picked up live. Transport errors are handled by the browser's EventSource
- * auto-retry, which sends `Last-Event-ID` — the server replays buffered
+ * auto-retry, which sends `Last-Event-ID`. the server replays buffered
  * events from there, so the client self-heals without manual reconnection.
  * Reconnects that start a NEW EventSource (the stall watchdog, a reconnect
  * after a send) replay the whole buffer instead, so replayed events must land
- * on the turns already on screen — the reducer identifies them by the tag on
+ * on the turns already on screen. the reducer identifies them by the tag on
  * the message, not by the temp id `message_saved` replaced (see
  * `stream-reducer`).
  *
@@ -38,24 +38,24 @@ const WATCHDOG_TICK_MS = 15_000;
  * (loading flags, approvals, sidebar markers, DB reloads).
  *
  * Server events:
- * - `turn_start { turnId, startedAt }` — create a streaming message for the
+ * - `turn_start { turnId, startedAt }`. create a streaming message for the
  *   turn, positioned by the server's turn start
- * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end` — update
+ * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end`. update
  *   the turn (tool_update carries live partial output from a running tool)
- * - `turn_end { turnId }` — finalize the turn (safety net for final token)
- * - `turn_discarded { turnId }` — the SDK discarded a failed turn to retry it
- * - `retry_start` / `retry_end` — the provider call failed and is being retried
- * - `message_saved { turnId, messageId }` — swap temp ID with the DB ID
- * - `queue_update { messages }` — the send queue changed (a message was
+ * - `turn_end { turnId }`. finalize the turn (safety net for final token)
+ * - `turn_discarded { turnId }`. the SDK discarded a failed turn to retry it
+ * - `retry_start` / `retry_end`. the provider call failed and is being retried
+ * - `message_saved { turnId, messageId }`. swap temp ID with the DB ID
+ * - `queue_update { messages }`. the send queue changed (a message was
  *   queued, edited, cancelled, or delivered)
- * - `messages_changed` — the conversation changed outside this stream (a
- *   tool posted a message into it) — reload from the DB
- * - `done` — reload messages from DB; keep watching for the next generation
- * - `error` — terminal: reload, close the connection
+ * - `messages_changed`. the conversation changed outside this stream (a
+ *   tool posted a message into it). reload from the DB
+ * - `done`. reload messages from DB; keep watching for the next generation
+ * - `error`. terminal: reload, close the connection
  *
  * Heartbeat/watchdog: the server sends `event: ping` every 15s (unbuffered,
  * no id). The browser's EventSource only auto-reconnects on transport errors
- * — a silently half-open connection (proxy dropped, server wedged) would
+ *. a silently half-open connection (proxy dropped, server wedged) would
  * stall forever. If no ping arrives within STALL_THRESHOLD_MS while the
  * connection reports OPEN, we close it and reconnect; the server replays the
  * buffer, so nothing is lost.
@@ -80,7 +80,7 @@ export interface ChatStreamOptions {
     delayMs: number;
     errorMessage: string;
   }) => void;
-  /** A provider retry finished — successfully, or with the run giving up. */
+  /** A provider retry finished. successfully, or with the run giving up. */
   onRetryEnd?: (retry: { success: boolean; attempt: number; finalError?: string }) => void;
   /** Reload messages from the DB (called when the server signals a final state). */
   onReload: () => void;
@@ -92,7 +92,7 @@ export interface ChatStreamOptions {
   onQueueUpdate?: (messages: Message[]) => void;
   /**
    * Called when a generation ends (any `done`, including stop/error cleanup).
-   * The send queue drains server-side — this only clears per-run UI state.
+   * The send queue drains server-side. this only clears per-run UI state.
    */
   onGenerationEnd?: () => void;
 }
@@ -107,7 +107,7 @@ export function useChatStream(options: ChatStreamOptions) {
     optionsRef.current = options;
   });
 
-  // Root (first turn) message ID — parentMessageId for subsequent turns of a
+  // Root (first turn) message ID. parentMessageId for subsequent turns of a
   // generation, so multi-turn runs group into a single bubble.
   const rootMessageIdRef = useRef<string | null>(null);
 
@@ -142,7 +142,7 @@ export function useChatStream(options: ChatStreamOptions) {
       if (eventSource.readyState !== EventSource.OPEN) return;
       if (Date.now() - lastPingAt <= STALL_THRESHOLD_MS) return;
       console.warn(
-        `[chat-stream] no heartbeat for ${STALL_THRESHOLD_MS}ms — connection presumed dead, reconnecting`,
+        `[chat-stream] no heartbeat for ${STALL_THRESHOLD_MS}ms. connection presumed dead, reconnecting`,
       );
       eventSource.close();
       eventSourceRef.current = null;
@@ -183,7 +183,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   const { eventSource, setMessages, rootMessageIdRef } = opts;
 
   // isLoading is set on the first stream event (not on connect) so idle
-  // chats don't flash a "Thinking…" indicator — the sidebar streaming dot
+  // chats don't flash a "Thinking…" indicator. the sidebar streaming dot
   // only lights up when a generation is actually streaming.
   let loadingSet = false;
   const markLoading = () => {
@@ -225,7 +225,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     opts.setIsLoading(false);
     dispatch({ type: "generation_done" });
     // A `done` means the generation ended, so its approvals are resolved or
-    // moot — drop any card that a missed resolution event left behind.
+    // moot. drop any card that a missed resolution event left behind.
     opts.setPendingApprovals([]);
     rootMessageIdRef.current = null;
     opts.markDone(opts.sessionId);
@@ -375,8 +375,8 @@ function wireStreamListeners(opts: StreamListenerOpts) {
   });
 
   // ── Approval snapshot (server truth, sent after every (re)connect) ───
-  // Replaces the local list so stale cards — resolved elsewhere, expired,
-  // or orphaned by a crashed generation — are dropped on reconnection.
+  // Replaces the local list so stale cards. resolved elsewhere, expired,
+  // or orphaned by a crashed generation. are dropped on reconnection.
   eventSource.addEventListener("approvals_snapshot", (event: MessageEvent) => {
     const parsed = parseEvent<{ approvals?: ApprovalData[] }>(event.data);
     if (!parsed) return;
@@ -395,7 +395,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
 
   // ── Conversation changed outside this stream ──────────────────────────
   // A tool posted a message into this chat (chat_respond), or started a run in
-  // it, without this client asking. The DB is the authority — reload.
+  // it, without this client asking. The DB is the authority. reload.
   eventSource.addEventListener("messages_changed", () => {
     void opts.onReload();
   });
@@ -455,26 +455,26 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     handleDone();
   });
 
-  // ── Error (named SSE event only) — terminal ───────────────────────────
+  // ── Error (named SSE event only). terminal ───────────────────────────
   // addEventListener catches both named "error" SSE events (with JSON data)
   // AND transport-level errors (empty data). Only events with data are real
-  // errors — transport errors are handled by onerror below.
+  // errors. transport errors are handled by onerror below.
   eventSource.addEventListener("error", (event: MessageEvent) => {
-    if (!event.data) return; // Transport error — handled by onerror
+    if (!event.data) return; // Transport error. handled by onerror
 
     const parsed = parseEvent<{ message?: string }>(event.data);
     const message = parsed?.message || "Stream error";
     console.error("Stream error:", message);
     opts.onStreamError?.(message);
 
-    // Terminal — close the connection (do NOT let the browser retry-loop on
+    // Terminal. close the connection (do NOT let the browser retry-loop on
     // persistent errors).
     eventSource.close();
     opts.eventSourceRef.current = null;
     handleDone();
   });
 
-  // ── Transport error — the browser auto-reconnects with Last-Event-ID and
+  // ── Transport error. the browser auto-reconnects with Last-Event-ID and
   //    the server replays buffered events, so we don't need to do anything.
   eventSource.onerror = () => {
     // Auto-reconnect handled by the browser.

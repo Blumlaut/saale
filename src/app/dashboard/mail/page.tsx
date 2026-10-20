@@ -16,7 +16,7 @@ export default function MailPage() {
 
   return (
     <Page className="gap-0">
-      {/* Tabs — strip pinned, content fills remaining height */}
+      {/* Tabs. strip pinned, content fills remaining height */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <PageTabStrip className="shrink-0">
           <TabsList>

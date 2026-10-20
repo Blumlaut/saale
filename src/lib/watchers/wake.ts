@@ -12,7 +12,7 @@
  *   created outside any conversation.
  *
  * Both are the existing turn paths (`respondInChat`, `triggerAgentRun`) rather
- * than a new one — a wake is a normal agent run that happens to have been
+ * than a new one. a wake is a normal agent run that happens to have been
  * started by a script.
  */
 
@@ -54,7 +54,7 @@ export function buildWakeMessage(options: {
 /**
  * The definition standalone watcher wakes run under.
  *
- * One per user, system-managed so it cannot be edited or run by hand — it exists
+ * One per user, system-managed so it cannot be edited or run by hand. it exists
  * to own watcher runs and their transcripts, mirroring the Telegram agent.
  * Adopted rather than duplicated if a definition with this name already exists,
  * since `name` is unique per user.
@@ -105,7 +105,7 @@ export async function ensureWatcherAgentDefinition(userId: string): Promise<{ id
  *
  * A chat that is already generating is refused rather than queued: the watcher
  * will fire again on the next tick (its `lastFiredAt` is only written on a
- * delivered wake), which is simpler than racing a run that is mid-transcript —
+ * delivered wake), which is simpler than racing a run that is mid-transcript
  * and a queued message would be answered against a conversation that has moved
  * on since.
  */

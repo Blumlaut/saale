@@ -5,11 +5,11 @@ import type { CommandContext, CommandOption, CommandOutcome, CommandPrompt } fro
 /**
  * The result of running a command:
  *
- * - `prompt` — an interactive command needs a choice before it can run; the
+ * - `prompt`. an interactive command needs a choice before it can run; the
  *   surface renders the options (web: a sheet, Telegram: an inline keyboard)
  *   and calls back with the chosen `value`.
- * - `done`   — the command ran; the surface shows the outcome.
- * - `error`  — nothing ran; the surface shows the message.
+ * - `done`  . the command ran; the surface shows the outcome.
+ * - `error` . nothing ran; the surface shows the message.
  */
 export type ExecuteCommandResult =
   | { kind: "prompt"; name: string; prompt: CommandPrompt }
@@ -68,7 +68,7 @@ export async function executeCommand(
 /**
  * Decide whether an interactive command can run already.
  *
- * A value handed in by a surface is validated against the prompt's options —
+ * A value handed in by a surface is validated against the prompt's options
  * the web route accepts it from the client, so an unknown value must not reach
  * the handler. Without a value, an argument that names an option is matched
  * (case-insensitively, by value or label); no argument at all means "ask the

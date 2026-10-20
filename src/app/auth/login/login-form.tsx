@@ -23,7 +23,7 @@ export interface TelegramLoginOptions {
 
 export interface LoginFormProps {
   telegram: TelegramLoginOptions;
-  /** Whether someone with no account yet could create one here — the copy for a failed Telegram login depends on it. */
+  /** Whether someone with no account yet could create one here. the copy for a failed Telegram login depends on it. */
   signupsEnabled: boolean;
 }
 
@@ -197,7 +197,7 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
     setError("");
 
     // One field, two handles: usernames never contain `@`, so an address typed
-    // here is an email — the fallback for accounts that have no username (or
+    // here is an email. the fallback for accounts that have no username (or
     // for people who know the address better).
     const identifier = data.username.trim();
     const credentials = { password: data.password, callbackURL: DASHBOARD_URL };

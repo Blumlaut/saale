@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 
-// The popover is irrelevant to the level filtering — render its parts inline so
+// The popover is irrelevant to the level filtering  render its parts inline so
 // the options are always in the DOM.
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -16,7 +16,7 @@ import { ThinkingSelector } from "@/components/chat/thinking-selector";
 /**
  * The selector filters the level list down to what the model supports. That
  * list arrives asynchronously, and "not known yet" must not be treated as "this
- * model supports nothing" — that left only "Default" selectable while the
+ * model supports nothing"  that left only "Default" selectable while the
  * request was in flight, and permanently so when it failed.
  */
 

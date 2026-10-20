@@ -10,7 +10,7 @@ import manifest from "@/app/manifest";
  * Installability contract.
  *
  * A manifest is only useful if every icon it advertises actually exists at the
- * size it claims — a missing or mis-sized icon is the classic reason a browser
+ * size it claims  a missing or mis-sized icon is the classic reason a browser
  * silently refuses to offer installation. So the declared sizes are verified
  * against the real PNG dimensions on disk rather than trusted.
  */

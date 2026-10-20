@@ -3,7 +3,7 @@
  *
  * Two switches, because the module is optional in two different directions:
  *
- * - `COUNCIL_ENABLED=0` (see `flag.ts`) removes it — the nav entry, the routes
+ * - `COUNCIL_ENABLED=0` (see `flag.ts`) removes it. the nav entry, the routes
  *   and the tools are all gone.
  * - The council costs several models at once and gives them a shared workspace
  *   inside the terminal container, so its feature ships switched off: an admin

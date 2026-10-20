@@ -73,7 +73,7 @@ describe("createSseHeartbeat", () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it("swallows only ERR_INVALID_STATE — other enqueue errors are still logged", async () => {
+  it("swallows only ERR_INVALID_STATE  other enqueue errors are still logged", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     // A controller that throws a non-closed error on enqueue.

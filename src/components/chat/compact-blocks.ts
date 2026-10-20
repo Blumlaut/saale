@@ -25,8 +25,8 @@ export interface CompactSplit {
  * A step that reasoned or worked joins the run above it; a step that said
  * something ends that run, so a sentence is read after the activity that
  * produced it and the next step starts a fresh run. Files the turn showed the
- * user are never folded in — they are the thing to look at, not a record of
- * work — so each surface supplies its own `split`, and `<ToolCallGroup>` knows
+ * user are never folded in. they are the thing to look at, not a record of
+ * work. so each surface supplies its own `split`, and `<ToolCallGroup>` knows
  * which calls are which.
  *
  * One step can produce several blocks (its activity, its prose, its files), so

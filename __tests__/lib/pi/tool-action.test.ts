@@ -62,7 +62,7 @@ describe("summarizeToolAction", () => {
         subject: "Re: Invoice",
         body: "hi",
       }),
-    ).toBe('Send email to jane@example.com — "Re: Invoice"');
+    ).toBe('Send email to jane@example.com. "Re: Invoice"');
   });
 
   it("caps long recipient lists", () => {
@@ -71,7 +71,7 @@ describe("summarizeToolAction", () => {
         to: ["a@x.com", "b@x.com", "c@x.com", "d@x.com"],
         subject: "All",
       }),
-    ).toBe('Send email to a@x.com, b@x.com, c@x.com and 1 more — "All"');
+    ).toBe('Send email to a@x.com, b@x.com, c@x.com and 1 more. "All"');
   });
 
   it("summarizes calendar_create with humanized start", () => {
@@ -80,7 +80,7 @@ describe("summarizeToolAction", () => {
         summary: "Team lunch",
         dtStart: "2026-03-05T15:30:00Z",
       }),
-    ).toMatch(/^Create event "Team lunch" — Mar 5, 2026/);
+    ).toMatch(/^Create event "Team lunch". Mar 5, 2026/);
   });
 
   it("summarizes task_create with due date", () => {
@@ -131,7 +131,7 @@ describe("describeToolAction", () => {
     expect(action.label).toBe("Send Email");
     expect(action.known).toBe(true);
     expect(action.fields.map((f) => f.label)).toEqual(["To", "Subject", "Body"]);
-    expect(action.summary).toBe('Send email to jane@example.com — "Re: Invoice"');
+    expect(action.summary).toBe('Send email to jane@example.com. "Re: Invoice"');
   });
 
   it("humanizes unknown argument keys of known tools", () => {

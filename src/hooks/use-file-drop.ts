@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 
 /**
- * A drag that carries files — an OS drop. Text selections and the app's own
+ * A drag that carries files. an OS drop. Text selections and the app's own
  * reorder drags are left alone: the zone never claims them.
  */
 function carriesFiles(dataTransfer: DataTransfer | null): boolean {
@@ -33,7 +33,7 @@ export function useFileDrop(onFiles: (files: File[]) => void): {
 } {
   const [isDragging, setIsDragging] = useState(false);
   // `dragenter`/`dragleave` fire again for every descendant the pointer
-  // crosses, so nesting is tracked with a depth counter — a boolean flickers
+  // crosses, so nesting is tracked with a depth counter. a boolean flickers
   // the moment the drag reaches the first child.
   const depthRef = useRef(0);
   // Latest callback without giving the handlers a new identity each render.
@@ -50,7 +50,7 @@ export function useFileDrop(onFiles: (files: File[]) => void): {
   const onDragEnter = useCallback((event: ReactDragEvent<HTMLElement>) => {
     if (!carriesFiles(event.dataTransfer)) return;
     // `dragenter`/`dragover` must be prevented, or the browser never fires
-    // `drop` — it shows the "no drop here" cursor instead.
+    // `drop`. it shows the "no drop here" cursor instead.
     event.preventDefault();
     depthRef.current += 1;
     setIsDragging(true);

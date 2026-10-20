@@ -25,7 +25,7 @@ export interface FileDeleteDialogProps {
 /**
  * Confirmation for a delete, because there is no undo.
  *
- * Deleting a folder takes everything inside it, so the wording says so — and a
+ * Deleting a folder takes everything inside it, so the wording says so. and a
  * multi-selection lists what is about to go rather than asking "are you sure?"
  * about a number.
  */

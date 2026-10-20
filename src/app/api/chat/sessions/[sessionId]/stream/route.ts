@@ -75,13 +75,13 @@ const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 const STALE_GENERATION_POLL_MS = 10_000;
 
 /**
- * GET /api/chat/sessions/:sessionId/stream — SSE streaming endpoint
+ * GET /api/chat/sessions/:sessionId/stream. SSE streaming endpoint
  *
  * Pure observer: wires the HTTP response to the session's event stream
  * (Redis buffer replay + live pub/sub fan-out) and, when the last user
  * message is unanswered, claims and dispatches the prompt.
  *
- * No DB writes happen here — all persistence is handled by the session
+ * No DB writes happen here. all persistence is handled by the session
  * event tracker (wired once per pooled session). Multiple clients may
  * connect concurrently (multiple tabs, reconnects, other processes); every
  * connection sees the same live stream.
@@ -196,7 +196,7 @@ export async function GET(
 
   if (action.type === "prompt" && (!modelProvider || !modelName)) {
     unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
-    log("decision", "no model configured — returning error stream");
+    log("decision", "no model configured. returning error stream");
     const encoder = new TextEncoder();
     const errorEvent = encoder.encode(
       `event: error\ndata: ${JSON.stringify({ message: "No AI model configured. Please select a model in Settings > AI & Models." })}\n\n`,
@@ -220,7 +220,7 @@ export async function GET(
   // drain that runs after it settles.
   //
   // Client disconnects are NOT reliably signalled by `request.signal` abort
-  // in Next.js route handlers — often it never fires at all. The runtime
+  // in Next.js route handlers. often it never fires at all. The runtime
   // always calls the source's `cancel()` when the response body stream is
   // torn down, so that hook is the source of truth. Without it, a dead
   // connection's heartbeat keeps ticking on a closed controller and throws
@@ -234,7 +234,7 @@ export async function GET(
   // tab, the Telegram worker) has no other way to learn that its owner died:
   // the buffered events replay as if it were still running, and this server's
   // heartbeats keep the transport quietly alive. Polling the generation's
-  // liveness key turns that into a re-decision — settle the clients, close,
+  // liveness key turns that into a re-decision. settle the clients, close,
   // and let the browser's reconnect resume the unanswered message.
   let supervisorTimer: ReturnType<typeof setInterval> | null = null;
   const stopSupervisor = () => {
@@ -302,7 +302,7 @@ export async function GET(
    * connections observe instead of prompting), clear the previous run's
    * buffered events, wire DB persistence, and pre-load images.
    *
-   * Returns null when a prompt is already in flight in this process — the
+   * Returns null when a prompt is already in flight in this process. the
    * caller must not claim work it cannot deliver.
    */
   const prepareRun = async (target: PromptTarget): Promise<PreparedRun | null> => {
@@ -317,7 +317,7 @@ export async function GET(
     });
 
     if (existedAlready) {
-      log("pool", `hit — lastPromptedMessageId=${entry.lastPromptedMessageId}`);
+      log("pool", `hit. lastPromptedMessageId=${entry.lastPromptedMessageId}`);
     }
 
     // Same-process double-prompt guard (recovery path race).
@@ -332,11 +332,11 @@ export async function GET(
     // rewind first so the prompt replaces that entry instead of appending a
     // second copy of the same message (see message-rewind.ts).
     if (await rewindDuplicatePrompt(entry.session, { content: target.content })) {
-      log("rewind", `transcript already held message ${target.id} — rewound before it`);
+      log("rewind", `transcript already held message ${target.id}. rewound before it`);
     }
 
     // An edited message still has the history its edit deleted in the agent
-    // transcript — rewind it, or the prompt lands as a brand new message after
+    // transcript. rewind it, or the prompt lands as a brand new message after
     // the old conversation (see message-rewind.ts).
     const rewind = await applyPendingHistoryRewind(sessionId, entry.session, target.id);
     if (rewind !== "nothing-pending") {
@@ -344,7 +344,7 @@ export async function GET(
     }
 
     // Publish the generation, clear stale buffered events, and wire DB
-    // persistence — shared with the `chat_respond` tool's server-side runs.
+    // persistence. shared with the `chat_respond` tool's server-side runs.
     await beginChatRun({ userId: authResult.userId, sessionId, session: entry.session });
 
     const images = await loadPromptImages(target.attachments);
@@ -354,10 +354,10 @@ export async function GET(
 
   /**
    * Dispatch a prepared run and resolve when it has fully settled
-   * (`agent_settled` — after any error retry, auto-compaction, or queued
+   * (`agent_settled`. after any error retry, auto-compaction, or queued
    * continuation).
    *
-   * Uses session.prompt() — the same path the Pi TUI uses — NOT
+   * Uses session.prompt(). the same path the Pi TUI uses. NOT
    * session.agent.prompt(): the session wrapper runs the SDK's pre-prompt
    * compaction check and post-run processing, and only settles when the run
    * is truly finished. The custom system prompt survives the per-turn prompt
@@ -456,14 +456,14 @@ export async function GET(
    *
    * This is the restart case: Saale is redeployed (or crashes) while a run is
    * streaming, so the run is gone but its clients are still connected, replay
-   * a frozen partial stream, and would wait forever — the transport itself
+   * a frozen partial stream, and would wait forever. the transport itself
    * looks perfectly healthy. Once the generation's liveness heartbeat is gone
    * and this process has no run of its own, settle every client and close the
    * stream: the browser reconnects, the fresh request re-decides with the dead
    * generation off the books, and the unanswered message is prompted again.
    *
    * The buffered `done` check keeps a normally finished run from looking dead
-   * — its client already settled from the replay.
+   *. its client already settled from the replay.
    */
   const startGenerationSupervisor = () => {
     if (supervisorTimer) return;
@@ -477,7 +477,7 @@ export async function GET(
             localRunInFlight: local?.promptInFlight === true || local?.session.isStreaming === true,
             bufferTailIsTerminal: bufferTail !== null && isTerminalBufferedEvent(bufferTail),
           });
-          // The run this connection was waiting on finished on its own — its
+          // The run this connection was waiting on finished on its own. its
           // clients already settled from that event (or it is still running,
           // here or elsewhere).
           if (next === "keep-watching") return;
@@ -486,7 +486,7 @@ export async function GET(
             return;
           }
 
-          log("supervisor", "observed generation is gone — settling clients and reconnecting");
+          log("supervisor", "observed generation is gone. settling clients and reconnecting");
           stopSupervisor();
           // Nothing is running, so nothing is running a tool: drop the
           // bookkeeping the dead run left behind before clients reload.
@@ -524,24 +524,24 @@ export async function GET(
           //    approvals, emitted AFTER the buffered replay. The client
           //    replaces its local list with this, so stale cards (resolved
           //    elsewhere, expired, or orphaned by a crashed generation) can
-          //    never linger — and live `tool_approval_request`/`resolved`
+          //    never linger. and live `tool_approval_request`/`resolved`
           //    events keep it in sync afterwards.
           const pendingApprovals = await getPendingApprovals(sessionId);
           dispatcher.emitLocal(controller, "approvals_snapshot", {
             approvals: pendingApprovals.map(toApprovalPayload),
           });
 
-          // ── Idle: nothing to stream right now — emit done so the client
+          // ── Idle: nothing to stream right now. emit done so the client
           //    settles its loading state, but KEEP the connection open: a
           //    generation started later (another tab, Telegram worker) will
           //    stream on this same connection.
           if (action.type === "done") {
-            log("stream", "idle — emitting done, staying open as observer");
+            log("stream", "idle. emitting done, staying open as observer");
             dispatcher.emitLocal(controller, "done", {});
 
             // Recovery drain: a run that died (process restart, crash) can
             // strand messages in the send queue. Deliver them now that the
-            // session is idle — and keep the connection open, the drain
+            // session is idle. and keep the connection open, the drain
             // streams through this same dispatcher.
             if (queuedCount > 0) drainQueueSafely();
             return;
@@ -550,7 +550,7 @@ export async function GET(
           // ── Prompt: dispatch the agent, forward events via the bus ────
           // The run is dispatched here, after the subscription is in place,
           // so the client receives the live stream. When it settles, the send
-          // queue drains — messages submitted during this run are delivered
+          // queue drains. messages submitted during this run are delivered
           // next, in order.
           if (action.type === "prompt" && pendingRun) {
             void dispatchRun(pendingRun).then(drainQueueSafely);
@@ -558,7 +558,7 @@ export async function GET(
           }
 
           // ── Observe: waiting on a generation owned elsewhere ──────────
-          // This is where a restart strands clients — the run is replayed as
+          // This is where a restart strands clients. the run is replayed as
           // if it were still going, so watch it and recover (see
           // startGenerationSupervisor).
           if (action.type === "observe") startGenerationSupervisor();
@@ -582,7 +582,7 @@ export async function GET(
       // cancelled (tab closed, navigation, network drop, watchdog reconnect).
       // `request.signal` abort often never fires in Next.js, so without this
       // hook the heartbeat would keep ticking on a closed controller and
-      // spam ERR_INVALID_STATE errors every interval — and the dead client
+      // spam ERR_INVALID_STATE errors every interval. and the dead client
       // would stay registered in the dispatcher, erroring on every live
       // event. Clean up both here.
       log("client", "stream cancelled, stopping SSE forwarding (agent continues)");

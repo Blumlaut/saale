@@ -4,7 +4,7 @@ import { requireCalendarOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * PATCH /api/calendar/calendars/:calendarId — Update a calendar
+ * PATCH /api/calendar/calendars/:calendarId. Update a calendar
  */
 export async function PATCH(
   request: NextRequest,
@@ -38,7 +38,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/calendar/calendars/:calendarId — Delete a calendar
+ * DELETE /api/calendar/calendars/:calendarId. Delete a calendar
  */
 export async function DELETE(
   _request: NextRequest,

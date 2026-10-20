@@ -2,8 +2,8 @@
  * What a Telegram redirect is allowed to create.
  *
  * A sign-in is a sign-in: signing in creates an account only when the flow
- * carried `requestSignUp` — the register page sets it, the login page does not
- * — and the instance still has sign-ups open. Drives better-auth's own
+ * carried `requestSignUp`  the register page sets it, the login page does not
+ *  and the instance still has sign-ups open. Drives better-auth's own
  * endpoints against a stubbed Telegram, so the decisions under test are
  * better-auth's and the sign-up gate's, not a re-implementation of them.
  */
@@ -74,7 +74,7 @@ let privateKey: CryptoKey;
 let jwk: Record<string, unknown>;
 /** The nonce better-auth sent on the authorization URL, echoed back in the id_token. */
 let nonce: string | null = null;
-/** The Telegram account this test signs in as — a fresh one every time. */
+/** The Telegram account this test signs in as  a fresh one every time. */
 let telegramUserId = "777888999";
 
 const realFetch = globalThis.fetch;

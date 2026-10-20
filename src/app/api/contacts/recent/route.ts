@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { getRecentRecipients } from "@/lib/contacts/contacts";
 
 /**
- * GET /api/contacts/recent — Most recent recipients from the user's Sent
+ * GET /api/contacts/recent. Most recent recipients from the user's Sent
  * folders. Feeds the compose picker's suggestions for addresses that are not
  * in the contact book yet.
  */

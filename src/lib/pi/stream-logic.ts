@@ -1,7 +1,7 @@
 /**
  * Pure decision logic for the chat SSE stream endpoint.
  *
- * Extracted from the route handler for testability — the route imports and
+ * Extracted from the route handler for testability. the route imports and
  * calls these functions with runtime values (DB messages, pool state, Redis
  * signals, etc.).
  */
@@ -23,20 +23,20 @@ export type StreamAction =
  * Decide what a new SSE connection should do.
  *
  * Signals:
- * - `lastMessage` — latest DB message (or undefined for an empty chat)
- * - `hasAssistantAfterLastUser` — an assistant message was saved after the
+ * - `lastMessage`. latest DB message (or undefined for an empty chat)
+ * - `hasAssistantAfterLastUser`. an assistant message was saved after the
  *   last user message (the response already exists)
- * - `isGenerating` — a generation is registered AND its liveness heartbeat is
+ * - `isGenerating`. a generation is registered AND its liveness heartbeat is
  *   fresh in Redis (any process). A crashed process's flag expires within
  *   seconds, so this means a generation is genuinely running somewhere.
- * - `poolLastPromptedMessageId` — the message this process already prompted
+ * - `poolLastPromptedMessageId`. the message this process already prompted
  *   (in-process in-flight guard)
- * - `pendingPromptMessageId` — the message the POST /messages route wants the
+ * - `pendingPromptMessageId`. the message the POST /messages route wants the
  *   SSE connection to prompt (the "claim")
- * - `bufferHasDone` — the buffer holds a finished run's terminal event
- * - `queueHeld` — the user pressed Stop on this session and has not sent
+ * - `bufferHasDone`. the buffer holds a finished run's terminal event
+ * - `queueHeld`. the user pressed Stop on this session and has not sent
  *   anything since (see redis.ts). Stop means "nothing more until I say so",
- *   so an unanswered message must not be re-prompted by a reconnect — that
+ *   so an unanswered message must not be re-prompted by a reconnect. that
  *   would silently restart the run the user just cancelled.
  */
 export function decideStreamAction(params: {
@@ -55,15 +55,15 @@ export function decideStreamAction(params: {
   if (last && last.role === "user") {
     // The user stopped this session: nothing more until they send again. A
     // stopped run whose message is still unanswered must not be prompted
-    // again — neither by a reconnect nor by a page load.
+    // again. neither by a reconnect nor by a page load.
     if (params.queueHeld) {
       return { type: "done", reason: "session stopped by user" };
     }
-    // Already prompting this exact message in this process — just observe.
+    // Already prompting this exact message in this process. just observe.
     if (params.poolLastPromptedMessageId === last.id) {
       return { type: "observe", reason: "already prompted in this process" };
     }
-    // The POST route claimed this message — we are the expected prompter.
+    // The POST route claimed this message. we are the expected prompter.
     if (params.pendingPromptMessageId === last.id) {
       return { type: "prompt", reason: "prompt claimed by message POST" };
     }
@@ -71,16 +71,16 @@ export function decideStreamAction(params: {
     if (generationActive) {
       return { type: "observe", reason: "generation in progress" };
     }
-    // The response already exists — nothing to stream.
+    // The response already exists. nothing to stream.
     if (params.hasAssistantAfterLastUser) {
       return { type: "done", reason: "last user message already answered" };
     }
-    // A finished run's events are buffered — replay delivers `done`.
+    // A finished run's events are buffered. replay delivers `done`.
     if (params.bufferHasDone) {
       return { type: "observe", reason: "done event already buffered" };
     }
     // Unanswered user message and nothing running: we own the prompt. This
-    // covers recovery — a message whose run never started (the client died
+    // covers recovery. a message whose run never started (the client died
     // right after POST /messages) and one whose run died mid-flight, which
     // liveness now reports as inactive within seconds.
     return { type: "prompt", reason: "unanswered user message" };
@@ -97,12 +97,12 @@ export function decideStreamAction(params: {
 /**
  * What a connection watching someone else's generation should do next.
  *
- * - `recover` — the generation is gone (its liveness heartbeat expired and no
+ * - `recover`. the generation is gone (its liveness heartbeat expired and no
  *   process is running it): settle the clients and reconnect so the session is
  *   re-decided and the unanswered message is resumed.
- * - `stop` — the run finished on its own; its clients already settled, so
+ * - `stop`. the run finished on its own; its clients already settled, so
  *   there is nothing left to watch.
- * - `keep-watching` — it is still running (here or elsewhere).
+ * - `keep-watching`. it is still running (here or elsewhere).
  */
 export type StaleGenerationAction = "recover" | "stop" | "keep-watching";
 
@@ -137,7 +137,7 @@ export function decideStaleGenerationAction(params: {
  * Escape literal newlines in a JSON payload to prevent premature SSE event
  * termination. SSE spec: a line containing only "\n" terminates the event block.
  *
- * `id` is optional — unbuffered terminal events (e.g. an idle "done" or the
+ * `id` is optional. unbuffered terminal events (e.g. an idle "done" or the
  * heartbeat ping) omit it so they don't disturb the client's Last-Event-ID.
  *
  * @param data - The value to serialize and escape.

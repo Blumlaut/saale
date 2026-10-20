@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { resolveMcpToolPolicy, resolveToolPolicy } from "@/lib/pi/tool-policy";
 
 /**
- * Every gate resolves a call's policy through here — the wrapper around Saale's
- * own tools, the MCP extension and the codemode gate — so these cases are what
+ * Every gate resolves a call's policy through here  the wrapper around Saale's
+ * own tools, the MCP extension and the codemode gate  so these cases are what
  * keeps a tool from being gated on one path and running unapproved on another.
  */
 

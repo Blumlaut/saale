@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/agent-jobs/runs/:id — Get run details
+ * GET /api/agent-jobs/runs/:id. Get run details
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

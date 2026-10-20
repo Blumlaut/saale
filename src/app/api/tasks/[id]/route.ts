@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { taskToResponse, buildTaskUpdateData } from "@/lib/tasks/task-api-helpers";
 
 /**
- * GET /api/tasks/[id] — Get a single task
+ * GET /api/tasks/[id]. Get a single task
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,7 +17,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 /**
- * PATCH /api/tasks/[id] — Update a task
+ * PATCH /api/tasks/[id]. Update a task
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 /**
- * DELETE /api/tasks/[id] — Delete a task
+ * DELETE /api/tasks/[id]. Delete a task
  */
 export async function DELETE(
   _request: NextRequest,

@@ -47,7 +47,7 @@ export interface JobTypeSchema {
   fields: FieldDef[];
 }
 
-// Re-export from registry — single source of truth
+// Re-export from registry. single source of truth
 import { jobTypeSchemas as _jobTypeSchemas } from "./jobs/registry";
 export { _jobTypeSchemas as jobTypeSchemas };
 

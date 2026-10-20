@@ -2,14 +2,14 @@
  * Pi's model-catalog overlay, cached in Redis and refreshed in the background.
  *
  * Pi publishes a model catalog per provider at `pi.dev`, so a provider's model
- * list stays current between package releases — that is how the Pi CLI knows
+ * list stays current between package releases. that is how the Pi CLI knows
  * about a model that shipped after it was installed. Pi looks for the overlay
  * in a `ModelsStore`, which it restores on every runtime creation and rewrites
  * when a refresh succeeds.
  *
  * Saale keeps that store in Redis rather than in Pi's own directory
  * (`~/.pi/agent/models-store.json` belongs to whoever installed Pi on the
- * host), which also shares one catalog across every Saale process and tenant —
+ * host), which also shares one catalog across every Saale process and tenant
  * the catalog is public data, and one fetch serves everyone.
  *
  * Refreshes run detached: a request is answered from the cached overlay, and a
@@ -46,7 +46,7 @@ const REFRESH_THROTTLE_MS = 5 * 60_000;
  *
  * Building a runtime reads one entry per provider, and a Redis that is down (or
  * unreachable from this process) must not become a model list that never
- * arrives — Pi's built-in catalog is a complete answer, just a less current one.
+ * arrives. Pi's built-in catalog is a complete answer, just a less current one.
  */
 const STORE_TIMEOUT_MS = 1_000;
 
@@ -59,7 +59,7 @@ function logStoreFailure(context: string, err: unknown): void {
   const now = Date.now();
   if (now - lastStoreFailureLogAt < STORE_FAILURE_LOG_INTERVAL_MS) return;
   lastStoreFailureLogAt = now;
-  console.error(`${context} — using Pi's built-in catalog:`, err);
+  console.error(`${context}. using Pi's built-in catalog:`, err);
 }
 
 /**
@@ -140,8 +140,8 @@ let lastRefreshAt = 0;
 /**
  * Refresh the configured providers' catalogs without blocking the caller.
  *
- * Only providers with a credential are fetched — Pi skips the network phase for
- * unconfigured ones — so this costs one request per provider the user actually
+ * Only providers with a credential are fetched. Pi skips the network phase for
+ * unconfigured ones. so this costs one request per provider the user actually
  * uses, and only when Pi's own four-hour freshness window has passed.
  *
  * `PI_OFFLINE` (Pi's switch for running without model-catalog network access)

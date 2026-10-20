@@ -12,7 +12,7 @@ import type { ToolCallData } from "./types";
  *
  * A redacted call arrives with its arguments and result already stripped by the
  * share endpoints, so there is nothing here to read but the tool's name and the
- * server-written summary — no meta block to parse, no file to fetch.
+ * server-written summary. no meta block to parse, no file to fetch.
  * `ShareViewer` renders this and nothing else, so a card built for the owner's
  * data cannot reach a share page: `__tests__/share-redaction-coverage.test.ts`
  * keeps every raw card module out of the share surface.

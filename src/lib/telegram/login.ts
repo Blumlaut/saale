@@ -2,7 +2,7 @@
  * The browser-safe half of Telegram sign-in: which provider to ask for and what
  * to say when it fails.
  *
- * Kept free of server imports — the sign-in button and the OAuth callback both
+ * Kept free of server imports. the sign-in button and the OAuth callback both
  * need the provider id, and the button lives in the client bundle.
  */
 
@@ -12,7 +12,7 @@ export const TELEGRAM_OIDC_PROVIDER_ID = "telegram-oidc";
 /**
  * Readable copy for the error codes better-auth puts in the login redirect.
  *
- * A Telegram login ends up back on the login page with `?error=<code>` — a
+ * A Telegram login ends up back on the login page with `?error=<code>`. a
  * machine-readable token, not a sentence. Unknown codes are shown as they are:
  * a new better-auth error is better seen than smoothed over.
  */

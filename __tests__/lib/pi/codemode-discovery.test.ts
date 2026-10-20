@@ -9,7 +9,7 @@ import {
 
 /**
  * These are the helpers a watcher script gets from Saale's own sandbox, standing
- * in for the ones Pi registers in a chat's — so what is pinned here is the
+ * in for the ones Pi registers in a chat's  so what is pinned here is the
  * surface a script sees (`searchTools`, `describeTool`, `describeNamespace`,
  * their arguments and their errors), not the sandbox around it.
  */
@@ -62,7 +62,7 @@ const TOOLS: DiscoverableTool[] = [
 const SAMPLES = new Map(TOOLS.map((candidate) => [candidate.name, toolSample(candidate)]));
 
 /**
- * Call a global the way a script does: spread arguments, over one tool set — the
+ * Call a global the way a script does: spread arguments, over one tool set  the
  * same pairing `runner.ts` builds for the sandbox.
  */
 function callWith(tools: readonly DiscoverableTool[]) {

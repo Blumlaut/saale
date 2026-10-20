@@ -38,7 +38,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | nul
 }
 
 /**
- * GET /api/email/accounts — List user's email accounts
+ * GET /api/email/accounts. List user's email accounts
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -119,7 +119,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/email/accounts — Create a new email account
+ * POST /api/email/accounts. Create a new email account
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

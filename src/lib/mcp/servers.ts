@@ -86,7 +86,7 @@ export interface UserMcpServers {
 
 /**
  * Load the enabled servers of one user, ready for the MCP extension.
- * Scoped to `userId` — a server row is only reachable through its owner.
+ * Scoped to `userId`. a server row is only reachable through its owner.
  */
 export async function loadUserMcpServers(userId: string): Promise<UserMcpServers> {
   const servers = await prisma.mcpServer.findMany({
@@ -133,15 +133,15 @@ export async function getMcpLogPath(userId: string): Promise<string> {
  *
  * The GET stream: Pi opens it by default to receive server-initiated
  * notifications. Pooled sessions are evicted with `session.dispose()`, which
- * does *not* emit `session_shutdown` — the MCP extension only closes its
- * connections there — so a session with the default transport would leave one
+ * does *not* emit `session_shutdown`. the MCP extension only closes its
+ * connections there. so a session with the default transport would leave one
  * open stream per configured server behind for the life of the process. The
  * price is that a server whose tool list changes is only re-read on the next
  * connect (a config change already rebuilds the session).
  *
  * Auth: a server with a stored bearer token sends it, as before. A server
  * without one authenticates with OAuth through Saale's own provider, whose
- * credentials live in the database per user (`lib/mcp/oauth.ts`) — never in
+ * credentials live in the database per user (`lib/mcp/oauth.ts`). never in
  * Pi's host-wide `mcp-auth.json`, which the operator's Pi CLI and every tenant
  * share. When no sign-in is stored, the provider raises
  * `McpOAuthAuthorizationRequiredError`, and the settings page offers the
@@ -199,7 +199,7 @@ export async function createUserMcpExtension(userId: string): Promise<UserMcpExt
     openUrl: (url) => {
       console.error(`MCP server requires an OAuth sign-in started from Saale settings: ${url}`);
     },
-    // Servers live in the database — never write a host `mcp.json`.
+    // Servers live in the database. never write a host `mcp.json`.
     updateConfig: () => {
       console.error("MCP configuration is managed by Saale settings, not by the agent session");
     },

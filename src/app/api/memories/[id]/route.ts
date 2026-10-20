@@ -4,7 +4,7 @@ import { requireMemoryOwner, requireSession } from "@/lib/auth";
 import { deleteMemory, serializeMemory, updateMemory } from "@/lib/memory/store";
 
 /**
- * GET /api/memories/[id] — Get a single memory
+ * GET /api/memories/[id]. Get a single memory
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,7 +16,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 /**
- * PATCH /api/memories/[id] — Update a memory
+ * PATCH /api/memories/[id]. Update a memory
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 /**
- * DELETE /api/memories/[id] — Delete a memory
+ * DELETE /api/memories/[id]. Delete a memory
  */
 export async function DELETE(
   _request: NextRequest,

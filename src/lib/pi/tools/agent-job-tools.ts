@@ -272,7 +272,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         runAt: Type.Optional(
           Type.String({
             description:
-              "ISO 8601 timestamp for a one-off run (e.g. '2026-10-07T15:00:00Z'). The job runs once at that time — use this for reminders. Mutually exclusive with cronExpression.",
+              "ISO 8601 timestamp for a one-off run (e.g. '2026-10-07T15:00:00Z'). The job runs once at that time. use this for reminders. Mutually exclusive with cronExpression.",
           }),
         ),
       }),

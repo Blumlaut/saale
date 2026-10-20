@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
 /**
- * GET /api/memories/collections — List collections with counts and top tags
+ * GET /api/memories/collections. List collections with counts and top tags
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -45,7 +45,7 @@ export async function GET() {
 }
 
 /**
- * DELETE /api/memories/collections — Delete all memories in a collection
+ * DELETE /api/memories/collections. Delete all memories in a collection
  */
 export async function DELETE(request: NextRequest) {
   const authResult = await requireSession();

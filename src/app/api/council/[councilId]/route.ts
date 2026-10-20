@@ -8,7 +8,7 @@ import { sandboxIdentity } from "@/lib/council/accounts";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/council/[councilId] — the council, its members and its recent runs.
+ * GET /api/council/[councilId]. the council, its members and its recent runs.
  */
 export async function GET(
   _request: NextRequest,
@@ -27,7 +27,7 @@ export async function GET(
   }
 }
 
-/** PATCH /api/council/[councilId] — edit the council's own settings. */
+/** PATCH /api/council/[councilId]. edit the council's own settings. */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ councilId: string }> },
@@ -49,11 +49,11 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/council/[councilId] — delete the council and its sandbox.
+ * DELETE /api/council/[councilId]. delete the council and its sandbox.
  *
  * The rows go first: they are the record the user asked to be rid of, and the
  * container cleanup depends on reaching a service that may be down. The account
- * removal is best-effort and reported — it is the difference between a workspace
+ * removal is best-effort and reported. it is the difference between a workspace
  * that is gone and one that is merely unreferenced, so it is worth knowing.
  */
 export async function DELETE(

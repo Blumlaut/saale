@@ -1,5 +1,5 @@
 /**
- * Creating a chat session row — shared by `POST /api/chat/sessions` and the
+ * Creating a chat session row. shared by `POST /api/chat/sessions` and the
  * `chat_create` tool, so a chat started by an agent has the same shape as one
  * started from the UI (sanitized title, generated id, explicit fields).
  *
@@ -31,7 +31,7 @@ export interface NewChatSession {
   createdAt: Date;
 }
 
-/** Strip null bytes and cap the length — titles are rendered raw. */
+/** Strip null bytes and cap the length. titles are rendered raw. */
 export function sanitizeChatTitle(title: string | null | undefined): string {
   return (title || "New Chat").replace(/\0/g, "").slice(0, MAX_TITLE_LENGTH);
 }

@@ -20,7 +20,7 @@ export type CompactChatResult =
   | { ok: true; tokensBefore: number | undefined }
   | { ok: false; code: CompactChatErrorCode; message: string };
 
-/** Refresh interval for the compaction flag — well inside its TTL, so a long
+/** Refresh interval for the compaction flag. well inside its TTL, so a long
  * summarization never lets the session read as idle mid-compaction. */
 const COMPACTION_FLAG_REFRESH_MS = 30_000;
 
@@ -30,7 +30,7 @@ const COMPACTION_FLAG_REFRESH_MS = 30_000;
  * This summarizes the conversation history to reduce context usage, freeing up
  * room for more turns without losing key information.
  *
- * Works whether the agent is currently in the pool or has been evicted — it
+ * Works whether the agent is currently in the pool or has been evicted. it
  * will recreate the session from the persistent JSONL file if needed.
  *
  * For as long as the summarization runs, the session is marked as compacting:
@@ -45,7 +45,7 @@ export async function compactChatSession(params: {
 }): Promise<CompactChatResult> {
   const { userId, sessionId } = params;
 
-  // User isolation — the caller passes an authenticated pair, but the lookup
+  // User isolation. the caller passes an authenticated pair, but the lookup
   // must stay scoped so a bare id can never reach another user's chat.
   const chatSession = await prisma.chatSession.findFirst({ where: { id: sessionId, userId } });
   if (!chatSession) {
@@ -111,7 +111,7 @@ export async function compactChatSession(params: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
 
-    // Known non-error conditions — callers surface these as informational
+    // Known non-error conditions. callers surface these as informational
     if (message === "Already compacted") {
       return {
         ok: false,

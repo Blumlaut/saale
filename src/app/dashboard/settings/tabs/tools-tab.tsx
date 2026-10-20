@@ -59,7 +59,7 @@ export function ToolsTab({
   const handleToggle = (key: string) => {
     if (!settings) return;
     // The stored config is sparse and can predate a category, so an absent key
-    // means "at the registry default" — flip that, not `undefined`.
+    // means "at the registry default". flip that, not `undefined`.
     const updated = { ...toolConfig, [key]: !isCategoryEnabled(toolConfig, key) };
     onSettingsChange({
       ...settings,
@@ -112,13 +112,13 @@ export function ToolsTab({
               <p className="text-muted-foreground text-xs">
                 Toggle a category on/off to enable or disable it by default. Expand a category to
                 choose how its tools reach the model and configure per-tool approval policies.{" "}
-                <b>Always available</b> — the model sees the tools on every message.{" "}
-                <b>Via codemode</b> — hidden from the model; it writes a short script to call them.{" "}
-                <b>Search only</b> — hidden until found with a tool search. The last two save
-                context on categories you rarely use. <b>Allow</b> — runs automatically. <b>Auto</b>{" "}
-                — decides from what the call does: risky commands, and scripts that reach a tool
-                needing approval, ask; everything else runs. <b>Ask</b> — requires your approval.{" "}
-                <b>Block</b> — never runs. Tools from an MCP server follow their server&apos;s
+                <b>Always available</b>. the model sees the tools on every message.{" "}
+                <b>Via codemode</b>. hidden from the model; it writes a short script to call them.{" "}
+                <b>Search only</b>. hidden until found with a tool search. The last two save context
+                on categories you rarely use. <b>Allow</b>. runs automatically. <b>Auto</b> .
+                decides from what the call does: risky commands, and scripts that reach a tool
+                needing approval, ask; everything else runs. <b>Ask</b>. requires your approval.{" "}
+                <b>Block</b>. never runs. Tools from an MCP server follow their server&apos;s
                 approval setting in the MCP tab.
               </p>
             </div>
@@ -141,7 +141,7 @@ export function ToolsTab({
                   <div key={category.key}>
                     {index > 0 && <Separator className="mx-2" />}
 
-                    {/* Category header — toggle + expand */}
+                    {/* Category header. toggle + expand */}
                     <div className="flex items-center justify-between py-3">
                       <div className="flex items-center gap-3">
                         <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -152,7 +152,7 @@ export function ToolsTab({
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {/* Expand/collapse chevron — only show if category has tools */}
+                        {/* Expand/collapse chevron. only show if category has tools */}
                         {tools.length > 0 && (
                           <button
                             type="button"
@@ -175,7 +175,7 @@ export function ToolsTab({
                       </div>
                     </div>
 
-                    {/* Per-tool policies — collapsed when category is off or not expanded */}
+                    {/* Per-tool policies. collapsed when category is off or not expanded */}
                     {!enabled && tools.length > 0 && (
                       <div className="pb-3 pl-7">
                         <button
@@ -244,7 +244,7 @@ export function ToolsTab({
                 <div className="space-y-0.5">
                   <Label className="text-sm font-medium">Always active</Label>
                   <p className="text-muted-foreground text-xs">
-                    Not tied to a category — active whenever the session can call tools
+                    Not tied to a category. active whenever the session can call tools
                   </p>
                 </div>
               </div>
@@ -273,7 +273,7 @@ export function ToolsTab({
  * One tool's approval policy.
  *
  * `Auto` is offered where it means something: the tools whose default policy is
- * `auto` are the ones whose gate decides from what the call does — a shell
+ * `auto` are the ones whose gate decides from what the call does. a shell
  * command, or the tools a script reaches (see the policy docs in
  * `@/lib/pi/tool-infos`). A tool that already carries `auto` keeps the option
  * even when it is not the default, so the value stays selectable.

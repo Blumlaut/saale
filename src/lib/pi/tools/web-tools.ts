@@ -18,7 +18,7 @@ const webSearchSchema = Type.Object({
   ),
 });
 
-/** A fetched page — or why it could not be fetched, which is a normal result. */
+/** A fetched page. or why it could not be fetched, which is a normal result. */
 const webFetchSchema = Type.Object({
   url: Type.String(),
   error: Type.Boolean(),
@@ -132,7 +132,7 @@ export function createWebTools(): ToolDefinition[] {
       name: "web_fetch",
       label: "Fetch URL",
       description:
-        "Fetch a URL with browser TLS fingerprinting and extract clean, readable content. Supports markdown, HTML, text, JSON, and raw output formats. Bypasses basic anti-bot detection via TLS/HTTP2 impersonation. Reddit URLs (posts, comment pages, subreddits, user profiles) are resolved via the Arctic Shift archive instead of Reddit directly — content is near-real-time, but scores are stale until ~36h after posting.",
+        "Fetch a URL with browser TLS fingerprinting and extract clean, readable content. Supports markdown, HTML, text, JSON, and raw output formats. Bypasses basic anti-bot detection via TLS/HTTP2 impersonation. Reddit URLs (posts, comment pages, subreddits, user profiles) are resolved via the Arctic Shift archive instead of Reddit directly. content is near-real-time, but scores are stale until ~36h after posting.",
       parameters: Type.Object({
         url: Type.String({
           description: "URL to fetch (http/https only).",

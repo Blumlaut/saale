@@ -6,7 +6,7 @@ import { resolveToolCard } from "./tool-cards";
 import type { ToolCallData } from "./types";
 
 /**
- * Renders one tool call with the card its route provides — see `./tool-cards`
+ * Renders one tool call with the card its route provides. see `./tool-cards`
  * for the routing table and how a card is described.
  *
  * The `redacted` check is a second line of defence for any caller handed a

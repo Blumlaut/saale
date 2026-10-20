@@ -45,7 +45,7 @@ describe("watcherToolAccess", () => {
       toolPolicies: null,
     });
 
-    // The registry does not ship `codemode` — it comes from Pi's extension — so
+    // The registry does not ship `codemode`  it comes from Pi's extension  so
     // this pins that a future rewiring cannot smuggle it in.
     expect(callableNames).not.toContain("codemode");
   });
@@ -76,7 +76,7 @@ describe("consentFor", () => {
     });
 
     // `bash` is `auto`: in a chat it decides from the command at the call, and a
-    // tick has no call-time decision — so the consent has to be given up front.
+    // tick has no call-time decision  so the consent has to be given up front.
     expect(consent.grantedTools).toEqual(["bash"]);
   });
 
@@ -215,7 +215,7 @@ describe("checkGrant", () => {
     });
 
     // Turning it off removes the tool, so the approved call would fail mid-script
-    // — refused up front, with the reason a user can act on.
+    //  refused up front, with the reason a user can act on.
     expect(violation?.missing).toEqual(["mail_send"]);
     expect(violation?.reason).toContain("no longer available");
   });

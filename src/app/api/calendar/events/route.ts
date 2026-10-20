@@ -6,7 +6,7 @@ import { parseICS } from "@/lib/calendar/ics-import";
 import { resolveNewEventTimes } from "@/lib/calendar/event-times";
 
 /**
- * GET /api/calendar/events — Fetch events with optional date range and calendar filters
+ * GET /api/calendar/events. Fetch events with optional date range and calendar filters
  * Query params: from, to, calendarIds (comma-separated)
  */
 export async function GET(request: NextRequest) {
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const to = searchParams.get("to");
   const calendarIds = searchParams.get("calendarIds");
 
-  // Build where clause — scope to user's calendars
+  // Build where clause. scope to user's calendars
   const where: Record<string, unknown> = {
     calendar: {
       account: { userId: authResult.user.id },
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/calendar/events — Create a new event
+ * POST /api/calendar/events. Create a new event
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PUT /api/calendar/events/import — Import .ics file
+ * PUT /api/calendar/events/import. Import .ics file
  */
 export async function PUT(request: NextRequest) {
   const authResult = await requireSession();

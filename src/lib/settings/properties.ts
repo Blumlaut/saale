@@ -1,5 +1,5 @@
 /**
- * Saale settings registry — the single source of truth for every configurable
+ * Saale settings registry. the single source of truth for every configurable
  * value in `AppSettings` (per user) and `AdminSettings` (global).
  *
  * Everything that reads or writes a setting goes through here:
@@ -9,20 +9,20 @@
  * - The settings API routes apply column patches, which this module normalizes
  *   and validates property by property.
  *
- * Most of the registry is **derived** from registries that already exist — tool
+ * Most of the registry is **derived** from registries that already exist. tool
  * categories, tool policies, model purposes, thinking levels and sidebar items
- * — so adding a tool category or a purpose needs no change here at all. Adding
+ *. so adding a tool category or a purpose needs no change here at all. Adding
  * a plain column to `AppSettings`/`AdminSettings` does need one entry (its
  * label, description and validation cannot be inferred). `__tests__` compares
  * this registry against `prisma/schema.prisma`, so a forgotten entry fails CI
  * instead of silently leaving the setting unreachable.
  *
  * Each property declares:
- * - `key`     — the dotted path the model uses (`tools.category.email.enabled`)
- * - `columns` — the row columns it owns (drives coverage tests and patches)
- * - `schema`  — validation for a set (`null` means "restore the default")
- * - `read` / `write` — pure projections in and out of the row
- * - `apply`   — `sessions` when a pooled agent session must be rebuilt
+ * - `key`    . the dotted path the model uses (`tools.category.email.enabled`)
+ * - `columns`. the row columns it owns (drives coverage tests and patches)
+ * - `schema` . validation for a set (`null` means "restore the default")
+ * - `read` / `write`. pure projections in and out of the row
+ * - `apply`  . `sessions` when a pooled agent session must be rebuilt
  *
  * Secrets never live in these tables, so nothing here is redacted.
  */
@@ -60,8 +60,8 @@ export type PropertyScope = "user" | "admin";
 /**
  * What a change invalidates.
  *
- * - `none`     — read fresh on the next request / client render.
- * - `sessions` — baked into a pooled agent session (model, tools, exposure,
+ * - `none`    . read fresh on the next request / client render.
+ * - `sessions`. baked into a pooled agent session (model, tools, exposure,
  *   system prompt), so the user's pooled sessions must be evicted to rebuild.
  */
 export type PropertyApply = "none" | "sessions";
@@ -107,7 +107,7 @@ const THINKING_LEVEL_VALUES = THINKING_LEVEL_OPTIONS.map((option) => option.id);
 const EXPOSURE_VALUES = TOOL_EXPOSURES.map((option) => option.value);
 const POLICY_VALUES: readonly ToolPolicy[] = ["allow", "auto", "ask", "off"];
 
-/** `provider:model` — the same form the settings UI stores. */
+/** `provider:model`. the same form the settings UI stores. */
 const modelReferenceSchema = z
   .string()
   .trim()
@@ -238,7 +238,7 @@ const SCALAR_PROPERTIES: UserProperty[] = [
     group: GROUP.appearance,
     label: "Compact activity",
     description:
-      "Collapse a turn's reasoning and tool calls into one line each — a running tool count with the tools' own icons — instead of a card per step. Each line expands to the full detail. Set to false for the step-by-step transcript.",
+      "Collapse a turn's reasoning and tool calls into one line each. a running tool count with the tools' own icons. instead of a card per step. Each line expands to the full detail. Set to false for the step-by-step transcript.",
     columns: ["compactActivity"],
     apply: "none",
     scope: "user",
@@ -330,7 +330,7 @@ const SCALAR_PROPERTIES: UserProperty[] = [
 
 // ─── Derived properties ──────────────────────────────────────────────────────
 
-/** `models.purpose.<id>` — a model override per AI purpose. */
+/** `models.purpose.<id>`. a model override per AI purpose. */
 function purposeProperties(): UserProperty[] {
   return getAllPurposes().map((purpose) => ({
     key: `models.purpose.${purpose.id}`,
@@ -361,7 +361,7 @@ function purposeProperties(): UserProperty[] {
   }));
 }
 
-/** `tools.category.<key>.enabled` — whether a category is on for new chats. */
+/** `tools.category.<key>.enabled`. whether a category is on for new chats. */
 function categoryEnabledProperties(): UserProperty[] {
   return TOOL_CATEGORIES.map((category) => ({
     key: `tools.category.${category.key}.enabled`,
@@ -388,7 +388,7 @@ function categoryEnabledProperties(): UserProperty[] {
   }));
 }
 
-/** `tools.category.<key>.exposure` — how a category's tools reach the model. */
+/** `tools.category.<key>.exposure`. how a category's tools reach the model. */
 function categoryExposureProperties(): UserProperty[] {
   return TOOL_CATEGORIES.map((category) => ({
     key: `tools.category.${category.key}.exposure`,
@@ -419,7 +419,7 @@ function categoryExposureProperties(): UserProperty[] {
   }));
 }
 
-/** `tools.policy.<tool>` — the approval policy for one tool. */
+/** `tools.policy.<tool>`. the approval policy for one tool. */
 function toolPolicyProperties(): UserProperty[] {
   return ALL_TOOL_INFOS.map((tool) => ({
     key: `tools.policy.${tool.name}`,
@@ -448,7 +448,7 @@ function toolPolicyProperties(): UserProperty[] {
 }
 
 /**
- * `sidebar.<item>.hidden` — whether a navigation item is hidden.
+ * `sidebar.<item>.hidden`. whether a navigation item is hidden.
  *
  * Pinned items (Settings) are excluded: they cannot be hidden, so a property
  * for them would silently do nothing.

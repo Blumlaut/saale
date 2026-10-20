@@ -7,7 +7,7 @@ import { createChatSessionRow } from "@/lib/chat/create-session";
 import { getActiveSessions } from "@/lib/redis";
 
 /**
- * GET /api/chat/sessions — List user's chat sessions
+ * GET /api/chat/sessions. List user's chat sessions
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -15,7 +15,7 @@ export async function GET() {
 
   const sessions = await prisma.chatSession.findMany({
     where: { userId: authResult.user.id },
-    // Sort by real chat activity (messages sent, title edited) — NOT
+    // Sort by real chat activity (messages sent, title edited). NOT
     // updatedAt, which is bumped by tool state and background jobs.
     orderBy: { lastActivityAt: "desc" },
     take: 50,
@@ -31,7 +31,7 @@ export async function GET() {
     },
   });
 
-  // Source of truth: Redis tracks active generations (ephemeral — cleared on crash).
+  // Source of truth: Redis tracks active generations (ephemeral. cleared on crash).
   const activeSessionIds = await getActiveSessions(authResult.user.id);
 
   return NextResponse.json({
@@ -50,7 +50,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/chat/sessions — Create a new chat session
+ * POST /api/chat/sessions. Create a new chat session
  */
 export async function POST(request: NextRequest) {
   const authResult = await requireSession();

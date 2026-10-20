@@ -94,7 +94,7 @@ function scopeUserId(scope: ProviderScope): string | null {
   return scope.kind === "global" ? null : scope.userId;
 }
 
-/** Decrypt one row into a credential. Never throws — a broken row reads as absent. */
+/** Decrypt one row into a credential. Never throws. a broken row reads as absent. */
 function decodeCredential(row: CredentialRow): Credential | undefined {
   const context = `provider ${row.provider}`;
 
@@ -119,7 +119,7 @@ function decodeCredential(row: CredentialRow): Credential | undefined {
 /**
  * The Pi credential store for one scope.
  *
- * Reads are served from a per-instance snapshot of the scope's rows — building
+ * Reads are served from a per-instance snapshot of the scope's rows. building
  * a model runtime asks for a credential once per provider, and that must not
  * become a query per provider. Writes go through `modify`/`delete` (the only
  * mutation paths Pi uses), which keep the snapshot in step.

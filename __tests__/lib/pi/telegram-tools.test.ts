@@ -52,7 +52,7 @@ describe("createTelegramTools", () => {
     expect(result.details).toEqual({ chatId: "119075844", label: "Jane" });
   });
 
-  it("never accepts a recipient — the tool has no chat parameter", () => {
+  it("never accepts a recipient  the tool has no chat parameter", () => {
     const tool = telegramTool();
     const parameters = tool.parameters as { properties?: Record<string, unknown> };
 
@@ -67,7 +67,7 @@ describe("createTelegramTools", () => {
     });
 
     // A returned error result would reach the model as a successful call, so the
-    // tool must throw — the agent loop flags it and keeps the reason.
+    // tool must throw  the agent loop flags it and keeps the reason.
     await expect(callExecute(telegramTool().execute, { message: "hi" })).rejects.toThrow(
       /No Telegram bot is connected/,
     );

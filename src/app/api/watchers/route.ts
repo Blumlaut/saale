@@ -11,7 +11,7 @@ import {
 } from "@/lib/watchers/manage";
 
 /**
- * GET /api/watchers — the user's script watchers.
+ * GET /api/watchers. the user's script watchers.
  */
 export async function GET() {
   const authResult = await requireSession();
@@ -27,12 +27,12 @@ export async function GET() {
 }
 
 /**
- * POST /api/watchers — create a watcher.
+ * POST /api/watchers. create a watcher.
  *
  * With `preview`, nothing is saved: the caller gets the consent list the script
  * would need, and with `run` the script is also executed once so the user can
  * see what it actually returns before committing a schedule to it. That is the
- * authoring loop, and it is the user's own hand on it — the API is the same act
+ * authoring loop, and it is the user's own hand on it. the API is the same act
  * of consent as the dialog they are looking at.
  */
 export async function POST(request: NextRequest) {

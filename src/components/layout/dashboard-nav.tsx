@@ -33,7 +33,7 @@ import { useTheme } from "next-themes";
 
 const adminNavItem = { href: "/admin/models", label: "Admin", icon: Shield };
 
-/* Console nav item — active state gets an accent fill + orange edge bar */
+/* Console nav item. active state gets an accent fill + orange edge bar */
 function navItemClass(active: boolean, extra = "") {
   return cn(
     "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
@@ -267,7 +267,7 @@ export function DashboardNav() {
                 </kbd>
               </Button>
 
-              {/* Search dropdown — rendered via portal to escape GlassPanel's overflow-hidden */}
+              {/* Search dropdown. rendered via portal to escape GlassPanel's overflow-hidden */}
               {searchOpen &&
                 searchPosition &&
                 createPortal(
@@ -338,7 +338,7 @@ export function DashboardNav() {
             </div>
           </div>
 
-          {/* Nav Items — order and visibility come from the user's layout */}
+          {/* Nav Items. order and visibility come from the user's layout */}
           <div className="space-y-0.5">
             {visibleItems.map((item) => {
               const Icon = SIDEBAR_NAV_ICONS[item.id];
@@ -356,7 +356,7 @@ export function DashboardNav() {
               );
             })}
 
-            {/* Admin link — shown only to admin users */}
+            {/* Admin link. shown only to admin users */}
             {isAdmin && (
               <Link
                 href={adminNavItem.href}
@@ -370,7 +370,7 @@ export function DashboardNav() {
         </GlassPanelContent>
       </GlassPanel>
 
-      {/* Console footer — version + theme toggle */}
+      {/* Console footer. version + theme toggle */}
       <div className="border-border/60 mt-4 border-t px-3 pt-3">
         <div className="flex items-center justify-between">
           <p className="console-label">

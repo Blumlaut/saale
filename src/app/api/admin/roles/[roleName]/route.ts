@@ -42,7 +42,7 @@ async function holders(roleName: string): Promise<number> {
 }
 
 /**
- * PATCH /api/admin/roles/[roleName] — edit a role's label, description or grants.
+ * PATCH /api/admin/roles/[roleName]. edit a role's label, description or grants.
  *
  * The name is the value stored on user records, so it never changes; the two
  * anchor roles (`admin`, `user`) cannot be edited at all.
@@ -98,7 +98,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   });
 }
 
-/** DELETE /api/admin/roles/[roleName] — remove an unused custom role. */
+/** DELETE /api/admin/roles/[roleName]. remove an unused custom role. */
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const authResult = await requirePermission("admin", "roles");
   if (!authResult.ok) return authResult.response;
@@ -116,7 +116,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   if (held > 0) {
     return NextResponse.json(
       {
-        error: `Still assigned to ${held} account${held === 1 ? "" : "s"} — move them to another role first`,
+        error: `Still assigned to ${held} account${held === 1 ? "" : "s"}. move them to another role first`,
       },
       { status: 409 },
     );

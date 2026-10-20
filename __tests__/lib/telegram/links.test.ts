@@ -314,7 +314,7 @@ describe("consumeLinkCode", () => {
     expect(fake.links).toHaveLength(1);
   });
 
-  it("is single-use — the same code cannot link twice", async () => {
+  it("is single-use  the same code cannot link twice", async () => {
     const { code } = await issueLinkCode(userId);
 
     const first = await consumeLinkCode({
@@ -434,7 +434,7 @@ describe("consumeLinkCode", () => {
       displayName: null,
     });
 
-    // Same Telegram account, different Saale user — refused, not stolen.
+    // Same Telegram account, different Saale user  refused, not stolen.
     const result = await consumeLinkCode({
       code: (await issueLinkCode(otherUserId)).code,
       telegramUserId,

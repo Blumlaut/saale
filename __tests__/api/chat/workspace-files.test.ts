@@ -74,7 +74,7 @@ describe("workspace file serving", () => {
   /**
    * The whole point: `report.pdf` keeps its path while an agent rewrites it, so
    * the download URL never changes. A long-lived `max-age` made the browser
-   * replay the first (pre-edit) bytes forever — the file had to be renamed to
+   * replay the first (pre-edit) bytes forever  the file had to be renamed to
    * be downloadable in its updated state.
    */
   it("serves the updated bytes from an unchanged URL, and 304s on unchanged content", async () => {
@@ -161,7 +161,7 @@ describe("workspace file serving", () => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "q3.pdf"), "%PDF-1.4");
 
-    // Preview stays inline — only `download=1` turns the response into a file
+    // Preview stays inline  only `download=1` turns the response into a file
     // the browser's download manager (and an installed PWA) will save.
     expect((await request("reports/q3.pdf")).headers.get("content-disposition")).toBeNull();
 

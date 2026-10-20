@@ -113,7 +113,7 @@ export function AiModelsTab({
     }
   }, []);
 
-  // Load ALL models (including disabled), with every provider's editability —
+  // Load ALL models (including disabled), with every provider's editability
   // a per-model capability is only settable where Saale defines the models.
   const loadAllModels = useCallback(async () => {
     try {
@@ -200,7 +200,7 @@ export function AiModelsTab({
    *
    * Written straight through rather than with the settings Save: this is model
    * metadata on the provider key (like the token limits), and what the toggle
-   * shows comes from the endpoint definition anyway — a pending edit would only
+   * shows comes from the endpoint definition anyway. a pending edit would only
    * show a badge that does not match what Pi will send.
    */
   const handleToggleVision = async (provider: string, modelId: string, vision: boolean) => {
@@ -473,7 +473,7 @@ export function AiModelsTab({
                                               variant="outline"
                                               size="xs"
                                               className="h-5 shrink-0 gap-1 rounded-full px-1.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400"
-                                              title="This model sees images — click to turn that off"
+                                              title="Toggle image support for this model"
                                               disabled={
                                                 savingVision === `${providerKey}:${model.id}`
                                               }

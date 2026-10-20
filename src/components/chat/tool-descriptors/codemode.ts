@@ -15,7 +15,7 @@ function toolLabel(name: string): string {
 
 /**
  * Codemode batches several tool calls into one script, and only the script is
- * declared to the model — so this card is the user's only view of what
+ * declared to the model. so this card is the user's only view of what
  * happened: which tools the script reached, the script itself, and its output.
  */
 export const codemodeDescriptor: ToolDescriptor = {

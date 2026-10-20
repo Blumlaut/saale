@@ -98,7 +98,7 @@ function renderTranscript(messages: Message[], compactActivity = true, isLoading
   );
 }
 
-/** The reasoning row's toggle — its label reports whether the turn is working. */
+/** The reasoning row's toggle  its label reports whether the turn is working. */
 function reasoningRow(): HTMLElement {
   return screen.getByRole("button", { name: /(Thought process|Thinking)/ });
 }
@@ -126,7 +126,7 @@ describe("compact activity", () => {
       step({ id: "a2", content: "Both machines are healthy." }),
     ]);
 
-    // One reasoning line and one counter — not a thinking block per step.
+    // One reasoning line and one counter  not a thinking block per step.
     expect(screen.getByText("Thought process:")).toBeInTheDocument();
     expect(screen.getByText(/The search yielded three candidate pages/)).toBeInTheDocument();
     expect(screen.getByText("Used 2 tools")).toBeInTheDocument();

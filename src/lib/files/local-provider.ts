@@ -1,15 +1,15 @@
 /**
  * A workspace living in the app's own uploads volume.
  *
- * This is the fallback when Open Terminal is not configured — the same directory
- * the chat upload and `show_file` routes use — so a deployment without the
+ * This is the fallback when Open Terminal is not configured. the same directory
+ * the chat upload and `show_file` routes use. so a deployment without the
  * terminal container still gets a working file browser for its users.
  *
  * The path guard alone is not enough here. It is textual, so a symlink *inside*
  * the volume pointing at `/etc` would resolve inside the root and then be
  * followed by the kernel. Where a sandbox account is protected by its own
  * permissions, this backend runs as the app's own user, so every path is
- * checked again against the *real* root after `realpath` — including the nearest
+ * checked again against the *real* root after `realpath`. including the nearest
  * existing ancestor of a path that does not exist yet (an upload destination).
  *
  * The reads below carry `turbopackIgnore` comments to opt out of build-time
@@ -83,7 +83,7 @@ export function createLocalFileProvider(options: { root: string }): FileProvider
       // The root is created on demand by `resolveReal`, so listing a workspace
       // that was never written to yields an empty folder. A *sub*directory that
       // is missing stays an ENOENT, which the route turns into the same 404 the
-      // terminal backend produces — the two must not disagree about a folder
+      // terminal backend produces. the two must not disagree about a folder
       // that an agent deleted.
       const realDir = await resolveReal(dir);
 

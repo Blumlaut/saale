@@ -23,7 +23,7 @@ const SIDEBAR_NAV_URL = "/api/settings/sidebar-nav";
 interface SidebarNavContextValue {
   /** Every item with its visibility, in display order. */
   entries: SidebarNavEntry[];
-  /** Visible items only, in display order — what the nav renders. */
+  /** Visible items only, in display order. what the nav renders. */
   visibleItems: SidebarNavItem[];
   /** True until the stored layout has been loaded. */
   loading: boolean;
@@ -32,7 +32,7 @@ interface SidebarNavContextValue {
   error: string | null;
   /** Persist a layout. Applied optimistically and rolled back on failure. */
   save: (entries: SidebarNavEntry[]) => Promise<void>;
-  /** Clear the stored layout — default order, everything visible. */
+  /** Clear the stored layout. default order, everything visible. */
   reset: () => Promise<void>;
 }
 
@@ -48,7 +48,7 @@ export function SidebarNavProvider({ children }: { children: React.ReactNode }) 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Saves run one after another, and only the newest one may adopt the server's
-  // answer — otherwise a slow earlier response would undo a later layout.
+  // answer. otherwise a slow earlier response would undo a later layout.
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const saveSeq = useRef(0);
   const pendingSaves = useRef(0);

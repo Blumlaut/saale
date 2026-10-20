@@ -63,7 +63,7 @@ describe("POST /api/chat/sessions/[sessionId]/stop", () => {
 
   it("pauses the send queue while aborting", async () => {
     // Messages queued during the cancelled run must not start sending the
-    // moment the abort lands — Stop means "nothing more until I say so".
+    // moment the abort lands  Stop means "nothing more until I say so".
     await stopRequest();
 
     expect(mockHoldSendQueue).toHaveBeenCalledWith(SESSION_ID);

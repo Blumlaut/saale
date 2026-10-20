@@ -12,7 +12,7 @@ export interface QuoteInsertion {
   cursor: number;
 }
 
-/** Build the blockquote text for a selection — `> ` per line, `>` for blanks. */
+/** Build the blockquote text for a selection. `> ` per line, `>` for blanks. */
 export function buildQuoteBlock(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";

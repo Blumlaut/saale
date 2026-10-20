@@ -20,8 +20,8 @@ import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provide
 /**
  * A tool call that finished, as delivery detection needs to see it.
  *
- * `structured` is the tool's `structuredContent` — the value it declared with an
- * `outputSchema` — not the text the model reads.
+ * `structured` is the tool's `structuredContent`. the value it declared with an
+ * `outputSchema`. not the text the model reads.
  */
 export interface CompletedToolCall {
   name: string;
@@ -43,7 +43,7 @@ export interface AgentOutput {
   /** Optional: signal that the agent is thinking/working. */
   typing?(): void;
   /**
-   * Observe every tool call as it finishes — including calls made from a codemode
+   * Observe every tool call as it finishes. including calls made from a codemode
    * script and turns that produced no text, which never reach `send`.
    *
    * This is how a handler that can also be reached through a tool notices the
@@ -131,8 +131,8 @@ function normalizeToolResult(result: unknown): string {
 }
 
 /**
- * The structured result of a tool call — what a tool declaring an `outputSchema`
- * computed — as opposed to the text the model reads.
+ * The structured result of a tool call. what a tool declaring an `outputSchema`
+ * computed. as opposed to the text the model reads.
  */
 function extractStructuredContent(result: unknown): unknown {
   if (typeof result !== "object" || result === null) return undefined;
@@ -270,7 +270,7 @@ export async function executeAgentRun(
   const TIMEOUT_MS = 10 * 60_000; // idle window, not a total-duration cap
 
   return new Promise((resolve, reject) => {
-    // Idle timeout — fires only if the session goes completely silent
+    // Idle timeout. fires only if the session goes completely silent
     // (hung model, stuck tool). Every agent event resets the window, so an
     // actively working agent can run longer than the idle window.
     const idleTimeout = createAgentIdleTimeout({
@@ -291,8 +291,8 @@ export async function executeAgentRun(
     const pendingPersists = new Set<Promise<void>>();
 
     /**
-     * Outcome of the last finished attempt. A provider failure does not throw —
-     * it ends the assistant message with stopReason "error" — and an overflow
+     * Outcome of the last finished attempt. A provider failure does not throw
+     * it ends the assistant message with stopReason "error". and an overflow
      * failure reports `willRetry: false` while the SDK compacts and continues,
      * so the error alone does not mean the run failed. The text decides.
      */
@@ -331,7 +331,7 @@ export async function executeAgentRun(
     };
 
     const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-      // The handler writes to the DB, so its rejections must be handled here —
+      // The handler writes to the DB, so its rejections must be handled here
       // a synchronous try/catch cannot see them.
       const persisted = handleAgentEvent(event, runId, state, output).catch((err) => {
         console.error(`[agent-job:${runId}] Failed to persist agent event:`, err);
@@ -340,7 +340,7 @@ export async function executeAgentRun(
       void persisted.finally(() => pendingPersists.delete(persisted));
 
       // Record what this attempt produced. `agent_end` fires per attempt, so
-      // this is overwritten by whatever came after — a run recovered from an
+      // this is overwritten by whatever came after. a run recovered from an
       // overflow reports the continuation's text, not the first failure.
       if (event.type === "agent_end" && !event.willRetry) {
         const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant") as
@@ -349,10 +349,10 @@ export async function executeAgentRun(
         lastAttemptText = lastAssistant ? extractText(lastAssistant.content) : "";
       }
 
-      // `agent_settled` — emitted after retries and post-run compaction — is
+      // `agent_settled`. emitted after retries and post-run compaction. is
       // the only point at which the run is truly over. `agent_end` fires once
       // per attempt, so resolving there would mark a job completed while Pi is
-      // still working — and any later rejection would be a no-op on an
+      // still working. and any later rejection would be a no-op on an
       // already-settled promise.
       if (event.type === "agent_settled") {
         settle();
@@ -366,7 +366,7 @@ export async function executeAgentRun(
       }
     });
 
-    // Send the prompt. session.prompt() — not session.agent.prompt() — runs the
+    // Send the prompt. session.prompt(). not session.agent.prompt(). runs the
     // SDK's post-run processing (retry, auto-compaction, agent_settled), which
     // is what makes `agent_settled` above reachable at all.
     session.prompt(definition.prompt, { expandPromptTemplates: false }).catch((err) => {
@@ -455,7 +455,7 @@ async function handleAgentEvent(
       }
 
       // Route output to external channel. Awaited so a delivery failure is
-      // recorded on the run before it settles — the turn's persist promise is
+      // recorded on the run before it settles. the turn's persist promise is
       // tracked, and `finish()` drains those before resolving.
       if (output && state.currentText.trim()) {
         const meta: { toolCalls?: unknown[] } = {};

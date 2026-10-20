@@ -2,7 +2,7 @@
  * Running one watcher tick: the script in the codemode sandbox, with no model
  * involved.
  *
- * The sandbox is the same one `codemode` uses in a chat (`CodemodeSandbox` —
+ * The sandbox is the same one `codemode` uses in a chat (`CodemodeSandbox`
  * QuickJS in a worker thread, no timers, no `fetch`, no `require`), so a script
  * written in a conversation runs here unchanged: it sees `tools.<name>(args)`,
  * `text()`, `console.*`, `store()`/`load()`, the discovery helpers
@@ -40,7 +40,7 @@ export interface WatcherScriptResult {
   ok: boolean;
   /** The script's `return` value. `undefined` means it declined the `return`. */
   value: unknown;
-  /** `text()` and `console.*` output, joined — the tick log's readable part. */
+  /** `text()` and `console.*` output, joined. the tick log's readable part. */
   output: string;
   /** How many tool calls the script made. */
   callCount: number;
@@ -62,8 +62,8 @@ function resultText(content: readonly { type: string; text?: string }[]): string
 /**
  * Turn Saale's tools into sandbox tools.
  *
- * The set is already decided — `watcherToolAccess` is the one place that answers
- * what a script may reach, `codemode` included — so nothing is filtered here.
+ * The set is already decided. `watcherToolAccess` is the one place that answers
+ * what a script may reach, `codemode` included. so nothing is filtered here.
  *
  * A call resolves exactly the way Pi's own codemode bridge resolves it
  * (`toScriptValue` in the codemode extension): a tool that declares an
@@ -73,9 +73,9 @@ function resultText(content: readonly { type: string; text?: string }[]): string
  *
  * The rule matters more here than in a chat: the text carries UI metadata and an
  * echo of the call's own arguments, so a script that had only the text would
- * match a marker against its own query — which is how a watcher fires early.
+ * match a marker against its own query. which is how a watcher fires early.
  *
- * `ctx` is left undefined. No tool dereferences it — the two that accept it
+ * `ctx` is left undefined. No tool dereferences it. the two that accept it
  * merely forward it to Pi's built-in read/edit, which read `ctx?.cwd` and
  * `ctx?.model` through optional chaining and fall back to their own defaults.
  */
@@ -176,7 +176,7 @@ export async function runWatcherScript(options: {
       storeWrites: result.storeWrites,
     };
   } catch (err) {
-    // The sandbox rejects only for a failure outside the script's control —
+    // The sandbox rejects only for a failure outside the script's control
     // a missing worker or wasm file. That is worth surfacing as a real error.
     console.error("Watcher sandbox failed to start:", err);
     return {
@@ -196,7 +196,7 @@ export async function runWatcherScript(options: {
 /**
  * Whether a script's return value is a report worth waking the agent for.
  *
- * `undefined`, `null` and `false` mean "nothing changed" — the common case, and
+ * `undefined`, `null` and `false` mean "nothing changed". the common case, and
  * the whole reason a tick is cheap. Anything else is handed to the agent, so a
  * script reports by returning something.
  */

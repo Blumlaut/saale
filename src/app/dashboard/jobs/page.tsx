@@ -93,7 +93,7 @@ export default function JobsPage() {
 
   return (
     <Page>
-      {/* Tabs — strip pinned, content scrolls internally */}
+      {/* Tabs. strip pinned, content scrolls internally */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center justify-between gap-2">
           <PageTabStrip className="min-w-0 flex-1">
@@ -148,7 +148,7 @@ export default function JobsPage() {
           )}
         </div>
 
-        {/* Agent Jobs tab — the only scroll region below the strip */}
+        {/* Agent Jobs tab. the only scroll region below the strip */}
         <TabsContent value="agents" className="mt-4 min-h-0 flex-1 overflow-y-auto">
           <AgentJobList
             key={agentRefreshKey}

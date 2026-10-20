@@ -75,7 +75,7 @@ describe("WatcherList chat link", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open chat Trip planning" }));
 
-    // Selection loads the tick history from a second request — none happened.
+    // Selection loads the tick history from a second request  none happened.
     expect(mockFetchJson).toHaveBeenCalledTimes(1);
   });
 

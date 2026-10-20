@@ -9,7 +9,7 @@ import { TELEGRAM_BOT_ID } from "./bot";
  * The link is the *only* thing that maps an incoming Telegram message to a
  * Saale account, so it is deliberately narrow: one Telegram identity per Saale
  * user (`userId` unique) and one Saale user per Telegram identity
- * (`telegramUserId` unique). Nothing carried by a message can widen it — a
+ * (`telegramUserId` unique). Nothing carried by a message can widen it. a
  * sender either matches a link or is refused.
  *
  * A link is established from the Saale side, never from Telegram:
@@ -109,7 +109,7 @@ async function bindLink(
 /**
  * Mint a single-use link code for a user.
  *
- * The plaintext is returned once and never stored — only its hash is, so a
+ * The plaintext is returned once and never stored. only its hash is, so a
  * database read cannot be turned into a working link.
  */
 export async function issueLinkCode(userId: string): Promise<{ code: string; expiresAt: Date }> {
@@ -132,7 +132,7 @@ export async function issueLinkCode(userId: string): Promise<{ code: string; exp
 /**
  * Redeem a link code sent to the bot, binding the sender's Telegram account.
  *
- * The code — not the message — decides which Saale user is linked, which is
+ * The code. not the message. decides which Saale user is linked, which is
  * what keeps a shared bot from being a shared account.
  */
 export async function consumeLinkCode(params: {
@@ -180,7 +180,7 @@ export async function consumeLinkCode(params: {
  * Bind a Telegram identity a login proved control of.
  *
  * Telegram's OpenID Connect flow proves the same thing a redeemed link code
- * does — control of that Telegram account — so it writes the same link, which
+ * does. control of that Telegram account. so it writes the same link, which
  * is what lets a login be used from either side: link once in Settings and you
  * can sign in with Telegram, sign in with Telegram and the bot already talks to
  * your account.
@@ -215,7 +215,7 @@ export async function getLinkByUserId(userId: string): Promise<TelegramLinkInfo 
  * The link owned by a Telegram identity.
  *
  * This is the lookup every inbound path starts from, so an unlinked sender
- * resolves to null and is refused — there is no fallback to another account.
+ * resolves to null and is refused. there is no fallback to another account.
  */
 export async function getLinkByTelegramUserId(
   telegramUserId: bigint,
@@ -227,7 +227,7 @@ export async function getLinkByTelegramUserId(
  * Remove a user's link and any code they still hold.
  *
  * The linked chat is kept on the bot's side; nothing is sent to Telegram, so
- * unlinking is silent — which is what someone revoking access usually wants.
+ * unlinking is silent. which is what someone revoking access usually wants.
  */
 export async function unlinkUser(userId: string): Promise<boolean> {
   const [, removed] = await prisma.$transaction([

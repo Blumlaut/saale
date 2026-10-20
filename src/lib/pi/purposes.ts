@@ -18,7 +18,7 @@ export interface ModelPurpose {
 
 /**
  * Registry of all model purposes.
- * Add new purposes here — the settings UI and model resolution scale automatically.
+ * Add new purposes here. the settings UI and model resolution scale automatically.
  */
 export const MODEL_PURPOSES: Record<string, ModelPurpose> = {
   chat: {

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import type { ToolStatus, ToolStatusTone } from "./tool-status";
 
-/** Badge tone per status — the only place a tool status is coloured. */
+/** Badge tone per status. the only place a tool status is coloured. */
 const TONE_CLASS: Record<ToolStatusTone, string> = {
   running: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
   success: "bg-green-500/10 text-green-600 dark:text-green-400",
@@ -21,8 +21,8 @@ const TONE_ICON: Record<ToolStatusTone, typeof CheckCircle> = {
 /**
  * The status badge every tool card shares, plus the share page's redacted card.
  *
- * Kept out of the card shell so the redacted card — which renders no card at
- * all, only a name and a summary — can use the same badge without pulling in
+ * Kept out of the card shell so the redacted card. which renders no card at
+ * all, only a name and a summary. can use the same badge without pulling in
  * the transcript's renderer.
  */
 export function ToolStatusBadge({ status }: { status: ToolStatus }) {

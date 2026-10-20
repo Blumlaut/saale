@@ -4,13 +4,13 @@
  * A chat's scripts run under Pi's `codemode` extension, which registers
  * `searchTools()`, `describeTool()` and `describeNamespace()` itself. A watcher
  * runs in Saale's own sandbox (`watchers/runner.ts`), with no agent loop behind
- * it, so the same three helpers have to be provided here — a script written in a
+ * it, so the same three helpers have to be provided here. a script written in a
  * conversation and moved to a watcher must see one surface, not two.
  *
  * Pi exports neither its ranker nor its search document, so the ranking below is
  * a port of its `extensions/tool-search/tool.js` (BM25, with the same tokenizer,
  * stop words and stemming), and a tool's text comes from Pi's own
- * `renderToolSample()` — the same text a chat's `ALL_TOOLS` shows for it. Both
+ * `renderToolSample()`. the same text a chat's `ALL_TOOLS` shows for it. Both
  * sandboxes therefore answer one query with the same list, in the same order;
  * keep them in step, because a query that ranks a tool first in a chat has to
  * rank it first here too.
@@ -197,7 +197,7 @@ function isNamespaceName(
  * sandbox globals: same names, arguments and results as the ones Pi puts in a
  * chat's codemode sandbox.
  *
- * `samples` is the per-tool text to hand back — build it with {@link toolSample}
+ * `samples` is the per-tool text to hand back. build it with {@link toolSample}
  * so a script reads the same text it would in a chat.
  */
 export function createDiscoveryGlobals(

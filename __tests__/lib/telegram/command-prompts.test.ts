@@ -44,7 +44,7 @@ import { handleCommandPromptCallback, handleTelegramCommand } from "@/lib/telegr
 const USER_ID = "user-1";
 const OTHER_USER_ID = "user-2";
 const CHAT_ID = BigInt(4242);
-/** The Telegram account pressing the buttons — what the link resolves from. */
+/** The Telegram account pressing the buttons  what the link resolves from. */
 const PRESSER = BigInt(4242);
 const CALLBACK_MESSAGE = { chat: { id: 4242 }, message_id: 99 };
 

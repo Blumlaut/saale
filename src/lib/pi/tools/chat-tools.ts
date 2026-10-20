@@ -135,7 +135,7 @@ export function createChatSearchTool(userId: string) {
 
 /**
  * Create the chat tools: history search plus the two write operations on a
- * chat — respond in it, and delete it.
+ * chat. respond in it, and delete it.
  *
  * The write tools default to the `ask` approval policy (see `tool-infos.ts`):
  * one starts an agent run in another conversation, the other destroys one.
@@ -156,8 +156,8 @@ export function createChatTools(userId: string, sessionId: string): ToolDefiniti
  * Respond in another chat: post a message there as the user and run that
  * chat's agent, returning its reply.
  *
- * The run happens server-side (see `respond-in-chat.ts`) — it does not need a
- * client to be connected — and streams to any client that has the chat open.
+ * The run happens server-side (see `respond-in-chat.ts`). it does not need a
+ * client to be connected. and streams to any client that has the chat open.
  * The import is dynamic on purpose: the run builder reaches back through
  * `chat-session-factory` into this module (tools are resolved while a session
  * is built), so a static import would close a module cycle at startup.
@@ -169,7 +169,7 @@ export function createChatRespondTool(userId: string, callerSessionId: string) {
     description:
       "Send a message into one of the user's other chats as the user, then " +
       "wait for that chat's assistant to reply. Use the sessionId from " +
-      "chat_search. Runs that chat's agent — use it to hand work to another " +
+      "chat_search. Runs that chat's agent. use it to hand work to another " +
       "conversation or to keep a discussion going there.",
     parameters: Type.Object({
       sessionId: Type.String({
@@ -209,7 +209,7 @@ export function createChatRespondTool(userId: string, callerSessionId: string) {
 
 /**
  * Start a new chat and take its first reply: create the chat, post the message
- * as the user, and run its agent — the same server-side run as `chat_respond`.
+ * as the user, and run its agent. the same server-side run as `chat_respond`.
  *
  * Both imports are dynamic for the same reason as `chat_respond`'s.
  */
@@ -253,7 +253,7 @@ export function createChatCreateTool(userId: string, callerSessionId: string) {
           reply: result.reply,
         },
         text:
-          `Started chat "${result.title}" (${result.sessionId}) — it replied:\n\n` +
+          `Started chat "${result.title}" (${result.sessionId}). it replied:\n\n` +
           (result.reply || "(no reply)"),
         details: { sessionId: result.sessionId, title: result.title, reply: result.reply },
       };
@@ -303,7 +303,7 @@ export function createShowFileTool(userId: string, sessionId: string) {
     name: SHOW_FILE_TOOL_NAME,
     label: "Show File",
     description:
-      "Send a file from the workspace to the user in the chat — the only way they can receive one, " +
+      "Send a file from the workspace to the user in the chat. the only way they can receive one, " +
       "since they have no access to the workspace filesystem themselves. Send anything they asked " +
       "for, including a file you just created or changed. Images are shown inline; every other " +
       "type, known or not, is delivered as-is. Path is relative to the workspace root. " +

@@ -32,7 +32,7 @@ export interface FileBrowserController {
   upload: (files: File[], options?: { overwrite?: boolean }) => Promise<boolean>;
   downloadUrl: (entry: FileEntry) => string;
   zipUrl: () => string;
-  /** Archive URL for an explicit set of rows — used by a folder's row menu. */
+  /** Archive URL for an explicit set of rows. used by a folder's row menu. */
   zipUrlFor: (entries: FileEntry[]) => string;
 }
 
@@ -49,7 +49,7 @@ export interface UseFileBrowserOptions {
  * number and only the newest may write state, so a slow listing cannot replace
  * a folder the user has already left. And navigation keeps the previous listing
  * on screen while the next one loads (`refreshing`) instead of blanking the
- * panel — a folder switch that flashes empty reads as a failure.
+ * panel. a folder switch that flashes empty reads as a failure.
  */
 /** What the upload endpoint reports back. */
 type UploadSkipped = { name: string; reason: "exists" | "invalid-name" | "too-large" };
@@ -110,7 +110,7 @@ export function useFileBrowser({ target, onError }: UseFileBrowserOptions): File
 
   const sequence = useRef(0);
   const anchor = useRef<number | null>(null);
-  /** The workspace root, for the recovery path — read from a ref so a fetch
+  /** The workspace root, for the recovery path. read from a ref so a fetch
    * effect never depends on the listing it is about to replace. */
   const root = useRef("");
   /** The path of the newest request, so a stale reply is discarded. */

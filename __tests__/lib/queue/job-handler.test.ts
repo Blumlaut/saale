@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * `dispatchAiJob` is the one-shot AI path for queue jobs (email classification,
  * spam filtering, task extraction, …). It used to resolve on `agent_end`, and a
- * provider failure does not throw — it ends the assistant message with
+ * provider failure does not throw  it ends the assistant message with
  * stopReason "error". A failed job therefore resolved the empty string, the run
  * was marked completed, and callers silently no-op'd (`JSON.parse("")` → catch →
  * no results).
@@ -184,7 +184,7 @@ describe("dispatchAiJob", () => {
     start();
     await waitForSession();
     // agent.prompt() bypasses the session's preflight compaction, retry and
-    // overflow recovery — and never emits agent_settled, so a job would hang.
+    // overflow recovery  and never emits agent_settled, so a job would hang.
     expect(fake.session.prompt).toHaveBeenCalledWith("classify this email", {
       expandPromptTemplates: false,
     });

@@ -27,7 +27,7 @@ const PROBE_TIMEOUT = 2_500;
 /**
  * Wall-clock budget for the whole lookup (SRV + probes + MX fallback).
  * Probes run in parallel, so a full miss costs about one probe timeout per
- * phase — this is the backstop that keeps a hostile/blackholed network from
+ * phase. this is the backstop that keeps a hostile/blackholed network from
  * hanging the "Detecting server settings…" spinner for minutes.
  */
 const DISCOVERY_DEADLINE = 6_000;
@@ -42,7 +42,7 @@ function hostPatterns(domain: string): string[] {
 
 /**
  * Implicit-TLS ports. Everything else (143, 587, 25) starts plain and upgrades
- * with STARTTLS — marking those `secure: true` makes the client hang on a
+ * with STARTTLS. marking those `secure: true` makes the client hang on a
  * handshake the server never speaks.
  */
 function secureForPort(port: number): boolean {
@@ -210,7 +210,7 @@ async function probeSmtp(host: string, timeoutMs: number): Promise<ServerConfig 
   return null;
 }
 
-/** Injectable seams — how the probe reaches the network. */
+/** Injectable seams. how the probe reaches the network. */
 export interface DiscoveryDeps {
   lookupSrv(services: string[], domain: string): Promise<{ host: string; port: number } | null>;
   resolveMx(domain: string): Promise<Array<{ exchange: string; priority: number }>>;
@@ -256,7 +256,7 @@ function withDeadline<T>(promise: Promise<T>, budgetMs: number, fallback: T): Pr
 
 /**
  * Probe every host pattern concurrently and return the first hit in priority
- * order — `imap.<domain>` beats `mail.<domain>` regardless of which answered
+ * order. `imap.<domain>` beats `mail.<domain>` regardless of which answered
  * first. A single failing host is logged and skipped; it must not sink the
  * protocol while another host pattern may still answer.
  */
@@ -281,7 +281,7 @@ async function probeHosts(
 /**
  * Probe a protocol across the candidate hosts, bounded by the remaining budget.
  * The probes time out on their own, but enforcing the deadline here keeps
- * `autodiscover`'s promise — it never runs longer than `deadlineMs` —
+ * `autodiscover`'s promise. it never runs longer than `deadlineMs`
  * independent of how a probe behaves.
  */
 function probePhase(
@@ -296,9 +296,9 @@ function probePhase(
  * Autodiscover IMAP/SMTP settings for an email address.
  *
  * Strategy (zero hardcoded provider configs):
- * 1. DNS SRV records (_imaps/_imap, _submissions/_submission) — RFC 6186 / RFC 8314
+ * 1. DNS SRV records (_imaps/_imap, _submissions/_submission). RFC 6186 / RFC 8314
  * 2. TCP probe imap.<domain>, smtp.<domain>, mail.<domain> with banner verification
- * 3. MX fallback — extract base domain from MX records, probe those patterns
+ * 3. MX fallback. extract base domain from MX records, probe those patterns
  *
  * Every phase runs its connections in parallel and is bounded by
  * `deadlineMs` overall, so a domain that blackholes traffic fails fast instead

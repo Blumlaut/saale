@@ -2,14 +2,14 @@
  * HTTP details shared by the file endpoints.
  *
  * Lifted from the single-file workspace route so a download, a preview and a zip
- * answer the same way — in particular the same ETag semantics: a workspace file
+ * answer the same way. in particular the same ETag semantics: a workspace file
  * is mutable but its URL is not, so a cached response must be revalidated or
  * Download hands back whatever bytes were fetched first.
  */
 
 import { createHash } from "crypto";
 
-/** A strong ETag over a payload's bytes — the only stable identity it has. */
+/** A strong ETag over a payload's bytes. the only stable identity it has. */
 export function contentEtag(payload: Uint8Array): string {
   return `"${createHash("sha1").update(payload).digest("hex")}"`;
 }
