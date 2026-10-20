@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
-import { ImportanceStars } from "./importance-stars";
 
 interface MemoryFormProps {
   title: string;
@@ -23,8 +22,6 @@ interface MemoryFormProps {
   collection: string;
   onCollectionChange: (value: string) => void;
   collectionOptions: string[];
-  importance: number;
-  onImportanceChange: (value: number) => void;
   tags: string[];
   onTagsChange: (tags: string[]) => void;
   tagInput: string;
@@ -39,8 +36,6 @@ export function MemoryForm({
   collection,
   onCollectionChange,
   collectionOptions,
-  importance,
-  onImportanceChange,
   tags,
   onTagsChange,
   tagInput,
@@ -79,27 +74,20 @@ export function MemoryForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Collection</Label>
-          <Select value={collection} onValueChange={(v) => v && onCollectionChange(v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {collectionOptions.map((name) => (
-                <SelectItem key={name} value={name}>
-                  <span className="capitalize">{name}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Importance</Label>
-          <ImportanceStars value={importance} onChange={onImportanceChange} />
-        </div>
+      <div className="space-y-2">
+        <Label>Collection</Label>
+        <Select value={collection} onValueChange={(v) => v && onCollectionChange(v)}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {collectionOptions.map((name) => (
+              <SelectItem key={name} value={name}>
+                <span className="capitalize">{name}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

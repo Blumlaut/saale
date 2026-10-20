@@ -214,12 +214,11 @@ describe("job field definitions", () => {
     expect(keys).toContain("modelId");
   });
 
-  it("memory_pruning has unusedDays and lowImportanceDays fields", () => {
+  it("memory_pruning has an unusedDays field", () => {
     const schema = getJobSchema("memory_pruning");
     expect(schema).toBeDefined();
     const keys = schema!.fields.map((f) => f.key);
     expect(keys).toContain("unusedDays");
-    expect(keys).toContain("lowImportanceDays");
   });
 
   it("memory_pruning fields have min/max constraints", () => {
@@ -228,12 +227,6 @@ describe("job field definitions", () => {
     expect(unusedDays).toMatchObject({
       type: "number",
       min: 30,
-      max: 365,
-    });
-    const lowImportanceDays = schema!.fields.find((f) => f.key === "lowImportanceDays");
-    expect(lowImportanceDays).toMatchObject({
-      type: "number",
-      min: 60,
       max: 365,
     });
   });

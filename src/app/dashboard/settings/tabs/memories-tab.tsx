@@ -45,12 +45,11 @@ import {
   Pencil,
   MoreVertical,
   Tag,
-  Star,
+  Users,
   X,
   Layers,
   Database,
 } from "lucide-react";
-import { ImportanceStars } from "../components/importance-stars";
 import { MemoryForm } from "../components/memory-form";
 
 interface Memory {
@@ -59,7 +58,6 @@ interface Memory {
   title: string;
   content: string;
   tags: string[];
-  importance: number;
   source: string | null;
   accessCount: number;
   createdAt: string;
@@ -69,7 +67,6 @@ interface Memory {
 interface Collection {
   name: string;
   count: number;
-  avgImportance: number;
   topTags: string[];
 }
 
@@ -84,7 +81,7 @@ const collectionColors: Record<string, string> = {
 const collectionIcons: Record<string, React.ReactNode> = {
   facts: <Database className="h-3.5 w-3.5" />,
   projects: <Layers className="h-3.5 w-3.5" />,
-  people: <Star className="h-3.5 w-3.5" />,
+  people: <Users className="h-3.5 w-3.5" />,
   preferences: <Tag className="h-3.5 w-3.5" />,
   decisions: <Brain className="h-3.5 w-3.5" />,
 };
@@ -109,7 +106,6 @@ export function MemoriesTab() {
   const [editContent, setEditContent] = useState("");
   const [editCollection, setEditCollection] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
-  const [editImportance, setEditImportance] = useState(5);
   const [editTagInput, setEditTagInput] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -119,7 +115,6 @@ export function MemoriesTab() {
   const [newContent, setNewContent] = useState("");
   const [newCollection, setNewCollection] = useState("facts");
   const [newTags, setNewTags] = useState<string[]>([]);
-  const [newImportance, setNewImportance] = useState(5);
   const [newTagInput, setNewTagInput] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -185,7 +180,6 @@ export function MemoriesTab() {
     setEditContent(memory.content);
     setEditCollection(memory.collection);
     setEditTags([...memory.tags]);
-    setEditImportance(memory.importance);
     setEditTagInput("");
     setEditOpen(true);
   };
@@ -200,7 +194,6 @@ export function MemoriesTab() {
         content: editContent,
         collection: editCollection,
         tags: editTags,
-        importance: editImportance,
       });
       setEditOpen(false);
       await loadData();
@@ -220,14 +213,12 @@ export function MemoriesTab() {
         content: newContent.trim(),
         collection: newCollection,
         tags: newTags,
-        importance: newImportance,
       });
       setCreateOpen(false);
       setNewTitle("");
       setNewContent("");
       setNewCollection("facts");
       setNewTags([]);
-      setNewImportance(5);
       setNewTagInput("");
       await loadData();
     } catch {
@@ -455,7 +446,6 @@ export function MemoriesTab() {
                           ))}
                         </div>
                       )}
-                      <ImportanceStars value={memory.importance} readonly />
                       <span className="text-muted-foreground text-[10px]">
                         {new Date(memory.updatedAt).toLocaleDateString()}
                       </span>
@@ -515,8 +505,6 @@ export function MemoriesTab() {
             collection={editCollection}
             onCollectionChange={(v) => v && setEditCollection(v)}
             collectionOptions={allCollectionNames}
-            importance={editImportance}
-            onImportanceChange={setEditImportance}
             tags={editTags}
             onTagsChange={setEditTags}
             tagInput={editTagInput}
@@ -554,8 +542,6 @@ export function MemoriesTab() {
             collection={newCollection}
             onCollectionChange={(v) => v && setNewCollection(v)}
             collectionOptions={defaultCollections}
-            importance={newImportance}
-            onImportanceChange={setNewImportance}
             tags={newTags}
             onTagsChange={setNewTags}
             tagInput={newTagInput}

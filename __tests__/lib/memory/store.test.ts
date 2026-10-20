@@ -13,7 +13,6 @@ vi.mock("@/lib/db", () => ({
 
 import * as db from "@/lib/db";
 import {
-  clampImportance,
   createMemory,
   deleteMemory,
   findMemoryByTitle,
@@ -34,7 +33,6 @@ function makeMemory(overrides = {}) {
     title: "User prefers dark mode",
     content: "The user prefers dark mode.",
     tags: ["ui"],
-    importance: 7,
     source: null,
     accessCount: 3,
     createdAt: new Date("2025-01-01T00:00:00.000Z"),
@@ -57,13 +55,6 @@ describe("memory store", () => {
       expect(normalizeTags([" UI ", "ui", "", "  ", "Work"])).toEqual(["ui", "work"]);
       expect(normalizeTags(undefined)).toEqual([]);
     });
-
-    it("clamps importance into 1-10 and rounds", () => {
-      expect(clampImportance(0)).toBe(1);
-      expect(clampImportance(11)).toBe(10);
-      expect(clampImportance(7.6)).toBe(8);
-      expect(clampImportance(Number.NaN)).toBe(5);
-    });
   });
 
   describe("serializeMemory", () => {
@@ -77,7 +68,6 @@ describe("memory store", () => {
         collection: "facts",
         title: "User prefers dark mode",
         tags: ["ui"],
-        importance: 7,
         source: null,
         accessCount: 3,
       });
@@ -93,7 +83,6 @@ describe("memory store", () => {
         title: "  Title  ",
         content: "  Body  ",
         tags: [" A ", "a"],
-        importance: 99,
       });
 
       expect(mockMemory.create).toHaveBeenCalledWith({
@@ -103,7 +92,6 @@ describe("memory store", () => {
           title: "Title",
           content: "Body",
           tags: ["a"],
-          importance: 10,
         },
       });
     });
@@ -149,11 +137,11 @@ describe("memory store", () => {
       mockMemory.findFirst.mockResolvedValue(makeMemory());
       mockMemory.update.mockResolvedValue(makeMemory({ title: "New" }));
 
-      await updateMemory("user-123", "mem-1", { title: " New ", importance: -3 });
+      await updateMemory("user-123", "mem-1", { title: " New " });
 
       expect(mockMemory.update).toHaveBeenCalledWith({
         where: { id: "mem-1", userId: "user-123" },
-        data: { title: "New", importance: 1 },
+        data: { title: "New" },
       });
     });
   });

@@ -339,7 +339,6 @@ async function mockMemories(page: Page) {
             title: MEMORY_TITLE,
             content: MEMORY_CONTENT,
             collection: "facts",
-            importance: 7,
             tags: ["e2e", "layout"],
             createdAt: NOW,
             updatedAt: NOW,
@@ -352,7 +351,7 @@ async function mockMemories(page: Page) {
   await page.route(/\/api\/memories\/collections(\?|$)/, (route) =>
     route.fulfill({
       json: {
-        collections: [{ name: "facts", count: 1, avgImportance: 7, topTags: ["e2e"] }],
+        collections: [{ name: "facts", count: 1, topTags: ["e2e"] }],
         total: 1,
       },
     }),
