@@ -104,15 +104,22 @@ describe("ThinkingSelector", () => {
   it("warns when a level the model lacks is selected", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
+      vi.fn().mockImplementation(async (url: string) => ({
         ok: true,
         status: 200,
-        json: async () => ({ levels: ["low", "high", "max"] }),
-      }),
+        json: async () =>
+          url.includes("level=")
+            ? { clampedLevel: "high" }
+            : { levels: ["low", "high", "max"], reasoning: true },
+      })),
     );
 
     renderSelector("medium");
 
-    await waitFor(() => expect(screen.getByText(/"medium" is not supported/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(/"medium" is not supported by this model and will be clamped to "high"/),
+      ).toBeInTheDocument(),
+    );
   });
 });
