@@ -56,7 +56,7 @@ export function ModelSidebar({
     <div className="w-full lg:w-[260px]">
       <div className="sticky top-6 space-y-5">
         {/* Purpose selector */}
-        <div className="space-y-2">
+        <div className="space-y-2 pt-3">
           <Label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Purpose
           </Label>
