@@ -19,24 +19,13 @@ export const fields = [
     min: 30,
     max: 365,
   },
-  {
-    key: "lowImportanceDays",
-    label: "Low importance threshold",
-    description: "Delete memories with importance < 3 older than this many days",
-    type: "number" as const,
-    default: 180,
-    min: 60,
-    max: 365,
-  },
 ];
 
 export async function handler(params: { config: Record<string, unknown>; userId: string }) {
   const { config, userId } = params;
   const unusedDays = (config.unusedDays as number) ?? 90;
-  const lowImportanceDays = (config.lowImportanceDays as number) ?? 180;
 
   const unusedCutoff = new Date(Date.now() - unusedDays * 24 * 60 * 60 * 1000);
-  const lowImportanceCutoff = new Date(Date.now() - lowImportanceDays * 24 * 60 * 60 * 1000);
 
   // Delete unused memories (0 accesses, older than threshold)
   const unusedDeleted = await prisma.memory.deleteMany({
@@ -44,15 +33,6 @@ export async function handler(params: { config: Record<string, unknown>; userId:
       userId,
       accessCount: 0,
       createdAt: { lt: unusedCutoff },
-    },
-  });
-
-  // Delete low-importance memories (importance < 3, older than threshold)
-  const lowImportanceDeleted = await prisma.memory.deleteMany({
-    where: {
-      userId,
-      importance: { lt: 3 },
-      createdAt: { lt: lowImportanceCutoff },
     },
   });
 
@@ -64,7 +44,6 @@ export async function handler(params: { config: Record<string, unknown>; userId:
 
   return JSON.stringify({
     unusedDeleted: unusedDeleted.count,
-    lowImportanceDeleted: lowImportanceDeleted.count,
-    totalDeleted: unusedDeleted.count + lowImportanceDeleted.count,
+    totalDeleted: unusedDeleted.count,
   });
 }

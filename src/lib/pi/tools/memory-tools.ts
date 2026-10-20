@@ -19,7 +19,6 @@ const memorySchema = Type.Object({
   title: Type.String(),
   content: Type.String(),
   tags: Type.Array(Type.String()),
-  importance: Type.Integer(),
   // Absent from search results: the full-text query does not select it.
   source: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   accessCount: Type.Integer(),
@@ -184,7 +183,6 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
           title: string;
           content: string;
           tags: string[];
-          importance: number;
           accessCount: number;
           createdAt: Date;
           updatedAt: Date;
@@ -198,7 +196,6 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
               title: string;
               content: string;
               tags: string[];
-              importance: number;
               accessCount: number;
               createdAt: Date;
               updatedAt: Date;
@@ -206,7 +203,7 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
             }>
           >(
             Prisma.sql`
-              SELECT id, collection, title, content, tags, importance, "accessCount", "createdAt", "updatedAt",
+              SELECT id, collection, title, content, tags, "accessCount", "createdAt", "updatedAt",
                      ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE("content", '')), plainto_tsquery('english', ${searchQuery})) AS rank
               FROM "Memory"
               WHERE "userId" = ${userId}
@@ -261,7 +258,6 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
               title: r.title,
               content: r.content,
               tags: r.tags,
-              importance: r.importance,
               accessCount: r.accessCount,
               createdAt: r.createdAt.toISOString(),
               updatedAt: r.updatedAt.toISOString(),
@@ -293,11 +289,6 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         tags: Type.Optional(
           Type.Array(Type.String({ description: "Free-form tag for retrieval." })),
         ),
-        importance: Type.Optional(
-          Type.Integer({
-            description: "1-10; explicit user statements are 7-10. Default: 5.",
-          }),
-        ),
       }),
       outputSchema: memoryCreateSchema,
       execute: async (_toolCallId, params) => {
@@ -327,7 +318,6 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
           title,
           content,
           tags: params.tags,
-          importance: params.importance,
         });
 
         return {
@@ -354,7 +344,6 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
         title: Type.Optional(Type.String({ description: "New title." })),
         content: Type.Optional(Type.String({ description: "Replacement content." })),
         tags: Type.Optional(Type.Array(Type.String({ description: "Replacement tag list." }))),
-        importance: Type.Optional(Type.Integer({ description: "1-10." })),
       }),
       outputSchema: memoryUpdateSchema,
       execute: async (_toolCallId, params) => {
@@ -363,7 +352,6 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
           title: params.title,
           content: params.content,
           tags: params.tags,
-          importance: params.importance,
         };
 
         if (Object.values(patch).every((value) => value === undefined)) {

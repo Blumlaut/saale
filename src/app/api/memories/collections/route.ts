@@ -15,7 +15,6 @@ export async function GET() {
     by: ["collection"],
     where: { userId: authResult.user.id },
     _count: { id: true },
-    _avg: { importance: true },
     orderBy: { _count: { id: "desc" } },
   });
 
@@ -35,7 +34,6 @@ export async function GET() {
       return {
         name: c.collection,
         count: c._count.id,
-        avgImportance: Math.round((c._avg.importance ?? 0) * 10) / 10,
         topTags: tagResults.map((t) => t.tag),
       };
     }),

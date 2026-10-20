@@ -5,19 +5,15 @@ import type { Memory, Prisma } from "@prisma/client";
  * Shared persistence for the memory store.
  *
  * The settings API routes and the AI memory tools write the same rows, so the
- * normalisation, clamping and user scoping live here rather than in each caller.
+ * normalisation and user scoping live here rather than in each caller.
  * Every read and write is scoped to `userId`.
  */
-
-/** Importance used when the caller does not supply one (matches the schema default). */
-export const DEFAULT_MEMORY_IMPORTANCE = 5;
 
 export interface MemoryDraft {
   collection: string;
   title: string;
   content: string;
   tags?: string[] | undefined;
-  importance?: number | undefined;
 }
 
 export interface MemoryPatch {
@@ -25,7 +21,6 @@ export interface MemoryPatch {
   title?: string | undefined;
   content?: string | undefined;
   tags?: string[] | undefined;
-  importance?: number | undefined;
 }
 
 export interface SerializedMemory {
@@ -34,7 +29,6 @@ export interface SerializedMemory {
   title: string;
   content: string;
   tags: string[];
-  importance: number;
   source: string | null;
   accessCount: number;
   createdAt: string;
@@ -57,12 +51,6 @@ export function normalizeTags(tags: string[] | undefined): string[] {
   return [...unique];
 }
 
-/** Keep importance inside the schema's documented 1–10 range. */
-export function clampImportance(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_MEMORY_IMPORTANCE;
-  return Math.min(10, Math.max(1, Math.round(value)));
-}
-
 /** The single shape a memory takes on the wire (routes and tools). */
 export function serializeMemory(memory: Memory): SerializedMemory {
   return {
@@ -71,7 +59,6 @@ export function serializeMemory(memory: Memory): SerializedMemory {
     title: memory.title,
     content: memory.content,
     tags: memory.tags,
-    importance: memory.importance,
     source: memory.source,
     accessCount: memory.accessCount,
     createdAt: memory.createdAt.toISOString(),
@@ -107,7 +94,6 @@ export async function createMemory(userId: string, draft: MemoryDraft): Promise<
       title: draft.title.trim(),
       content: draft.content.trim(),
       tags: normalizeTags(draft.tags),
-      importance: clampImportance(draft.importance ?? DEFAULT_MEMORY_IMPORTANCE),
     },
   });
 }
@@ -129,7 +115,6 @@ export async function updateMemory(
   if (patch.title !== undefined) data.title = patch.title.trim();
   if (patch.content !== undefined) data.content = patch.content.trim();
   if (patch.tags !== undefined) data.tags = normalizeTags(patch.tags);
-  if (patch.importance !== undefined) data.importance = clampImportance(patch.importance);
 
   // Nothing to change — skip the write rather than bumping updatedAt.
   if (Object.keys(data).length === 0) return existing;

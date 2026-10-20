@@ -120,10 +120,10 @@ export async function handler(params: {
     });
     const existingCategories = categoryResults.map((r) => r.collection);
 
-    // Fetch top existing memories for dedup context
+    // Fetch recent existing memories for dedup context
     const existingMemories = await prisma.memory.findMany({
       where: { userId },
-      orderBy: [{ importance: "desc" }, { updatedAt: "desc" }],
+      orderBy: { updatedAt: "desc" },
       take: maxExisting,
       select: {
         id: true,
@@ -131,7 +131,6 @@ export async function handler(params: {
         title: true,
         content: true,
         tags: true,
-        importance: true,
       },
     });
 
@@ -187,12 +186,11 @@ Categorization:
 Rules:
 - If you're unsure whether something is worth remembering, skip it
 - Only extract when the user explicitly states something about themselves or their work
-- Set importance 1-10: explicit user statements = 7-10, inferred = 3-5
 
 Output JSON:
 {
   "add": [
-    { "collection": "facts", "title": "...", "content": "...", "tags": ["..."], "importance": 7 }
+    { "collection": "facts", "title": "...", "content": "...", "tags": ["..."] }
   ],
   "remove": ["memory_id_1"],
   "summary": "updated running summary of the full conversation so far"
@@ -252,7 +250,6 @@ Output JSON:
           data: {
             content: bestMatch.content + "\n\n" + candidate.content,
             tags: Array.from(new Set([...bestMatch.tags, ...(candidate.tags ?? [])])),
-            importance: Math.max(bestMatch.importance, candidate.importance ?? 5),
           },
         });
         totalAdded++;
@@ -265,7 +262,6 @@ Output JSON:
             title: candidate.title,
             content: candidate.content,
             tags: candidate.tags ?? [],
-            importance: candidate.importance ?? 5,
             source: session.id,
           },
         });

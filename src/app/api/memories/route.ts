@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const [memories, total] = await Promise.all([
     prisma.memory.findMany({
       where,
-      orderBy: search ? [{ importance: "desc" }, { updatedAt: "desc" }] : { updatedAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       take: limit,
       skip: offset,
     }),
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
-  const { collection, title, content, tags, importance } = body;
+  const { collection, title, content, tags } = body;
 
   if (!collection || !title || !content) {
     return NextResponse.json(
@@ -75,7 +75,6 @@ export async function POST(request: NextRequest) {
     title,
     content,
     tags,
-    importance,
   });
 
   return NextResponse.json({ memory: serializeMemory(memory) });

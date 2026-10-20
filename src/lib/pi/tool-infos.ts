@@ -971,7 +971,6 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
     title: "Title",
     content: "Content",
     tags: "Tags",
-    importance: "Importance",
   },
   memory_update: {
     id: "Memory",
@@ -979,7 +978,6 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
     title: "Title",
     content: "Content",
     tags: "Tags",
-    importance: "Importance",
   },
   memory_delete: { id: "Memory" },
   settings_list: { key: "Setting" },

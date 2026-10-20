@@ -41,7 +41,6 @@ function makeMemory(overrides = {}) {
     title: "User prefers dark mode",
     content: "The user has expressed a preference for dark mode in the UI settings.",
     tags: ["preferences", "ui"],
-    importance: 7,
     source: null,
     accessCount: 3,
     createdAt: new Date("2025-01-01T00:00:00.000Z"),
@@ -312,7 +311,7 @@ describe("createMemoryTools", () => {
   });
 
   describe("memory_create", () => {
-    it("creates a memory and normalizes collection, tags and importance", async () => {
+    it("creates a memory and normalizes collection and tags", async () => {
       const tools = createMemoryTools(userId);
       const create = tools.find((t) => t.name === "memory_create")!;
 
@@ -326,7 +325,6 @@ describe("createMemoryTools", () => {
         title: "  Likes dark mode  ",
         content: "  Prefers dark UI themes.  ",
         tags: ["UI", " ui ", ""],
-        importance: 12,
       });
       const text = JSON.parse((result.content[0] as { text: string }).text);
 
@@ -339,7 +337,6 @@ describe("createMemoryTools", () => {
           title: "Likes dark mode",
           content: "Prefers dark UI themes.",
           tags: ["ui"],
-          importance: 10,
         },
       });
     });
@@ -387,15 +384,12 @@ describe("createMemoryTools", () => {
       const update = tools.find((t) => t.name === "memory_update")!;
 
       mockMemory.findFirst.mockResolvedValue(makeMemory());
-      mockMemory.update.mockResolvedValue(
-        makeMemory({ title: "Renamed", importance: 1, tags: ["one"] }),
-      );
+      mockMemory.update.mockResolvedValue(makeMemory({ title: "Renamed", tags: ["one"] }));
 
       const result = await callExecute(update.execute, {
         id: "mem-1",
         title: "  Renamed  ",
         tags: ["One", "one"],
-        importance: 0,
       });
       const text = JSON.parse((result.content[0] as { text: string }).text);
 
@@ -404,7 +398,7 @@ describe("createMemoryTools", () => {
       expect(mockMemory.findFirst).toHaveBeenCalledWith({ where: { id: "mem-1", userId } });
       expect(mockMemory.update).toHaveBeenCalledWith({
         where: { id: "mem-1", userId },
-        data: { title: "Renamed", tags: ["one"], importance: 1 },
+        data: { title: "Renamed", tags: ["one"] },
       });
     });
 
