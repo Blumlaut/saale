@@ -828,7 +828,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     mock: mockProviderSignIn,
     open: async (page) => {
       await openSettingsTab(page, "AI & Models");
-      await click(page, 'button:has-text("Add provider")');
+      await click(page, 'button:has-text("Manage providers")');
       await click(page, 'button:has-text("Sign in")');
       await page.locator(':text("Connect OpenCode Zen"):visible').first().waitFor({
         timeout: 10_000,
@@ -842,7 +842,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     mock: mockProviderSignIn,
     open: async (page) => {
       await openSettingsTab(page, "AI & Models");
-      await click(page, 'button:has-text("Add provider")');
+      await click(page, 'button:has-text("Manage providers")');
       await page
         .locator('input[aria-label="Search providers"]:visible')
         .first()

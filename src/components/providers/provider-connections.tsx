@@ -184,6 +184,12 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
     setAddOpen(true);
   };
 
+  /** Unlink from inside the manage sheet — close it, then drop the credential. */
+  const handleSheetDisconnect = (entry: ProviderCatalogView) => {
+    setAddOpen(false);
+    void handleDisconnect(entry.id);
+  };
+
   const handleConnect = (entry: ProviderCatalogView, authType: ProviderAuthType) => {
     setAddOpen(false);
     // Wait for the picker to slide away — two overlays at once is never right.
@@ -299,7 +305,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         </div>
         <Button variant="secondary" size="sm" className="h-8" onClick={openAddSheet}>
           <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Add provider
+          Manage providers
         </Button>
       </div>
 
@@ -316,7 +322,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
               </p>
               <Button variant="secondary" size="sm" className="mt-4 h-8" onClick={openAddSheet}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add provider
+                Manage providers
               </Button>
             </div>
           </GlassPanelContent>
@@ -387,6 +393,8 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         onConnect={handleConnect}
         onSaveEndpoint={(draft) => void handleSaveEndpoint(draft)}
         onSaveLimits={(draft) => void handleSaveLimits(draft)}
+        scope={scope}
+        onDisconnect={handleSheetDisconnect}
       />
 
       <ProviderLoginSheet
