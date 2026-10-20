@@ -6,10 +6,18 @@ import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { useSessionRole } from "@/hooks/use-session-role";
-import { roleHasAction } from "@/lib/permissions/roles";
+import { useSessionPermissions } from "@/hooks/use-session-permissions";
+import { hasGrant } from "@/lib/permissions/roles";
 import type { AdminAction } from "@/lib/permissions/statements";
-import { ChevronRight, Bot, Users, Settings, ArrowLeft, type LucideIcon } from "lucide-react";
+import {
+  ChevronRight,
+  Bot,
+  Users,
+  Settings,
+  KeyRound,
+  ArrowLeft,
+  type LucideIcon,
+} from "lucide-react";
 
 export interface AdminNavItem {
   href: string;
@@ -23,15 +31,16 @@ export interface AdminNavItem {
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/models", label: "Models", icon: Bot, action: "models" },
   { href: "/admin/users", label: "Users", icon: Users, action: "users" },
+  { href: "/admin/roles", label: "Roles", icon: KeyRound, action: "roles" },
   { href: "/admin/settings", label: "Settings", icon: Settings, action: "settings" },
 ];
 
 export function AdminNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const role = useSessionRole();
-  const items = role
-    ? ADMIN_NAV_ITEMS.filter((item) => roleHasAction(role, "admin", item.action))
+  const access = useSessionPermissions();
+  const items = access
+    ? ADMIN_NAV_ITEMS.filter((item) => hasGrant(access.permissions, "admin", item.action))
     : [];
 
   return (

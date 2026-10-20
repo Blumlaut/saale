@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { AppShell } from "@/components/layout/app-shell";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
+import { resetSessionPermissionsCache } from "@/hooks/use-session-permissions";
 import type { SidebarNavEntry } from "@/lib/navigation/sidebar-nav";
 
 /**
@@ -42,11 +43,22 @@ async function probeText(): Promise<string[]> {
   return (await screen.findAllByTestId("probe")).map((el) => el.textContent ?? "");
 }
 
-/** Answer the sidebar layout GET with a stored layout. */
+/** A regular account: no admin-panel grants. */
+const USER_ACCESS = {
+  role: "user",
+  permissions: { admin: [], user: [], session: [] },
+};
+
+/** Answer the sidebar layout GET with a stored layout, and the session check. */
 function mockStoredLayout(items: SidebarNavEntry[]) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify({ items }), { status: 200 })),
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/permissions")) {
+        return new Response(JSON.stringify(USER_ACCESS), { status: 200 });
+      }
+      return new Response(JSON.stringify({ items }), { status: 200 });
+    }),
   );
 }
 
@@ -57,7 +69,10 @@ const STORED: SidebarNavEntry[] = [
   { id: "settings", hidden: false },
 ];
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  resetSessionPermissionsCache();
+  vi.clearAllMocks();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AppShell", () => {
@@ -88,7 +103,11 @@ describe("AppShell", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("{}", { status: 500 })),
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/api/permissions")
+          ? new Response(JSON.stringify(USER_ACCESS), { status: 200 })
+          : new Response("{}", { status: 500 }),
+      ),
     );
 
     render(

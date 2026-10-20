@@ -1093,4 +1093,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: ["src/app/admin/users/page.tsx"],
     skip: "not automated yet — the admin overlays need their own `open` steps",
   },
+  {
+    name: "admin · add role",
+    path: "/admin/roles",
+    sources: ["src/app/admin/roles/page.tsx"],
+    open: async (page) => {
+      await click(page, 'button[title="Create a role"]');
+      await visible(page, "#role-name").waitFor({ state: "visible", timeout: 10_000 });
+    },
+  },
 ];

@@ -18,8 +18,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { fetchJson, postJson, patchJson } from "@/lib/http";
 import { authClient } from "@/lib/auth-client";
-import { useSessionRole } from "@/hooks/use-session-role";
-import { ROLE_LABELS, ROLE_NAMES, isAdminRole, roleHasAction } from "@/lib/permissions/roles";
+import { useSessionPermissions } from "@/hooks/use-session-permissions";
+import {
+  BUILTIN_ROLES,
+  hasGrant,
+  isAdminRole,
+  roleLabel,
+  type RoleDefinition,
+} from "@/lib/permissions/roles";
 import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
 import {
@@ -49,9 +55,10 @@ interface UserFeatures {
 }
 
 export default function AdminUsersPage() {
-  const role = useSessionRole();
-  const can = (action: string) => role !== null && roleHasAction(role, "user", action);
+  const access = useSessionPermissions();
+  const can = (action: string) => access !== null && hasGrant(access.permissions, "user", action);
 
+  const [roles, setRoles] = useState<RoleDefinition[]>([...BUILTIN_ROLES]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -107,6 +114,13 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  // Custom roles are as assignable as the built-ins; labels come from the table.
+  useEffect(() => {
+    fetchJson<{ roles: RoleDefinition[] }>("/api/admin/roles")
+      .then((data) => setRoles(data.roles ?? []))
+      .catch((err) => console.error("Failed to load roles:", err));
+  }, []);
 
   // Auto-clear save status
   useEffect(() => {
@@ -316,7 +330,7 @@ export default function AdminUsersPage() {
                         <span className="truncate text-sm font-medium">{user.name ?? "—"}</span>
                         {user.role && user.role !== "user" && (
                           <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
-                            {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] ?? user.role}
+                            {roleLabel(roles, user.role)}
                           </Badge>
                         )}
                         {user.banned && (
@@ -428,14 +442,14 @@ export default function AdminUsersPage() {
             <div className="space-y-2">
               <Label>Role</Label>
               <div className="flex flex-wrap gap-2">
-                {ROLE_NAMES.map((name) => (
+                {roles.map((role) => (
                   <Button
-                    key={name}
-                    variant={createRole === name ? "default" : "outline"}
+                    key={role.name}
+                    variant={createRole === role.name ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setCreateRole(name)}
+                    onClick={() => setCreateRole(role.name)}
                   >
-                    {ROLE_LABELS[name]}
+                    {role.label}
                   </Button>
                 ))}
               </div>
@@ -488,15 +502,15 @@ export default function AdminUsersPage() {
             <div className="space-y-2">
               <Label>Role</Label>
               <div className="flex flex-wrap gap-2">
-                {ROLE_NAMES.map((name) => (
+                {roles.map((role) => (
                   <Button
-                    key={name}
-                    variant={editRole === name ? "default" : "outline"}
+                    key={role.name}
+                    variant={editRole === role.name ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setEditRole(name)}
+                    onClick={() => setEditRole(role.name)}
                     disabled={!can("set-role")}
                   >
-                    {ROLE_LABELS[name]}
+                    {role.label}
                   </Button>
                 ))}
               </div>
@@ -515,9 +529,10 @@ export default function AdminUsersPage() {
                   Could not load this account&apos;s features.
                 </p>
               ) : (
-                <div className="max-h-56 space-y-1 overflow-y-auto rounded border p-2">
+                // pr-2 on each row keeps the switch's 12px hit area inside the box
+                <div className="max-h-56 space-y-1 overflow-x-hidden overflow-y-auto rounded border p-2">
                   {FEATURES.map((feature) => (
-                    <div key={feature} className="flex items-start justify-between gap-3 py-1">
+                    <div key={feature} className="flex items-start justify-between gap-3 py-1 pr-2">
                       <div className="min-w-0">
                         <span className="text-xs font-medium">
                           {FEATURE_DEFINITIONS[feature].label}
