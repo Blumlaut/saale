@@ -40,29 +40,8 @@ describe("built-in roles", () => {
     expect(allows("admin", "session", "list")).toBe(true);
   });
 
-  it("lets a user manager manage accounts but not impersonate them", () => {
-    expect(allows("user-manager", "admin", "access")).toBe(true);
-    expect(allows("user-manager", "admin", "users")).toBe(true);
-    expect(allows("user-manager", "user", "list")).toBe(true);
-    expect(allows("user-manager", "user", "set-role")).toBe(true);
-    expect(allows("user-manager", "user", "impersonate")).toBe(false);
-    expect(allows("user-manager", "admin", "models")).toBe(false);
-  });
-
-  it("gives support a read-mostly user view", () => {
-    expect(allows("support", "user", "list")).toBe(true);
-    expect(allows("support", "user", "set-password")).toBe(true);
-    expect(allows("support", "user", "create")).toBe(false);
-    expect(allows("support", "user", "delete")).toBe(false);
-    expect(allows("support", "user", "set-role")).toBe(false);
-    expect(allows("support", "admin", "settings")).toBe(true);
-    expect(allows("support", "admin", "providers")).toBe(false);
-  });
-
-  it("keeps models managers out of accounts", () => {
-    expect(allows("models-manager", "admin", "providers")).toBe(true);
-    expect(allows("models-manager", "user", "list")).toBe(false);
-    expect(allows("models-manager", "admin", "users")).toBe(false);
+  it("ships only the two anchor roles", () => {
+    expect(BUILTIN_ROLES.map((role) => role.name)).toEqual(["admin", "user"]);
   });
 
   it("refuses everything to a plain user", () => {
@@ -71,15 +50,15 @@ describe("built-in roles", () => {
   });
 
   it("honours every role an account holds, and ignores unknown ones", () => {
-    expect(allows("support,user-manager", "user", "set-role")).toBe(true);
+    expect(allows("admin,ghost", "admin", "access")).toBe(true);
     expect(allows("user,ghost", "admin", "access")).toBe(false);
     expect(allows("", "admin", "access")).toBe(false);
   });
 
   it("recognises the plugin-admin role only by name", () => {
     expect(isAdminRole("admin")).toBe(true);
-    expect(isAdminRole("support,admin")).toBe(true);
-    expect(isAdminRole("user-manager")).toBe(false);
+    expect(isAdminRole("helpdesk,admin")).toBe(true);
+    expect(isAdminRole("helpdesk")).toBe(false);
     expect(isAdminRole(" user ")).toBe(false);
   });
 
@@ -88,7 +67,7 @@ describe("built-in roles", () => {
     expect(IMMUTABLE_ROLES).toContain("user");
     expect(isRoleEditable("admin")).toBe(false);
     expect(isRoleEditable("user")).toBe(false);
-    expect(isRoleEditable("support")).toBe(true);
+    expect(isRoleEditable("helpdesk")).toBe(true);
     expect(isRoleEditable("helpdesk")).toBe(true);
   });
 });
@@ -122,14 +101,30 @@ describe("role permissions", () => {
   });
 
   it("merges grants across roles without duplicates", () => {
-    const merged = mergeRolePermissions(BUILTIN_ROLES, "support,user-manager");
+    const definitions: RoleDefinition[] = [
+      {
+        name: "helpdesk",
+        label: "Helpdesk",
+        description: "",
+        builtin: false,
+        permissions: { admin: ["access", "users"], user: ["list"], session: [] },
+      },
+      {
+        name: "reporter",
+        label: "Reporter",
+        description: "",
+        builtin: false,
+        permissions: { admin: ["access", "settings"], user: ["list", "get"], session: [] },
+      },
+    ];
+
+    const merged = mergeRolePermissions(definitions, "helpdesk,reporter");
     expect(merged.admin).toEqual(["access", "users", "settings"]);
-    expect(merged.user).toContain("list");
-    expect(merged.user.filter((action) => action === "list")).toHaveLength(1);
+    expect(merged.user).toEqual(["list", "get"]);
   });
 
   it("labels a role by its definition, falling back to the id", () => {
-    expect(roleLabel(BUILTIN_ROLES, "support")).toBe("Support");
+    expect(roleLabel(BUILTIN_ROLES, "admin")).toBe("Admin");
     expect(roleLabel(BUILTIN_ROLES, "helpdesk")).toBe("helpdesk");
   });
 

@@ -22,12 +22,12 @@ import {
 } from "@/lib/permissions/role-cache";
 import { BUILTIN_ROLES } from "@/lib/permissions/roles";
 
-const supportRow = {
-  name: "support",
-  label: "Support",
-  description: "Look accounts up.",
+const reviewerRow = {
+  name: "reviewer",
+  label: "Reviewer",
+  description: "Looks accounts up.",
   permissions: { admin: ["access", "users"], user: ["list"], session: [] },
-  builtin: true,
+  builtin: false,
 };
 
 const helpdeskRow = {
@@ -42,7 +42,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetRoleCache();
   mocks.createMany.mockResolvedValue({ count: BUILTIN_ROLES.length });
-  mocks.findMany.mockResolvedValue([supportRow]);
+  mocks.findMany.mockResolvedValue([reviewerRow]);
 });
 
 describe("role cache", () => {
@@ -56,7 +56,7 @@ describe("role cache", () => {
       ),
       skipDuplicates: true,
     });
-    expect(roles.map((role) => role.name)).toEqual(["support"]);
+    expect(roles.map((role) => role.name)).toEqual(["reviewer"]);
 
     await refreshRoleDefinitions();
     await refreshRoleDefinitions();
@@ -65,7 +65,7 @@ describe("role cache", () => {
 
   it("normalizes stored permissions and defaults malformed ones to empty", async () => {
     mocks.findMany.mockResolvedValue([
-      { ...supportRow, permissions: { admin: ["users", "bogus"], user: "list" } },
+      { ...reviewerRow, permissions: { admin: ["users", "bogus"], user: "list" } },
     ]);
 
     const [role] = await loadRoleDefinitions();
@@ -77,7 +77,7 @@ describe("role cache", () => {
     await loadRoleDefinitions();
     expect(AUTH_ROLES.helpdesk).toBeUndefined();
 
-    mocks.findMany.mockResolvedValue([supportRow, helpdeskRow]);
+    mocks.findMany.mockResolvedValue([reviewerRow, helpdeskRow]);
     await refreshRoleDefinitions();
 
     const helpdesk = AUTH_ROLES.helpdesk;
@@ -87,11 +87,11 @@ describe("role cache", () => {
   });
 
   it("drops a role from the plugin map once its row is gone", async () => {
-    mocks.findMany.mockResolvedValue([supportRow, helpdeskRow]);
+    mocks.findMany.mockResolvedValue([reviewerRow, helpdeskRow]);
     await loadRoleDefinitions();
     expect(AUTH_ROLES.helpdesk).toBeDefined();
 
-    mocks.findMany.mockResolvedValue([supportRow]);
+    mocks.findMany.mockResolvedValue([reviewerRow]);
     await refreshRoleDefinitions();
     expect(AUTH_ROLES.helpdesk).toBeUndefined();
   });
@@ -116,7 +116,7 @@ describe("role cache", () => {
 
   it("reads the table again on the next call, so a role added elsewhere is seen", async () => {
     await loadRoleDefinitions();
-    mocks.findMany.mockResolvedValue([supportRow, helpdeskRow]);
+    mocks.findMany.mockResolvedValue([reviewerRow, helpdeskRow]);
 
     const roles = await loadRoleDefinitions();
 
