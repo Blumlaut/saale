@@ -6,7 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getAllPurposes } from "@/lib/pi/purposes";
-import { DEFAULT_THINKING_LEVEL_SETTING, THINKING_LEVEL_OPTIONS } from "@/lib/pi/thinking-levels";
+import {
+  DEFAULT_THINKING_LEVEL_SETTING,
+  isPiThinkingLevel,
+  THINKING_LEVEL_OPTIONS,
+} from "@/lib/pi/thinking-levels";
 import { useState, useEffect } from "react";
 import type { UserSettings } from "../types";
 
@@ -81,11 +85,13 @@ export function ModelSidebar({
       ? ALL_THINKING_LEVELS.filter((l) => l.id === "default" || availableLevels.includes(l.id))
       : ALL_THINKING_LEVELS;
 
-  // Check if current thinking level is unsupported
+  // Check if current thinking level is unsupported. "default" is not a level
+  // handed to Pi, so it always resolves to something the model can run.
   const currentLevel = settings?.defaultThinkingLevel || DEFAULT_THINKING_LEVEL_SETTING;
   const isLevelUnsupported =
-    effectiveModel &&
+    Boolean(effectiveModel) &&
     activePurpose === "__default__" &&
+    isPiThinkingLevel(currentLevel) &&
     availableLevels.length > 0 &&
     !availableLevels.includes(currentLevel);
 

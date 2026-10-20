@@ -84,4 +84,35 @@ describe("ThinkingSelector", () => {
       expect(labels.some((l) => l.includes("Default"))).toBe(true);
     });
   });
+
+  it("never warns that Default is unsupported", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ levels: ["low", "high", "max"] }),
+      }),
+    );
+
+    renderSelector("default");
+
+    await waitFor(() => expect(optionLabels().length).toBe(4));
+    expect(screen.queryByText(/not supported/)).toBeNull();
+  });
+
+  it("warns when a level the model lacks is selected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ levels: ["low", "high", "max"] }),
+      }),
+    );
+
+    renderSelector("medium");
+
+    await waitFor(() => expect(screen.getByText(/"medium" is not supported/)).toBeInTheDocument());
+  });
 });
