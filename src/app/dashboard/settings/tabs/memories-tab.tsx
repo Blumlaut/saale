@@ -350,10 +350,7 @@ export function MemoriesTab() {
                       </DropdownMenu>
                     </div>
                     <div className="mt-2 w-full">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-xs">{col.count} memories</span>
-                        <ImportanceStars value={Math.round(col.avgImportance)} readonly />
-                      </div>
+                      <span className="text-muted-foreground text-xs">{col.count} memories</span>
                       {col.topTags.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           {col.topTags.slice(0, 4).map((tag) => (
