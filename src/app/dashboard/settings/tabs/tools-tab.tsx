@@ -110,16 +110,12 @@ export function ToolsTab({
             <div className="liquid-glass-inner mt-3 flex items-start gap-2 rounded-xl border-0 px-4 py-3">
               <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
               <p className="text-muted-foreground text-xs">
-                Toggle a category on/off to enable or disable it by default. Expand a category to
-                choose how its tools reach the model and configure per-tool approval policies.{" "}
-                <b>Always available</b>. the model sees the tools on every message.{" "}
-                <b>Via codemode</b>. hidden from the model; it writes a short script to call them.{" "}
-                <b>Search only</b>. hidden until found with a tool search. The last two save context
-                on categories you rarely use. <b>Allow</b>. runs automatically. <b>Auto</b> .
-                decides from what the call does: risky commands, and scripts that reach a tool
-                needing approval, ask; everything else runs. <b>Ask</b>. requires your approval.{" "}
-                <b>Block</b>. never runs. Tools from an MCP server follow their server&apos;s
-                approval setting in the MCP tab.
+                Toggle categories on or off, expand one to set how its tools reach the model, and
+                configure per-tool approvals. Always available means the model sees the tools on
+                every message. Via codemode hides them; the model writes a short script to call
+                them. Search only hides them until a tool search finds them. Allow runs
+                automatically, Auto asks for risky commands, Ask requires approval, Block never
+                runs. MCP servers follow their own approval setting.
               </p>
             </div>
           </div>
