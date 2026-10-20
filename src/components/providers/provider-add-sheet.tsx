@@ -1,10 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, Key, Loader2, Search, Shield } from "lucide-react";
+import {
+  ArrowLeft,
+  Key,
+  Loader2,
+  MoreVertical,
+  Search,
+  Shield,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -18,14 +33,16 @@ import {
 import type { ProviderCatalogView } from "@/lib/providers/catalog";
 import { PI_DEFAULT_CONTEXT_WINDOW, PI_DEFAULT_MAX_OUTPUT_TOKENS } from "@/lib/providers/limits";
 import type { ProviderAuthType } from "@/lib/providers/login";
+import { cn, ROW_ACTION } from "@/lib/utils";
 
 /**
- * Picking a provider to connect.
+ * Managing the providers a scope can use: connecting new ones and unlinking
+ * ones that are no longer wanted.
  *
  * Pi's catalog is longer than any list worth scrolling past, so the page shows
  * only what is linked and everything else is searched for here. Linked providers
- * still appear, at the top and inert, so searching for one answers "already
- * connected" instead of nothing at all.
+ * still appear, at the top, so searching for one answers "already connected"
+ * instead of nothing at all.
  */
 
 /** The OpenAI-compatible endpoint form, as the strings its inputs hold. */
@@ -67,6 +84,9 @@ export interface ProviderAddSheetProps {
   onConnect: (entry: ProviderCatalogView, authType: ProviderAuthType) => void;
   onSaveEndpoint: (draft: EndpointDraft) => void;
   onSaveLimits: (draft: EndpointDraft) => void;
+  /** Unlink a provider the caller no longer wants; inherited credentials can't be. */
+  scope: "user" | "global";
+  onDisconnect: (entry: ProviderCatalogView) => void;
 }
 
 export function ProviderAddSheet({
@@ -80,6 +100,8 @@ export function ProviderAddSheet({
   onConnect,
   onSaveEndpoint,
   onSaveLimits,
+  scope,
+  onDisconnect,
 }: ProviderAddSheetProps) {
   const [step, setStep] = useState<AddSheetMode>(mode);
   const [search, setSearch] = useState("");
@@ -118,12 +140,12 @@ export function ProviderAddSheet({
                   <span className="sr-only">Back to providers</span>
                 </Button>
               )}
-              {step === "endpoint" ? "OpenAI-compatible endpoint" : "Add a provider"}
+              {step === "endpoint" ? "OpenAI-compatible endpoint" : "Manage providers"}
             </SheetTitle>
             <SheetDescription className="text-muted-foreground text-xs">
               {step === "endpoint"
                 ? "Any server that speaks the OpenAI API — a local llama.cpp, Ollama or vLLM instance."
-                : "Linked providers are listed first. Search for the one you want to connect."}
+                : "Linked providers are listed first — connect a new one, or unlink one you no longer use."}
             </SheetDescription>
           </SheetHeader>
 
@@ -161,7 +183,12 @@ export function ProviderAddSheet({
                     <div className="console-label px-4 pt-3 pb-1">Linked — {linked.length}</div>
                     {linked.map((entry, index) => (
                       <div key={entry.id}>
-                        <CandidateRow entry={entry} />
+                        <CandidateRow
+                          entry={entry}
+                          canManage={!(scope === "user" && entry.isGlobal)}
+                          onConfigureEndpoint={() => setStep("endpoint")}
+                          onDisconnect={() => onDisconnect(entry)}
+                        />
                         {index < linked.length - 1 && <Separator className="px-4" />}
                       </div>
                     ))}
@@ -302,9 +329,18 @@ interface CandidateRowProps {
   entry: ProviderCatalogView;
   onConnect?: (entry: ProviderCatalogView, authType: ProviderAuthType) => void;
   onConfigureEndpoint?: () => void;
+  /** Whether this scope may unlink or reconfigure the provider (not inherited ones). */
+  canManage?: boolean;
+  onDisconnect?: () => void;
 }
 
-function CandidateRow({ entry, onConnect, onConfigureEndpoint }: CandidateRowProps) {
+function CandidateRow({
+  entry,
+  onConnect,
+  onConfigureEndpoint,
+  canManage,
+  onDisconnect,
+}: CandidateRowProps) {
   return (
     <div className="hover:bg-accent/60 flex items-center gap-3 px-4 py-2.5 transition-colors duration-150">
       <div className="min-w-0 flex-1">
@@ -323,9 +359,40 @@ function CandidateRow({ entry, onConnect, onConfigureEndpoint }: CandidateRowPro
       </div>
 
       {entry.configured ? (
-        <Badge variant="secondary" className="shrink-0 rounded-full px-1.5 text-[10px]">
-          linked
-        </Badge>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Badge variant="secondary" className="rounded-full px-1.5 text-[10px]">
+            linked
+          </Badge>
+          {canManage && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(triggerProps) => (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn("shrink-0", ROW_ACTION)}
+                    {...triggerProps}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                    <span className="sr-only">Actions for {entry.name}</span>
+                  </Button>
+                )}
+              />
+              <DropdownMenuContent align="end">
+                {entry.custom && onConfigureEndpoint && (
+                  <DropdownMenuItem onClick={onConfigureEndpoint}>
+                    <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
+                    Endpoint settings
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Unlink
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       ) : (
         <div className="flex shrink-0 items-center gap-1.5">
           {entry.custom ? (

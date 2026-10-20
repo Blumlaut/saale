@@ -71,6 +71,8 @@ function renderSheet(overrides: Partial<ProviderAddSheetProps> = {}) {
     onConnect: vi.fn(),
     onSaveEndpoint: vi.fn(),
     onSaveLimits: vi.fn(),
+    scope: "user",
+    onDisconnect: vi.fn(),
     ...overrides,
   };
   render(<ProviderAddSheet {...props} />);
@@ -98,7 +100,42 @@ describe("ProviderAddSheet", () => {
     renderSheet();
 
     const badge = screen.getByText("linked");
-    expect(within(badge.parentElement!).queryByRole("button")).toBeNull();
+    const row = badge.parentElement!.parentElement!;
+    expect(within(row).queryByRole("button", { name: /API key|Sign in|Connect/ })).toBeNull();
+    expect(within(row).getByRole("button", { name: "Actions for Anthropic" })).toBeInTheDocument();
+  });
+
+  it("unlinks a linked provider from its row menu", () => {
+    const props = renderSheet();
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Anthropic" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Unlink/ }));
+    expect(props.onDisconnect).toHaveBeenCalledWith(expect.objectContaining({ id: "anthropic" }));
+  });
+
+  it("withholds the row menu from a provider inherited from the global scope", () => {
+    renderSheet({
+      providers: [provider("anthropic", "Anthropic", { configured: true, isGlobal: true })],
+    });
+
+    expect(screen.getByText("linked")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Actions for/ })).toBeNull();
+  });
+
+  it("offers endpoint settings from a linked custom provider's row menu", () => {
+    renderSheet({
+      providers: [
+        provider("custom", "OpenAI-compatible", {
+          custom: true,
+          modelsConfigurable: true,
+          configured: true,
+        }),
+      ],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for OpenAI-compatible" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Endpoint settings/ }));
+    expect(screen.getByPlaceholderText("http://localhost:11434/v1")).toBeInTheDocument();
   });
 
   it("filters on the provider name and on its id", () => {
