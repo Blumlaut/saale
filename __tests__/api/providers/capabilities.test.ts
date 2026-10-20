@@ -100,6 +100,65 @@ describe("PATCH /api/providers/capabilities", () => {
     });
   });
 
+  it("records per-model limits without touching the vision flag", async () => {
+    vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(
+      storedKey({ modelCapabilities: { big: { vision: true } } }) as never,
+    );
+    vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue(storedKey() as never);
+
+    const response = await PATCH(
+      patch({
+        provider: "custom",
+        modelId: "big",
+        contextWindow: 32_768,
+        maxOutputTokens: 4_096,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(db.prisma.providerApiKey.update).toHaveBeenCalledWith({
+      where: { id: "key-1" },
+      data: {
+        modelCapabilities: {
+          big: { vision: true, contextWindow: 32_768, maxOutputTokens: 4_096 },
+        },
+      },
+    });
+  });
+
+  it("clears one limit and leaves the other as stored", async () => {
+    vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(
+      storedKey({
+        modelCapabilities: { big: { contextWindow: 32_768, maxOutputTokens: 4_096 } },
+      }) as never,
+    );
+    vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue(storedKey() as never);
+
+    await PATCH(patch({ provider: "custom", modelId: "big", contextWindow: null }));
+
+    const update = vi.mocked(db.prisma.providerApiKey.update).mock.calls[0]![0];
+    expect(update.data).toEqual({
+      modelCapabilities: { big: { maxOutputTokens: 4_096 } },
+    });
+  });
+
+  it("rejects an edit that changes nothing and an inverted pair", async () => {
+    const empty = await PATCH(patch({ provider: "custom", modelId: "big" }));
+    expect(empty.status).toBe(400);
+    await expect(empty.json()).resolves.toMatchObject({
+      error: expect.stringContaining("contextWindow"),
+    });
+
+    const inverted = await PATCH(
+      patch({ provider: "custom", modelId: "big", contextWindow: 4_096, maxOutputTokens: 8_192 }),
+    );
+    expect(inverted.status).toBe(400);
+    await expect(inverted.json()).resolves.toMatchObject({
+      error: "maxOutputTokens cannot exceed contextWindow",
+    });
+    expect(db.prisma.providerApiKey.update).not.toHaveBeenCalled();
+  });
+
   it("rejects a provider whose models come from Pi's catalog", async () => {
     const response = await PATCH(patch({ provider: "anthropic", modelId: "claude", vision: true }));
 

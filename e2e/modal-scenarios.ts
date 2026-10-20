@@ -34,6 +34,7 @@ const MCP_TAB = "src/app/dashboard/settings/tabs/mcp-tab.tsx";
 const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
 const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
+const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
 const SESSION_SIDEBAR = "src/components/chat/session-sidebar.tsx";
 const SETTINGS = "/dashboard/settings";
 
@@ -77,6 +78,43 @@ async function clickText(page: Page, text: string) {
 
 async function openSettingsTab(page: Page, tab: string) {
   await click(page, `[role="tab"]:has-text(${JSON.stringify(tab)})`);
+}
+
+/**
+ * The e2e user has no endpoint of its own, and a per-model limit only exists
+ * where Saale defines the models — so the list is stubbed with one.
+ */
+async function mockConfigurableModels(page: Page) {
+  await mockProviderSignIn(page);
+  await page.route(/\/api\/providers\/models(\?.*)?$/, (route) =>
+    route.fulfill({
+      json: {
+        providers: [
+          {
+            id: "custom",
+            name: "OpenAI-compatible",
+            modelCount: 1,
+            modelsConfigurable: true,
+          },
+        ],
+        models: {
+          custom: [
+            {
+              id: "qwen3.8-27b",
+              name: "qwen3.8-27b",
+              reasoning: true,
+              vision: true,
+              contextWindow: 131_072,
+              maxOutputTokens: 8_192,
+            },
+          ],
+        },
+        totalModels: 1,
+        disabledModels: [],
+        endpointLimits: { contextWindow: null, maxOutputTokens: null },
+      },
+    }),
+  );
 }
 
 /**
@@ -847,6 +885,16 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
         .locator('input[aria-label="Search providers"]:visible')
         .first()
         .waitFor({ timeout: 10_000 });
+    },
+  },
+  {
+    name: "settings · model limits",
+    path: SETTINGS,
+    sources: [MODEL_LIMITS_SHEET],
+    mock: mockConfigurableModels,
+    open: async (page) => {
+      await openSettingsTab(page, "AI & Models");
+      await click(page, '[title="Set this model\'s context window and output cap"]');
     },
   },
   {

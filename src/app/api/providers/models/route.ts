@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
+import {
+  configuredLimits,
+  parseModelCapabilityMap,
+  type ModelCapabilityMap,
+} from "@/lib/providers/capabilities";
 import { definesProviderModels } from "@/lib/providers/config";
+import { readEndpointRow } from "@/lib/providers/endpoint";
 
 /**
  * GET /api/providers/models — Returns available models based on user's configured providers.
@@ -14,7 +20,14 @@ export async function GET(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const searchParams = request.nextUrl.searchParams;
-  const { models, modelRuntime } = await buildModelRuntime(authResult.user.id);
+  const [{ models, modelRuntime }, endpoint] = await Promise.all([
+    buildModelRuntime(authResult.user.id),
+    readEndpointRow({ kind: "user", userId: authResult.user.id }),
+  ]);
+
+  // What the user set per model on their endpoint, so the editor can tell an
+  // override from an inherited value.
+  const stored: ModelCapabilityMap = parseModelCapabilityMap(endpoint?.modelCapabilities);
 
   // Load disabled models for this user
   const settings = await prisma.appSettings.findUnique({
@@ -39,6 +52,8 @@ export async function GET(request: NextRequest) {
       reasoning: boolean;
       vision: boolean;
       contextWindow: number | undefined;
+      maxOutputTokens: number | undefined;
+      overrides?: { contextWindow?: number; maxOutputTokens?: number };
     }>
   > = {};
 
@@ -47,12 +62,17 @@ export async function GET(request: NextRequest) {
     if (!byProvider[provider]) {
       byProvider[provider] = [];
     }
+    const overrides = configuredLimits(stored, model.id);
     byProvider[provider]!.push({
       id: model.id,
       name: model.name,
       reasoning: model.reasoning ?? false,
       vision: model.vision,
       contextWindow: "contextWindow" in model ? model.contextWindow : undefined,
+      maxOutputTokens: model.maxOutputTokens,
+      ...(definesProviderModels(provider) && Object.keys(overrides).length > 0
+        ? { overrides }
+        : {}),
     });
   }
 
@@ -70,5 +90,10 @@ export async function GET(request: NextRequest) {
     models: byProvider,
     totalModels: displayModels.length,
     disabledModels: Array.from(disabledSet),
+    // The endpoint-wide defaults a model's own value falls back to.
+    endpointLimits:
+      endpoint && endpoint.baseUrl
+        ? { contextWindow: endpoint.contextWindow, maxOutputTokens: endpoint.maxOutputTokens }
+        : null,
   });
 }

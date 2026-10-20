@@ -2,11 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   detectModelCapabilities,
   mergeDetectedCapabilities,
+  parseEndpointListing,
   parseModelCapabilityMap,
   parseVisionEdit,
   resolveModelInput,
   serializeModelCapabilityMap,
+  configuredLimits,
   configuredVision,
+  withModelLimits,
   withModelVision,
   withoutModelVision,
 } from "@/lib/providers/capabilities";
@@ -56,6 +59,122 @@ describe("parseModelCapabilityMap", () => {
     expect(parseModelCapabilityMap(undefined)).toEqual({});
     expect(parseModelCapabilityMap(["a"])).toEqual({});
     expect(parseModelCapabilityMap("{}")).toEqual({});
+  });
+});
+
+describe("parseModelCapabilityMap / serializeModelCapabilityMap with limits", () => {
+  it("keeps the limits and drops anything that is not a positive integer", () => {
+    expect(
+      parseModelCapabilityMap({
+        big: { contextWindow: 131_072, maxOutputTokens: 8_192 },
+        broken: { contextWindow: 0, maxOutputTokens: -1 },
+        fractional: { contextWindow: 1.5 },
+        text: { contextWindow: "8192" },
+      }),
+    ).toEqual({ big: { contextWindow: 131_072, maxOutputTokens: 8_192 } });
+  });
+
+  it("round-trips limits through the stored form", () => {
+    const map = { big: { vision: false, contextWindow: 32_768, maxOutputTokens: 4_096 } };
+    expect(parseModelCapabilityMap(serializeModelCapabilityMap(map))).toEqual(map);
+  });
+});
+
+describe("withModelLimits / configuredLimits", () => {
+  it("sets and clears one field without touching the other", () => {
+    const before = { vl: { vision: true, contextWindow: 32_768, maxOutputTokens: 4_096 } };
+    expect(withModelLimits(before, "vl", { contextWindow: null })).toEqual({
+      vl: { vision: true, maxOutputTokens: 4_096 },
+    });
+    expect(withModelLimits(before, "vl", { maxOutputTokens: 2_048 })).toEqual({
+      vl: { vision: true, contextWindow: 32_768, maxOutputTokens: 2_048 },
+    });
+    // The map handed in is never mutated.
+    expect(before.vl.maxOutputTokens).toBe(4_096);
+  });
+
+  it("drops a model's entry once nothing is left to say", () => {
+    expect(
+      withModelLimits({ vl: { contextWindow: 8_192 } }, "vl", { contextWindow: null }),
+    ).toEqual({});
+  });
+
+  it("reports only the fields recorded for the model", () => {
+    const map = { big: { contextWindow: 32_768 }, other: { vision: true } };
+    expect(configuredLimits(map, "big")).toEqual({ contextWindow: 32_768 });
+    expect(configuredLimits(map, "other")).toEqual({});
+    expect(configuredLimits(map, "unlisted")).toEqual({});
+  });
+});
+
+describe("parseEndpointListing", () => {
+  it("reads a plain id listing and reports no metadata", () => {
+    expect(
+      parseEndpointListing({ data: [{ id: "a" }, { id: "b" }, { object: "model" }, 42] }),
+    ).toEqual({
+      models: [
+        { id: "a", capabilities: {} },
+        { id: "b", capabilities: {} },
+      ],
+      loadOnDemand: false,
+    });
+  });
+
+  it("reads llama-swap's per-model window and vision flags", () => {
+    // Shape served by llama-swap 2026-10, verified against a live instance.
+    const listing = parseEndpointListing({
+      data: [
+        {
+          id: "qwen3.8-27b",
+          owned_by: "llama-swap",
+          capabilities: { vision: true },
+          context_length: 131_072,
+          context_window: 131_072,
+          meta: { n_ctx: 131_072, llamaswap: { type: "model" } },
+        },
+        { id: "aescode-32b", owned_by: "llama-swap", meta: { llamaswap: { type: "model" } } },
+      ],
+    });
+
+    expect(listing.models).toEqual([
+      { id: "qwen3.8-27b", capabilities: { contextWindow: 131_072, vision: true } },
+      { id: "aescode-32b", capabilities: {} },
+    ]);
+    // llama-swap loads a model when asked about it, so probing would swap one in.
+    expect(listing.loadOnDemand).toBe(true);
+  });
+
+  it("reads a vLLM window and LM Studio's name for it", () => {
+    expect(
+      parseEndpointListing({
+        data: [
+          { id: "vllm-model", max_model_len: 32_768 },
+          { id: "lm-studio-model", max_context_length: 16_384 },
+        ],
+      }).models,
+    ).toEqual([
+      { id: "vllm-model", capabilities: { contextWindow: 32_768 } },
+      { id: "lm-studio-model", capabilities: { contextWindow: 16_384 } },
+    ]);
+  });
+
+  it("reads modalities rather than vision from an architecture listing", () => {
+    expect(
+      parseEndpointListing({
+        data: [
+          { id: "img", architecture: { input_modalities: ["text", "image"] } },
+          { id: "text", architecture: { input_modalities: ["text"] } },
+        ],
+      }).models,
+    ).toEqual([
+      { id: "img", capabilities: { vision: true } },
+      { id: "text", capabilities: { vision: false } },
+    ]);
+  });
+
+  it("treats a payload with no data array as an empty listing", () => {
+    expect(parseEndpointListing({ error: "nope" })).toEqual({ models: [], loadOnDemand: false });
+    expect(parseEndpointListing(null)).toEqual({ models: [], loadOnDemand: false });
   });
 });
 
@@ -116,6 +235,15 @@ describe("mergeDetectedCapabilities", () => {
       vl: { vision: true },
     });
   });
+
+  it("merges per field, so a detected flag cannot drop a window the user typed", () => {
+    expect(
+      mergeDetectedCapabilities(
+        { vl: { contextWindow: 32_768, maxOutputTokens: 4_096 } },
+        { vl: { vision: true } },
+      ),
+    ).toEqual({ vl: { contextWindow: 32_768, maxOutputTokens: 4_096, vision: true } });
+  });
 });
 
 describe("serializeModelCapabilityMap", () => {
@@ -163,7 +291,9 @@ describe("detectModelCapabilities", () => {
       modelIds: ["Qwen3-VL-8B"],
     });
 
-    expect(result.capabilities).toEqual({ "Qwen3-VL-8B": { vision: true } });
+    expect(result.capabilities).toEqual({
+      "Qwen3-VL-8B": { vision: true, contextWindow: 32_768 },
+    });
     expect(result.unprobed).toBe(0);
     const url = String(vi.mocked(globalThis.fetch).mock.calls[0]![0]);
     // `/props` is served from the server root, not under the `/v1` the OpenAI
@@ -180,7 +310,9 @@ describe("detectModelCapabilities", () => {
       modelIds: ["Llama-3-8B"],
     });
 
-    expect(result.capabilities).toEqual({ "Llama-3-8B": { vision: false } });
+    expect(result.capabilities).toEqual({
+      "Llama-3-8B": { vision: false, contextWindow: 32_768 },
+    });
   });
 
   it("keeps a base URL's own path prefix when stripping the API version", async () => {
@@ -193,7 +325,7 @@ describe("detectModelCapabilities", () => {
       modelIds: ["Only"],
     });
 
-    expect(result.capabilities).toEqual({ Only: { vision: true } });
+    expect(result.capabilities).toEqual({ Only: { vision: true, contextWindow: 32_768 } });
     expect(String(vi.mocked(globalThis.fetch).mock.calls[0]![0])).toBe(
       "https://gpu.example.com/llama/props",
     );
@@ -212,8 +344,8 @@ describe("detectModelCapabilities", () => {
     });
 
     expect(result.capabilities).toEqual({
-      "Qwen3-VL-8B": { vision: true },
-      "Llama-3-8B": { vision: false },
+      "Qwen3-VL-8B": { vision: true, contextWindow: 32_768 },
+      "Llama-3-8B": { vision: false, contextWindow: 32_768 },
     });
     expect(result.unprobed).toBe(0);
     const headers = vi.mocked(globalThis.fetch).mock.calls[0]![1]?.headers as Record<
@@ -239,7 +371,9 @@ describe("detectModelCapabilities", () => {
 
     // The model that actually answered keeps its (correct) flag; the one the
     // answer was not about stays unknown rather than inheriting it.
-    expect(result.capabilities).toEqual({ "Mistral-7B": { vision: false } });
+    expect(result.capabilities).toEqual({
+      "Mistral-7B": { vision: false, contextWindow: 32_768 },
+    });
     expect(result.unprobed).toBe(1);
   });
 
@@ -258,9 +392,63 @@ describe("detectModelCapabilities", () => {
     });
 
     expect(result.capabilities).toEqual({
-      "Qwen3-VL-8B": { vision: true },
+      "Qwen3-VL-8B": { vision: true, contextWindow: 32_768 },
+      // This one answered without `n_ctx`, so only its flag is known.
       other: { vision: false },
     });
+  });
+
+  it("takes what the listing stated and probes nothing it already answered", async () => {
+    stubEndpoint({ "/props": props("/models/only/model.gguf", true) });
+
+    const result = await detectModelCapabilities({
+      baseUrl: "http://localhost:8080/v1",
+      modelIds: ["listed"],
+      reported: { listed: { contextWindow: 131_072, vision: true } },
+    });
+
+    expect(result.capabilities).toEqual({ listed: { contextWindow: 131_072, vision: true } });
+    expect(result.unprobed).toBe(0);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("never probes a load-on-demand proxy, where a probe would swap a model in", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await detectModelCapabilities({
+      baseUrl: "http://localhost:8080/v1",
+      modelIds: ["loaded", "unloaded"],
+      reported: { loaded: { contextWindow: 131_072, vision: true } },
+      loadOnDemand: true,
+    });
+
+    expect(result.capabilities).toEqual({ loaded: { contextWindow: 131_072, vision: true } });
+    expect(result.unprobed).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps probing the models a listing left unknown on a direct server", async () => {
+    stubEndpoint({
+      "/props?model=listed": props("/models/listed/model.gguf", true),
+      "/props?model=unlisted": {
+        model_path: "/models/unlisted/model.gguf",
+        model_alias: "unlisted",
+        default_generation_settings: { n_ctx: 8_192 },
+      },
+    });
+
+    const result = await detectModelCapabilities({
+      baseUrl: "http://localhost:8080/v1",
+      modelIds: ["listed", "unlisted"],
+      reported: { listed: { contextWindow: 131_072, vision: true } },
+    });
+
+    expect(result.capabilities).toEqual({
+      listed: { contextWindow: 131_072, vision: true },
+      unlisted: { contextWindow: 8_192 },
+    });
+    expect(result.unprobed).toBe(0);
   });
 
   it("claims nothing when the endpoint has no capability report", async () => {

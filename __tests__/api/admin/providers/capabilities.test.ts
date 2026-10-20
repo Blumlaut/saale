@@ -91,6 +91,23 @@ describe("PATCH /api/admin/providers/capabilities", () => {
     });
   });
 
+  it("records per-model limits on the global endpoint", async () => {
+    vi.mocked(db.prisma.providerApiKey.findFirst).mockResolvedValue(
+      globalKey({ modelCapabilities: { vl: { vision: true } } }) as never,
+    );
+    vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue(globalKey() as never);
+
+    const response = await PATCH(
+      patch({ provider: "custom", modelId: "vl", contextWindow: 131_072 }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(db.prisma.providerApiKey.update).toHaveBeenCalledWith({
+      where: { id: "key-1" },
+      data: { modelCapabilities: { vl: { vision: true, contextWindow: 131_072 } } },
+    });
+  });
+
   it("rejects a catalog-backed provider and a missing admin session", async () => {
     const catalog = await PATCH(patch({ provider: "anthropic", modelId: "claude", vision: true }));
     expect(catalog.status).toBe(400);

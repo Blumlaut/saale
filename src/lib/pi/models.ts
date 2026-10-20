@@ -1,19 +1,23 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
-import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import {
+  parseEndpointListing,
   parseModelCapabilityMap,
   resolveModelInput,
+  configuredLimits,
   configuredVision,
+  type EndpointListing,
+  type ModelCapabilities,
   type ModelCapabilityMap,
 } from "@/lib/providers/capabilities";
-import { CUSTOM_PROVIDER_ID, CUSTOM_PROVIDER_LABEL } from "@/lib/providers/config";
+import { CUSTOM_PROVIDER_ID } from "@/lib/providers/config";
 import {
   createProviderCredentialStore,
   type ProviderScope,
 } from "@/lib/providers/credential-store";
-import { limitFields, type ProviderModelLimits } from "@/lib/providers/limits";
+import { endpointApiKey, readEndpointRow } from "@/lib/providers/endpoint";
+import { resolveModelLimits, type ProviderModelLimits } from "@/lib/providers/limits";
 import { createModelsStore, refreshModelCatalogInBackground } from "@/lib/providers/models-store";
 
 interface ProviderModelConfig {
@@ -22,11 +26,11 @@ interface ProviderModelConfig {
 }
 
 /**
- * A model offered to the UI. `reasoning` and `contextWindow` describe what Pi's
- * catalog knows about it; a discovered model Pi has no entry for reports no
- * context window rather than a guessed one. `vision` is whether the resolved
- * definition accepts image input, so pickers can say which models can look at
- * a picture before one is sent.
+ * A model offered to the UI. `reasoning`, `contextWindow` and `maxOutputTokens`
+ * describe what Pi will actually send, resolved from the model catalog and any
+ * limit Saale records for it. `vision` is whether the resolved definition
+ * accepts image input, so pickers can say which models can look at a picture
+ * before one is sent.
  */
 export interface AvailableModel {
   provider: string;
@@ -34,6 +38,7 @@ export interface AvailableModel {
   name: string;
   reasoning?: boolean | undefined;
   contextWindow?: number | undefined;
+  maxOutputTokens?: number | undefined;
   vision: boolean;
 }
 
@@ -94,9 +99,15 @@ function isModelAllowed(
 }
 
 /**
- * Fetch model IDs from an OpenAI-compatible /models endpoint.
+ * An OpenAI-compatible endpoint's `/models` listing.
+ *
+ * A failed listing is empty rather than fatal: building the runtime must not
+ * depend on a local server being up.
  */
-export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<string[]> {
+export async function fetchEndpointListing(
+  baseUrl: string,
+  apiKey?: string,
+): Promise<EndpointListing> {
   const url = `${baseUrl.replace(/\/+$/, "")}/models`;
   try {
     const res = await fetch(url, {
@@ -109,17 +120,23 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
 
     if (!res.ok) {
       console.error(`Failed to fetch models from ${url}: HTTP ${res.status}`);
-      return [];
+      return { models: [], loadOnDemand: false };
     }
 
-    const data = await res.json();
-    if (!data?.data?.length) return [];
-
-    return data.data.map((m: { id: string }) => String(m.id)).slice(0, 500);
+    const listing = parseEndpointListing(await res.json());
+    return { models: listing.models.slice(0, 500), loadOnDemand: listing.loadOnDemand };
   } catch (err) {
     console.error(`Error fetching models from ${url}:`, err);
-    return [];
+    return { models: [], loadOnDemand: false };
   }
+}
+
+/**
+ * Model ids from an OpenAI-compatible `/models` endpoint.
+ */
+export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promise<string[]> {
+  const listing = await fetchEndpointListing(baseUrl, apiKey);
+  return listing.models.map((model) => model.id);
 }
 
 /**
@@ -137,8 +154,8 @@ export async function fetchOpenAIModels(baseUrl: string, apiKey?: string): Promi
  *
  * A catalog hit is therefore used verbatim; only genuinely unknown ids (a model
  * Pi has never heard of) fall back to conservative values — and a recorded
- * capability wins over both, because the endpoint that serves the model
- * (or the person running it) knows better than the catalog does.
+ * capability or limit wins over both, because the endpoint that serves the
+ * model (or the person running it) knows better than the catalog does.
  *
  * Only Saale's own OpenAI-compatible endpoint goes through this path: every
  * provider Pi defines is served by Pi's catalog, with all of its metadata.
@@ -147,34 +164,29 @@ function defineDiscoveredModel(
   runtime: ModelRuntime,
   provider: string,
   id: string,
-  limits: ProviderModelLimits,
-  capabilities: ModelCapabilityMap,
+  options: {
+    limits: ProviderModelLimits;
+    capabilities: ModelCapabilityMap;
+    /** What the endpoint's own listing states for this model. */
+    reported?: ModelCapabilities | undefined;
+  },
 ): ProviderModelDefinition {
   const known = runtime.getModel(provider, id);
-  const vision = configuredVision(capabilities, id);
+  const { limits, capabilities, reported } = options;
 
-  if (known) {
-    return {
-      id,
-      name: known.name || id,
-      api: known.api,
-      reasoning: known.reasoning,
-      input: resolveModelInput(known.input, vision),
-      cost: known.cost,
-      contextWindow: known.contextWindow,
-      maxTokens: known.maxTokens,
-    };
-  }
-
-  // Unknown to Pi: claim nothing it cannot do, and use the user's limits.
   return {
     id,
-    name: id,
-    api: "openai-completions" as const,
-    reasoning: false,
-    input: resolveModelInput(undefined, vision),
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    ...limitFields(limits),
+    name: known?.name || id,
+    api: known?.api ?? ("openai-completions" as const),
+    reasoning: known?.reasoning ?? false,
+    input: resolveModelInput(known?.input, configuredVision(capabilities, id) ?? reported?.vision),
+    cost: known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    ...resolveModelLimits({
+      model: configuredLimits(capabilities, id),
+      endpoint: limits,
+      reported,
+      catalog: known,
+    }),
   };
 }
 
@@ -198,23 +210,28 @@ export async function registerDiscoveredModels(
   },
 ): Promise<string[]> {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
-  const modelIds = await fetchOpenAIModels(baseUrl, options.apiKey);
+  const listing = await fetchEndpointListing(baseUrl, options.apiKey);
   const capabilities = options.capabilities ?? {};
+  const reported = new Map(listing.models.map((model) => [model.id, model.capabilities]));
 
   runtime.registerProvider(options.provider, {
     baseUrl,
     apiKey: options.apiKey || "placeholder",
     api: "openai-completions",
-    ...(modelIds.length > 0
+    ...(listing.models.length > 0
       ? {
-          models: modelIds.map((m) =>
-            defineDiscoveredModel(runtime, options.provider, m, options.limits, capabilities),
+          models: listing.models.map((model) =>
+            defineDiscoveredModel(runtime, options.provider, model.id, {
+              limits: options.limits,
+              capabilities,
+              reported: reported.get(model.id),
+            }),
           ),
         }
       : {}),
   });
 
-  return modelIds;
+  return listing.models.map((model) => model.id);
 }
 
 /**
@@ -225,47 +242,11 @@ export async function registerDiscoveredModels(
  * per-model capabilities Saale records are what describe its models.
  */
 async function registerCustomEndpoint(modelRuntime: ModelRuntime, scope: ProviderScope) {
-  const select = {
-    baseUrl: true,
-    encryptedKey: true,
-    contextWindow: true,
-    maxOutputTokens: true,
-    modelCapabilities: true,
-  } as const;
-
-  // One endpoint per scope. A user's own endpoint wins; otherwise they inherit
-  // the global one, exactly as they inherit a provider credential — an admin's
-  // local endpoint is usable by everyone, and its models must be pickable for
-  // everyone.
-  const own =
-    scope.kind === "user"
-      ? await prisma.providerApiKey.findUnique({
-          where: { userId_provider: { userId: scope.userId, provider: CUSTOM_PROVIDER_ID } },
-          select,
-        })
-      : null;
-
-  // The global scope has no compound-unique lookup (Prisma types
-  // `userId_provider.userId` as non-null), so it reads the row by its columns.
-  const row =
-    own ??
-    (await prisma.providerApiKey.findFirst({
-      where: { userId: null, provider: CUSTOM_PROVIDER_ID },
-      select,
-    }));
-
+  const row = await readEndpointRow(scope);
   const baseUrl = row?.baseUrl;
   if (!baseUrl) return [];
 
-  let apiKey: string | undefined;
-  try {
-    apiKey = decrypt(row.encryptedKey) || undefined;
-  } catch (err) {
-    // A key that cannot be decrypted still leaves the endpoint usable (a local
-    // server needs none), so report it and continue.
-    console.error(`Failed to decrypt the ${CUSTOM_PROVIDER_LABEL} API key:`, err);
-  }
-
+  const apiKey = endpointApiKey(row);
   if (apiKey) {
     await modelRuntime.setRuntimeApiKey(CUSTOM_PROVIDER_ID, apiKey);
   }
@@ -331,6 +312,7 @@ async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions =
     name: m.name,
     reasoning: m.reasoning,
     contextWindow: m.contextWindow,
+    maxOutputTokens: m.maxTokens,
     vision: m.input.includes("image"),
   }));
 
@@ -346,6 +328,7 @@ async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions =
       name: model?.name ?? id,
       reasoning: model?.reasoning ?? false,
       contextWindow: model?.contextWindow,
+      maxOutputTokens: model?.maxTokens,
       vision: model?.input.includes("image") ?? false,
     });
   }

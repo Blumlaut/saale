@@ -157,6 +157,48 @@ export async function POST(request: NextRequest) {
   });
 }
 
+/**
+ * PATCH /api/admin/providers — Update the global endpoint's model defaults
+ * without touching its API key (so the UI never has to re-submit a stored
+ * credential).
+ */
+export async function PATCH(request: NextRequest) {
+  const authResult = await requirePermission("admin", "providers");
+  if (!authResult.ok) return authResult.response;
+
+  const body = await request.json();
+  const provider = body.provider;
+
+  if (provider !== CUSTOM_PROVIDER_ID) {
+    return NextResponse.json({ error: "provider is required" }, { status: 400 });
+  }
+
+  const parsedLimits = parseProviderLimits(provider, body);
+  if ("error" in parsedLimits) {
+    return NextResponse.json({ error: parsedLimits.error }, { status: 400 });
+  }
+
+  const existing = await prisma.providerApiKey.findFirst({
+    where: { userId: null, provider },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return NextResponse.json({ error: "Provider is not configured" }, { status: 404 });
+  }
+
+  const key = await prisma.providerApiKey.update({
+    where: { id: existing.id },
+    data: parsedLimits.limits,
+  });
+
+  return NextResponse.json({
+    provider: key.provider,
+    contextWindow: key.contextWindow,
+    maxOutputTokens: key.maxOutputTokens,
+  });
+}
+
 /** DELETE /api/admin/providers — remove the global provider's credentials. */
 export async function DELETE(request: NextRequest) {
   const authResult = await requirePermission("admin", "providers");

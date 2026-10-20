@@ -15,8 +15,22 @@ import {
 } from "@/lib/admin/model-availability";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { Bot, Key, Loader2, CheckCircle, AlertCircle, Search, Eye, ScanEye } from "lucide-react";
+import {
+  Bot,
+  Key,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Search,
+  Eye,
+  ScanEye,
+  SlidersHorizontal,
+} from "lucide-react";
 import { ProviderConnections } from "@/components/providers/provider-connections";
+import {
+  ModelLimitsSheet,
+  type ModelLimitsTarget,
+} from "@/components/providers/model-limits-sheet";
 import type { AvailableModel, AvailableProvider } from "@/app/dashboard/settings/types";
 
 interface AdminSettings {
@@ -49,6 +63,13 @@ export default function AdminModelsPage() {
   const [capabilityInfo, setCapabilityInfo] = useState<string | null>(null);
   const [savingVision, setSavingVision] = useState<string | null>(null);
 
+  // ─── Per-model limits ───
+  const [limitsTarget, setLimitsTarget] = useState<ModelLimitsTarget | null>(null);
+  const [endpointLimits, setEndpointLimits] = useState<{
+    contextWindow: number | null;
+    maxOutputTokens: number | null;
+  } | null>(null);
+
   // Auto-clear save status
   useEffect(() => {
     if (saveStatus !== "idle") {
@@ -71,9 +92,14 @@ export default function AdminModelsPage() {
       const data = await fetchJson<{
         models: Record<string, AvailableModel[]>;
         providers: AvailableProvider[];
+        endpointLimits?: {
+          contextWindow: number | null;
+          maxOutputTokens: number | null;
+        } | null;
       }>("/api/admin/providers/models");
       setAvailableModels(data.models ?? {});
       setModelProviders(data.providers ?? []);
+      setEndpointLimits(data.endpointLimits ?? null);
     } catch {
       // No models available yet
     } finally {
@@ -118,6 +144,20 @@ export default function AdminModelsPage() {
       setCapabilityInfo("Could not save the model capability");
     }
     setSavingVision(null);
+  };
+
+  /** Open the per-model limit editor for one row. */
+  const openLimits = (providerId: string, providerName: string, model: AvailableModel) => {
+    setLimitsTarget({
+      provider: providerId,
+      providerName,
+      modelId: model.id,
+      modelName: model.name,
+      contextWindow: model.contextWindow,
+      maxOutputTokens: model.maxOutputTokens,
+      overrides: model.overrides,
+      endpointLimits,
+    });
   };
 
   // ─── Model toggle actions ───
@@ -370,9 +410,29 @@ export default function AdminModelsPage() {
                                   </Badge>
                                 )}
                               </div>
-                              <span className="text-muted-foreground text-xs">{model.id}</span>
+                              <span className="text-muted-foreground text-xs">
+                                {model.id}
+                                {model.contextWindow
+                                  ? ` · ${model.contextWindow.toLocaleString()} context`
+                                  : ""}
+                                {model.overrides ? " · set here" : ""}
+                              </span>
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
+                              {/* One endpoint can serve models with different
+                                  windows, so the limits are per model. */}
+                              {canConfigureModels(provider.id) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  className="text-muted-foreground/60 shrink-0"
+                                  title="Set this model's context window and output cap"
+                                  onClick={() => openLimits(provider.id, provider.name, model)}
+                                >
+                                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+
                               {/* Undo a wrong (or absent) answer from the endpoint. */}
                               {canConfigureModels(provider.id) && (
                                 <Button
@@ -420,6 +480,17 @@ export default function AdminModelsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <ModelLimitsSheet
+        target={limitsTarget}
+        onOpenChange={(open) => {
+          if (!open) setLimitsTarget(null);
+        }}
+        capabilitiesEndpoint="/api/admin/providers/capabilities"
+        onSaved={() => {
+          void loadModels();
+        }}
+      />
     </div>
   );
 }

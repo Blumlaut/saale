@@ -7,8 +7,21 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Bot, CheckCircle, Loader2, Sparkles, Search, EyeOff, Eye } from "lucide-react";
+import {
+  Bot,
+  CheckCircle,
+  Loader2,
+  Sparkles,
+  Search,
+  EyeOff,
+  Eye,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  ModelLimitsSheet,
+  type ModelLimitsTarget,
+} from "@/components/providers/model-limits-sheet";
 import { SaveFooter } from "../components/save-footer";
 import { ProviderManagement } from "../components/provider-management";
 import { ModelSidebar } from "../components/model-sidebar";
@@ -33,6 +46,12 @@ interface AiModelsTabProps {
 interface FullModelInfo extends AvailableModel {
   provider: string;
   providerName: string;
+}
+
+/** The endpoint-wide defaults a model's own limits fall back to. */
+interface EndpointLimits {
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
 }
 
 function formatContextWindow(tokens: number): string {
@@ -78,6 +97,10 @@ export function AiModelsTab({
   const [configurableProviders, setConfigurableProviders] = useState<Set<string>>(new Set());
   /** Model currently having its vision flag written, so it can show as busy. */
   const [savingVision, setSavingVision] = useState<string | null>(null);
+  /** The model whose per-model limits are open in the sheet. */
+  const [limitsTarget, setLimitsTarget] = useState<ModelLimitsTarget | null>(null);
+  /** What a model without its own limits inherits from the endpoint. */
+  const [endpointLimits, setEndpointLimits] = useState<EndpointLimits | null>(null);
 
   // Load available models (enabled only)
   const loadModels = useCallback(async () => {
@@ -98,6 +121,7 @@ export function AiModelsTab({
         models: Record<string, AvailableModel[]>;
         providers?: Array<{ id: string; name: string; modelsConfigurable?: boolean }>;
         disabledModels?: string[];
+        endpointLimits?: EndpointLimits | null;
       } = await fetch("/api/providers/models?includeDisabled=true").then((r) => r.json());
 
       const all: FullModelInfo[] = [];
@@ -113,6 +137,7 @@ export function AiModelsTab({
       setConfigurableProviders(
         new Set((data.providers ?? []).filter((p) => p.modelsConfigurable).map((p) => p.id)),
       );
+      setEndpointLimits(data.endpointLimits ?? null);
     } catch (err) {
       console.error("Failed to load admin model settings:", err);
     }
@@ -188,6 +213,20 @@ export function AiModelsTab({
       console.error("Failed to save model vision capability:", err);
     }
     setSavingVision(null);
+  };
+
+  /** Open the per-model limit editor for one row. */
+  const openLimits = (model: FullModelInfo) => {
+    setLimitsTarget({
+      provider: model.provider,
+      providerName: model.providerName,
+      modelId: model.id,
+      modelName: model.name,
+      contextWindow: model.contextWindow,
+      maxOutputTokens: model.maxOutputTokens,
+      overrides: model.overrides,
+      endpointLimits,
+    });
   };
 
   const handleToggleModel = (provider: string, modelId: string) => {
@@ -467,6 +506,10 @@ export function AiModelsTab({
                                     {model.contextWindow && model.contextWindow > 0 && (
                                       <span className="text-muted-foreground text-xs">
                                         {formatContextWindow(model.contextWindow)} context
+                                        {model.maxOutputTokens
+                                          ? ` · ${formatContextWindow(model.maxOutputTokens)} out`
+                                          : ""}
+                                        {model.overrides ? " · set here" : ""}
                                       </span>
                                     )}
                                   </div>
@@ -474,6 +517,24 @@ export function AiModelsTab({
                                   <div className="flex shrink-0 items-center gap-1">
                                     {isSelected && !disabled && (
                                       <CheckCircle className="text-primary h-4 w-4 shrink-0" />
+                                    )}
+
+                                    {/* One endpoint can serve models with different
+                                        windows, so the limits are per model. */}
+                                    {configurableProviders.has(providerKey) && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-xs"
+                                        className="text-muted-foreground/60 shrink-0"
+                                        title="Set this model's context window and output cap"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openLimits(model);
+                                        }}
+                                      >
+                                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                                      </Button>
                                     )}
 
                                     {/* A text-only model can be told to take images
@@ -530,6 +591,18 @@ export function AiModelsTab({
           />
         </div>
       </GlassPanelContent>
+
+      <ModelLimitsSheet
+        target={limitsTarget}
+        onOpenChange={(open) => {
+          if (!open) setLimitsTarget(null);
+        }}
+        capabilitiesEndpoint="/api/providers/capabilities"
+        onSaved={() => {
+          void loadAllModels();
+          void loadModels();
+        }}
+      />
 
       <SaveFooter saving={saving} saveStatus={saveStatus} onSave={onSave} />
     </GlassPanel>

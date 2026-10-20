@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 
 import { requirePermission } from "@/lib/auth";
 import { buildAdminModelList } from "@/lib/pi/models";
+import { configuredLimits, parseModelCapabilityMap } from "@/lib/providers/capabilities";
 import { definesProviderModels } from "@/lib/providers/config";
+import { readEndpointRow } from "@/lib/providers/endpoint";
 
 /**
  * GET /api/admin/providers/models — List every model the *global* provider
@@ -16,21 +18,42 @@ export async function GET() {
   const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
-  const { models: available, modelRuntime } = await buildAdminModelList();
+  const [{ models: available, modelRuntime }, endpoint] = await Promise.all([
+    buildAdminModelList(),
+    readEndpointRow({ kind: "global" }),
+  ]);
+
+  // What the admin set per model on the global endpoint, so the editor can tell
+  // an override from an inherited value.
+  const stored = parseModelCapabilityMap(endpoint?.modelCapabilities);
 
   // Group by provider
   const models: Record<
     string,
-    Array<{ id: string; name: string; reasoning: boolean; vision: boolean }>
+    Array<{
+      id: string;
+      name: string;
+      reasoning: boolean;
+      vision: boolean;
+      contextWindow: number | undefined;
+      maxOutputTokens: number | undefined;
+      overrides?: { contextWindow?: number; maxOutputTokens?: number };
+    }>
   > = {};
 
   for (const m of available) {
+    const overrides = configuredLimits(stored, m.id);
     const list = (models[m.provider] ??= []);
     list.push({
       id: m.id,
       name: m.name,
       reasoning: m.reasoning ?? false,
       vision: m.vision,
+      contextWindow: m.contextWindow,
+      maxOutputTokens: m.maxOutputTokens,
+      ...(definesProviderModels(m.provider) && Object.keys(overrides).length > 0
+        ? { overrides }
+        : {}),
     });
   }
 
@@ -41,5 +64,13 @@ export async function GET() {
     modelsConfigurable: definesProviderModels(id),
   }));
 
-  return NextResponse.json({ models, providers });
+  return NextResponse.json({
+    models,
+    providers,
+    // The endpoint-wide defaults a model's own value falls back to.
+    endpointLimits:
+      endpoint && endpoint.baseUrl
+        ? { contextWindow: endpoint.contextWindow, maxOutputTokens: endpoint.maxOutputTokens }
+        : null,
+  });
 }

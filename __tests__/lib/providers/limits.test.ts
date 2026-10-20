@@ -3,8 +3,10 @@ import {
   PI_DEFAULT_CONTEXT_WINDOW,
   PI_DEFAULT_MAX_OUTPUT_TOKENS,
   limitFields,
+  parseModelLimitEdit,
   parseProviderLimits,
   parseTokenLimit,
+  resolveModelLimits,
 } from "@/lib/providers/limits";
 import { definesProviderModels } from "@/lib/providers/config";
 
@@ -71,6 +73,45 @@ describe("parseProviderLimits", () => {
       error: expect.stringContaining("maxOutputTokens"),
     });
   });
+
+  it("rejects an output cap larger than the context window it has to fit in", () => {
+    // Pi would clamp it silently, leaving a stored number that describes nothing.
+    expect(parseProviderLimits("custom", { contextWindow: 8192, maxOutputTokens: 16384 })).toEqual({
+      error: "maxOutputTokens cannot exceed contextWindow",
+    });
+    expect(parseProviderLimits("custom", { contextWindow: 8192, maxOutputTokens: 8192 })).toEqual({
+      limits: { contextWindow: 8192, maxOutputTokens: 8192 },
+    });
+  });
+});
+
+describe("parseModelLimitEdit", () => {
+  it("keeps a field the body omits out of the edit", () => {
+    expect(parseModelLimitEdit({ contextWindow: 32768 })).toEqual({ contextWindow: 32768 });
+    expect(parseModelLimitEdit({ maxOutputTokens: 4096 })).toEqual({ maxOutputTokens: 4096 });
+  });
+
+  it("reads an explicit null as 'inherit the endpoint default again'", () => {
+    expect(parseModelLimitEdit({ contextWindow: null, maxOutputTokens: null })).toEqual({
+      contextWindow: null,
+      maxOutputTokens: null,
+    });
+  });
+
+  it("rejects an invalid limit and names it", () => {
+    expect(parseModelLimitEdit({ contextWindow: 0 })).toMatchObject({
+      error: expect.stringContaining("contextWindow"),
+    });
+    expect(parseModelLimitEdit({ maxOutputTokens: "8k" })).toMatchObject({
+      error: expect.stringContaining("maxOutputTokens"),
+    });
+  });
+
+  it("rejects an inverted pair sent together", () => {
+    expect(parseModelLimitEdit({ contextWindow: 4096, maxOutputTokens: 8192 })).toEqual({
+      error: "maxOutputTokens cannot exceed contextWindow",
+    });
+  });
 });
 
 describe("limitFields", () => {
@@ -90,6 +131,55 @@ describe("limitFields", () => {
       contextWindow: PI_DEFAULT_CONTEXT_WINDOW,
       maxTokens: 8192,
     });
+  });
+});
+
+describe("resolveModelLimits", () => {
+  const catalog = { contextWindow: 200_000, maxTokens: 64_000 };
+  const endpoint = { contextWindow: 32_768, maxOutputTokens: 8_192 };
+
+  it("prefers the model's own value over everything else", () => {
+    expect(
+      resolveModelLimits({
+        model: { contextWindow: 4_096, maxOutputTokens: 1_024 },
+        endpoint,
+        reported: { contextWindow: 131_072 },
+        catalog,
+      }),
+    ).toEqual({ contextWindow: 4_096, maxTokens: 1_024 });
+  });
+
+  it("falls back to the endpoint's default before the endpoint's own report", () => {
+    // A default the user typed is a decision; what the server reports is only a
+    // better guess than the catalog's.
+    expect(resolveModelLimits({ endpoint, reported: { contextWindow: 131_072 }, catalog })).toEqual(
+      { contextWindow: 32_768, maxTokens: 8_192 },
+    );
+  });
+
+  it("uses what the endpoint's listing reported before Pi's catalog", () => {
+    // llama-swap serves a model Pi's catalog has at 200k from a 32k instance.
+    expect(
+      resolveModelLimits({
+        endpoint: { contextWindow: null, maxOutputTokens: null },
+        reported: { contextWindow: 32_768 },
+        catalog,
+      }),
+    ).toEqual({ contextWindow: 32_768, maxTokens: 64_000 });
+  });
+
+  it("falls back to the catalog, then to Pi's defaults, per field", () => {
+    expect(resolveModelLimits({ catalog })).toEqual({ contextWindow: 200_000, maxTokens: 64_000 });
+    expect(resolveModelLimits({})).toEqual({
+      contextWindow: PI_DEFAULT_CONTEXT_WINDOW,
+      maxTokens: PI_DEFAULT_MAX_OUTPUT_TOKENS,
+    });
+    expect(
+      resolveModelLimits({
+        model: { contextWindow: 8_192 },
+        endpoint: { contextWindow: null, maxOutputTokens: 2_048 },
+      }),
+    ).toEqual({ contextWindow: 8_192, maxTokens: 2_048 });
   });
 });
 
