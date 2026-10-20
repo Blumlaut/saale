@@ -141,7 +141,7 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
       return (
         <div className="flex flex-wrap gap-1">
           {block.items.map((text) => (
-            <Badge key={text} variant="secondary" className="rounded-md px-1.5 py-0 text-[10px]">
+            <Badge key={text} variant="secondary" className="rounded-full px-1.5 py-0 text-[10px]">
               {text}
             </Badge>
           ))}

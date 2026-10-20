@@ -208,7 +208,7 @@ export function AccountTab() {
               </p>
             </div>
             {twoFactorEnabled === true ? (
-              <Badge className="gap-1 text-emerald-600 dark:text-emerald-400">
+              <Badge className="gap-1 bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400">
                 <ShieldCheck className="h-3 w-3" />
                 Enabled
               </Badge>
