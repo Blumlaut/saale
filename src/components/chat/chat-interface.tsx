@@ -60,7 +60,7 @@ export function ChatInterface({
   const router = useRouter();
   const isMobile = useIsMobile();
   // Watchers bound to this conversation. feeds the Linked button/panel.
-  const { links } = useSessionLinks(sessionId);
+  const { links, reload: reloadLinks } = useSessionLinks(sessionId);
   const [linksOpen, setLinksOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   // Messages waiting in the send queue (submitted while Pi was working).
@@ -257,6 +257,11 @@ export function ChatInterface({
       }
     },
     onReload: () => void loadMessages(),
+    onToolEnd: (toolName) => {
+      // A watcher tool just finished, so the session's linked watchers may
+      // have changed mid-conversation. Refresh before the next navigation.
+      if (toolName.startsWith("watcher_")) void reloadLinks();
+    },
     onRetryStart: (retry) => setRetryNotice(retry),
     onRetryEnd: () => setRetryNotice(null),
   });
