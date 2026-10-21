@@ -11,6 +11,13 @@ import { NodeSSH } from "node-ssh";
 import sshpk from "sshpk";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import {
+  buildShellRequest,
+  parsePlatformProbe,
+  InvalidExecOptionsError,
+  PLATFORM_PROBE,
+  type RemotePlatform,
+} from "@/lib/infra/shell";
 
 // ─── Limits ─────────────────────────────────────────────────────
 
@@ -378,45 +385,20 @@ function sftpListDir(sftp: SFTPWrapper, path: string): Promise<SftpListEntry[]> 
 // ─── Public API ─────────────────────────────────────────────────
 
 /**
- * The command's shell, reading the command from stdin.
+ * Which shell this machine's exec requests land in.
  *
- * sshd runs an exec request through the login shell, so the request's text. the
- * whole command. lands in that shell's own process list. A command that hunts
- * for its own name (`pkill -f health_scan.py`) then matches the shell running it
- * and kills the session mid-script, which arrives as a truncated result with a
- * null exit code. Writing the command to stdin instead leaves the process list
- * showing only the shell that reads it. `$SHELL` because that is what ran the
- * text before, with a fallback for an account that has none set.
+ * One probe per command, on the connection that command already opened. A probe
+ * that cannot answer leaves the machine as POSIX, which is how every machine was
+ * treated before Windows was handled.
  */
-const STDIN_SHELL = 'exec "${SHELL:-/bin/sh}" -s';
-
-/** A name a shell accepts on the left of an assignment. */
-const SHELL_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/** Single-quote a value so the remote shell passes it through unchanged. */
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * Add the environment to the front of a command.
- *
- * The variables are exported inside the script rather than sent as an env
- * request: sshd only accepts the names its `AcceptEnv` lists, so a request for
- * anything else is dropped without a word, while an export line reaches every
- * process the command starts.
- */
-function withEnvironment(command: string, env: Record<string, string> | undefined): string {
-  if (!env) return command;
-
-  const exports = Object.entries(env).map(([name, value]) => {
-    if (!SHELL_VARIABLE_NAME.test(name)) {
-      throw new Error(`Invalid environment variable name: ${name}`);
-    }
-    return `export ${name}=${shellQuote(value)}`;
-  });
-
-  return exports.length === 0 ? command : `${exports.join("\n")}\n${command}`;
+async function resolvePlatform(ssh: NodeSSH): Promise<RemotePlatform> {
+  try {
+    const probe = await ssh.execCommand(PLATFORM_PROBE);
+    return parsePlatformProbe(probe.stdout ?? "", probe.code ?? null);
+  } catch (err) {
+    console.error("Failed to probe the remote shell, assuming POSIX:", err);
+    return "posix";
+  }
 }
 
 /**
@@ -432,20 +414,16 @@ export async function executeCommand(
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
   const maxOutput = options.maxOutput ?? MAX_OUTPUT_BYTES;
 
-  // Built before connecting: an environment name the shell cannot assign is the
-  // caller's mistake, so it throws rather than coming back as a failed command.
-  const script = withEnvironment(command, options.env);
-
   const { ssh, disconnect } = await connect(machineId, userId);
 
   let timedOut = false;
   let timerId: ReturnType<typeof setTimeout> | null = null;
 
   try {
-    const sshOptions: NonNullable<Parameters<NodeSSH["execCommand"]>[1]> = { stdin: script };
-    if (options.cwd) sshOptions.cwd = options.cwd;
+    const platform = await resolvePlatform(ssh);
+    const { request, stdin } = buildShellRequest(platform, command, options);
 
-    const execPromise = ssh.execCommand(STDIN_SHELL, sshOptions);
+    const execPromise = ssh.execCommand(request, { stdin });
 
     // Race against a timer for timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -486,6 +464,10 @@ export async function executeCommand(
       truncated: stdoutTruncated.truncated || stderrTruncated.truncated,
     };
   } catch (err) {
+    // Options the remote shell cannot take are the caller's mistake: the command
+    // never ran, so there is no result to report.
+    if (err instanceof InvalidExecOptionsError) throw err;
+
     const message = err instanceof Error ? err.message : String(err);
     return {
       stdout: "",
@@ -517,7 +499,9 @@ export async function testConnection(
   const { ssh, disconnect } = await connect(machineId, userId);
 
   try {
-    const result = await ssh.execCommand("hostname && echo 'OK'");
+    // `hostname` is a command under both login shells, so the check needs no
+    // platform probe of its own.
+    const result = await ssh.execCommand("hostname");
 
     const hostname = result.stdout?.trim()?.split("\n")?.[0];
 

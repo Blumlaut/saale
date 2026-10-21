@@ -546,7 +546,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_exec",
       label: "Execute Command",
       description:
-        "Run a shell command on a remote machine via SSH. Connects, executes, collects output, and disconnects. Default timeout is 30 seconds. increase for longer commands. Output is truncated at 50KB.",
+        "Run a shell command on a remote machine via SSH. Connects, executes, collects output, and disconnects. The command runs in the machine's own login shell: a POSIX shell on Unix, cmd.exe on Windows. Default timeout is 30 seconds. increase for longer commands. Output is truncated at 50KB.",
       parameters: Type.Object({
         id: Type.String({ description: "Machine ID." }),
         command: Type.String({
