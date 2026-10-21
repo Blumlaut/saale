@@ -27,6 +27,7 @@ vi.mock("node-ssh", () => ({
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import { NodeSSH } from "node-ssh";
+import { PLATFORM_PROBE } from "@/lib/infra/shell";
 import {
   truncateOutput,
   resolveConnectionConfig,
@@ -590,18 +591,35 @@ describe("executeCommand", () => {
 
   /**
    * Stand up a NodeSSH whose exec behaves like a real remote command, and
-   * record the request the SSH client would have put on the wire.
+   * record the requests the SSH client would have put on the wire.
+   *
+   * The platform probe is answered first, the way a real connection sees it.
    */
-  function setupExec(response: {
-    stdout?: string;
-    stderr?: string;
-    code?: number | null;
-    signal?: string | null;
-    neverSettles?: boolean;
-  }) {
+  function setupExec(
+    response: {
+      stdout?: string;
+      stderr?: string;
+      code?: number | null;
+      signal?: string | null;
+      neverSettles?: boolean;
+      probeFails?: boolean;
+    },
+    platform: "posix" | "windows" = "posix",
+  ) {
     const destroy = vi.fn();
-    const execCommand = vi.fn().mockImplementation(() =>
-      response.neverSettles
+    const dispose = vi.fn();
+
+    const execCommand = vi.fn().mockImplementation((request: string) => {
+      if (request === PLATFORM_PROBE) {
+        if (response.probeFails) return Promise.reject(new Error("channel open failed"));
+        return Promise.resolve(
+          platform === "windows"
+            ? { stdout: "Windows_NT\r\n", stderr: "", code: 0, signal: null }
+            : { stdout: "", stderr: "sh: 1: cmd.exe: not found\n", code: 127, signal: null },
+        );
+      }
+
+      return response.neverSettles
         ? new Promise(() => {})
         : Promise.resolve({
             stdout: response.stdout ?? "",
@@ -609,21 +627,29 @@ describe("executeCommand", () => {
             // `??` would turn an explicit null  a killed command  into 0.
             code: response.code === undefined ? 0 : response.code,
             signal: response.signal === undefined ? null : response.signal,
-          }),
-    );
+          });
+    });
 
     (NodeSSH as unknown as Mock).mockImplementation(function () {
       return {
         connect: vi.fn().mockResolvedValue(undefined),
         execCommand,
-        dispose: vi.fn(),
+        dispose,
         connection: { destroy },
       };
     });
 
     vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(machine);
 
-    return { execCommand, destroy };
+    return { execCommand, destroy, dispose };
+  }
+
+  /** The command's own request, i.e. the call after the platform probe. */
+  function lastRequest(execCommand: Mock): [string, { stdin?: string; cwd?: string }] {
+    return execCommand.mock.calls[execCommand.mock.calls.length - 1] as [
+      string,
+      { stdin?: string; cwd?: string },
+    ];
   }
 
   beforeEach(() => {
@@ -635,7 +661,7 @@ describe("executeCommand", () => {
 
     await executeCommand("machine-1", "user-1", "pkill -f health_scan.py && echo done");
 
-    const [request, options] = execCommand.mock.calls[0] as [string, { stdin: string }];
+    const [request, options] = lastRequest(execCommand);
     // The request is what lands in the remote process list. A command that
     // greps for its own name must not be able to find itself there.
     expect(request).not.toContain("health_scan.py");
@@ -644,26 +670,66 @@ describe("executeCommand", () => {
     expect(options.stdin).toBe("pkill -f health_scan.py && echo done");
   });
 
+  it("probes the platform, then runs the command", async () => {
+    const { execCommand } = setupExec({});
+
+    await executeCommand("machine-1", "user-1", "whoami");
+
+    expect(execCommand).toHaveBeenCalledTimes(2);
+    expect(execCommand.mock.calls[0]![0]).toBe(PLATFORM_PROBE);
+  });
+
   it("runs the command through a shell that reads stdin", async () => {
     const { execCommand } = setupExec({});
 
     await executeCommand("machine-1", "user-1", "whoami");
 
-    const [request] = execCommand.mock.calls[0] as [string];
-    // `$SHELL` is what ran the command before this change; the fallback covers
-    // an account whose login shell is unset.
+    const [request] = lastRequest(execCommand);
+    // `$SHELL` is what ran the command before this wrapper existed; the fallback
+    // covers an account whose login shell is unset.
     expect(request).toContain("${SHELL");
     expect(request).toContain("/bin/sh");
   });
 
-  it("keeps the working directory without putting the command in the request", async () => {
+  it("runs a Windows command through cmd.exe", async () => {
+    const { execCommand } = setupExec({ stdout: "ok" }, "windows");
+
+    const result = await executeCommand("machine-1", "user-1", "dir C:\\inetpub\\amy");
+
+    const [request, options] = lastRequest(execCommand);
+    expect(request).toBe("cmd.exe /D /Q");
+    expect(request).not.toContain("inetpub");
+    expect(options.stdin?.split("\r\n")).toEqual(["dir C:\\inetpub\\amy", "exit %ERRORLEVEL%"]);
+    expect(result.stdout).toBe("ok");
+  });
+
+  it("sets a Windows working directory inside the script", async () => {
+    const { execCommand } = setupExec({}, "windows");
+
+    await executeCommand("machine-1", "user-1", "node server.js", { cwd: "C:\\app" });
+
+    const [, options] = lastRequest(execCommand);
+    // node-ssh would prepend `cd <dir> ;`, which cmd.exe does not parse.
+    expect(options.cwd).toBeUndefined();
+    expect(options.stdin?.split("\r\n")).toEqual([
+      'cd /d "C:\\app"',
+      "if errorlevel 1 exit 1",
+      "node server.js",
+      "exit %ERRORLEVEL%",
+    ]);
+  });
+
+  it("keeps the working directory inside the script, not in the request", async () => {
     const { execCommand } = setupExec({});
 
-    await executeCommand("machine-1", "user-1", "tar czf backup.tar.gz /srv", { cwd: "/srv/app" });
+    await executeCommand("machine-1", "user-1", "tar czf backup.tar.gz /srv", {
+      cwd: "/srv/app",
+    });
 
-    const [request, options] = execCommand.mock.calls[0] as [string, { cwd?: string }];
-    expect(options.cwd).toBe("/srv/app");
+    const [request, options] = lastRequest(execCommand);
+    expect(options.cwd).toBeUndefined();
     expect(request).not.toContain("backup.tar.gz");
+    expect(options.stdin).toBe("cd '/srv/app' || exit 1\ntar czf backup.tar.gz /srv");
   });
 
   it("exports environment variables inside the command, not as a request", async () => {
@@ -673,19 +739,30 @@ describe("executeCommand", () => {
       env: { GREETING: "hi there", NAME: "o'brien" },
     });
 
-    const [request, options] = execCommand.mock.calls[0] as [string, { stdin: string }];
+    const [request, options] = lastRequest(execCommand);
     expect(request).not.toContain("GREETING");
     expect(options.stdin).toBe(
       `export GREETING='hi there'\nexport NAME='o'\\''brien'\necho $GREETING`,
     );
   });
 
+  it("falls back to POSIX when the probe cannot answer", async () => {
+    const { execCommand } = setupExec({ stdout: "alive", probeFails: true });
+
+    const result = await executeCommand("machine-1", "user-1", "echo alive");
+
+    const [request] = lastRequest(execCommand);
+    expect(request).toContain("${SHELL");
+    expect(result.stdout).toBe("alive");
+  });
+
   it("refuses an environment name a shell cannot assign", async () => {
-    setupExec({});
+    const { dispose } = setupExec({});
 
     await expect(
       executeCommand("machine-1", "user-1", "echo hi", { env: { "not a name": "1" } }),
     ).rejects.toThrow("Invalid environment variable name: not a name");
+    expect(dispose).toHaveBeenCalled();
   });
 
   it("reports a normal exit", async () => {
