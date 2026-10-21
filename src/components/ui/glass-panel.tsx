@@ -19,7 +19,7 @@ function GlassPanelHeader({
   return (
     <div
       className={cn(
-        "border-border/50 flex items-center justify-between border-b px-4 py-3 md:px-6 md:py-4",
+        "border-border/50 flex items-center justify-between border-b px-4 py-3",
         className,
       )}
       {...props}
@@ -32,7 +32,7 @@ function GlassPanelHeader({
 
 function GlassPanelContent({ className, children, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("px-4 py-3 md:px-6 md:py-4", className)} {...props}>
+    <div className={cn("px-4 py-3", className)} {...props}>
       {children}
     </div>
   );
@@ -42,7 +42,7 @@ function GlassPanelFooter({ className, children, ...props }: React.ComponentProp
   return (
     <div
       className={cn(
-        "border-border/50 bg-muted/50 flex items-center justify-between border-t px-4 py-3 md:px-6",
+        "border-border/50 bg-muted/50 flex items-center justify-between border-t px-4 py-3",
         className,
       )}
       {...props}
