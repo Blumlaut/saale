@@ -41,7 +41,8 @@ const WATCHDOG_TICK_MS = 15_000;
  * - `turn_start { turnId, startedAt }`. create a streaming message for the
  *   turn, positioned by the server's turn start
  * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end`. update
- *   the turn (tool_update carries live partial output from a running tool)
+ *   the turn (tool_update carries live partial output from a running tool;
+ *   tool_end carries toolName so the UI can react to specific tools)
  * - `turn_end { turnId }`. finalize the turn (safety net for final token)
  * - `turn_discarded { turnId }`. the SDK discarded a failed turn to retry it
  * - `retry_start` / `retry_end`. the provider call failed and is being retried
@@ -84,6 +85,8 @@ export interface ChatStreamOptions {
   onRetryEnd?: (retry: { success: boolean; attempt: number; finalError?: string }) => void;
   /** Reload messages from the DB (called when the server signals a final state). */
   onReload: () => void;
+  /** Called with the tool name each time a tool call finishes. */
+  onToolEnd?: (toolName: string) => void;
   /**
    * The send queue changed. Carries the full queue, so the client never has
    * to merge deltas. Called for queue mutations and at every run start, which
@@ -179,7 +182,7 @@ interface StreamListenerOpts extends ChatStreamOptions {
   rootMessageIdRef: React.MutableRefObject<string | null>;
 }
 
-function wireStreamListeners(opts: StreamListenerOpts) {
+export function wireStreamListeners(opts: StreamListenerOpts) {
   const { eventSource, setMessages, rootMessageIdRef } = opts;
 
   // isLoading is set on the first stream event (not on connect) so idle
@@ -299,6 +302,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
     const parsed = parseEvent<{
       turnId: string;
       toolCallId: string;
+      toolName?: string;
       result?: string;
       isError?: boolean;
     }>(event.data);
@@ -310,6 +314,7 @@ function wireStreamListeners(opts: StreamListenerOpts) {
         ...(parsed.result !== undefined ? { result: parsed.result } : {}),
         ...(parsed.isError !== undefined ? { isError: parsed.isError } : {}),
       });
+      if (parsed.toolName) opts.onToolEnd?.(parsed.toolName);
     }
   });
 
