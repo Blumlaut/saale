@@ -1,6 +1,6 @@
 # ─── Base ─────────────────────────────────────────────────────────────────────
 
-FROM node:26.12.1-alpine AS base
+FROM node:26-alpine AS base
 RUN apk add --no-cache dumb-init
 
 # ─── Development stage — hot reload via docker compose watch ──────────────────
