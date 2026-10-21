@@ -3,12 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Radar, X, ArrowUpRight } from "lucide-react";
-import {
-  GlassPanel,
-  GlassPanelContent,
-  GlassPanelFooter,
-  GlassPanelHeader,
-} from "@/components/ui/glass-panel";
+import { GlassPanel, GlassPanelFooter, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -58,18 +53,18 @@ export function useSessionLinks(sessionId: string) {
   return { links, reload };
 }
 
-function rel(iso: string | null): string {
+function ago(iso: string | null): string {
   if (!iso) return "never";
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return "now";
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  if (s < 86400) return `${Math.round(s / 3600)}h`;
-  return `${Math.round(s / 86400)}d`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
 }
 
 function LinkRow({ link }: { link: SessionLink }) {
   return (
-    <div className="px-3 py-2.5">
+    <div className="px-4 py-2">
       <div className="flex items-center gap-2">
         <Radar className={cn("h-4 w-4 shrink-0", link.enabled ? "" : "text-muted-foreground")} />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{link.name}</span>
@@ -77,12 +72,10 @@ function LinkRow({ link }: { link: SessionLink }) {
           {link.enabled ? "on" : "off"}
         </Badge>
       </div>
-      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-6 font-mono text-[11px]">
-        <span>{link.cronExpression}</span>
-        <span aria-hidden>·</span>
-        <span>tick {rel(link.lastTickAt)}</span>
-        <span aria-hidden>·</span>
-        <span>{link.fireCount} fired</span>
+      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-6 text-[11px]">
+        <span className="whitespace-nowrap">{link.cronExpression}</span>
+        <span className="whitespace-nowrap">· {ago(link.lastTickAt)}</span>
+        <span className="whitespace-nowrap">· {link.fireCount}x</span>
       </div>
       {link.lastError && (
         <div className="mt-1.5 flex items-start gap-1.5 pl-6">
@@ -125,7 +118,7 @@ function SessionLinksContent({ links }: { links: SessionLink[] | null }) {
 function LinksFooter() {
   const router = useRouter();
   return (
-    <GlassPanelFooter className="justify-end px-4 py-2">
+    <GlassPanelFooter className="justify-end px-4 py-2 md:px-4 md:py-2">
       <Button
         variant="ghost"
         size="sm"
@@ -151,7 +144,9 @@ export function SessionLinksPanel({
     <GlassPanel className="flex h-full w-full flex-col overflow-hidden rounded-none md:rounded-2xl">
       <GlassPanelHeader
         title="Linked"
-        className="px-4 py-2 md:px-4 md:py-2.5"
+        // the header/footer carry an md: padding of their own, so every band of
+        // the panel needs the md: class to land on the same gutter
+        className="px-4 py-2 md:px-4 md:py-2"
         action={
           <div className="flex items-center gap-2">
             <Badge variant="secondary">{links?.length ?? 0}</Badge>
@@ -167,9 +162,11 @@ export function SessionLinksPanel({
           </div>
         }
       />
-      <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
+      {/* plain div: GlassPanelContent brings an md: gutter of its own, which
+          would double the padding of every row */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <SessionLinksContent links={links} />
-      </GlassPanelContent>
+      </div>
       <LinksFooter />
     </GlassPanel>
   );
