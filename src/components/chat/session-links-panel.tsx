@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Radar, X, ArrowUpRight } from "lucide-react";
-import { GlassPanel, GlassPanelFooter, GlassPanelHeader } from "@/components/ui/glass-panel";
+import {
+  GlassPanel,
+  GlassPanelContent,
+  GlassPanelFooter,
+  GlassPanelHeader,
+} from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -118,7 +123,7 @@ function SessionLinksContent({ links }: { links: SessionLink[] | null }) {
 function LinksFooter() {
   const router = useRouter();
   return (
-    <GlassPanelFooter className="justify-end px-4 py-2 md:px-4 md:py-2">
+    <GlassPanelFooter className="justify-end px-4 py-2">
       <Button
         variant="ghost"
         size="sm"
@@ -144,9 +149,7 @@ export function SessionLinksPanel({
     <GlassPanel className="flex h-full w-full flex-col overflow-hidden rounded-none md:rounded-2xl">
       <GlassPanelHeader
         title="Linked"
-        // the header/footer carry an md: padding of their own, so every band of
-        // the panel needs the md: class to land on the same gutter
-        className="px-4 py-2 md:px-4 md:py-2"
+        className="px-4 py-2"
         action={
           <div className="flex items-center gap-2">
             <Badge variant="secondary">{links?.length ?? 0}</Badge>
@@ -162,11 +165,9 @@ export function SessionLinksPanel({
           </div>
         }
       />
-      {/* plain div: GlassPanelContent brings an md: gutter of its own, which
-          would double the padding of every row */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
         <SessionLinksContent links={links} />
-      </div>
+      </GlassPanelContent>
       <LinksFooter />
     </GlassPanel>
   );

@@ -137,6 +137,7 @@ For buttons, badges, and toggles, use `liquid-glass-pill` or `liquid-glass-accen
 - **Never add `liquid-glass` manually to `GlassPanel`** — it's automatic.
 - **Never nest GlassPanels more than 1 level deep.** If you need nesting, use `liquid-glass-inner` div instead.
 - **Always use `GlassPanelContent` for padding consistency.** Don't add arbitrary `p-*` classes to the panel itself.
+- **One gutter per panel.** Header, content and footer share a 16px gutter, and a row list uses `px-4` so its text lines up with the header. A caller class (`p-0`, `p-3`, `py-16`) replaces the default at every width.
 - **Headers always have `border-b`.** This separates the title from content.
 - **Footers always have `border-t` and a subtle background.** This separates actions from content.
 - **Max one header action.** If you need multiple actions, use a dropdown or toolbar.
