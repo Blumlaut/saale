@@ -86,10 +86,9 @@ ENV NODE_ENV=production
 # Runtime deps, Prisma client already generated in `prod-deps`
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/package.json ./package.json
-# Pre-compiled worker binary, sandbox service, one-shot scripts + prisma schema
+# Pre-compiled worker binary, sandbox service + prisma schema
 COPY --from=build /app/dist/worker.mjs ./worker.mjs
 COPY --from=build /app/dist/sandbox.mjs ./sandbox.mjs
-COPY --from=build /app/scripts/migrate-workspaces.mjs ./migrate-workspaces.mjs
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
 

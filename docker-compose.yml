@@ -18,34 +18,6 @@ services:
     entrypoint: ["node", "node_modules/prisma/build/index.js"]
     command: ["migrate", "deploy"]
 
-  # One-shot `workspaces` volume migration, between the schema and the app.
-  #
-  # Copies the old open-terminal homes into the workspaces volume on the first
-  # deploy, then leaves a marker so later deploys exit at once. The old volume is
-  # read-only, and on a fresh host it is empty, so this only writes the marker.
-  # Redo a finished copy with:
-  #   docker compose run --rm workspaces-migrate --force
-  workspaces-migrate:
-    image: saale-worker
-    container_name: saale-workspaces-migrate
-    restart: "no"
-    volumes:
-      - open_terminal_data:/migrate/old:ro
-      - saale_workspaces:/workspaces
-    environment:
-      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
-      - SANDBOX_WORKSPACES_DIR=/workspaces
-      - SANDBOX_UID=${SANDBOX_UID:-1000}
-      - SANDBOX_GID=${SANDBOX_GID:-1000}
-      # The prefix the old container used to derive account names, if any.
-      - OPEN_TERMINAL_USER_PREFIX=${OPEN_TERMINAL_USER_PREFIX:-}
-    entrypoint: ["node", "migrate-workspaces.mjs"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-
   web:
     build:
       context: .
@@ -79,8 +51,6 @@ services:
       - TELEGRAM_OIDC_CLIENT_SECRET=${TELEGRAM_OIDC_CLIENT_SECRET:-}
     depends_on:
       migrate:
-        condition: service_completed_successfully
-      workspaces-migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -140,8 +110,6 @@ services:
       - APP_URL=${APP_URL:-}
     depends_on:
       migrate:
-        condition: service_completed_successfully
-      workspaces-migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -228,8 +196,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      workspaces-migrate:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8100/health"]
       interval: 15s
@@ -257,10 +223,6 @@ volumes:
   # so never pass -v.
   saale_workspaces:
     name: saale_workspaces
-  # The old open-terminal homes, read by `workspaces-migrate`. Adopted by name
-  # where it exists; created empty on a host that never ran the old stack.
-  open_terminal_data:
-    name: saale_open-terminal-data
 
 networks:
   default:

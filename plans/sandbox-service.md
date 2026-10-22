@@ -270,12 +270,10 @@ stop past the idle window and a removal past the TTL.
 - `docker-compose.yml`: remove the `open-terminal` service and volume; add
   `saale_workspaces`, `sandbox-exec`, `saale-sandbox` and the sandbox network.
 - `.env.example`, `README.md`, `.pi/skills/pi-agent-usage/SKILL.md`.
-- `workspaces-migrate` in `docker-compose.yml`, a one-shot service that runs
-  `scripts/migrate-workspaces.mjs` between the schema migration and web/worker.
-  It reads the ids from Postgres, copies each `/home/<account>` into
-  `<volume>/<identity>/`, and prints per-identity file and byte counts. A marker
-  file in the new volume makes it a one-time move: later deploys exit
-  immediately.
+- `workspaces-migrate` in `docker-compose.yml`, a one-shot service that copied
+  each old `/home/<account>` into `<volume>/<identity>/` before web and worker
+  started. It ran from this checkout, marked the volume, and was deleted once the
+  move was done (see "The data move that ran").
 
 ### Step 9 — retire the env-var shaped integration
 
@@ -540,27 +538,9 @@ services:
     restart: "no"
     command: ["true"]
 
-  # One-shot copy of the old open-terminal homes, between migrate and the app.
-  workspaces-migrate:
-    image: saale-worker
-    restart: "no"
-    volumes:
-      - open_terminal_data:/migrate/old:ro
-      - saale_workspaces:/workspaces
-    environment:
-      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
-      - SANDBOX_UID=${SANDBOX_UID:-1000}
-      - SANDBOX_GID=${SANDBOX_GID:-1000}
-    entrypoint: ["node", "migrate-workspaces.mjs"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-
 volumes:
   saale_workspaces:
     name: saale_workspaces
-  open_terminal_data:
-    name: saale_open-terminal-data
 
 networks:
   sandbox:
@@ -592,67 +572,38 @@ Details that matter:
   same privilege the terminal container has today.
 
 A fresh box needs one command: `docker compose up -d --build`. It builds the app
-and the tenant image, runs the schema migration, finds no old homes to copy, and
-starts. Later deploys of the same checkout are the same command. On the host that
-ran open-terminal, add `--remove-orphans`: the old terminal container is no longer
+and the tenant image, runs the schema migration, and starts. On a host that ran
+open-terminal, add `--remove-orphans`: the old terminal container is no longer
 part of the project.
 
-## Migration runbook
+## The data move that ran
 
-Live state before the cutover: 5 users, 0 councils, three directories under
-`/home` (`u7rv9dfnn`, `vcxyvmjy`, `user`) with small `uploads/` folders. The old
-volume is `saale_open-terminal-data`; the new one is `saale_workspaces`.
+The live instance moved on 2026-10-22: `workspaces-migrate` copied five old homes
+into `saale_workspaces` — one user's 6 files, one user's 8465 files (1.1 GB), and
+three unclaimed `/home` directories parked under `_orphaned/` — then wrote
+`.migrated-from-open-terminal` into the volume. The service, its script and the
+`open_terminal_data` volume were removed afterwards, so nothing repeats the copy
+on later deploys.
 
-The move is part of the deploy. `workspaces-migrate` copies the homes on the
-first `up`, writes `.migrated-from-open-terminal` into the new volume, and every
-deploy after that exits without touching anything.
+Two things it had to get right, worth keeping in mind for any future move of this
+volume:
 
-```sh
-# 0. the old container is not in the new compose file, so stop it first:
-#    everything a user wrote up to here is what the copy sees
-docker rm -f saale-open-terminal
+- `chown` follows symlinks, and old homes hold dangling ones (a `.config/pulse`
+  runtime socket, for one). Ownership goes through `lchown`, and a path that
+  still fails is reported without aborting the move.
+- A copy is assembled beside its destination and renamed into place, so a crash
+  mid-copy cannot leave a workspace that looks complete.
 
-# 1. what would be copied, per identity (writes nothing)
-docker compose run --rm workspaces-migrate --dry-run
-
-# 2. cut over: builds the app and the tenant image, copies the workspaces,
-#    deploys the schema migration too
-docker compose up -d --build
-```
-
-`--remove-orphans` stops the old terminal container as part of the deploy. It
-runs after the migration has read the volume, so stopping it first is the safe
-order.
-
-`--force` redoes a finished copy, replacing workspaces that are already there.
-
-What the copy does, per identity:
-
-1. Reads `user` ids and `Council.sandboxKey` values from Postgres and derives the
-   account each had under open-terminal, with the same rules as
-   `deriveOpenTerminalUsername`.
-2. Copies the old home into `<volume>/<identity>/`, skipping the shell account's
-   own files (`.bash*`, `.profile`, `.cache`) and `~/.local/state`. `~/.local/bin`
-   and `~/.local/lib` come along: that is where an agent's installs live.
-3. Assembles each copy beside its destination and renames it into place, so an
-   interrupted run cannot leave half a workspace. A destination that already has
-   files is skipped unless `--force`.
-4. Sets ownership to `SANDBOX_UID:SANDBOX_GID`.
-5. Copies unmatched `/home/*` directories to `<volume>/_orphaned/<account>/`.
-6. Compares file counts and byte totals before and after, and exits non-zero
-   without writing the marker when they differ, so the next deploy retries.
-
-The old volume is mounted read-only. Rollback: `docker compose down` plus the
-previous compose file and env brings the old stack back with its data intact.
-Files written since the cutover stay in the new volume and need a second, reverse
-copy if they matter.
+The old volume, `saale_open-terminal-data`, still holds the pre-move data. Delete
+it (`docker volume rm saale_open-terminal-data`) once the workspaces have been
+checked.
 
 ## Deploy notes
 
 - The first deploy after this change stops the old terminal service. Keep the old
-  volume until the copy has been checked: `docker volume rm
-saale_open-terminal-data` is the last step, and an orphaned `user` home stays in
-  `<volume>/_orphaned/user` either way.
+  volume until the workspaces have been checked: `docker volume rm
+saale_open-terminal-data` is the last step, and an orphaned `user` home stays
+  in `<volume>/_orphaned/user` either way.
 - `volume-subpath` needs Docker 26 or newer. On an older host, bind
   `/srv/saale/workspaces/<id>` from the host at the same target and add
   `SANDBOX_WORKSPACES_HOST_DIR`; the rest is unchanged.

@@ -196,7 +196,7 @@ When bash tools are enabled, every identity gets its own container holding one d
 
 To enable, set `bash: true` in the user's tool config and configure `SANDBOX_URL` and `SANDBOX_API_KEY` (see `docker-compose.yml` and `plans/sandbox-service.md`).
 
-The first deploy moves every user's files off the old `saale_open-terminal-data` volume on its own: `workspaces-migrate` copies each old home into `<volume>/user-<id>/` between the schema migration and the app, then marks the volume so later deploys skip it. Remove the old terminal container before deploying (`docker rm -f saale-open-terminal`), so the copy sees its final state.
+Files moved off the old `saale_open-terminal-data` volume once, on 2026-10-22; the volume can be deleted after the workspaces have been checked.
 
 ## Naming
 

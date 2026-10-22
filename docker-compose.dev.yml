@@ -6,13 +6,6 @@ services:
     entrypoint: ["sh", "-c"]
     command: ["echo 'dev: schema handled by prisma db push'"]
 
-  # The volume is written by the app in dev; there is nothing to copy in.
-  workspaces-migrate:
-    build:
-      target: development
-    entrypoint: ["sh", "-c"]
-    command: ["echo 'dev: workspaces migration skipped'"]
-
   # Not built in dev: sandbox-exec creates containers on demand from the image
   # CI builds, and a 2 GB toolchain image per `up` is not worth the wait.
   sandbox-image:
