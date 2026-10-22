@@ -1,49 +1,51 @@
 #!/usr/bin/env node
 /**
- * Copy the old open-terminal homes into the workspaces volume.
+ * Copy the old open-terminal homes into the workspaces volume, once.
  *
- * Run it while the old stack is still up: the old volume is mounted read-only,
- * the new one is written, and nothing is deleted. Identities are derived with
- * the same rules the app used to derive a Linux account from a user id, so each
- * `/home/<account>` lands in `user-<id>/` (or `council-<key>/`) with its
- * `uploads/`, `files/`, `images/` and `telegram_files/` intact.
+ * Runs as a one-shot compose service between the schema migration and
+ * web/worker. A marker file in the new volume records that the move happened;
+ * every later deploy sees it and exits without touching anything.
  *
- *   node scripts/migrate-workspaces.mjs --dry-run   # what would be copied
- *   node scripts/migrate-workspaces.mjs             # copy
+ * Each copy lands in a temporary directory that is renamed into place, so an
+ * interrupted run cannot leave half a workspace behind, and the marker is only
+ * written once every workspace is complete. The old volume is mounted
+ * read-only, so nothing here can lose data.
  *
- * A second run refuses to overwrite a destination that already has files unless
- * `--force` is passed, so re-running after the cutover cannot replace newer data
- * with older.
+ *   docker compose run --rm workspaces-migrate --dry-run
+ *   docker compose run --rm workspaces-migrate            # normal: skipped if done
+ *   docker compose run --rm workspaces-migrate --force    # redo it anyway
  */
 
-import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { Client } from "pg";
 
 const args = process.argv.slice(2);
-const flag = (name) => args.includes(`--${name}`);
-const option = (name, fallback) => {
-  const hit = args.find((arg) => arg.startsWith(`--${name}=`));
-  return hit ? hit.slice(name.length + 3) : fallback;
-};
+const DRY_RUN = args.includes("--dry-run");
+const FORCE = args.includes("--force");
 
-const DRY_RUN = flag("dry-run");
-const FORCE = flag("force");
-const OLD_VOLUME = option("old", "saale_open-terminal-data");
-const NEW_VOLUME = option("new", "saale_workspaces");
-const POSTGRES = option("postgres", "saale-postgres");
-const DB = option("db", "saale");
-const DB_USER = option("db-user", "saale");
-const USER_PREFIX = option("prefix", process.env.OPEN_TERMINAL_USER_PREFIX ?? "");
-const OWNER = option("owner", "0:0");
+const OLD_ROOT = process.env.OLD_WORKSPACES_DIR ?? "/migrate/old";
+const NEW_ROOT = process.env.SANDBOX_WORKSPACES_DIR ?? "/workspaces";
+const MARKER = path.join(NEW_ROOT, ".migrated-from-open-terminal");
+const UID = Number(process.env.SANDBOX_UID ?? "1000");
+const GID = Number(process.env.SANDBOX_GID ?? "1000");
+const USER_PREFIX = process.env.OPEN_TERMINAL_USER_PREFIX ?? "";
 
-/** Directories a workspace keeps. Anything else on top level is copied too. */
-const WORKSPACE_DIRS = ["uploads", "files", "images", "telegram_files"];
-
-/** Files that belong to the old shell account, not to the agent's workspace. */
-const SKIP = new Set([".bashrc", ".bash_logout", ".profile", ".cache", ".local"]);
+/**
+ * What belongs in the workspace.
+ *
+ * The old shell account's own files and caches stay behind; `~/.local/bin` and
+ * `~/.local/lib` come along, because that is where an agent's own installs
+ * live and they must survive the move.
+ */
+function copies(relative) {
+  const segments = relative.split("/");
+  const name = segments[segments.length - 1] ?? "";
+  if (name === ".cache" || name === ".profile" || name.startsWith(".bash")) return false;
+  if (segments.length === 2 && segments[0] === ".local" && name === "state") return false;
+  return true;
+}
 
 /**
  * The account open-terminal created for an id: its first eight alphanumerics,
@@ -59,201 +61,227 @@ function deriveAccount(id) {
   return /^[0-9]/.test(full) ? `u${full}` : full;
 }
 
-function docker(argv, options = {}) {
-  return execFileSync("docker", argv, { encoding: "utf8", ...options });
+/** Everything a copy takes, as `{ file, bytes }`, so two runs can be compared. */
+async function measure(dir, prefix = "") {
+  const files = [];
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (!copies(relative)) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await measure(full, relative)));
+    } else if (entry.isFile()) {
+      const stats = await fs.stat(full);
+      files.push({ file: full, bytes: stats.size });
+    }
+  }
+  return files;
 }
 
-function psql(sql) {
-  return docker(["exec", POSTGRES, "psql", "-U", DB_USER, "-d", DB, "-tAc", sql]).trim();
+async function summarise(dir) {
+  const files = await measure(dir);
+  return {
+    files: files.length,
+    bytes: files.reduce((total, file) => total + file.bytes, 0),
+  };
 }
 
-function requireVolume(name) {
-  try {
-    docker(["volume", "inspect", name]);
-  } catch {
-    console.error(
-      `Docker volume ${name} does not exist. Create it with: docker volume create ${name}`,
-    );
-    process.exit(1);
+async function chownTree(dir) {
+  await fs.chown(dir, UID, GID);
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) await chownTree(full);
+    else await fs.chown(full, UID, GID);
   }
 }
 
-async function main() {
-  requireVolume(OLD_VOLUME);
-  requireVolume(NEW_VOLUME);
+function warn(message) {
+  console.error(`WARN  ${message}`);
+}
 
-  const userIds = psql('SELECT id FROM "user" ORDER BY id').split("\n").filter(Boolean);
-  const councilKeys = psql('SELECT "sandboxKey" FROM "Council" ORDER BY "sandboxKey"')
-    .split("\n")
-    .filter(Boolean);
+function log(message) {
+  // A deploy log is the whole point of this script.
+  // eslint-disable-next-line no-console
+  console.log(message);
+}
 
-  if (userIds.length === 0 && councilKeys.length === 0) {
-    console.error(
-      "The database has no users or councils. Is --postgres pointing at the right container?",
-    );
-    process.exit(1);
-  }
-
-  const mapping = [
-    ...userIds.map((id) => ({ account: deriveAccount(id), target: `user-${id}`, kind: "user" })),
-    ...councilKeys.map((key) => ({
-      account: deriveAccount(key),
-      target: `council-${key}`,
-      kind: "council",
-    })),
-  ];
-
-  const planDir = await fs.mkdtemp(path.join(os.tmpdir(), "saale-migrate-"));
-  const planPath = path.join(planDir, "plan.tsv");
-  const scriptPath = path.join(planDir, "copy.sh");
-  await fs.writeFile(planPath, mapping.map((row) => `${row.account}\t${row.target}`).join("\n"));
-  await fs.writeFile(scriptPath, COPY_SCRIPT);
-
-  const mode = DRY_RUN ? "dry-run" : "copy";
-  // A one-shot operator script: its report is the point, so it writes to stdout.
-  /* eslint-disable no-console */
-  console.log(`${mode}: ${mapping.length} identities from ${OLD_VOLUME} into ${NEW_VOLUME}`);
-  for (const row of mapping) console.log(`  /home/${row.account} → ${row.target}/ (${row.kind})`);
-  /* eslint-enable no-console */
-
+/** Whether a path exists. A missing path is expected; anything else is not. */
+async function exists(target) {
   try {
-    const output = docker([
-      "run",
-      "--rm",
-      "-v",
-      `${OLD_VOLUME}:/old:ro`,
-      ...(DRY_RUN ? [] : ["-v", `${NEW_VOLUME}:/new`]),
-      "-v",
-      `${planDir}:/plan:ro`,
-      "-e",
-      `MODE=${mode}`,
-      "-e",
-      `FORCE=${FORCE ? "1" : "0"}`,
-      "-e",
-      `OWNER=${OWNER}`,
-      "-e",
-      `SKIP=${[...SKIP].join(" ")}`,
-      "-e",
-      `WORKSPACE_DIRS=${WORKSPACE_DIRS.join(" ")}`,
-      "alpine:3.20",
-      "sh",
-      "/plan/copy.sh",
-    ]);
+    await fs.stat(target);
+    return true;
+  } catch (err) {
+    if (err.code !== "ENOENT") warn(`stat ${target}: ${err.message}`);
+    return false;
+  }
+}
 
-    // `docker run` output is the report; print it as it comes.
-    process.stdout.write(output);
-    if (output.includes("MISMATCH")) process.exit(2);
-  } finally {
-    await fs.rm(planDir, { recursive: true, force: true });
+/** Whether a destination already holds a workspace we must not overwrite. */
+async function hasFiles(dir) {
+  try {
+    return (await fs.readdir(dir)).length > 0;
+  } catch (err) {
+    if (err.code !== "ENOENT") warn(`read ${dir}: ${err.message}`);
+    return false;
   }
 }
 
 /**
- * Runs inside the throwaway container. `plan.tsv` is the mapping, `/old` is the
- * old volume and `/new` the new one.
+ * Copy one old home into one identity directory.
  *
- * Every copy is followed by a count and a byte total, and a destination that
- * does not match its source fails the run: a half-copied home is the one
- * outcome that must not pass silently.
+ * The copy is assembled beside the destination and renamed onto it, so the
+ * volume never holds a workspace that is only half there.
  */
-const COPY_SCRIPT = String.raw`#!/bin/sh
-set -eu
+async function copyHome(source, destination, label) {
+  const before = await summarise(source);
 
-# Everything the copy takes: the workspace directories plus non-hidden files on
-# top level. The shell's own dotfiles are not part of a workspace.
-list_files() {
-  for entry in "$1"/*; do
-    [ -e "$entry" ] || continue
-    if [ -d "$entry" ]; then find "$entry" -type f; else echo "$entry"; fi
-  done
+  if (DRY_RUN) {
+    log(`PLAN  ${label}: ${before.files} files / ${before.bytes} bytes`);
+    return true;
+  }
+
+  if (await hasFiles(destination)) {
+    if (!FORCE) {
+      log(`SKIP  ${label}: already has files`);
+      return true;
+    }
+    await fs.rm(destination, { recursive: true, force: true });
+  }
+
+  const staging = `${destination}.migrating`;
+  await fs.rm(staging, { recursive: true, force: true });
+  await fs.mkdir(staging, { recursive: true });
+
+  try {
+    for (const entry of await fs.readdir(source, { withFileTypes: true })) {
+      await fs.cp(path.join(source, entry.name), path.join(staging, entry.name), {
+        recursive: true,
+        preserveTimestamps: true,
+        verbatimSymlinks: true,
+        filter: (candidate) => copies(path.relative(source, candidate).split(path.sep).join("/")),
+      });
+    }
+
+    await chownTree(staging);
+    const after = await summarise(staging);
+    if (after.files !== before.files || after.bytes !== before.bytes) {
+      throw new Error(
+        `copy mismatch for ${label}: ${before.files} files / ${before.bytes} bytes ` +
+          `→ ${after.files} / ${after.bytes}`,
+      );
+    }
+
+    await fs.rm(destination, { recursive: true, force: true });
+    await fs.rename(staging, destination);
+    log(`OK    ${label}: ${after.files} files / ${after.bytes} bytes`);
+    return true;
+  } catch (err) {
+    await fs.rm(staging, { recursive: true, force: true });
+    console.error(`FAIL  ${label}: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
 }
 
-count_files() { list_files "$1" | wc -l | tr -d ' '; }
+/** Identity → old account, for every user and council the database knows. */
+async function identities() {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    const users = await client.query('SELECT id FROM "user" ORDER BY id');
+    const councils = await client.query('SELECT "sandboxKey" FROM "Council" ORDER BY "sandboxKey"');
 
-count_bytes() {
-  list_files "$1" > /tmp/count.list
-  total=0
-  while IFS= read -r file; do
-    size=$(stat -c '%s' "$file" 2>/dev/null || echo 0)
-    total=$((total + size))
-  done < /tmp/count.list
-  echo "$total"
+    return [
+      ...users.rows.map((row) => ({
+        account: deriveAccount(row.id),
+        target: `user-${row.id}`,
+      })),
+      ...councils.rows.map((row) => ({
+        account: deriveAccount(row.sandboxKey),
+        target: `council-${row.sandboxKey}`,
+      })),
+    ];
+  } finally {
+    await client.end();
+  }
 }
 
-# One account's home into one identity's directory.
-copy_home() {
-  src="$1"
-  dest="$2"
-  label="$3"
+async function main() {
+  const mode = DRY_RUN ? "dry-run" : "copy";
+  log(`${mode}: ${OLD_ROOT} → ${NEW_ROOT}`);
 
-  mkdir -p "$dest"
-  if [ -n "$(ls -A "$dest" 2>/dev/null)" ] && [ "$FORCE" != "1" ]; then
-    echo "SKIP  $label: $dest already has files (pass --force to overwrite)"
-    return 0
-  fi
+  const done = await readMarker();
+  if (done && !FORCE) {
+    log(`already migrated at ${done.trim()}: nothing to do`);
+    return 0;
+  }
 
-  for dir in $WORKSPACE_DIRS; do
-    if [ -d "$src/$dir" ]; then
-      mkdir -p "$dest/$dir"
-      cp -a "$src/$dir/." "$dest/$dir/"
-    fi
-  done
+  if (!(await exists(OLD_ROOT))) {
+    log(`no old volume mounted at ${OLD_ROOT}: nothing to migrate`);
+    if (!DRY_RUN) await writeMarker();
+    return 0;
+  }
 
-  # Anything else on top level is the agent's own work; shell dotfiles are not.
-  for entry in "$src"/* "$src"/.*; do
-    name=$(basename "$entry")
-    case "$name" in .|..|'*') continue ;; esac
-    [ -e "$entry" ] || continue
-    case " $SKIP " in *" $name "*) continue ;; esac
-    case " $WORKSPACE_DIRS " in *" $name "*) continue ;; esac
-    cp -a "$entry" "$dest/"
-  done
+  const mapping = await identities();
+  const matched = new Set();
+  let failures = 0;
 
-  # The old homes belonged to open-terminal's accounts, which do not exist here.
-  # Pass --owner=<SANDBOX_UID>:<SANDBOX_GID> when commands run as agent.
-  chown -R "$OWNER" "$dest" 2>/dev/null || echo "WARN  could not chown $dest to $OWNER"
+  for (const { account, target } of mapping) {
+    matched.add(account);
+    const source = path.join(OLD_ROOT, account);
+    if (!(await exists(source))) continue;
 
-  before_files=$(count_files "$src")
-  before_bytes=$(count_bytes "$src")
-  after_files=$(count_files "$dest")
-  after_bytes=$(count_bytes "$dest")
-  if [ "$before_files" != "$after_files" ] || [ "$before_bytes" != "$after_bytes" ]; then
-    echo "MISMATCH $label: $before_files files / $before_bytes bytes → $after_files / $after_bytes"
-  else
-    echo "OK    $label: $after_files files / $after_bytes bytes"
-  fi
+    const ok = await copyHome(source, path.join(NEW_ROOT, target), `${account} → ${target}`);
+    if (!ok) failures += 1;
+  }
+
+  // Homes nobody in the database claims: keep them, out of the way.
+  for (const entry of await fs.readdir(OLD_ROOT, { withFileTypes: true })) {
+    if (!entry.isDirectory() || matched.has(entry.name)) continue;
+    const source = path.join(OLD_ROOT, entry.name);
+    if (DRY_RUN) {
+      log(`ORPHAN ${entry.name}: would be copied to _orphaned/${entry.name}`);
+      continue;
+    }
+    const destination = path.join(NEW_ROOT, "_orphaned", entry.name);
+    if (await hasFiles(destination)) {
+      log(`ORPHAN ${entry.name}: already in _orphaned/${entry.name}`);
+      continue;
+    }
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.cp(source, `${destination}.migrating`, { recursive: true, preserveTimestamps: true });
+    await chownTree(`${destination}.migrating`);
+    await fs.rename(`${destination}.migrating`, destination);
+    log(`ORPHAN ${entry.name}: copied to _orphaned/${entry.name}`);
+  }
+
+  if (failures > 0) {
+    console.error(`${failures} workspace(s) failed: marker not written, next deploy retries`);
+    return 1;
+  }
+  if (!DRY_RUN) await writeMarker();
+  return 0;
 }
 
-# /plan/plan.tsv is one "account<TAB>target" pair per line.
-matched=""
-while IFS="$(printf '\t')" read -r account target; do
-  [ -n "$account" ] || continue
-  matched="$matched $account"
+/** The marker's timestamp, or null when the volume has not been migrated. */
+async function readMarker() {
+  try {
+    return await fs.readFile(MARKER, "utf8");
+  } catch (err) {
+    if (err.code !== "ENOENT") warn(`read ${MARKER}: ${err.message}`);
+    return null;
+  }
+}
 
-  if [ -d "/old/$account" ]; then
-    if [ "$MODE" = "copy" ]; then
-      copy_home "/old/$account" "/new/$target" "$account → $target"
-    else
-      echo "PLAN  $account → $target: $(count_files "/old/$account") files / $(count_bytes "/old/$account") bytes"
-    fi
-  else
-    echo "MISS  $account: no home directory in the old volume"
-  fi
-done < /plan/plan.tsv
+/** Records that the move happened, so later deploys leave the volume alone. */
+async function writeMarker() {
+  await fs.writeFile(MARKER, `${new Date().toISOString()}\n`, { flag: "w" });
+  await fs.chown(MARKER, UID, GID).catch((err) => warn(`chown ${MARKER}: ${err.message}`));
+  log(`marked ${MARKER}`);
+}
 
-# Homes nobody in the database claims: keep them, but out of the way.
-for home in /old/*; do
-  [ -d "$home" ] || continue
-  account=$(basename "$home")
-  case " $matched " in *" $account "*) continue ;; esac
-  if [ "$MODE" = "copy" ]; then
-    mkdir -p "/new/_orphaned"
-    cp -a "$home" "/new/_orphaned/$account"
-    echo "ORPHAN $account: copied to _orphaned/$account"
-  else
-    echo "ORPHAN $account: would be copied to _orphaned/$account"
-  fi
-done
-`;
-
-void main();
+main()
+  .then((code) => process.exit(code))
+  .catch((err) => {
+    console.error("migration failed:", err);
+    process.exit(1);
+  });

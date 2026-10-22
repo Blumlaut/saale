@@ -18,6 +18,34 @@ services:
     entrypoint: ["node", "node_modules/prisma/build/index.js"]
     command: ["migrate", "deploy"]
 
+  # One-shot `workspaces` volume migration, between the schema and the app.
+  #
+  # Copies the old open-terminal homes into the workspaces volume on the first
+  # deploy, then leaves a marker so later deploys exit at once. The old volume is
+  # read-only, and on a fresh host it is empty, so this only writes the marker.
+  # Redo a finished copy with:
+  #   docker compose run --rm workspaces-migrate --force
+  workspaces-migrate:
+    image: saale-worker
+    container_name: saale-workspaces-migrate
+    restart: "no"
+    volumes:
+      - open_terminal_data:/migrate/old:ro
+      - saale_workspaces:/workspaces
+    environment:
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+      - SANDBOX_WORKSPACES_DIR=/workspaces
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
+      # The prefix the old container used to derive account names, if any.
+      - OPEN_TERMINAL_USER_PREFIX=${OPEN_TERMINAL_USER_PREFIX:-}
+    entrypoint: ["node", "migrate-workspaces.mjs"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
   web:
     build:
       context: .
@@ -51,6 +79,8 @@ services:
       - TELEGRAM_OIDC_CLIENT_SECRET=${TELEGRAM_OIDC_CLIENT_SECRET:-}
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      workspaces-migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -110,6 +140,8 @@ services:
       - APP_URL=${APP_URL:-}
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      workspaces-migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -196,6 +228,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      workspaces-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8100/health"]
       interval: 15s
@@ -203,26 +237,30 @@ services:
       retries: 5
       start_period: 20s
 
-  # Built, never started: the image tenant containers run. Compose skips
-  # profiled services when building, so build it by name:
-  #   docker compose build sandbox-image
+  # The image tenant containers run. It never stays up: `docker compose up
+  # --build` builds it, and the container exits at once. It needs no profile for
+  # that, and a profiled service is not built by `up`.
   sandbox-image:
     image: saale-sandbox
-    profiles: ["image"]
     build:
       context: .
       dockerfile: Dockerfile.sandbox
+    restart: "no"
     command: ["true"]
 
 volumes:
   postgres_data:
   redis_data:
   uploads_data:
-  # User data. Created by hand (docker volume create saale_workspaces) and
-  # external so `docker compose down -v` cannot delete it.
+  # User data: one directory per user and council. Compose creates it on the
+  # first deploy, so a fresh checkout needs no manual step. `down -v` deletes it,
+  # so never pass -v.
   saale_workspaces:
     name: saale_workspaces
-    external: true
+  # The old open-terminal homes, read by `workspaces-migrate`. Adopted by name
+  # where it exists; created empty on a host that never ran the old stack.
+  open_terminal_data:
+    name: saale_open-terminal-data
 
 networks:
   default:
