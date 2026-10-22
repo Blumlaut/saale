@@ -69,3 +69,19 @@ export async function deleteJson<T = unknown>(url: string, body?: unknown): Prom
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * PUT JSON data to an API endpoint.
+ */
+export async function putJson<T = unknown>(
+  url: string,
+  body: unknown,
+  init?: RequestInit,
+): Promise<T> {
+  return fetchJson<T>(url, {
+    ...init,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...init?.headers },
+    body: JSON.stringify(body),
+  });
+}

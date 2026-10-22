@@ -24,11 +24,11 @@ import { createWatcherTools } from "@/lib/pi/tools/watcher-tools";
 import { createTelegramTools } from "@/lib/pi/tools/telegram-tools";
 import { createInfraTools } from "@/lib/pi/tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
-import { createTerminalScopedTools } from "@/lib/pi/session";
+import { createSandboxScopedTools } from "@/lib/pi/session";
 
 // The terminal tools are Pi built-ins wrapped by Saale; building them must not
-// reach for a GitHub token (or a database) to learn their names.
-vi.mock("@/lib/github", () => ({ getGitHubEnv: vi.fn(async () => null) }));
+// reach for the database (or a sandbox) to learn their names.
+vi.mock("@/lib/sandbox/env", () => ({ resolveSandboxEnv: vi.fn(async () => ({})) }));
 
 /** Pi built-ins the registry ships without a Saale factory. */
 const PI_BUILTIN_TOOL_NAMES = [CODEMODE_TOOL_NAME];
@@ -37,14 +37,14 @@ const PI_BUILTIN_TOOL_NAMES = [CODEMODE_TOOL_NAME];
  * Every tool a factory can build for a session, as definitions rather than
  * names.
  *
- * The terminal bundle (`read`/`write`/`edit`/`bash`) is built through the same
+ * The workspace bundle (`read`/`write`/`edit`/`bash`) is built through the same
  * factory `resolveTools` uses rather than hard-coded here, so a rewiring that
  * drops one of them fails this test instead of being assumed present.
  */
 async function implementedTools(): Promise<ToolDefinition[]> {
   const userId = "catalog-user";
   const sessionId = "catalog-session";
-  const terminal = await createTerminalScopedTools(userId, sessionId);
+  const terminal = await createSandboxScopedTools(userId, sessionId);
 
   const bundles: Array<ToolDefinition | ToolDefinition[]> = [
     Object.values(terminal),

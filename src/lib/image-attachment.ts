@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
-import { getUploadsDir } from "@/lib/uploads";
+import { chownWorkspacePath, userWorkspacePath, workspacesDir } from "@/lib/sandbox/workspace";
 
 // Max dimension for re-encoded images (keeps token costs reasonable for vision models)
 const MAX_DIMENSION = 2048;
@@ -24,7 +24,7 @@ const ALLOWED_MIME_TYPES = new Set([
  * Generate a user-scoped directory for image attachments.
  */
 function getUserImageDir(userId: string): string {
-  return path.join(getUploadsDir(), userId, "images");
+  return path.join(userWorkspacePath(userId), "images");
 }
 
 /**
@@ -67,7 +67,7 @@ export async function processAndStoreImage(
 
   const storageId = randomUUID();
   const storagePath = `images/${storageId}.png`;
-  const fullPath = path.join(getUploadsDir(), userId, storagePath);
+  const fullPath = path.join(userWorkspacePath(userId), storagePath);
 
   // Process with sharp: auto-orient, resize, convert to PNG.
   // autoOrient() bakes the EXIF orientation into the pixels. phone photos
@@ -84,6 +84,8 @@ export async function processAndStoreImage(
     .png()
     .toFile(fullPath);
 
+  await chownWorkspacePath(fullPath);
+
   return {
     storageId,
     storagePath,
@@ -99,7 +101,7 @@ export async function readImageAsBase64(
   userId: string,
   storagePath: string,
 ): Promise<{ data: string; mimeType: string }> {
-  const fullPath = path.join(getUploadsDir(), userId, storagePath);
+  const fullPath = path.join(userWorkspacePath(userId), storagePath);
   const buffer = await fs.readFile(fullPath);
   return {
     data: buffer.toString("base64"),
@@ -111,7 +113,7 @@ export async function readImageAsBase64(
  * Resolve the full filesystem path for a stored image.
  */
 export function resolveImagePath(userId: string, storagePath: string): string {
-  return path.join(getUploadsDir(), userId, storagePath);
+  return path.join(userWorkspacePath(userId), storagePath);
 }
 
 /**
@@ -176,7 +178,7 @@ export async function deleteAllImages(userId: string, storagePaths: string[]): P
 }
 
 /**
- * Scan the uploads directory for orphaned image files.
+ * Scan the workspaces volume for orphaned image files.
  *
  * An orphan is a file on disk whose storagePath does not appear in any
  * ChatAttachment record. These can arise from server crashes mid-deletion.
@@ -200,7 +202,7 @@ export async function cleanupOrphanedImages(): Promise<number> {
       }
     }
   } catch {
-    // Uploads dir doesn't exist yet. nothing to clean
+    // The volume is not mounted yet. nothing to clean
   }
 
   return deletedCount;
@@ -226,9 +228,10 @@ async function readUserDirs(): Promise<
   const entries: Array<{ userId: string; filePath: string; relativePath: string }> = [];
 
   try {
-    const userNames = await fs.readdir(getUploadsDir());
+    const userNames = await fs.readdir(workspacesDir());
     for (const userName of userNames) {
-      const imageDir = path.join(getUploadsDir(), userName, "images");
+      if (!userName.startsWith("user-")) continue;
+      const imageDir = path.join(workspacesDir(), userName, "images");
       try {
         const files = await fs.readdir(imageDir);
         for (const file of files) {
@@ -245,7 +248,7 @@ async function readUserDirs(): Promise<
       }
     }
   } catch {
-    // Uploads dir doesn't exist. return empty
+    // The volume is not mounted. return empty
   }
 
   return entries;

@@ -5,9 +5,10 @@ import {
   createWriteTool,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { createTerminalOperations } from "@/lib/terminal/operations";
-import { getTerminalHomeDir } from "@/lib/terminal/client";
-import { getGitHubEnv } from "@/lib/github";
+import { createSandboxOperations } from "@/lib/sandbox/operations";
+import { resolveSandboxEnv } from "@/lib/sandbox/env";
+import { userIdentity } from "@/lib/sandbox/identity";
+import { userWorkspacePath } from "@/lib/sandbox/workspace";
 import { buildModelRuntime } from "./models";
 import { resolveTools } from "./tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig, type ToolExposureConfig } from "./tool-categories";
@@ -24,32 +25,33 @@ function resolveToolConfig(config: ToolConfig | null | undefined): Required<Tool
 }
 
 /**
- * Create terminal-backed Pi built-in tools (sandboxed via open-terminal).
- * Used when bash is enabled. all file ops go through the container.
- * Injects GH_TOKEN into every command when GitHub integration is enabled.
+ * Create workspace-backed Pi built-in tools.
+ *
+ * Commands run in the user's sandbox container, files are read and written
+ * directly from the volume. The user's own environment variables are resolved
+ * once, here: a pooled session is rebuilt when they change (the write path
+ * evicts it), which is what keeps a value out of a long-lived object.
  */
-export async function createTerminalScopedTools(
+export async function createSandboxScopedTools(
   userId: string,
-  sessionId: string,
+  _sessionId: string,
 ): Promise<{
   read: ToolDefinition;
   write: ToolDefinition;
   edit: ToolDefinition;
   bash: ToolDefinition;
 }> {
-  const homeDir = getTerminalHomeDir(userId);
+  const homeDir = userWorkspacePath(userId);
 
-  // Inject GH_TOKEN if GitHub integration is enabled for this user
-  const githubEnv = await getGitHubEnv(userId).catch((err) => {
-    console.error("Failed to load GitHub env for terminal:", err);
-    return null;
+  const env = await resolveSandboxEnv(userId).catch((err) => {
+    console.error("Failed to load sandbox environment variables:", err);
+    return {};
   });
 
-  const ops = createTerminalOperations({
-    userId,
-    sessionId,
-    cwd: homeDir,
-    extraEnv: githubEnv ?? undefined,
+  const ops = createSandboxOperations({
+    identity: userIdentity(userId),
+    root: homeDir,
+    env,
   });
 
   return {
@@ -90,7 +92,7 @@ export async function buildSessionDeps(options: {
     : [...options.customTools];
 
   const resolvedTools = await resolveTools(options.userId, options.sessionId, enabled, {
-    createTerminalScopedTools,
+    createSandboxScopedTools,
     ...(options.wrapTool ? { wrapWithApproval: options.wrapTool } : {}),
     ...(options.toolExposure ? { exposure: options.toolExposure } : {}),
   });

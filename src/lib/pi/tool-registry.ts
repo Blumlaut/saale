@@ -2,7 +2,7 @@ import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolConfig, ToolCategoryKey, ToolExposureConfig } from "./tool-categories";
 import { DEFAULT_TOOL_EXPOSURE, TOOL_CATEGORIES } from "./tool-categories";
 import { findToolInfo } from "./tool-infos";
-import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
+import { isConfigured as isSandboxConfigured } from "@/lib/sandbox/client";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { featureForToolCategory } from "@/lib/permissions/features";
 import { withAbortSignal } from "./tool-abort";
@@ -133,7 +133,7 @@ export async function resolveTools(
   sessionId: string,
   config: Required<ToolConfig>,
   options: {
-    createTerminalScopedTools: (
+    createSandboxScopedTools: (
       userId: string,
       sessionId: string,
     ) => Promise<{
@@ -162,14 +162,12 @@ export async function resolveTools(
     features.terminal;
 
   // ── Terminal tools (shell + file ops via open-terminal) ───────────────
-  if (terminalEnabled && isTerminalConfigured()) {
-    const terminal = await options.createTerminalScopedTools(userId, sessionId);
-    tools.push(terminal.read, terminal.write, terminal.edit, terminal.bash);
+  if (terminalEnabled && isSandboxConfigured()) {
+    const sandboxTools = await options.createSandboxScopedTools(userId, sessionId);
+    tools.push(sandboxTools.read, sandboxTools.write, sandboxTools.edit, sandboxTools.bash);
     tools.push(createShowFileTool(userId, sessionId));
   } else if (terminalEnabled) {
-    console.warn(
-      "Terminal enabled but OPEN_TERMINAL_API_KEY is not set. Terminal tools unavailable.",
-    );
+    console.warn("Terminal enabled but SANDBOX_URL is not set. Terminal tools unavailable.");
   }
 
   // ── Custom tools (dispatched via registry) ────────────────────────────

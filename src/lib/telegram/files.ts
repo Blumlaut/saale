@@ -1,14 +1,12 @@
-import fs from "fs/promises";
 import path from "path";
 import type { Bot, Context } from "grammy";
 import type { ImageContent } from "@earendil-works/pi-ai/compat";
-import { isConfigured as isTerminalConfigured, uploadFile } from "@/lib/terminal/client";
 import { SHOW_FILE_TOOL_NAME } from "@/lib/pi/tools/chat-tools";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
-import { getUploadsDir } from "@/lib/uploads";
+import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { sendTelegramFile } from "./client";
 
-/** Workspace-relative directory (under the user's home inside the container) where Telegram documents are stored */
+/** Workspace-relative directory where Telegram documents are stored */
 export const TELEGRAM_FILES_DIR = "telegram_files";
 
 /** Allowed MIME types that can be passed as images to the vision model */
@@ -63,12 +61,9 @@ export interface ProcessedFile {
  * Download a file from Telegram's CDN and process it.
  *
  * For image files: returns base64 data ready for the vision model.
- * For document files: saves the file and returns a path the agent can
- * actually reach:
- * - Open Terminal configured: uploaded into the user's workspace inside
- *   the container (the only filesystem the agent's file tools can see)
- *   `filePath` is the container-absolute path.
- * - No Open Terminal: saved under UPLOADS_DIR (fallback).
+ * For document files: saves the file into the user's workspace and returns the
+ * absolute path, which is the same string the agent's tools and the container
+ * see.
  */
 export async function downloadAndProcessTelegramFile(
   bot: Bot<Context>,
@@ -111,21 +106,7 @@ export async function downloadAndProcessTelegramFile(
   // Sanitize file name so it cannot escape the destination directory
   const safeName = path.basename(fileName.replace(/[^a-zA-Z0-9._-]/g, "_"));
 
-  if (isTerminalConfigured()) {
-    // The agent's file tools run inside the Open Terminal container. the
-    // host uploads directory is invisible to them, so upload the document
-    // into the container's workspace instead.
-    const result = await uploadFile(safeName, buffer, {
-      directory: TELEGRAM_FILES_DIR,
-      userId,
-    });
-    return { filePath: result.path, size: result.size, mimeType, fileName };
-  }
-
-  const userDir = path.join(getUploadsDir(), userId, TELEGRAM_FILES_DIR);
-  await fs.mkdir(userDir, { recursive: true });
-  const filePath = path.join(userDir, safeName);
-  await fs.writeFile(filePath, buffer);
+  const filePath = await writeWorkspaceFile(userId, `${TELEGRAM_FILES_DIR}/${safeName}`, buffer);
 
   return { filePath, size: buffer.length, mimeType, fileName };
 }
@@ -175,16 +156,15 @@ export function sharedFileFromToolCall(
  */
 export async function sendSharedFileToTelegram(params: {
   userId: string;
-  sessionId: string;
   encryptedToken: string;
   telegramChatId: bigint;
   filePath: string;
   description?: string | undefined;
 }): Promise<void> {
-  const { userId, sessionId, encryptedToken, telegramChatId, filePath, description } = params;
+  const { userId, encryptedToken, telegramChatId, filePath, description } = params;
 
   try {
-    const file = await readWorkspaceFile(userId, filePath, { sessionId });
+    const file = await readWorkspaceFile(userId, filePath);
     await sendTelegramFile(encryptedToken, telegramChatId, file, {
       caption: description?.trim() || file.fileName,
     });

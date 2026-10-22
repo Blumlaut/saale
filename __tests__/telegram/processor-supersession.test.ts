@@ -131,7 +131,11 @@ vi.mock("@/lib/pi/settings", () => ({
 }));
 
 vi.mock("@/lib/pi/session", () => ({
-  createTerminalScopedTools: vi.fn(() => []),
+  createSandboxScopedTools: vi.fn(() => []),
+}));
+
+vi.mock("@/lib/sandbox/env", () => ({
+  listSandboxEnvNames: vi.fn(async () => []),
 }));
 
 vi.mock("@/lib/telegram/files", async (importOriginal) => ({
@@ -472,7 +476,6 @@ describe("processTelegramMessage  files the agent shows", () => {
     await waitFor(() => h.sendSharedFileToTelegram.mock.calls.length > 0);
     expect(h.sendSharedFileToTelegram).toHaveBeenCalledWith({
       userId: USER,
-      sessionId: "session-1",
       encryptedToken: ENCRYPTED_TOKEN,
       telegramChatId: chatId,
       filePath: "reports/q3.pdf",

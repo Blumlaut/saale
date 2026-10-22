@@ -8,11 +8,8 @@
  * new page, not a new component.
  */
 
-import * as terminal from "@/lib/terminal/client";
-import path from "node:path";
-import { getUploadsDir } from "@/lib/uploads";
 import { createLocalFileProvider } from "./local-provider";
-import { createTerminalFileProvider } from "./terminal-provider";
+import { userWorkspacePath, workspaceOwner } from "@/lib/sandbox/workspace";
 import { FULL_CAPABILITIES, type FileTargetInfo } from "./types";
 import type { FileProvider } from "./provider";
 
@@ -44,29 +41,14 @@ export interface OpenedFileTarget {
 /**
  * A user's own workspace.
  *
- * Prefers the terminal container when it is configured. that is where a user's
- * agents actually work. and falls back to the app's uploads volume otherwise,
- * the same pair of locations the chat workspace routes use.
- *
- * `sessionId` rides along as Open Terminal's chat header, so the container's log
- * attributes a read to the conversation that asked for it. A browser request has
- * no chat and omits it.
+ * The same directory the agent's tools work in: the workspaces volume is
+ * mounted into the app at the path the container sees, so a browse, an upload
+ * and a `cat` all address the same file with the same string.
  */
-export async function openUserFileTarget(
-  userId: string,
-  options: { sessionId?: string } = {},
-): Promise<OpenedFileTarget> {
-  if (terminal.isConfigured()) {
-    const root = terminal.getTerminalHomeDir(userId);
-    return {
-      provider: createTerminalFileProvider({ identity: userId, root, ...options }),
-      info: { id: USER_FILE_TARGET, label: "Your files", root, capabilities: FULL_CAPABILITIES },
-    };
-  }
-
-  const root = path.join(getUploadsDir(), userId);
+export async function openUserFileTarget(userId: string): Promise<OpenedFileTarget> {
+  const root = userWorkspacePath(userId);
   return {
-    provider: createLocalFileProvider({ root }),
+    provider: createLocalFileProvider({ root, owner: workspaceOwner() }),
     info: { id: USER_FILE_TARGET, label: "Your files", root, capabilities: FULL_CAPABILITIES },
   };
 }

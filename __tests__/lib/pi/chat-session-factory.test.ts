@@ -21,6 +21,8 @@ vi.mock("@/lib/pi/model-resolution", () => ({
 }));
 
 const mockCreatePersistentSession = vi.fn();
+vi.mock("@/lib/sandbox/env", () => ({ listSandboxEnvNames: vi.fn(async () => []) }));
+
 vi.mock("@/lib/pi/persistent-session", () => ({
   createPersistentSession: (...args: unknown[]) => mockCreatePersistentSession(...args),
 }));

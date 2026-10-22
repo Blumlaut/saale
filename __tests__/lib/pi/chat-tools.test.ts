@@ -23,7 +23,7 @@ vi.mock("@/lib/chat/create-session", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: {} }));
-vi.mock("@/lib/terminal/client", () => ({ isConfigured: () => false }));
+vi.mock("@/lib/sandbox/client", () => ({ isConfigured: () => false }));
 
 import { createChatTools } from "@/lib/pi/tools/chat-tools";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";

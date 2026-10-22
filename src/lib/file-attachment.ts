@@ -1,14 +1,11 @@
-import fs from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
-import { isConfigured as isTerminalConfigured, uploadFile } from "@/lib/terminal/client";
 import { processAndStoreImage } from "@/lib/image-attachment";
-import { getUploadsDir } from "@/lib/uploads";
+import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
 
 /**
- * Workspace-relative directory (under the user's home inside the Open
- * Terminal container, or under the local user dir as fallback) where files
- * uploaded in chat are placed so the agent's file tools can reach them.
+ * Workspace-relative directory where files uploaded in chat are placed so the
+ * agent's file tools can reach them under a name the user recognises.
  */
 export const CHAT_UPLOADS_DIR = "uploads";
 
@@ -67,7 +64,7 @@ export interface StoredChatFile {
 }
 
 /**
- * Store a chat attachment in the host-side user workspace.
+ * Store a chat attachment in the user's workspace.
  *
  * - Images: re-encoded to PNG (keeps vision token costs reasonable) under
  *   `images/<uuid>.png`. the existing flow, unchanged.
@@ -100,39 +97,27 @@ export async function storeChatFile(
     };
   }
 
-  const filesDir = path.join(getUploadsDir(), userId, "files");
-  await fs.mkdir(filesDir, { recursive: true });
-
   const storageId = randomUUID();
   const storagePath = `files/${storageId}-${safeName}`;
-  await fs.writeFile(path.join(getUploadsDir(), userId, storagePath), fileBuffer);
+  await writeWorkspaceFile(userId, storagePath, fileBuffer);
 
   return { storageId, storagePath, safeName };
 }
 
 /**
- * Copy an uploaded file into the agent's terminal workspace (the Open
- * Terminal container is the only filesystem the agent's file tools can see).
+ * Put an uploaded file where the agent expects to find it: `uploads/`, under
+ * the name the user gave it.
  *
- * Returns the absolute container path when the terminal is configured, or
- * null when it is not (the agent has no file tools in that case, so there is
- * nowhere to deliver the file). Throws when the terminal is configured but
- * the upload fails. callers should surface that to the user.
+ * The file already lives in the workspace (`files/` or `images/`), so this is
+ * a second copy under a stable, human name rather than a transfer. Returns the
+ * absolute path inside the workspace.
  */
 export async function deliverChatFileToAgent(
   userId: string,
   fileBuffer: Buffer,
   fileName: string,
-): Promise<string | null> {
-  if (!isTerminalConfigured()) {
-    return null;
-  }
-
-  const result = await uploadFile(fileName, fileBuffer, {
-    directory: CHAT_UPLOADS_DIR,
-    userId,
-  });
-  return result.path;
+): Promise<string> {
+  return writeWorkspaceFile(userId, `${CHAT_UPLOADS_DIR}/${fileName}`, fileBuffer);
 }
 
 export interface AttachmentPromptEntry {

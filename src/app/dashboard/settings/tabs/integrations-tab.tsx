@@ -17,28 +17,23 @@ import { deleteJson } from "@/lib/http";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import type { IntegrationId } from "@/lib/integrations/types";
 import { useTelegramIntegration } from "@/hooks/use-telegram-integration";
-import { useGitHubIntegration } from "@/hooks/use-github-integration";
 import { TelegramBox, TelegramLinkDialog } from "@/components/integrations/telegram-card";
-import { GitHubBox, GitHubConnectDialog } from "@/components/integrations/github-card";
+import { SandboxEnvCard } from "@/components/integrations/sandbox-env-card";
 import { McpTab } from "./mcp-tab";
 
 /** Delete confirmation descriptions per integration */
 const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
   telegram:
     "This unlinks your Telegram account. Nothing is sent to Telegram, and you can link again at any time.",
-  github:
-    "This will disconnect your GitHub account and remove the stored token. This cannot be undone.",
 };
 
 export function IntegrationsTab() {
   const telegram = useTelegramIntegration();
-  const github = useGitHubIntegration();
 
-  const initialLoading = telegram.loading || github.loading;
+  const initialLoading = telegram.loading;
 
-  // Link / connect dialogs
+  // Link dialog
   const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
-  const [githubDialogOpen, setGitHubDialogOpen] = useState(false);
 
   // Delete confirmation
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
@@ -53,29 +48,12 @@ export function IntegrationsTab() {
     setTelegramDialogOpen(true);
   }, [telegram]);
 
-  const openGitHubDialog = useCallback(() => {
-    github.resetTokenForm();
-    setGitHubDialogOpen(true);
-  }, [github]);
-
-  const handleSaveGitHub = useCallback(() => {
-    github.saveToken(() => {
-      setTimeout(() => {
-        setGitHubDialogOpen(false);
-      }, 800);
-    });
-  }, [github]);
-
   const handleDelete = useCallback(async () => {
     if (!deleteIntegrationId) return;
     setDeleting(true);
     try {
       await deleteJson(`/api/integrations/${deleteIntegrationId}`);
-      if (deleteIntegrationId === "telegram") {
-        await telegram.loadIntegration();
-      } else {
-        await github.loadAccount();
-      }
+      await telegram.loadIntegration();
     } catch (err) {
       console.error(`Failed to delete ${deleteIntegrationId} integration:`, err);
     } finally {
@@ -83,7 +61,7 @@ export function IntegrationsTab() {
       setDeleteAlertOpen(false);
       setDeleteIntegrationId(null);
     }
-  }, [deleteIntegrationId, telegram, github]);
+  }, [deleteIntegrationId, telegram]);
 
   // ─── Render ───────────────────────────────────────────────────────
 
@@ -121,16 +99,7 @@ export function IntegrationsTab() {
                 setDeleteAlertOpen(true);
               }}
             />
-            <GitHubBox
-              account={github.account}
-              actionLoading={github.actionLoading}
-              onToggleEnabled={github.toggleEnabled}
-              onConnect={openGitHubDialog}
-              onDelete={() => {
-                setDeleteIntegrationId("github");
-                setDeleteAlertOpen(true);
-              }}
-            />
+            <SandboxEnvCard />
           </div>
         </GlassPanelContent>
       </GlassPanel>
@@ -148,18 +117,6 @@ export function IntegrationsTab() {
         linked={!!telegram.link}
         onCreateCode={telegram.createLinkCode}
         onDone={telegram.loadIntegration}
-      />
-
-      <GitHubConnectDialog
-        open={githubDialogOpen}
-        onOpenChange={setGitHubDialogOpen}
-        token={github.token}
-        onTokenChange={github.setToken}
-        error={github.tokenError}
-        success={github.tokenSuccess}
-        saving={github.savingToken}
-        onSave={handleSaveGitHub}
-        onClosed={github.resetTokenForm}
       />
 
       {/* Delete Confirmation */}

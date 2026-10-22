@@ -39,19 +39,16 @@ export interface WorkspaceFile {
 /**
  * Read `filePath`, relative to `userId`'s workspace root.
  *
- * `sessionId` is passed through to Open Terminal so its own log names the chat
- * the read came from.
+ * The bytes come from the user's workspace directory, the same one the agent's
+ * tools read.
  */
 export async function readWorkspaceFile(
   userId: string,
   filePath: string,
-  options: { sessionId?: string; maxBytes?: number } = {},
+  options: { maxBytes?: number } = {},
 ): Promise<WorkspaceFile> {
   const maxBytes = options.maxBytes ?? MAX_SHARED_FILE_BYTES;
-  const { provider, info } = await openUserFileTarget(
-    userId,
-    options.sessionId === undefined ? {} : { sessionId: options.sessionId },
-  );
+  const { provider, info } = await openUserFileTarget(userId);
   const absolute = requireWithinRoot(info.root, filePath);
 
   const stat = await provider.stat(absolute);

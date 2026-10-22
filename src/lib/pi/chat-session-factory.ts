@@ -4,6 +4,7 @@ import { getSessionDir } from "./agent-pool";
 import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
+import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import type { ApprovalRequest } from "./tool-approval-gate";
 import type { ToolConfig, ToolExposureConfig } from "./tool-categories";
 import { normalizeToolExposure } from "./tool-exposure";
@@ -120,6 +121,7 @@ export async function createChatAgentSession(
     systemPrompt: buildAgentSystemPrompt({
       customInstructions: options.customInstructions,
       toolConfig,
+      sandboxEnvNames: await listSandboxEnvNames(userId),
     }),
   });
 

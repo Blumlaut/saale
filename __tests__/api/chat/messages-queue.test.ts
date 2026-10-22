@@ -57,10 +57,7 @@ vi.mock("@/lib/image-attachment", () => ({
   processAndStoreImage: vi.fn(),
   readImageAsBase64: vi.fn(),
 }));
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: vi.fn(() => false),
-  uploadFile: vi.fn(),
-}));
+
 vi.mock("@/lib/pi/session-events", () => ({
   publishSessionEvent: mockPublishSessionEvent,
 }));

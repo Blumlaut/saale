@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolConfig } from "@/lib/pi/tool-categories";
 
-// Mock isConfigured to control terminal availability
-vi.mock("@/lib/terminal/client", () => ({
+// Mock isConfigured to control sandbox availability
+vi.mock("@/lib/sandbox/client", () => ({
   isConfigured: vi.fn(() => false),
 }));
 
@@ -98,7 +98,7 @@ vi.mock("@/lib/permissions/feature-access", () => ({
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { FEATURES, type FeatureMap } from "@/lib/permissions/features";
-import * as terminalClient from "@/lib/terminal/client";
+import * as sandboxClient from "@/lib/sandbox/client";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
 
 describe("resolveTools", () => {
@@ -110,7 +110,7 @@ describe("resolveTools", () => {
   };
 
   const options = {
-    createTerminalScopedTools: vi.fn(() => Promise.resolve(mockTerminalTools)),
+    createSandboxScopedTools: vi.fn(() => Promise.resolve(mockTerminalTools)),
   };
 
   const userId = "user-123";
@@ -118,7 +118,7 @@ describe("resolveTools", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(terminalClient.isConfigured).mockReturnValue(false);
+    vi.mocked(sandboxClient.isConfigured).mockReturnValue(false);
   });
 
   const ALL_OFF: Required<ToolConfig> = {
@@ -215,7 +215,7 @@ describe("resolveTools", () => {
   });
 
   it("includes terminal tools when terminal enabled and configured", async () => {
-    vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+    vi.mocked(sandboxClient.isConfigured).mockReturnValue(true);
 
     const config: Required<ToolConfig> = {
       terminal: true,
@@ -233,11 +233,11 @@ describe("resolveTools", () => {
 
     expect(tools).toHaveLength(5); // read, write, edit, bash, show_file
     expect(tools.map((t) => t.name)).toEqual(["read", "write", "edit", "bash", "show_file"]);
-    expect(options.createTerminalScopedTools).toHaveBeenCalledWith(userId, sessionId);
+    expect(options.createSandboxScopedTools).toHaveBeenCalledWith(userId, sessionId);
   });
 
   it("includes no tools when terminal enabled but not configured", async () => {
-    vi.mocked(terminalClient.isConfigured).mockReturnValue(false);
+    vi.mocked(sandboxClient.isConfigured).mockReturnValue(false);
 
     const config: Required<ToolConfig> = {
       terminal: true,
@@ -258,7 +258,7 @@ describe("resolveTools", () => {
   });
 
   it("backward compat: legacy 'files' key enables terminal tools", async () => {
-    vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+    vi.mocked(sandboxClient.isConfigured).mockReturnValue(true);
 
     const config = {
       terminal: false,
@@ -281,7 +281,7 @@ describe("resolveTools", () => {
   });
 
   it("backward compat: legacy 'bash' key enables terminal tools", async () => {
-    vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+    vi.mocked(sandboxClient.isConfigured).mockReturnValue(true);
 
     const config = {
       terminal: false,
@@ -380,7 +380,7 @@ describe("resolveTools", () => {
   });
 
   it("includes all tools including terminal when everything enabled", async () => {
-    vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+    vi.mocked(sandboxClient.isConfigured).mockReturnValue(true);
 
     const config: Required<ToolConfig> = {
       terminal: true,
@@ -451,7 +451,7 @@ describe("resolveTools", () => {
   it("skips terminal category in the registry loop", async () => {
     // This ensures terminal is NOT dispatched through the generic registry loop
     // (it has special handling in the terminal block)
-    vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+    vi.mocked(sandboxClient.isConfigured).mockReturnValue(true);
 
     const config: Required<ToolConfig> = {
       terminal: true,
@@ -494,7 +494,7 @@ describe("resolveTools", () => {
     };
 
     it("applies each category's default when the user configured nothing", async () => {
-      vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+      vi.mocked(sandboxClient.isConfigured).mockReturnValue(true);
       const tools = await resolveTools(userId, sessionId, ALL_ON, options);
       // The read-only tools of a niche catalog are the ones codemode lists, so
       // the model can survey the area before it acts.
@@ -538,7 +538,7 @@ describe("resolveTools", () => {
       // show_file ships with the terminal bundle rather than being built by the
       // chat factory, so this is also a check that the category comes from the
       // shared catalog and not from wherever the tool was constructed.
-      vi.mocked(terminalClient.isConfigured).mockReturnValue(true);
+      vi.mocked(sandboxClient.isConfigured).mockReturnValue(true);
       const tools = await resolveTools(userId, sessionId, ALL_ON, {
         ...options,
         exposure: { terminal: "codemode", chatSearch: "deferred" },

@@ -47,40 +47,33 @@ and `src/components/council/`.
 
 Each council gets a **dedicated Open Terminal account**. The council's key is
 passed as `X-User-Id`, which Open Terminal maps to its own Linux user whose home
-is `chmod 2770`. so a council cannot read the owner's home and the owner cannot
-read the sandbox. That is the boundary; it is kernel-enforced, verified against a
-live container at design time, and it is why the council does not simply get a
-subdirectory of the user's home.
+is the `council-<key>` directory of the workspaces volume. That is the boundary:
+a council cannot read the owner's workspace and the owner cannot read the
+sandbox, because the container mounts only its own directory.
 
 On top of it:
 
 - **Path confinement** (`sandbox.ts`). every path a file tool is handed is
-  normalised and refused when it leaves the sandbox. Defence in depth: the
-  account is what actually stops a symlink or a shell from reaching the user's
-  files.
-- **The mode check** (`ensureCouncilSandbox`). the container must answer `id -un`
-  with the account derived from the key. Without `OPEN_TERMINAL_MULTI_USER=true`
-  `X-User-Id` is ignored and everything would run as the owner, so the run refuses
-  to start instead.
-- **No credentials**. no `GH_TOKEN`, no user MCP servers, no environment beyond
-  the container's own.
+  normalised and refused when it leaves the sandbox, then resolved through
+  `realpath` again by the provider, so a symlink cannot reach another tenant.
+- **The mount check** (`src/sandbox/mount-check.ts`). a new container's
+  `/proc/self/mountinfo` must show exactly the council's own directory, or the
+  container is destroyed and the request fails. The preflight
+  (`ensureCouncilSandbox`) creates the directory and checks the service answers.
+- **No credentials of their own**. no MCP servers, no variables beyond the
+  owner's sandbox variables, which members act with.
 - **Excluded tools**. `show_file` (reads a file the owner uploaded to a chat)
   and the chat-history tools are removed from a member's session whatever the
   council's tool selection says.
 
 Known limits, honestly:
 
-- Deleting a council removes the account (`sudo userdel -r` through the
-  container's own identity) and its home. Open Terminal caches `X-User-Id →
-account` in memory and does not re-check `/etc/passwd`, so that id would fail
-  forever afterwards (`sudo: unknown user`); `ensureCouncilSandbox` therefore
-  re-provisions through an id that resolves to the same account, which the
-  container has not cached.
+- Deleting a council removes its container and its directory (`rm -rf` plus a
+  Docker removal), so nothing of the sandbox is left behind.
 - Deleting a council does not stop a run that is in flight. stop it first. The
-  run's writes then fail (the rows are gone) and are logged.
-- The terminal container is shared with the owner's own workspace by design of
-  `OPEN_TERMINAL_MULTI_USER`: `/tmp` and `/proc` are visible to every account in
-  it, as they are for any tenant. Home directories are not.
+  run's writes then fail (its directory is gone) and are logged.
+- A tenant container has its own `/tmp` and `/proc`; the other councils' and
+  users' directories are absent from it.
 - The workspace is browsable. `/dashboard/council/<id>/files` opens the same
   reusable file browser a user's own files will use, pointed at the council's
   sandbox root: list, preview, upload, download, multi-select zips, rename,

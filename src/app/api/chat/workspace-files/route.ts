@@ -1,13 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import fs from "fs/promises";
-import type { Stats } from "fs";
 import path from "path";
 import { requireSession } from "@/lib/auth";
-import { getUploadsDir } from "@/lib/uploads";
 import { contentDisposition, contentEtag, matchesEtag } from "@/lib/files/http";
-import { mimeTypeForName } from "@/lib/files/mime";
-import * as terminal from "@/lib/terminal/client";
+import { readWorkspaceFile } from "@/lib/files/workspace-file";
+import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 
 /**
  * GET /api/chat/workspace-files?file=relative/path[&download=1]
@@ -17,9 +14,8 @@ import * as terminal from "@/lib/terminal/client";
  *
  * Inline by default (images preview in the card); `download=1` marks the
  * response as an attachment so the browser's own download machinery saves it.
- *
- * When Open Terminal is configured, proxies through its API (files live in the container).
- * Otherwise reads from the local uploads directory.
+ * The bytes come from the user's workspace directory, the same file the agent's
+ * tools read, so a path an agent printed here resolves to what it printed.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireSession();
@@ -36,72 +32,18 @@ export async function GET(request: NextRequest) {
   const disposition =
     searchParams.get("download") === "1" ? contentDisposition(path.basename(fileParam)) : undefined;
 
-  // When Open Terminal is configured, files live in the container
-  if (terminal.isConfigured()) {
-    return serveFromTerminal(request, userId, fileParam, disposition);
-  }
-
-  return serveFromLocal(request, userId, fileParam, disposition);
-}
-
-/** Serve file through Open Terminal API */
-async function serveFromTerminal(
-  request: NextRequest,
-  userId: string,
-  filePath: string,
-  disposition: string | undefined,
-) {
-  const homeDir = terminal.getTerminalHomeDir(userId);
-  const fullPath = path.resolve(homeDir, filePath);
-
-  // Validate path stays within user home
-  const normalizedBase = path.resolve(homeDir);
-  if (!fullPath.startsWith(normalizedBase + path.sep) && fullPath !== normalizedBase) {
-    return new NextResponse("Access denied", { status: 403 });
-  }
-
   try {
-    const result = await terminal.readFileBinary(fullPath, { userId });
-    return serveBuffer(request, result.buffer, result.mimeType, disposition);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("404")) {
+    const file = await readWorkspaceFile(userId, fileParam);
+    return serveBuffer(request, file.buffer, file.mimeType, disposition);
+  } catch (err) {
+    if (err instanceof FileNotFoundError) {
       return new NextResponse("File not found", { status: 404 });
+    }
+    if (err instanceof FilePathEscapeError) {
+      return new NextResponse("Access denied", { status: 403 });
     }
     throw err;
   }
-}
-
-/** Serve file from local uploads directory (fallback) */
-async function serveFromLocal(
-  request: NextRequest,
-  userId: string,
-  filePath: string,
-  disposition: string | undefined,
-) {
-  const userDir = path.join(getUploadsDir(), userId);
-
-  // Validate path stays within workspace
-  const resolved = path.resolve(userDir, filePath);
-  const normalizedBase = path.resolve(userDir);
-  if (!resolved.startsWith(normalizedBase + path.sep) && resolved !== normalizedBase) {
-    return new NextResponse("Access denied", { status: 403 });
-  }
-
-  // Check file exists
-  let stats: Stats;
-  try {
-    stats = await fs.stat(resolved);
-  } catch {
-    return new NextResponse("File not found", { status: 404 });
-  }
-
-  if (!stats.isFile()) {
-    return new NextResponse("Not a file", { status: 400 });
-  }
-
-  const buffer = await fs.readFile(resolved);
-  return serveBuffer(request, buffer, mimeTypeForName(filePath), disposition);
 }
 
 /**

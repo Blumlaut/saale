@@ -33,7 +33,7 @@ vi.mock("@/lib/pi/tool-registry", () => ({
 }));
 
 vi.mock("@/lib/pi/session", () => ({
-  createTerminalScopedTools: vi.fn().mockReturnValue([]),
+  createSandboxScopedTools: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("@/lib/pi/processing-state", async (importOriginal) => ({

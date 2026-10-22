@@ -47,20 +47,16 @@ vi.mock("@/lib/infra/client", () => ({
   })),
 }));
 
-// Mock terminal client (the agent workspace a transfer lands in)
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: vi.fn(() => true),
-  getTerminalHomeDir: vi.fn(() => "/home/deploy"),
-  listDirectory: vi.fn(),
-  readFileBinary: vi.fn(),
-  uploadFile: vi.fn(),
-}));
+// The workspace a transfer lands in: a real directory under a stubbed volume.
+const WORKSPACE = path.join(os.tmpdir(), "saale-infra-workspace", "user-user-123");
 
 // Import mocks for assertions
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import * as client from "@/lib/infra/client";
-import * as terminal from "@/lib/terminal/client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockInfraMachine = db.prisma.infraMachine as any;
@@ -107,15 +103,27 @@ const parseMeta = (text: string): Record<string, unknown> => {
     ._saaleInfraMeta;
 };
 
+/** Write a file into the workspace and return its workspace-relative path. */
+async function putWorkspaceFile(name: string, content: Buffer | string): Promise<void> {
+  const full = path.join(WORKSPACE, name);
+  await fs.mkdir(path.dirname(full), { recursive: true });
+  await fs.writeFile(full, content);
+}
+
 // Shared context for tool lookups
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ctx: any = {};
 
+vi.stubEnv("SANDBOX_WORKSPACES_DIR", path.dirname(WORKSPACE));
+vi.stubEnv("SANDBOX_USER", "root");
+
 describe("createInfraTools", () => {
   const userId = "user-123";
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    await fs.rm(WORKSPACE, { recursive: true, force: true });
+    await fs.mkdir(WORKSPACE, { recursive: true });
 
     const tools = createInfraTools(userId);
     ctx.tools = tools;
@@ -1014,16 +1022,11 @@ describe("createInfraTools", () => {
 
   describe("infra_download_file", () => {
     beforeEach(() => {
-      vi.mocked(terminal.isConfigured).mockReturnValue(true);
       vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ id: "m1", name: "prod-web" });
       vi.mocked(client.readFileForTransfer).mockResolvedValue({
         buffer: Buffer.from("server {}\n", "utf8"),
         size: 11,
       });
-      vi.mocked(terminal.uploadFile).mockImplementation(async (fileName, _content, options) => ({
-        path: `${options.directory}/${fileName}`,
-        size: 11,
-      }));
     });
 
     it("pulls a remote file into the workspace root by default", async () => {
@@ -1038,15 +1041,11 @@ describe("createInfraTools", () => {
         "user-123",
         "/etc/nginx/nginx.conf",
       );
-      expect(terminal.uploadFile).toHaveBeenCalledWith(
-        "nginx.conf",
-        expect.any(Buffer),
-        expect.objectContaining({ directory: "/home/deploy", userId: "user-123" }),
-      );
+      expect(await fs.readFile(path.join(WORKSPACE, "nginx.conf"), "utf8")).toBe("server {}\n");
       expect(parseResult(text)).toMatchObject({
         machine: "prod-web",
         remotePath: "/etc/nginx/nginx.conf",
-        localPath: "/home/deploy/nginx.conf",
+        localPath: path.join(WORKSPACE, "nginx.conf"),
         size: 11,
         downloaded: true,
       });
@@ -1055,7 +1054,7 @@ describe("createInfraTools", () => {
         machineId: "m1",
         machineName: "prod-web",
         path: "/etc/nginx/nginx.conf",
-        localPath: "/home/deploy/nginx.conf",
+        localPath: path.join(WORKSPACE, "nginx.conf"),
         size: 11,
       });
     });
@@ -1067,10 +1066,8 @@ describe("createInfraTools", () => {
         dest: "downloads/app.log",
       });
 
-      expect(terminal.uploadFile).toHaveBeenCalledWith(
-        "app.log",
-        expect.any(Buffer),
-        expect.objectContaining({ directory: "/home/deploy/downloads" }),
+      expect(await fs.readFile(path.join(WORKSPACE, "downloads", "app.log"), "utf8")).toBe(
+        "server {}\n",
       );
     });
 
@@ -1092,15 +1089,6 @@ describe("createInfraTools", () => {
       expect(client.readFileForTransfer).not.toHaveBeenCalled();
     });
 
-    it("throws when the terminal workspace is not configured", async () => {
-      vi.mocked(terminal.isConfigured).mockReturnValue(false);
-
-      await expect(
-        callExecute(ctx.downloadFile.execute, { id: "m1", path: "/etc/hosts" }),
-      ).rejects.toThrow(/Terminal workspace/);
-      expect(client.readFileForTransfer).not.toHaveBeenCalled();
-    });
-
     it("surfaces an oversize file from the transfer read", async () => {
       vi.mocked(client.readFileForTransfer).mockRejectedValue(
         new Error("/var/log/huge.log is 200.0MB, over the 50.0MB transfer limit"),
@@ -1109,7 +1097,7 @@ describe("createInfraTools", () => {
       await expect(
         callExecute(ctx.downloadFile.execute, { id: "m1", path: "/var/log/huge.log" }),
       ).rejects.toThrow(/transfer limit/);
-      expect(terminal.uploadFile).not.toHaveBeenCalled();
+      await expect(fs.access(path.join(WORKSPACE, "huge.log"))).rejects.toThrow();
     });
 
     it("throws when machine not found", async () => {
@@ -1123,18 +1111,9 @@ describe("createInfraTools", () => {
   });
 
   describe("infra_upload_file", () => {
-    beforeEach(() => {
-      vi.mocked(terminal.isConfigured).mockReturnValue(true);
+    beforeEach(async () => {
       vi.mocked(mockInfraMachine.findFirst).mockResolvedValue({ id: "m1", name: "prod-web" });
-      vi.mocked(terminal.listDirectory).mockResolvedValue({
-        dir: "/home/deploy",
-        entries: [{ name: "report.txt", type: "file", size: 12, modified: 0 }],
-      });
-      vi.mocked(terminal.readFileBinary).mockResolvedValue({
-        path: "/home/deploy/report.txt",
-        mimeType: "text/plain",
-        buffer: Buffer.from("hello world\n", "utf8"),
-      });
+      await putWorkspaceFile("report.txt", "hello world\n");
       vi.mocked(client.writeFileBuffer).mockResolvedValue({ ok: true, size: 12 });
       vi.mocked(client.createDirectory).mockResolvedValue({ ok: true });
     });
@@ -1147,9 +1126,6 @@ describe("createInfraTools", () => {
       });
       const text = (result.content as { type: string; text: string }[])[0]!.text;
 
-      expect(terminal.readFileBinary).toHaveBeenCalledWith("/home/deploy/report.txt", {
-        userId: "user-123",
-      });
       expect(client.createDirectory).toHaveBeenCalledWith("m1", "user-123", "/var/www");
       expect(client.writeFileBuffer).toHaveBeenCalledWith(
         "m1",
@@ -1159,7 +1135,7 @@ describe("createInfraTools", () => {
       );
       expect(parseResult(text)).toMatchObject({
         machine: "prod-web",
-        localPath: "/home/deploy/report.txt",
+        localPath: path.join(WORKSPACE, "report.txt"),
         remotePath: "/var/www/report.txt",
         size: 12,
         uploaded: true,
@@ -1169,7 +1145,7 @@ describe("createInfraTools", () => {
         machineId: "m1",
         machineName: "prod-web",
         path: "/var/www/report.txt",
-        localPath: "/home/deploy/report.txt",
+        localPath: path.join(WORKSPACE, "report.txt"),
         size: 12,
       });
     });
@@ -1200,12 +1176,10 @@ describe("createInfraTools", () => {
           path: "/tmp/shadow",
         }),
       ).rejects.toThrow(/outside the workspace/);
-      expect(terminal.readFileBinary).not.toHaveBeenCalled();
+      expect(client.writeFileBuffer).not.toHaveBeenCalled();
     });
 
     it("refuses a source that does not exist", async () => {
-      vi.mocked(terminal.listDirectory).mockResolvedValue({ dir: "/home/deploy", entries: [] });
-
       await expect(
         callExecute(ctx.uploadFile.execute, { id: "m1", source: "gone.txt", path: "/tmp/x" }),
       ).rejects.toThrow(/does not exist in the workspace/);
@@ -1213,10 +1187,7 @@ describe("createInfraTools", () => {
     });
 
     it("refuses a source that is a directory", async () => {
-      vi.mocked(terminal.listDirectory).mockResolvedValue({
-        dir: "/home/deploy",
-        entries: [{ name: "stuff", type: "directory", size: 0, modified: 0 }],
-      });
+      await fs.mkdir(path.join(WORKSPACE, "stuff"), { recursive: true });
 
       await expect(
         callExecute(ctx.uploadFile.execute, { id: "m1", source: "stuff", path: "/tmp/x" }),
@@ -1225,23 +1196,13 @@ describe("createInfraTools", () => {
     });
 
     it("refuses a file over the transfer limit before reading it", async () => {
-      vi.mocked(terminal.listDirectory).mockResolvedValue({
-        dir: "/home/deploy",
-        entries: [{ name: "big.iso", type: "file", size: 200 * 1024 * 1024, modified: 0 }],
-      });
+      const big = path.join(WORKSPACE, "big.iso");
+      await fs.writeFile(big, Buffer.alloc(0));
+      await fs.truncate(big, 200 * 1024 * 1024);
 
       await expect(
         callExecute(ctx.uploadFile.execute, { id: "m1", source: "big.iso", path: "/tmp/big.iso" }),
       ).rejects.toThrow(/transfer limit/);
-      expect(terminal.readFileBinary).not.toHaveBeenCalled();
-    });
-
-    it("throws when the terminal workspace is not configured", async () => {
-      vi.mocked(terminal.isConfigured).mockReturnValue(false);
-
-      await expect(
-        callExecute(ctx.uploadFile.execute, { id: "m1", source: "report.txt", path: "/tmp/x" }),
-      ).rejects.toThrow(/Terminal workspace/);
       expect(client.writeFileBuffer).not.toHaveBeenCalled();
     });
 

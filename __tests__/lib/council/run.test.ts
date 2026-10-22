@@ -15,10 +15,8 @@ const hoisted = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/lib/terminal/client", () => ({
+vi.mock("@/lib/sandbox/client", () => ({
   isConfigured: () => hoisted.configured,
-  deriveOpenTerminalUsername: (id: string) => `acct${id}`,
-  getTerminalHomeDir: (id: string) => `/home/acct${id}`,
 }));
 
 vi.mock("@/lib/council/session", () => ({
@@ -163,7 +161,7 @@ describe("startCouncilRun", () => {
   it("prepares the sandbox before the first turn can pay for one", async () => {
     await startCouncilRun({ councilId: "council-1", userId: "user-1" });
     expect(ensureCouncilSandbox).toHaveBeenCalledWith(
-      expect.objectContaining({ key: "abcd1234", home: "/home/acctabcd1234" }),
+      expect.objectContaining({ key: "abcd1234", id: "council-abcd1234" }),
     );
     expect(markSandboxReady).toHaveBeenCalledWith("council-1", "user-1");
   });
@@ -189,10 +187,10 @@ describe("startCouncilRun", () => {
     expect(runCouncilLoop).not.toHaveBeenCalled();
   });
 
-  it("refuses to run a file-using council on a deployment without a terminal", async () => {
+  it("refuses to run a file-using council on a deployment without a sandbox", async () => {
     hoisted.configured = false;
     await expect(startCouncilRun({ councilId: "council-1", userId: "user-1" })).rejects.toThrow(
-      /OPEN_TERMINAL_API_KEY/,
+      /SANDBOX_URL/,
     );
     expect(runCouncilLoop).not.toHaveBeenCalled();
   });
