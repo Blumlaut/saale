@@ -140,8 +140,10 @@ The dev override only changes `build.target`, `NODE_ENV`, and the startup comman
 | `BETTER_AUTH_SECRET`   | Secret for session encryption (32+ chars)                     | Yes       |
 | `BETTER_AUTH_URL`      | Public base URL of the app                                    | Yes       |
 | `ENCRYPTION_KEY`       | 64-char hex string for email password encryption              | Yes       |
-| `OPEN_TERMINAL_URL`    | Open Terminal API base URL                                    | Yes*      |
-| `OPEN_TERMINAL_API_KEY`| API key for Open Terminal authentication                      | Yes*      |
+| `SANDBOX_URL`          | Sandbox service base URL (commands run in per-workspace containers) | Yes* |
+| `SANDBOX_API_KEY`      | Bearer key for the sandbox service                            | Yes*      |
+| `SANDBOX_WORKSPACES_DIR` | Mount point of the workspaces volume (default `/workspaces`) | No       |
+| `SANDBOX_USER`         | Account commands run as: `root` (installs) or `agent` (tighter) | No      |
 | `SEARXNG_URL`          | SearXNG instance URL for web search                           | No        |
 | `UPLOADS_DIR`          | Path for user file storage                                    | No        |
 
@@ -152,7 +154,7 @@ Generate secrets:
 # ENCRYPTION_KEY (64-char hex)
 openssl rand -hex 32
 
-# OPEN_TERMINAL_API_KEY (64-char hex)
+# SANDBOX_API_KEY (64-char hex)
 openssl rand -hex 32
 ```
 
@@ -184,14 +186,15 @@ set (`public/icons`), and a service worker (`public/sw.js`) that precaches
 
 ## Open Terminal (Sandboxed Execution)
 
-When bash tools are enabled, all command execution and file operations run inside a Docker-isolated [open-terminal](https://github.com/open-webui/open-terminal) container:
+When bash tools are enabled, every identity gets its own container holding one directory of the `saale_workspaces` volume (`src/sandbox/` holds the service, `src/lib/sandbox/` the app side):
 
-- **Full dev environment** — Python 3, Node.js, git, build tools, data science libraries, ffmpeg, and more
-- **Multi-user isolation** — Each Saale user gets a dedicated Linux account with kernel-enforced permissions
-- **Session persistence** — Working directory is tracked per AI session via `X-Session-Id` header
+- **Full dev environment** — Python 3, Node.js, git, build tools, ffmpeg, chromium, and `gh` from `Dockerfile.sandbox`
+- **Per-workspace isolation** — a container mounts only its own directory, so another user's files are not at any path
+- **Streamed output** — stdout and stderr arrive as produced, and a stop kills the process group
 - **Image support** — The read tool can return images (PNG, JPEG, GIF, WebP) as binary attachments
+- **User variables** — a user's encrypted environment variables reach their commands, and `GH_TOKEN` authenticates `gh`
 
-To enable, set `bash: true` in the user's tool config and ensure `OPEN_TERMINAL_URL` and `OPEN_TERMINAL_API_KEY` are configured.
+To enable, set `bash: true` in the user's tool config and configure `SANDBOX_URL` and `SANDBOX_API_KEY` (see `docker-compose.yml` and the migration runbook in `plans/sandbox-service.md`).
 
 ## Naming
 
