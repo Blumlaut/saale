@@ -221,9 +221,9 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
 
               {/* Connection status: neutral while testing, semantic once it settles */}
               {isTesting ? (
-                <div className="text-muted-foreground animate-in fade-in slide-in-from-bottom-1 border-border/30 flex items-center gap-2 border-t px-4 py-2 text-xs duration-200">
+                <div className="text-muted-foreground bg-muted/50 animate-in fade-in slide-in-from-bottom-1 border-border/30 flex items-center gap-2 border-t px-4 py-2 text-xs duration-200">
                   <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                  <span className="console-label">Testing connection</span>
+                  <span>Testing connection…</span>
                 </div>
               ) : testResult ? (
                 <div
