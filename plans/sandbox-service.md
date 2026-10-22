@@ -217,6 +217,46 @@ rewritten against the workspace functions.
 - `.env.example`, `README.md`, `.pi/skills/pi-agent-usage/SKILL.md`.
 - `scripts/migrate-workspaces.mjs`, run once before the new stack starts.
 
+### Step 9 — retire the env-var shaped integration
+
+GitHub is the only integration whose whole job is a variable: a token, stored in
+`GitHubAccount.encryptedToken`, injected as `GH_TOKEN`, plus a login name and
+avatar for the card. Once `SandboxEnvVar` exists, that is one row the user adds.
+
+Deleted:
+
+- `src/lib/github/` (`client.ts`, `index.ts`), `src/app/api/integrations/github/`,
+  `src/components/integrations/github-card.tsx`,
+  `src/hooks/use-github-integration.ts`.
+- The `github` entry in `src/lib/integrations/registry.ts`, its member of
+  `IntegrationId`, its card and delete description in
+  `src/app/dashboard/settings/tabs/integrations-tab.tsx`.
+- The `GH_TOKEN` source in `src/lib/sandbox/env.ts` and the `getGitHubEnv` call in
+  `src/lib/pi/session.ts`.
+- `model GitHubAccount` and the `User.githubAccounts` relation, through the
+  migration skill.
+
+Migration of existing tokens (they are re-entered by hand otherwise):
+
+`scripts/migrate-github-token.mjs` reads each `GitHubAccount` row, skips
+`enabled = false`, and writes a `SandboxEnvVar` row for `GH_TOKEN` with the same
+plaintext re-encrypted. `encrypt`/`decrypt` come from `@/lib/crypto`, so it runs
+as a one-off script against `DATABASE_URL` and `ENCRYPTION_KEY`. Print a count of
+migrated and skipped rows, then drop the table.
+
+Lost with the card: the token check against `GET /user` and the connected login
+and avatar. The env var editor lists `GH_TOKEN` like any other name, and the
+agent finds `gh` authenticated because the variable is set.
+
+The env vars panel and the remaining integrations live on the same settings tab:
+`src/components/integrations/*` keeps `telegram-card.tsx` and `integration-box.tsx`,
+and the new card sits beside them. Read `.pi/skills/saale-design/SKILL.md` before
+building it.
+
+Tests: an API test that a user's `GH_TOKEN` row is not returned by another user's
+list, and a settings-tab test that the GitHub box is gone and the env vars card
+renders its names.
+
 ## How a request flows
 
 **A `bash` tool call.** Pi calls `bash.exec(command, cwd, { onData, signal,
@@ -297,6 +337,26 @@ length of one command, which is the only place a value exists outside the app.
 
 **Scope.** A chat command uses the acting user's variables. A council member
 uses the council owner's.
+
+**No cross-user leakage.** The leak vectors and what closes each one:
+
+- Every query filters `userId`, including the resolution read. A background job
+  resolves from `task.userId`, and a council from its owner's.
+- Values are resolved per exec and never stored on a pooled agent session, a
+  prompt, or a container. `agent-pool` caches sessions per user, so a value baked
+  into one would live as long as the pool entry.
+- Names, not values, go into `TERMINAL_PROMPT`. A write to the user's variables
+  calls `evictUserSessions(userId)` from `@/lib/pi/agent-pool`, the path
+  `applyUserSettingsPatch` already uses, so the rebuilt prompt lists the new set.
+- The API returns names only, and the agent's `settings_list` / `settings_set`
+  tools do not cover this table. A value never enters a transcript, a tool
+  result, or a log line.
+- Admin-wide variables stay out of this feature: a value defined for everyone is
+  a sharing decision, and it would need its own scope and its own review.
+
+Tests: a two-user API test (user B's list never contains user A's names), a
+resolution test asserting the map for one user holds only their rows, and a
+prompt test asserting it holds names and no values.
 
 **The model knows names, never values.** `TERMINAL_PROMPT` gains a line listing
 the variables that are set, so the agent knows `gh` is authenticated and which
