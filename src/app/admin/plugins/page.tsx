@@ -1,38 +1,50 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
+import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  PluginInstallDialog,
+  PluginUninstallDialog,
+  type PluginResponse,
+} from "@/components/admin/plugin-dialogs";
 import { Page, PageTabStrip } from "@/components/layout/page";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import type { PluginInfo, PluginListResult, PluginLogEntry, PluginUpdate } from "@/lib/pi/plugins";
+import type { PluginInfo, PluginLogEntry, PluginUpdate } from "@/lib/pi/plugins";
 import {
   AlertCircle,
   AlertTriangle,
   CheckCircle,
   ChevronDown,
+  CloudDownload,
   FolderOpen,
   GitBranch,
+  Info,
   Loader2,
+  MoreHorizontal,
+  PackagePlus,
   Puzzle,
   RefreshCw,
   RotateCcw,
   ScrollText,
   SlidersHorizontal,
   Trash2,
-  CloudDownload,
 } from "lucide-react";
-
-interface PluginResponse extends PluginListResult {
-  log: PluginLogEntry[];
-}
 
 const STATUS_BADGE: Record<PluginInfo["status"], { label: string; className: string }> = {
   loaded: { label: "Loaded", className: "border-green-600/40 text-green-700 dark:text-green-400" },
@@ -60,15 +72,69 @@ function formatDate(iso: string | null): string | null {
   return date.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
 }
 
+/** Panel toolbar button: icon-only on a phone, icon and label from `md` up. */
+function ToolbarButton({
+  icon,
+  label,
+  variant = "secondary",
+  busy = false,
+  disabled = false,
+  className,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  variant?: "primary" | "secondary" | "ghost";
+  busy?: boolean;
+  disabled?: boolean;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      variant={variant === "primary" ? "default" : variant}
+      size="sm"
+      className={cn("h-8 w-8 shrink-0 gap-0 px-0 md:w-auto md:gap-2 md:px-3", className)}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
+      <span className="hidden md:inline">{label}</span>
+    </Button>
+  );
+}
+
+/** A one-line explanation behind an info icon. */
+function Hint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        className="text-muted-foreground hover:text-foreground inline-flex"
+        aria-label={text}
+      >
+        <Info className="h-3.5 w-3.5" />
+      </TooltipTrigger>
+      <TooltipContent>{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export default function AdminPluginsPage() {
   const [tab, setTab] = useState<"plugins" | "config" | "logs">("plugins");
   const [data, setData] = useState<PluginResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "save" | "reload" | "updates" | "clear">(null);
+  const [busy, setBusy] = useState<null | "save" | "reload" | "updates" | "clear" | "install">(
+    null,
+  );
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [updates, setUpdates] = useState<Record<string, PluginUpdate> | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [uninstalling, setUninstalling] = useState<PluginInfo | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   // Config form state, seeded from the server.
   const [dir, setDir] = useState("");
@@ -157,9 +223,15 @@ export default function AdminPluginsPage() {
     try {
       const result = await postJson<{ updates: PluginUpdate[] }>("/api/admin/plugins/updates", {});
       setUpdates(Object.fromEntries(result.updates.map((entry) => [entry.id, entry])));
+      const outdated = result.updates.filter((entry) => entry.outdated).length;
       setNotice({
         tone: "success",
-        text: result.updates.length ? "Checked the git checkouts" : "No git checkouts to check",
+        text:
+          result.updates.length === 0
+            ? "Nothing to check"
+            : outdated === 0
+              ? "Everything is up to date"
+              : `${outdated} update${outdated === 1 ? "" : "s"} available`,
       });
     } catch (err) {
       console.error("Failed to check plugin updates:", err);
@@ -182,7 +254,29 @@ export default function AdminPluginsPage() {
     }
   };
 
+  const installSpec = async (spec: string, message: string) => {
+    setBusy("install");
+    try {
+      const next = await postJson<PluginResponse & { installed: PluginInfo }>(
+        "/api/admin/plugins/install",
+        { spec },
+      );
+      apply(next);
+      setUpdates(null);
+      setNotice({ tone: "success", text: `${message} ${next.installed.name}` });
+    } catch (err) {
+      console.error("Failed to install a plugin:", err);
+      setNotice({
+        tone: "error",
+        text: err instanceof Error ? err.message : "Could not install the package",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const plugins = data?.plugins ?? [];
+  const dirDirty = dir.trim() !== (data?.config.dirSetting ?? "");
   const errorCount = data?.log.filter((entry) => entry.level === "error").length ?? 0;
 
   if (loading) {
@@ -271,49 +365,82 @@ export default function AdminPluginsPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="hidden h-8 w-8 md:inline-flex"
                   aria-label="Refresh"
+                  title="Refresh"
                   disabled={busy !== null}
                   onClick={() => void load()}
                 >
-                  <RefreshCw className={cn("h-4 w-4", busy === "save" && "animate-spin")} />
+                  <RefreshCw className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="h-8 w-8 md:w-auto md:px-3"
-                  aria-label="Check for updates"
+                <ToolbarButton
+                  icon={<PackagePlus className="h-4 w-4" />}
+                  label="Install"
+                  variant="primary"
+                  disabled={busy !== null}
+                  onClick={() => setInstallOpen(true)}
+                />
+                <ToolbarButton
+                  icon={<CloudDownload className="h-4 w-4" />}
+                  label="Check updates"
+                  busy={busy === "updates"}
                   disabled={busy !== null}
                   onClick={() => void checkUpdates()}
-                >
-                  {busy === "updates" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CloudDownload className="h-4 w-4" />
-                  )}
-                  <span className="hidden md:inline">Check updates</span>
-                </Button>
-                <Button
-                  size="icon"
-                  className="h-8 w-8 md:w-auto md:px-3"
-                  aria-label="Rebuild sessions"
+                  className="hidden md:inline-flex"
+                />
+                <ToolbarButton
+                  icon={<RotateCcw className="h-4 w-4" />}
+                  label="Rebuild sessions"
+                  busy={busy === "reload"}
                   disabled={busy !== null}
                   onClick={() => void reloadSessions()}
-                >
-                  {busy === "reload" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RotateCcw className="h-4 w-4" />
-                  )}
-                  <span className="hidden md:inline">Rebuild sessions</span>
-                </Button>
+                  className="hidden md:inline-flex"
+                />
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <span
+                      className="hover:bg-muted inline-flex h-8 w-8 items-center justify-center rounded-lg md:hidden"
+                      title="More actions"
+                      aria-label="More actions"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => void load()} disabled={busy !== null}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Refresh
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void checkUpdates()} disabled={busy !== null}>
+                      <CloudDownload className="mr-2 h-4 w-4" />
+                      Check updates
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => void reloadSessions()}
+                      disabled={busy !== null}
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Rebuild sessions
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
             {!data?.config.enabled && (
-              <div className="text-muted-foreground flex items-start gap-2 border-b px-4 py-2 text-xs">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Global plugins are off. Nothing below is loaded into a session.
+              <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-2 text-xs">
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Plugins are disabled globally.
+                </span>
+                <Button
+                  variant="link"
+                  size="xs"
+                  className="h-auto p-0"
+                  onClick={() => setTab("config")}
+                >
+                  Enable
+                </Button>
               </div>
             )}
 
@@ -334,11 +461,8 @@ export default function AdminPluginsPage() {
                   <FolderOpen className="text-muted-foreground h-6 w-6" />
                   <p className="text-sm font-medium">No plugins installed</p>
                   <p className="text-muted-foreground max-w-md text-xs">
-                    Add a folder to <span className="font-mono break-all">{data?.config.dir}</span>{" "}
-                    with an <span className="font-mono">index.ts</span>, an{" "}
-                    <span className="font-mono">extensions/</span> folder, or a{" "}
-                    <span className="font-mono">package.json</span> listing{" "}
-                    <span className="font-mono">pi.extensions</span>. Reload this page afterwards.
+                    Install one from npm, or drop a folder with an{" "}
+                    <span className="font-mono">index.ts</span> into the directory above.
                   </p>
                   {!data?.config.dirExists && (
                     <p className="text-muted-foreground text-xs">
@@ -362,7 +486,7 @@ export default function AdminPluginsPage() {
                             onClick={() => setExpanded(isOpen ? null : plugin.id)}
                             aria-expanded={isOpen}
                           >
-                            <div className="flex min-w-0 items-center gap-2">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                               <span className="truncate text-sm font-medium">{plugin.name}</span>
                               {plugin.version && (
                                 <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
@@ -372,9 +496,9 @@ export default function AdminPluginsPage() {
                               <Badge variant="outline" className={cn("shrink-0", badge.className)}>
                                 {badge.label}
                               </Badge>
-                              {update && update.behind !== null && update.behind > 0 && (
+                              {update?.outdated && (
                                 <Badge variant="outline" className="shrink-0">
-                                  {update.behind} behind
+                                  {update.latest ? `v${update.latest}` : `${update.behind} behind`}
                                 </Badge>
                               )}
                             </div>
@@ -403,38 +527,37 @@ export default function AdminPluginsPage() {
                         </div>
 
                         {isOpen && (
-                          <div className="px-4 pb-3">
-                            <div className="liquid-glass-inner space-y-3 rounded-lg p-3 text-xs">
-                              <div className="min-w-0">
-                                <p className="console-label">Path</p>
-                                <p className="font-mono break-all">{plugin.path}</p>
+                          <div className="space-y-3 px-4 pb-3">
+                            {plugin.errors.map((error, index) => (
+                              <div key={`${index}-${error}`} className="text-destructive text-xs">
+                                <p className="console-label">Error</p>
+                                <p className="break-words">{error}</p>
                               </div>
-                              {plugin.entries.length > 0 && (
-                                <div className="min-w-0">
-                                  <p className="console-label">Entries</p>
-                                  {plugin.entries.map((entry) => (
-                                    <p key={entry} className="font-mono break-all">
-                                      {entry}
-                                    </p>
-                                  ))}
-                                </div>
-                              )}
-                              {plugin.dependencies.length > 0 && (
-                                <div className="min-w-0">
-                                  <p className="console-label">Dependencies</p>
-                                  <p className="font-mono break-all">
-                                    {plugin.dependencies.join(", ")}
-                                  </p>
-                                </div>
-                              )}
-                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            ))}
+                            {plugin.warnings.map((warning, index) => (
+                              <div
+                                key={`${index}-${warning}`}
+                                className="text-xs text-yellow-700 dark:text-yellow-500"
+                              >
+                                <p className="console-label">Warning</p>
+                                <p className="break-words">{warning}</p>
+                              </div>
+                            ))}
+
+                            <div className="liquid-glass-inner space-y-3 rounded-lg p-3 text-xs">
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="min-w-0">
                                   <p className="console-label">Changed</p>
                                   <p className="font-mono">
                                     {formatDate(plugin.updatedAt) ?? "unknown"} · {plugin.revision}
                                   </p>
                                 </div>
-                                {plugin.git ? (
+                                {plugin.kind === "package" ? (
+                                  <div className="min-w-0">
+                                    <p className="console-label">Source</p>
+                                    <p className="font-mono break-all">npm · {plugin.id}</p>
+                                  </div>
+                                ) : plugin.git ? (
                                   <div className="min-w-0">
                                     <p className="console-label">Git</p>
                                     <p className="flex items-center gap-1 font-mono break-all">
@@ -451,34 +574,67 @@ export default function AdminPluginsPage() {
                                     </p>
                                   </div>
                                 )}
-                              </div>
-                              {update && (
                                 <div className="min-w-0">
-                                  <p className="console-label">Upstream</p>
-                                  <p className="font-mono break-all">
-                                    {update.error
-                                      ? update.error
-                                      : update.behind === 0
-                                        ? `Up to date with ${update.upstream}`
-                                        : `${update.behind} commit(s) behind ${update.upstream}`}
-                                  </p>
+                                  <p className="console-label">Path</p>
+                                  <p className="font-mono break-all">{plugin.path}</p>
                                 </div>
+                                <div className="min-w-0">
+                                  <p className="console-label">Entries</p>
+                                  {plugin.entries.map((entry) => (
+                                    <p key={entry} className="font-mono break-all">
+                                      {entry}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {update?.error && (
+                                <p className="text-muted-foreground break-words">{update.error}</p>
                               )}
-                              {plugin.warnings.map((warning, index) => (
-                                <div
-                                  key={`${index}-${warning}`}
-                                  className="text-yellow-700 dark:text-yellow-500"
-                                >
-                                  <p className="console-label">Warning</p>
-                                  <p className="break-words">{warning}</p>
-                                </div>
-                              ))}
-                              {plugin.errors.map((error, index) => (
-                                <div key={`${index}-${error}`} className="text-destructive">
-                                  <p className="console-label">Error</p>
-                                  <p className="break-words">{error}</p>
-                                </div>
-                              ))}
+                              {update?.outdated && update.latest && plugin.kind === "package" && (
+                                <p className="text-muted-foreground">
+                                  {update.latest} is published.
+                                </p>
+                              )}
+                              {update?.outdated && update.behind !== null && update.behind > 0 && (
+                                <p className="text-muted-foreground">
+                                  {update.behind} commit{update.behind === 1 ? "" : "s"} behind{" "}
+                                  {update.upstream}
+                                </p>
+                              )}
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {plugin.kind === "package" && update?.outdated && (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    className="h-7"
+                                    disabled={busy !== null}
+                                    onClick={() =>
+                                      void installSpec(`npm:${plugin.id}@latest`, "Updated")
+                                    }
+                                  >
+                                    {busy === "install" ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <CloudDownload className="h-3.5 w-3.5" />
+                                    )}
+                                    Update to v{update.latest}
+                                  </Button>
+                                )}
+                                {plugin.kind === "package" ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive h-7"
+                                    disabled={busy !== null}
+                                    onClick={() => setUninstalling(plugin)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Uninstall
+                                  </Button>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         )}
@@ -496,69 +652,73 @@ export default function AdminPluginsPage() {
           <GlassPanel>
             <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
               <p className="console-label">Plugin configuration</p>
-              <Button
-                size="sm"
-                disabled={busy !== null}
-                onClick={() =>
-                  void save(
-                    {
-                      dir,
-                      enabled,
-                      plugins: Object.fromEntries(
-                        Object.entries(switches).map(([id, on]) => [id, on]),
-                      ),
-                    },
-                    "Configuration saved",
-                  )
-                }
-              >
-                {busy === "save" && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
-                Save
-              </Button>
+              {dirDirty && (
+                <Button
+                  size="sm"
+                  className="h-8"
+                  disabled={busy !== null}
+                  onClick={() => void save({ dir }, "Directory saved")}
+                >
+                  {busy === "save" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Save
+                </Button>
+              )}
             </div>
 
             <GlassPanelContent className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <Label className="text-sm font-medium">Load global plugins</Label>
-                  <p className="text-muted-foreground text-xs">
-                    Every session gets the plugins below. Turning this off loads none of them.
-                  </p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Label htmlFor="plugins-enabled" className="text-sm font-medium">
+                    Enabled
+                  </Label>
+                  <Hint text="Every session loads the plugins below." />
                 </div>
                 <Switch
+                  id="plugins-enabled"
                   checked={enabled}
-                  onCheckedChange={setEnabled}
-                  aria-label="Load global plugins"
+                  onCheckedChange={(next) => {
+                    setEnabled(next);
+                    void save(
+                      { enabled: next },
+                      next ? "Plugins enabled" : "Plugins disabled globally",
+                    );
+                  }}
                 />
               </div>
 
               <Separator />
 
               <div className="space-y-1.5">
-                <Label htmlFor="plugins-dir" className="text-sm font-medium">
-                  Plugin directory
-                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="plugins-dir" className="text-sm font-medium">
+                    Directory
+                  </Label>
+                  <Hint text="Empty falls back to PI_GLOBAL_PLUGINS_DIR, then the uploads volume." />
+                </div>
                 <Input
                   id="plugins-dir"
                   value={dir}
                   onChange={(event) => setDir(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && dirDirty) void save({ dir }, "Directory saved");
+                  }}
                   placeholder={data?.config.dir}
                   className="font-mono"
                 />
-                <p className="text-muted-foreground text-xs">
-                  Leave empty to use <span className="font-mono">PI_GLOBAL_PLUGINS_DIR</span>, then
-                  the uploads volume. Currently reading{" "}
-                  <span className="font-mono break-all">{data?.config.dir}</span>
-                </p>
+                {dirDirty && (
+                  <p className="text-muted-foreground truncate font-mono text-[11px]">
+                    Reading {data?.config.dir}
+                  </p>
+                )}
               </div>
 
               <Separator />
 
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <p className="text-sm font-medium">Plugins</p>
                 {plugins.length === 0 ? (
                   <p className="text-muted-foreground text-xs">
-                    Nothing in the directory yet. Add a plugin folder, then reload this page.
+                    Nothing installed. Install one from npm, or drop a folder in the directory.
                   </p>
                 ) : (
                   plugins.map((plugin) => (
@@ -568,15 +728,16 @@ export default function AdminPluginsPage() {
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm">{plugin.name}</p>
-                        <p className="text-muted-foreground truncate font-mono text-[11px]">
-                          {plugin.id}
-                        </p>
+                        {(plugin.name !== plugin.id || plugin.kind === "package") && (
+                          <p className="text-muted-foreground truncate font-mono text-[11px]">
+                            {plugin.kind === "package" ? `npm · ${plugin.id}` : plugin.id}
+                          </p>
+                        )}
                       </div>
                       <Switch
                         checked={switches[plugin.id] ?? true}
-                        onCheckedChange={(next) =>
-                          setSwitches((current) => ({ ...current, [plugin.id]: next }))
-                        }
+                        disabled={busy !== null || !enabled}
+                        onCheckedChange={(next) => togglePlugin(plugin, next)}
                         aria-label={`Enable ${plugin.name}`}
                       />
                     </div>
@@ -586,24 +747,32 @@ export default function AdminPluginsPage() {
             </GlassPanelContent>
           </GlassPanel>
 
-          <GlassPanel className="mt-4">
-            <GlassPanelHeader title="What a plugin can do" />
-            <GlassPanelContent className="text-muted-foreground space-y-2 text-xs">
+          <Collapsible
+            open={aboutOpen}
+            onOpenChange={setAboutOpen}
+            className="mt-4 rounded-lg border"
+          >
+            <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left">
+              <span className="text-sm font-medium">What a plugin can do</span>
+              <ChevronDown
+                className={cn(
+                  "text-muted-foreground h-4 w-4 shrink-0 transition-transform",
+                  aboutOpen && "rotate-180",
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="text-muted-foreground space-y-2 border-t px-4 py-3 text-xs">
               <p>
-                A plugin is a Pi extension: it can add tools, hook prompts and tool calls, add model
-                providers and read session history.
+                A plugin is a Pi extension: it adds tools, hooks prompts and tool calls, and can
+                read session history.
               </p>
               <p>
-                It runs inside this process with the server&apos;s permissions and can reach every
-                account&apos;s data. Only install code you have reviewed. A plugin that throws is
-                logged and skipped; it never fails a session.
+                It runs inside this process with the server&apos;s permissions, so install only code
+                you have reviewed.
               </p>
-              <p>
-                Changes apply to sessions built after the change. Rebuild sessions to apply them to
-                chats that are already open.
-              </p>
-            </GlassPanelContent>
-          </GlassPanel>
+              <p>A plugin that throws is logged and skipped. It never fails a session.</p>
+            </CollapsibleContent>
+          </Collapsible>
         </TabsContent>
 
         {/* ─── Logs ─── */}
@@ -617,31 +786,20 @@ export default function AdminPluginsPage() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                <Button
+                <ToolbarButton
+                  icon={<RefreshCw className="h-4 w-4" />}
+                  label="Refresh"
                   variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  aria-label="Refresh"
                   disabled={busy !== null}
                   onClick={() => void load()}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="h-8 w-8 md:w-auto md:px-3"
-                  aria-label="Clear log"
+                />
+                <ToolbarButton
+                  icon={<Trash2 className="h-4 w-4" />}
+                  label="Clear"
+                  busy={busy === "clear"}
                   disabled={busy !== null}
                   onClick={() => void clearLog()}
-                >
-                  {busy === "clear" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                  <span className="hidden md:inline">Clear</span>
-                </Button>
+                />
               </div>
             </div>
 
@@ -701,6 +859,28 @@ export default function AdminPluginsPage() {
           {notice.text}
         </p>
       )}
+
+      <PluginInstallDialog
+        open={installOpen}
+        onOpenChange={setInstallOpen}
+        onInstalled={(response, installed) => {
+          apply(response);
+          setUpdates(null);
+          setNotice({ tone: "success", text: `Installed ${installed.name}` });
+        }}
+      />
+
+      <PluginUninstallDialog
+        plugin={uninstalling}
+        onOpenChange={(open) => {
+          if (!open) setUninstalling(null);
+        }}
+        onRemoved={(response) => {
+          apply(response);
+          setUpdates(null);
+          setNotice({ tone: "success", text: "Plugin removed" });
+        }}
+      />
     </Page>
   );
 }

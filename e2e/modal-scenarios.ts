@@ -1141,6 +1141,15 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     skip: "not automated yet  the admin overlays need their own `open` steps",
   },
   {
+    name: "admin · install plugin",
+    path: "/admin/plugins",
+    sources: ["src/components/admin/plugin-dialogs.tsx"],
+    open: async (page) => {
+      await click(page, 'button[aria-label="Install"]');
+      await visible(page, "#plugin-spec").waitFor({ state: "visible", timeout: 10_000 });
+    },
+  },
+  {
     name: "admin · add role",
     path: "/admin/roles",
     sources: ["src/app/admin/roles/page.tsx"],

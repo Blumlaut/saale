@@ -22,10 +22,16 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { DefaultResourceLoader, getAgentDir } from "@earendil-works/pi-coding-agent";
+import {
+  DefaultPackageManager,
+  DefaultResourceLoader,
+  getAgentDir,
+  SettingsManager,
+} from "@earendil-works/pi-coding-agent";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { normalizePluginStates } from "@/lib/settings/properties";
 import { getUploadsDir } from "@/lib/uploads";
@@ -96,11 +102,14 @@ export interface PluginGitInfo {
 
 export type PluginStatus = "loaded" | "error" | "disabled" | "unknown";
 
+/** A folder or file dropped into the directory, or an npm package installed from it. */
+export type PluginKind = "directory" | "file" | "package";
+
 export interface PluginInfo {
   /** Directory (or file) name. Stable across reloads; the switch is keyed by it. */
   id: string;
   path: string;
-  kind: "directory" | "file";
+  kind: PluginKind;
   name: string;
   version: string | null;
   description: string | null;
@@ -212,12 +221,22 @@ async function readManifest(root: string): Promise<PluginManifest> {
   }
 }
 
-/** Extension entry files, resolved the way Pi resolves a directory source. */
-async function resolveEntries(root: string, manifest: PluginManifest): Promise<string[]> {
+/**
+ * Extension entry files, resolved the way Pi resolves a directory source.
+ *
+ * An npm package gets the strict reading: Pi only loads a package's declared
+ * extensions or its `extensions/` folder, and an `index.js` is a plain module
+ * that a dependency happens to ship.
+ */
+async function resolveEntries(
+  root: string,
+  manifest: PluginManifest,
+  options: { allowIndexFile: boolean } = { allowIndexFile: true },
+): Promise<string[]> {
   const fromManifest = manifest.entries.filter((entry) => !entry.startsWith("!"));
   if (fromManifest.length > 0) return fromManifest;
 
-  for (const candidate of ["index.ts", "index.js"]) {
+  for (const candidate of options.allowIndexFile ? ["index.ts", "index.js"] : []) {
     if (
       existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ root, candidate))
     ) {
@@ -360,9 +379,223 @@ export async function discoverPlugins(config: PluginConfig): Promise<PluginInfo[
     });
   }
 
+  plugins.push(...(await discoverPackages(config)));
   plugins.sort((a, b) => a.id.localeCompare(b.id));
   knownRoots = plugins.map((plugin) => ({ id: plugin.id, path: plugin.path }));
   return plugins;
+}
+
+// ─── npm packages ────────────────────────────────────────────────────────────
+
+/**
+ * Where `npm install` puts plugin packages, inside the plugin directory.
+ *
+ * Pi's own layout (`<agentDir>/npm`), so a package installed here is the same
+ * shape as one installed by `pi install`.
+ */
+export function npmInstallRoot(pluginsDir: string): string {
+  return path.join(pluginsDir, ".pi", "npm");
+}
+
+/** Installed package directories. */
+export function npmPackagesDir(pluginsDir: string): string {
+  return path.join(npmInstallRoot(pluginsDir), "node_modules");
+}
+
+/** `@scope/name`, `name`, either with an `@version`; an `npm:` prefix is optional. */
+const NPM_NAME = /^(?:@[a-z0-9][a-z0-9-._~]*\/)?[a-z0-9][a-z0-9-._~]*(?:@[a-z0-9-._~^<>=*+|]+)?$/i;
+
+const npmSourceSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter an npm package")
+  .transform((value) => (value.startsWith("npm:") ? value.slice(4).trim() : value))
+  .refine((value) => NPM_NAME.test(value), "Enter a package name, like npm:@scope/pi-usage");
+
+/** The package name of a `name@version` spec, scope included. */
+export function npmNameOf(source: string): string {
+  const spec = source.replace(/^npm:/, "");
+  const at = spec.lastIndexOf("@");
+  return at > 0 ? spec.slice(0, at) : spec;
+}
+
+/**
+ * The `npm:` source to install, or a message saying why the input is not one.
+ *
+ * Anything that is not a bare package name would be passed to `npm install` as
+ * a path or a URL, so it is rejected rather than run.
+ */
+export function normalizeNpmSource(input: string): string {
+  return `npm:${npmSourceSchema.parse(input)}`;
+}
+
+/** A package manager scoped to the plugin directory, with no settings of its own. */
+function pluginPackageManager(pluginsDir: string): DefaultPackageManager {
+  return new DefaultPackageManager({
+    cwd: pluginsDir,
+    agentDir: path.join(pluginsDir, ".pi"),
+    settingsManager: SettingsManager.inMemory(),
+  });
+}
+
+/** Packages `npm install` recorded, i.e. the ones an admin asked for. */
+async function installedPackageNames(pluginsDir: string): Promise<string[]> {
+  const manifestPath = path.join(npmInstallRoot(pluginsDir), "package.json");
+  try {
+    const raw = await readFile(/*turbopackIgnore: true*/ manifestPath, "utf8");
+    const parsed = JSON.parse(raw) as { dependencies?: Record<string, unknown> };
+    return Object.keys(parsed.dependencies ?? {}).sort();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error(`Failed to read ${manifestPath}:`, err);
+      recordPluginLog("warn", null, `Unreadable npm manifest: ${message(err)}`);
+    }
+    return [];
+  }
+}
+
+/** The plugin an npm install produced, or a reason it is not one. */
+async function packagePlugin(
+  config: PluginConfig,
+  id: string,
+): Promise<{ plugin: PluginInfo } | { error: string }> {
+  const pluginPath = path.join(npmPackagesDir(config.dir), id);
+  if (!existsSync(/*turbopackIgnore: true*/ pluginPath)) {
+    return { error: "installed, but missing from node_modules" };
+  }
+  const manifest = await readManifest(pluginPath);
+  const entries = await resolveEntries(pluginPath, manifest, { allowIndexFile: false });
+  if (entries.length === 0) return { error: "has no Pi extensions" };
+
+  const files = await walkPluginFiles(pluginPath);
+  const mtime = newestMtime(files);
+  const override = config.states[id]?.enabled ?? null;
+  return {
+    plugin: {
+      id,
+      path: pluginPath,
+      kind: "package",
+      name: manifest.name ?? id,
+      version: manifest.version,
+      description: manifest.description,
+      entries,
+      dependencies: manifest.dependencies,
+      enabled: config.enabled && override !== false,
+      override,
+      status: config.enabled && override !== false ? "unknown" : "disabled",
+      errors: [],
+      warnings: [],
+      updatedAt: mtime === null ? null : new Date(mtime).toISOString(),
+      revision: revisionOf(files),
+      git: null,
+    },
+  };
+}
+
+/** Every npm-installed plugin, in name order. */
+async function discoverPackages(config: PluginConfig): Promise<PluginInfo[]> {
+  const plugins: PluginInfo[] = [];
+  for (const id of await installedPackageNames(config.dir)) {
+    const result = await packagePlugin(config, id);
+    if ("error" in result) {
+      recordPluginLog("warn", id, `Not loaded: ${result.error}`);
+      continue;
+    }
+    plugins.push(result.plugin);
+  }
+  return plugins;
+}
+
+/**
+ * Install an npm package into the plugin directory.
+ *
+ * Returns the plugin, or throws with a message worth showing an admin. A
+ * package that turns out to carry no Pi extension is removed again, so the
+ * directory never holds something that would load into every session.
+ */
+export async function installNpmPlugin(input: string): Promise<PluginInfo> {
+  const config = await readPluginConfig();
+  const source = normalizeNpmSource(input);
+  const id = npmNameOf(source);
+
+  await mkdir(path.join(config.dir, ".pi"), { recursive: true });
+  recordPluginLog("info", id, `Installing ${source}`);
+  try {
+    await pluginPackageManager(config.dir).install(source);
+  } catch (err) {
+    console.error(`npm install ${source} failed:`, err);
+    recordPluginLog("error", id, `Install failed: ${message(err)}`);
+    throw new Error(`npm could not install ${source}`);
+  }
+  invalidatePluginCache();
+
+  const result = await packagePlugin(config, id);
+  if ("error" in result) {
+    await pluginPackageManager(config.dir)
+      .remove(source)
+      .catch((err) => {
+        console.error(`Failed to roll back ${source}:`, err);
+      });
+    recordPluginLog("error", id, `Not a Pi plugin: ${result.error}`);
+    throw new Error(`${id} ${result.error}`);
+  }
+
+  recordPluginLog("info", id, `Installed ${id} v${result.plugin.version ?? "?"}`);
+  return result.plugin;
+}
+
+/** Remove an npm-installed plugin. Folders and files are managed on disk. */
+export async function removeNpmPlugin(id: string): Promise<void> {
+  const config = await readPluginConfig();
+  if (!(await installedPackageNames(config.dir)).includes(id)) {
+    throw new Error(`${id} is not an npm-installed plugin`);
+  }
+  recordPluginLog("info", id, `Removing ${id}`);
+  try {
+    await pluginPackageManager(config.dir).remove(`npm:${id}`);
+  } catch (err) {
+    console.error(`npm uninstall ${id} failed:`, err);
+    recordPluginLog("error", id, `Uninstall failed: ${message(err)}`);
+    throw new Error(`npm could not remove ${id}`);
+  }
+  invalidatePluginCache();
+}
+
+/** The newest published version of a package, or `null` when npm cannot say. */
+export async function npmLatestVersion(name: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("npm", ["view", name, "version", "--json"], {
+      timeout: 20_000,
+      windowsHide: true,
+    });
+    const parsed: unknown = JSON.parse(stdout.trim());
+    return typeof parsed === "string" ? parsed : null;
+  } catch (err) {
+    console.error(`npm view ${name} failed:`, err);
+    return null;
+  }
+}
+
+/**
+ * Positive when `a` is the newer version.
+ *
+ * Only what a release tag needs: dotted numbers, and a prerelease (`-beta.1`)
+ * sorting below the release it precedes.
+ */
+export function compareVersions(a: string, b: string): number {
+  const [aCore = "", aPre] = a.split("-", 2);
+  const [bCore = "", bPre] = b.split("-", 2);
+  const aParts = aCore.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const bParts = bCore.split(".").map((part) => Number.parseInt(part, 10) || 0);
+
+  for (let index = 0; index < Math.max(aParts.length, bParts.length); index += 1) {
+    const diff = (aParts[index] ?? 0) - (bParts[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  if (aPre === bPre) return 0;
+  if (!aPre) return 1;
+  if (!bPre) return -1;
+  return aPre.localeCompare(bPre, undefined, { numeric: true });
 }
 
 // ─── Load state ──────────────────────────────────────────────────────────────
@@ -531,10 +764,14 @@ export async function readGitInfo(root: string): Promise<PluginGitInfo | null> {
 
 export interface PluginUpdate {
   id: string;
-  /** The branch or remote ref the checkout follows. */
+  /** The branch or remote ref the checkout follows, or the npm registry. */
   upstream: string | null;
-  /** Commits the upstream has that the checkout does not. */
+  /** Commits the upstream has that the checkout does not. Git checkouts only. */
   behind: number | null;
+  /** The newest published version. npm packages only. */
+  latest: string | null;
+  /** Whether the upstream has something newer than what is installed. */
+  outdated: boolean;
   error: string | null;
 }
 
@@ -549,6 +786,21 @@ export async function checkPluginUpdates(): Promise<PluginUpdate[]> {
   const updates: PluginUpdate[] = [];
 
   for (const plugin of plugins) {
+    if (plugin.kind === "package") {
+      const latest = await npmLatestVersion(plugin.name);
+      const outdated =
+        latest !== null && plugin.version !== null && compareVersions(latest, plugin.version) > 0;
+      updates.push({
+        id: plugin.id,
+        upstream: "npm",
+        behind: null,
+        latest,
+        outdated,
+        error: latest === null ? "npm did not answer" : null,
+      });
+      continue;
+    }
+
     if (
       plugin.kind !== "directory" ||
       !existsSync(
@@ -560,7 +812,14 @@ export async function checkPluginUpdates(): Promise<PluginUpdate[]> {
 
     const fetched = await git(plugin.path, ["fetch", "--quiet", "--prune"], 20_000);
     if (fetched === null) {
-      updates.push({ id: plugin.id, upstream: null, behind: null, error: "git fetch failed" });
+      updates.push({
+        id: plugin.id,
+        upstream: null,
+        behind: null,
+        latest: null,
+        outdated: false,
+        error: "git fetch failed",
+      });
       continue;
     }
 
@@ -571,7 +830,14 @@ export async function checkPluginUpdates(): Promise<PluginUpdate[]> {
       "@{upstream}",
     ]);
     if (!upstream) {
-      updates.push({ id: plugin.id, upstream: null, behind: null, error: "No upstream branch" });
+      updates.push({
+        id: plugin.id,
+        upstream: null,
+        behind: null,
+        latest: null,
+        outdated: false,
+        error: "No upstream branch",
+      });
       continue;
     }
 
@@ -581,6 +847,8 @@ export async function checkPluginUpdates(): Promise<PluginUpdate[]> {
       id: plugin.id,
       upstream,
       behind: Number.isFinite(behind) ? behind : null,
+      latest: null,
+      outdated: behind !== null && behind > 0,
       error: behind === null ? "Could not compare with upstream" : null,
     });
   }
@@ -653,6 +921,8 @@ export function recordExtensionDiagnostics(result: {
 /** `file.ts: message`, or just the message when the path is the plugin itself. */
 function diagnosticText(filePath: string, text: string): string {
   const name = path.basename(filePath);
-  if (!name || name === pluginIdForPath(filePath)) return text;
+  const pluginId = pluginIdForPath(filePath);
+  // A package root is `@scope/name`; its folder name is only the last part.
+  if (!name || !pluginId || name === pluginId || pluginId.endsWith(`/${name}`)) return text;
   return `${name}: ${text}`;
 }
