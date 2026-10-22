@@ -51,7 +51,8 @@ web / worker                          sandbox-exec                    sandbox im
 - **`sandbox-exec`**, a Node service built from this repo. It holds the Docker
   socket and owns every container.
 - **`saale-sandbox`**, the tenant image: the package list `OPEN_TERMINAL_PACKAGES`
-  carries today, plus an `agent` account at `SANDBOX_UID`.
+  carries today, plus node and npm, an `agent` account, and `$HOME/.local/bin`
+  on `PATH`.
 
 ## Implementation steps
 
@@ -66,9 +67,9 @@ New:
   `council-<key>`, matching `/^(user|council)-[A-Za-z0-9_-]{1,64}$/`. It is the
   only handle a caller passes.
 - `src/lib/sandbox/config.ts` — `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`,
-  `SANDBOX_NETWORK`, `SANDBOX_UID`, `SANDBOX_GID`, `SANDBOX_MEMORY`,
-  `SANDBOX_PIDS`, `SANDBOX_CPUS`, `SANDBOX_IDLE_MINUTES`, `SANDBOX_URL`,
-  `SANDBOX_API_KEY`.
+  `SANDBOX_NETWORK`, `SANDBOX_USER`, `SANDBOX_UID`, `SANDBOX_GID`,
+  `SANDBOX_MEMORY`, `SANDBOX_PIDS`, `SANDBOX_CPUS`, `SANDBOX_IDLE_MINUTES`,
+  `SANDBOX_CONTAINER_TTL_DAYS`, `SANDBOX_URL`, `SANDBOX_API_KEY`.
 - `src/lib/sandbox/spec.ts` — `containerSpec(identity, config)` returning the
   `dockerode` create options. Pure, so the isolation rules are testable.
 
@@ -111,8 +112,9 @@ AttachStderr })`, started with `{ hijack: true, stdin: true }`. The command is
   `/tmp/.saale-<execId>.pgid` inside the container. `DELETE /exec/:id` runs a
   second exec that signals the group, so a pipeline dies whole. The server also
   signals the group when `timeoutSeconds` expires and reports `timedOut`.
-- `reapIdle()` stops containers idle past `SANDBOX_IDLE_MINUTES`; `sweep()` runs
-  at boot and stops labelled containers left by a previous process.
+- `reapIdle()` stops a container idle past `SANDBOX_IDLE_MINUTES` and removes it
+  past `SANDBOX_CONTAINER_TTL_DAYS`; `sweep()` runs at boot and stops labelled
+  containers left by a previous process.
 
 Wiring:
 
@@ -169,9 +171,9 @@ auth header, error mapping).
 New:
 
 - `src/lib/sandbox/workspace.ts` — `identityPath(identity)`,
-  `ensureWorkspace(identity)` (`mkdir -p`, `chown` to `SANDBOX_UID`, mode `0770`),
-  `removeWorkspace(identity)`, `writeOwned(path, data)` (write then `chown`, so a
-  file the browser uploads is editable in bash).
+  `ensureWorkspace(identity)` (`mkdir -p`, owned by the exec user, mode `0770`),
+  `removeWorkspace(identity)`, `writeOwned(path, data)` (write, then set the
+  owner to the exec user, so a file the browser uploads is editable in bash).
 
 Changed:
 
@@ -231,7 +233,7 @@ file `cat` shows.
 
 **A browse, upload, rename or zip.** `/api/files/*` resolves the target from the
 session, builds the workspace root, and hands absolute paths to the
-`local-provider`. Uploads land owned by `SANDBOX_UID`.
+`local-provider`. Uploads land owned by the container's command user.
 
 **A council.** The council's `sandboxKey` names a directory and an identity.
 Creating the council creates the directory; deleting it removes the directory and
@@ -250,10 +252,10 @@ live in a different directory of the same volume.
 3. **The kernel view is checked.** Each new container's `/proc/self/mountinfo`
    must show one `/workspaces/` mount, naming the identity's subpath.
 
-`SANDBOX_UID` (default `1000`) is baked into the image as the `agent` account, so
-`whoami`, `id -un` and `$HOME` work. Ownership is a number recorded on files under
-the volume; no account is created on the host, and teardown is `rm -rf` plus
-`docker rm`.
+`SANDBOX_USER` selects the account commands run as: `root` by default, which is
+what lets an agent install packages, or `agent` for the tighter setting. Files in
+the volume are owned by that account. No account is created on the host, and
+teardown is `rm -rf` plus `docker rm`.
 
 Checked on this host (Docker 29.9.1, Compose v5.6.0):
 
@@ -261,19 +263,88 @@ Checked on this host (Docker 29.9.1, Compose v5.6.0):
   `/workspaces/userA/f` fails with `ENOENT`;
 - `/proc/self/mountinfo` inside it has exactly one `/workspaces/` entry, naming
   the subpath;
-- a directory `chown`ed to `1000:1000` is writable by a container running as uid
-  1000, and the files it writes are readable from the app.
+- a directory owned by the account a container runs as is writable by that
+  container, and the files it writes are readable from the app;
+- `apt-get install jq` succeeds as root with Docker's default capabilities, and
+  fails under `--cap-drop ALL` (exit 100). That is the trade
+  `SANDBOX_USER=agent` makes.
+
+## Environment variables
+
+`GH_TOKEN` already works this way: `getGitHubEnv(userId)` returns it and the
+session injects it into every command so `gh` is authenticated. It becomes one
+source among several.
+
+**Storage.** A `SandboxEnvVar` table, in the shape `GitHubAccount` already uses:
+`userId`, `name`, `encryptedValue` (`@/lib/crypto`), `@@unique([userId, name])`.
+Secrets stay out of `AppSettings`, whose registry documents itself as
+secret-free.
+
+**Resolution** runs in the app at exec time (`src/lib/sandbox/env.ts`):
+
+1. the user's `SandboxEnvVar` rows, decrypted;
+2. `GH_TOKEN` from the GitHub integration, when the user set no `GH_TOKEN` of
+   their own;
+3. the per-call extras the session builds today.
+
+That allowlist is all that is sent. `process.env` is never forwarded, so
+`DATABASE_URL`, `ENCRYPTION_KEY` and `SANDBOX_API_KEY` stay in the app.
+
+**Transport.** The exec request carries `env`. The service checks each name
+(`/^[A-Z_][A-Z0-9_]{0,63}$/`), caps the count at 32 and the total at 32 KB, and
+passes them to `docker exec` as `Env`. They live in that exec object for the
+length of one command, which is the only place a value exists outside the app.
+
+**Scope.** A chat command uses the acting user's variables. A council member
+uses the council owner's.
+
+**The model knows names, never values.** `TERMINAL_PROMPT` gains a line listing
+the variables that are set, so the agent knows `gh` is authenticated and which
+integrations are live.
+
+## Installing packages
+
+Three tiers, all reachable from bash:
+
+1. **In the image.** `Dockerfile.sandbox` carries what every workspace needs:
+   today's `OPEN_TERMINAL_PACKAGES` list plus node, npm, `uv` and `pipx`.
+2. **In the workspace.** `$HOME` is `/workspaces/<id>` and
+   `$HOME/.local/bin` is on `PATH`, so `pip install --user`,
+   `npm install -g --prefix ~/.local`, `uv tool install`,
+   `cargo install --root ~/.local` and `go install` with `GOBIN=$HOME/.local/bin`
+   land in the volume and outlive the container.
+3. **System packages.** `apt-get install` runs inside the container and lands in
+   its writable layer. It survives a stop and is lost when the container is
+   removed.
+
+Tier 3 sets the default user: `SANDBOX_USER=root`. Root inside a container with
+one directory mounted, its own network, no socket, no secrets in its
+environment, and Docker's default capability set is the posture the previous
+terminal container had. A deployment that wants the tighter setting runs
+`SANDBOX_USER=agent`: commands run as the image's `agent` account, `apt-get`
+fails, tiers 1 and 2 keep working, and the volume needs a one-time
+`chown -R agent`.
+
+Installs need egress, which the sandbox network provides. `apt-get`, `pip` and
+`npm` reach the internet and nothing else in the compose project.
+
+Container lifetime follows from tier 3: `reapIdle()` stops a container past
+`SANDBOX_IDLE_MINUTES` and the writable layer survives, so an installed package
+is still there next time. Removal happens past `SANDBOX_CONTAINER_TTL_DAYS`, and
+deploying a new image means the next container is created from it. Anything that
+must survive is either in the image (tier 1) or installed into `$HOME`
+(tier 2).
 
 ## Container spec
 
 | Setting                                      | Value                                                                                                  |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `User`                                       | `<SANDBOX_UID>:<SANDBOX_GID>`                                                                          |
+| `User`                                       | `SANDBOX_USER` (`root` by default, `agent` for the tighter setting)                                    |
 | `WorkingDir`                                 | `/workspaces/<id>`                                                                                     |
-| `Env`                                        | `HOME=/workspaces/<id>`                                                                                |
+| `Env`                                        | `HOME=/workspaces/<id>`, `PATH=…:/workspaces/<id>/.local/bin`                                          |
 | `Mounts`                                     | one: `type=volume`, `source=<SANDBOX_VOLUME>`, `target=/workspaces/<id>`, `VolumeOptions.Subpath=<id>` |
 | `HostConfig.NetworkMode`                     | `SANDBOX_NETWORK`, where a command reaches the internet and nothing else in the compose project        |
-| `HostConfig.CapDrop`                         | `["ALL"]`, `SecurityOpt: ["no-new-privileges"]`                                                        |
+| `HostConfig.CapDrop` / `SecurityOpt`         | Docker's defaults; `["ALL"]` and `no-new-privileges` when `SANDBOX_USER=agent`                         |
 | `HostConfig.Init`                            | `true`, so backgrounded grandchildren are reaped                                                       |
 | `HostConfig.Memory`, `PidsLimit`, `NanoCpus` | `SANDBOX_MEMORY`, `SANDBOX_PIDS`, `SANDBOX_CPUS`                                                       |
 | `Labels`                                     | `saale.sandbox=<id>` for sweeping                                                                      |
@@ -281,14 +352,14 @@ Checked on this host (Docker 29.9.1, Compose v5.6.0):
 
 ## Config
 
-| Was                          | Becomes                                                                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `OPEN_TERMINAL_URL`          | `SANDBOX_URL`                                                                                                                |
-| `OPEN_TERMINAL_API_KEY`      | `SANDBOX_API_KEY`                                                                                                            |
-| `OPEN_TERMINAL_MULTI_USER`   | (dropped)                                                                                                                    |
-| `OPEN_TERMINAL_PACKAGES`     | `Dockerfile.sandbox`                                                                                                         |
-| `OPEN_TERMINAL_PIP_PACKAGES` | `Dockerfile.sandbox`                                                                                                         |
-| —                            | `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`, `SANDBOX_NETWORK`, `SANDBOX_UID`, `SANDBOX_GID`, limits, `SANDBOX_IDLE_MINUTES` |
+| Was                          | Becomes                                                                                                                                                                    |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OPEN_TERMINAL_URL`          | `SANDBOX_URL`                                                                                                                                                              |
+| `OPEN_TERMINAL_API_KEY`      | `SANDBOX_API_KEY`                                                                                                                                                          |
+| `OPEN_TERMINAL_MULTI_USER`   | (dropped)                                                                                                                                                                  |
+| `OPEN_TERMINAL_PACKAGES`     | `Dockerfile.sandbox`                                                                                                                                                       |
+| `OPEN_TERMINAL_PIP_PACKAGES` | `Dockerfile.sandbox`                                                                                                                                                       |
+| —                            | `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`, `SANDBOX_NETWORK`, `SANDBOX_USER`, `SANDBOX_UID`, `SANDBOX_GID`, limits, `SANDBOX_IDLE_MINUTES`, `SANDBOX_CONTAINER_TTL_DAYS` |
 
 App mounts `<volume>:/workspaces`. With `SANDBOX_URL` unset, files work from the
 same volume and `bash` is not offered.
@@ -330,6 +401,7 @@ services:
       - SANDBOX_NETWORK=saale-sandbox
       - SANDBOX_CONTAINER_IMAGE=saale-sandbox
       - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_USER=${SANDBOX_USER:-root}
 
   # Built, never started: the image the sandbox containers run.
   sandbox-image:
@@ -414,7 +486,8 @@ The script (`node`, no dependencies) does this:
 2. For each identity, one throwaway container mounts the old volume read-only and
    the new volume read-write, copies `uploads/`, `files/`, `images/`,
    `telegram_files/` and any other content, skips `.bash*`, `.profile`, `.cache`,
-   `.local/state`, then `chown -R <SANDBOX_UID>` the destination.
+   `.local/state`, then set ownership to the container's command user (root by
+   default, which the copy already is).
 3. Refuses a destination that already has files unless `--force`, so a second run
    cannot overwrite newer data.
 4. Copies unmatched `/home/*` directories to `<volume>/_orphaned/<account>/` and
@@ -441,24 +514,26 @@ if they matter.
 
 What the agent sees today, and what it sees after, for the features in use:
 
-| Today                                                                     | After                                                    |
-| ------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `sudo -u <account> bash -c <cmd>`, non-root                               | `setsid bash -c <cmd>` as `SANDBOX_UID`, non-root        |
-| cwd `/home/<account>`                                                     | cwd `/workspaces/<id>`                                   |
-| `uploads/`, `files/`, `images/`, `telegram_files/`                        | same names, carried over by the migration                |
-| output polled every 5 s                                                   | streamed as produced                                     |
-| long output loses its start, with a marker                                | nothing dropped; Pi truncates for the model              |
-| `exit_code: null` when a process disappears                               | real code, `128 + signal`                                |
-| stat through the parent listing                                           | real stat                                                |
-| unknown files as `application/octet-stream`                               | extension on the app side, bytes sniffed for images      |
-| `modified` in seconds                                                     | milliseconds                                             |
-| `GH_TOKEN` merged into the container env, readable from `/proc/1/environ` | passed to that one command                               |
-| compose network: reaches Postgres and Redis                               | `saale-sandbox`: internet only                           |
-| packages from `OPEN_TERMINAL_PACKAGES` at boot                            | `Dockerfile.sandbox`, same list plus node 22             |
-| sessions accumulate per chat                                              | one container per identity, reaped after the idle window |
-| teardown via `userdel` / `gpasswd` / `groupdel`                           | `rm -rf` and `docker rm`                                 |
-| other tenants' homes readable through the file API                        | absent from the container                                |
-| read/write/edit, image preview, `show_file`, zip, browser                 | unchanged                                                |
+| Today                                                                     | After                                                         |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `sudo -u <account> bash -c <cmd>`, non-root                               | `setsid bash -c <cmd>` as `root` (or `agent`)                 |
+| cwd `/home/<account>`                                                     | cwd `/workspaces/<id>`                                        |
+| `uploads/`, `files/`, `images/`, `telegram_files/`                        | same names, carried over by the migration                     |
+| output polled every 5 s                                                   | streamed as produced                                          |
+| long output loses its start, with a marker                                | nothing dropped; Pi truncates for the model                   |
+| `exit_code: null` when a process disappears                               | real code, `128 + signal`                                     |
+| stat through the parent listing                                           | real stat                                                     |
+| unknown files as `application/octet-stream`                               | extension on the app side, bytes sniffed for images           |
+| `modified` in seconds                                                     | milliseconds                                                  |
+| `GH_TOKEN` merged into the container env, readable from `/proc/1/environ` | passed to that one command                                    |
+| no user-defined variables                                                 | `SandboxEnvVar` rows, encrypted, resolved per exec            |
+| `pip install --user` works, `apt-get` fails                               | `apt-get` works inside the container, installs survive a stop |
+| compose network: reaches Postgres and Redis                               | `saale-sandbox`: internet only                                |
+| packages from `OPEN_TERMINAL_PACKAGES` at boot                            | `Dockerfile.sandbox`, same list plus node 22                  |
+| sessions accumulate per chat                                              | one container per identity, reaped after the idle window      |
+| teardown via `userdel` / `gpasswd` / `groupdel`                           | `rm -rf` and `docker rm`                                      |
+| other tenants' homes readable through the file API                        | absent from the container                                     |
+| read/write/edit, image preview, `show_file`, zip, browser                 | unchanged                                                     |
 
 One behaviour changes: a background process started in a chat lives as long as
 the container stays warm, then it is stopped. `SANDBOX_IDLE_MINUTES` (default 60)
