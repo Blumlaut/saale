@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { ShareViewer } from "@/components/chat/share-viewer";
+import { getPublicUrl } from "@/lib/public-url";
 import type { Message, ToolCallData } from "@/components/chat/types";
 
 interface SharePageProps {
@@ -23,7 +24,7 @@ export default async function SharePage({ params }: SharePageProps) {
   const { token } = await params;
 
   // Fetch shared session data (public endpoint)
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  const baseUrl = getPublicUrl();
   const res = await fetch(`${baseUrl}/api/chat/sessions/share/${token}/messages`, {
     cache: "no-store",
   });
