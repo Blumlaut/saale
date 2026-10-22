@@ -27,8 +27,23 @@ import { MAX_LISTING_ENTRIES } from "./config";
 import type { FileProvider, RawListing } from "./provider";
 import type { FileBytes, FileStat } from "./types";
 
-export function createLocalFileProvider(options: { root: string }): FileProvider {
+export function createLocalFileProvider(options: {
+  root: string;
+  /** Owner given to everything this provider creates (a sandbox container's account). */
+  owner?: { uid: number; gid: number } | null;
+}): FileProvider {
   const root = options.root;
+  const owner = options.owner ?? null;
+
+  /** Hand a path this provider created to the container's account. */
+  async function own(target: string): Promise<void> {
+    if (!owner) return;
+    try {
+      await fs.chown(/* turbopackIgnore: true */ target, owner.uid, owner.gid);
+    } catch (err) {
+      console.error(`Failed to hand ${target} to ${owner.uid}:${owner.gid}:`, err);
+    }
+  }
 
   /**
    * The root's real path, created if missing. Memoized: `realpath` on every
@@ -74,6 +89,33 @@ export function createLocalFileProvider(options: { root: string }): FileProvider
         probe = parent;
       }
     }
+  }
+
+  /**
+   * `mkdir -p`, handing over every directory that had to be created.
+   *
+   * The owner of a file is not enough: a directory the app created as root and
+   * left root-owned stops the container's account from writing inside it at
+   * all, so the whole chain it creates belongs to that account.
+   */
+  async function mkdirOwned(target: string): Promise<void> {
+    const created: string[] = [];
+    let probe = target;
+    for (;;) {
+      try {
+        await fs.stat(/* turbopackIgnore: true */ probe);
+        break;
+      } catch (err) {
+        if (!isNotFoundError(err)) throw err;
+        created.push(probe);
+      }
+      const parent = dirName(probe);
+      if (parent === probe) break;
+      probe = parent;
+    }
+
+    await fs.mkdir(/* turbopackIgnore: true */ target, { recursive: true });
+    for (const dir of created.reverse()) await own(dir);
   }
 
   const provider: FileProvider = {
@@ -144,12 +186,14 @@ export function createLocalFileProvider(options: { root: string }): FileProvider
     async write(target: string, data: Buffer): Promise<void> {
       // The parent may be a folder the caller just created; create it here too
       // so a write into a fresh tree is not a special case.
-      await fs.mkdir(dirName(target), { recursive: true });
-      await fs.writeFile(await resolveReal(target), data);
+      await mkdirOwned(dirName(target));
+      const real = await resolveReal(target);
+      await fs.writeFile(real, data);
+      await own(real);
     },
 
     async createDirectory(target: string): Promise<void> {
-      await fs.mkdir(await resolveReal(target), { recursive: true });
+      await mkdirOwned(await resolveReal(target));
     },
 
     async rename(from: string, to: string): Promise<void> {
