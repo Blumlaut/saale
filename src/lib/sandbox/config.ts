@@ -33,6 +33,8 @@ export interface SandboxConfig {
   idleMinutes: number;
   /** Age in days before a container is removed. */
   ttlDays: number;
+  /** Age in hours before a scratch file in a workspace is removed. */
+  tmpHours: number;
   /** Port the service listens on. */
   port: number;
 }
@@ -50,6 +52,7 @@ const DEFAULTS = {
   cpus: 2,
   idleMinutes: 60,
   ttlDays: 7,
+  tmpHours: 72,
   port: 8100,
 } as const;
 
@@ -90,6 +93,7 @@ export function sandboxConfig(): SandboxConfig {
     cpus: integer("SANDBOX_CPUS", DEFAULTS.cpus),
     idleMinutes: integer("SANDBOX_IDLE_MINUTES", DEFAULTS.idleMinutes),
     ttlDays: integer("SANDBOX_CONTAINER_TTL_DAYS", DEFAULTS.ttlDays),
+    tmpHours: integer("SANDBOX_TMP_HOURS", DEFAULTS.tmpHours),
     port: integer("SANDBOX_EXEC_PORT", DEFAULTS.port),
   };
 }

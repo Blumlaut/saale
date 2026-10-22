@@ -568,6 +568,10 @@ Details that matter:
 - **Leftover containers**: they are not part of the project, so `compose down`
   leaves them running. `sweep()` at startup stops anything labelled
   `saale.sandbox`.
+- **Scratch space**: the agent writes throwaway output to `.tmp/` in its
+  workspace, which is the one directory the file tools and a command both see.
+  The service empties entries older than `SANDBOX_TMP_HOURS` (72 by default)
+  from every workspace on its reaper interval.
 - `sandbox-exec` mounts the socket, so it is root-equivalent on the host, the
   same privilege the terminal container has today.
 

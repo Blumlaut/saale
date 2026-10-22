@@ -19,11 +19,11 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { detectImageMimeTypeFromBuffer } from "@/lib/image-sniff";
 import { createLocalFileProvider } from "@/lib/files/local-provider";
-import { FileNotFoundError } from "@/lib/files/errors";
+import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 import { requireWithinRoot } from "@/lib/files/paths";
 import type { FileProvider } from "@/lib/files/provider";
 import { kill, exec as sandboxExec } from "./client";
-import { workspaceOwner } from "./workspace";
+import { WORKSPACE_TMP_DIR, workspaceOwner } from "./workspace";
 
 export interface SandboxOperationsOptions {
   /** The workspace every command and every path belongs to. */
@@ -50,7 +50,16 @@ export function createSandboxOperations(options: SandboxOperationsOptions): Sand
   const { identity, root, env } = options;
   const files = createWorkspaceProvider(root);
 
-  const inside = (path: string): string => requireWithinRoot(root, path);
+  const inside = (path: string): string => {
+    try {
+      return requireWithinRoot(root, path);
+    } catch (err) {
+      if (!(err instanceof FilePathEscapeError)) throw err;
+      throw new Error(
+        `${err.message}. Write scratch files under ${WORKSPACE_TMP_DIR}/ in the working directory: they are emptied automatically.`,
+      );
+    }
+  };
 
   async function readFileOp(absolutePath: string): Promise<Buffer> {
     const bytes = await files.read(inside(absolutePath));

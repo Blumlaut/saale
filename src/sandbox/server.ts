@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import Docker from "dockerode";
 import { sandboxConfig, type SandboxConfig } from "@/lib/sandbox/config";
 import { parseIdentity, InvalidSandboxIdentityError } from "@/lib/sandbox/identity";
+import { sweepWorkspaceTmp } from "@/lib/sandbox/tmp";
 import {
   asDockerHandle,
   createContainerManager,
@@ -288,6 +289,17 @@ async function main(): Promise<void> {
     void manager.reapIdle().catch((err) => {
       console.error("[sandbox] idle reaper failed:", err);
     });
+    void sweepWorkspaceTmp(config.workspacesDir, {
+      olderThanMs: config.tmpHours * 3_600_000,
+    })
+      .then((swept) => {
+        if (swept.removed > 0) {
+          console.warn(`[sandbox] cleared ${swept.removed} scratch file(s)`);
+        }
+      })
+      .catch((err) => {
+        console.error("[sandbox] scratch sweep failed:", err);
+      });
   }, REAP_INTERVAL_MS);
   timer.unref?.();
 
