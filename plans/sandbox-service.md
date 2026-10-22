@@ -270,9 +270,12 @@ stop past the idle window and a removal past the TTL.
 - `docker-compose.yml`: remove the `open-terminal` service and volume; add
   `saale_workspaces`, `sandbox-exec`, `saale-sandbox` and the sandbox network.
 - `.env.example`, `README.md`, `.pi/skills/pi-agent-usage/SKILL.md`.
-- `scripts/migrate-workspaces.mjs`, run once before the new stack starts. It reads
-  the ids from Postgres, copies each `/home/<account>` with one throwaway
-  container over both volumes, and prints per-identity file and byte counts.
+- `workspaces-migrate` in `docker-compose.yml`, a one-shot service that runs
+  `scripts/migrate-workspaces.mjs` between the schema migration and web/worker.
+  It reads the ids from Postgres, copies each `/home/<account>` into
+  `<volume>/<identity>/`, and prints per-identity file and byte counts. A marker
+  file in the new volume makes it a one-time move: later deploys exit
+  immediately.
 
 ### Step 9 — retire the env-var shaped integration
 
@@ -528,19 +531,36 @@ services:
       - SANDBOX_UID=${SANDBOX_UID:-1000}
       - SANDBOX_USER=${SANDBOX_USER:-root}
 
-  # Built, never started: the image the sandbox containers run.
+  # The image the sandbox containers run. Built by `up --build`, exits at once.
   sandbox-image:
     image: saale-sandbox
-    profiles: ["image"]
     build:
       context: .
       dockerfile: Dockerfile.sandbox
+    restart: "no"
     command: ["true"]
+
+  # One-shot copy of the old open-terminal homes, between migrate and the app.
+  workspaces-migrate:
+    image: saale-worker
+    restart: "no"
+    volumes:
+      - open_terminal_data:/migrate/old:ro
+      - saale_workspaces:/workspaces
+    environment:
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
+    entrypoint: ["node", "migrate-workspaces.mjs"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   saale_workspaces:
     name: saale_workspaces
-    external: true
+  open_terminal_data:
+    name: saale_open-terminal-data
 
 networks:
   sandbox:
@@ -549,20 +569,17 @@ networks:
 
 Details that matter:
 
-- **The volume is external.** Create it once by hand:
-  `docker volume create saale_workspaces`. Compose deletes volumes it created
-  when `down -v` runs; an external one survives that. The `name:` is fixed so the
-  socket side can reference it without the project prefix (`saale_`).
+- **The volume is compose-owned**, so a deploy creates it and a checkout needs no
+  manual step. The `name:` is fixed so the socket side can reference it without
+  the project prefix (`saale_`). `docker compose down -v` deletes user data;
+  never pass `-v`.
 - **The network is named explicitly** so `sandbox-exec` can attach a new
   container to it by name. Compose creates it before any service starts.
-- **The image needs an explicit build.** `docker compose build` skips services
-  that carry a profile (verified: it prints "No services to build"). Build the
-  tenant image by name, or turn the profile on:
-
-  ```sh
-  docker compose build sandbox-image
-  docker compose --profile image build
-  ```
+- **The tenant image builds with the stack.** It has no profile, so
+  `docker compose up -d --build` builds it along with the app. The profile it
+  used to carry kept the deploy from building it, and then the first command
+  failed with a missing image. The dev overlay puts the profile back: dev runs
+  against the image CI builds.
 
 - **Dev overlay**: `sandbox-exec` in `docker-compose.dev.yml` uses
   `build.target: development`, the repo bind mount, the socket, and
@@ -574,59 +591,68 @@ Details that matter:
 - `sandbox-exec` mounts the socket, so it is root-equivalent on the host, the
   same privilege the terminal container has today.
 
-Order on a fresh box: `docker volume create saale_workspaces`, then
-`docker compose --profile image build`, then `docker compose up -d`.
+A fresh box needs one command: `docker compose up -d --build`. It builds the app
+and the tenant image, runs the schema migration, finds no old homes to copy, and
+starts. Later deploys of the same checkout are the same command. On the host that
+ran open-terminal, add `--remove-orphans`: the old terminal container is no longer
+part of the project.
 
 ## Migration runbook
 
-Live state: 5 users, 0 councils, three directories under `/home`
-(`u7rv9dfnn`, `vcxyvmjy`, `user`) with small `uploads/` folders. The old volume
-is `saale_open-terminal-data`; the new one is `saale_workspaces`.
+Live state before the cutover: 5 users, 0 councils, three directories under
+`/home` (`u7rv9dfnn`, `vcxyvmjy`, `user`) with small `uploads/` folders. The old
+volume is `saale_open-terminal-data`; the new one is `saale_workspaces`.
 
-The old stack keeps running while the copy happens, and nothing is deleted.
+The move is part of the deploy. `workspaces-migrate` copies the homes on the
+first `up`, writes `.migrated-from-open-terminal` into the new volume, and every
+deploy after that exits without touching anything.
 
 ```sh
-# 0. nothing to stop; the old stack serves as usual
-docker volume create saale_workspaces
+# 0. the old container is not in the new compose file, so stop it first:
+#    everything a user wrote up to here is what the copy sees
+docker rm -f saale-open-terminal
 
-# 1. what would be copied, per identity
-node scripts/migrate-workspaces.mjs --dry-run
+# 1. what would be copied, per identity (writes nothing)
+docker compose run --rm workspaces-migrate --dry-run
 
-# 2. copy
-node scripts/migrate-workspaces.mjs
-
-# 3. cut over
-docker compose down                 # keeps volumes; never pass -v
-docker compose --profile image build
-docker compose up -d                # deploys the SandboxEnvVar migration too
-
-# 4. smoke: browse a workspace, run a command, open a file uploaded before
+# 2. cut over: builds the app and the tenant image, copies the workspaces,
+#    deploys the schema migration too
+docker compose up -d --build
 ```
 
-The script (`node`, no dependencies) does this:
+`--remove-orphans` stops the old terminal container as part of the deploy. It
+runs after the migration has read the volume, so stopping it first is the safe
+order.
 
-1. Reads `user` ids and `Council.sandboxKey` values with
-   `docker exec <postgres> psql -tAc …`, and derives the account each maps to with
-   the same rules `deriveOpenTerminalUsername` uses today.
-2. For each identity, one throwaway container mounts the old volume read-only and
-   the new volume read-write, copies `uploads/`, `files/`, `images/`,
-   `telegram_files/` and any other content, skips `.bash*`, `.profile`, `.cache`,
-   `.local/state`, then set ownership to the container's command user (root by
-   default, which the copy already is).
-3. Refuses a destination that already has files unless `--force`, so a second run
-   cannot overwrite newer data.
-4. Copies unmatched `/home/*` directories to `<volume>/_orphaned/<account>/` and
-   prints them.
-5. Prints file counts and byte totals before and after, and exits non-zero when
-   they differ.
+`--force` redoes a finished copy, replacing workspaces that are already there.
 
-Rollback: the old volume is untouched, so `docker compose down` plus the previous
-compose file and env brings the old stack back with its data intact. Files
-written since the cutover stay in the new volume and need a second, reverse copy
-if they matter.
+What the copy does, per identity:
+
+1. Reads `user` ids and `Council.sandboxKey` values from Postgres and derives the
+   account each had under open-terminal, with the same rules as
+   `deriveOpenTerminalUsername`.
+2. Copies the old home into `<volume>/<identity>/`, skipping the shell account's
+   own files (`.bash*`, `.profile`, `.cache`) and `~/.local/state`. `~/.local/bin`
+   and `~/.local/lib` come along: that is where an agent's installs live.
+3. Assembles each copy beside its destination and renames it into place, so an
+   interrupted run cannot leave half a workspace. A destination that already has
+   files is skipped unless `--force`.
+4. Sets ownership to `SANDBOX_UID:SANDBOX_GID`.
+5. Copies unmatched `/home/*` directories to `<volume>/_orphaned/<account>/`.
+6. Compares file counts and byte totals before and after, and exits non-zero
+   without writing the marker when they differ, so the next deploy retries.
+
+The old volume is mounted read-only. Rollback: `docker compose down` plus the
+previous compose file and env brings the old stack back with its data intact.
+Files written since the cutover stay in the new volume and need a second, reverse
+copy if they matter.
 
 ## Deploy notes
 
+- The first deploy after this change stops the old terminal service. Keep the old
+  volume until the copy has been checked: `docker volume rm
+saale_open-terminal-data` is the last step, and an orphaned `user` home stays in
+  `<volume>/_orphaned/user` either way.
 - `volume-subpath` needs Docker 26 or newer. On an older host, bind
   `/srv/saale/workspaces/<id>` from the host at the same target and add
   `SANDBOX_WORKSPACES_HOST_DIR`; the rest is unchanged.
