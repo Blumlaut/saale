@@ -1,328 +1,321 @@
-# Sandbox Service — Plan
+# Sandbox Service — Implementation Plan
 
-Replace the `open-terminal` container with a workspaces volume the app owns and a
-small in-repo service that runs each identity's commands in a container holding
-one directory of that volume.
-
-Isolation target: **a user's code can never read another user's files**, and a
-council member can never read its owner's files. No Linux accounts are ever
-created, on the host or in a container.
+Ship a workspaces volume the app owns, and a small service in this repo that runs
+each identity's commands in a container holding one directory of that volume.
+`open-terminal` leaves the stack.
 
 ---
 
-## What open-terminal does for us today
+## Why we drop open-terminal
 
-| Consumer             | File                                        | What it uses                                                   |
-| -------------------- | ------------------------------------------- | -------------------------------------------------------------- |
-| Chat agent tools     | `src/lib/pi/session.ts`                     | `bash`, `read`, `write`, `edit` over Pi's operation interfaces |
-| Council sandbox      | `src/lib/council/sandbox.ts`                | The same four tools, path-confined to the council's account    |
-| File browser         | `src/lib/files/terminal-provider.ts`        | list / read / write / upload / mkdir / move / delete           |
-| Chat attachments     | `src/lib/file-attachment.ts`                | `uploadFile` into `<home>/uploads`                             |
-| Telegram documents   | `src/lib/telegram/files.ts`                 | `uploadFile` into `<home>/telegram_files`                      |
-| `show_file` delivery | `src/app/api/chat/workspace-files/route.ts` | `readFileBinary`                                               |
-| Infra downloads      | `src/lib/pi/tools/infra-tools.ts`           | The workspace as a local landing directory                     |
-| Session cwd          | `src/lib/pi/agent-session.ts`               | The user's container home                                      |
+- Its multi-user isolation is a textual check. `FsManager.is_path_allowed` rejects
+  `/home/<someone-else>/*` and allows every other path, and the API server is a
+  member of every provisioned account's group (a `usermod -aG` per account), so
+  its file endpoints read and write the whole container as root. Any tenant can
+  read `/proc/1/environ`, `/etc`, and the app's files. Upstream issue #123,
+  open since May, no maintainer reply.
+- The app's council design depends on kernel-enforced separation between two
+  identities. Upstream enforces that between two home directories and nowhere
+  else.
+- We carry ten workarounds for upstream behaviour we cannot change: an in-memory
+  `X-User-Id → account` cache that survives `userdel` (hence the `${key}0`
+  re-provision trick), `getent passwd` collision probing, a `rm -rf` fallback when
+  `userdel -r` refuses, `gpasswd -d` / `groupdel` on teardown, `executeContainer`
+  commands run as root, stat through the parent listing, MIME type from the file
+  extension, `seconds → milliseconds` conversion, a `wait: 5` poll loop with an
+  abort race and `404 → null exit code`, and a truncation marker for output the
+  log buffer dropped. `src/lib/terminal/` is 967 lines plus tests, and about 200
+  lines of it are dead code.
+- Command output arrives through polling, so streaming, exit codes and aborts all
+  have to be simulated. Sessions accumulate, and we create one per chat session.
+  A tenant's container shares the compose network with Postgres and Redis.
+- Upstream is 5.3k lines of Python with its own `uv` project, so a fork puts a
+  second toolchain, image build and CI lane into this repo, and the isolation
+  fixes are a rewrite of the module the fork would exist for.
 
-## Why it has to go
+## What we build
 
-### Its isolation is not the isolation the app assumes
-
-The council design rests on "the kernel is the boundary". Upstream's actual
-model (`open_terminal/utils/user_isolation.py`):
-
-- each identity gets a Linux account with `chmod 2770` on its home,
-- the server process is added to **every** new account's group
-  (`usermod -aG <user> <server-user>`) so it can read files natively,
-- the only path guard is textual: `FsManager.is_path_allowed` rejects
-  `/home/<someone-else>/*` and allows everything else.
-
-So the API's file endpoints read and write the container as root. Any tenant can
-read `/proc/1/environ` (the API key), `/etc`, and every app file. Reported
-upstream as issue #123 in May, still open with no maintainer reply. Kernel
-enforcement holds between two homes and nowhere else.
-
-### The workarounds have their own weight
-
-`src/lib/terminal/client.ts` (672 lines) and `src/lib/terminal/operations.ts`
-(295 lines) carry these, each one a bug we cannot fix:
-
-- `sameAccountIdentityKey` (`${key}0`) re-provisioning, because upstream caches
-  `X-User-Id → account` in memory and `userdel` never clears it.
-- `getent passwd` probing to dodge the same cache.
-- `rm -rf` fallback after `userdel -r` refuses while a process of the account is
-  alive.
-- `gpasswd -d user <account>` plus `groupdel`, because the server account's
-  group membership outlives the user.
-- A root-capable `executeContainerCommand` path, plus `statViaParent` because
-  there is no stat endpoint, `resolveMimeType` from the extension because
-  unknown files come back as `application/octet-stream`, and
-  `toEpochMs(seconds * 1000)`.
-- A poll loop with `wait: 5` because there is no streaming, a race against the
-  abort signal because a poll sits in that window, `404 → exitCode null` because
-  the container drops processes, and a `[truncated]` marker because the log
-  buffer drops earlier output with no way back.
-
-About 200 lines of the client are dead (`replaceFileContent`, `grepSearch`,
-`globSearch`, `healthCheck`, `listCommands`).
-
-### Capabilities we cannot get
-
-- Streaming stdout/stderr as it happens.
-- Per-tenant CPU, memory, PID and network limits. The sandbox shares the compose
-  network, so a command reaches `postgres:5432` and `redis:6379` today.
-- A trustworthy stat, and output offsets that survive truncation.
-- Session lifetime control: upstream sessions accumulate
-  (`OPEN_TERMINAL_MAX_SESSIONS`), and we create one per chat session.
-
-## Why not fork it
-
-Upstream is MIT, 5.3k lines of Python, one 2.2k-line FastAPI module, its own
-Dockerfile and `uv` project. A fork is legally trivial and preserves behaviour,
-but it puts a Python toolchain, image build and CI lane into a TypeScript repo,
-and the fixes that matter (the server account in every group, the `/home`-only
-path guard, the in-memory account cache) are a rewrite of the isolation layer,
-which is the module the fork exists to patch. Upstream ships roughly monthly with
-62 open issues, so every bugfix on either side is a merge.
-
-Reasonable only as a stopgap: pin the image by digest and keep a small vendor
-patch set.
-
-## The isolation model
-
-### No Linux accounts, anywhere
-
-The workspace holds data owned by a **single numeric uid**, the same one for every
-tenant. A numeric file owner is not an account: no `/etc/passwd` entry, no
-login, no home, no shell. Nothing is created on the host, nothing is created with
-`useradd`, and teardown is `rm -rf` of a directory instead of `userdel` plus
-`gpasswd` plus `groupdel`.
-
-`SANDBOX_UID` (default `1000`) is baked into the sandbox image as a real account
-(`agent`, via `ARG SANDBOX_UID`) so `whoami`, `id -un` and `$HOME` behave inside
-the container. Raise it on a host where uid 1000 is a login account. The only
-thing the number affects on the host is the owner recorded on files under
-`/var/lib/docker/volumes`, which is `0710 root:docker`.
-
-A per-identity uid would add a second lock (a `0700` directory refuses uid B even
-if it is mounted). It costs nothing in accounts — only a number — but it needs a
-uid registry, a representability probe, and a passwd stub for uids with no entry.
-Given Lock 1 below, it buys little; it is a one-line change to the container spec
-if it is ever wanted.
-
-### Lock 1: a tenant's container contains one directory
-
-Every identity gets its own directory in the `saale_workspaces` volume. Its
-container mounts **that directory alone**:
+One volume, one service, one workspace path convention.
 
 ```
---mount type=volume,source=saale_workspaces,target=/workspaces/<id>,volume-subpath=<id>
+web / worker                          sandbox-exec                    sandbox image
+├── files: /workspaces/<id>  ◄──fs──  (mounted volume)                debian + tooling
+├── bash tool ────────────HTTP─────►  POST /exec  ──docker exec──►    container per
+└── session cwd = /workspaces/<id>    DELETE /exec/:id               identity, one
+                                                                     subpath mount
 ```
 
-Inside the container, `/workspaces` has exactly one entry: `<id>`. Another
-tenant's directory is not present at any path, so `../../other` is `ENOENT`.
-The volume root is never mounted into a sandbox container.
+- **`saale_workspaces`**, one named volume. `<volume>/user-<userId>/` and
+  `<volume>/council-<sandboxKey>/`. Mounted at `/workspaces` in web and worker,
+  so the app path and the container path are the same string.
+- **`sandbox-exec`**, a Node service built from this repo. It holds the Docker
+  socket and owns every container.
+- **`saale-sandbox`**, the tenant image: the package list `OPEN_TERMINAL_PACKAGES`
+  carries today, plus an `agent` account at `SANDBOX_UID`.
 
-Verified on this host (Docker 29.9.1): a container mounting subpath `userB`
-lists only `userB`, and `/workspaces/userA/f` is `No such file or directory`.
+## Implementation steps
 
-### Lock 2: the caller cannot name a workspace
+Each step is a commit that leaves `npm run check` green.
 
-Every sandbox request carries an `identity` the app derives from the session
-(`user:<id>`, or a council's `sandboxKey` behind `requireCouncilAccess`). The
-sidecar turns the identity into a directory and a subpath. No request field holds
-a workspace root, a host path or a directory name, so no request can ask for
-another tenant's tree.
+### Step 1 — identity and container spec
 
-Path arguments inside a workspace are resolved and confined by the app
-(`resolveWithinRoot`) before they reach the sidecar, and the sidecar refuses
-anything that does not resolve inside `/workspaces/<id>` after `realpath`.
+New:
 
-### Lock 3: the container is checked against the spec
+- `src/lib/sandbox/identity.ts` — `parseIdentity(raw)`, `userIdentity(userId)`,
+  `councilIdentity(sandboxKey)`. An identity is `user-<id>` or
+  `council-<key>`, matching `/^(user|council)-[A-Za-z0-9_-]{1,64}$/`. It is the
+  only handle a caller passes.
+- `src/lib/sandbox/config.ts` — `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`,
+  `SANDBOX_NETWORK`, `SANDBOX_UID`, `SANDBOX_GID`, `SANDBOX_MEMORY`,
+  `SANDBOX_PIDS`, `SANDBOX_CPUS`, `SANDBOX_IDLE_MINUTES`, `SANDBOX_URL`,
+  `SANDBOX_API_KEY`.
+- `src/lib/sandbox/spec.ts` — `containerSpec(identity, config)` returning the
+  `dockerode` create options. Pure, so the isolation rules are testable.
 
-At container creation the sidecar asserts, from inside the container, that
-`/proc/self/mountinfo` has exactly one `/workspaces/` mount and that it is the
-expected subpath. A mismatch destroys the container and refuses the request.
-A unit test pins the generated spec (one mount, always a `--user`).
+Tests: `__tests__/lib/sandbox/spec.test.ts` asserts one mount per identity, its
+`VolumeOptions.Subpath` equal to the identity, a `User` on both the container and
+every exec, the sandbox network, `CapDrop: ["ALL"]`, and that a malformed
+identity throws.
 
-### What the app can still do
+### Step 2 — the `sandbox-exec` service
 
-The app mounts the whole volume, so it reads and writes every workspace: the file
-browser, uploads, `show_file`, the zip builder. That is deliberate, because the
-app already holds every user's database rows, so it is not part of the threat
-model. A user reading another user's files through the app needs an
-authorization bug, the same class as a missing `userId` in a query.
+New:
 
-The alternative — a volume per identity, with the app reaching files only through
-`docker exec` — is equivalent against the app (it can always ask the sidecar for
-any identity) and costs a network hop plus a file helper baked into the image.
-Not worth it.
+- `src/sandbox/server.ts` — `node:http`, no framework. `GET /health`,
+  `POST /exec`, `DELETE /exec/:id`. `Authorization: Bearer <SANDBOX_API_KEY>`,
+  identity in `X-Identity`.
+- `src/sandbox/containers.ts` — `dockerode` wrapper: `ensure(identity)`,
+  `exec(identity, { command, cwd, env, timeoutSeconds })`, `kill(execId)`,
+  `remove(identity)`, `sweep()`, `reapIdle()`.
+- `src/sandbox/mount-check.ts` — after creating a container, one exec runs
+  `cat /proc/self/mountinfo`; the service requires exactly one `/workspaces/`
+  entry and that it names the identity's subpath. A mismatch removes the
+  container and fails the request.
+- `src/sandbox/registry.ts` — in-memory map of `execId → { identity, pgid }`.
 
-## Architecture
+Command execution:
 
-```
-   ┌────────────────────────── web / worker ───────────────────────────┐
-   │  Pi file tools ──fs──► /workspaces/<id>   (trusted, root)          │
-   │  file browser / uploads / show_file ──fs──► /workspaces/<id>       │
-   │  Pi bash tool ──HTTP──► sandbox-exec ──► container of one identity │
-   │  agent cwd = /workspaces/<id>                                      │
-   └────────────────────────────────────────────────────────────────────┘
-                                  │ docker (socket, sandbox-exec only)
-                                  ▼
-        ┌──────── sandbox container for identity X ────────┐
-        │ --user <SANDBOX_UID>:<SANDBOX_GID>               │
-        │ one mount: volume-subpath X → /workspaces/X      │
-        │ --network saale-sandbox --cap-drop ALL           │
-        │ no socket, no app network, no DB, no Redis       │
-        └──────────────────────────────────────────────────┘
-```
+- `ensure(identity)` inspects `saale-sandbox-<id>` and creates or starts it.
+  Creation sets everything in the spec table below, plus `HOME` and `--init`.
+- A command runs as `Container.exec({ Cmd, User, WorkingDir, Env, AttachStdout,
+AttachStderr })`, started with `{ hijack: true, stdin: true }`. The stream is
+  demultiplexed with `docker.modem.demuxStream` into the two SSE lanes, and
+  `exec.inspect()` supplies the exit code once it ends.
+- `POST /exec` answers `text/event-stream`:
+  `event: started` (the exec id), then `event: chunk` with
+  `{ stream: "stdout"|"stderr", data: <base64> }`, then
+  `event: exit` with `{ exitCode, timedOut, durationMs }`.
+- Abort: the command runs under `setsid`, and its process group id is written to
+  `/tmp/.saale-<execId>.pgid` inside the container. `DELETE /exec/:id` runs a
+  second exec that signals the group, so a pipeline dies whole. The server also
+  signals the group when `timeoutSeconds` expires and reports `timedOut`.
+- `reapIdle()` stops containers idle past `SANDBOX_IDLE_MINUTES`; `sweep()` runs
+  at boot and stops labelled containers left by a previous process.
 
-### Storage
+Wiring:
 
-- One named volume, `saale_workspaces`, created by compose on first `up` and
-  reused across deploys.
-- One directory per identity: `user-<userId>`, `council-<sandboxKey>`, created on
-  demand by the app (`mkdir`, `chown`, mode `0770` to match `SANDBOX_UID`).
-- The app path and the container path are the same string, so a path the model
-  reads with `read` resolves identically when it `cat`s it in bash.
-- Anything the app writes into a workspace is `chown`ed to `SANDBOX_UID`, so the
-  tenant can edit a file it uploaded through the browser.
-- `Council.sandboxKey` already names the directory, and user ids name the other
-  one, so **no schema change and no migration**.
+- `package.json` — `dockerode` + `@types/dockerode`, and
+  `build:sandbox: esbuild src/sandbox/server.ts --bundle --platform=node
+--packages=external --outfile=dist/sandbox.mjs --format=esm --target=node26`.
+- `Dockerfile` — the `production-worker` target also copies `dist/sandbox.mjs`.
+- `Dockerfile.sandbox` — `debian:trixie-slim`, `ARG SANDBOX_UID=1000`,
+  `useradd -u $SANDBOX_UID -m -d /workspaces agent`, the current package list
+  (chromium and its libraries, ffmpeg, imagemagick, build-essential,
+  libssl/libffi/python dev headers, jq, curl, wget, ripgrep, fd-find, ag, git,
+  `gh`), `pip install --break-system-packages yt-dlp`, `WORKDIR /workspaces`.
+- `docker-compose.yml` — service `sandbox-exec` (app network, socket mounted,
+  `command: node sandbox.mjs`), service build for `saale-sandbox`, volume
+  `saale_workspaces` mounted at `/workspaces` in web and worker, network
+  `saale-sandbox`.
 
-### Command execution
+Tests: `__tests__/lib/sandbox/containers.test.ts` with an injected fake docker
+handle (create options, reuse of a stopped container, demuxed chunks, exit code,
+group kill on abort, sweep by label).
 
-`sandbox-exec`, a small Node service built from this repo (`src/sandbox/`):
+### Step 3 — client and Pi operations
 
-- `POST /exec` with `{ identity, command, cwd, env, timeoutSeconds }` → SSE of
-  `chunk` events, then an `exit` event with the status.
-- `DELETE /exec/:id` → kills it. That is the abort path.
-- `GET /health`.
-- Shared key in `Authorization`, identity in `X-Identity`.
+New:
 
-Container spec, built only from the identity string:
+- `src/lib/sandbox/client.ts` — `isConfigured()`, `exec(identity, options)` as an
+  async iterable of events, `kill(execId)`, `remove(identity)`, `health()`.
+- `src/lib/sandbox/operations.ts` — the four Pi operation objects:
+  - `bash.exec` forwards `onData`, `signal` and `timeout` to `client.exec`, and
+    maps a signal to `kill`;
+  - `read`, `write`, `edit` use `node:fs` against `identityPath(identity)`, with
+    `resolveWithinRoot` on every argument.
 
-| Flag                                                                                      | Why                                                                                                                  |
-| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `--mount type=volume,source=saale_workspaces,target=/workspaces/<id>,volume-subpath=<id>` | Lock 1. The only mount a sandbox container ever has.                                                                 |
-| `--user <SANDBOX_UID>:<SANDBOX_GID>`                                                      | Files are tenant-owned, and root inside a container would ignore the volume's modes.                                 |
-| `--workdir /workspaces/<id>`                                                              | A predictable cwd, and it is what the app resolves tool paths against.                                               |
-| `--network saale-sandbox`                                                                 | Keeps commands off `postgres`, `redis`, `web` and the sidecar. Internet egress stays, for `pip`, `npm`, `yt-dlp`.    |
-| `--cap-drop ALL --security-opt no-new-privileges`                                         | No capability to escalate with.                                                                                      |
-| `--init`                                                                                  | Reaps zombies from backgrounded processes.                                                                           |
-| `--memory`, `--pids-limit`, `--cpus`                                                      | Per-tenant ceilings, configurable.                                                                                   |
-| `--read-only` + `--tmpfs /tmp`                                                            | The workspace is the only writable path. Optional; needs the image to keep everything else out of `/usr` and `/etc`. |
+Changed:
 
-Lifecycle: one container per identity, named `saale-sandbox-<id>`, labelled with
-the identity. Created on first use, kept warm so background processes survive
-between tool calls (as `nohup` does today), stopped after an idle window, swept
-by label at startup so a restart does not leak containers. Council deletion
-removes the directory and the container.
+- `src/lib/pi/session.ts` — `createTerminalScopedTools` becomes
+  `createSandboxScopedTools`, keeping the `GH_TOKEN` injection (as exec env).
+- `src/lib/pi/agent-session.ts` — the session cwd is the workspace path.
+- `src/lib/pi/tool-registry.ts` — `isConfigured` from the new client.
 
-### Files
+Tests: `__tests__/lib/sandbox/operations.test.ts` (streamed chunks reach
+`onData`, exit code and timeout surface as Pi expects, abort kills, reads and
+writes refuse paths outside the workspace) and `client.test.ts` (SSE parsing,
+auth header, error mapping).
 
-`src/lib/files/local-provider.ts` already implements list / stat / read / write /
-mkdir / rename / remove with `realpath` hardening and tests. Point it at the
-workspace root and delete `terminal-provider.ts`, the terminal branch of
-`targets.ts`, the terminal branch of `workspace-files`, and the `uploadFile`
-calls in `file-attachment.ts` and `telegram/files.ts` (both already write the
-host copy first). The seven `/api/files/*` routes, the zip builder and
-`readWorkspaceFile` do not change: they speak the `FileProvider` interface.
+### Step 4 — workspace files
 
-File browsing then costs no network hop and gains a real stat, real MIME types
-and millisecond mtimes.
+New:
 
-### Config
+- `src/lib/sandbox/workspace.ts` — `identityPath(identity)`,
+  `ensureWorkspace(identity)` (`mkdir -p`, `chown` to `SANDBOX_UID`, mode `0770`),
+  `removeWorkspace(identity)`, `writeOwned(path, data)` (write then `chown`, so a
+  file the browser uploads is editable in bash).
 
-| Was                          | Becomes                                                                                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `OPEN_TERMINAL_URL`          | `SANDBOX_URL`                                                                                    |
-| `OPEN_TERMINAL_API_KEY`      | `SANDBOX_API_KEY`                                                                                |
-| `OPEN_TERMINAL_MULTI_USER`   | (gone)                                                                                           |
-| `OPEN_TERMINAL_PACKAGES`     | `Dockerfile.sandbox`                                                                             |
-| `OPEN_TERMINAL_PIP_PACKAGES` | `Dockerfile.sandbox`                                                                             |
-| —                            | `WORKSPACES_DIR`, `WORKSPACES_HOST_DIR`, `SANDBOX_CONTAINER_IMAGE`, `SANDBOX_UID`, `SANDBOX_GID` |
+Changed:
 
-With `SANDBOX_URL` unset the app behaves like a deployment without the terminal
-today: files work, `bash` is not offered, councils have no workspace.
+- `src/lib/files/targets.ts` — the user target is the workspace directory, served
+  by `createLocalFileProvider`. Its `realpath` hardening already covers symlinks a
+  tenant points outside.
+- `src/lib/council/files.ts` — same, against `council-<sandboxKey>`.
+- `src/lib/council/sandbox.ts` — tools bound to the council identity.
+- `src/lib/file-attachment.ts`, `src/lib/telegram/files.ts` — `writeOwned` under
+  `uploads/` and `telegram_files/`.
+- `src/app/api/chat/workspace-files/route.ts` — the local branch only.
+- `src/lib/pi/tools/infra-tools.ts` — `requireWorkspace()` returns the workspace
+  path.
 
-### Code that goes away
+Deleted: `src/lib/files/terminal-provider.ts`.
 
-`src/lib/terminal/client.ts`, `src/lib/terminal/operations.ts`,
-`src/lib/files/terminal-provider.ts`, `src/lib/council/commands.ts`, the
-provisioning and teardown half of `src/lib/council/sandbox.ts`, and the
-account/collision half of `src/lib/council/accounts.ts` (`accounts.ts` keeps
-`deriveSandboxKey` and `sandboxIdentity`, minus the Linux-account mapping).
+The seven `/api/files/*` routes, `src/lib/files/zip.ts` and
+`readWorkspaceFile` keep their `FileProvider` calls.
 
-## Verified behaviour
+### Step 5 — council lifecycle
 
-Checked against this host before writing the spec:
+- `src/lib/council/accounts.ts` — `deriveSandboxKey` stays; `sandboxIdentity`
+  returns `{ id, dir, path }` from `councilIdentity`.
+- `src/lib/council/sandbox.ts` — `ensureCouncilSandbox` becomes
+  `ensureWorkspace(identity)` and a container-shape assertion; `destroyCouncilSandbox`
+  becomes `removeWorkspace(identity)` plus `client.remove(identity)`.
+- Deleted: `src/lib/council/commands.ts`, `containerAccountExists`,
+  `isSafeAccountName`, the `getent`/`userdel`/`gpasswd` paths, and the retry that
+  re-provisioned an account the container had cached.
+- `Council.sandboxKey` keeps its meaning: a unique directory name.
 
-- a container mounting volume subpath `userB` sees only `userB`; reading
-  `/workspaces/userA/f` fails with `ENOENT`.
-- `/proc/self/mountinfo` inside such a container has exactly one `/workspaces/`
-  entry, and it names the subpath, so Lock 3 has something concrete to assert.
-- a directory created by the app (root) and `chown`ed to `1000:1000` is writable
-  by the container running as uid 1000, and files the tenant writes are readable
-  by the app.
-- `volume-subpath` needs Docker 26 or newer (this host: 29.9.1, Compose v5.6.0).
-  On an older host, bind-mount `<WORKSPACES_DIR>/<id>` from the host instead; the
-  rest of the design is identical.
+Tests: `__tests__/lib/council/sandbox-lifecycle.test.ts` and `accounts.test.ts`
+rewritten against the workspace functions.
 
-## Tests that prove it
+### Step 6 — remove open-terminal, migrate the data
 
-- `__tests__/lib/sandbox/spec.test.ts`: the container spec from an identity has
-  exactly one mount, a `--user`, and a subpath equal to that identity. Runs in
-  CI.
-- `__tests__/integration/sandbox-isolation.test.ts`: two identities, two
-  containers. Asserts the cross-read, cross-write and cross-list all fail, that
-  the mount list inside a container has one entry, and that a command cannot
-  reach `postgres`, `redis` or the sidecar. Opt-in (`SANDBOX_ISOLATION=1`)
-  because CI has no Docker.
-- `__tests__/lib/files/*` stays as is, running against the retargeted
-  `local-provider`.
-- An e2e browse of a workspace that does not exist yet (a council created a
-  minute ago), which is the case that used to need `ensureCouncilSandbox`.
+- Delete `src/lib/terminal/client.ts`, `src/lib/terminal/operations.ts` and their
+  tests.
+- `docker-compose.yml`: remove the `open-terminal` service and volume; add
+  `saale_workspaces`, `sandbox-exec`, `saale-sandbox` and the sandbox network.
+- `.env.example`, `README.md`, `.pi/skills/pi-agent-usage/SKILL.md`.
+- `scripts/migrate-workspaces.mjs`, run once before the new stack starts.
+
+## How a request flows
+
+**A `bash` tool call.** Pi calls `bash.exec(command, cwd, { onData, signal,
+timeout })`. The client posts to `/exec` with the identity. The service ensures
+the container, runs the command with `docker exec`, streams demuxed output as SSE
+chunks, and ends with the exit code. A `Stop` sends `DELETE /exec/:id`, which
+signals the process group. A backgrounded server keeps running because the
+container stays up, and it is stopped after the idle window.
+
+**A `read`, `write` or `edit` tool call.** The app reads and writes
+`/workspaces/<id>/…` directly. Tool paths resolve against the session cwd, which
+is the same string inside the container, so a file written with `write` is the
+file `cat` shows.
+
+**A browse, upload, rename or zip.** `/api/files/*` resolves the target from the
+session, builds the workspace root, and hands absolute paths to the
+`local-provider`. Uploads land owned by `SANDBOX_UID`.
+
+**A council.** The council's `sandboxKey` names a directory and an identity.
+Creating the council creates the directory; deleting it removes the directory and
+the container. Members' tools carry the council identity, and the owner's files
+live in a different directory of the same volume.
+
+## Isolation rules
+
+1. **One directory per container.** Every container mounts
+   `volume-subpath=<identity>`, so `/workspaces` holds exactly one entry.
+   `/workspaces/user-b/x` does not exist in user A's container.
+2. **The caller passes an identity, never a path or a directory.** The service
+   derives the directory, the subpath and the container name from it. Path
+   arguments are confined to `/workspaces/<id>` by the app and again by the
+   service after `realpath`.
+3. **The kernel view is checked.** Each new container's `/proc/self/mountinfo`
+   must show one `/workspaces/` mount, naming the identity's subpath.
+
+`SANDBOX_UID` (default `1000`) is baked into the image as the `agent` account, so
+`whoami`, `id -un` and `$HOME` work. Ownership is a number recorded on files under
+the volume; no account is created on the host, and teardown is `rm -rf` plus
+`docker rm`.
+
+Checked on this host (Docker 29.9.1, Compose v5.6.0):
+
+- a container mounting subpath `userB` lists `userB` alone, and
+  `/workspaces/userA/f` fails with `ENOENT`;
+- `/proc/self/mountinfo` inside it has exactly one `/workspaces/` entry, naming
+  the subpath;
+- a directory `chown`ed to `1000:1000` is writable by a container running as uid
+  1000, and the files it writes are readable from the app.
+
+## Container spec
+
+| Setting                                      | Value                                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `User`                                       | `<SANDBOX_UID>:<SANDBOX_GID>`                                                                          |
+| `WorkingDir`                                 | `/workspaces/<id>`                                                                                     |
+| `Env`                                        | `HOME=/workspaces/<id>`                                                                                |
+| `Mounts`                                     | one: `type=volume`, `source=<SANDBOX_VOLUME>`, `target=/workspaces/<id>`, `VolumeOptions.Subpath=<id>` |
+| `HostConfig.NetworkMode`                     | `SANDBOX_NETWORK`, where a command reaches the internet and nothing else in the compose project        |
+| `HostConfig.CapDrop`                         | `["ALL"]`, `SecurityOpt: ["no-new-privileges"]`                                                        |
+| `HostConfig.Init`                            | `true`, so backgrounded grandchildren are reaped                                                       |
+| `HostConfig.Memory`, `PidsLimit`, `NanoCpus` | `SANDBOX_MEMORY`, `SANDBOX_PIDS`, `SANDBOX_CPUS`                                                       |
+| `Labels`                                     | `saale.sandbox=<id>` for sweeping                                                                      |
+| `Cmd`                                        | `sleep infinity`                                                                                       |
+
+## Config
+
+| Was                          | Becomes                                                                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `OPEN_TERMINAL_URL`          | `SANDBOX_URL`                                                                                                                |
+| `OPEN_TERMINAL_API_KEY`      | `SANDBOX_API_KEY`                                                                                                            |
+| `OPEN_TERMINAL_MULTI_USER`   | (dropped)                                                                                                                    |
+| `OPEN_TERMINAL_PACKAGES`     | `Dockerfile.sandbox`                                                                                                         |
+| `OPEN_TERMINAL_PIP_PACKAGES` | `Dockerfile.sandbox`                                                                                                         |
+| —                            | `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`, `SANDBOX_NETWORK`, `SANDBOX_UID`, `SANDBOX_GID`, limits, `SANDBOX_IDLE_MINUTES` |
+
+App mounts `<volume>:/workspaces`. With `SANDBOX_URL` unset, files work from the
+same volume and `bash` is not offered.
 
 ## Migrating the live data
 
-Live state is 5 users, 0 councils, and three directories under `/home`
-(`u7rv9dfnn`, `vcxyvmjy`, `user`) holding small `uploads/` folders.
+Live state: 5 users, 0 councils, three directories under `/home`
+(`u7rv9dfnn`, `vcxyvmjy`, `user`) with small `uploads/` folders.
 
-1. `scripts/migrate-workspaces.mjs`: for each `user` row, copy
-   `/home/<derived-account>/` to `<volume>/user-<id>/`, skipping `.bash*`,
-   `.profile`, `.cache`, `.local/state`. Same for councils from
-   `Council.sandboxKey` (none today).
-2. `chown -R <SANDBOX_UID>` each new directory.
-3. Anything left in `/home` after mapping goes to `<volume>/_orphaned/` and is
-   reported, never deleted.
-4. Verify file counts and byte totals per directory before and after, then start
-   the app. The old volume is kept for one release after cutover.
+`scripts/migrate-workspaces.mjs`, run once with the old stack still up:
 
-## Phases
+1. Read `user` ids and `Council.sandboxKey` values from Postgres, and derive the
+   account name each maps to (`deriveOpenTerminalUsername`, kept in the script
+   until cutover).
+2. For each, tar `/home/<account>/{uploads,files,images,telegram_files}` out of the
+   old container into `<volume>/user-<id>/` or `<volume>/council-<key>/`.
+3. `chown -R <SANDBOX_UID>` the new directory.
+4. Copy anything left in `/home` to `<volume>/_orphaned/` and print it.
+5. Verify file counts and byte totals per directory before and after.
+6. Keep `open-terminal-data` for one release.
 
-| #   | Work                                                                                                                                | Size       |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 1   | `sandbox-exec` + `Dockerfile.sandbox` (SSE exec, container lifecycle, spec) and `src/lib/sandbox/operations.ts`; wire `session.ts`  | 2–3 days   |
-| 2   | Workspace directories, `local-provider` retargeted, uploads / `show_file` / browser / council files on the volume, migration script | 1–2 days   |
-| 3   | Council lifecycle simplification (create = `mkdir`, delete = `rm -rf` + container removal)                                          | half a day |
-| 4   | Compose, `.env.example`, README, docs, isolation tests                                                                              | half a day |
+## Deploy notes
 
-Phase 2 is the file-side switch and works with either backend; landing it first
-is fine and makes the browser faster immediately.
+- `volume-subpath` needs Docker 26 or newer. On an older host, bind
+  `/srv/saale/workspaces/<id>` from the host at the same target and add
+  `SANDBOX_WORKSPACES_HOST_DIR`; the rest is unchanged.
+- Build the tenant image as part of `docker compose build`, and set
+  `SANDBOX_CONTAINER_IMAGE` to the tag compose produces.
+- The Docker socket is mounted into `sandbox-exec` only.
+- The app runs as root in production today, which is what lets it `chown` inside
+  the volume. If that ever changes, the `chown` calls need a helper with
+  `CAP_CHOWN`.
 
-## Risks
+## Out of scope
 
-- **We own a sandbox image.** `Dockerfile.sandbox` carries the package list that
-  `OPEN_TERMINAL_PACKAGES` carries today (chromium, ffmpeg, imagemagick, build
-  tooling, `gh`, `yt-dlp`) and an `agent` account built from `ARG SANDBOX_UID`.
-  Start from `debian:trixie-slim`, one stage.
-- **The Docker socket** lives in `sandbox-exec` only, the same privilege profile
-  the root-capable terminal container has today, with a real tenant boundary.
-- **One volume, one uid.** If the volume root were ever mounted into a sandbox
-  container, every workspace would be readable (nothing distinguishes them but
-  the path). Lock 3 exists to catch exactly that, and the spec test pins it.
-- **The sandbox network** is closed to `postgres`, `redis`, `web` and the
-  sidecar. Anything that legitimately needs `searxng` from the shell gets added
-  explicitly.
-- **Cold start** is removed by keeping the container warm. If that is dropped,
-  the first command of a conversation pays ~1s.
+- Per-identity numeric uids. The spec builder takes one line to pass
+  `--user <uid>` per identity; the volume already separates tenants.
+- A file API on `sandbox-exec`. The app mounts the volume and reads it directly.
