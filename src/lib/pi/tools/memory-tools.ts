@@ -88,36 +88,47 @@ export function createMemoryTools(userId: string): ToolDefinition[] {
           where: { userId },
         });
 
-        const details = await Promise.all(
-          collections.map(async (c) => {
-            // Get top tags for this collection
-            const tagResults = await prisma.$queryRaw<Array<{ tag: string; count: number }>>(
+        // Batch top tags across all collections in one query
+        const tagRows = collections.length
+          ? await prisma.$queryRaw<Array<{ collection: string; tag: string; count: number }>>(
               Prisma.sql`
-                SELECT UNNEST(tags) AS tag, COUNT(*) AS count
+                SELECT collection, UNNEST(tags) AS tag, COUNT(*)::int AS count
                 FROM "Memory"
-                WHERE "userId" = ${userId} AND collection = ${c.collection}
-                GROUP BY tag
-                ORDER BY count DESC
-                LIMIT 5
+                WHERE "userId" = ${userId}
+                GROUP BY collection, tag
+                ORDER BY collection, count DESC
               `,
-            );
+            )
+          : [];
 
-            // Get 3 most recent memory titles
-            const recent = await prisma.memory.findMany({
-              where: { userId, collection: c.collection },
-              orderBy: { updatedAt: "desc" },
-              take: 3,
-              select: { title: true },
-            });
+        const topTagsByCollection = new Map<string, string[]>();
+        for (const row of tagRows) {
+          const list = topTagsByCollection.get(row.collection) ?? [];
+          if (list.length < 5) list.push(row.tag);
+          topTagsByCollection.set(row.collection, list);
+        }
 
-            return {
-              collection: c.collection,
-              count: c._count.id,
-              topTags: tagResults.map((t) => t.tag),
-              recent: recent.map((r) => r.title),
-            };
-          }),
-        );
+        // Batch recent titles across all collections in one query
+        const recentRows = collections.length
+          ? await prisma.memory.findMany({
+              where: { userId, collection: { in: collections.map((c) => c.collection) } },
+              orderBy: [{ collection: "asc" }, { updatedAt: "desc" }],
+              select: { collection: true, title: true },
+            })
+          : [];
+        const recentByCollection = new Map<string, string[]>();
+        for (const row of recentRows) {
+          const list = recentByCollection.get(row.collection) ?? [];
+          if (list.length < 3) list.push(row.title);
+          recentByCollection.set(row.collection, list);
+        }
+
+        const details = collections.map((c) => ({
+          collection: c.collection,
+          count: c._count.id,
+          topTags: topTagsByCollection.get(c.collection) ?? [],
+          recent: recentByCollection.get(c.collection) ?? [],
+        }));
 
         return {
           value: {

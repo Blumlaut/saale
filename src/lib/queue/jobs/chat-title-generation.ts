@@ -56,6 +56,20 @@ export async function handler(params: {
   let titlesGenerated = 0;
   let sessionsSkipped = 0;
 
+  // Fetch messages for all sessions in one query
+  const sessionIds = sessions.map((s) => s.id);
+  const allMessages = await prisma.chatMessage.findMany({
+    where: { sessionId: { in: sessionIds }, queuedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { sessionId: true, role: true, content: true },
+  });
+  const messagesBySession = new Map<string, Array<{ role: string; content: string }>>();
+  for (const m of allMessages) {
+    const list = messagesBySession.get(m.sessionId) ?? [];
+    if (list.length < 20) list.push({ role: m.role, content: m.content });
+    messagesBySession.set(m.sessionId, list);
+  }
+
   for (const session of sessions) {
     // Skip if title was already manually updated (no longer matches default patterns)
     if (session.title !== "New Chat" && !session.title.endsWith("...")) {
@@ -63,14 +77,7 @@ export async function handler(params: {
       continue;
     }
 
-    // Fetch conversation messages for context (queued messages are not part
-    // of the conversation yet)
-    const messages = await prisma.chatMessage.findMany({
-      where: { sessionId: session.id, queuedAt: null },
-      orderBy: { createdAt: "asc" },
-      select: { role: true, content: true },
-      take: 20, // limit to first 20 messages for token efficiency
-    });
+    const messages = messagesBySession.get(session.id) ?? [];
 
     if (messages.length === 0) {
       sessionsSkipped++;

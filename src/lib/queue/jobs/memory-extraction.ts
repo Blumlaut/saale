@@ -77,6 +77,27 @@ export async function handler(params: {
   let totalRemoved = 0;
   let sessionsProcessed = 0;
 
+  // Fetch existing categories and recent memories once (same for every session)
+  const categoryResults = await prisma.memory.findMany({
+    where: { userId },
+    select: { collection: true },
+    distinct: ["collection"],
+  });
+  const existingCategories = categoryResults.map((r) => r.collection);
+
+  const existingMemories = await prisma.memory.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+    take: maxExisting,
+    select: {
+      id: true,
+      collection: true,
+      title: true,
+      content: true,
+      tags: true,
+    },
+  });
+
   for (const session of sessions) {
     // Fetch new messages since last summarized (queued messages are not part
     // of the conversation yet)
@@ -111,28 +132,6 @@ export async function handler(params: {
       const truncated = newMessages.slice(-Math.floor(newMessages.length / 2));
       messagesText = truncated.map((m) => `[${m.role}] ${m.content}`).join("\n\n");
     }
-
-    // Fetch existing categories
-    const categoryResults = await prisma.memory.findMany({
-      where: { userId },
-      select: { collection: true },
-      distinct: ["collection"],
-    });
-    const existingCategories = categoryResults.map((r) => r.collection);
-
-    // Fetch recent existing memories for dedup context
-    const existingMemories = await prisma.memory.findMany({
-      where: { userId },
-      orderBy: { updatedAt: "desc" },
-      take: maxExisting,
-      select: {
-        id: true,
-        collection: true,
-        title: true,
-        content: true,
-        tags: true,
-      },
-    });
 
     // Build extraction prompt
     const extractionPrompt = `

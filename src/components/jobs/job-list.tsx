@@ -98,9 +98,10 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
       if (!silent) setLoading(true);
       try {
         const data = await fetchJson<{ jobs: Job[] }>("/api/jobs");
-        const sorted = data.jobs.sort((a, b) => {
-          const labelA = schemas.find((s) => s.type === a.type)?.label ?? a.type;
-          const labelB = schemas.find((s) => s.type === b.type)?.label ?? b.type;
+        const labelByType = new Map(schemas.map((s) => [s.type, s.label]));
+        const sorted = [...data.jobs].sort((a, b) => {
+          const labelA = labelByType.get(a.type) ?? a.type;
+          const labelB = labelByType.get(b.type) ?? b.type;
           return labelA.localeCompare(labelB);
         });
         setJobs(sorted);

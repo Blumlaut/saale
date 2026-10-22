@@ -76,16 +76,18 @@ describe("createMemoryTools", () => {
         { collection: "preferences", _count: { id: 2 } },
       ]);
 
-      // First call: tags for "facts", second call: tags for "preferences"
-      mockQueryRaw.mockResolvedValueOnce([{ tag: "ui", count: 3 }]);
-      mockQueryRaw.mockResolvedValueOnce([{ tag: "settings", count: 1 }]);
-
-      // Recent titles for each collection
-      mockMemory.findMany.mockResolvedValueOnce([
-        { title: "Dark mode pref" },
-        { title: "Font size pref" },
+      // Batched tags across collections
+      mockQueryRaw.mockResolvedValueOnce([
+        { collection: "facts", tag: "ui", count: 3 },
+        { collection: "preferences", tag: "settings", count: 1 },
       ]);
-      mockMemory.findMany.mockResolvedValueOnce([{ title: "API key fact" }]);
+
+      // Batched recent titles across collections
+      mockMemory.findMany.mockResolvedValueOnce([
+        { collection: "facts", title: "Dark mode pref" },
+        { collection: "facts", title: "Font size pref" },
+        { collection: "preferences", title: "API key fact" },
+      ]);
 
       const result = await callExecute(index.execute);
       const text = JSON.parse((result.content[0] as { text: string }).text);

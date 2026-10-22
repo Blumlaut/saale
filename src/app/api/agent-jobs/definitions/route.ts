@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { scheduleAgentDefinition } from "@/lib/queue";
 import { isReservedAgentName, RESERVED_AGENT_NAME_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
@@ -39,18 +40,21 @@ export async function GET() {
     },
   });
 
-  // Fetch latest run status for each definition
+  // Fetch latest run status for each definition (one row per definition)
   const definitionIds = definitions.map((d) => d.id);
-  const latestRuns = await prisma.agentRun.findMany({
-    where: { definitionId: { in: definitionIds } },
-    orderBy: { createdAt: "desc" },
-    select: { definitionId: true, status: true, completedAt: true },
-  });
+  const latestRuns = definitionIds.length
+    ? await prisma.$queryRaw<
+        Array<{ definitionId: string; status: string; completedAt: Date | null }>
+      >(
+        Prisma.sql`SELECT DISTINCT ON ("definitionId") "definitionId", status, "completedAt"
+                   FROM "AgentRun"
+                   WHERE "definitionId" = ANY(${definitionIds})
+                   ORDER BY "definitionId", "createdAt" DESC`,
+      )
+    : [];
   const latestRunMap = new Map<string, { status: string; completedAt: Date | null }>();
   for (const run of latestRuns) {
-    if (!latestRunMap.has(run.definitionId)) {
-      latestRunMap.set(run.definitionId, { status: run.status, completedAt: run.completedAt });
-    }
+    latestRunMap.set(run.definitionId, { status: run.status, completedAt: run.completedAt });
   }
 
   return NextResponse.json({
