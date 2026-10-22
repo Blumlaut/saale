@@ -183,6 +183,8 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
   const lastUsed = new Map<string, number>();
   /** Timers waiting to SIGKILL a command that ignored SIGTERM. */
   const killTimers = new Map<string, NodeJS.Timeout>();
+  /** Containers being brought up, so parallel commands share one start. */
+  const starting = new Map<string, Promise<ContainerHandle>>();
 
   async function inspectOrNull(name: string): Promise<Dockerode.ContainerInspectInfo | null> {
     try {
@@ -257,7 +259,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     });
 
     try {
-      await container.start();
+      await startOnce(container);
       const mountinfo = await capture(container, ["cat", "/proc/self/mountinfo"]);
       const check = checkMountinfo(mountinfo, { identity, workspacesDir: config.workspacesDir });
       if (!check.ok) {
@@ -281,14 +283,22 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     return container;
   }
 
-  async function ensure(identity: string): Promise<ContainerHandle> {
-    const id = parseIdentity(identity);
+  /** Docker answers 304 when the container is already up or being started. */
+  async function startOnce(container: ContainerHandle): Promise<void> {
+    try {
+      await container.start();
+    } catch (err) {
+      if (!isAlreadyStarted(err)) throw err;
+    }
+  }
+
+  async function startContainer(id: string): Promise<ContainerHandle> {
     const name = containerName(id);
     const existing = await inspectOrNull(name);
 
     if (existing) {
       const container = docker.getContainer(name);
-      if (!existing.State.Running) await container.start();
+      if (!existing.State.Running) await startOnce(container);
       lastUsed.set(id, now());
       return container;
     }
@@ -296,6 +306,16 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     const container = await create(id);
     lastUsed.set(id, now());
     return container;
+  }
+
+  async function ensure(identity: string): Promise<ContainerHandle> {
+    const id = parseIdentity(identity);
+    const pending = starting.get(id);
+    if (pending) return pending;
+
+    const promise = startContainer(id).finally(() => starting.delete(id));
+    starting.set(id, promise);
+    return promise;
   }
 
   async function run(
@@ -518,6 +538,12 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
   }
 
   return { ensure, run, kill, remove, stop, sweep, reapIdle };
+}
+
+export function isAlreadyStarted(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  if ((err as { statusCode?: unknown }).statusCode === 304) return true;
+  return (err as { code?: unknown }).code === 304;
 }
 
 export function isNotFound(err: unknown): boolean {
