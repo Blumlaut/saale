@@ -107,7 +107,9 @@ AttachStderr })`, started with `{ hijack: true, stdin: true }`. The command is
 - `POST /exec` answers `text/event-stream`:
   `event: started` (the exec id), then `event: chunk` with
   `{ stream: "stdout"|"stderr", data: <base64> }`, then
-  `event: exit` with `{ exitCode, timedOut, durationMs }`.
+  `event: exit` with `{ exitCode, timedOut, durationMs }`. The request's `env`
+  map is validated (name pattern, count, total size) and handed to `docker exec`;
+  values reach no log line and no container config.
 - Abort: the command runs under `setsid`, and its process group id is written to
   `/tmp/.saale-<execId>.pgid` inside the container. `DELETE /exec/:id` runs a
   second exec that signals the group, so a pipeline dies whole. The server also
@@ -208,7 +210,48 @@ The seven `/api/files/*` routes, `src/lib/files/zip.ts` and
 Tests: `__tests__/lib/council/sandbox-lifecycle.test.ts` and `accounts.test.ts`
 rewritten against the workspace functions.
 
-### Step 6 — remove open-terminal, migrate the data
+### Step 6 — environment variables
+
+New:
+
+- `prisma/schema.prisma` — a `SandboxEnvVar` model: `userId`, `name`,
+  `encryptedValue`, `@@unique([userId, name])`. The migration follows
+  `.pi/skills/database-migrations`.
+- `src/lib/sandbox/env.ts` — `resolveSandboxEnv(userId)` returning the map for
+  one exec (see "Environment variables").
+- `src/app/api/settings/sandbox-env/route.ts` — list names, set a value, delete a
+  name. A read returns names only.
+- `src/components/integrations/sandbox-env-card.tsx` — the panel, modelled on
+  `src/components/integrations/github-card.tsx`. Read
+  `.pi/skills/saale-design/SKILL.md` before writing it.
+
+Changed:
+
+- `src/lib/sandbox/client.ts` — `exec` takes `env`.
+- `src/lib/sandbox/operations.ts`, `src/lib/pi/session.ts` — pass
+  `resolveSandboxEnv(userId)`; a council's sandbox passes the owner's.
+- `src/lib/pi/processing-state.ts` — one line in `TERMINAL_PROMPT` naming the
+  variables that are set.
+
+Tests: name validation, precedence (the GitHub integration fills `GH_TOKEN` only
+when the user has not set one), decrypt round trip, and an API test that a read
+never returns a value.
+
+### Step 7 — installs and container lifetime
+
+Changed:
+
+- `src/lib/sandbox/spec.ts` — `SANDBOX_USER`, the `PATH` with
+  `$HOME/.local/bin`, and the capability set that follows the user (see
+  "Installing packages").
+- `src/lib/sandbox/containers.ts` — `stop` at idle, `remove` at TTL.
+- `Dockerfile.sandbox` — `agent` gets `$HOME/.local/bin` on `PATH`, and the image
+  ships `uv`/`pipx` alongside `pip`.
+
+Tests: the spec test covers both `SANDBOX_USER` values; the reaper test asserts a
+stop past the idle window and a removal past the TTL.
+
+### Step 8 — remove open-terminal, migrate the data
 
 - Delete `src/lib/terminal/client.ts`, `src/lib/terminal/operations.ts` and their
   tests.
@@ -332,8 +375,9 @@ That allowlist is all that is sent. `process.env` is never forwarded, so
 
 **Transport.** The exec request carries `env`. The service checks each name
 (`/^[A-Z_][A-Z0-9_]{0,63}$/`), caps the count at 32 and the total at 32 KB, and
-passes them to `docker exec` as `Env`. They live in that exec object for the
-length of one command, which is the only place a value exists outside the app.
+passes them to `docker exec` as `Env`. A value exists in the exec object and in
+that one command's environment for as long as it runs, and the container's own
+environment never carries it.
 
 **Scope.** A chat command uses the acting user's variables. A council member
 uses the council owner's.
@@ -378,12 +422,12 @@ Three tiers, all reachable from bash:
    removed.
 
 Tier 3 sets the default user: `SANDBOX_USER=root`. Root inside a container with
-one directory mounted, its own network, no socket, no secrets in its
-environment, and Docker's default capability set is the posture the previous
+one directory mounted, its own network, no socket, no secrets in the container's
+own environment, and Docker's default capability set is the posture the previous
 terminal container had. A deployment that wants the tighter setting runs
 `SANDBOX_USER=agent`: commands run as the image's `agent` account, `apt-get`
 fails, tiers 1 and 2 keep working, and the volume needs a one-time
-`chown -R agent`.
+`chown -R agent:agent`.
 
 Installs need egress, which the sandbox network provides. `apt-get`, `pip` and
 `npm` reach the internet and nothing else in the compose project.
