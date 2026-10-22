@@ -98,9 +98,11 @@ Command execution:
 - `ensure(identity)` inspects `saale-sandbox-<id>` and creates or starts it.
   Creation sets everything in the spec table below, plus `HOME` and `--init`.
 - A command runs as `Container.exec({ Cmd, User, WorkingDir, Env, AttachStdout,
-AttachStderr })`, started with `{ hijack: true, stdin: true }`. The stream is
-  demultiplexed with `docker.modem.demuxStream` into the two SSE lanes, and
-  `exec.inspect()` supplies the exit code once it ends.
+AttachStderr })`, started with `{ hijack: true, stdin: true }`. The command is
+  wrapped as `setsid bash -c <command>`, the shell upstream runs today
+  (`sudo -u <account> bash -c`). The stream is demultiplexed with
+  `docker.modem.demuxStream` into the two SSE lanes, and `exec.inspect()` supplies
+  the exit code once it ends.
 - `POST /exec` answers `text/event-stream`:
   `event: started` (the exec id), then `event: chunk` with
   `{ stream: "stdout"|"stderr", data: <base64> }`, then
@@ -114,15 +116,21 @@ AttachStderr })`, started with `{ hijack: true, stdin: true }`. The stream is
 
 Wiring:
 
-- `package.json` — `dockerode` + `@types/dockerode`, and
-  `build:sandbox: esbuild src/sandbox/server.ts --bundle --platform=node
---packages=external --outfile=dist/sandbox.mjs --format=esm --target=node26`.
+- `package.json` — `dockerode` + `@types/dockerode`, and a `build:sandbox`
+  script that mirrors `build:worker`:
+
+  ```sh
+  esbuild src/sandbox/server.ts --bundle --platform=node --packages=external \
+    --outfile=dist/sandbox.mjs --format=esm --target=node26
+  ```
+
 - `Dockerfile` — the `production-worker` target also copies `dist/sandbox.mjs`.
 - `Dockerfile.sandbox` — `debian:trixie-slim`, `ARG SANDBOX_UID=1000`,
-  `useradd -u $SANDBOX_UID -m -d /workspaces agent`, the current package list
-  (chromium and its libraries, ffmpeg, imagemagick, build-essential,
-  libssl/libffi/python dev headers, jq, curl, wget, ripgrep, fd-find, ag, git,
-  `gh`), `pip install --break-system-packages yt-dlp`, `WORKDIR /workspaces`.
+  `useradd -u $SANDBOX_UID -m -d /workspaces agent`, node 22 with npm (the image
+  we run today has both), the current package list (chromium and its libraries,
+  ffmpeg, imagemagick, build-essential, libssl/libffi/python dev headers, jq,
+  curl, wget, ripgrep, fd-find, silversearcher-ag, git, `gh`),
+  `pip install --break-system-packages yt-dlp`, `WORKDIR /workspaces`.
 - `docker-compose.yml` — service `sandbox-exec` (app network, socket mounted,
   `command: node sandbox.mjs`), service build for `saale-sandbox`, volume
   `saale_workspaces` mounted at `/workspaces` in web and worker, network
@@ -285,34 +293,177 @@ Checked on this host (Docker 29.9.1, Compose v5.6.0):
 App mounts `<volume>:/workspaces`. With `SANDBOX_URL` unset, files work from the
 same volume and `bash` is not offered.
 
-## Migrating the live data
+## docker-compose wiring
+
+The tenant containers live outside the compose project. `sandbox-exec` creates
+them through the Docker socket, so every name it needs must be stable.
+
+```yaml
+services:
+  web:
+    volumes:
+      - saale_workspaces:/workspaces
+    environment:
+      - SANDBOX_URL=http://sandbox-exec:8100
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+
+  worker:
+    volumes:
+      - saale_workspaces:/workspaces
+    environment:
+      - SANDBOX_URL=http://sandbox-exec:8100
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+
+  sandbox-exec:
+    build:
+      context: .
+      target: production-worker
+    image: saale-worker
+    container_name: saale-sandbox-exec
+    restart: unless-stopped
+    command: ["node", "sandbox.mjs"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_VOLUME=saale_workspaces
+      - SANDBOX_NETWORK=saale-sandbox
+      - SANDBOX_CONTAINER_IMAGE=saale-sandbox
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+
+  # Built, never started: the image the sandbox containers run.
+  sandbox-image:
+    image: saale-sandbox
+    profiles: ["image"]
+    build:
+      context: .
+      dockerfile: Dockerfile.sandbox
+    command: ["true"]
+
+volumes:
+  saale_workspaces:
+    name: saale_workspaces
+    external: true
+
+networks:
+  sandbox:
+    name: saale-sandbox
+```
+
+Details that matter:
+
+- **The volume is external.** Create it once by hand:
+  `docker volume create saale_workspaces`. Compose deletes volumes it created
+  when `down -v` runs; an external one survives that. The `name:` is fixed so the
+  socket side can reference it without the project prefix (`saale_`).
+- **The network is named explicitly** so `sandbox-exec` can attach a new
+  container to it by name. Compose creates it before any service starts.
+- **The image needs an explicit build.** `docker compose build` skips services
+  that carry a profile (verified: it prints "No services to build"). Build the
+  tenant image by name, or turn the profile on:
+
+  ```sh
+  docker compose build sandbox-image
+  docker compose --profile image build
+  ```
+
+- **Dev overlay**: `sandbox-exec` in `docker-compose.dev.yml` uses
+  `build.target: development`, the repo bind mount, the socket, and
+  `command: sh -c "npx tsx --watch src/sandbox/server.ts"`, the same shape as the
+  worker.
+- **Leftover containers**: they are not part of the project, so `compose down`
+  leaves them running. `sweep()` at startup stops anything labelled
+  `saale.sandbox`.
+- `sandbox-exec` mounts the socket, so it is root-equivalent on the host, the
+  same privilege the terminal container has today.
+
+Order on a fresh box: `docker volume create saale_workspaces`, then
+`docker compose --profile image build`, then `docker compose up -d`.
+
+## Migration runbook
 
 Live state: 5 users, 0 councils, three directories under `/home`
-(`u7rv9dfnn`, `vcxyvmjy`, `user`) with small `uploads/` folders.
+(`u7rv9dfnn`, `vcxyvmjy`, `user`) with small `uploads/` folders. The old volume
+is `saale_open-terminal-data`; the new one is `saale_workspaces`.
 
-`scripts/migrate-workspaces.mjs`, run once with the old stack still up:
+The old stack keeps running while the copy happens, and nothing is deleted.
 
-1. Read `user` ids and `Council.sandboxKey` values from Postgres, and derive the
-   account name each maps to (`deriveOpenTerminalUsername`, kept in the script
-   until cutover).
-2. For each, tar `/home/<account>/{uploads,files,images,telegram_files}` out of the
-   old container into `<volume>/user-<id>/` or `<volume>/council-<key>/`.
-3. `chown -R <SANDBOX_UID>` the new directory.
-4. Copy anything left in `/home` to `<volume>/_orphaned/` and print it.
-5. Verify file counts and byte totals per directory before and after.
-6. Keep `open-terminal-data` for one release.
+```sh
+# 0. nothing to stop; the old stack serves as usual
+docker volume create saale_workspaces
+
+# 1. what would be copied, per identity
+node scripts/migrate-workspaces.mjs --dry-run
+
+# 2. copy
+node scripts/migrate-workspaces.mjs
+
+# 3. cut over
+docker compose down                 # keeps volumes; never pass -v
+docker compose --profile image build
+docker compose up -d
+
+# 4. smoke: browse a workspace, run a command, open a file uploaded before
+```
+
+The script (`node`, no dependencies) does this:
+
+1. Reads `user` ids and `Council.sandboxKey` values with
+   `docker exec <postgres> psql -tAc …`, and derives the account each maps to with
+   the same rules `deriveOpenTerminalUsername` uses today.
+2. For each identity, one throwaway container mounts the old volume read-only and
+   the new volume read-write, copies `uploads/`, `files/`, `images/`,
+   `telegram_files/` and any other content, skips `.bash*`, `.profile`, `.cache`,
+   `.local/state`, then `chown -R <SANDBOX_UID>` the destination.
+3. Refuses a destination that already has files unless `--force`, so a second run
+   cannot overwrite newer data.
+4. Copies unmatched `/home/*` directories to `<volume>/_orphaned/<account>/` and
+   prints them.
+5. Prints file counts and byte totals before and after, and exits non-zero when
+   they differ.
+
+Rollback: the old volume is untouched, so `docker compose down` plus the previous
+compose file and env brings the old stack back with its data intact. Files
+written since the cutover stay in the new volume and need a second, reverse copy
+if they matter.
 
 ## Deploy notes
 
 - `volume-subpath` needs Docker 26 or newer. On an older host, bind
   `/srv/saale/workspaces/<id>` from the host at the same target and add
   `SANDBOX_WORKSPACES_HOST_DIR`; the rest is unchanged.
-- Build the tenant image as part of `docker compose build`, and set
-  `SANDBOX_CONTAINER_IMAGE` to the tag compose produces.
 - The Docker socket is mounted into `sandbox-exec` only.
 - The app runs as root in production today, which is what lets it `chown` inside
   the volume. If that ever changes, the `chown` calls need a helper with
   `CAP_CHOWN`.
+
+## Parity check
+
+What the agent sees today, and what it sees after, for the features in use:
+
+| Today                                                                     | After                                                    |
+| ------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `sudo -u <account> bash -c <cmd>`, non-root                               | `setsid bash -c <cmd>` as `SANDBOX_UID`, non-root        |
+| cwd `/home/<account>`                                                     | cwd `/workspaces/<id>`                                   |
+| `uploads/`, `files/`, `images/`, `telegram_files/`                        | same names, carried over by the migration                |
+| output polled every 5 s                                                   | streamed as produced                                     |
+| long output loses its start, with a marker                                | nothing dropped; Pi truncates for the model              |
+| `exit_code: null` when a process disappears                               | real code, `128 + signal`                                |
+| stat through the parent listing                                           | real stat                                                |
+| unknown files as `application/octet-stream`                               | extension on the app side, bytes sniffed for images      |
+| `modified` in seconds                                                     | milliseconds                                             |
+| `GH_TOKEN` merged into the container env, readable from `/proc/1/environ` | passed to that one command                               |
+| compose network: reaches Postgres and Redis                               | `saale-sandbox`: internet only                           |
+| packages from `OPEN_TERMINAL_PACKAGES` at boot                            | `Dockerfile.sandbox`, same list plus node 22             |
+| sessions accumulate per chat                                              | one container per identity, reaped after the idle window |
+| teardown via `userdel` / `gpasswd` / `groupdel`                           | `rm -rf` and `docker rm`                                 |
+| other tenants' homes readable through the file API                        | absent from the container                                |
+| read/write/edit, image preview, `show_file`, zip, browser                 | unchanged                                                |
+
+One behaviour changes: a background process started in a chat lives as long as
+the container stays warm, then it is stopped. `SANDBOX_IDLE_MINUTES` (default 60)
+is the knob; upstream kept such processes alive until the container restarted for
+some other reason.
 
 ## Out of scope
 
