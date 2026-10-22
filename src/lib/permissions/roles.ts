@@ -46,6 +46,7 @@ export const ADMIN_SECTION_DEFINITIONS: Record<string, { label: string; descript
   models: { label: "Models", description: "Default models and purpose assignments." },
   providers: { label: "Providers", description: "Provider connections and API keys." },
   settings: { label: "Settings", description: "Instance settings and the Telegram bot." },
+  plugins: { label: "Plugins", description: "Global Pi plugins: states, updates and logs." },
   telegram: { label: "Telegram", description: "The shared Telegram bot." },
 };
 

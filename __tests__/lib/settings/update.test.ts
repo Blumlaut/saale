@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   upsertAdminSettings: vi.fn(),
   updateAdminSettings: vi.fn(),
   evictUserSessions: vi.fn(),
+  evictAllSessions: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -26,6 +27,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/pi/agent-pool", () => ({
   evictUserSessions: mocks.evictUserSessions,
+  evictAllSessions: mocks.evictAllSessions,
 }));
 
 import {
@@ -70,6 +72,9 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
     globalModelName: "",
     globalProviderModels: null,
     featureDefaults: null,
+    piPluginsDir: "",
+    piPluginsEnabled: false,
+    piPluginStates: null,
     updatedAt: new Date(0),
     ...overrides,
   };
@@ -96,6 +101,7 @@ beforeEach(() => {
     ...data,
   }));
   mocks.evictUserSessions.mockResolvedValue(1);
+  mocks.evictAllSessions.mockResolvedValue(3);
 });
 
 describe("isAdminUser", () => {
@@ -290,6 +296,36 @@ describe("applyAdminSettingsPatch", () => {
       where: { id: "global" },
       data: { signupsEnabled: false },
     });
+  });
+
+  it("rebuilds every pooled session for a global plugin setting", async () => {
+    mocks.findUser.mockResolvedValue({ role: "admin" });
+
+    await applyAdminSettingsPatch(USER_ID, { piPluginsEnabled: true });
+
+    expect(lastArgs(mocks.updateAdminSettings).data).toEqual({ piPluginsEnabled: true });
+    expect(mocks.evictAllSessions).toHaveBeenCalled();
+    expect(mocks.evictUserSessions).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds only the acting admin's sessions for a non-global setting", async () => {
+    mocks.findUser.mockResolvedValue({ role: "admin" });
+
+    await applyAdminSettingsPatch(USER_ID, {
+      globalProviderModels: { openai: { enabled: false } },
+    });
+
+    expect(mocks.evictUserSessions).toHaveBeenCalledWith(USER_ID);
+    expect(mocks.evictAllSessions).not.toHaveBeenCalled();
+  });
+
+  it("does not rebuild anything when the plugin set did not change", async () => {
+    mocks.findUser.mockResolvedValue({ role: "admin" });
+    mocks.upsertAdminSettings.mockResolvedValue(adminRow({ piPluginsEnabled: true }));
+
+    await applyAdminSettingsPatch(USER_ID, { piPluginsEnabled: true });
+
+    expect(mocks.evictAllSessions).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid admin value", async () => {

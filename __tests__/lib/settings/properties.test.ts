@@ -75,6 +75,9 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
     globalModelName: "",
     globalProviderModels: null,
     featureDefaults: null,
+    piPluginsDir: "",
+    piPluginsEnabled: false,
+    piPluginStates: null,
     updatedAt: new Date(0),
     ...overrides,
   };
@@ -210,6 +213,18 @@ describe("settings validation", () => {
     expect(accepts("admin.featureDefaults", { not_a_feature: true })).toBe(false);
   });
 
+  it("validates the plugin directory and switches", () => {
+    expect(accepts("admin.piPluginsDir", "/srv/pi-plugins")).toBe(true);
+    expect(accepts("admin.piPluginsDir", "")).toBe(true);
+    expect(accepts("admin.piPluginsDir", 5)).toBe(false);
+    expect(accepts("admin.piPluginsEnabled", true)).toBe(true);
+    expect(accepts("admin.piPluginsEnabled", "yes")).toBe(false);
+    expect(accepts("admin.piPluginStates", { alpha: { enabled: false } })).toBe(true);
+    expect(accepts("admin.piPluginStates", {})).toBe(true);
+    expect(accepts("admin.piPluginStates", { alpha: { enabled: "no" } })).toBe(false);
+    expect(accepts("admin.piPluginStates", { alpha: { enabled: false, extra: 1 } })).toBe(false);
+  });
+
   it("requires provider:model for model references", () => {
     expect(accepts("models.default", "anthropic:claude-sonnet-4")).toBe(true);
     expect(accepts("models.default", "openrouter:anthropic/claude-sonnet-4")).toBe(true);
@@ -278,6 +293,21 @@ describe("settings projections", () => {
       featureDefaults: { mail: false },
     });
     expect(property.write(row, {})).toEqual({ featureDefaults: Prisma.DbNull });
+  });
+
+  it("stores plugin switches sparsely, keeping only the ones that are off", () => {
+    const property = findProperty("admin.piPluginStates")!;
+    if (property.scope !== "admin") throw new Error("expected an admin property");
+    const row = adminRow({
+      piPluginStates: { off: { enabled: false }, on: { enabled: true }, junk: "x" } as never,
+    });
+
+    // An enabled plugin is the default, so it is stored as its absence.
+    expect(property.read(row)).toEqual({ off: { enabled: false } });
+    expect(property.write(row, { on: { enabled: true }, off: { enabled: false } })).toEqual({
+      piPluginStates: { off: { enabled: false } },
+    });
+    expect(property.write(row, {})).toEqual({ piPluginStates: Prisma.DbNull });
   });
 
   it("merges tool exposure without disturbing other categories", () => {

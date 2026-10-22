@@ -94,7 +94,7 @@ describe("MobileNav", () => {
     renderNav();
 
     await waitFor(() =>
-      expect(labels()).toEqual(["Models", "Users", "Roles", "Settings", "Dashboard"]),
+      expect(labels()).toEqual(["Models", "Users", "Roles", "Plugins", "Settings", "Dashboard"]),
     );
 
     // The current admin page is flagged, and Dashboard links back to the app.

@@ -9,6 +9,12 @@ import {
 import { createUserMcpExtension } from "@/lib/mcp/servers";
 import { createCodemodeApprovalExtension } from "./codemode-approval";
 import { createMcpToolPolicyExtension } from "./mcp-tool-policy";
+import {
+  globalPluginPaths,
+  pluginIdForPath,
+  recordExtensionDiagnostics,
+  recordPluginLog,
+} from "./plugins";
 import { hasFeature } from "@/lib/permissions/check";
 import { createSessionSettings } from "./settings";
 import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
@@ -179,8 +185,9 @@ export interface AgentResourceOptions {
 /**
  * Build a resource loader for a session that can call tools.
  *
- * Adds the extensions Saale runs (codemode) and, given an interactive context,
- * the user's MCP servers with the gates that enforce their approval policies.
+ * Adds the extensions Saale runs (codemode), the admin's global plugins, and
+ * given an interactive context, the user's MCP servers with the gates that
+ * enforce their approval policies.
  */
 export async function createAgentResourceLoader(
   options: AgentResourceOptions,
@@ -219,6 +226,9 @@ export async function createAgentResourceLoader(
     settingsManager: createSessionSettings(),
     systemPrompt: options.prompt,
     extensionFactories,
+    // The admin's plugin directory. `noExtensions` still keeps the host's own
+    // Pi settings out: these paths are the only file extensions that load.
+    additionalExtensionPaths: await globalPluginPaths(),
     noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
@@ -230,11 +240,17 @@ export async function createAgentResourceLoader(
     appendSystemPrompt: [],
   });
   await loader.reload();
+  // A plugin that fails to load must not fail the session, but it must not
+  // disappear either: the admin's log carries the reason.
+  recordExtensionDiagnostics(loader.getExtensions());
   return loader;
 }
 
 /** Extension-provided tools every Saale session runs. */
 export const DEFAULT_EXTENSION_TOOLS = ["codemode"];
+
+/** Sessions already wired to the plugin log, so a re-bind does not double-log. */
+const loggingSessions = new WeakSet<AgentSession>();
 
 /**
  * Start a session's extensions and enable the tools Saale runs with them.
@@ -245,6 +261,19 @@ export const DEFAULT_EXTENSION_TOOLS = ["codemode"];
  * session, after `createAgentSession`.
  */
 export async function startSessionExtensions(session: AgentSession): Promise<void> {
+  // A plugin handler that throws is reported by Pi to this listener and nowhere
+  // else. Attached before binding so `session_start` failures are caught too.
+  if (!loggingSessions.has(session)) {
+    loggingSessions.add(session);
+    session.extensionRunner.onError((error) => {
+      recordPluginLog(
+        "error",
+        pluginIdForPath(error.extensionPath),
+        `${error.event}: ${error.error}`,
+      );
+    });
+  }
+
   await session.bindExtensions({});
   const active = session.getActiveToolNames();
   const missing = DEFAULT_EXTENSION_TOOLS.filter((name) => !active.includes(name));
