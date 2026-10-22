@@ -46,7 +46,12 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
 
   const testConnection = async (id: string) => {
     setTestingId(id);
-    setTestResults((prev) => ({ ...prev, [id]: { ok: false, message: "Testing..." } }));
+    setTestResults((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
 
     try {
       const data = await postJson<{ ok: boolean; message: string; hostname?: string | null }>(
@@ -126,7 +131,8 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
       {toolbar}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {machines.map((machine, i) => {
-          const testResult = testResults[machine.id];
+          const isTesting = testingId === machine.id;
+          const testResult = isTesting ? undefined : testResults[machine.id];
 
           return (
             <div key={machine.id} className={i > 0 ? "border-border/30 border-t" : undefined}>
@@ -174,7 +180,7 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
                     size="icon"
                     className="h-7 w-7"
                     onClick={() => testConnection(machine.id)}
-                    disabled={testingId !== null}
+                    disabled={testingId === machine.id}
                     title="Test connection"
                   >
                     {testingId === machine.id ? (
@@ -213,14 +219,19 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
                 </div>
               </div>
 
-              {/* Test result */}
-              {testResult && (
+              {/* Connection status: neutral while testing, semantic once it settles */}
+              {isTesting ? (
+                <div className="text-muted-foreground animate-in fade-in slide-in-from-bottom-1 border-border/30 flex items-center gap-2 border-t px-4 py-2 text-xs duration-200">
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                  <span className="console-label">Testing connection</span>
+                </div>
+              ) : testResult ? (
                 <div
                   className={cn(
-                    "flex items-center gap-2 border-t px-4 py-2 text-xs",
+                    "animate-in fade-in slide-in-from-bottom-1 border-border/30 flex items-center gap-2 border-t px-4 py-2 text-xs duration-200",
                     testResult.ok
-                      ? "border-border/30 text-emerald-600 dark:text-emerald-400"
-                      : "border-border/30 text-destructive",
+                      ? "bg-emerald-500/5 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400"
+                      : "bg-destructive/5 text-destructive",
                   )}
                 >
                   {testResult.ok ? (
@@ -228,9 +239,9 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
                   ) : (
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                   )}
-                  <span>{testResult.message}</span>
+                  <span className="min-w-0 break-words">{testResult.message}</span>
                 </div>
-              )}
+              ) : null}
             </div>
           );
         })}
