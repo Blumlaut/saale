@@ -842,8 +842,12 @@ function AssistantGroup({
 
   // Filter out turns with no content at all. An errored turn is kept even when
   // it is empty. the error notice is the only thing there is to show.
-  const visibleMessages = messages.filter(
-    (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter(
+        (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
+      ),
+    [messages],
   );
 
   if (visibleMessages.length === 0) {

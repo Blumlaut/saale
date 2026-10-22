@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { syncQueueTaskSchedule } from "@/lib/queue";
 
 /**
@@ -32,16 +33,17 @@ export async function GET() {
 
   // Fetch the latest run for each job (to expose latestRunStatus)
   const jobIds = jobs.map((j) => j.id);
-  const latestRuns = await prisma.taskRun.findMany({
-    where: { taskId: { in: jobIds } },
-    orderBy: { createdAt: "desc" },
-    select: { taskId: true, status: true },
-  });
+  const latestRuns = jobIds.length
+    ? await prisma.$queryRaw<Array<{ taskId: string; status: string }>>(
+        Prisma.sql`SELECT DISTINCT ON ("taskId") "taskId", status
+                   FROM "TaskRun"
+                   WHERE "taskId" = ANY(${jobIds})
+                   ORDER BY "taskId", "createdAt" DESC`,
+      )
+    : [];
   const latestRunMap = new Map<string, string>();
   for (const run of latestRuns) {
-    if (!latestRunMap.has(run.taskId)) {
-      latestRunMap.set(run.taskId, run.status);
-    }
+    latestRunMap.set(run.taskId, run.status);
   }
 
   return NextResponse.json({

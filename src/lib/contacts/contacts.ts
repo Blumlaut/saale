@@ -264,14 +264,20 @@ export async function learnContactsFromSend(
     // Deduplicate on the normalised email. `Jane <a@x.co>` in `to` and
     // `a@x.co` in `cc` are the same recipient.
     const seen = new Set<string>();
+    const recipients: Array<{ name: string; email: string }> = [];
     for (const raw of [...to, ...(cc ?? [])]) {
       const { name, email } = parseRecipient(raw);
       const key = email.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
       const localPart = email.split("@")[0] || email;
-      await upsertContact(userId, { name: name ?? localPart, email, touchSent: true });
+      recipients.push({ name: name ?? localPart, email });
     }
+    await Promise.all(
+      recipients.map((r) =>
+        upsertContact(userId, { name: r.name, email: r.email, touchSent: true }),
+      ),
+    );
   } catch (err) {
     console.error(`[contacts] Failed to learn contacts for user ${userId}:`, err);
   }

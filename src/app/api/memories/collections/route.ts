@@ -18,26 +18,29 @@ export async function GET() {
     orderBy: { _count: { id: "desc" } },
   });
 
-  const details = await Promise.all(
-    collections.map(async (c) => {
-      const tagResults = await prisma.$queryRaw<Array<{ tag: string; count: number }>>(
-        Prisma.sql`
-          SELECT UNNEST(tags) AS tag, COUNT(*)::int AS count
-          FROM "Memory"
-          WHERE "userId" = ${authResult.user.id} AND collection = ${c.collection}
-          GROUP BY tag
-          ORDER BY count DESC
-          LIMIT 8
-        `,
-      );
-
-      return {
-        name: c.collection,
-        count: c._count.id,
-        topTags: tagResults.map((t) => t.tag),
-      };
-    }),
+  // one grouped query for top tags across all collections instead of N queries
+  const tagRows = await prisma.$queryRaw<Array<{ collection: string; tag: string; count: number }>>(
+    Prisma.sql`
+      SELECT collection, UNNEST(tags) AS tag, COUNT(*)::int AS count
+      FROM "Memory"
+      WHERE "userId" = ${authResult.user.id}
+      GROUP BY collection, tag
+      ORDER BY collection, count DESC
+    `,
   );
+
+  const topTagsByCollection = new Map<string, string[]>();
+  for (const row of tagRows) {
+    const list = topTagsByCollection.get(row.collection) ?? [];
+    if (list.length < 8) list.push(row.tag);
+    topTagsByCollection.set(row.collection, list);
+  }
+
+  const details = collections.map((c) => ({
+    name: c.collection,
+    count: c._count.id,
+    topTags: topTagsByCollection.get(c.collection) ?? [],
+  }));
 
   const total = await prisma.memory.count({ where: { userId: authResult.user.id } });
 
