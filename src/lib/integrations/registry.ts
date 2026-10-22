@@ -1,5 +1,5 @@
 import type { IntegrationManifest } from "./types";
-import { MessageCircle, GitFork } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 
 /**
  * Integration registry. the single source of truth for available integrations.
@@ -24,14 +24,6 @@ export const INTEGRATIONS: IntegrationManifest[] = [
     icon: MessageCircle,
     color: "text-sky-500",
     apiBase: "/api/integrations/telegram",
-  },
-  {
-    id: "github",
-    name: "GitHub",
-    description: "Let agents manage repos, PRs, and issues via gh CLI",
-    icon: GitFork,
-    color: "text-gray-500",
-    apiBase: "/api/integrations/github",
   },
 ];
 

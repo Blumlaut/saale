@@ -13,7 +13,7 @@
  * is held by that status.
  */
 
-import { isConfigured as isTerminalConfigured } from "@/lib/terminal/client";
+import { isConfigured as isSandboxConfigured } from "@/lib/sandbox/client";
 import { isCategoryEnabled, type ToolConfig } from "@/lib/pi/tool-categories";
 import {
   resolveRunBudget,
@@ -135,9 +135,9 @@ export async function startCouncilRun(input: StartRunInput): Promise<{ runId: st
   );
   if (needsSandbox) {
     try {
-      if (!isTerminalConfigured()) {
+      if (!isSandboxConfigured()) {
         throw new CouncilUnavailableError(
-          "Council file tools need the Open Terminal integration (OPEN_TERMINAL_API_KEY). " +
+          "Council file tools need the sandbox service (SANDBOX_URL). " +
             "Turn the Terminal tool off for this council to run without a workspace.",
         );
       }

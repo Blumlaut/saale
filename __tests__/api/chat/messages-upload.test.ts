@@ -6,13 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const {
-  mockRequireChatSessionOwner,
-  mockPrisma,
-  mockIsConfigured,
-  mockUploadFile,
-  mockProcessAndStoreImage,
-} = vi.hoisted(() => ({
+const { mockRequireChatSessionOwner, mockPrisma, mockProcessAndStoreImage } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockPrisma: {
     chatMessage: {
@@ -27,8 +21,6 @@ const {
       findMany: vi.fn(),
     },
   },
-  mockIsConfigured: vi.fn(() => true),
-  mockUploadFile: vi.fn(),
   mockProcessAndStoreImage: vi.fn(),
 }));
 
@@ -48,12 +40,8 @@ vi.mock("@/lib/redis", () => ({
   releaseSendQueue: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Real file-attachment logic runs against a temp UPLOADS_DIR (stubbbed below),
-// but the image re-encode (sharp) and the terminal transport are mocked.
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: mockIsConfigured,
-  uploadFile: mockUploadFile,
-}));
+// Real file-attachment logic runs against a temp workspaces volume (stubbed
+// below); only the image re-encode (sharp) is mocked.
 
 vi.mock("@/lib/image-attachment", () => ({
   processAndStoreImage: mockProcessAndStoreImage,
@@ -71,13 +59,17 @@ const SESSION_ID = "session-1";
 const USER_ID = "user-1";
 
 let tmpRoot: string;
+/** `<volume>/user-<id>`, the directory every attachment lands in. */
+let userRoot: string;
 
 // `vi.resetModules()` forces a fresh import of the route, which pulls in its
 // whole module graph  seconds of transform/import work, enough to blow the
 // default 10s hook budget on a loaded machine.
 beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-msg-upload-"));
-  vi.stubEnv("UPLOADS_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_USER", "root");
+  userRoot = path.join(tmpRoot, `user-${USER_ID}`);
   vi.resetModules();
   const mod = await import("@/app/api/chat/sessions/[sessionId]/messages/route");
   POST = mod.POST;
@@ -152,17 +144,10 @@ function createData() {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   mockRequireChatSessionOwner.mockResolvedValue(authOk());
-  mockIsConfigured.mockReturnValue(true);
-  // Mirror the real server: path = <home>/<directory>/<fileName>
-  mockUploadFile.mockImplementation(
-    async (name: string, buf: Buffer, opts: { directory: string }) => ({
-      path: `/home/user0001/${opts.directory}/${name}`,
-      size: buf.length,
-    }),
-  );
+  await fs.rm(userRoot, { recursive: true, force: true });
   mockProcessAndStoreImage.mockResolvedValue({
     storageId: "img-uuid",
     storagePath: "images/img-uuid.png",
@@ -187,7 +172,7 @@ describe("POST multipart with file attachments", () => {
 
     // The message content carries the file reference the model reads.
     expect(createData().content).toBe(
-      "check this out\n[File attached: report.pdf (application/pdf) at /home/user0001/uploads/report.pdf]",
+      `check this out\n[File attached: report.pdf (application/pdf) at ${path.join(userRoot, "uploads", "report.pdf")}]`,
     );
 
     // The attachment record points at the host-side copy under files/.
@@ -198,11 +183,9 @@ describe("POST multipart with file attachments", () => {
     expect(att.width).toBeNull();
     expect(att.height).toBeNull();
 
-    // The file was delivered into the agent workspace.
-    expect(mockUploadFile).toHaveBeenCalledWith(
-      "report.pdf",
-      expect.any(Buffer),
-      expect.objectContaining({ directory: "uploads", userId: USER_ID }),
+    // The file was delivered into the agent workspace under its own name.
+    expect(await fs.readFile(path.join(userRoot, "uploads", "report.pdf"))).toEqual(
+      Buffer.from(pdfBytes),
     );
 
     const body = await res.json();
@@ -221,7 +204,7 @@ describe("POST multipart with file attachments", () => {
     expect(res.status).toBe(200);
 
     expect(createData().content).toBe(
-      "[Image attached: photo.png (image/png) at /home/user0001/uploads/photo.png]",
+      `[Image attached: photo.png (image/png) at ${path.join(userRoot, "uploads", "photo.png")}]`,
     );
 
     // Re-encoded image keeps the existing storagePath + dimensions.
@@ -248,30 +231,21 @@ describe("POST multipart with file attachments", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockUploadFile).toHaveBeenCalledTimes(3);
+    expect(await fs.readdir(path.join(userRoot, "uploads")).then((names) => names.sort())).toEqual([
+      "archive.zip",
+      "blob.bin",
+      "data.csv",
+    ]);
   });
 });
 
-// ─── Terminal degradation ────────────────────────────────────────────────────
+// ─── Workspace delivery ──────────────────────────────────────────────────────
 
-describe("terminal workspace delivery", () => {
-  it("skips delivery and omits the path when the terminal is not configured", async () => {
-    mockIsConfigured.mockReturnValue(false);
+describe("workspace delivery", () => {
+  it("fails the request when the workspace cannot be written", async () => {
+    // A file where the workspace directory should be: the delivery copy fails.
+    await fs.writeFile(userRoot, "not a directory");
     stubDbMessage("msg-4");
-
-    const res = await POST(
-      multipartRequest("hi", [["data.csv", new Uint8Array([1]), "text/csv"]]),
-      params(),
-    );
-
-    expect(res.status).toBe(200);
-    expect(mockUploadFile).not.toHaveBeenCalled();
-
-    expect(createData().content).toBe("hi\n[File attached: data.csv (text/csv)]");
-  });
-
-  it("fails the request when the terminal is configured but the upload fails", async () => {
-    mockUploadFile.mockRejectedValue(new Error("Open Terminal error 502: Bad Gateway"));
 
     const res = await POST(
       multipartRequest("hi", [["report.pdf", new Uint8Array([1]), "application/pdf"]]),
@@ -282,7 +256,9 @@ describe("terminal workspace delivery", () => {
     expect(mockPrisma.chatMessage.create).not.toHaveBeenCalled();
 
     const body = await res.json();
-    expect(body.error).toMatch(/Open Terminal error 502/);
+    expect(body.error).toMatch(/not a directory/);
+
+    await fs.rm(userRoot, { force: true });
   });
 });
 
@@ -329,7 +305,7 @@ describe("plain JSON messages (no attachments)", () => {
     expect(res.status).toBe(200);
     expect(createData().content).toBe("hello world");
     expect(createData().attachments).toBeUndefined();
-    expect(mockUploadFile).not.toHaveBeenCalled();
+    await expect(fs.access(path.join(userRoot, "uploads"))).rejects.toThrow();
   });
 });
 

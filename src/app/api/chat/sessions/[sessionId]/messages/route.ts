@@ -146,8 +146,8 @@ export async function POST(
       const formData = await request.formData();
       content = (formData.get("content") as string) || "";
 
-      // Store each file (host-side) and copy it into the agent's terminal
-      // workspace so the agent's file tools can view and manipulate it.
+      // Store each file in the user's workspace, then again under uploads/ so
+      // the agent's file tools find it by the name the user gave it.
       const files = formData.getAll("files");
       for (const file of files) {
         if (!(file instanceof File)) continue;
@@ -161,8 +161,8 @@ export async function POST(
         const buffer = Buffer.from(await file.arrayBuffer());
         const stored = await storeChatFile(authResult.userId, buffer, file.name, mimeType);
 
-        // Throws when the terminal is configured but unreachable. a
-        // non-image file would be useless to the agent without the copy.
+        // Throws when the workspace volume is not mounted: a file the agent
+        // cannot reach is worse than a failed upload the user can retry.
         const agentPath = await deliverChatFileToAgent(authResult.userId, buffer, stored.safeName);
 
         attachments.push({ stored, fileName: file.name, mimeType, size: file.size, agentPath });

@@ -5,7 +5,6 @@ describe("integration registry", () => {
   describe("getIntegration", () => {
     it("returns manifest for known IDs", () => {
       expect(getIntegration("telegram")!.id).toBe("telegram");
-      expect(getIntegration("github")!.id).toBe("github");
     });
 
     it("returns undefined for unknown IDs", () => {
@@ -16,7 +15,6 @@ describe("integration registry", () => {
 
     it("apiBase matches route path", () => {
       expect(getIntegration("telegram")!.apiBase).toBe("/api/integrations/telegram");
-      expect(getIntegration("github")!.apiBase).toBe("/api/integrations/github");
     });
   });
 

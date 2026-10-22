@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The sandbox is a thin guard over the Open Terminal operations, so the backend
-// is replaced here: what is under test is which paths reach the container.
-const terminalOps = {
+// The sandbox is a thin guard over the workspace operations, so the backend is
+// replaced here: what is under test is which paths and which identity reach it.
+const workspaceOps = {
   read: {
     readFile: vi.fn(async (path: string) => Buffer.from(`content-of:${path}`)),
     access: vi.fn(async () => undefined),
@@ -22,17 +22,11 @@ const terminalOps = {
   },
 };
 
-vi.mock("@/lib/terminal/operations", () => ({
-  createTerminalOperations: vi.fn(() => terminalOps),
+vi.mock("@/lib/sandbox/operations", () => ({
+  createSandboxOperations: vi.fn(() => workspaceOps),
 }));
 
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: () => true,
-  deriveOpenTerminalUsername: (id: string) => `u${id}`,
-  getTerminalHomeDir: (id: string) => `/home/u${id}`,
-}));
-
-import { createTerminalOperations } from "@/lib/terminal/operations";
+import { createSandboxOperations } from "@/lib/sandbox/operations";
 import {
   CouncilSandboxEscapeError,
   createCouncilSandbox,
@@ -42,37 +36,35 @@ import {
 } from "@/lib/council/sandbox";
 import { SANDBOX_KEY_LENGTH } from "@/lib/council/config";
 
-const ROOT = "/home/uabcd1234";
+const ROOT = "/workspaces/council-abcd1234";
 
 describe("normalizeSandboxPath", () => {
   it("keeps a path inside the sandbox as an absolute path", () => {
-    expect(normalizeSandboxPath(ROOT, "/home/uabcd1234/notes.md")).toBe("/home/uabcd1234/notes.md");
+    expect(normalizeSandboxPath(ROOT, `${ROOT}/notes.md`)).toBe(`${ROOT}/notes.md`);
   });
 
   it("resolves a relative path from the sandbox root", () => {
-    expect(normalizeSandboxPath(ROOT, "notes/plan.md")).toBe("/home/uabcd1234/notes/plan.md");
+    expect(normalizeSandboxPath(ROOT, "notes/plan.md")).toBe(`${ROOT}/notes/plan.md`);
   });
 
   it("collapses redundant segments without leaving the sandbox", () => {
-    expect(normalizeSandboxPath(ROOT, "./a//b/../c")).toBe("/home/uabcd1234/a/c");
-    expect(normalizeSandboxPath(ROOT, "/home/uabcd1234/./a/../a/x")).toBe("/home/uabcd1234/a/x");
+    expect(normalizeSandboxPath(ROOT, "./a//b/../c")).toBe(`${ROOT}/a/c`);
+    expect(normalizeSandboxPath(ROOT, `${ROOT}/./a/../a/x`)).toBe(`${ROOT}/a/x`);
   });
 
   it("accepts the root itself", () => {
-    expect(normalizeSandboxPath(ROOT, "/home/uabcd1234")).toBe(ROOT);
+    expect(normalizeSandboxPath(ROOT, ROOT)).toBe(ROOT);
     expect(normalizeSandboxPath(ROOT, ".")).toBe(ROOT);
     expect(normalizeSandboxPath(ROOT, "")).toBe(ROOT);
   });
 
   it("refuses any path that climbs out of the sandbox", () => {
     expect(() => normalizeSandboxPath(ROOT, "../other")).toThrow(CouncilSandboxEscapeError);
-    expect(() => normalizeSandboxPath(ROOT, "/home/uabcd1234/../../user")).toThrow(
+    expect(() => normalizeSandboxPath(ROOT, `${ROOT}/../../workspaces`)).toThrow(
       CouncilSandboxEscapeError,
     );
     expect(() => normalizeSandboxPath(ROOT, "/etc/passwd")).toThrow(CouncilSandboxEscapeError);
-    expect(() => normalizeSandboxPath(ROOT, "/home/uabcd1234/../uabcd1235")).toThrow(
-      CouncilSandboxEscapeError,
-    );
+    expect(() => normalizeSandboxPath(ROOT, `${ROOT}-other/x`)).toThrow(CouncilSandboxEscapeError);
   });
 
   it("refuses a sibling whose name merely starts with the root", () => {
@@ -83,9 +75,7 @@ describe("normalizeSandboxPath", () => {
   });
 
   it("refuses a path containing a null byte", () => {
-    expect(() => normalizeSandboxPath(ROOT, "/home/uabcd1234/a\0b")).toThrow(
-      CouncilSandboxEscapeError,
-    );
+    expect(() => normalizeSandboxPath(ROOT, `${ROOT}/a\0b`)).toThrow(CouncilSandboxEscapeError);
   });
 
   it("is not fooled by a root with a trailing slash", () => {
@@ -96,7 +86,7 @@ describe("normalizeSandboxPath", () => {
 describe("resolveSandboxPath", () => {
   it("reports a path inside the sandbox as inside", () => {
     expect(resolveSandboxPath(ROOT, "a/b.txt")).toEqual({
-      path: "/home/uabcd1234/a/b.txt",
+      path: `${ROOT}/a/b.txt`,
       inside: true,
     });
   });
@@ -113,54 +103,55 @@ describe("createCouncilSandbox", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("SANDBOX_WORKSPACES_DIR", "/workspaces");
     sandbox = createCouncilSandbox({
       councilId: "c1",
       sandboxKey: "abcd1234",
-      userId: "u1",
+      env: { GH_TOKEN: "owner-token" },
     });
   });
 
-  it("runs the container as the council's own account, in its own home", () => {
-    expect(sandbox.home).toBe("/home/uabcd1234");
-    expect(createTerminalOperations).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "abcd1234", cwd: "/home/uabcd1234" }),
+  it("runs in the council's own directory, as the council's own identity", () => {
+    expect(sandbox.home).toBe(ROOT);
+    expect(createSandboxOperations).toHaveBeenCalledWith(
+      expect.objectContaining({ identity: "council-abcd1234", root: ROOT }),
     );
   });
 
-  it("never forwards a GitHub token or any other extra environment", () => {
-    const options = vi.mocked(createTerminalOperations).mock.calls[0]?.[0];
-    expect(options?.extraEnv).toBeUndefined();
+  it("gives the members the owner's variables and nothing else", () => {
+    const options = vi.mocked(createSandboxOperations).mock.calls[0]?.[0];
+    expect(options?.env).toEqual({ GH_TOKEN: "owner-token" });
   });
 
   it("passes a path inside the sandbox through", async () => {
-    await sandbox.operations.read.readFile("/home/uabcd1234/a.txt");
-    expect(terminalOps.read.readFile).toHaveBeenCalledWith("/home/uabcd1234/a.txt");
+    await sandbox.operations.read.readFile(`${ROOT}/a.txt`);
+    expect(workspaceOps.read.readFile).toHaveBeenCalledWith(`${ROOT}/a.txt`);
   });
 
   it("normalizes before the operation, so the container sees a clean path", async () => {
     await sandbox.operations.write.writeFile("notes/../a.txt", "x");
-    expect(terminalOps.write.writeFile).toHaveBeenCalledWith("/home/uabcd1234/a.txt", "x");
+    expect(workspaceOps.write.writeFile).toHaveBeenCalledWith(`${ROOT}/a.txt`, "x");
   });
 
   it("refuses a read outside the sandbox and blocks the call", async () => {
     await expect(sandbox.operations.read.readFile("/home/user/.ssh/id_rsa")).rejects.toThrow(
       CouncilSandboxEscapeError,
     );
-    expect(terminalOps.read.readFile).not.toHaveBeenCalled();
+    expect(workspaceOps.read.readFile).not.toHaveBeenCalled();
   });
 
   it("refuses a write outside the sandbox and blocks the call", async () => {
     await expect(sandbox.operations.write.writeFile("../../user/x.txt", "x")).rejects.toThrow(
       CouncilSandboxEscapeError,
     );
-    expect(terminalOps.write.writeFile).not.toHaveBeenCalled();
+    expect(workspaceOps.write.writeFile).not.toHaveBeenCalled();
   });
 
   it("refuses an edit's access check outside the sandbox", async () => {
     await expect(sandbox.operations.edit.access("/etc/shadow")).rejects.toThrow(
       CouncilSandboxEscapeError,
     );
-    expect(terminalOps.edit.access).not.toHaveBeenCalled();
+    expect(workspaceOps.edit.access).not.toHaveBeenCalled();
   });
 
   it("clamps a cwd outside the sandbox instead of failing the command", async () => {
@@ -168,23 +159,17 @@ describe("createCouncilSandbox", () => {
     await sandbox.operations.bash.exec("ls", "/home/user", {
       onData: () => {},
     });
-    expect(terminalOps.bash.exec).toHaveBeenCalledWith("ls", "/home/uabcd1234", expect.anything());
+    expect(workspaceOps.bash.exec).toHaveBeenCalledWith("ls", ROOT, expect.anything());
   });
 
   it("keeps a cwd inside the sandbox", async () => {
-    await sandbox.operations.bash.exec("ls", "/home/uabcd1234/src", { onData: () => {} });
-    expect(terminalOps.bash.exec).toHaveBeenCalledWith(
-      "ls",
-      "/home/uabcd1234/src",
-      expect.anything(),
-    );
+    await sandbox.operations.bash.exec("ls", `${ROOT}/src`, { onData: () => {} });
+    expect(workspaceOps.bash.exec).toHaveBeenCalledWith("ls", `${ROOT}/src`, expect.anything());
   });
 });
 
 describe("sandbox key length", () => {
-  it("matches what Open Terminal keeps of an id", () => {
-    // A longer key would be truncated by the container, so two keys could name
-    // one account.
+  it("stays a short, filesystem-safe directory name", () => {
     expect(SANDBOX_KEY_LENGTH).toBe(8);
   });
 });

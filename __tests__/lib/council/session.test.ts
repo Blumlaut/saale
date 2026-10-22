@@ -59,8 +59,12 @@ vi.mock("@/lib/pi/tool-registry", () => ({
 
 vi.mock("@/lib/council/sandbox", () => ({
   createCouncilSandbox: vi.fn(() => ({
-    identity: { key: "abcd1234", account: "acctabcd1234", home: "/home/acctabcd1234" },
-    home: "/home/acctabcd1234",
+    identity: {
+      key: "abcd1234",
+      id: "council-abcd1234",
+      path: "/workspaces/council-abcd1234",
+    },
+    home: "/workspaces/council-abcd1234",
     operations: {},
   })),
   councilSandboxTools: vi.fn(() => ({
@@ -138,18 +142,18 @@ describe("createCouncilMemberSession", () => {
   it("runs the member in its own sandbox, not in the user's home", async () => {
     const { sandbox } = await createCouncilMemberSession(OPTIONS);
 
-    expect(sessionOptions().cwd).toBe("/home/acctabcd1234");
+    expect(sessionOptions().cwd).toBe("/workspaces/council-abcd1234");
     // The wrapper this deliberately does not use would have resolved the *user's*
-    // terminal home here; the sandbox key is what makes it a different account.
+    // workspace here; the sandbox key is what makes it a different directory.
     expect(sessionOptions().cwd).not.toContain("user_123");
-    expect(sandbox.home).toBe("/home/acctabcd1234");
+    expect(sandbox.home).toBe("/workspaces/council-abcd1234");
   });
 
   it("builds the room prompt for this member, served from the sandbox cwd", async () => {
     await createCouncilMemberSession(OPTIONS);
 
     const loader = vi.mocked(createAgentResourceLoader).mock.calls[0]![0];
-    expect(loader.cwd).toBe("/home/acctabcd1234");
+    expect(loader.cwd).toBe("/workspaces/council-abcd1234");
     expect(loader.prompt).toContain("You are acorn");
     expect(loader.prompt).toContain("Decide whether the migration is safe.");
     expect(loader.prompt).not.toContain("@acorn");
@@ -174,13 +178,13 @@ describe("createCouncilMemberSession", () => {
       "user_123",
       "council_1",
       expect.objectContaining({ terminal: true, web: true }),
-      expect.objectContaining({ createTerminalScopedTools: expect.any(Function) }),
+      expect.objectContaining({ createSandboxScopedTools: expect.any(Function) }),
     );
   });
 
-  it("hands the sandbox to the tool resolver instead of the user's terminal", async () => {
+  it("hands the sandbox to the tool resolver instead of the user's workspace tools", async () => {
     await createCouncilMemberSession(OPTIONS);
-    const injected = vi.mocked(resolveTools).mock.calls[0]![3].createTerminalScopedTools;
+    const injected = vi.mocked(resolveTools).mock.calls[0]![3].createSandboxScopedTools;
     const tools = await injected("user_123", "council_1");
     expect(Object.keys(tools)).toEqual(["read", "write", "edit", "bash"]);
   });

@@ -28,13 +28,10 @@ import {
   writeFileBuffer,
   generateSshKeyPair,
 } from "@/lib/infra/client";
-import {
-  getTerminalHomeDir,
-  isConfigured as isTerminalConfigured,
-  listDirectory as terminalListDirectory,
-  readFileBinary as terminalReadFileBinary,
-  uploadFile as terminalUploadFile,
-} from "@/lib/terminal/client";
+import { createLocalFileProvider } from "@/lib/files/local-provider";
+import type { FileProvider } from "@/lib/files/provider";
+import { requireWithinRoot } from "@/lib/files/paths";
+import { userWorkspacePath, workspaceOwner } from "@/lib/sandbox/workspace";
 
 /**
  * Base the SDK's file tools resolve paths against when they are handed no tool
@@ -59,17 +56,16 @@ function truncateDiff(diff: string): string {
 }
 
 /**
- * The local workspace a download lands in. the only filesystem on this side
- * that the agent's file tools can read and edit. It lives in the Open Terminal
- * container, so a transfer without a configured terminal has nowhere to go.
+ * The workspace a download lands in: the only filesystem on this side that the
+ * agent's file tools can read and edit.
  */
 function requireWorkspace(userId: string): string {
-  if (!isTerminalConfigured()) {
-    throw new Error(
-      "File transfer needs the Terminal workspace, which is not configured for this installation.",
-    );
-  }
-  return getTerminalHomeDir(userId);
+  return userWorkspacePath(userId);
+}
+
+/** The workspace as a provider, so a transfer goes through the same path guard as a browse. */
+function workspaceFiles(userId: string): FileProvider {
+  return createLocalFileProvider({ root: requireWorkspace(userId), owner: workspaceOwner() });
 }
 
 /**
@@ -87,21 +83,14 @@ function resolveWorkspacePath(homeDir: string, path: string): string {
 }
 
 /**
- * Stat a workspace file through Open Terminal. The API has no stat endpoint,
- * so this reads the parent listing and picks the entry out of it. enough to
- * reject a directory or an oversize file before its bytes are fetched.
+ * Size of a workspace file, refusing a directory. Enough to reject an oversize
+ * file before its bytes are read.
  */
 async function statWorkspaceFile(userId: string, absolutePath: string): Promise<{ size: number }> {
-  const listing = await terminalListDirectory(posix.dirname(absolutePath), { userId });
-  const entry = listing.entries.find((item) => item.name === posix.basename(absolutePath));
-
-  if (!entry) {
-    throw new Error(`${absolutePath} does not exist in the workspace`);
-  }
-  if (entry.type !== "file") {
-    throw new Error(`${absolutePath} is a directory, not a file`);
-  }
-  return { size: entry.size };
+  const stat = await workspaceFiles(userId).stat(absolutePath);
+  if (!stat) throw new Error(`${absolutePath} does not exist in the workspace`);
+  if (stat.kind !== "file") throw new Error(`${absolutePath} is a directory, not a file`);
+  return { size: stat.size };
 }
 
 /**
@@ -887,10 +876,9 @@ export function createInfraTools(userId: string): ToolDefinition[] {
         );
 
         const { buffer, size } = await readFileForTransfer(params.id, userId, params.path);
-        const written = await terminalUploadFile(posix.basename(dest), buffer, {
-          directory: posix.dirname(dest),
-          userId,
-        });
+        const files = workspaceFiles(userId);
+        await files.write(requireWithinRoot(requireWorkspace(userId), dest), buffer);
+        const written = { path: dest };
 
         const infraMeta = {
           _saaleInfraMeta: {
@@ -960,7 +948,9 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           );
         }
 
-        const file = await terminalReadFileBinary(source, { userId });
+        const file = await workspaceFiles(userId).read(
+          requireWithinRoot(requireWorkspace(userId), source),
+        );
 
         // SFTP's write does not create parent directories (Pi's own write tool
         // does, and this tool promises the same).
@@ -969,7 +959,12 @@ export function createInfraTools(userId: string): ToolDefinition[] {
           await createDirectory(params.id, userId, parentDir);
         }
 
-        const result = await writeFileBuffer(params.id, userId, params.path, file.buffer);
+        const result = await writeFileBuffer(
+          params.id,
+          userId,
+          params.path,
+          Buffer.from(file.buffer),
+        );
 
         const infraMeta = {
           _saaleInfraMeta: {

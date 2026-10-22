@@ -2,56 +2,40 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
-const { mockIsConfigured, mockGetTerminalHomeDir, mockReadFileBinary, mockListDirectory } =
-  vi.hoisted(() => ({
-    mockIsConfigured: vi.fn(() => false),
-    mockGetTerminalHomeDir: vi.fn((userId: string) => `/home/${userId}`),
-    mockReadFileBinary: vi.fn(),
-    mockListDirectory: vi.fn(),
-  }));
-
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: mockIsConfigured,
-  getTerminalHomeDir: mockGetTerminalHomeDir,
-  readFileBinary: mockReadFileBinary,
-  listDirectory: mockListDirectory,
-}));
-
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
-import { MAX_SHARED_FILE_BYTES, readWorkspaceFile } from "@/lib/files/workspace-file";
+import { readWorkspaceFile } from "@/lib/files/workspace-file";
 
 const userId = "user-1";
 
-let uploadsRoot: string;
+let workspacesRoot: string;
+let userRoot: string;
 
 beforeAll(async () => {
-  uploadsRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-workspace-file-"));
-  vi.stubEnv("UPLOADS_DIR", uploadsRoot);
+  workspacesRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-workspace-file-"));
+  vi.stubEnv("SANDBOX_WORKSPACES_DIR", workspacesRoot);
+  vi.stubEnv("SANDBOX_USER", "root");
+  userRoot = path.join(workspacesRoot, `user-${userId}`);
+  await fs.mkdir(userRoot, { recursive: true });
 });
 
 afterAll(async () => {
   vi.unstubAllEnvs();
-  await fs.rm(uploadsRoot, { recursive: true, force: true });
+  await fs.rm(workspacesRoot, { recursive: true, force: true });
 });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockIsConfigured.mockReturnValue(false);
+beforeEach(async () => {
+  await fs.rm(userRoot, { recursive: true, force: true });
+  await fs.mkdir(userRoot, { recursive: true });
 });
 
-/** Write a file into the user's local workspace and return its relative path. */
+/** Write a file into the user's workspace and return its relative path. */
 async function writeWorkspaceFile(name: string, content: Buffer | string): Promise<string> {
-  await fs.mkdir(path.dirname(path.join(uploadsRoot, userId, name)), { recursive: true });
-  await fs.writeFile(path.join(uploadsRoot, userId, name), content);
+  await fs.mkdir(path.dirname(path.join(userRoot, name)), { recursive: true });
+  await fs.writeFile(path.join(userRoot, name), content);
   return name;
 }
 
-// ─── Local workspace (no terminal container) ─────────────────────────────────
-
-describe("readWorkspaceFile  uploads volume", () => {
+describe("readWorkspaceFile", () => {
   it("reads a file with its name, size and type", async () => {
     const relative = await writeWorkspaceFile("reports/q3.pdf", Buffer.from("pdf-bytes"));
 
@@ -83,7 +67,7 @@ describe("readWorkspaceFile  uploads volume", () => {
   });
 
   it("reports a directory as such", async () => {
-    await fs.mkdir(path.join(uploadsRoot, userId, "reports"), { recursive: true });
+    await fs.mkdir(path.join(userRoot, "reports"), { recursive: true });
 
     await expect(readWorkspaceFile(userId, "reports")).rejects.toThrow("Not a file: reports");
   });
@@ -96,98 +80,31 @@ describe("readWorkspaceFile  uploads volume", () => {
     );
   });
 
-  it("never resolves a path out of another user's directory", async () => {
-    await fs.mkdir(path.join(uploadsRoot, "user-2"), { recursive: true });
-    await fs.writeFile(path.join(uploadsRoot, "user-2", "secret.txt"), "top secret");
+  it("reads a file exactly at the shared ceiling", async () => {
+    const relative = await writeWorkspaceFile("backup.tar", Buffer.from("data"));
 
-    await expect(readWorkspaceFile(userId, "secret.txt")).rejects.toBeInstanceOf(FileNotFoundError);
-  });
-});
-
-// ─── Terminal container ──────────────────────────────────────────────────────
-
-describe("readWorkspaceFile  Open Terminal", () => {
-  beforeEach(() => {
-    mockIsConfigured.mockReturnValue(true);
-    mockGetTerminalHomeDir.mockImplementation((id: string) => `/home/${id}`);
-    mockListDirectory.mockResolvedValue({
-      dir: `/home/${userId}`,
-      writable: true,
-      entries: [{ name: "chart.png", type: "file", size: 12, modified: 1, writable: true }],
-    });
-    mockReadFileBinary.mockResolvedValue({
-      path: `/home/${userId}/chart.png`,
-      mimeType: "application/octet-stream",
-      buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
-    });
-  });
-
-  it("reads through the container and takes the type from the extension", async () => {
-    const file = await readWorkspaceFile(userId, "chart.png", { sessionId: "sess-9" });
-
-    expect(mockReadFileBinary).toHaveBeenCalledWith(`/home/${userId}/chart.png`, {
-      userId,
-      sessionId: "sess-9",
-    });
-    expect(file).toMatchObject({ fileName: "chart.png", size: 4, mimeType: "image/png" });
-  });
-
-  it("omits the session header when the caller has no chat", async () => {
-    await readWorkspaceFile(userId, "chart.png");
-
-    expect(mockReadFileBinary).toHaveBeenCalledWith(`/home/${userId}/chart.png`, { userId });
-  });
-
-  it("refuses a path that climbs out of the container home", async () => {
-    await expect(readWorkspaceFile(userId, "../../etc/passwd")).rejects.toBeInstanceOf(
-      FilePathEscapeError,
-    );
-    expect(mockReadFileBinary).not.toHaveBeenCalled();
-  });
-
-  it("refuses a file past the shared ceiling without downloading it", async () => {
-    mockListDirectory.mockResolvedValue({
-      dir: `/home/${userId}`,
-      writable: true,
-      entries: [
-        {
-          name: "backup.tar",
-          type: "file",
-          size: MAX_SHARED_FILE_BYTES + 1,
-          modified: 1,
-          writable: true,
-        },
-      ],
-    });
-
-    await expect(readWorkspaceFile(userId, "backup.tar")).rejects.toThrow("File too large: 50.0MB");
-    expect(mockReadFileBinary).not.toHaveBeenCalled();
-  });
-
-  it("reads a file exactly at the ceiling", async () => {
-    mockListDirectory.mockResolvedValue({
-      dir: `/home/${userId}`,
-      writable: true,
-      entries: [
-        {
-          name: "backup.tar",
-          type: "file",
-          size: MAX_SHARED_FILE_BYTES,
-          modified: 1,
-          writable: true,
-        },
-      ],
-    });
-
-    await expect(readWorkspaceFile(userId, "backup.tar")).resolves.toMatchObject({
+    await expect(readWorkspaceFile(userId, relative, { maxBytes: 4 })).resolves.toMatchObject({
       size: 4,
     });
   });
 
-  it("does not read a file the container reports as missing", async () => {
-    mockListDirectory.mockResolvedValue({ dir: `/home/${userId}`, writable: true, entries: [] });
+  it("does not resolve a name into another identity's directory", async () => {
+    const other = path.join(workspacesRoot, "user-2");
+    await fs.mkdir(other, { recursive: true });
+    await fs.writeFile(path.join(other, "secret.txt"), "top secret");
 
-    await expect(readWorkspaceFile(userId, "gone.pdf")).rejects.toBeInstanceOf(FileNotFoundError);
-    expect(mockReadFileBinary).not.toHaveBeenCalled();
+    await expect(readWorkspaceFile(userId, "secret.txt")).rejects.toBeInstanceOf(FileNotFoundError);
+    await expect(readWorkspaceFile(userId, "../user-2/secret.txt")).rejects.toBeInstanceOf(
+      FilePathEscapeError,
+    );
+  });
+
+  it("refuses a symlink that points into another identity's directory", async () => {
+    const other = path.join(workspacesRoot, "user-2");
+    await fs.mkdir(other, { recursive: true });
+    await fs.writeFile(path.join(other, "secret.txt"), "top secret");
+    await fs.symlink(path.join(other, "secret.txt"), path.join(userRoot, "link.txt"));
+
+    await expect(readWorkspaceFile(userId, "link.txt")).rejects.toBeInstanceOf(FilePathEscapeError);
   });
 });

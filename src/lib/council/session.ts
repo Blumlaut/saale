@@ -39,6 +39,7 @@ import {
   type StopVoteThreshold,
 } from "./config";
 import { buildCouncilMemberPrompt, type CouncilMemberSummary } from "./prompt";
+import { resolveSandboxEnv } from "@/lib/sandbox/env";
 import { createCouncilSandbox, councilSandboxTools, type CouncilSandbox } from "./sandbox";
 import { createCouncilTools, type CouncilToolContext } from "./tools";
 
@@ -104,10 +105,16 @@ export async function createCouncilMemberSession(
 ): Promise<CouncilMemberSession> {
   const { member, userId, councilId } = options;
 
+  // Members act for the owner, so they get the owner's variables.
+  const sandboxEnv = await resolveSandboxEnv(userId).catch((err) => {
+    console.error(`Failed to load sandbox variables for council ${councilId}:`, err);
+    return {};
+  });
+
   const sandbox = createCouncilSandbox({
     councilId,
     sandboxKey: options.sandboxKey,
-    userId,
+    env: sandboxEnv,
   });
 
   const modelRef =
@@ -137,7 +144,7 @@ export async function createCouncilMemberSession(
   };
 
   const resolvedTools = await resolveTools(userId, councilId, toolConfig, {
-    createTerminalScopedTools: async () => councilSandboxTools(sandbox),
+    createSandboxScopedTools: async () => councilSandboxTools(sandbox),
     ...(options.toolExposure ? { exposure: options.toolExposure } : {}),
   });
 

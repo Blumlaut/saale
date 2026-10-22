@@ -1,26 +1,21 @@
 /**
  * A council's file sandbox.
  *
- * The sandbox *is* the council's Open Terminal account (see `accounts.ts`): its
- * home directory, and the identity every command and file operation runs as.
- * Unix permissions are the boundary. the account cannot read the user's home,
- * and the user cannot read the sandbox. which is why the same three built-in
- * tools a chat uses (`read`, `write`, `edit`, `bash`) are safe here without
- * being crippled.
+ * The sandbox *is* the council's workspace directory and the container that
+ * mounts only it. Every file and every command a member runs is inside that
+ * one directory, and the other tenants' directories are absent from the
+ * container entirely, so the built-in tools (`read`, `write`, `edit`, `bash`)
+ * are safe here without being crippled.
  *
- * Two things are added on top of `createTerminalOperations`:
+ * Two things are added on top of `createSandboxOperations`:
  *
- * - **Path confinement.** The account is the boundary, but the tool arguments
+ * - **Path confinement.** The container is the boundary, but the tool arguments
  *   still come from a model: a path is normalized and refused when it leaves the
  *   sandbox, so app-side paths (the uploads volume, `/etc`, another tenant's
- *   workspace) never reach the container. Textual, so a symlink can still point
- *   out of the sandbox and be followed. the account's permissions are what stop
- *   that from reading anything it should not.
- * - **The mode check.** `ensureCouncilSandbox` verifies the container really
- *   mapped the sandbox key to its own account before anything runs. Without
- *   `OPEN_TERMINAL_MULTI_USER=true` Open Terminal ignores `X-User-Id` and every
- *   command would run as the user. the opposite of a sandbox. so it refuses
- *   instead.
+ *   workspace) never reach the filesystem.
+ * - **A preflight.** `ensureCouncilSandbox` creates the directory and asks the
+ *   service for its health, so a run fails before the first turn rather than
+ *   halfway through one.
  *
  * Concurrent writers need no lock here: Pi's `write` and `edit` already
  * serialize same-path mutations process-wide (`withFileMutationQueue`). A file
@@ -39,11 +34,11 @@ import {
   type ToolDefinition,
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
-import { createTerminalOperations } from "@/lib/terminal/operations";
-import { isConfigured } from "@/lib/terminal/client";
+import { createSandboxOperations } from "@/lib/sandbox/operations";
+import * as sandboxClient from "@/lib/sandbox/client";
+import { ensureWorkspace, removeWorkspace } from "@/lib/sandbox/workspace";
 import { resolveWithinRoot } from "@/lib/files/paths";
 import { sandboxIdentity, type CouncilSandboxIdentity } from "./accounts";
-import { isSafeAccountName, runContainerCommand, runTerminalCommand } from "./commands";
 
 /** Raised when a tool argument points outside the council's sandbox. */
 export class CouncilSandboxEscapeError extends Error {
@@ -68,15 +63,7 @@ export function resolveSandboxPath(root: string, path: string): { path: string; 
   return resolveWithinRoot(root, path);
 }
 
-/**
- * Resolve `path` inside `root`, refusing anything that leaves it.
- *
- * The account is the boundary; this is what stops a tool argument from reaching
- * app-side paths (the uploads volume, `/etc`, another tenant's workspace) in the
- * first place. Textual, so a symlink can still point out of the sandbox and be
- * followed. the account's own permissions are what stop *that* from reading
- * anything it should not.
- */
+/** {@link resolveSandboxPath}, refusing anything that leaves the root. */
 export function normalizeSandboxPath(root: string, path: string): string {
   const resolved = resolveSandboxPath(root, path);
   if (!resolved.inside) throw new CouncilSandboxEscapeError(path);
@@ -85,7 +72,7 @@ export function normalizeSandboxPath(root: string, path: string): string {
 
 export interface CouncilSandbox {
   identity: CouncilSandboxIdentity;
-  /** The sandbox root: the account's home directory. */
+  /** The sandbox root: the council's directory in the volume. */
   home: string;
   operations: {
     read: ReadOperations;
@@ -98,24 +85,21 @@ export interface CouncilSandbox {
 /**
  * The operations a council member's file tools run through.
  *
- * `sessionId` is the council's, not a member's: the sandbox account is shared by
- * every member (that is the point), and the terminal session it names only
- * affects the cwd Open Terminal remembers. every call here passes an explicit
- * cwd or an absolute, already-resolved path.
+ * `env` is the council owner's variables: members act for the owner, and a
+ * member has no variables of its own to leak.
  */
 export function createCouncilSandbox(options: {
   councilId: string;
   sandboxKey: string;
-  userId: string;
+  env?: Record<string, string> | undefined;
 }): CouncilSandbox {
   const identity = sandboxIdentity(options.sandboxKey);
-  const home = identity.home;
-  const terminalSessionId = `council-sandbox-${options.councilId}`;
+  const home = identity.path;
 
-  const base = createTerminalOperations({
-    userId: identity.key,
-    sessionId: terminalSessionId,
-    cwd: home,
+  const base = createSandboxOperations({
+    identity: identity.id,
+    root: home,
+    env: options.env,
   });
 
   const inside = (path: string): string => normalizeSandboxPath(home, path);
@@ -182,120 +166,41 @@ export function councilSandboxTools(sandbox: CouncilSandbox): {
 }
 
 /**
- * An id that Open Terminal maps to the *same* account as `key`.
+ * Create the sandbox directory and check the service is reachable.
  *
- * Its username is the first eight alphanumeric characters of the id, so an id
- * that begins with the key resolves to the same account while being a different
- * id to the container (which caches ids).
- */
-function sameAccountIdentityKey(key: string): string {
-  return `${key}0`;
-}
-
-/**
- * Create the sandbox account and verify it is one.
- *
- * Runs `id -un` as the sandbox identity, which is also what makes Open Terminal
- * provision the account on first use. The answer must be the account derived
- * from the key: anything else means `X-User-Id` was ignored and the command ran
- * as the user's own identity, so the "sandbox" would be the user's home. That is
- * refused rather than run.
- *
- * The retry covers a container-side detail with teeth: Open Terminal caches
- * `X-User-Id → account` in memory, and its cache says "already provisioned"
- * without re-checking `/etc/passwd`. An account that was deleted (a council
- * being cleaned up) is therefore remembered as existing, and every command for
- * that id fails with `sudo: unknown user`. permanently, since the cache lives
- * as long as the container. Asking under an id that resolves to the *same*
- * account is a different cache entry, so the container provisions it again; the
- * original id then works too.
+ * Runs before the first turn: a member that discovers halfway through that its
+ * workspace is unavailable has already spent the owner's money on a turn it
+ * cannot act on. The per-container mount check is the service's job and runs
+ * when the container is created.
  */
 export async function ensureCouncilSandbox(identity: CouncilSandboxIdentity): Promise<void> {
-  if (!isConfigured()) {
-    throw new Error("Council sandboxes need the Open Terminal integration (OPEN_TERMINAL_API_KEY)");
-  }
-  if (!isSafeAccountName(identity.account)) {
-    throw new Error(`Refusing to provision an unsafe account name: ${identity.account}`);
+  if (!sandboxClient.isConfigured()) {
+    throw new Error("Council sandboxes need the sandbox service (SANDBOX_URL)");
   }
 
-  const probe = (userId: string) =>
-    runTerminalCommand("id -un", {
-      userId,
-      sessionId: `council-sandbox-${identity.key}`,
-      cwd: identity.home,
-      waitSeconds: 60,
-    });
-
-  let result = await probe(identity.key);
-  if (result.exitCode !== 0) {
-    const retry = await probe(sameAccountIdentityKey(identity.key));
-    if (retry.exitCode === 0) {
-      console.warn(
-        `[council] Sandbox ${identity.account} needed re-provisioning (the container had it cached).`,
-      );
-      result = retry;
-    }
-  }
-
-  const { exitCode, output } = result;
-  if (exitCode !== 0) {
-    throw new Error(
-      `Could not start the council sandbox account ${identity.account}: ${output.trim() || "no output"}`,
-    );
-  }
-
-  const account = output.trim().split("\n").pop()?.trim() ?? "";
-  if (account !== identity.account) {
-    throw new Error(
-      `Council sandboxes require OPEN_TERMINAL_MULTI_USER=true. the sandbox identity resolved to ` +
-        `"${account}" instead of "${identity.account}", so it would run in the user's workspace.`,
-    );
-  }
+  await ensureWorkspace(identity.id);
+  await sandboxClient.health();
 }
 
 /**
- * Remove the sandbox account and its home directory.
+ * Remove the sandbox container and its directory.
  *
  * Best-effort and never throws: a council that is being deleted must not stay
- * behind because the container was briefly unreachable, but a cleanup that did
+ * behind because the service was briefly unreachable, but a cleanup that did
  * not happen is reported. a sandbox left on disk holds the members' work.
- *
- * The fallback `rm -rf` exists because `userdel -r` refuses while a process of
- * that account is still running (a member's shell, a killed turn). The account
- * itself cannot be removed from inside a member's session. that needs the
- * container's own identity, which is what runs this.
  */
 export async function destroyCouncilSandbox(identity: CouncilSandboxIdentity): Promise<void> {
-  if (!isConfigured()) return;
-  if (!isSafeAccountName(identity.account)) {
-    throw new Error(`Refusing to delete an unsafe account name: ${identity.account}`);
-  }
-
-  const account = identity.account;
-  const removal = await runContainerCommand(`sudo userdel -r ${account} 2>&1`);
-  if (removal.exitCode !== 0) {
-    console.warn(
-      `[council] userdel ${account} did not complete (${removal.exitCode}): ${removal.output.trim()}`,
-    );
-    const wipe = await runContainerCommand(`sudo rm -rf /home/${account} 2>&1`);
-    if (wipe.exitCode !== 0) {
-      console.error(
-        `[council] Could not wipe the sandbox home of ${account}: ${wipe.output.trim()}`,
-      );
+  if (sandboxClient.isConfigured()) {
+    try {
+      await sandboxClient.removeContainer(identity.id);
+    } catch (err) {
+      console.warn(`[council] Could not remove the sandbox container ${identity.id}:`, err);
     }
   }
 
-  // The container's own account is added to a new account's group so it can read
-  // the workspace natively; that membership outlives the account and would keep
-  // the group alive, so it is dropped before the group is.
-  const demote = await runContainerCommand(`sudo gpasswd -d user ${account} 2>&1`);
-  if (demote.exitCode !== 0) {
-    console.warn(
-      `[council] Could not drop the container account from group ${account}: ${demote.output.trim()}`,
-    );
-  }
-  const group = await runContainerCommand(`sudo groupdel ${account} 2>&1`);
-  if (group.exitCode !== 0) {
-    console.warn(`[council] Could not delete group ${account}: ${group.output.trim()}`);
+  try {
+    await removeWorkspace(identity.id);
+  } catch (err) {
+    console.error(`[council] Could not remove the sandbox directory ${identity.path}:`, err);
   }
 }

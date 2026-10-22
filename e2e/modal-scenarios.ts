@@ -219,28 +219,6 @@ async function mockTelegramLinked(page: Page) {
 }
 
 /**
- * One connected GitHub account, so the box's row menu (and the remove
- * confirmation behind it) can be opened without a live token.
- */
-async function mockGitHubConnected(page: Page) {
-  await page.route(/\/api\/integrations\/github$/, async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    return route.fulfill({
-      json: {
-        account: {
-          id: "1",
-          enabled: true,
-          username: "test-operator",
-          avatarUrl: null,
-          createdAt: NOW,
-          updatedAt: NOW,
-        },
-      },
-    });
-  });
-}
-
-/**
  * The provider list and a sign-in in its most demanding state: a device code, an
  * authorization URL long enough to wrap, and a prompt waiting to be answered.
  */
@@ -831,31 +809,22 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
-    name: "settings · connect github",
-    path: SETTINGS,
-    sources: ["src/components/integrations/github-card.tsx"],
-    open: async (page) => {
-      await openSettingsTab(page, "Integrations");
-      await click(page, 'button:has-text("Connect GitHub")');
-    },
-  },
-  {
-    name: "settings · remove github confirmation",
+    name: "settings · unlink telegram confirmation",
     path: SETTINGS,
     sources: ["src/app/dashboard/settings/tabs/integrations-tab.tsx"],
-    mock: mockGitHubConnected,
+    mock: mockTelegramLinked,
     open: async (page) => {
       await openSettingsTab(page, "Integrations");
 
-      // Anchor on the mocked username  it only exists inside the GitHub box,
-      // so the row menu is unambiguous even though the shell has its own menus.
+      // Anchor on the mocked display name: it only exists inside the Telegram
+      // box, so the row menu is unambiguous even though the shell has its own.
       const box = page
         .locator("div")
-        .filter({ hasText: "test-operator" })
+        .filter({ hasText: "Test Operator" })
         .filter({ has: page.locator('[data-slot="dropdown-menu-trigger"]') })
         .last();
       await box.locator('[data-slot="dropdown-menu-trigger"]').click();
-      await click(page, '[role="menuitem"]:has-text("Disconnect")');
+      await click(page, '[role="menuitem"]:has-text("Unlink")');
     },
   },
   {

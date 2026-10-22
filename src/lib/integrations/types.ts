@@ -17,4 +17,4 @@ export interface IntegrationManifest {
 }
 
 /** Union of registered integration IDs */
-export type IntegrationId = "telegram" | "github";
+export type IntegrationId = "telegram";

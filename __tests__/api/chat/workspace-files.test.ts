@@ -6,32 +6,26 @@ import { NextRequest } from "next/server";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireSession, mockIsConfigured, mockGetTerminalHomeDir, mockReadFileBinary } =
-  vi.hoisted(() => ({
-    mockRequireSession: vi.fn(),
-    mockIsConfigured: vi.fn(() => false),
-    mockGetTerminalHomeDir: vi.fn((userId: string) => `/home/${userId}`),
-    mockReadFileBinary: vi.fn(),
-  }));
+const { mockRequireSession } = vi.hoisted(() => ({
+  mockRequireSession: vi.fn(),
+}));
 
 vi.mock("@/lib/auth", () => ({
   requireSession: mockRequireSession,
-}));
-
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: mockIsConfigured,
-  getTerminalHomeDir: mockGetTerminalHomeDir,
-  readFileBinary: mockReadFileBinary,
 }));
 
 let GET: typeof import("@/app/api/chat/workspace-files/route").GET;
 
 const USER_ID = "user-1";
 let tmpRoot: string;
+/** The user's workspace directory inside the stubbed volume. */
+let userRoot: string;
 
 beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-workspace-files-"));
-  vi.stubEnv("UPLOADS_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_USER", "root");
+  userRoot = path.join(tmpRoot, `user-${USER_ID}`);
   vi.resetModules();
   GET = (await import("@/app/api/chat/workspace-files/route")).GET;
 });
@@ -40,10 +34,11 @@ afterAll(async () => {
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  mockIsConfigured.mockReturnValue(false);
   mockRequireSession.mockResolvedValue({ ok: true, user: { id: USER_ID } });
+  await fs.rm(userRoot, { recursive: true, force: true });
+  await fs.mkdir(userRoot, { recursive: true });
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -78,7 +73,7 @@ describe("workspace file serving", () => {
    * be downloadable in its updated state.
    */
   it("serves the updated bytes from an unchanged URL, and 304s on unchanged content", async () => {
-    const dir = path.join(tmpRoot, USER_ID);
+    const dir = userRoot;
     await fs.mkdir(dir, { recursive: true });
     const file = path.join(dir, "report.pdf");
 
@@ -110,7 +105,7 @@ describe("workspace file serving", () => {
   });
 
   it("accepts a weak validator from the client", async () => {
-    const dir = path.join(tmpRoot, USER_ID);
+    const dir = userRoot;
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "notes.txt"), "hello");
 
@@ -122,29 +117,36 @@ describe("workspace file serving", () => {
     expect((await request("notes.txt", '"unrelated"')).status).toBe(200);
   });
 
-  it("serves through Open Terminal and stays fresh when the container file changes", async () => {
-    mockIsConfigured.mockReturnValue(true);
+  it("stays fresh when an agent rewrites a file the chat already fetched", async () => {
+    const dir = path.join(userRoot, "uploads");
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, "report.pdf");
 
-    const original = Buffer.from("%PDF-1.4 container original");
-    mockReadFileBinary.mockResolvedValueOnce({ mimeType: "application/pdf", buffer: original });
+    const original = Buffer.from("%PDF-1.4 workspace original");
+    await fs.writeFile(file, original);
 
     const first = await request("uploads/report.pdf");
     expect(first.status).toBe(200);
     expect(first.headers.get("content-type")).toBe("application/pdf");
     expect((await body(first)).equals(original)).toBe(true);
-
     const etag = first.headers.get("etag")!;
-    expect(mockReadFileBinary).toHaveBeenCalledWith(
-      `/home/${USER_ID}/uploads/report.pdf`,
-      expect.objectContaining({ userId: USER_ID }),
-    );
 
-    const edited = Buffer.from("%PDF-1.4 container edited");
-    mockReadFileBinary.mockResolvedValueOnce({ mimeType: "application/pdf", buffer: edited });
+    const edited = Buffer.from("%PDF-1.4 workspace edited");
+    await fs.writeFile(file, edited);
 
     const second = await request("uploads/report.pdf", etag);
     expect(second.status).toBe(200);
     expect((await body(second)).equals(edited)).toBe(true);
+  });
+
+  it("refuses a symlink that points at another user's file", async () => {
+    const other = path.join(tmpRoot, "user-user-2");
+    await fs.mkdir(other, { recursive: true });
+    await fs.writeFile(path.join(other, "secret.txt"), "top secret");
+    await fs.symlink(path.join(other, "secret.txt"), path.join(userRoot, "link.txt"));
+
+    const res = await request("link.txt");
+    expect(res.status).toBe(403);
   });
 
   it("rejects paths that escape the workspace", async () => {
@@ -157,7 +159,7 @@ describe("workspace file serving", () => {
   });
 
   it("marks a requested download as an attachment, keeping the name", async () => {
-    const dir = path.join(tmpRoot, USER_ID, "reports");
+    const dir = path.join(userRoot, "reports");
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "q3.pdf"), "%PDF-1.4");
 
@@ -173,7 +175,7 @@ describe("workspace file serving", () => {
   });
 
   it("encodes a non-ASCII download name for the client", async () => {
-    const dir = path.join(tmpRoot, USER_ID);
+    const dir = userRoot;
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "Prüfbericht.pdf"), "%PDF-1.4");
 

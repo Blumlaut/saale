@@ -20,6 +20,7 @@ import { createApprovalCardTracker } from "./approval-cards";
 import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
+import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import {
   buildAgentSystemPrompt,
   createAgentResourceLoader,
@@ -28,7 +29,7 @@ import {
 } from "@/lib/pi/processing-state";
 import { withChatLock } from "./chat-lock";
 import { createSaaleAgentSession } from "@/lib/pi/agent-session";
-import { createTerminalScopedTools } from "@/lib/pi/session";
+import { createSandboxScopedTools } from "@/lib/pi/session";
 import {
   downloadAndProcessTelegramFile,
   buildFilePromptText,
@@ -328,7 +329,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   });
 
   const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
-    createTerminalScopedTools,
+    createSandboxScopedTools,
     wrapWithApproval: approvalWrapper,
     exposure: normalizeToolExposure(userSettings?.toolExposure),
   });
@@ -339,6 +340,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   const baseSystemPrompt = buildAgentSystemPrompt({
     customInstructions: userSettings?.agentCustomInstructions,
     toolConfig: resolvedToolConfig,
+    sandboxEnvNames: await listSandboxEnvNames(userId),
   });
 
   const { session } = await createSaaleAgentSession(userId, {
@@ -511,7 +513,6 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
                   if (!event.isError) {
                     sendSharedFileToTelegram({
                       userId,
-                      sessionId,
                       encryptedToken,
                       telegramChatId,
                       ...sharedFile,
@@ -898,7 +899,7 @@ async function runTelegramCompaction(
   const sessionDir = path.join(getUploadsDir(), "pi_sessions", userId, sessionId);
 
   const allCustomTools = await resolveTools(userId, "compact", resolvedToolConfig, {
-    createTerminalScopedTools,
+    createSandboxScopedTools,
     exposure: normalizeToolExposure(userSettings?.toolExposure),
   });
 
@@ -906,6 +907,7 @@ async function runTelegramCompaction(
   const baseSystemPrompt = buildAgentSystemPrompt({
     customInstructions: userSettings?.agentCustomInstructions,
     toolConfig: resolvedToolConfig,
+    sandboxEnvNames: await listSandboxEnvNames(userId),
   });
 
   const { session } = await createSaaleAgentSession(userId, {

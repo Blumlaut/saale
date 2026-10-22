@@ -4,20 +4,10 @@ import os from "os";
 import path from "path";
 import sharp from "sharp";
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
-const { mockIsConfigured, mockUploadFile } = vi.hoisted(() => ({
-  mockIsConfigured: vi.fn(() => false),
-  mockUploadFile: vi.fn(),
-}));
-
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: mockIsConfigured,
-  uploadFile: mockUploadFile,
-}));
-
 let attachmentsModule: typeof import("@/lib/file-attachment");
 let tmpRoot: string;
+/** The user's workspace, `<workspaces>/user-<id>`. */
+let userRoot: string;
 
 /** A minimal valid 1x1 PNG. */
 const TINY_PNG = Buffer.from(
@@ -27,7 +17,9 @@ const TINY_PNG = Buffer.from(
 
 beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-chat-files-"));
-  vi.stubEnv("UPLOADS_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_USER", "root");
+  userRoot = path.join(tmpRoot, "user-user-1");
   vi.resetModules();
   attachmentsModule = await import("@/lib/file-attachment");
 });
@@ -36,9 +28,8 @@ afterAll(async () => {
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mockIsConfigured.mockReturnValue(false);
+beforeEach(async () => {
+  await fs.rm(userRoot, { recursive: true, force: true });
 });
 
 // ─── validateChatFile ────────────────────────────────────────────────────────
@@ -97,7 +88,7 @@ describe("storeChatFile", () => {
     expect(result.width).toBeUndefined();
     expect(result.height).toBeUndefined();
 
-    const onDisk = await fs.readFile(path.join(tmpRoot, "user-1", result.storagePath));
+    const onDisk = await fs.readFile(path.join(userRoot, result.storagePath));
     expect(onDisk.equals(content)).toBe(true);
   });
 
@@ -114,7 +105,7 @@ describe("storeChatFile", () => {
     expect(result.width).toBe(1);
     expect(result.height).toBe(1);
 
-    const onDisk = await fs.readFile(path.join(tmpRoot, "user-1", result.storagePath));
+    const onDisk = await fs.readFile(path.join(userRoot, result.storagePath));
     expect(onDisk.length).toBeGreaterThan(0);
   });
 
@@ -148,7 +139,7 @@ describe("storeChatFile", () => {
 
     // Content check: rotating 90° clockwise puts the red left half on top
     // and the blue right half on the bottom.
-    const out = await sharp(path.join(tmpRoot, "user-1", result.storagePath))
+    const out = await sharp(path.join(userRoot, result.storagePath))
       .raw()
       .toBuffer({ resolveWithObject: true });
     const pixel = (x: number, y: number) => {
@@ -187,7 +178,7 @@ describe("storeChatFile", () => {
     );
     expect(result.safeName).toBe("evil.txt");
     // The file must land inside the user directory, never outside it.
-    const full = path.join(tmpRoot, "user-1", result.storagePath);
+    const full = path.join(userRoot, result.storagePath);
     expect(full.startsWith(tmpRoot + path.sep)).toBe(true);
     expect(await fs.readFile(full, "utf8")).toBe("data");
   });
@@ -196,8 +187,19 @@ describe("storeChatFile", () => {
 // ─── deliverChatFileToAgent ──────────────────────────────────────────────────
 
 describe("deliverChatFileToAgent", () => {
-  it("returns null and skips the upload when the terminal is not configured", async () => {
-    mockIsConfigured.mockReturnValue(false);
+  it("copies the file into uploads/ under the name the user gave it", async () => {
+    const result = await attachmentsModule.deliverChatFileToAgent(
+      "user-1",
+      Buffer.from("pdf-bytes"),
+      "report.pdf",
+    );
+
+    expect(result).toBe(path.join(userRoot, "uploads", "report.pdf"));
+    expect(await fs.readFile(result, "utf8")).toBe("pdf-bytes");
+  });
+
+  it("creates uploads/ for a workspace that has nothing in it yet", async () => {
+    await fs.rm(userRoot, { recursive: true, force: true });
 
     const result = await attachmentsModule.deliverChatFileToAgent(
       "user-1",
@@ -205,35 +207,13 @@ describe("deliverChatFileToAgent", () => {
       "x.txt",
     );
 
-    expect(result).toBeNull();
-    expect(mockUploadFile).not.toHaveBeenCalled();
+    expect(await fs.readFile(result, "utf8")).toBe("x");
   });
 
-  it("uploads into the uploads/ workspace dir and returns the container path", async () => {
-    mockIsConfigured.mockReturnValue(true);
-    mockUploadFile.mockResolvedValue({ path: "/home/user123/uploads/report.pdf", size: 11 });
-
-    const result = await attachmentsModule.deliverChatFileToAgent(
-      "user-1",
-      Buffer.from("pdf-bytes"),
-      "report.pdf",
-    );
-
-    expect(result).toBe("/home/user123/uploads/report.pdf");
-    expect(mockUploadFile).toHaveBeenCalledWith(
-      "report.pdf",
-      expect.any(Buffer),
-      expect.objectContaining({ directory: "uploads", userId: "user-1" }),
-    );
-  });
-
-  it("throws when the terminal is configured but the upload fails", async () => {
-    mockIsConfigured.mockReturnValue(true);
-    mockUploadFile.mockRejectedValue(new Error("Open Terminal error 502: Bad Gateway"));
-
+  it("refuses a name that tries to leave the workspace", async () => {
     await expect(
-      attachmentsModule.deliverChatFileToAgent("user-1", Buffer.from("x"), "x.txt"),
-    ).rejects.toThrow(/Open Terminal error 502/);
+      attachmentsModule.deliverChatFileToAgent("user-1", Buffer.from("x"), "../../user-2/x.txt"),
+    ).rejects.toThrow(/outside the workspace/);
   });
 });
 

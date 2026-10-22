@@ -8,7 +8,7 @@ import {
   TOOLS_PROMPT,
 } from "@/lib/pi/processing-state";
 import { createSaaleAgentSession } from "@/lib/pi/agent-session";
-import { createTerminalScopedTools } from "@/lib/pi/session";
+import { createSandboxScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { loadToolExposure } from "@/lib/pi/tool-exposure";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
@@ -228,7 +228,7 @@ export async function executeAgentRun(
   } as Required<ToolConfig>;
 
   const allCustomTools = await resolveTools(userId, runId, resolvedToolConfig, {
-    createTerminalScopedTools,
+    createSandboxScopedTools,
     exposure: await loadToolExposure(userId),
   });
 

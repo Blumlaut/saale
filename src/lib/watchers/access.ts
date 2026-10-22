@@ -9,7 +9,7 @@
 
 import { prisma } from "@/lib/db";
 import { resolveTools } from "@/lib/pi/tool-registry";
-import { createTerminalScopedTools } from "@/lib/pi/session";
+import { createSandboxScopedTools } from "@/lib/pi/session";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
 import { watcherToolAccess, type ToolPolicies } from "./grant";
 
@@ -50,7 +50,7 @@ export async function loadWatcherToolAccess(
   } as Required<ToolConfig>;
 
   const tools = await resolveTools(userId, scopeId, toolConfig, {
-    createTerminalScopedTools,
+    createSandboxScopedTools,
   });
 
   const { callable, callableNames } = watcherToolAccess({ tools, toolPolicies });

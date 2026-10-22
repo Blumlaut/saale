@@ -298,7 +298,7 @@ export function createChatDeleteTool(userId: string) {
  * Only enabled when bash tools are active (implies workspace access). When
  * terminal is configured, reads through the Open Terminal API.
  */
-export function createShowFileTool(userId: string, sessionId: string) {
+export function createShowFileTool(userId: string, _sessionId: string) {
   return defineStructuredTool({
     name: SHOW_FILE_TOOL_NAME,
     label: "Show File",
@@ -321,7 +321,7 @@ export function createShowFileTool(userId: string, sessionId: string) {
     outputSchema: SHARED_FILE_SCHEMA,
     execute: async (_toolCallId: string, params: { filePath: string; description?: string }) => {
       const { filePath, description } = params;
-      const { fileName, size, mimeType } = await readWorkspaceFile(userId, filePath, { sessionId });
+      const { fileName, size, mimeType } = await readWorkspaceFile(userId, filePath);
 
       const sizeLabel =
         size > 1024 * 1024

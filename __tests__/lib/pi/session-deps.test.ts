@@ -25,9 +25,12 @@ vi.mock("@/lib/pi/models", () => ({
 }));
 
 vi.mock("@/lib/pi/tool-registry", () => ({ resolveTools: mockResolveTools }));
-vi.mock("@/lib/terminal/operations", () => ({ createTerminalOperations: vi.fn() }));
-vi.mock("@/lib/terminal/client", () => ({ getTerminalHomeDir: () => "/home/user" }));
-vi.mock("@/lib/github", () => ({ getGitHubEnv: vi.fn().mockResolvedValue({}) }));
+vi.mock("@/lib/sandbox/operations", () => ({ createSandboxOperations: vi.fn() }));
+vi.mock("@/lib/sandbox/env", () => ({ resolveSandboxEnv: vi.fn().mockResolvedValue({}) }));
+vi.mock("@/lib/sandbox/workspace", () => ({
+  userWorkspacePath: (userId: string) => `/workspaces/user-${userId}`,
+  workspaceOwner: () => null,
+}));
 
 import { buildSessionDeps } from "@/lib/pi/session";
 

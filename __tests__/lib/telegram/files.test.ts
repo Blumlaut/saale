@@ -6,17 +6,9 @@ import type { Bot, Context } from "grammy";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockIsConfigured, mockUploadFile, mockReadWorkspaceFile, mockSendTelegramFile } =
-  vi.hoisted(() => ({
-    mockIsConfigured: vi.fn(() => false),
-    mockUploadFile: vi.fn(),
-    mockReadWorkspaceFile: vi.fn(),
-    mockSendTelegramFile: vi.fn(),
-  }));
-
-vi.mock("@/lib/terminal/client", () => ({
-  isConfigured: mockIsConfigured,
-  uploadFile: mockUploadFile,
+const { mockReadWorkspaceFile, mockSendTelegramFile } = vi.hoisted(() => ({
+  mockReadWorkspaceFile: vi.fn(),
+  mockSendTelegramFile: vi.fn(),
 }));
 
 vi.mock("@/lib/files/workspace-file", () => ({
@@ -33,6 +25,8 @@ const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 let filesModule: typeof import("@/lib/telegram/files");
 let tmpRoot: string;
+/** `user-<id>` directories live directly under the workspaces root. */
+const workspaceOf = (userId: string) => path.join(tmpRoot, `user-${userId}`);
 
 /** Build a minimal grammy Bot double with a canned getFile response. */
 function makeBot(filePath: string, fileId: string): Bot<Context> {
@@ -57,7 +51,8 @@ function stubDownload(content: Uint8Array, ok = true, status = 200, statusText =
 
 beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-tg-files-"));
-  vi.stubEnv("UPLOADS_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
+  vi.stubEnv("SANDBOX_USER", "root");
   vi.resetModules();
   filesModule = await import("@/lib/telegram/files");
 });
@@ -66,23 +61,20 @@ afterAll(async () => {
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", mockFetch);
-  mockIsConfigured.mockReturnValue(false);
-  mockUploadFile.mockResolvedValue({ path: "/home/u12345678/telegram_files/doc.pdf", size: 0 });
+  // Every case starts from an empty volume, so "nothing was written" is testable.
+  for (const entry of await fs.readdir(tmpRoot)) {
+    await fs.rm(path.join(tmpRoot, entry), { recursive: true, force: true });
+  }
 });
 
 // ─── downloadAndProcessTelegramFile ──────────────────────────────────────────
 
 describe("downloadAndProcessTelegramFile", () => {
-  it("uploads documents into the Open Terminal workspace when terminal is configured", async () => {
+  it("saves documents into the user's workspace and returns that path", async () => {
     const content = Buffer.from("pdf-bytes-here");
-    mockIsConfigured.mockReturnValue(true);
-    mockUploadFile.mockResolvedValue({
-      path: "/home/u12345678/telegram_files/report.pdf",
-      size: content.length,
-    });
     stubDownload(new Uint8Array(content));
 
     const bot = makeBot("files/123/report.pdf", "123");
@@ -92,43 +84,19 @@ describe("downloadAndProcessTelegramFile", () => {
       fileName: "report.pdf",
     });
 
-    // The document must be uploaded to the container (not saved on the host)
-    expect(mockUploadFile).toHaveBeenCalledTimes(1);
-    const [fileName, uploadedBuffer, options] = mockUploadFile.mock.calls[0]!;
-    expect(fileName).toBe("report.pdf");
-    expect(Buffer.from(uploadedBuffer as Uint8Array).equals(content)).toBe(true);
-    expect(options).toEqual({ directory: "telegram_files", userId: "user-1" });
-
-    // The prompt path is the container-absolute path the agent can reach
-    expect(result.filePath).toBe("/home/u12345678/telegram_files/report.pdf");
+    const expected = path.join(workspaceOf("user-1"), "telegram_files", "report.pdf");
+    expect(result.filePath).toBe(expected);
     expect(result.size).toBe(content.length);
     expect(result.imageData).toBeUndefined();
+
+    const written = await fs.readFile(expected);
+    expect(written.equals(content)).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
       "https://api.telegram.org/file/botTEST:TOKEN/files/123/report.pdf",
     );
   });
 
-  it("saves documents to the local uploads directory when terminal is not configured", async () => {
-    const content = Buffer.from("local document content");
-    mockIsConfigured.mockReturnValue(false);
-    stubDownload(new Uint8Array(content));
-
-    const bot = makeBot("files/456/notes.txt", "456");
-    const result = await filesModule.downloadAndProcessTelegramFile(bot, "user-2", {
-      fileId: "456",
-      mimeType: "text/plain",
-      fileName: "notes.txt",
-    });
-
-    expect(mockUploadFile).not.toHaveBeenCalled();
-    expect(result.filePath).toBe(path.join(tmpRoot, "user-2", "telegram_files", "notes.txt"));
-    expect(result.size).toBe(content.length);
-
-    const written = await fs.readFile(path.join(tmpRoot, "user-2", "telegram_files", "notes.txt"));
-    expect(written.equals(content)).toBe(true);
-  });
-
-  it("keeps per-user isolation in the local uploads directory", async () => {
+  it("keeps each user's document in their own directory", async () => {
     stubDownload(new Uint8Array(Buffer.from("other user's file")));
 
     const bot = makeBot("files/789/a.txt", "789");
@@ -138,18 +106,16 @@ describe("downloadAndProcessTelegramFile", () => {
       fileName: "a.txt",
     });
 
-    // The file must live under user-9's directory, not another user's
-    expect(result.filePath).toBe(path.join(tmpRoot, "user-9", "telegram_files", "a.txt"));
-    const written = await fs.readFile(path.join(tmpRoot, "user-9", "telegram_files", "a.txt"));
+    expect(result.filePath).toBe(path.join(workspaceOf("user-9"), "telegram_files", "a.txt"));
+    const written = await fs.readFile(result.filePath!);
     expect(written.toString()).toBe("other user's file");
     await expect(
-      fs.access(path.join(tmpRoot, "user-2", "telegram_files", "a.txt")),
+      fs.access(path.join(workspaceOf("user-1"), "telegram_files", "a.txt")),
     ).rejects.toThrow();
   });
 
   it("returns base64 image data for image MIME types without writing or uploading a file", async () => {
     const content = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-    mockIsConfigured.mockReturnValue(true); // even with terminal: images go to the model, not disk
     stubDownload(content);
 
     const bot = makeBot("files/photo.jpg", "p1");
@@ -166,8 +132,7 @@ describe("downloadAndProcessTelegramFile", () => {
     });
     expect(result.filePath).toBeUndefined();
     expect(result.size).toBeUndefined();
-    expect(mockUploadFile).not.toHaveBeenCalled();
-    await expect(fs.access(path.join(tmpRoot, "user-1", "telegram_files"))).rejects.toThrow();
+    await expect(fs.access(path.join(workspaceOf("user-1"), "telegram_files"))).rejects.toThrow();
   });
 
   it("sanitizes path traversal from filenames before saving", async () => {
@@ -183,9 +148,11 @@ describe("downloadAndProcessTelegramFile", () => {
     // Slashes are replaced, so the file stays inside the user directory
     expect(path.basename(result.filePath!)).toBe(".._.._etc_passwd");
     expect(result.filePath).toBe(
-      path.join(tmpRoot, "user-1", "telegram_files", ".._.._etc_passwd"),
+      path.join(workspaceOf("user-1"), "telegram_files", ".._.._etc_passwd"),
     );
-    await expect(fs.readFile(path.join(tmpRoot, "user-1", ".._.._etc_passwd"))).rejects.toThrow();
+    await expect(
+      fs.readFile(path.join(workspaceOf("user-1"), ".._.._etc_passwd")),
+    ).rejects.toThrow();
   });
 
   it("defaults to a generated name and octet-stream MIME when metadata is missing", async () => {
@@ -212,7 +179,7 @@ describe("downloadAndProcessTelegramFile", () => {
         fileName: "big.bin",
       }),
     ).rejects.toThrow(/too large/);
-    expect(mockUploadFile).not.toHaveBeenCalled();
+    await expect(fs.access(workspaceOf("user-1"))).rejects.toThrow();
   });
 
   it("throws a descriptive error when the Telegram CDN download fails", async () => {
@@ -228,10 +195,10 @@ describe("downloadAndProcessTelegramFile", () => {
     ).rejects.toThrow("Failed to download Telegram file: 404 Not Found");
   });
 
-  it("propagates Open Terminal upload failures", async () => {
+  it("propagates a workspace write failure instead of claiming success", async () => {
     stubDownload(new Uint8Array(Buffer.from("data")));
-    mockIsConfigured.mockReturnValue(true);
-    mockUploadFile.mockRejectedValue(new Error("Open Terminal error 500: boom"));
+    // A file where the workspace directory should be: every write under it fails.
+    await fs.writeFile(workspaceOf("user-1"), "not a directory");
 
     const bot = makeBot("files/1.pdf", "1");
     await expect(
@@ -240,14 +207,14 @@ describe("downloadAndProcessTelegramFile", () => {
         mimeType: "application/pdf",
         fileName: "1.pdf",
       }),
-    ).rejects.toThrow("Open Terminal error 500: boom");
+    ).rejects.toThrow(/telegram_files/);
   });
 });
 
 // ─── buildFilePromptText ─────────────────────────────────────────────────────
 
 describe("buildFilePromptText", () => {
-  it("points the agent at the container path for documents", () => {
+  it("points the agent at the workspace path for documents", () => {
     const text = filesModule.buildFilePromptText({
       filePath: "/home/u12345678/telegram_files/contract.pdf",
       size: 1234,
@@ -334,16 +301,13 @@ describe("sendSharedFileToTelegram", () => {
   it("reads the file out of the workspace and uploads it to the chat", async () => {
     await filesModule.sendSharedFileToTelegram({
       userId: "user-1",
-      sessionId: "sess-1",
       encryptedToken: "tok",
       telegramChatId: BigInt(119075844),
       filePath: "reports/q3.pdf",
       description: "Quarterly numbers",
     });
 
-    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "reports/q3.pdf", {
-      sessionId: "sess-1",
-    });
+    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "reports/q3.pdf");
     expect(mockSendTelegramFile).toHaveBeenCalledWith("tok", BigInt(119075844), file, {
       caption: "Quarterly numbers",
     });
@@ -352,7 +316,6 @@ describe("sendSharedFileToTelegram", () => {
   it("captions the file with its own name when the agent gave no description", async () => {
     await filesModule.sendSharedFileToTelegram({
       userId: "user-1",
-      sessionId: "sess-1",
       encryptedToken: "tok",
       telegramChatId: BigInt(1),
       filePath: "reports/q3.pdf",
@@ -369,7 +332,6 @@ describe("sendSharedFileToTelegram", () => {
     await expect(
       filesModule.sendSharedFileToTelegram({
         userId: "user-1",
-        sessionId: "sess-1",
         encryptedToken: "tok",
         telegramChatId: BigInt(1),
         filePath: "reports/q3.pdf",
@@ -389,7 +351,6 @@ describe("sendSharedFileToTelegram", () => {
     await expect(
       filesModule.sendSharedFileToTelegram({
         userId: "user-1",
-        sessionId: "sess-1",
         encryptedToken: "tok",
         telegramChatId: BigInt(1),
         filePath: "reports/q3.pdf",

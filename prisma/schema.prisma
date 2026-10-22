@@ -42,7 +42,7 @@ model User {
   scriptWatchers     ScriptWatcher[]
   telegramLink       TelegramLink?
   telegramLinkCodes  TelegramLinkCode[]
-  githubAccounts     GitHubAccount[]
+  sandboxEnvVars     SandboxEnvVar[]
   infraMachines      InfraMachine[]
   mcpServers         McpServer[]
   mcpOAuthCredentials McpOAuthCredential[]
@@ -872,21 +872,22 @@ model TelegramLinkCode {
 }
 
 /// GitHub integration — stores a user's GitHub personal access token.
-model GitHubAccount {
-  id              String   @id @default(cuid())
-  userId          String
-  encryptedToken  String   @db.Text // encrypted personal access token
-  enabled         Boolean  @default(true)
-  // Metadata from GitHub API (GET /user)
-  username        String?  // GitHub login
-  avatarUrl       String?  // avatar URL
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+/// A variable handed to the identity's commands (GH_TOKEN, ...).
+///
+/// Encrypted at rest, unique per user+name. Values never reach a model, a
+/// prompt, a log line or a transcript. only names do.
+model SandboxEnvVar {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String   @db.VarChar(64)
+  encryptedValue String   @db.Text
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@unique([userId]) // one account per user
+  @@unique([userId, name])
   @@index([userId])
-  @@map("GitHubAccount")
+  @@map("SandboxEnvVar")
 }
 
 // ─── Infrastructure Management ─────────────────────────────────
@@ -998,11 +999,10 @@ model Council {
   maxTokens          Int?
   maxCostUsd         Float?
 
-  /// 8-char key whose Open Terminal account is this council's file sandbox.
-  /// kernel-enforced (the home is chmod 2770), so members cannot read the
-  /// user's home directory and the user cannot read the sandbox.
+  /// 8-char key naming this council's workspace: the `council-<key>` directory
+  /// in the workspaces volume, and the container that mounts it.
   sandboxKey   String  @unique
-  /// Whether the sandbox home directory has been created in the container.
+  /// Whether the workspace directory has been created.
   sandboxReady Boolean @default(false)
 
   /// Monotonic room message counter — the ordering members read by.
