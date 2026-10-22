@@ -60,11 +60,14 @@ export type PropertyScope = "user" | "admin";
 /**
  * What a change invalidates.
  *
- * - `none`    . read fresh on the next request / client render.
- * - `sessions`. baked into a pooled agent session (model, tools, exposure,
- *   system prompt), so the user's pooled sessions must be evicted to rebuild.
+ * - `none`        . read fresh on the next request / client render.
+ * - `sessions`    . baked into a pooled agent session (model, tools, exposure,
+ *   system prompt), so the acting user's pooled sessions must be evicted to
+ *   rebuild.
+ * - `allSessions` . read by every tenant's session (the global plugins), so
+ *   every pooled session is evicted.
  */
-export type PropertyApply = "none" | "sessions";
+export type PropertyApply = "none" | "sessions" | "allSessions";
 
 type AppSettingsUpdate = Prisma.AppSettingsUncheckedUpdateInput;
 type AdminSettingsUpdate = Prisma.AdminSettingsUncheckedUpdateInput;
@@ -210,6 +213,7 @@ const GROUP = {
   tools: "tools",
   sidebar: "sidebar",
   admin: "admin",
+  plugins: "plugins",
 } as const;
 
 // ─── Hand-written properties ─────────────────────────────────────────────────
@@ -495,6 +499,21 @@ const providerModelsSchema = z.record(
 /** Feature switches keyed by feature name; unknown names are refused. */
 const featureOverridesSchema = z.partialRecord(z.enum(FEATURES), z.boolean());
 
+const pluginStatesSchema = z.record(z.string().min(1), z.object({ enabled: z.boolean() }).strict());
+
+/** `piPluginStates` as a plain map: an enabled plugin is stored as absence. */
+export function normalizePluginStates(value: unknown): Record<string, { enabled: boolean }> {
+  const source = asRecord(value);
+  const result: Record<string, { enabled: boolean }> = {};
+  for (const [id, entry] of Object.entries(source)) {
+    if (!id.trim()) continue;
+    const { enabled } = asRecord(entry);
+    if (typeof enabled !== "boolean" || enabled) continue;
+    result[id] = { enabled };
+  }
+  return result;
+}
+
 const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
   {
     key: "admin.signupsEnabled",
@@ -554,6 +573,45 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     write: (_row, value) => ({
       featureDefaults: orDbNull(normalizeFeatureOverrides(value)),
     }),
+  },
+  {
+    key: "admin.piPluginsEnabled",
+    group: GROUP.plugins,
+    label: "Global plugins enabled",
+    description:
+      "Load the plugins in the plugin directory into every session. Plugins run in this process with the server's permissions and can read every account's data, so only reviewed code belongs there.",
+    columns: ["piPluginsEnabled"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: z.boolean(),
+    read: (row) => row.piPluginsEnabled,
+    write: (_row, value) => ({ piPluginsEnabled: Boolean(value) }),
+  },
+  {
+    key: "admin.piPluginsDir",
+    group: GROUP.plugins,
+    label: "Plugin directory",
+    description:
+      'Directory scanned for global Pi plugins. A plugin is a folder with an index.ts, an extensions/ folder, or a package.json "pi.extensions" list. Set to null to use PI_GLOBAL_PLUGINS_DIR, then <uploads>/pi_plugins.',
+    columns: ["piPluginsDir"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: z.string(),
+    read: (row) => row.piPluginsDir,
+    write: (_row, value) => ({ piPluginsDir: value === null ? "" : String(value).trim() }),
+  },
+  {
+    key: "admin.piPluginStates",
+    group: GROUP.plugins,
+    label: "Plugin switches",
+    description:
+      'Per-plugin switches, keyed by plugin folder name: { "my-plugin": { "enabled": false } }. A plugin absent from the map is on while global plugins are on.',
+    columns: ["piPluginStates"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: pluginStatesSchema,
+    read: (row) => normalizePluginStates(row.piPluginStates),
+    write: (_row, value) => ({ piPluginStates: orDbNull(normalizePluginStates(value)) }),
   },
 ];
 

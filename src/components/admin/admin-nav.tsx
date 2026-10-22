@@ -16,6 +16,7 @@ import {
   Settings,
   KeyRound,
   ArrowLeft,
+  Puzzle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -32,6 +33,7 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/models", label: "Models", icon: Bot, action: "models" },
   { href: "/admin/users", label: "Users", icon: Users, action: "users" },
   { href: "/admin/roles", label: "Roles", icon: KeyRound, action: "roles" },
+  { href: "/admin/plugins", label: "Plugins", icon: Puzzle, action: "plugins" },
   { href: "/admin/settings", label: "Settings", icon: Settings, action: "settings" },
 ];
 

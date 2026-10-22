@@ -249,6 +249,22 @@ export async function evictUserSessions(userId: string): Promise<number> {
 }
 
 /**
+ * Drop every pooled session and dispose its agents.
+ *
+ * A global setting (the plugin set) is baked into every session Saale builds,
+ * so the whole pool has to be rebuilt. Sessions with a run in flight are left
+ * alone, as in `evictUserSessions`.
+ */
+export async function evictAllSessions(): Promise<number> {
+  const keys = [...pool.keys()].filter((key) => !pool.get(key)?.promptInFlight);
+
+  for (const key of keys) {
+    await remove(key);
+  }
+  return keys.length;
+}
+
+/**
  * Clear the entire pool and dispose all agents (exported for testing).
  */
 export async function clearPool(): Promise<void> {

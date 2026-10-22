@@ -23,6 +23,7 @@ export const ADMIN_ACTIONS = [
   "models",
   "providers",
   "settings",
+  "plugins",
   "telegram",
 ] as const;
 

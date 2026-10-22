@@ -14,7 +14,7 @@
 
 import { prisma } from "@/lib/db";
 import { Prisma, type AdminSettings, type AppSettings } from "@prisma/client";
-import { evictUserSessions } from "@/lib/pi/agent-pool";
+import { evictAllSessions, evictUserSessions } from "@/lib/pi/agent-pool";
 import { isAdminUser } from "@/lib/permissions/check";
 import { normalizeFeatureOverrides, type FeatureOverrides } from "@/lib/permissions/features";
 import {
@@ -194,9 +194,10 @@ export async function setSetting(
       where: { id: "global" },
       data: property.write(row, value),
     });
-    // Global model settings feed the model runtime, so the acting admin's own
-    // pooled sessions are rebuilt; other users pick the change up on rebuild.
-    if (property.apply === "sessions") await evictUserSessions(userId);
+    // A global setting feeds every tenant's session (the global plugins), or at
+    // least the acting admin's own pooled sessions.
+    if (property.apply === "allSessions") await evictAllSessions();
+    else if (property.apply === "sessions") await evictUserSessions(userId);
     return adminView(property, updated);
   }
 
@@ -294,7 +295,8 @@ export async function applyAdminSettingsPatch(
   const candidate = { ...current, ...picked } as AdminSettings;
   const update: Record<string, unknown> = {};
   const working = { ...candidate } as AdminSettings;
-  let evicts = false;
+  let evictsUser = false;
+  let evictsAll = false;
 
   for (const property of propertiesForColumns("admin", Object.keys(picked))) {
     const leaf = property.read(candidate);
@@ -302,11 +304,15 @@ export async function applyAdminSettingsPatch(
     const written = property.write(working, leaf ?? null);
     Object.assign(update, written);
     Object.assign(working, written);
-    if (property.apply === "sessions" && !sameValue(property.read(current), leaf)) evicts = true;
+    if (property.apply === "none") continue;
+    if (sameValue(property.read(current), leaf)) continue;
+    if (property.apply === "allSessions") evictsAll = true;
+    else evictsUser = true;
   }
 
   const settings = await prisma.adminSettings.update({ where: { id: "global" }, data: update });
-  if (evicts) await evictUserSessions(actorUserId);
+  if (evictsAll) await evictAllSessions();
+  else if (evictsUser) await evictUserSessions(actorUserId);
   return settings;
 }
 

@@ -7,6 +7,7 @@ import {
   get,
   remove,
   evictIdle,
+  evictAllSessions,
   getDispatcher,
   getPoolSize,
   getPoolKeys,
@@ -365,6 +366,32 @@ describe("agent-pool", () => {
       expect(mockSession.dispose).toHaveBeenCalled();
       // No Redis buffer cleanup on eviction (buffer is generation-scoped).
       expect(mockRedisDel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("evictAllSessions", () => {
+    it("drops every pooled session and disposes its agent", async () => {
+      const first = createMockAgentSession();
+      const second = createMockAgentSession();
+      await createAndPool("user-1:session-a", async () => ({
+        session: asAgentSession(first),
+        sessionDir: "/tmp/a",
+      }));
+      await createAndPool("user-2:session-b", async () => ({
+        session: asAgentSession(second),
+        sessionDir: "/tmp/b",
+      }));
+
+      const evicted = await evictAllSessions();
+
+      expect(evicted).toBe(2);
+      expect(getPoolSize()).toBe(0);
+      expect(first.dispose).toHaveBeenCalled();
+      expect(second.dispose).toHaveBeenCalled();
+    });
+
+    it("is a no-op on an empty pool", async () => {
+      expect(await evictAllSessions()).toBe(0);
     });
   });
 
