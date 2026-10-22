@@ -49,7 +49,8 @@ web / worker                          sandbox-exec                    sandbox im
   `<volume>/council-<sandboxKey>/`. Mounted at `/workspaces` in web and worker,
   so the app path and the container path are the same string.
 - **`sandbox-exec`**, a Node service built from this repo. It holds the Docker
-  socket and owns every container.
+  socket and owns every container. It mounts the volume too, so it can create an
+  identity's directory before Docker uses it as a mount subpath.
 - **`saale-sandbox`**, the tenant image: the package list `OPEN_TERMINAL_PACKAGES`
   carries today, plus node and npm, an `agent` account, and `$HOME/.local/bin`
   on `PATH`.
@@ -67,24 +68,25 @@ New:
   `council-<key>`, matching `/^(user|council)-[A-Za-z0-9_-]{1,64}$/`. It is the
   only handle a caller passes.
 - `src/lib/sandbox/config.ts` — `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`,
-  `SANDBOX_NETWORK`, `SANDBOX_USER`, `SANDBOX_UID`, `SANDBOX_GID`,
-  `SANDBOX_MEMORY`, `SANDBOX_PIDS`, `SANDBOX_CPUS`, `SANDBOX_IDLE_MINUTES`,
-  `SANDBOX_CONTAINER_TTL_DAYS`, `SANDBOX_URL`, `SANDBOX_API_KEY`.
+  `SANDBOX_NETWORK`, `SANDBOX_WORKSPACES_DIR`, `SANDBOX_USER`, `SANDBOX_UID`,
+  `SANDBOX_GID`, `SANDBOX_MEMORY`, `SANDBOX_PIDS`, `SANDBOX_CPUS`,
+  `SANDBOX_IDLE_MINUTES`, `SANDBOX_CONTAINER_TTL_DAYS`, `SANDBOX_URL`,
+  `SANDBOX_API_KEY`, `SANDBOX_EXEC_PORT`.
 - `src/lib/sandbox/spec.ts` — `containerSpec(identity, config)` returning the
   `dockerode` create options. Pure, so the isolation rules are testable.
 
 Tests: `__tests__/lib/sandbox/spec.test.ts` asserts one mount per identity, its
 `VolumeOptions.Subpath` equal to the identity, a `User` on both the container and
-every exec, the sandbox network, `CapDrop: ["ALL"]`, and that a malformed
-identity throws.
+every exec, the sandbox network, `CapDrop: ["ALL"]` under `SANDBOX_USER=agent`,
+and that a malformed identity throws.
 
 ### Step 2 — the `sandbox-exec` service
 
 New:
 
 - `src/sandbox/server.ts` — `node:http`, no framework. `GET /health`,
-  `POST /exec`, `DELETE /exec/:id`. `Authorization: Bearer <SANDBOX_API_KEY>`,
-  identity in `X-Identity`.
+  `POST /exec`, `DELETE /exec/:id`, `DELETE /container/:identity`.
+  `Authorization: Bearer <SANDBOX_API_KEY>`, identity in `X-Identity`.
 - `src/sandbox/containers.ts` — `dockerode` wrapper: `ensure(identity)`,
   `exec(identity, { command, cwd, env, timeoutSeconds })`, `kill(execId)`,
   `remove(identity)`, `sweep()`, `reapIdle()`.
@@ -104,6 +106,9 @@ AttachStderr })`, started with `{ hijack: true, stdin: true }`. The command is
   (`sudo -u <account> bash -c`). The stream is demultiplexed with
   `docker.modem.demuxStream` into the two SSE lanes, and `exec.inspect()` supplies
   the exit code once it ends.
+- The response head is written only once the container is up and the exec has
+  started, so a refused working directory or an image that will not start is a
+  status code instead of a stream that ends without an exit event.
 - `POST /exec` answers `text/event-stream`:
   `event: started` (the exec id), then `event: chunk` with
   `{ stream: "stdout"|"stderr", data: <base64> }`, then
@@ -140,9 +145,10 @@ Wiring:
   `saale_workspaces` mounted at `/workspaces` in web and worker, network
   `saale-sandbox`.
 
-Tests: `__tests__/lib/sandbox/containers.test.ts` with an injected fake docker
-handle (create options, reuse of a stopped container, demuxed chunks, exit code,
-group kill on abort, sweep by label).
+Tests: `__tests__/sandbox/containers.test.ts` with an injected fake docker handle
+(create options, reuse of a stopped container, demuxed chunks, exit code, group
+kill on abort, sweep by label, idle stop, TTL removal), `mount-check.test.ts` for
+the kernel-view assertion, and `server.test.ts` for the HTTP surface.
 
 ### Step 3 — client and Pi operations
 
@@ -150,11 +156,14 @@ New:
 
 - `src/lib/sandbox/client.ts` — `isConfigured()`, `exec(identity, options)` as an
   async iterable of events, `kill(execId)`, `remove(identity)`, `health()`.
-- `src/lib/sandbox/operations.ts` — the four Pi operation objects:
+- `src/lib/sandbox/operations.ts` — `createSandboxOperations`, the four Pi
+  operation objects:
   - `bash.exec` forwards `onData`, `signal` and `timeout` to `client.exec`, and
     maps a signal to `kill`;
-  - `read`, `write`, `edit` use `node:fs` against `identityPath(identity)`, with
-    `resolveWithinRoot` on every argument.
+  - `read`, `write`, `edit` go through `createLocalFileProvider` rooted at
+    `identityPath(identity)`, so a path is confined textually and then resolved
+    through `realpath`. A symlink a tenant creates cannot reach another
+    tenant's directory, which matters because the app sees the whole volume.
 
 Changed:
 
@@ -173,15 +182,16 @@ auth header, error mapping).
 New:
 
 - `src/lib/sandbox/workspace.ts` — `identityPath(identity)`,
-  `ensureWorkspace(identity)` (`mkdir -p`, owned by the exec user, mode `0770`),
-  `removeWorkspace(identity)`, `writeOwned(path, data)` (write, then set the
-  owner to the exec user, so a file the browser uploads is editable in bash).
+  `userWorkspacePath(userId)`, `ensureWorkspace(identity)` (`mkdir -p`, mode
+  `0770`), `removeWorkspace(identity)`, `writeOwned(path, data)` (write, then
+  hand the file to the exec user), `writeWorkspaceFile(userId, relative, data)`.
+  Ownership follows `SANDBOX_USER`: nothing to set while commands run as root.
 
 Changed:
 
 - `src/lib/files/targets.ts` — the user target is the workspace directory, served
-  by `createLocalFileProvider`. Its `realpath` hardening already covers symlinks a
-  tenant points outside.
+  by `createLocalFileProvider`, which takes the owner for anything it creates.
+  Its `realpath` hardening already covers symlinks a tenant points outside.
 - `src/lib/council/files.ts` — same, against `council-<sandboxKey>`.
 - `src/lib/council/sandbox.ts` — tools bound to the council identity.
 - `src/lib/file-attachment.ts`, `src/lib/telegram/files.ts` — `writeOwned` under
@@ -200,8 +210,10 @@ The seven `/api/files/*` routes, `src/lib/files/zip.ts` and
 - `src/lib/council/accounts.ts` — `deriveSandboxKey` stays; `sandboxIdentity`
   returns `{ id, dir, path }` from `councilIdentity`.
 - `src/lib/council/sandbox.ts` — `ensureCouncilSandbox` becomes
-  `ensureWorkspace(identity)` and a container-shape assertion; `destroyCouncilSandbox`
-  becomes `removeWorkspace(identity)` plus `client.remove(identity)`.
+  `ensureWorkspace(identity)` plus a `client.health()` preflight;
+  `destroyCouncilSandbox` becomes `client.removeContainer(identity)` plus
+  `removeWorkspace(identity)`. The container-shape assertion is the service's
+  mount check, which runs when the container is created.
 - Deleted: `src/lib/council/commands.ts`, `containerAccountExists`,
   `isSafeAccountName`, the `getent`/`userdel`/`gpasswd` paths, and the retry that
   re-provisioned an account the container had cached.
@@ -219,8 +231,8 @@ New:
   `.pi/skills/database-migrations`.
 - `src/lib/sandbox/env.ts` — `resolveSandboxEnv(userId)` returning the map for
   one exec (see "Environment variables").
-- `src/app/api/settings/sandbox-env/route.ts` — list names, set a value, delete a
-  name. A read returns names only.
+- `src/app/api/settings/sandbox-env/route.ts` — `GET` names, `PUT { name, value }`,
+  `DELETE ?name=`. Every response carries names only.
 - `src/components/integrations/sandbox-env-card.tsx` — the panel, modelled on
   `src/components/integrations/github-card.tsx`. Read
   `.pi/skills/saale-design/SKILL.md` before writing it.
@@ -258,7 +270,9 @@ stop past the idle window and a removal past the TTL.
 - `docker-compose.yml`: remove the `open-terminal` service and volume; add
   `saale_workspaces`, `sandbox-exec`, `saale-sandbox` and the sandbox network.
 - `.env.example`, `README.md`, `.pi/skills/pi-agent-usage/SKILL.md`.
-- `scripts/migrate-workspaces.mjs`, run once before the new stack starts.
+- `scripts/migrate-workspaces.mjs`, run once before the new stack starts. It reads
+  the ids from Postgres, copies each `/home/<account>` with one throwaway
+  container over both volumes, and prints per-identity file and byte counts.
 
 ### Step 9 — retire the env-var shaped integration
 
@@ -279,13 +293,11 @@ Deleted:
 - `model GitHubAccount` and the `User.githubAccounts` relation, through the
   migration skill.
 
-Migration of existing tokens (they are re-entered by hand otherwise):
-
-`scripts/migrate-github-token.mjs` reads each `GitHubAccount` row, skips
-`enabled = false`, and writes a `SandboxEnvVar` row for `GH_TOKEN` with the same
-plaintext re-encrypted. `encrypt`/`decrypt` come from `@/lib/crypto`, so it runs
-as a one-off script against `DATABASE_URL` and `ENCRYPTION_KEY`. Print a count of
-migrated and skipped rows, then drop the table.
+Existing tokens move in the migration itself: `GitHubAccount.encryptedToken` is
+the same AES-256-GCM cipher under the same `ENCRYPTION_KEY`, so the SQL copies the
+ciphertext into a `GH_TOKEN` row (skipping `enabled = false`, matching the old
+injection rule) and drops the table. One deploy, no script to run first, and no
+window in which a token exists only in a backup.
 
 Lost with the card: the token check against `GET /user` and the connected login
 and avatar. The env var editor lists `GH_TOKEN` like any other name, and the
@@ -456,14 +468,14 @@ must survive is either in the image (tier 1) or installed into `$HOME`
 
 ## Config
 
-| Was                          | Becomes                                                                                                                                                                    |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OPEN_TERMINAL_URL`          | `SANDBOX_URL`                                                                                                                                                              |
-| `OPEN_TERMINAL_API_KEY`      | `SANDBOX_API_KEY`                                                                                                                                                          |
-| `OPEN_TERMINAL_MULTI_USER`   | (dropped)                                                                                                                                                                  |
-| `OPEN_TERMINAL_PACKAGES`     | `Dockerfile.sandbox`                                                                                                                                                       |
-| `OPEN_TERMINAL_PIP_PACKAGES` | `Dockerfile.sandbox`                                                                                                                                                       |
-| —                            | `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`, `SANDBOX_NETWORK`, `SANDBOX_USER`, `SANDBOX_UID`, `SANDBOX_GID`, limits, `SANDBOX_IDLE_MINUTES`, `SANDBOX_CONTAINER_TTL_DAYS` |
+| Was                          | Becomes                                                                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OPEN_TERMINAL_URL`          | `SANDBOX_URL`                                                                                                                                                                                        |
+| `OPEN_TERMINAL_API_KEY`      | `SANDBOX_API_KEY`                                                                                                                                                                                    |
+| `OPEN_TERMINAL_MULTI_USER`   | (dropped)                                                                                                                                                                                            |
+| `OPEN_TERMINAL_PACKAGES`     | `Dockerfile.sandbox`                                                                                                                                                                                 |
+| `OPEN_TERMINAL_PIP_PACKAGES` | `Dockerfile.sandbox`                                                                                                                                                                                 |
+| —                            | `SANDBOX_VOLUME`, `SANDBOX_CONTAINER_IMAGE`, `SANDBOX_NETWORK`, `SANDBOX_WORKSPACES_DIR`, `SANDBOX_USER`, `SANDBOX_UID`, `SANDBOX_GID`, limits, `SANDBOX_IDLE_MINUTES`, `SANDBOX_CONTAINER_TTL_DAYS` |
 
 App mounts `<volume>:/workspaces`. With `SANDBOX_URL` unset, files work from the
 same volume and `bash` is not offered.
@@ -481,6 +493,7 @@ services:
     environment:
       - SANDBOX_URL=http://sandbox-exec:8100
       - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/workspaces
 
   worker:
     volumes:
@@ -488,6 +501,7 @@ services:
     environment:
       - SANDBOX_URL=http://sandbox-exec:8100
       - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/workspaces
 
   sandbox-exec:
     build:
@@ -497,10 +511,17 @@ services:
     container_name: saale-sandbox-exec
     restart: unless-stopped
     command: ["node", "sandbox.mjs"]
+    networks:
+      - default
+      - sandbox
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # The service creates an identity's directory before Docker can use it as
+      # a mount subpath. Tenant containers never see the volume root.
+      - saale_workspaces:/workspaces
     environment:
       - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/workspaces
       - SANDBOX_VOLUME=saale_workspaces
       - SANDBOX_NETWORK=saale-sandbox
       - SANDBOX_CONTAINER_IMAGE=saale-sandbox
@@ -577,7 +598,7 @@ node scripts/migrate-workspaces.mjs
 # 3. cut over
 docker compose down                 # keeps volumes; never pass -v
 docker compose --profile image build
-docker compose up -d
+docker compose up -d                # deploys the SandboxEnvVar migration too
 
 # 4. smoke: browse a workspace, run a command, open a file uploaded before
 ```

@@ -28,6 +28,7 @@ services:
       - "3630:3000"
     volumes:
       - uploads_data:/app/uploads
+      - saale_workspaces:/workspaces
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
@@ -37,8 +38,12 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
       - SEARXNG_URL=http://searxng:8080
-      - OPEN_TERMINAL_URL=http://open-terminal:8000
-      - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
+      - SANDBOX_URL=http://sandbox-exec:8100
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/workspaces
+      - SANDBOX_USER=${SANDBOX_USER:-root}
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
       - APP_URL=${APP_URL:-}
       - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
@@ -52,8 +57,6 @@ services:
       redis:
         condition: service_healthy
       searxng:
-        condition: service_healthy
-      open-terminal:
         condition: service_healthy
     command: ${WEB_COMMAND:-}
     healthcheck:
@@ -85,6 +88,7 @@ services:
     restart: unless-stopped
     volumes:
       - uploads_data:/app/uploads
+      - saale_workspaces:/workspaces
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
@@ -94,8 +98,12 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
       - UPLOADS_DIR=/app/uploads
       - SEARXNG_URL=http://searxng:8080
-      - OPEN_TERMINAL_URL=http://open-terminal:8000
-      - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
+      - SANDBOX_URL=http://sandbox-exec:8100
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/workspaces
+      - SANDBOX_USER=${SANDBOX_USER:-root}
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
       - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
       - WORKER_APP_URL=http://web:3000
@@ -156,26 +164,68 @@ services:
       retries: 5
       start_period: 30s
 
-  open-terminal:
-    image: ghcr.io/open-webui/open-terminal:latest
-    container_name: saale-open-terminal
+  # Owns every tenant container through the Docker socket. The socket is the
+  # reason this is a separate service: web and worker never hold it.
+  sandbox-exec:
+    image: saale-worker
+    build:
+      context: .
+      target: production-worker
+    container_name: saale-sandbox-exec
     restart: unless-stopped
-    environment:
-      - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY:?Set OPEN_TERMINAL_API_KEY}
-      - OPEN_TERMINAL_MULTI_USER=true
-      - OPEN_TERMINAL_PACKAGES=gh chromium libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 libxshmfence1 ffmpeg imagemagick libssl-dev libffi-dev python3-dev build-essential jq curl wget ripgrep fd-find silversearcher-ag
-      - OPEN_TERMINAL_PIP_PACKAGES=yt-dlp
+    command: ["node", "sandbox.mjs"]
+    # Joining the sandbox network makes Compose create it before this starts;
+    # the tenant containers attach to it by name.
+    networks:
+      - default
+      - sandbox
     volumes:
-      - open-terminal-data:/home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - saale_workspaces:/workspaces
+    environment:
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/workspaces
+      - SANDBOX_VOLUME=saale_workspaces
+      - SANDBOX_NETWORK=saale-sandbox
+      - SANDBOX_CONTAINER_IMAGE=saale-sandbox
+      - SANDBOX_USER=${SANDBOX_USER:-root}
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
+      - SANDBOX_IDLE_MINUTES=${SANDBOX_IDLE_MINUTES:-60}
+      - SANDBOX_CONTAINER_TTL_DAYS=${SANDBOX_CONTAINER_TTL_DAYS:-7}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8100/health"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 20s
+
+  # Built, never started: the image tenant containers run. Compose skips
+  # profiled services when building, so build it by name:
+  #   docker compose build sandbox-image
+  sandbox-image:
+    image: saale-sandbox
+    profiles: ["image"]
+    build:
+      context: .
+      dockerfile: Dockerfile.sandbox
+    command: ["true"]
 
 volumes:
   postgres_data:
   redis_data:
   uploads_data:
-  open-terminal-data:
+  # User data. Created by hand (docker volume create saale_workspaces) and
+  # external so `docker compose down -v` cannot delete it.
+  saale_workspaces:
+    name: saale_workspaces
+    external: true
+
+networks:
+  default:
+  # Tenant containers join this one: internet, and nothing else in the project.
+  sandbox:
+    name: saale-sandbox

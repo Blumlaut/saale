@@ -526,19 +526,16 @@ message following the old conversation.
 
 ## Custom BashOperations (Open Terminal)
 
-`src/lib/terminal/operations.ts` implements Pi's `BashOperations` against the
-Open Terminal REST API. The tool renders `exec` errors as tool output, so
-signal failures through the SDK's conventions:
+`src/lib/sandbox/operations.ts` implements Pi's `BashOperations` against the
+`sandbox-exec` service. The tool renders `exec` errors as tool output, so signal
+failures through the SDK's conventions:
 
 - **timeout** → throw `new Error(\`timeout:${seconds}\`)` → rendered as "Command timed out after N seconds" (output included)
 - **abort** → throw `new Error("aborted")` → rendered as "Command aborted" (output included)
-- **no exit code** (404 during status poll) → return `{ exitCode: null }` → "Command terminated without an exit code"
-
-Never swallow a `killCommand` failure — log it (repo rule: no swallowed errors).
+- **no exit code** → return `{ exitCode }` from the service's exit event
 
 **Never forward the `env` the SDK hands `exec()`.** It is the _server's_
 environment (`resolveSpawnContext` copies `process.env`), so passing it on ships
-`DATABASE_URL`, `ENCRYPTION_KEY` and `OPEN_TERMINAL_API_KEY` into the container,
-where any command the model runs can read them. Open Terminal merges what you
-send into the container's own environment, so send only `extraEnv` (GH_TOKEN)
-and the container's PATH/HOME stay intact.
+`DATABASE_URL`, `ENCRYPTION_KEY` and `SANDBOX_API_KEY` into the container, where
+any command the model runs can read them. The sandbox operations pass only the
+user's own variables (`resolveSandboxEnv`) as `docker exec`'s environment.
