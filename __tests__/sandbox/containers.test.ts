@@ -61,6 +61,8 @@ class FakeContainer implements ContainerHandle {
   running = false;
   removed = false;
   startedCount = 0;
+  /** The next `start` rejects with this, the way the daemon reports a race. */
+  startError: (Error & { statusCode?: number }) | null = null;
   readonly created = Date.parse("2026-01-01T00:00:00Z");
 
   constructor(
@@ -71,6 +73,11 @@ class FakeContainer implements ContainerHandle {
   ) {}
 
   async start(): Promise<void> {
+    if (this.startError) {
+      const error = this.startError;
+      this.startError = null;
+      throw error;
+    }
     this.running = true;
     this.startedCount += 1;
   }
@@ -248,6 +255,50 @@ describe("ensure", () => {
     expect(docker.createdOptions).toHaveLength(1);
     expect(docker.createdOptions[0]!.name).toBe("saale-sandbox-user-abc");
     expect(container.running).toBe(true);
+  });
+
+  it("brings up one container when commands arrive together", async () => {
+    const containers = manager();
+
+    const [first, second] = await Promise.all([
+      containers.ensure("user-abc"),
+      containers.ensure("user-abc"),
+    ]);
+
+    expect(docker.createdOptions).toHaveLength(1);
+    expect(second).toBe(first);
+    expect(docker.byIdentity("user-abc").startedCount).toBe(1);
+  });
+
+  it("starts a stopped container once for commands issued together", async () => {
+    const containers = manager();
+    await containers.ensure("user-abc");
+    await docker.byIdentity("user-abc").stop();
+
+    await Promise.all([containers.ensure("user-abc"), containers.ensure("user-abc")]);
+
+    expect(docker.byIdentity("user-abc").startedCount).toBe(2);
+  });
+
+  it("accepts a start the daemon answers with 304", async () => {
+    const container = (await manager().ensure("user-abc")) as FakeContainer;
+    await container.stop();
+    container.running = true;
+    container.startError = Object.assign(new Error("(HTTP code 304) container already started"), {
+      statusCode: 304,
+    });
+
+    await expect(manager().ensure("user-abc")).resolves.toBe(container);
+  });
+
+  it("reports a start that fails for another reason", async () => {
+    const container = (await manager().ensure("user-abc")) as FakeContainer;
+    await container.stop();
+    container.startError = Object.assign(new Error("(HTTP code 500) cannot start"), {
+      statusCode: 500,
+    });
+
+    await expect(manager().ensure("user-abc")).rejects.toThrow("cannot start");
   });
 
   it("reuses a running container instead of creating a second one", async () => {
