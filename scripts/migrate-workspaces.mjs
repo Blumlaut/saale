@@ -86,12 +86,13 @@ async function summarise(dir) {
   };
 }
 
+/** Ownership for everything in the copy. Symlinks are not followed. */
 async function chownTree(dir) {
-  await fs.chown(dir, UID, GID);
+  await fs.lchown(dir, UID, GID);
   for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) await chownTree(full);
-    else await fs.chown(full, UID, GID);
+    else await fs.lchown(full, UID, GID);
   }
 }
 
@@ -162,7 +163,9 @@ async function copyHome(source, destination, label) {
       });
     }
 
-    await chownTree(staging);
+    // A file the process cannot chown is still a file the agent can read; the
+    // report is what makes it fixable, and the deploy should not block on it.
+    await chownTree(staging).catch((err) => warn(`chown ${staging}: ${err.message}`));
     const after = await summarise(staging);
     if (after.files !== before.files || after.bytes !== before.bytes) {
       throw new Error(
@@ -249,7 +252,9 @@ async function main() {
     }
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.cp(source, `${destination}.migrating`, { recursive: true, preserveTimestamps: true });
-    await chownTree(`${destination}.migrating`);
+    await chownTree(`${destination}.migrating`).catch((err) =>
+      warn(`chown ${destination}.migrating: ${err.message}`),
+    );
     await fs.rename(`${destination}.migrating`, destination);
     log(`ORPHAN ${entry.name}: copied to _orphaned/${entry.name}`);
   }
