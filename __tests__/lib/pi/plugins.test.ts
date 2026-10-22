@@ -22,15 +22,21 @@ vi.mock("@/lib/db", () => ({
 import {
   checkPluginUpdates,
   clearPluginLog,
+  compareVersions,
   defaultPluginsDir,
   discoverPlugins,
   globalPluginPaths,
+  installNpmPlugin,
   invalidatePluginCache,
   listPlugins,
+  normalizeNpmSource,
+  npmInstallRoot,
+  npmNameOf,
   pluginIdForPath,
   pluginLogEntries,
   readGitInfo,
   recordPluginLog,
+  removeNpmPlugin,
   resolvePluginsDir,
   type PluginConfig,
 } from "@/lib/pi/plugins";
@@ -339,6 +345,124 @@ describe("git", () => {
     });
 
     expect(await checkPluginUpdates()).toEqual([]);
+  });
+});
+
+describe("npm sources", () => {
+  it("accepts a name, a scope and a version, with or without the npm prefix", () => {
+    expect(normalizeNpmSource("npm:@narumitw/pi-usage")).toBe("npm:@narumitw/pi-usage");
+    expect(normalizeNpmSource(" @narumitw/pi-usage@1.2.3 ")).toBe("npm:@narumitw/pi-usage@1.2.3");
+    expect(normalizeNpmSource("pi-usage")).toBe("npm:pi-usage");
+    expect(normalizeNpmSource("npm:pi-usage@latest")).toBe("npm:pi-usage@latest");
+  });
+
+  it("refuses anything npm would treat as a path or a URL", () => {
+    for (const input of ["", "  ", "../evil", "name with space", "https://example.com/x.tgz"]) {
+      expect(() => normalizeNpmSource(input)).toThrow();
+    }
+  });
+
+  it("reads the package name out of a spec", () => {
+    expect(npmNameOf("npm:@narumitw/pi-usage@1.2.3")).toBe("@narumitw/pi-usage");
+    expect(npmNameOf("npm:pi-usage")).toBe("pi-usage");
+    expect(npmNameOf("npm:pi-usage@^2.0.0")).toBe("pi-usage");
+  });
+});
+
+describe("compareVersions", () => {
+  it("orders releases by their numbers", () => {
+    expect(compareVersions("1.2.3", "1.2.2")).toBeGreaterThan(0);
+    expect(compareVersions("1.10.0", "1.9.9")).toBeGreaterThan(0);
+    expect(compareVersions("2.0.0", "2.0.0")).toBe(0);
+    expect(compareVersions("1.0.0", "1.0.1")).toBeLessThan(0);
+  });
+
+  it("sorts a prerelease below the release it precedes", () => {
+    expect(compareVersions("1.0.0", "1.0.0-beta.1")).toBeGreaterThan(0);
+    expect(compareVersions("1.0.0-beta.2", "1.0.0-beta.1")).toBeGreaterThan(0);
+  });
+});
+
+describe("npm-installed plugins", () => {
+  /** `<dir>/.pi/npm` with `dependencies`, plus the package directories. */
+  async function seedPackage(
+    name: string,
+    manifest: Record<string, unknown>,
+    files: Record<string, string> = { "dist/index.js": GOOD_PLUGIN },
+  ): Promise<void> {
+    await writeFile(
+      path.join(".pi", "npm", "package.json"),
+      JSON.stringify({ name: "pi-extensions", dependencies: { [name]: "^1.0.0" } }),
+    );
+    await writeFile(
+      path.join(".pi", "npm", "node_modules", name, "package.json"),
+      JSON.stringify({ name, version: "1.0.0", ...manifest }),
+    );
+    for (const [relative, content] of Object.entries(files)) {
+      await writeFile(path.join(".pi", "npm", "node_modules", name, relative), content);
+    }
+  }
+
+  it("discovers a package that declares Pi extensions", async () => {
+    await seedPackage("@narumitw/pi-usage", {
+      description: "Token usage",
+      pi: { extensions: ["dist/index.js"] },
+    });
+
+    const plugins = await discoverPlugins(config());
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0]).toMatchObject({
+      id: "@narumitw/pi-usage",
+      kind: "package",
+      name: "@narumitw/pi-usage",
+      version: "1.0.0",
+      description: "Token usage",
+      entries: ["dist/index.js"],
+      enabled: true,
+      git: null,
+    });
+    expect(
+      pluginIdForPath(
+        path.join(npmInstallRoot(root), "node_modules/@narumitw/pi-usage/dist/index.js"),
+      ),
+    ).toBe("@narumitw/pi-usage");
+  });
+
+  it("ignores a dependency that only ships an index.js", async () => {
+    await seedPackage("left-pad", {}, { "index.js": "module.exports = () => {};\n" });
+
+    expect(await discoverPlugins(config())).toEqual([]);
+    expect(pluginLogEntries()[0]?.message).toContain("no Pi extensions");
+  });
+
+  it("finds a package's extensions/ folder", async () => {
+    await seedPackage(
+      "pi-tools",
+      {},
+      { "extensions/one.ts": GOOD_PLUGIN, "extensions/two.ts": GOOD_PLUGIN },
+    );
+
+    const [plugin] = await discoverPlugins(config());
+    expect(plugin?.entries).toEqual([
+      path.join("extensions", "one.ts"),
+      path.join("extensions", "two.ts"),
+    ]);
+  });
+
+  it("honours the switches by package name", async () => {
+    await seedPackage("pi-usage", { pi: { extensions: ["dist/index.js"] } });
+
+    const [off] = await discoverPlugins(config({ states: { "pi-usage": { enabled: false } } }));
+    expect(off).toMatchObject({ enabled: false, override: false, status: "disabled" });
+  });
+
+  it("refuses a spec before npm is ever run", async () => {
+    await expect(installNpmPlugin("../evil")).rejects.toThrow();
+  });
+
+  it("refuses to remove a plugin that npm did not install", async () => {
+    await seedDirectory();
+    await expect(removeNpmPlugin("alpha")).rejects.toThrow("not an npm-installed plugin");
   });
 });
 

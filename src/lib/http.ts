@@ -61,6 +61,11 @@ export async function patchJson<T = unknown>(
 /**
  * DELETE an API endpoint.
  */
-export async function deleteJson<T = unknown>(url: string): Promise<T> {
-  return fetchJson<T>(url, { method: "DELETE" });
+export async function deleteJson<T = unknown>(url: string, body?: unknown): Promise<T> {
+  if (body === undefined) return fetchJson<T>(url, { method: "DELETE" });
+  return fetchJson<T>(url, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
