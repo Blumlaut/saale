@@ -1,0 +1,70 @@
+# The container a tenant's commands run in.
+#
+# One per identity, created by `sandbox-exec`, mounting that identity's
+# directory of the workspaces volume. The package list is what
+# `OPEN_TERMINAL_PACKAGES` used to install at boot, plus node, `gh` and the
+# Python tooling an agent reaches for; what a user needs beyond this goes into
+# `$HOME/.local` (pip --user, npm -g --prefix), which the volume keeps.
+
+FROM debian:trixie-slim
+
+# Account commands run as when SANDBOX_USER=agent. UID matches SANDBOX_UID so a
+# file the app writes is editable here.
+ARG SANDBOX_UID=1000
+ARG SANDBOX_GID=1000
+RUN groupadd --gid "$SANDBOX_GID" agent \
+    && useradd --uid "$SANDBOX_UID" --gid "$SANDBOX_GID" --create-home --home-dir /workspaces --shell /bin/bash agent
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Chromium needs its library set; the rest is the tooling an agent uses.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      ca-certificates curl wget git jq sudo \
+      ripgrep fd-find silversearcher-ag \
+      build-essential libssl-dev libffi-dev python3-dev \
+      python3 python3-pip python3-venv pipx \
+      ffmpeg imagemagick \
+      chromium libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+      libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+      libcairo2 libasound2 libatspi2.0-0 libxshmfence1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# gh comes from GitHub's own apt repository; Debian's package is older than the
+# CLI's own release cadence.
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node 22 with npm: `npm install -g --prefix ~/.local` is how an agent adds a
+# node tool that outlives the container.
+ARG NODE_VERSION=22.20.0
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in amd64) NODE_ARCH=x64 ;; arm64) NODE_ARCH=arm64 ;; *) echo "unsupported arch $ARCH" >&2; exit 1 ;; esac \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+      | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
+    && node --version && npm --version
+
+# `uv` and `pipx` give an agent a place to install Python tools it needs.
+RUN curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
+    && uv --version
+
+RUN pip install --break-system-packages --no-cache-dir yt-dlp \
+    && apt-get clean
+
+# $HOME is the mounted workspace, and ~/.local/bin is on PATH so anything
+# installed there is found by the next command.
+ENV HOME=/workspaces
+ENV PATH="/workspaces/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV LANG=C.UTF-8
+
+WORKDIR /workspaces
+
+# The container idles; `docker exec` carries the commands. `sleep` is PID 1
+# under Docker's init, which reaps anything a command backgrounds.
+CMD ["sleep", "infinity"]

@@ -50,6 +50,7 @@ COPY . .
 # — mounted so rebuilds start warm instead of retyping and recompiling everything
 RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
 RUN npm run build:worker
+RUN npm run build:sandbox
 
 # ─── Production: Web (Next.js standalone) ─────────────────────────────────────
 
@@ -85,8 +86,9 @@ ENV NODE_ENV=production
 # Runtime deps, Prisma client already generated in `prod-deps`
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/package.json ./package.json
-# Pre-compiled worker binary + prisma schema
+# Pre-compiled worker binary, sandbox service + prisma schema
 COPY --from=build /app/dist/worker.mjs ./worker.mjs
+COPY --from=build /app/dist/sandbox.mjs ./sandbox.mjs
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
 
