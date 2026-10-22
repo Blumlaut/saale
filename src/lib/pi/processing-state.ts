@@ -50,7 +50,8 @@ A call resolves to the tool's value, so read its fields (\`r.exitCode\`, \`r.std
 
 /** Capability: shell + files via the terminal tool. */
 const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. Files the user uploads in chat are placed in the \`uploads/\` directory of the working directory. read them from there when the user refers to an attached file.
-Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes. each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.`;
+Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes. each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.
+Scratch files and throwaway output go under \`.tmp/\` in the working directory. that directory is emptied automatically, so anything worth keeping belongs somewhere else.`;
 
 /**
  * The terminal block, plus what the user has already configured.

@@ -14,6 +14,9 @@ import { isNotFoundError } from "@/lib/files/errors";
 import { sandboxConfig } from "./config";
 import { parseIdentity, userIdentity } from "./identity";
 
+/** Scratch directory inside a workspace. The sandbox service empties it. */
+export const WORKSPACE_TMP_DIR = ".tmp";
+
 /** Root of the volume, as the app sees it. */
 export function workspacesDir(): string {
   return sandboxConfig().workspacesDir;
@@ -27,6 +30,11 @@ export function identityPath(identity: string): string {
 /** Absolute path of a user's own workspace. */
 export function userWorkspacePath(userId: string): string {
   return identityPath(userIdentity(userId));
+}
+
+/** Absolute path of the scratch directory a workspace's files live beside. */
+export function workspaceTmpPath(root: string): string {
+  return path.join(root, WORKSPACE_TMP_DIR);
 }
 
 /** The owner the app gives files, taken from the account commands run as. */

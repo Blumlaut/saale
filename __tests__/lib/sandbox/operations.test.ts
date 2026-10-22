@@ -163,6 +163,15 @@ describe("file operations", () => {
     expect((await fs.stat(path.join(root, "new", "dir"))).isDirectory()).toBe(true);
   });
 
+  it("points the model at the scratch directory when a path escapes", async () => {
+    const ops = operations();
+
+    await expect(ops.read.readFile("/tmp/pw.png")).rejects.toThrow(
+      /outside the workspace.*\.tmp\/.*emptied automatically/,
+    );
+    await expect(ops.write.writeFile("/tmp/pw.png", "x")).rejects.toThrow(/outside the workspace/);
+  });
+
   it("refuses a path outside the workspace, whatever the model wrote", async () => {
     const ops = operations();
 
