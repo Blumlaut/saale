@@ -68,7 +68,8 @@ export function legacyTargetName(name: string): string | null {
 }
 
 /**
- * Move every legacy directory under `dir` (the volume by default).
+ * Move every legacy directory under `dir` (the volume by default), then point
+ * the absolute paths inside it at the name it now has.
  *
  * `fs.rename` keeps the inode, so permissions, ownership and contents come
  * along; nothing is copied and nothing is deleted.
@@ -93,6 +94,13 @@ export async function migrateLegacyIdentities(
     if (!target) {
       if (entry.name.startsWith("user-") && !KEYED_DIR_PATTERN.test(entry.name)) {
         report.unrecognised.push(entry.name);
+      } else if (KEYED_DIR_PATTERN.test(entry.name)) {
+        // A directory an earlier boot already moved can still hold stale paths
+        // if that boot stopped halfway: repairing is idempotent and cheap.
+        await repairWorkspacePaths(
+          entry.name,
+          path.join(/*turbopackIgnore: true*/ dir, entry.name),
+        );
       }
       continue;
     }
@@ -120,9 +128,129 @@ export async function migrateLegacyIdentities(
       if (isNotFoundError(err)) continue;
       throw err;
     }
+
+    await repairWorkspacePaths(target, to);
   }
 
   return report;
+}
+
+/**
+ * The absolute paths a workspace has written into its own files, pointed at
+ * wherever it lives now.
+ *
+ * A moved directory is not self-contained: git records the worktree and the
+ * repository it belongs to by absolute path, in two files per checkout, and the
+ * app's `.gitconfig` allows the workspace by absolute path too. Left alone, the
+ * old names make every existing checkout report `fatal: not a git repository`.
+ *
+ * The rewrite is by identity, not by remembering what moved: a path naming
+ * `…/user-<id>` belongs to this workspace exactly when the id derives to this
+ * workspace's key. That makes it idempotent and safe to run on a directory
+ * nobody renamed.
+ */
+export async function repairWorkspacePaths(identity: string, root: string): Promise<string[]> {
+  const rewritten: string[] = [];
+
+  for (const file of await filesWithAbsolutePaths(root)) {
+    let text: string;
+    try {
+      text = await fs.readFile(/*turbopackIgnore: true*/ file, "utf8");
+    } catch (err) {
+      if (isNotFoundError(err)) continue;
+      throw err;
+    }
+
+    const updated = rewriteWorkspacePaths(text, identity, root);
+    if (updated === text) continue;
+
+    await fs.writeFile(/*turbopackIgnore: true*/ file, updated, "utf8");
+    rewritten.push(file);
+  }
+
+  return rewritten;
+}
+
+/**
+ * `text` with every path that names this workspace pointed at `root`.
+ *
+ * Only whole absolute paths are considered, so prose and relative paths are
+ * untouched, and a path naming another user's workspace is left exactly as it
+ * is: that is the isolation the identity check exists for.
+ */
+export function rewriteWorkspacePaths(text: string, identity: string, root: string): string {
+  return text.replace(ABSOLUTE_PATH_PATTERN, (match) => {
+    const segments = match.split("/");
+    const at = segments.findIndex((segment) => /^user-[A-Za-z0-9_-]+$/.test(segment));
+    if (at < 0) return match;
+    const name = segments[at];
+    if (!name || userIdentityFromName(name) !== identity) return match;
+
+    const rest = segments.slice(at + 1).join("/");
+    return rest ? `${root}/${rest}` : root;
+  });
+}
+
+/** The identity a directory name derives to, or null when it is not one. */
+function userIdentityFromName(name: string): string | null {
+  const id = name.slice("user-".length);
+  if (!id) return null;
+  return `user-${deriveUserWorkspaceKey(id)}`;
+}
+
+/** Every path this module treats as a whole absolute path in a file. */
+const ABSOLUTE_PATH_PATTERN = /\/[^\s"'=:;]*/g;
+
+/** Largest file worth reading: git metadata and `.gitconfig` are bytes. */
+const MAX_REPAIR_FILE_BYTES = 64 * 1024;
+
+/**
+ * The files a workspace keeps absolute paths in.
+ *
+ * Both sides of every git worktree link, plus the config that allows the
+ * workspace as a git directory. Nothing else in a workspace is written by the
+ * app with its own path.
+ */
+async function filesWithAbsolutePaths(root: string): Promise<string[]> {
+  const files: string[] = [path.join(root, ".gitconfig")];
+
+  for (const project of await subdirectories(path.join(root, "worktrees"))) {
+    for (const checkout of await subdirectories(path.join(root, "worktrees", project))) {
+      files.push(path.join(root, "worktrees", project, checkout, ".git"));
+    }
+  }
+
+  for (const project of await subdirectories(path.join(root, "projects"))) {
+    for (const checkout of await subdirectories(
+      path.join(root, "projects", project, ".git", "worktrees"),
+    )) {
+      files.push(path.join(root, "projects", project, ".git", "worktrees", checkout, "gitdir"));
+    }
+  }
+
+  const present: string[] = [];
+  for (const file of files) {
+    const size = await fs
+      .stat(/*turbopackIgnore: true*/ file)
+      .then((stats) => (stats.isFile() ? stats.size : null))
+      .catch((err: unknown) => {
+        if (isNotFoundError(err)) return null;
+        throw err;
+      });
+    if (size !== null && size <= MAX_REPAIR_FILE_BYTES) present.push(file);
+  }
+  return present;
+}
+
+/** Directory names under `dir`, or none when it is not there. */
+async function subdirectories(dir: string): Promise<string[]> {
+  const entries = await fs
+    .readdir(/*turbopackIgnore: true*/ dir, { withFileTypes: true })
+    .catch((err: unknown) => {
+      if (isNotFoundError(err)) return [];
+      throw err;
+    });
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 }
 
 /**
