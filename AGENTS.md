@@ -30,6 +30,10 @@ the error string.
 - Widen to `npm run check` when the change reaches beyond a couple of files (a
   shared primitive, the Prisma schema, the agent runtime) or the run is cheap. If
   a check cannot run, say which and why.
+- A PR runs `.github/workflows/checks.yml`: eslint, prettier and vitest on the
+  touched files, and a cached project-wide `tsc`. Touched-file scope means a
+  green check only covers your diff — still run `npm run check` for a wide
+  change.
 - Local build: `NODE_ENV=production npm run build`. With `NODE_ENV=development`
   it dies prerendering `/_global-error` — a known Next 16 symptom
   (vercel/next.js#86178), not this app's bug.

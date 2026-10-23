@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { deleteChatSession } from "@/lib/chat/delete-session";
+import { autoDeleteChatSession, deleteChatSession } from "@/lib/chat/delete-session";
 import { CoderCleanupError } from "@/lib/coder/worktree-removal";
 import { cleanupRefusalResponse } from "@/lib/coder/cleanup-response";
 import { forceRequested } from "@/lib/coder/force-delete";
@@ -134,14 +134,33 @@ export async function DELETE(
 /**
  * POST /api/chat/sessions/:sessionId. Method override for sendBeacon (DELETE via POST)
  * sendBeacon only supports POST, so we accept _method=DELETE in the body.
+ *
+ * This is the path the chat takes on its way out of the browser (unmount, tab
+ * close), so it is a *request* to delete an abandoned chat, not an order: the
+ * server re-checks that nothing is running or being built before removing
+ * anything, and always answers 200. the browser is not listening, and a chat
+ * the user is still owed an answer in must never be the casualty of a stale
+ * client guess (see `autoDeleteChatSession`).
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const formData = await request.formData();
-  if (formData.get("_method") === "DELETE") {
-    return deleteSession(request, params);
+  if (formData.get("_method") !== "DELETE") {
+    return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
   }
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+
+  const { sessionId } = await params;
+  const authResult = await requireChatSessionOwner(sessionId);
+  if (!authResult.ok) return authResult.response;
+
+  try {
+    const result = await autoDeleteChatSession(authResult.userId, sessionId);
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err) {
+    // A dirty worktree refuses the delete. the chat stays, which is the point.
+    console.error(`Failed to auto-delete chat session ${sessionId}:`, err);
+    return NextResponse.json({ ok: false });
+  }
 }

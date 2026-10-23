@@ -16,6 +16,19 @@ function makeMessage(overrides: Partial<Message> & { id: string }): Message {
 }
 
 describe("mergeMessagesWithLive", () => {
+  it("keeps a user message saved after the snapshot was requested", () => {
+    // The mount fetch can be slower than the send: its snapshot predates the
+    // user's row. Dropping it emptied the chat while the reply was still being
+    // written, and an empty chat is what the leave-guard deletes.
+    const merged = mergeMessagesWithLive(
+      [],
+      [makeMessage({ id: "db-just-sent", role: "user", content: "hi", savedAt: 2_000 })],
+      { requestedAt: 1_000 },
+    );
+
+    expect(merged.map((m) => m.id)).toEqual(["db-just-sent"]);
+  });
+
   it("appends live messages after the DB snapshot in order", () => {
     const db = [makeMessage({ id: "db-1", content: "saved" })];
     const prev = [
