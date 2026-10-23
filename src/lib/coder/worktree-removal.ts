@@ -13,8 +13,9 @@
 import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
-import { GitError, removeWorktree, runInWorkspace, shellQuote } from "./git";
+import { GitError, removeWorktree, runInWorkspace } from "./git";
 import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
+import { stopProcessesCommand, SWEEP_TIMEOUT_SECONDS } from "./processes";
 import { stopTerminalExecs } from "./terminal";
 
 /** A removal git refused, with the reason it gave. */
@@ -41,8 +42,9 @@ export interface RemovedWorktree {
  * A dev server or a watcher the agent left behind holds its files open and
  * keeps working after the chat is gone, so it is killed before the checkout is
  * removed. Commands the terminal panel started are stopped by id first, because
- * their command lines never name the directory; `pkill -f` then catches what
- * the agent left in the background.
+ * their command lines never name the directory. The sweep then catches the rest:
+ * anything whose command line names the worktree, and anything whose working
+ * directory is inside it.
  */
 async function stopProcesses(
   userId: string,
@@ -55,11 +57,11 @@ async function stopProcesses(
 
   const result = await runInWorkspace(userId, {
     cwd: ".",
-    command: `pkill -f ${shellQuote(absolutePath)} >/dev/null 2>&1`,
+    command: stopProcessesCommand(absolutePath),
+    timeoutSeconds: SWEEP_TIMEOUT_SECONDS,
   });
-  // 1 is "nothing matched", which is the ordinary case.
-  if (result.exitCode !== 0 && result.exitCode !== 1) {
-    console.warn(`[coder] pkill in ${absolutePath} exited ${result.exitCode}: ${result.stderr}`);
+  if (result.exitCode !== 0) {
+    console.warn(`[coder] stopping processes in ${absolutePath} exited ${result.exitCode}`);
   }
 }
 
