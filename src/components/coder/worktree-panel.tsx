@@ -10,6 +10,18 @@ import { ChangesView } from "./changes-view";
 import { TerminalView } from "./terminal-view";
 import type { CoderSessionState } from "./use-coder-data";
 
+function NoWorktree() {
+  return (
+    <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
+      <GitBranch className="text-muted-foreground/50 h-5 w-5" />
+      <p className="text-xs font-medium">No worktree yet</p>
+      <p className="text-muted-foreground text-xs">
+        It appears after this chat&apos;s first message.
+      </p>
+    </div>
+  );
+}
+
 /**
  * The right-hand panel: what changed, what is in the worktree, and where the
  * branch stands.
@@ -45,6 +57,11 @@ export function WorktreePanel({
             <TabsTrigger value="changes" className="gap-1.5 text-xs">
               <GitBranch className="h-3.5 w-3.5" />
               Project
+              {state?.changes.length ? (
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  {state.changes.length}
+                </span>
+              ) : null}
             </TabsTrigger>
             <TabsTrigger value="files" className="gap-1.5 text-xs">
               <FolderTree className="h-3.5 w-3.5" />
@@ -66,9 +83,7 @@ export function WorktreePanel({
           ) : error ? (
             <p className="text-destructive px-3 py-3 text-xs break-words">{error}</p>
           ) : !state?.worktree ? (
-            <p className="text-muted-foreground px-3 py-3 text-xs">
-              The worktree appears after this chat&apos;s first message.
-            </p>
+            <NoWorktree />
           ) : (
             <ChangesView
               sessionId={sessionId}
@@ -83,9 +98,7 @@ export function WorktreePanel({
           {state?.worktree ? (
             <FileBrowser target="user" rootPath={state.worktree.path} dense />
           ) : (
-            <p className="text-muted-foreground px-3 py-3 text-xs">
-              The worktree appears after this chat&apos;s first message.
-            </p>
+            <NoWorktree />
           )}
         </TabsContent>
 
