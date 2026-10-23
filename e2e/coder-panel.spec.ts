@@ -85,6 +85,32 @@ const STATUS = {
   ],
 };
 
+const PREVIEW_URL = `https://user-e2e-5173-0123456789abcdef01234567.preview.e2e.test`;
+
+const PORTS = {
+  enabled: true,
+  domain: "preview.e2e.test",
+  setup: null,
+  ports: [
+    {
+      port: 5173,
+      address: "0.0.0.0",
+      loopback: false,
+      pid: 120,
+      command: "node /app/node_modules/.bin/vite --host 0.0.0.0",
+      url: PREVIEW_URL,
+    },
+    {
+      port: 8080,
+      address: "127.0.0.1",
+      loopback: true,
+      pid: 121,
+      command: "python3 -m http.server 8080",
+      url: null,
+    },
+  ],
+};
+
 const DIFF = [
   "diff --git a/src/a.ts b/src/a.ts",
   "index 0000000..1111111 100644",
@@ -165,6 +191,23 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
 
   await page.route(new RegExp(`/api/coder/sessions/[^/]+/terminal/input$`), (route) =>
     route.fulfill({ json: { written: 4 } }),
+  );
+
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/ports$`), (route) =>
+    route.fulfill({ json: PORTS }),
+  );
+
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/ports/\\d+/kill$`), (route) =>
+    route.fulfill({ json: { port: 5173, killed: true } }),
+  );
+
+  // The preview itself: the iframe points at a host that does not exist here.
+  await page.route(/preview\.e2e\.test/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!doctype html><title>preview</title><h1>E2E app</h1>",
+    }),
   );
 
   await page.route(/\/api\/files\/list/, (route) =>
@@ -315,6 +358,46 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("lists the ports a dev server took and embeds the one that is open", async ({ browser }) => {
+    test.skip(!session, "login failed");
+    const context = await browser.newContext({ storageState: session!.storageState });
+    const page = await context.newPage();
+    await mockCoder(page);
+
+    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await shown(page, '[role="tab"]:text-is("Ports")').click();
+
+    await expect(page.locator("text=5173").first()).toBeVisible();
+    // A loopback bind is listed with a hint rather than a link.
+    await expect(page.locator("text=8080").first()).toBeVisible();
+    await expect(page.locator("text=loopback").first()).toBeVisible();
+
+    await shown(page, '[aria-label="Show port 5173"]').click();
+    // Whether the frame is allowed is the CSP's business (middleware-headers
+    // covers that); the panel's contract is the URL it points the frame at.
+    const frame = page.locator(`iframe[title="Preview of port 5173"]`).first();
+    await expect(frame).toHaveAttribute("src", PREVIEW_URL);
+
+    await context.close();
+  });
+
+  test("stops a dev server from the port row menu", async ({ browser }) => {
+    test.skip(!session, "login failed");
+    const context = await browser.newContext({ storageState: session!.storageState });
+    const page = await context.newPage();
+    await mockCoder(page);
+
+    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await shown(page, '[role="tab"]:text-is("Ports")').click();
+    await shown(page, '[aria-label="Port 5173 actions"]').click();
+
+    const kill = page.waitForRequest((request) => request.url().endsWith("/ports/5173/kill"));
+    await page.getByRole("menuitem", { name: "Stop server" }).click();
+    await expect((await kill).method()).toBe("POST");
+
+    await context.close();
+  });
+
   test("keeps the chat when git refuses to remove its worktree", async ({ browser }) => {
     test.skip(!session, "login failed");
     const context = await browser.newContext({ storageState: session!.storageState });
@@ -359,6 +442,17 @@ test.describe("coder panel", () => {
         );
         expect(overflow, `${route} at ${viewport.name}`).toBeLessThanOrEqual(1);
       }
+
+      // Four tabs and a preview URL have to fit the same panel, which is a
+      // sheet at this width.
+      await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+      await shown(page, '[aria-label="Open worktree panel"]').click();
+      await shown(page, '[role="tab"]:text-is("Ports")').click();
+      await expect(page.locator("text=5173").first()).toBeVisible();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `ports at ${viewport.name}`).toBeLessThanOrEqual(1);
 
       await context.close();
     }

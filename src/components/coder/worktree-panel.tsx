@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { FolderTree, GitBranch, Loader2, SquareTerminal } from "lucide-react";
+import { FolderTree, GitBranch, Globe, Loader2, SquareTerminal } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileBrowser } from "@/components/files/file-browser";
 import { PageTabStrip } from "@/components/layout/page";
 import { ChangesView } from "./changes-view";
+import { PortsView } from "./ports-view";
 import { TerminalView } from "./terminal-view";
 import type { CoderSessionState } from "./use-coder-data";
 
@@ -29,8 +30,9 @@ function NoWorktree() {
  * A chat that has not sent its first message has no worktree yet, so the panel
  * says that instead of rendering a browser over the wrong directory.
  *
- * The terminal keeps running while another tab is open, so it is mounted
- * alongside the tab contents instead of inside one.
+ * The terminal and the preview keep running while another tab is open, so both
+ * are mounted alongside the tab contents instead of inside one. Their polling
+ * pauses with the tab; only the iframe stays loaded.
  */
 export function WorktreePanel({
   sessionId,
@@ -52,10 +54,12 @@ export function WorktreePanel({
   return (
     <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
-        <PageTabStrip className="border-b px-2 py-1.5">
-          <TabsList>
+        {/* A container query, because the panel is 280px on a phone sheet and
+            720px when dragged wide; the icons only earn their room when it is. */}
+        <PageTabStrip className="@container border-b px-2 py-1.5">
+          <TabsList className="h-auto flex-wrap">
             <TabsTrigger value="changes" className="gap-1.5 text-xs">
-              <GitBranch className="h-3.5 w-3.5" />
+              <GitBranch className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Project
               {state?.changes.length ? (
                 <span className="text-muted-foreground font-mono text-[10px]">
@@ -64,12 +68,16 @@ export function WorktreePanel({
               ) : null}
             </TabsTrigger>
             <TabsTrigger value="files" className="gap-1.5 text-xs">
-              <FolderTree className="h-3.5 w-3.5" />
+              <FolderTree className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Files
             </TabsTrigger>
             <TabsTrigger value="terminal" className="gap-1.5 text-xs">
-              <SquareTerminal className="h-3.5 w-3.5" />
+              <SquareTerminal className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Terminal
+            </TabsTrigger>
+            <TabsTrigger value="ports" className="gap-1.5 text-xs">
+              <Globe className="hidden h-3.5 w-3.5 @min-[390px]:block" />
+              Ports
             </TabsTrigger>
           </TabsList>
         </PageTabStrip>
@@ -101,6 +109,16 @@ export function WorktreePanel({
             <NoWorktree />
           )}
         </TabsContent>
+
+        <div
+          className={
+            tab === "ports"
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+              : "hidden min-h-0 flex-1 flex-col overflow-hidden"
+          }
+        >
+          <PortsView sessionId={sessionId} active={tab === "ports"} />
+        </div>
 
         {/* Outside the tab content: a tab switch must not stop a dev server. */}
         <div

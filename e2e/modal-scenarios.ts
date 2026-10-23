@@ -578,6 +578,28 @@ async function mockCoderChat(page: Page) {
   await page.route(/\/api\/chat\/sessions\/[^/]+\/stream/, (route) =>
     route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }),
   );
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/ports$`), (route) =>
+    route.fulfill({
+      json: {
+        enabled: true,
+        domain: "preview.e2e.test",
+        setup: null,
+        ports: [
+          {
+            port: 5173,
+            address: "0.0.0.0",
+            loopback: false,
+            pid: 120,
+            command: "node /app/node_modules/.bin/vite --host 0.0.0.0",
+            url: "https://user-e2e-5173-0123456789abcdef01234567.preview.e2e.test",
+          },
+        ],
+      },
+    }),
+  );
+  await page.route(/preview\.e2e\.test/, (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><p>preview</p>" }),
+  );
 }
 
 export const MODAL_SCENARIOS: ModalScenario[] = [
