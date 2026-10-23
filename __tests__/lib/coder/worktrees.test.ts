@@ -33,8 +33,11 @@ const mocks = vi.hoisted(() => {
     findWorktree: vi.fn(),
     createWorktree: vi.fn(),
     addWorktree: vi.fn(),
+    addWorktreeOnBranch: vi.fn(),
     headSha: vi.fn(),
+    listWorktrees: vi.fn(),
     pruneWorktrees: vi.fn(),
+    removeWorktree: vi.fn(),
     runGit: vi.fn(),
     getPooled: vi.fn(),
     removePooled: vi.fn(),
@@ -55,8 +58,11 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/coder/git", () => ({
   GitError: mocks.MockGitError,
   addWorktree: (...args: unknown[]) => mocks.addWorktree(...args),
+  addWorktreeOnBranch: (...args: unknown[]) => mocks.addWorktreeOnBranch(...args),
   headSha: (...args: unknown[]) => mocks.headSha(...args),
+  listWorktrees: (...args: unknown[]) => mocks.listWorktrees(...args),
   pruneWorktrees: (...args: unknown[]) => mocks.pruneWorktrees(...args),
+  removeWorktree: (...args: unknown[]) => mocks.removeWorktree(...args),
   runGit: (...args: unknown[]) => mocks.runGit(...args),
 }));
 
@@ -87,6 +93,14 @@ function worktreeDir(sessionId: string): string {
   return path.join(workspaceRoot, "user-user-1", "worktrees", "saale", chat);
 }
 
+/**
+ * Stand-in for git, which creates the checkout at the path it was given. The
+ * directory is what the existence check looks for.
+ */
+async function createsCheckout(_user: string, options: { dir: string }): Promise<void> {
+  await fs.mkdir(path.join(workspaceRoot, "user-user-1", options.dir), { recursive: true });
+}
+
 beforeEach(async () => {
   vi.clearAllMocks();
   workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-worktrees-"));
@@ -102,9 +116,12 @@ beforeEach(async () => {
     createdAt: new Date(),
     ...data,
   }));
-  mocks.addWorktree.mockResolvedValue(undefined);
+  mocks.addWorktree.mockImplementation(createsCheckout);
+  mocks.addWorktreeOnBranch.mockImplementation(createsCheckout);
   mocks.headSha.mockResolvedValue("sha-base");
+  mocks.listWorktrees.mockResolvedValue([]);
   mocks.pruneWorktrees.mockResolvedValue(undefined);
+  mocks.removeWorktree.mockResolvedValue(undefined);
   mocks.runGit.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
   mocks.getPooled.mockReturnValue(undefined);
   mocks.removePooled.mockResolvedValue(undefined);
@@ -241,17 +258,55 @@ describe("ensureWorktree", () => {
     const worktree = await ensureWorktree(USER, "chat-1");
 
     expect(worktree.branch).toBe("wt/c-chat1");
-    expect(mocks.runGit).toHaveBeenCalledWith(USER, {
-      cwd: "projects/saale",
-      args: ["worktree", "add", "worktrees/saale/c-chat1", "wt/c-chat1"],
-      timeoutSeconds: 120,
+    expect(mocks.addWorktreeOnBranch).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      dir: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      base: "sha-start",
     });
+  });
+
+  it("moves a branch git still has checked out at another path", async () => {
+    mocks.findWorktree.mockResolvedValue({
+      id: "wt-1",
+      projectId: PROJECT.id,
+      sessionId: "chat-1",
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      baseSha: "sha-start",
+    });
+    mocks.addWorktree.mockRejectedValue(
+      new mocks.MockGitError("fatal: a branch named 'wt/c-chat1' already exists"),
+    );
+    mocks.listWorktrees.mockResolvedValue([
+      { path: `${workspaceRoot}/user-user-1/projects/saale`, branch: "main", main: true },
+      {
+        path: `${workspaceRoot}/user-user-1/projects/saale/worktrees/saale/c-chat1`,
+        branch: "wt/c-chat1",
+        relative: "projects/saale/worktrees/saale/c-chat1",
+      },
+    ]);
+
+    await ensureWorktree(USER, "chat-1");
+
+    expect(mocks.removeWorktree).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      dir: "projects/saale/worktrees/saale/c-chat1",
+    });
+    expect(mocks.addWorktreeOnBranch).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to hand out a worktree git did not create", async () => {
+    mocks.addWorktree.mockResolvedValue(undefined);
+
+    await expect(ensureWorktree(USER, "chat-1")).rejects.toThrow(/was not created/);
+    expect(mocks.createWorktree).not.toHaveBeenCalled();
   });
 
   it("retries once when another git process holds a lock", async () => {
     mocks.addWorktree
       .mockRejectedValueOnce(new mocks.MockGitError("fatal: cannot lock ref 'HEAD'"))
-      .mockResolvedValueOnce(undefined);
+      .mockImplementationOnce(createsCheckout);
 
     const worktree = await ensureWorktree(USER, "chat-1");
 
@@ -306,11 +361,12 @@ describe("ensureWorktree", () => {
     }));
     let running = 0;
     let peak = 0;
-    mocks.addWorktree.mockImplementation(async () => {
+    mocks.addWorktree.mockImplementation(async (user: string, options: { dir: string }) => {
       running += 1;
       peak = Math.max(peak, running);
       await new Promise((resolve) => setTimeout(resolve, 5));
       running -= 1;
+      await createsCheckout(user, options);
     });
 
     await Promise.all([

@@ -43,6 +43,9 @@ export const CLONE_TIMEOUT_SECONDS = 600;
 /** Everything else is local and must not hold a request open. */
 const GIT_TIMEOUT_SECONDS = 60;
 
+/** A worktree checkouts a lot of files, so it gets longer than a status. */
+const WORKTREE_TIMEOUT_SECONDS = 120;
+
 /** Longest error message kept from git's stderr. */
 const MAX_ERROR_LENGTH = 2000;
 
@@ -230,6 +233,16 @@ export async function listWorktrees(userId: string, repoDir: string): Promise<Gi
 }
 
 /**
+ * A checkout path for git, absolute.
+ *
+ * git resolves the path it is given against its own cwd, and that cwd is the
+ * repo, so a workspace-relative path checks out inside the repo.
+ */
+function checkoutPath(userId: string, dir: string): string {
+  return resolveCoderPath(userId, dir);
+}
+
+/**
  * Add a worktree on a new branch.
  *
  * The branch is created here rather than checked out, so two chats in one
@@ -242,8 +255,27 @@ export async function addWorktree(
 ): Promise<void> {
   await runGit(userId, {
     cwd: options.repoDir,
-    args: ["worktree", "add", "-b", options.branch, options.dir, options.base],
-    timeoutSeconds: 120,
+    args: [
+      "worktree",
+      "add",
+      "-b",
+      options.branch,
+      checkoutPath(userId, options.dir),
+      options.base,
+    ],
+    timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
+  });
+}
+
+/** Add a worktree on a branch that already exists. */
+export async function addWorktreeOnBranch(
+  userId: string,
+  options: { repoDir: string; dir: string; branch: string },
+): Promise<void> {
+  await runGit(userId, {
+    cwd: options.repoDir,
+    args: ["worktree", "add", checkoutPath(userId, options.dir), options.branch],
+    timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
   });
 }
 
@@ -254,8 +286,8 @@ export async function removeWorktree(
 ): Promise<void> {
   await runGit(userId, {
     cwd: options.repoDir,
-    args: ["worktree", "remove", options.dir],
-    timeoutSeconds: 120,
+    args: ["worktree", "remove", checkoutPath(userId, options.dir)],
+    timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
   });
 }
 
