@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/http";
+import { CHAT_RENAMED_EVENT, CHAT_SESSIONS_DELETED_EVENT } from "@/lib/chat/session-events";
 
 /** A project as the list shows it. */
 export interface CoderProjectSummary {
@@ -69,8 +70,58 @@ export interface CoderSessionState {
   scripts: { name: string; command: string; runCommand: string }[];
 }
 
-/** Load one thing, with the reload the panels need after a run finishes. */
-function useLoad<T>(url: string | null): {
+/** How often an open coder list re-reads itself while the tab is visible. */
+const LIST_POLL_MS = 20_000;
+
+/**
+ * A re-read signal for a list that goes stale while it stays open.
+ *
+ * A title the server assigns (the first message names a new chat), a chat
+ * deleted from the other list, a tab the user comes back to, and a slow poll
+ * all land here. The poll is the only way a chat started on another device can
+ * appear, and it is what keeps `isGenerating` honest on chats this panel is not
+ * streaming.
+ *
+ * `key` is folded into the result, so passing the open chat's id refetches the
+ * list it belongs in: the chat the header just created shows up in the panel
+ * that sent the user there.
+ */
+export function useListRefresh(key: string | null = null): string {
+  const [tick, setTick] = useState(0);
+  const bump = useCallback(() => setTick((value) => value + 1), []);
+
+  useEffect(() => {
+    const onFocus = () => bump();
+    // A hidden tab does not need the poll, but the focus listener above means
+    // coming back to it is enough to catch up.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") bump();
+    }, LIST_POLL_MS);
+
+    window.addEventListener(CHAT_RENAMED_EVENT, bump);
+    window.addEventListener(CHAT_SESSIONS_DELETED_EVENT, bump);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(CHAT_RENAMED_EVENT, bump);
+      window.removeEventListener(CHAT_SESSIONS_DELETED_EVENT, bump);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [bump]);
+
+  return `${key ?? ""}:${tick}`;
+}
+
+/**
+ * Load one thing, with the reload the panels need after a run finishes.
+ *
+ * `refreshKey` re-reads without unmounting, and a re-read never blanks what is
+ * already on screen: only the first read of a URL counts as loading.
+ */
+function useLoad<T>(
+  url: string | null,
+  refreshKey: string | number = 0,
+): {
   data: T | null;
   loading: boolean;
   error: string | null;
@@ -81,14 +132,16 @@ function useLoad<T>(url: string | null): {
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const latest = useRef(0);
+  const loadedUrl = useRef<string | null>(null);
 
   useEffect(() => {
     if (!url) return;
     const ticket = ++latest.current;
-    setLoading(true);
+    setLoading(loadedUrl.current !== url);
     fetchJson<T>(url)
       .then((body) => {
         if (ticket !== latest.current) return;
+        loadedUrl.current = url;
         setData(body);
         setError(null);
       })
@@ -100,22 +153,32 @@ function useLoad<T>(url: string | null): {
       .finally(() => {
         if (ticket === latest.current) setLoading(false);
       });
-  }, [url, nonce]);
+  }, [url, refreshKey, nonce]);
 
   const reload = useCallback(() => setNonce((value) => value + 1), []);
   return { data, loading, error, reload };
 }
 
 export function useProjects() {
+  const refreshKey = useListRefresh();
   const { data, loading, error, reload } = useLoad<{ projects: CoderProjectSummary[] }>(
     "/api/coder/projects",
+    refreshKey,
   );
   return { projects: data?.projects ?? [], loading, error, reload };
 }
 
-export function useProject(projectId: string | null) {
+/**
+ * One project and its chats.
+ *
+ * `activeSessionId` is not just for highlighting: opening a chat refetches the
+ * list, so the chat that was started from this panel is in it.
+ */
+export function useProject(projectId: string | null, activeSessionId: string | null = null) {
+  const refreshKey = useListRefresh(activeSessionId);
   const { data, loading, error, reload } = useLoad<CoderProjectDetail>(
     projectId ? `/api/coder/projects/${encodeURIComponent(projectId)}` : null,
+    refreshKey,
   );
   return { project: data?.project ?? null, chats: data?.chats ?? [], loading, error, reload };
 }

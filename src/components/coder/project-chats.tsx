@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { deleteJson } from "@/lib/http";
+import { broadcastSessionsDeleted } from "@/lib/chat/session-events";
 import { formatRelativeDate } from "@/lib/format";
 import { ROW_ACTION, cn } from "@/lib/utils";
 import { useProject, type CoderProjectChat } from "./use-coder-data";
@@ -35,7 +36,7 @@ export function ProjectChats({
   onNewChat?: () => void;
 }) {
   const router = useRouter();
-  const { project, chats, loading, error, reload } = useProject(projectId);
+  const { project, chats, loading, error, reload } = useProject(projectId, activeSessionId ?? null);
   const [deleting, setDeleting] = useState<CoderProjectChat | null>(null);
 
   const remove = async (chat: CoderProjectChat, force: boolean) => {
@@ -47,6 +48,9 @@ export function ProjectChats({
       console.error(`Failed to delete coder chat ${chat.id}:`, err);
       throw err;
     }
+    // The chat list's other copy (desktop panel, phone sheet) and the main
+    // sidebar all still show the row.
+    broadcastSessionsDeleted([chat.id]);
     reload();
     if (chat.id === activeSessionId) router.push(`/dashboard/coder/${projectId}`);
   };
