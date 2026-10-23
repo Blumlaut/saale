@@ -140,6 +140,21 @@ export function MyList() {
 }
 ```
 
+### Density: A Component Dropped Into a Side Panel
+
+A browser, list or card reused inside a side panel (the coder worktree panel, the
+chat "Linked" panel) renders **dense**: `text-xs`, `py-1` rows, `gap-2`,
+`px-2`, `h-3.5` icons. The panel's own gutter adds to the component's, so the
+page-sized variant (`py-2.5 md:px-6`) turns a column into a full-page list.
+
+- A component that appears both ways takes a `dense` prop and defaults to the
+  page layout. `FileBrowser` is the reference.
+- Never nest `GlassPanelContent` inside a `GlassPanel` inside a panel: its `md:`
+  gutter doubles the padding on every row. Use a plain `min-h-0 flex-1
+  overflow-y-auto` div for the scroll region.
+- The guard is `e2e/coder-panel.spec.ts` ("keeps the file rows tight"), which
+  measures a row at ≤ 28px. A new side-panel list needs the same measurement.
+
 ### Page Layout (App Shell) — ALWAYS use these
 
 Every dashboard/admin page is a fixed-height shell (`h-dvh overflow-hidden`); the
@@ -243,6 +258,7 @@ Section labels, panel footers, and metadata use the `.console-label` class — s
 | ALL CAPS body text       | Aggressive                               | Sentence case (micro-labels excepted)  |
 | Monospace UI text        | Developer-tool vibe (except data)        | Inter for UI; Geist Mono for data, IDs, timestamps, micro-labels |
 | Animated backgrounds     | Distracting                              | Static solid background                |
+| Page-sized rows in a side panel | The panel gutter adds to the component's, so a column scrolls like a page | `dense` variant: `text-xs`, `py-1`, `px-2`; measured in e2e |
 
 ## Review Checklist
 

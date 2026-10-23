@@ -237,6 +237,25 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("keeps the file rows tight in the worktree panel", async ({ browser }) => {
+    test.skip(!session, "login failed");
+    const context = await browser.newContext({ storageState: session!.storageState });
+    const page = await context.newPage();
+    await mockCoder(page);
+
+    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await shown(page, '[role="tab"]:text-is("Files")').click();
+
+    const name = page.locator('button:has-text("README.md")').first();
+    await expect(name).toBeVisible();
+    // The panel is a side column: a row sized like a full page reads as huge.
+    const row = name.locator("xpath=..");
+    const box = await row.boundingBox();
+    expect(box?.height ?? 0).toBeLessThanOrEqual(30);
+
+    await context.close();
+  });
+
   test("runs a command in the worktree from the terminal tab", async ({ browser }) => {
     test.skip(!session, "login failed");
     const context = await browser.newContext({ storageState: session!.storageState });

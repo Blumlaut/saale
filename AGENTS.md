@@ -21,6 +21,7 @@ Any UI work (pages, panels, forms, lists, modals, buttons, inputs, styling) **mu
 - **`liquid-glass` is baked into `GlassPanel` and all overlay components** — never add it manually; use `liquid-glass-inner` for nested content areas, `liquid-glass-pill`/`liquid-glass-accent` for buttons/badges/toggles.
 - **Chat is the one full-bleed view** — `src/app/dashboard/chat/layout.tsx` marks its root `full-bleed`: on phones the shell gutter is dropped so the view runs to the window edges, with square panels. Desktop keeps the console gutter and the rounded panels (there is room for the floating nav *and* the view there). Don't add page padding to the phone layout, and don't strip the desktop spacing/radius.
 - **Row actions must be reachable without hover** — touch devices can't hover, so use `ROW_ACTION` (`@/lib/utils`) for row menus/buttons and destructive row actions belong behind the row menu. A hover-only control is invisible on a phone.
+- **A list reused inside a side panel is dense** — the panel's gutter adds to the component's own, so a page-sized row reads as huge in a column. Pass the component's `dense` variant (`FileBrowser` is the reference: `text-xs`, `py-1`, `px-2`) and never nest `GlassPanelContent` in a panel; `e2e/coder-panel.spec.ts` measures a file row at ≤ 28px.
 - `e2e/mobile-overflow.spec.ts`, `e2e/modal-overflow.spec.ts`, `e2e/chat-full-bleed.spec.ts` and `__tests__/overlay-coverage.test.ts` enforce all of this at 375px and 320px — a regression fails CI.
 
 ## Investigate Before Using
