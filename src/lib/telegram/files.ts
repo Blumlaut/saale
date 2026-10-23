@@ -5,6 +5,7 @@ import { SHOW_FILE_TOOL_NAME } from "@/lib/pi/tools/chat-tools";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
 import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { sendTelegramFile } from "./client";
+import { prisma } from "@/lib/db";
 
 /** Workspace-relative directory where Telegram documents are stored */
 export const TELEGRAM_FILES_DIR = "telegram_files";
@@ -55,6 +56,35 @@ export interface ProcessedFile {
   mimeType: string;
   /** Original file name */
   fileName: string;
+}
+
+/**
+ * Record a document sent through Telegram against the message it arrived with,
+ * so the workspace cleanup helpers can find it later.
+ *
+ * Images are base64-only and never land on disk, so they have nothing to record.
+ */
+export async function recordTelegramDocumentAttachment(params: {
+  messageId: string;
+  file: ProcessedFile;
+}): Promise<void> {
+  const { messageId, file } = params;
+  if (!file.filePath) return;
+
+  // Relative to the user workspace (the terminal home when Open Terminal is
+  // configured) so the workspace-files endpoint can locate it.
+  const relativePath = path.join(TELEGRAM_FILES_DIR, path.basename(file.filePath));
+
+  await prisma.chatAttachment.create({
+    data: {
+      messageId,
+      storageId: crypto.randomUUID(),
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      size: file.size ?? 0,
+      storagePath: relativePath,
+    },
+  });
 }
 
 /**

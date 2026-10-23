@@ -24,8 +24,11 @@ const telegramSendSchema = Type.Object({
  * takes no recipient. delivery always goes to the caller's own linked
  * Telegram chat (see `sendTelegramToUser`), so a message the model decided to
  * send can never reach another person.
+ *
+ * `sessionId` names the chat that produced the message. it is recorded with the
+ * delivery so a reply in Telegram continues this conversation.
  */
-export function createTelegramTools(userId: string): ToolDefinition[] {
+export function createTelegramTools(userId: string, sessionId: string): ToolDefinition[] {
   return [
     defineStructuredTool({
       name: TELEGRAM_SEND_TOOL_NAME,
@@ -51,7 +54,11 @@ export function createTelegramTools(userId: string): ToolDefinition[] {
           throw new Error("The message is empty. nothing was sent.");
         }
 
-        const delivery = await sendTelegramToUser({ userId, content: message });
+        const delivery = await sendTelegramToUser({
+          userId,
+          content: message,
+          sourceSessionId: sessionId,
+        });
 
         if (!delivery.ok) {
           // Throw rather than flag a result: the agent loop turns a throw into a

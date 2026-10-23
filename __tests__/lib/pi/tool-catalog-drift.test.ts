@@ -59,7 +59,7 @@ async function implementedTools(): Promise<ToolDefinition[]> {
     createTaskTools(userId),
     createAgentJobTools(userId),
     createWatcherTools(userId, sessionId),
-    createTelegramTools(userId),
+    createTelegramTools(userId, sessionId),
     createInfraTools(userId),
     createSettingsTools(userId),
   ];

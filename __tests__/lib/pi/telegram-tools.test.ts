@@ -14,10 +14,11 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const userId = "user-1";
+const sessionId = "sess-1";
 
 /** The single tool this factory exposes. */
 function telegramTool(): ToolDefinition {
-  const tools = createTelegramTools(userId);
+  const tools = createTelegramTools(userId, sessionId);
   expect(tools).toHaveLength(1);
   return tools[0]!;
 }
@@ -47,6 +48,7 @@ describe("createTelegramTools", () => {
     expect(mockSendTelegramToUser).toHaveBeenCalledWith({
       userId,
       content: "Dentist at 14:30",
+      sourceSessionId: sessionId,
     });
     expect(result.content[0].text).toContain("Jane");
     expect(result.details).toEqual({ chatId: "119075844", label: "Jane" });
@@ -89,18 +91,20 @@ describe("createTelegramTools", () => {
     expect(mockSendTelegramToUser).toHaveBeenCalledWith({
       userId,
       content: "Standup in 5",
+      sourceSessionId: sessionId,
     });
   });
 
   it("binds the user from the factory closure, not from the call", async () => {
     mockSendTelegramToUser.mockResolvedValue({ ok: true, chatId: "1", label: "Jane" });
 
-    const otherTool = createTelegramTools("user-2")[0]!;
+    const otherTool = createTelegramTools("user-2", "sess-2")[0]!;
     await callExecute(otherTool.execute, { message: "hello" });
 
     expect(mockSendTelegramToUser).toHaveBeenCalledWith({
       userId: "user-2",
       content: "hello",
+      sourceSessionId: "sess-2",
     });
   });
 });

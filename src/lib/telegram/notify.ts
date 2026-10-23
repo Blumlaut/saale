@@ -1,7 +1,8 @@
 import { getTelegramBot } from "./bot";
 import { sendTelegramMessage } from "./client";
 import { getLinkByUserId } from "./links";
-import { recordTelegramJobOutput } from "./outbound";
+import { recordOutboundMessage } from "./outbound";
+import { recordOutboundMessages } from "./outbound-messages";
 
 /**
  * Proactive Telegram delivery.
@@ -14,8 +15,10 @@ import { recordTelegramJobOutput } from "./outbound";
  *    caller's own link, and a link is a single private chat, so a message the
  *    agent decided to send can never land in a group or another user's chat.
  *  - **Replies keep their context.** Every delivered message is recorded in the
- *    chat's session, so replying to it continues the thread instead of reading
- *    as amnesia (`recordTelegramJobOutput`).
+ *    chat that sent it, so replying to it continues that thread instead of
+ *    reading as amnesia (`recordOutboundMessage`), and the sent message itself
+ *    is written to the outbound ledger so the reply can be routed back
+ *    (`recordOutboundMessages`).
  *  - **Failure is data, not a log line.** Callers get a result they must act
  *    on, rather than a message that silently evaporated.
  */
@@ -44,28 +47,25 @@ export interface TelegramDelivery {
 }
 
 /**
- * Send a message to the user's linked chat and record it in that chat's
- * session so a reply has context.
+ * Send a message to the user's linked chat, record it in the chat that
+ * produced it, and ledger the sent messages so a reply finds its way back.
  *
  * Recording failures are logged and swallowed. a message that would otherwise
- * arrive must not be held back because the session write failed.
+ * arrive must not be held back because a bookkeeping write failed.
  */
 export async function deliverTelegramMessage(params: {
   userId: string;
   encryptedToken: string;
   chatId: bigint;
   content: string;
+  /** The chat that produced this message; the home thread when omitted. */
+  sourceSessionId?: string | null | undefined;
 }): Promise<TelegramDelivery> {
-  const { userId, encryptedToken, chatId, content } = params;
+  const { userId, encryptedToken, chatId, content, sourceSessionId } = params;
 
+  let messageIds: number[];
   try {
-    await recordTelegramJobOutput({ userId, content });
-  } catch (err) {
-    console.error(`[telegram] Failed to record outbound message for user ${userId}:`, err);
-  }
-
-  try {
-    await sendTelegramMessage(encryptedToken, chatId, content);
+    messageIds = await sendTelegramMessage(encryptedToken, chatId, content);
   } catch (err) {
     return {
       ok: false,
@@ -73,6 +73,20 @@ export async function deliverTelegramMessage(params: {
       reason: "send_failed",
       error: err instanceof Error ? err.message : "Telegram rejected the message",
     };
+  }
+
+  // Only a message that arrived has something to reply to, so both records
+  // follow the send.
+  try {
+    await recordOutboundMessage({ userId, content, sourceSessionId });
+  } catch (err) {
+    console.error(`[telegram] Failed to record outbound message for user ${userId}:`, err);
+  }
+
+  try {
+    await recordOutboundMessages({ userId, chatId, messageIds, sourceSessionId });
+  } catch (err) {
+    console.error(`[telegram] Failed to ledger outbound messages for user ${userId}:`, err);
   }
 
   return { ok: true, chatId: chatId.toString() };
@@ -86,12 +100,14 @@ export async function deliverTelegramMessage(params: {
  *
  * @param params.userId - The Saale user to reach
  * @param params.content - Message text (Markdown; split automatically if long)
+ * @param params.sourceSessionId - The chat that produced the message, when one did
  */
 export async function sendTelegramToUser(params: {
   userId: string;
   content: string;
+  sourceSessionId?: string | null | undefined;
 }): Promise<TelegramDelivery> {
-  const { userId, content } = params;
+  const { userId, content, sourceSessionId } = params;
 
   const bot = await getTelegramBot();
   if (!bot) {
@@ -126,6 +142,7 @@ export async function sendTelegramToUser(params: {
     encryptedToken: bot.encryptedToken,
     chatId: link.telegramChatId,
     content,
+    sourceSessionId,
   });
 
   return { ...delivery, ...(link.displayName ? { label: link.displayName } : {}) };

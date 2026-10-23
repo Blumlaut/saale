@@ -7,8 +7,15 @@ export const stopHandler: CommandHandler = {
   run: async (ctx) => {
     if (ctx.surface === "telegram") {
       const wasActive = isTelegramSessionActive(ctx.userId, ctx.telegramChatId);
-      await interruptTelegramChat(ctx.userId, ctx.telegramChatId);
-      return { message: wasActive ? "Stopped." : "Nothing is running.", tone: "info" };
+      if (wasActive) {
+        await interruptTelegramChat(ctx.userId, ctx.telegramChatId);
+        return { message: "Stopped.", tone: "info" };
+      }
+      // A run started from the web in this same chat is not in the Telegram
+      // registry. stop it through the chat instead.
+      if (!ctx.sessionId) return { message: "Nothing is running.", tone: "info" };
+      const stopped = await stopChatGeneration(ctx.userId, ctx.sessionId);
+      return { message: stopped ? "Stopped." : "Nothing is running.", tone: "info" };
     }
 
     const stopped = await stopChatGeneration(ctx.userId, ctx.sessionId);

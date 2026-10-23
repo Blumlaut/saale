@@ -37,6 +37,7 @@ export interface TelegramLinkInfo {
   telegramChatId: bigint;
   displayName: string | null;
   sessionId: string | null;
+  lastOutboundSessionId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

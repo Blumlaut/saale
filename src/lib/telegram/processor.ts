@@ -14,12 +14,11 @@ import {
   type ApprovalRequest,
   type ApprovalResolutionData,
 } from "@/lib/pi/tool-approval-gate";
-import { resolveToolSummary } from "@/lib/pi/tool-summary-resolver";
 import { sendTelegramApprovalRequest, deleteTelegramApprovalMessage } from "./approval";
 import { createApprovalCardTracker } from "./approval-cards";
-import { extractCumulativeText } from "@/lib/pi/stream-logic";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
+import { compactChatSession, compactionOutcome } from "@/lib/chat/compact-chat";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import {
   buildAgentSystemPrompt,
@@ -33,12 +32,13 @@ import { createSandboxScopedTools } from "@/lib/pi/session";
 import {
   downloadAndProcessTelegramFile,
   buildFilePromptText,
-  sendSharedFileToTelegram,
-  sharedFileFromToolCall,
-  TELEGRAM_FILES_DIR,
+  recordTelegramDocumentAttachment,
   type ProcessedFile,
   type TelegramFileInfo,
 } from "./files";
+import { createTelegramRunRenderer } from "./render";
+import { resolveTelegramTarget } from "./routing";
+import { runRoutedTelegramMessage } from "./routed-run";
 import { registerActiveSession } from "@/lib/redis";
 import { resetSessionEvents, subscribeSessionEvents } from "@/lib/pi/session-events";
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
@@ -148,8 +148,15 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     return;
   }
 
-  // 1. Find or create the Saale chat session this link talks through
-  const { sessionId } = await upsertTelegramSession(userId, telegramChatId);
+  // 1. Which chat does this message continue? A reply goes back to the chat
+  //    that sent the message it answers, otherwise to the chat that spoke last.
+  //    The link's home thread is the fallback, and the only path that builds
+  //    its own Pi session here.
+  const target = await resolveTelegramTarget({
+    userId,
+    telegramChatId,
+    replyToMessageId: replyToQuoted ? BigInt(replyToQuoted.messageId) : null,
+  });
 
   // 2. Download and process any attached file
   let processedFile: ProcessedFile | undefined;
@@ -177,6 +184,28 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   const quotedContext = buildQuotedContext(replyToQuoted);
   const agentPrompt = quotedContext ? `${quotedContext}\n\n${promptText}` : promptText;
 
+  // A message that continues an existing chat runs on that chat's own pooled
+  // agent, the same one the web UI prompts, so both surfaces share one
+  // transcript and one set of settings.
+  if (target.via !== "home") {
+    await runRoutedTelegramMessage({
+      userId,
+      encryptedToken,
+      telegramChatId,
+      sessionId: target.sessionId,
+      promptText,
+      agentPrompt,
+      ...(processedFile?.imageData ? { imageData: processedFile.imageData } : {}),
+      ...(processedFile?.filePath ? { document: processedFile } : {}),
+      ...(replyToMessageId != null ? { replyToMessageId } : {}),
+      messageSeq,
+      donePromise: donePromise ?? new Promise<void>(() => {}),
+    });
+    return;
+  }
+
+  const sessionId = target.sessionId;
+
   // 3. Save the user message to the chat session (for WebUI visibility)
   await saveUserMessage(sessionId, promptText);
 
@@ -184,7 +213,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
   // Telegram images are base64-only (no file on disk). their data is
   // already embedded in the message content, so no attachment record needed.
   // Telegram documents are saved to disk and need a record for cleanup.
-  if (processedFile && processedFile.filePath) {
+  if (processedFile?.filePath) {
     const [userMessage] = await prisma.chatMessage.findMany({
       where: { sessionId, role: "user" },
       orderBy: { createdAt: "desc" },
@@ -192,20 +221,9 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     });
 
     if (userMessage) {
-      // Use a path relative to the user workspace (the terminal home when
-      // Open Terminal is configured) so the workspace-files endpoint and
-      // cleanup helpers can locate it correctly
-      const relativePath = path.join(TELEGRAM_FILES_DIR, path.basename(processedFile.filePath!));
-
-      await prisma.chatAttachment.create({
-        data: {
-          messageId: userMessage.id,
-          storageId: crypto.randomUUID(),
-          fileName: processedFile.fileName,
-          mimeType: processedFile.mimeType,
-          size: processedFile.size ?? 0,
-          storagePath: relativePath,
-        },
+      await recordTelegramDocumentAttachment({
+        messageId: userMessage.id,
+        file: processedFile,
       });
     }
   }
@@ -328,7 +346,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     emitApprovalRequest,
   });
 
-  const allCustomTools = await resolveTools(userId, run.id, resolvedToolConfig, {
+  const allCustomTools = await resolveTools(userId, sessionId, resolvedToolConfig, {
     createSandboxScopedTools,
     wrapWithApproval: approvalWrapper,
     exposure: normalizeToolExposure(userSettings?.toolExposure),
@@ -376,45 +394,14 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     session,
   });
 
-  // Telegram-specific send state. DB persistence + stream events are handled
-  // by the tracker above. this subscription only sends messages to Telegram.
-  let turnIndex = 0;
-  let currentTurnText = "";
-
-  // Track which turns have already had their text flushed to Telegram
-  // (happens in message_update when a tool call appears, so text arrives
-  // before the approval request. not after at turn_end).
-  const flushedTurnTexts = new Set<number>();
-
-  // Track which tool calls have already had a summary sent to Telegram
-  const sentToolSummaries = new Set<string>();
-
-  // Files the agent showed this turn, keyed by tool call. `tool_execution_end`
-  // reports the result but not the arguments, so the path is captured when the
-  // call starts.
-  const sharedFiles = new Map<string, { filePath: string; description?: string }>();
-
-  /**
-   * Flush accumulated text to Telegram immediately.
-   *
-   * Called from message_update when a tool call is detected so the agent's
-   * response text arrives BEFORE the approval request (which fires inside
-   * tool.execute(), before tool_execution_start).
-   */
-  function flushTurnText(turnIndex: number): void {
-    if (!currentTurnText.trim()) return;
-    if (flushedTurnTexts.has(turnIndex)) return;
-    flushedTurnTexts.add(turnIndex);
-
-    sendTelegramMessage(
-      encryptedToken,
-      telegramChatId,
-      currentTurnText,
-      turnIndex === 0 ? (replyToMessageId != null ? { replyToMessageId } : undefined) : undefined,
-    ).catch((err) => {
-      console.error("Failed to send Telegram message for turn:", err);
-    });
-  }
+  // Everything the phone shows comes from the shared renderer. DB persistence
+  // and stream events are handled by the tracker above.
+  const renderer = createTelegramRunRenderer({
+    userId,
+    encryptedToken,
+    telegramChatId,
+    ...(replyToMessageId != null ? { replyToMessageId } : {}),
+  });
 
   // Checkpoint. a newer message may have arrived during the slow setup
   // above, before the Pi session existed (so the webhook's interrupt could
@@ -452,142 +439,12 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
           let lastProviderError: string | null = null;
 
           const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+            // Rendering (text, tool summaries, shared files, compaction
+            // notices) belongs to the renderer. the switch decides how the run
+            // ends.
+            renderer.onEvent(event);
+
             switch (event.type) {
-              case "message_update": {
-                if (event.message.role !== "assistant") return;
-                const msg = event.message as { content: unknown[] };
-                currentTurnText = extractCumulativeText(msg.content);
-
-                // Flush text NOW when a tool call appears. the approval request
-                // fires inside tool.execute() (before tool_execution_start), so we
-                // need the agent's response text to arrive BEFORE the approval.
-                const hasToolCall = msg.content.some(
-                  (c) =>
-                    typeof c === "object" &&
-                    c !== null &&
-                    (c as Record<string, unknown>).type === "toolCall",
-                );
-                if (hasToolCall) {
-                  flushTurnText(turnIndex);
-                }
-                break;
-              }
-
-              case "tool_execution_start": {
-                const sharedFile = sharedFileFromToolCall(event.toolName, event.args);
-                if (sharedFile) {
-                  sharedFiles.set(event.toolCallId, sharedFile);
-                }
-
-                // Send a human-readable summary for tools that define one
-                if (!sentToolSummaries.has(event.toolCallId)) {
-                  sentToolSummaries.add(event.toolCallId);
-
-                  resolveToolSummary(event.toolName, event.args, userId)
-                    .then((summary) => {
-                      if (summary) {
-                        sendTelegramMessage(
-                          encryptedToken,
-                          telegramChatId,
-                          `🔧 \`${summary}\``,
-                        ).catch((err) => {
-                          console.error("Failed to send Telegram tool summary:", err);
-                        });
-                      }
-                    })
-                    .catch((err) => {
-                      console.error("Failed to resolve tool summary:", err);
-                    });
-                }
-                break;
-              }
-
-              case "tool_execution_end": {
-                // A file the agent showed follows the answer to the phone
-                // the tool's own result carries no bytes, so it is read back
-                // from the workspace here.
-                const sharedFile = sharedFiles.get(event.toolCallId);
-                if (sharedFile) {
-                  sharedFiles.delete(event.toolCallId);
-
-                  if (!event.isError) {
-                    sendSharedFileToTelegram({
-                      userId,
-                      encryptedToken,
-                      telegramChatId,
-                      ...sharedFile,
-                    }).catch((err) => {
-                      console.error("Failed to send a shared file to Telegram:", err);
-                    });
-                  }
-                }
-
-                // Results are tracked by the session event tracker for DB saves.
-                break;
-              }
-
-              case "turn_end": {
-                const assistantMsg =
-                  event.message.role === "assistant"
-                    ? (event.message as { content: unknown[] })
-                    : null;
-
-                const text = assistantMsg
-                  ? extractCumulativeText(assistantMsg.content)
-                  : currentTurnText;
-
-                // Send non-empty text to Telegram (skip if already flushed in message_update
-                // when a tool call was detected. that ensures text arrives before approval).
-                if (text.trim() && !flushedTurnTexts.has(turnIndex)) {
-                  sendTelegramMessage(
-                    encryptedToken,
-                    telegramChatId,
-                    text,
-                    turnIndex === 0
-                      ? replyToMessageId != null
-                        ? { replyToMessageId }
-                        : undefined
-                      : undefined,
-                  ).catch((err) => {
-                    console.error("Failed to send Telegram message for turn:", err);
-                  });
-                }
-
-                turnIndex++;
-                currentTurnText = "";
-                break;
-              }
-
-              case "compaction_start": {
-                sendTelegramMessage(
-                  encryptedToken,
-                  telegramChatId,
-                  "\U0001f504 Compacting conversation...",
-                ).catch((err) => {
-                  console.error("Failed to send Telegram compaction start message:", err);
-                });
-                break;
-              }
-
-              case "compaction_end": {
-                // Compaction summary is persisted by the session event tracker.
-                if (event.result && !event.aborted) {
-                  // Report token stats to Telegram (no summary)
-                  const tokensAfter = event.result.estimatedTokensAfter;
-                  const tokensInfo = tokensAfter
-                    ? ` (was ${event.result.tokensBefore.toLocaleString()} tokens, now ~${tokensAfter.toLocaleString()})`
-                    : ` (was ${event.result.tokensBefore.toLocaleString()} tokens)`;
-                  sendTelegramMessage(
-                    encryptedToken,
-                    telegramChatId,
-                    `\u2705 Compaction complete${tokensInfo}.`,
-                  ).catch((err) => {
-                    console.error("Failed to send Telegram compaction end message:", err);
-                  });
-                }
-                break;
-              }
-
               // agent_end only means the current run iteration stopped. the
               // SDK may still retry, auto-compact, or continue the run. The
               // settled event is the "completely finished" signal (TUI parity),
@@ -662,18 +519,9 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     // the session was attached to the registry entry.
     const interrupted = superseded || wasTelegramSessionInterrupted(session);
 
-    // For single-turn responses (no turn_end fired), make sure the text is
-    // still delivered to Telegram. The tracker handles the DB save.
-    // Interrupted runs are superseded by the new message's response
-    // a stale partial reply would only confuse the user.
-    if (!interrupted && turnIndex === 0 && currentTurnText.trim() && !flushedTurnTexts.has(0)) {
-      await sendTelegramMessage(
-        encryptedToken,
-        telegramChatId,
-        currentTurnText,
-        replyToMessageId != null ? { replyToMessageId } : undefined,
-      );
-    }
+    // A single-turn response never fires turn_end. the renderer delivers its
+    // text. Interrupted runs stay silent.
+    await renderer.finish(interrupted);
 
     // Get stats and mark run as completed (or cancelled if interrupted)
     const stats = session.getSessionStats();
@@ -823,9 +671,12 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
 }
 
 /**
- * Compact a Telegram chat session.
+ * Compact the chat a Telegram command was sent in.
  *
- * Recreates the Pi session from persistent JSONL files and runs compaction.
+ * The home thread keeps its own path. it is not a pooled chat, so it is rebuilt
+ * from its JSONL files. A message routed into an existing chat compacts that
+ * chat through the same helper the web uses.
+ *
  * The caller (the `/compact` command handler) renders the outcome. nothing is
  * sent to Telegram from here, so the web and Telegram paths can share one
  * command definition.
@@ -833,35 +684,40 @@ export async function ensureTelegramAgentDefinition(userId: string): Promise<{
 export async function compactTelegramSession(
   params: CompactTelegramSessionParams,
 ): Promise<CommandOutcome> {
+  const link = await getLinkByUserId(params.userId);
+  if (!link) {
+    return { message: "Telegram is not linked to this account.", tone: "error" };
+  }
+
+  const sessionId = params.sessionId ?? link.sessionId;
+  if (!sessionId) {
+    return { message: "No active chat session found. Send a message first.", tone: "error" };
+  }
+
+  if (sessionId !== link.sessionId) {
+    return compactionOutcome(await compactChatSession({ userId: params.userId, sessionId }));
+  }
+
   // Shares the chat's lock with generation: compacting the transcript while a
   // run is still writing to it would summarise a partial conversation, and the
   // summary could end up off the active path.
   return withChatLock(`${params.userId}:${params.telegramChatId}`, () =>
-    runTelegramCompaction(params),
+    runTelegramCompaction({ ...params, sessionId }),
   );
 }
 
 interface CompactTelegramSessionParams {
   userId: string;
   telegramChatId: bigint;
+  /** The chat the command was sent in, as routed. */
+  sessionId?: string | null | undefined;
 }
 
 /** The body of `compactTelegramSession`, run exclusively per chat. */
 async function runTelegramCompaction(
-  params: CompactTelegramSessionParams,
+  params: CompactTelegramSessionParams & { sessionId: string },
 ): Promise<CommandOutcome> {
-  const { userId } = params;
-
-  // 1. Find the chat session this link talks through
-  const link = await getLinkByUserId(userId);
-  if (!link) {
-    return { message: "Telegram is not linked to this account.", tone: "error" };
-  }
-  if (!link.sessionId) {
-    return { message: "No active chat session found. Send a message first.", tone: "error" };
-  }
-
-  const sessionId = link.sessionId;
+  const { userId, sessionId } = params;
 
   // 2. Get model config from the agent definition or user settings
   const definition = await prisma.agentDefinition.findFirst({
@@ -956,71 +812,6 @@ async function runTelegramCompaction(
 }
 
 // ─── Chat Session Helpers ────────────────────────────────────────────────────
-
-/** Telegram chats expire after this many ms of inactivity (6 hours) */
-const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
-
-/** Whether the session has sat unused past the chat's expiry window. */
-async function isSessionExpired(sessionId: string): Promise<boolean> {
-  const [lastMessage] = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "desc" },
-    take: 1,
-  });
-
-  // No messages at all means the session was created but never used. expired.
-  return (
-    lastMessage == null || lastMessage.createdAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now()
-  );
-}
-
-/**
- * Find or create the Saale chat session this link talks through.
- *
- * The link remembers its session, because a link is exactly one user and one
- * private chat. there is no per-chat row to look up. Sessions still expire
- * after six hours of inactivity so a stale thread starts clean instead of
- * carrying an unbounded history.
- */
-async function upsertTelegramSession(
-  userId: string,
-  telegramChatId: bigint,
-): Promise<{ sessionId: string }> {
-  const link = await getLinkByUserId(userId);
-  if (!link) {
-    throw new Error("Telegram link not found");
-  }
-
-  // Defence in depth: the webhook routed this message in from this link's chat,
-  // so a mismatch means the link changed while the message was in flight.
-  if (link.telegramChatId !== telegramChatId) {
-    throw new Error("Telegram chat does not belong to this user's link");
-  }
-
-  if (link.sessionId && !(await isSessionExpired(link.sessionId))) {
-    return { sessionId: link.sessionId };
-  }
-
-  const sessionId = crypto.randomUUID();
-
-  await prisma.$transaction(async (tx) => {
-    await tx.chatSession.create({
-      data: {
-        id: sessionId,
-        userId,
-        title: "Telegram Chat",
-        temporary: false,
-      },
-    });
-
-    await tx.telegramLink.update({
-      where: { userId },
-      data: { sessionId },
-    });
-  });
-
-  return { sessionId };
-}
 
 /**
  * Save a user message to the chat session.

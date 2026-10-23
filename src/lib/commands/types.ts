@@ -63,6 +63,8 @@ export interface WebCommandContext extends CommandBaseContext {
 
 export interface TelegramCommandContext extends CommandBaseContext {
   surface: "telegram";
+  /** The chat this command acts on. Absent when there is no conversation yet. */
+  sessionId?: string | undefined;
   telegramChatId: bigint;
   encryptedToken: string;
   /** The user's command message. replies point at it. */

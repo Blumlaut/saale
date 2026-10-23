@@ -52,6 +52,7 @@ const COMMAND = {
   userId: USER_ID,
   encryptedToken: "encrypted-token",
   telegramChatId: CHAT_ID,
+  sessionId: "sess-1",
   name: "model",
   args: "",
   replyToMessageId: 7,

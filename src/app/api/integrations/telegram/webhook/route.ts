@@ -18,6 +18,7 @@ import type { TelegramFileInfo } from "@/lib/telegram/files";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
 import { handleCommandPromptCallback, handleTelegramCommand } from "@/lib/telegram/command-prompts";
 import { extractQuotedMessage } from "@/lib/telegram/reply-context";
+import { resolveExistingTelegramTarget } from "@/lib/telegram/routing";
 import { getCommandMeta } from "@/lib/commands/catalog";
 import { parseCommand } from "@/lib/commands/parse";
 import {
@@ -281,10 +282,25 @@ export async function POST(request: NextRequest) {
   //    paths like `/dashboard/chat`) still reaches the agent as a normal message.
   const parsedCommand = parseCommand(content.text ?? "");
   if (parsedCommand && getCommandMeta(parsedCommand.name)) {
+    const quoted = extractQuotedMessage(message.reply_to_message);
+    // A command acts on the chat the message routed to, so `/compact` and
+    // `/stop` follow a reply into the conversation it answers. A command never
+    // starts a conversation, so an empty account acts on nothing.
+    const commandSessionId = await resolveExistingTelegramTarget({
+      userId,
+      telegramChatId,
+      replyToMessageId: quoted ? BigInt(quoted.messageId) : null,
+      link,
+    }).catch((err) => {
+      console.error(`Failed to resolve the chat for /${parsedCommand.name}:`, err);
+      return null;
+    });
+
     handleTelegramCommand({
       userId,
       encryptedToken,
       telegramChatId,
+      sessionId: commandSessionId ?? undefined,
       name: parsedCommand.name,
       args: parsedCommand.args,
       replyToMessageId: message.message_id,
