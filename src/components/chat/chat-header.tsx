@@ -43,6 +43,10 @@ interface ChatHeaderProps {
   linksCount: number;
   linksOpen: boolean;
   onToggleLinks: () => void;
+  /** Replaces the chat session sheet on phones (the coder chat lists a project). */
+  mobileListTrigger?: React.ReactNode;
+  /** Extra header controls, rendered last (the coder chat's worktree panel). */
+  extraActions?: React.ReactNode;
 }
 
 /**
@@ -70,6 +74,8 @@ export function ChatHeader({
   linksCount,
   linksOpen,
   onToggleLinks,
+  mobileListTrigger,
+  extraActions,
 }: ChatHeaderProps) {
   const [provider, ...modelParts] = modelId.split("/");
   const modelName = modelParts.join("/");
@@ -78,7 +84,9 @@ export function ChatHeader({
     <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-2 md:gap-2 md:px-4 md:py-2.5">
       {/* Mobile: session list */}
       <div className="shrink-0 md:hidden">
-        <MobileSessionSheet activeSessionId={sessionId} onNewChat={onNewChat} />
+        {mobileListTrigger ?? (
+          <MobileSessionSheet activeSessionId={sessionId} onNewChat={onNewChat} />
+        )}
       </div>
 
       {/* Editable session title */}
@@ -171,6 +179,7 @@ export function ChatHeader({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {extraActions}
         <Button
           className="liquid-glass-accent flex h-8 w-8 shrink-0 items-center gap-1.5 rounded-full md:h-9 md:w-auto md:px-3"
           size="icon"

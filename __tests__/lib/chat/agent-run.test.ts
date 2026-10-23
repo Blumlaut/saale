@@ -12,7 +12,13 @@ const mockCreateAndPool = vi.fn();
 vi.mock("@/lib/pi/agent-pool", () => ({
   getPoolKey: (userId: string, sessionId: string) => `${userId}:${sessionId}`,
   get: (...args: unknown[]) => mockGetPoolEntry(...args),
+  remove: vi.fn(),
   createAndPool: (...args: unknown[]) => mockCreateAndPool(...args),
+}));
+
+const mockEnsureWorktree = vi.fn();
+vi.mock("@/lib/coder/worktrees", () => ({
+  ensureWorktree: (...args: unknown[]) => mockEnsureWorktree(...args),
 }));
 
 const mockLoadChatUserSettings = vi.fn();
@@ -72,6 +78,7 @@ const CHAT = {
   modelName: "claude-sonnet-4-5",
   thinkingLevel: "off",
   toolConfig: null,
+  projectId: null,
 };
 
 function makeEntry() {
@@ -148,6 +155,48 @@ describe("ensureChatAgent", () => {
     });
 
     expect(existedAlready).toBe(true);
+  });
+
+  it("builds a coder chat in its worktree", async () => {
+    mockGetPoolEntry.mockReturnValue(undefined);
+    mockEnsureWorktree.mockResolvedValue({ path: "worktrees/saale/c-chat1", branch: "wt/c-chat1" });
+
+    await ensureChatAgent({
+      userId: USER_ID,
+      sessionId: SESSION_ID,
+      chatSession: { ...CHAT, projectId: "proj-1" },
+    });
+
+    expect(mockEnsureWorktree).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockCreateChatAgentSession.mock.calls[0]![0]).toMatchObject({
+      workspaceCwd: "worktrees/saale/c-chat1",
+    });
+  });
+
+  it("leaves a normal chat in the workspace", async () => {
+    mockGetPoolEntry.mockReturnValue(undefined);
+
+    await ensureChatAgent({ userId: USER_ID, sessionId: SESSION_ID, chatSession: CHAT });
+
+    expect(mockEnsureWorktree).not.toHaveBeenCalled();
+    const options = mockCreateChatAgentSession.mock.calls[0]![0] as Record<string, unknown>;
+    expect(options.workspaceCwd).toBeUndefined();
+  });
+
+  it("fails the pool creation when the worktree cannot be built", async () => {
+    mockGetPoolEntry.mockReturnValue(undefined);
+    mockEnsureWorktree.mockRejectedValue(new Error("fatal: invalid reference: main"));
+
+    await expect(
+      ensureChatAgent({
+        userId: USER_ID,
+        sessionId: SESSION_ID,
+        chatSession: { ...CHAT, projectId: "proj-1" },
+      }),
+    ).rejects.toThrow(/invalid reference/);
+
+    // No fallback to the workspace: a coder agent without a worktree must not exist.
+    expect(mockCreateChatAgentSession).not.toHaveBeenCalled();
   });
 });
 

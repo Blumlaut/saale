@@ -44,6 +44,8 @@ import { cn, formatFileSize, ROW_ACTION } from "@/lib/utils";
 export interface FileBrowserProps {
   /** Workspace token the API understands: `user`, or `council:<id>`. */
   target: string;
+  /** Directory to open at, relative to the workspace root (a worktree). */
+  rootPath?: string;
   /** Rendered first in the toolbar. e.g. a back link to the room. */
   leading?: ReactNode;
   /** What to say when the workspace is empty. */
@@ -77,8 +79,8 @@ function iconFor(entry: FileEntry) {
  * toolbar (context left, actions right, icon-only on phones) and whose list is
  * the only scroll region.
  */
-export function FileBrowser({ target, leading, emptyHint }: FileBrowserProps) {
-  const browser = useFileBrowser({ target });
+export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowserProps) {
+  const browser = useFileBrowser({ target, ...(rootPath ? { startPath: rootPath } : {}) });
   const [viewing, setViewing] = useState<FileEntry | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [deleting, setDeleting] = useState<FileEntry[]>([]);

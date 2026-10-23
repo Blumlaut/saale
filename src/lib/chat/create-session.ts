@@ -10,6 +10,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
 
 /** Longest title the UI renders; longer titles are truncated everywhere. */
 const MAX_TITLE_LENGTH = 50;
@@ -23,6 +24,8 @@ export interface NewChatSessionInput {
   thinkingLevel?: string | null | undefined;
   /** Raw tool category config; stored as given, resolved when the chat runs. */
   toolConfig?: unknown;
+  /** Set for a coder chat: the project its worktree is built from. */
+  projectId?: string | null | undefined;
 }
 
 export interface NewChatSession {
@@ -36,10 +39,31 @@ export function sanitizeChatTitle(title: string | null | undefined): string {
   return (title || "New Chat").replace(/\0/g, "").slice(0, MAX_TITLE_LENGTH);
 }
 
+/**
+ * The tool config a new coder chat starts with.
+ *
+ * Resolved at creation rather than at run time, so the chat keeps the set it
+ * was started with when the user changes their coder defaults later.
+ */
+async function coderToolConfigFor(userId: string): Promise<Record<string, boolean>> {
+  const settings = await prisma.appSettings.findUnique({
+    where: { userId },
+    select: { coderToolConfig: true },
+  });
+  return resolveCoderToolConfig(settings?.coderToolConfig as Record<string, unknown> | null);
+}
+
 export async function createChatSessionRow(
   userId: string,
   input: NewChatSessionInput = {},
 ): Promise<NewChatSession> {
+  const toolConfig =
+    input.toolConfig !== undefined
+      ? input.toolConfig
+      : input.projectId
+        ? await coderToolConfigFor(userId)
+        : undefined;
+
   const chatSession = await prisma.chatSession.create({
     data: {
       id: crypto.randomUUID(),
@@ -49,9 +73,8 @@ export async function createChatSessionRow(
       modelProvider: input.modelProvider ?? null,
       modelName: input.modelName ?? null,
       ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
-      ...(input.toolConfig === undefined
-        ? {}
-        : { toolConfig: input.toolConfig as Prisma.InputJsonValue }),
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+      ...(toolConfig === undefined ? {} : { toolConfig: toolConfig as Prisma.InputJsonValue }),
     },
   });
 

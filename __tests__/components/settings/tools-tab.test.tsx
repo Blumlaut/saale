@@ -25,12 +25,23 @@ const baseSettings: UserSettings = {
   purposeModelOverrides: null,
   disabledModels: null,
   defaultToolConfig: null,
+  coderToolConfig: null,
   toolPolicies: null,
   toolExposure: null,
 };
 
 /** The category order is fixed, so the last switch is the last category. */
 const lastCategory = TOOL_CATEGORIES[TOOL_CATEGORIES.length - 1]!;
+
+/**
+ * The category switches only: the coder section renders one per category too,
+ * and it is not what these cases are about.
+ */
+function categorySwitches(): HTMLElement[] {
+  return screen
+    .getAllByRole("switch")
+    .filter((element) => !(element.getAttribute("aria-label") ?? "").endsWith("coder chats"));
+}
 
 function renderTab(settings: UserSettings) {
   const onSettingsChange = vi.fn();
@@ -43,7 +54,7 @@ function renderTab(settings: UserSettings) {
       onSave={vi.fn()}
     />,
   );
-  const switches = screen.getAllByRole("switch");
+  const switches = categorySwitches();
   return { onSettingsChange, switches, lastSwitch: switches[switches.length - 1]! };
 }
 
@@ -96,6 +107,44 @@ describe("ToolsTab category toggles", () => {
         defaultToolConfig: expect.objectContaining({ settings: true }),
       }),
     );
+  });
+});
+
+/**
+ * A coder chat starts from the coder defaults rather than the chat ones, so the
+ * section reads a missing `coderToolConfig` against `CODER_TOOL_DEFAULTS` and
+ * writes the whole map back to the `coderToolConfig` column.
+ */
+describe("ToolsTab coder defaults", () => {
+  function coderSwitches(): HTMLElement[] {
+    return screen
+      .getAllByRole("switch")
+      .filter((element) => (element.getAttribute("aria-label") ?? "").endsWith("coder chats"));
+  }
+
+  it("renders one toggle per category and starts from the coder defaults", () => {
+    renderTab({ ...baseSettings });
+    const switches = coderSwitches();
+
+    expect(switches).toHaveLength(TOOL_CATEGORIES.length);
+    const byLabel = (label: string) =>
+      screen.getByRole("switch", { name: `${label} in coder chats` });
+    expect(byLabel("Terminal")).toBeChecked();
+    expect(byLabel("Web")).toBeChecked();
+    expect(byLabel("Memory")).toBeChecked();
+    expect(byLabel("Email")).not.toBeChecked();
+    expect(byLabel("Calendar")).not.toBeChecked();
+  });
+
+  it("writes a flipped category as a full coderToolConfig column", () => {
+    const { onSettingsChange } = renderTab({ ...baseSettings });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Email in coder chats" }));
+
+    const patch = onSettingsChange.mock.calls[0]![0] as UserSettings;
+    expect(patch.coderToolConfig).toMatchObject({ email: true, terminal: true, memory: true });
+    // Every category is named, so a category the row does not hold is explicit.
+    expect(Object.keys(patch.coderToolConfig ?? {})).toHaveLength(TOOL_CATEGORIES.length);
   });
 });
 

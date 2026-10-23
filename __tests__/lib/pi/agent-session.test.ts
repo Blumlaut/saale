@@ -47,6 +47,33 @@ describe("resolveAgentCwd", () => {
 
     expect(resolveAgentCwd("user-1")).toBe("/srv/workspaces/user-user-1");
   });
+
+  it("resolves a workspace-relative directory inside the workspace", () => {
+    expect(resolveAgentCwd("user-1", "worktrees/x/y")).toBe(
+      "/workspaces/user-user-1/worktrees/x/y",
+    );
+  });
+
+  it("normalises a relative path that stays inside the workspace", () => {
+    expect(resolveAgentCwd("user-1", "worktrees/./saale/../saale/c-chat1")).toBe(
+      "/workspaces/user-user-1/worktrees/saale/c-chat1",
+    );
+  });
+
+  it("refuses a relative path that climbs out of the workspace", () => {
+    expect(() => resolveAgentCwd("user-1", "../other")).toThrow(/outside the workspace/);
+    expect(() => resolveAgentCwd("user-1", "worktrees/../../other")).toThrow(
+      /outside the workspace/,
+    );
+  });
+
+  it("refuses an absolute path, inside the workspace or not", () => {
+    // Absolute paths are the host's view; a caller only ever names a directory.
+    expect(() => resolveAgentCwd("user-1", "/etc")).toThrow(/outside the workspace/);
+    expect(() => resolveAgentCwd("user-1", "/app/uploads/pi_sessions/user-1/chat-1")).toThrow(
+      /outside the workspace/,
+    );
+  });
 });
 
 describe("createSaaleAgentSession", () => {
@@ -76,5 +103,21 @@ describe("createSaaleAgentSession", () => {
 
     expect(mocks.settingsInMemory).toHaveBeenCalled();
     expect(lastOptions().settingsManager).toEqual({ inMemorySettings: true });
+  });
+
+  it("runs a coder session in its worktree", async () => {
+    await createSaaleAgentSession("user-1", {
+      sessionManager: sessionManager("/app/uploads/pi_sessions/user-1/chat-1"),
+      workspaceCwd: "worktrees/saale/c-chat1",
+    });
+
+    expect(lastOptions().cwd).toBe("/workspaces/user-user-1/worktrees/saale/c-chat1");
+  });
+
+  it("refuses a workspace cwd that leaves the workspace", async () => {
+    await expect(
+      createSaaleAgentSession("user-1", { workspaceCwd: "../other-user" }),
+    ).rejects.toThrow(/outside the workspace/);
+    expect(mocks.createAgentSession).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import {
   Calendar,
+  Code2,
   CheckSquare,
   Landmark,
   ListTodo,
@@ -14,6 +15,7 @@ import type { SidebarNavItemId } from "@/lib/navigation/sidebar-nav";
 /** Icon per sidebar item. Exhaustive. a new id must be given an icon here. */
 export const SIDEBAR_NAV_ICONS: Record<SidebarNavItemId, LucideIcon> = {
   chat: MessageSquare,
+  coder: Code2,
   mail: Mail,
   calendar: Calendar,
   tasks: CheckSquare,

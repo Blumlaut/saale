@@ -23,6 +23,7 @@ import {
   type ChatSessionModelConfig,
 } from "@/lib/pi/chat-session-factory";
 import { createChatApprovalEmitter, createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
+import { ensureWorktree } from "@/lib/coder/worktrees";
 import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
@@ -70,6 +71,12 @@ export async function ensureChatAgent(options: {
       emitApprovalRequest,
     });
 
+    // A coder chat runs in its worktree and nowhere else. Building it here is
+    // what keeps every entry point (browser, telegram, respond-in-chat) off the
+    // repo checkout, and a failure rejects the pool creation instead of
+    // falling back to the workspace.
+    const worktree = options.chatSession.projectId ? await ensureWorktree(userId, sessionId) : null;
+
     return createChatAgentSession({
       userId,
       sessionId,
@@ -78,6 +85,7 @@ export async function ensureChatAgent(options: {
       customInstructions: userSettings.customInstructions,
       toolPolicies: userSettings.toolPolicies,
       toolExposure: userSettings.toolExposure,
+      ...(worktree ? { workspaceCwd: worktree.path } : {}),
       wrapTool,
       emitApprovalRequest,
     });

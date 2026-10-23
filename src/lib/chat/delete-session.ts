@@ -6,11 +6,13 @@
  * Order of operations:
  * 1. Verify ownership (`userId` in the query. an id-only delete would let a
  *    guessed id remove another user's chat)
- * 2. Delete attachment files from disk (fails fast, leaving the DB intact)
- * 3. Delete the session row (cascade removes messages + attachment records +
+ * 2. For a coder chat, remove its worktree. git refuses a dirty checkout, and
+ *    that refusal aborts the delete, so the chat never outlives its work
+ * 3. Delete attachment files from disk (fails fast, leaving the DB intact)
+ * 4. Delete the session row (cascade removes messages + attachment records +
  *    watcher rows)
- * 4. Unschedule the chat's watchers (the cascade cannot reach BullMQ state)
- * 5. Release the pooled agent and Pi's transcript directory
+ * 5. Unschedule the chat's watchers (the cascade cannot reach BullMQ state)
+ * 6. Release the pooled agent and Pi's transcript directory
  */
 
 import fs from "fs/promises";
@@ -18,6 +20,7 @@ import { prisma } from "@/lib/db";
 import { deleteAllImages } from "@/lib/image-attachment";
 import { unscheduleWatcher } from "@/lib/queue";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
+import { removeChatWorktree } from "@/lib/coder/worktree-removal";
 
 /** The deleted chat's title, for a confirmation message. */
 export interface DeletedChat {
@@ -38,9 +41,13 @@ export interface BulkDeleteResult {
 export async function deleteChatSession(userId: string, sessionId: string): Promise<DeletedChat> {
   const session = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId },
-    select: { title: true },
+    select: { title: true, projectId: true },
   });
   if (!session) throw new Error(`Chat not found: ${sessionId}`);
+
+  // A coder chat owns a checkout. When git will not let it go, the chat stays:
+  // nothing half-deleted, and the work is still where it was.
+  if (session.projectId) await removeChatWorktree(userId, sessionId);
 
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId, session: { userId } },

@@ -36,6 +36,10 @@ const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx"
 const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
 const SESSION_SIDEBAR = "src/components/chat/session-sidebar.tsx";
+const CODER_CREATE_DIALOG = "src/components/coder/project-create-dialog.tsx";
+const CODER_PROJECT_LIST = "src/components/coder/project-list.tsx";
+const CODER_PROJECT_CHATS = "src/components/coder/project-chats.tsx";
+const CODER_LAYOUT = "src/app/dashboard/coder/layout.tsx";
 const SETTINGS = "/dashboard/settings";
 
 /** Realistic ED25519 public key  the content that used to widen the dialog. */
@@ -491,6 +495,55 @@ async function ensureChatSession(page: Page): Promise<string> {
 
 async function gotoChatSession(page: Page, sessionId: string) {
   await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
+}
+
+/** A project list and one project's chats, so the coder overlays have rows. */
+async function mockCoderProjects(page: Page) {
+  await page.route(/\/api\/coder\/projects$/, (route) =>
+    route.fulfill({
+      json: {
+        projects: [
+          {
+            id: "e2e-project",
+            name: "e2e-project-with-a-long-name",
+            slug: "e2e-project-with-a-long-name",
+            repoPath: "projects/e2e-project-with-a-long-name",
+            defaultBranch: "main",
+            worktreeCount: 1,
+            chatCount: 1,
+            lastActivityAt: NOW,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route(/\/api\/coder\/projects\/e2e-project$/, (route) =>
+    route.fulfill({
+      json: {
+        project: {
+          id: "e2e-project",
+          name: "e2e-project-with-a-long-name",
+          slug: "e2e-project-with-a-long-name",
+          repoPath: "projects/e2e-project-with-a-long-name",
+          defaultBranch: "main",
+          originUrl: null,
+        },
+        chats: [
+          {
+            id: "e2e-coder-chat",
+            title: "A coder chat with a long title that has to wrap instead of widen",
+            lastActivityAt: NOW,
+            isGenerating: false,
+            worktree: {
+              path: "worktrees/e2e-project-with-a-long-name/c-1a2b3c4d",
+              branch: "wt/c-1a2b3c4d-with-an-unusually-long-branch-name",
+              status: "active",
+            },
+          },
+        ],
+      },
+    }),
+  );
 }
 
 export const MODAL_SCENARIOS: ModalScenario[] = [
@@ -1068,6 +1121,40 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await click(page, 'button[aria-label^="Actions for"]');
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
+  },
+
+  // ── Coder ─────────────────────────────────────────────────────────────────
+  {
+    name: "coder · new project",
+    path: "/dashboard/coder",
+    sources: [CODER_CREATE_DIALOG],
+    open: (page) => click(page, 'button:has-text("New project")'),
+  },
+  {
+    name: "coder · delete project confirmation",
+    path: "/dashboard/coder",
+    sources: [CODER_PROJECT_LIST],
+    mock: mockCoderProjects,
+    open: async (page) => {
+      await openRowMenu(page, "e2e-project-with-a-long-name");
+      await click(page, '[role="menuitem"]:has-text("Delete project")');
+    },
+  },
+  {
+    name: "coder · delete chat confirmation",
+    path: "/dashboard/coder/e2e-project",
+    sources: [CODER_PROJECT_CHATS],
+    mock: mockCoderProjects,
+    open: async (page) => {
+      await click(page, '[aria-label="Actions for A coder chat with a long title"]');
+      await click(page, '[role="menuitem"]:has-text("Delete chat")');
+    },
+  },
+  {
+    name: "coder · chat sheets",
+    path: "/dashboard/coder",
+    sources: [CODER_LAYOUT],
+    skip: "the coder chat header owns two sheets that need a live chat with a built worktree; e2e/coder-panel.spec.ts drives the desktop panel instead",
   },
 
   // ── Council workspace files ───────────────────────────────────────────────

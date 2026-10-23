@@ -27,7 +27,7 @@ import {
   type GitStatus,
   type GitWorktreeEntry,
 } from "./git-status";
-import { resolveCoderPath } from "./paths";
+import { coderPathRelativeTo, resolveCoderPath } from "./paths";
 
 /** Variables every git command runs with. */
 export const GIT_ENV: Record<string, string> = {
@@ -223,7 +223,10 @@ export async function listWorktrees(userId: string, repoDir: string): Promise<Gi
     cwd: repoDir,
     args: ["worktree", "list", "--porcelain"],
   });
-  return parseWorktreeList(stdout);
+  return parseWorktreeList(stdout).map((entry) => ({
+    ...entry,
+    relative: coderPathRelativeTo(userId, entry.path) ?? entry.path,
+  }));
 }
 
 /**
