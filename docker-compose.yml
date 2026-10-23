@@ -176,7 +176,7 @@ services:
     # The preview listener, reachable only from this host: nginx proxies the
     # wildcard vhost here and nothing else can reach it.
     ports:
-      - "127.0.0.1:${SANDBOX_PREVIEW_PORT:-8101}:${SANDBOX_PREVIEW_PORT:-8101}"
+      - "${SANDBOX_PREVIEW_PORT:-8101}:${SANDBOX_PREVIEW_PORT:-8101}"
     # Joining the sandbox network makes Compose create it before this starts;
     # the tenant containers attach to it by name.
     networks:
