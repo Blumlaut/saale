@@ -84,6 +84,31 @@ describe("ForceDeleteDialog", () => {
     expect(onDelete).toHaveBeenLastCalledWith(true);
   });
 
+  it("spins while the delete is in flight", async () => {
+    let settle = () => {};
+    const onDelete = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    setup(onDelete);
+
+    const button = screen.getByRole("button", { name: "Delete" });
+    fireEvent.click(button);
+
+    const spinner = await waitFor(() => {
+      const svg = button.querySelector("svg");
+      expect(svg?.getAttribute("class")).toContain("animate-spin");
+      return svg;
+    });
+    expect(spinner).not.toBeNull();
+    expect(button).toBeDisabled();
+
+    settle();
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
   it("carries the code the server sends, not just the message", () => {
     expect(forcedRetryError("kept").code).toBe(WORKTREE_KEPT_CODE);
   });
