@@ -2,6 +2,7 @@ import { Bot, InputFile, type Context } from "grammy";
 import { convert as convertToTelegramMarkdown } from "telegram-markdown-v2";
 import { decrypt } from "@/lib/crypto";
 import { listCommands } from "@/lib/commands/catalog";
+import { getPublicUrl } from "@/lib/public-url";
 import { TELEGRAM_MAX_MESSAGE_LENGTH, splitMarkdownV2, splitPlainText } from "./message-split";
 
 /** Webhook endpoint. a single path, since there is a single bot. */
@@ -33,15 +34,12 @@ export interface TelegramFileUpload {
 
 /**
  * Get the public base URL for webhook registration.
- * Uses NGROK_URL, VERCEL_URL, or falls back to localhost.
+ * NGROK_URL covers a dev tunnel in front of the app; otherwise the public
+ * URL is the app's own origin.
  */
 export function getPublicBaseUrl(): string {
-  if (process.env.NGROK_URL) return process.env.NGROK_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL;
-  // Docker / production: use the app URL from environment
-  if (process.env.APP_URL) return process.env.APP_URL;
-  return "http://localhost:3630";
+  if (process.env.NGROK_URL) return process.env.NGROK_URL.replace(/\/+$/, "");
+  return getPublicUrl();
 }
 
 /**

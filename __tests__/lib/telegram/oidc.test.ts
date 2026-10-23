@@ -15,7 +15,6 @@ vi.mock("@/lib/telegram/bot", () => ({
 }));
 
 vi.mock("@/lib/telegram/client", () => ({
-  getPublicBaseUrl: () => "http://localhost:3630",
   sendTelegramMessage: (...args: unknown[]) => mockSendTelegramMessage(...args),
   buildLinkSuccessMessage: () => "Linked.",
 }));

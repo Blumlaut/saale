@@ -523,36 +523,33 @@ describe("buildWebhookUrl", () => {
 
   it.each([
     { envVar: "NGROK_URL", value: "https://abc123.ngrok.io" },
-    { envVar: "VERCEL_URL", value: "myapp.vercel.app" },
-    { envVar: "NEXT_PUBLIC_BASE_URL", value: "https://saale.example.com" },
-    { envVar: "APP_URL", value: "http://localhost:3000" },
+    { envVar: "BETTER_AUTH_URL", value: "https://saale.example.com" },
   ])("uses $envVar when set", ({ envVar, value }) => {
     delete process.env.NGROK_URL;
-    delete process.env.VERCEL_URL;
-    delete process.env.NEXT_PUBLIC_BASE_URL;
-    delete process.env.APP_URL;
+    delete process.env.BETTER_AUTH_URL;
     process.env[envVar] = value;
 
     // One shared bot means one webhook path  it names the instance, not a user.
-    expect(buildWebhookUrl()).toBe(
-      `${envVar === "VERCEL_URL" ? "https://" : ""}${value}/api/integrations/telegram/webhook`,
-    );
+    expect(buildWebhookUrl()).toBe(`${value}/api/integrations/telegram/webhook`);
   });
 
-  it("prefers NGROK_URL over VERCEL_URL", () => {
-    delete process.env.NEXT_PUBLIC_BASE_URL;
-    delete process.env.APP_URL;
-    process.env.NGROK_URL = "https://ngrok.test";
-    process.env.VERCEL_URL = "vercel.test";
+  it("strips trailing slashes from BETTER_AUTH_URL", () => {
+    delete process.env.NGROK_URL;
+    process.env.BETTER_AUTH_URL = "https://saale.example.com/";
+
+    expect(buildWebhookUrl()).toBe("https://saale.example.com/api/integrations/telegram/webhook");
+  });
+
+  it("prefers NGROK_URL over BETTER_AUTH_URL", () => {
+    process.env.NGROK_URL = "https://ngrok.test/";
+    process.env.BETTER_AUTH_URL = "https://saale.example.com";
 
     expect(buildWebhookUrl()).toBe("https://ngrok.test/api/integrations/telegram/webhook");
   });
 
   it("falls back to localhost when no env is set", () => {
     delete process.env.NGROK_URL;
-    delete process.env.VERCEL_URL;
-    delete process.env.NEXT_PUBLIC_BASE_URL;
-    delete process.env.APP_URL;
+    delete process.env.BETTER_AUTH_URL;
 
     expect(buildWebhookUrl()).toBe("http://localhost:3630/api/integrations/telegram/webhook");
   });

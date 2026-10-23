@@ -1,7 +1,8 @@
 import { genericOAuth } from "better-auth/plugins";
 import { decodeJwt } from "jose";
 import { getEnabledTelegramBot, type TelegramBotConfig } from "./bot";
-import { buildLinkSuccessMessage, getPublicBaseUrl, sendTelegramMessage } from "./client";
+import { getPublicUrl } from "@/lib/public-url";
+import { buildLinkSuccessMessage, sendTelegramMessage } from "./client";
 import { linkTelegramFromOidc } from "./links";
 import { TELEGRAM_OIDC_PROVIDER_ID } from "./login";
 
@@ -59,11 +60,7 @@ export function getTelegramOidcCredentials(): TelegramOidcCredentials | null {
  * where the server never sees it.
  */
 export function buildTelegramLoginRedirectUri(): string {
-  const base = ((process.env.BETTER_AUTH_URL ?? "").trim() || getPublicBaseUrl()).replace(
-    /\/+$/,
-    "",
-  );
-  return `${base}/api/auth/callback/${TELEGRAM_OIDC_PROVIDER_ID}`;
+  return `${getPublicUrl()}/api/auth/callback/${TELEGRAM_OIDC_PROVIDER_ID}`;
 }
 
 /** Read a claim that may arrive as a string or a number. */

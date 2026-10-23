@@ -138,13 +138,14 @@ The dev override only changes `build.target`, `NODE_ENV`, and the startup comman
 | `DATABASE_URL`         | PostgreSQL connection string                                  | Yes       |
 | `REDIS_URL`            | Redis connection string                                       | Yes       |
 | `BETTER_AUTH_SECRET`   | Secret for session encryption (32+ chars)                     | Yes       |
-| `BETTER_AUTH_URL`      | Public base URL of the app                                    | Yes       |
+| `BETTER_AUTH_URL`      | Public base URL of the app; also the base for OAuth redirects and the Telegram webhook | Yes |
 | `ENCRYPTION_KEY`       | 64-char hex string for email password encryption              | Yes       |
 | `SANDBOX_URL`          | Sandbox service base URL (commands run in per-workspace containers) | Yes* |
 | `SANDBOX_API_KEY`      | Bearer key for the sandbox service                            | Yes*      |
 | `SANDBOX_WORKSPACES_DIR` | Mount point of the workspaces volume (default `/workspaces`) | No       |
 | `SANDBOX_USER`         | Account commands run as: `root` (installs) or `agent` (tighter) | No      |
 | `SEARXNG_URL`          | SearXNG instance URL for web search                           | No        |
+| `NGROK_URL`            | Dev tunnel in front of the app; overrides `BETTER_AUTH_URL` for webhook registration | No |
 | `UPLOADS_DIR`          | Path for user file storage                                    | No        |
 
 *\* Required only when bash tools are enabled.*
