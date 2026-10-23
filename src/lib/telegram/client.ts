@@ -267,6 +267,72 @@ export async function sendTelegramFile(
   return result.message_id;
 }
 
+/** A group as Telegram describes it. */
+export interface TelegramChatInfo {
+  chatId: bigint;
+  title: string | null;
+  /** "group" | "supergroup" | "channel" */
+  kind: string;
+  /** Null when Telegram would not answer for this chat. */
+  memberCount: number | null;
+}
+
+/**
+ * Read a group's title, kind and size.
+ *
+ * Bots cannot list members. `getChatMemberCount` gives a number, and a bot that
+ * is not an admin may be refused it, so a missing count is not an error.
+ */
+export async function getTelegramChatInfo(
+  encryptedToken: string,
+  chatId: bigint,
+): Promise<TelegramChatInfo> {
+  const bot = createBot(encryptedToken);
+  const chat = await bot.api.getChat(Number(chatId));
+
+  const memberCount = await bot.api.getChatMemberCount(Number(chatId)).catch((err: unknown) => {
+    console.warn(`Telegram refused the member count for chat ${chatId}:`, err);
+    return null;
+  });
+
+  return {
+    chatId,
+    title: "title" in chat ? (chat.title ?? null) : null,
+    kind: chat.type,
+    memberCount,
+  };
+}
+
+/** Leave a group, so a refused add does not leave the bot sitting in it. */
+export async function leaveTelegramChat(encryptedToken: string, chatId: bigint): Promise<void> {
+  const bot = createBot(encryptedToken);
+  await bot.api.leaveChat(Number(chatId));
+}
+
+/** Escape text for a Telegram HTML message. A group title is not ours to trust. */
+export function escapeTelegramHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Why the bot will not stay in a group.
+ *
+ * It names the Settings page and nothing else, so it says nothing about who
+ * owns the group to the members reading it.
+ */
+export function buildGroupRefusedMessage(): string {
+  return (
+    `This bot only joins a group when the person adding it has a Saale account linked in ` +
+    `<b>Settings → Integrations → Telegram</b>. Leaving.`
+  );
+}
+
+/** Confirmation, in the adder's private chat, that a group was registered. */
+export function buildGroupAddedMessage(title: string | null): string {
+  const name = title ? `"${escapeTelegramHtml(title)}"` : "the group";
+  return `✅ <b>Added to ${name}.</b>\n\nAsk me to send a message there and it goes to the group.`;
+}
+
 /**
  * Send a single typing indicator to a Telegram chat.
  * Telegram only shows the indicator for ~5 seconds, so this must be

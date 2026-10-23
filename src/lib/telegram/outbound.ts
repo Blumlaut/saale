@@ -27,6 +27,11 @@ const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
  * reminder, an agent job run) the message lands in the link's home thread,
  * which is where a reply to it would go anyway.
  *
+ * `sentTo` is a group title. A group message is recorded as a one-line
+ * breadcrumb instead of its full text: the chat that produced it needs to know
+ * where it went, and the whole message would read as something the agent said
+ * to the user privately.
+ *
  * The transcript entry is skipped while the chat is generating: Pi's session
  * manager owns that file for the duration of a run. The DB row still lands, so
  * the thread is never missing the message.
@@ -35,8 +40,10 @@ export async function recordOutboundMessage(params: {
   userId: string;
   content: string;
   sourceSessionId?: string | null | undefined;
+  /** Group title, when the message went to a group rather than the private chat. */
+  sentTo?: string | null | undefined;
 }): Promise<void> {
-  const { userId, content, sourceSessionId } = params;
+  const { userId, content, sourceSessionId, sentTo } = params;
   if (!content.trim()) return;
 
   const link = await getLinkByUserId(userId);
@@ -56,8 +63,10 @@ export async function recordOutboundMessage(params: {
     return;
   }
 
+  const recorded = sentTo ? buildGroupBreadcrumb(content, sentTo) : content;
+
   await prisma.chatMessage.create({
-    data: { sessionId, role: "assistant", content },
+    data: { sessionId, role: "assistant", content: recorded },
   });
 
   // New chat content. advance lastActivityAt so the session list sorts it
@@ -80,9 +89,15 @@ export async function recordOutboundMessage(params: {
     const manager = SessionManager.continueRecent(sessionDir, sessionDir);
     manager.appendCustomMessageEntry(
       JOB_OUTPUT_CUSTOM_TYPE,
-      `[Telegram message sent to the user]\n${content}`,
+      `[Telegram message sent to the user]\n${recorded}`,
       false,
       { channel: "telegram" },
     );
   });
+}
+
+/** `[sent to "CVEs"] The first line…` — enough context without the whole message. */
+function buildGroupBreadcrumb(content: string, groupTitle: string): string {
+  const firstLine = content.trim().split("\n")[0]?.trim() ?? "";
+  return `[sent to "${groupTitle}"] ${firstLine}`;
 }

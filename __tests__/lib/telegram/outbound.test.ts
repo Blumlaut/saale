@@ -98,6 +98,29 @@ describe("recordOutboundMessage", () => {
     );
   });
 
+  it("records a one-line breadcrumb for a message sent to a group", async () => {
+    await recordOutboundMessage({
+      userId,
+      content: "Two new CVEs today.\n- CVE-2026-1 lodash\n- CVE-2026-2 axios",
+      sourceSessionId: "sess-source",
+      sentTo: "CVEs",
+    });
+
+    // The chat that produced it needs to know where it went. Replaying the
+    // whole text would read as something said to the user privately.
+    const recorded = '[sent to "CVEs"] Two new CVEs today.';
+    expect(mockChatMessage.create).toHaveBeenCalledWith({
+      data: { sessionId: "sess-source", role: "assistant", content: recorded },
+    });
+    expect(mockAppendCustomMessageEntry).toHaveBeenCalledWith(
+      "job_output",
+      expect.stringContaining(recorded),
+      false,
+      expect.objectContaining({ channel: "telegram" }),
+    );
+    expect(mockAppendCustomMessageEntry.mock.calls[0]![1]).not.toContain("axios");
+  });
+
   it("falls back to the link's home thread when nothing in Saale sent the message", async () => {
     await recordOutboundMessage({ userId, content: "Standup in 5" });
 

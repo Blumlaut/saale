@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { getTelegramBot } from "@/lib/telegram/bot";
 import { issueLinkCode, unlinkUser, getLinkByUserId } from "@/lib/telegram/links";
+import { listTelegramChats, toChatView } from "@/lib/telegram/chats";
 import { getTelegramLoginStatus } from "@/lib/telegram/oidc";
 
 /**
@@ -23,11 +24,12 @@ export async function GET() {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const [bot, link, login] = await Promise.all([
+  const [bot, link, login, chats] = await Promise.all([
     getTelegramBot(),
     getLinkByUserId(authResult.user.id),
     // Whether this user can also sign in with the account they linked.
     getTelegramLoginStatus(),
+    listTelegramChats(authResult.user.id),
   ]);
 
   return NextResponse.json({
@@ -46,6 +48,9 @@ export async function GET() {
             linkedAt: link.createdAt.toISOString(),
           }
         : null,
+      // Groups the bot may post into. Adding one happens in Telegram; this list
+      // only shows and removes.
+      chats: chats.map(toChatView),
     },
   });
 }

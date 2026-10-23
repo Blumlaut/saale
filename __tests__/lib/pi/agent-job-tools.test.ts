@@ -609,6 +609,7 @@ describe("createAgentJobTools", () => {
       expect(buildAgentOutputHandler).toHaveBeenCalledWith({
         userId,
         outputChannel: "telegram",
+        outputChannelId: "12345",
       });
       expect(executeAgentRun).toHaveBeenCalledWith(
         "run-1",
@@ -643,6 +644,7 @@ describe("createAgentJobTools", () => {
       expect(buildAgentOutputHandler).toHaveBeenCalledWith({
         userId,
         outputChannel: null,
+        outputChannelId: null,
       });
       expect(executeAgentRun).toHaveBeenCalledWith(
         "run-1",

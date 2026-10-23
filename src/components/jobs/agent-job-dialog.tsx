@@ -127,13 +127,9 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
       return;
     }
 
-    // Telegram has exactly one destination. the user's own linked chat. so
-    // there is nothing to resolve. Channels that do have several targets take
-    // an explicit ID.
-    const resolvedOutputChannelId =
-      outputChannel && outputChannel !== "telegram"
-        ? outputChannelId.trim() || undefined
-        : undefined;
+    // Empty means the channel's default. For Telegram that is the user's own
+    // linked chat; a group id posts into that group instead.
+    const resolvedOutputChannelId = outputChannel ? outputChannelId.trim() || undefined : undefined;
 
     if (scheduleMode === "once" && !runAt) {
       setError("Choose a date and time for the one-off run");
@@ -312,10 +308,19 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
               <div className="space-y-2">
                 {outputChannel === "telegram" ? (
                   <>
-                    <Label>Telegram chat</Label>
+                    <Label htmlFor="agent-channel-id">
+                      Telegram group <span className="text-muted-foreground">(optional)</span>
+                    </Label>
+                    <Input
+                      id="agent-channel-id"
+                      value={outputChannelId}
+                      onChange={(e) => setOutputChannelId(e.target.value)}
+                      placeholder="Your own chat"
+                      className="font-mono"
+                    />
                     <p className="text-muted-foreground text-xs">
-                      Output goes to your own linked Telegram chat. Link an account in Settings →
-                      Integrations if you haven&apos;t yet.
+                      A group chat id from Settings → Integrations → Telegram posts there. Empty
+                      goes to your own linked chat.
                     </p>
                   </>
                 ) : (

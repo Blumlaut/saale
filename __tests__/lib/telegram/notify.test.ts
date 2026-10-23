@@ -8,12 +8,16 @@ const {
   mockSendTelegramMessage,
   mockRecordOutboundMessage,
   mockRecordOutboundMessages,
+  mockResolveTelegramSendTarget,
+  TelegramTargetError,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
   mockGetLinkByUserId: vi.fn(),
   mockSendTelegramMessage: vi.fn(),
   mockRecordOutboundMessage: vi.fn(),
   mockRecordOutboundMessages: vi.fn(),
+  mockResolveTelegramSendTarget: vi.fn(),
+  TelegramTargetError: class TelegramTargetError extends Error {},
 }));
 
 vi.mock("@/lib/telegram/bot", () => ({
@@ -22,6 +26,13 @@ vi.mock("@/lib/telegram/bot", () => ({
 
 vi.mock("@/lib/telegram/links", () => ({
   getLinkByUserId: (...args: unknown[]) => mockGetLinkByUserId(...args),
+}));
+
+// The target resolver has its own test (`chats.test.ts`). Here it only has to
+// answer with the caller's own chat, which is what the delivery path assumes.
+vi.mock("@/lib/telegram/chats", () => ({
+  TelegramTargetError,
+  resolveTelegramSendTarget: (...args: unknown[]) => mockResolveTelegramSendTarget(...args),
 }));
 
 vi.mock("@/lib/telegram/client", () => ({
@@ -74,6 +85,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetTelegramBot.mockResolvedValue(bot);
   mockGetLinkByUserId.mockResolvedValue(link);
+  mockResolveTelegramSendTarget.mockImplementation(
+    async ({ target, link: resolved }: { target?: string | null; link?: typeof link | null }) => {
+      if (target) throw new TelegramTargetError(`Unknown Telegram target "${target}".`);
+      const current = resolved ?? (await mockGetLinkByUserId());
+      return { chatId: current.telegramChatId, label: current.displayName, group: false };
+    },
+  );
   mockSendTelegramMessage.mockResolvedValue([42]);
   mockRecordOutboundMessage.mockResolvedValue(undefined);
   mockRecordOutboundMessages.mockResolvedValue(undefined);
@@ -128,6 +146,7 @@ describe("sendTelegramToUser", () => {
       userId,
       content: "Dentist in 30 minutes",
       sourceSessionId: undefined,
+      sentTo: null,
     });
     expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
       userId,
@@ -135,6 +154,66 @@ describe("sendTelegramToUser", () => {
       messageIds: [42],
       sourceSessionId: undefined,
     });
+  });
+
+  it("posts into a group target and records where it went", async () => {
+    mockResolveTelegramSendTarget.mockResolvedValueOnce({
+      chatId: BigInt("-1001234567890"),
+      label: "CVEs",
+      group: true,
+    });
+
+    const result = await sendTelegramToUser({
+      userId,
+      content: "Two new CVEs today",
+      target: "-1001234567890",
+    });
+
+    expect(result).toEqual({ ok: true, chatId: "-1001234567890", label: "CVEs" });
+    expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+      "enc",
+      BigInt("-1001234567890"),
+      "Two new CVEs today",
+    );
+    // The source chat gets a breadcrumb naming the group.
+    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
+      userId,
+      content: "Two new CVEs today",
+      sourceSessionId: undefined,
+      sentTo: "CVEs",
+    });
+  });
+
+  it("reports an unknown group with the reason the model can act on", async () => {
+    mockResolveTelegramSendTarget.mockRejectedValueOnce(
+      new TelegramTargetError('Unknown Telegram target "-100999". Available groups: "CVEs".'),
+    );
+
+    const result = await sendTelegramToUser({ userId, content: "hi", target: "-100999" });
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("unknown_target");
+    expect(result.error).toContain('Available groups: "CVEs"');
+    expect(mockSendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("posts into a group without a private link", async () => {
+    mockGetLinkByUserId.mockResolvedValue(null);
+    mockResolveTelegramSendTarget.mockResolvedValueOnce({
+      chatId: BigInt("-1001234567890"),
+      label: "CVEs",
+      group: true,
+    });
+
+    const result = await sendTelegramToUser({
+      userId,
+      content: "hi",
+      target: "-1001234567890",
+    });
+
+    // The group row already belongs to this user, so the link is not the gate.
+    expect(result.ok).toBe(true);
+    expect(mockSendTelegramMessage).toHaveBeenCalled();
   });
 
   it("omits the label when the link has no cached name", async () => {
@@ -195,6 +274,7 @@ describe("deliverTelegramMessage", () => {
       userId,
       content: "hello",
       sourceSessionId: undefined,
+      sentTo: undefined,
     });
   });
 
