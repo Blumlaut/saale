@@ -34,6 +34,9 @@ const mocks = vi.hoisted(() => {
     createWorktree: vi.fn(),
     addWorktree: vi.fn(),
     addWorktreeOnBranch: vi.fn(),
+    fetchOrigin: vi.fn(),
+    worktreeBaseRef: vi.fn(),
+    refSha: vi.fn(),
     headSha: vi.fn(),
     listWorktrees: vi.fn(),
     pruneWorktrees: vi.fn(),
@@ -59,6 +62,9 @@ vi.mock("@/lib/coder/git", () => ({
   GitError: mocks.MockGitError,
   addWorktree: (...args: unknown[]) => mocks.addWorktree(...args),
   addWorktreeOnBranch: (...args: unknown[]) => mocks.addWorktreeOnBranch(...args),
+  fetchOrigin: (...args: unknown[]) => mocks.fetchOrigin(...args),
+  worktreeBaseRef: (...args: unknown[]) => mocks.worktreeBaseRef(...args),
+  refSha: (...args: unknown[]) => mocks.refSha(...args),
   headSha: (...args: unknown[]) => mocks.headSha(...args),
   listWorktrees: (...args: unknown[]) => mocks.listWorktrees(...args),
   pruneWorktrees: (...args: unknown[]) => mocks.pruneWorktrees(...args),
@@ -119,6 +125,9 @@ beforeEach(async () => {
   mocks.addWorktree.mockImplementation(createsCheckout);
   mocks.addWorktreeOnBranch.mockImplementation(createsCheckout);
   mocks.headSha.mockResolvedValue("sha-base");
+  mocks.fetchOrigin.mockResolvedValue(undefined);
+  mocks.worktreeBaseRef.mockResolvedValue("main");
+  mocks.refSha.mockResolvedValue("sha-base");
   mocks.listWorktrees.mockResolvedValue([]);
   mocks.pruneWorktrees.mockResolvedValue(undefined);
   mocks.removeWorktree.mockResolvedValue(undefined);
@@ -130,6 +139,50 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   await fs.rm(workspaceRoot, { recursive: true, force: true });
+});
+
+describe("ensureWorktree: refreshing the repo", () => {
+  it("starts a new chat from the fetched remote tip", async () => {
+    // A repo nobody has fetched for: this one is not in the throttle cache.
+    mocks.findProject.mockResolvedValue({ ...PROJECT, repoPath: "projects/origin-tip" });
+    mocks.worktreeBaseRef.mockResolvedValue("origin/main");
+    mocks.refSha.mockResolvedValue("sha-origin");
+
+    const worktree = await ensureWorktree(USER, "chat-origin");
+
+    expect(mocks.fetchOrigin).toHaveBeenCalledWith(USER, "projects/origin-tip");
+    expect(mocks.worktreeBaseRef).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/origin-tip",
+      defaultBranch: "main",
+    });
+    expect(mocks.addWorktree).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ base: "origin/main" }),
+    );
+    expect(mocks.createWorktree).toHaveBeenCalledWith({
+      data: expect.objectContaining({ baseSha: "sha-origin" }),
+    });
+    expect(worktree.branch).toBe("wt/c-chatorig");
+  });
+
+  it("fetches once for a burst of chats in the same repo", async () => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, repoPath: "projects/burst" });
+
+    await ensureWorktree(USER, "chat-burst-1");
+    await ensureWorktree(USER, "chat-burst-2");
+
+    expect(mocks.fetchOrigin).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the local branch when the repo has no remote to fetch", async () => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, repoPath: "projects/no-remote" });
+    mocks.fetchOrigin.mockResolvedValue(undefined);
+    mocks.worktreeBaseRef.mockResolvedValue("main");
+
+    await ensureWorktree(USER, "chat-no-remote");
+
+    expect(mocks.addWorktree).toHaveBeenCalledWith(USER, expect.objectContaining({ base: "main" }));
+  });
 });
 
 describe("ensureWorktree", () => {
@@ -179,6 +232,7 @@ describe("ensureWorktree", () => {
 
   it("creates a new branch off the default branch and records where it started", async () => {
     mocks.headSha.mockResolvedValue("sha-head");
+    mocks.refSha.mockResolvedValue("sha-head");
 
     const worktree = await ensureWorktree(USER, "chat-1");
 

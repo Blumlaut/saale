@@ -186,6 +186,63 @@ export async function cloneRepo(
   if (result.exitCode !== 0) throw new GitError(failureMessage(result), args, result);
 }
 
+/** A fetch talks to a remote, so it gets its own budget, above a local command. */
+const FETCH_TIMEOUT_SECONDS = 120;
+
+/**
+ * Update the repo's remote-tracking refs, when it has a remote.
+ *
+ * A failure is reported and swallowed: a stale local copy still works, and an
+ * unreachable remote must not stop a chat from starting.
+ */
+export async function fetchOrigin(userId: string, repoDir: string): Promise<void> {
+  const remote = await runGit(userId, {
+    cwd: repoDir,
+    args: ["remote", "get-url", "origin"],
+    allowFailure: true,
+  });
+  if (remote.exitCode !== 0) return;
+
+  const result = await runGit(userId, {
+    cwd: repoDir,
+    args: ["fetch", "--prune", "--quiet", "origin"],
+    allowFailure: true,
+    timeoutSeconds: FETCH_TIMEOUT_SECONDS,
+  });
+  if (result.exitCode !== 0) {
+    console.warn(`[coder] could not fetch ${repoDir}: ${failureMessage(result)}`);
+  }
+}
+
+/**
+ * The ref a new worktree starts from.
+ *
+ * The fetched remote tip is the point: branching off the local branch would
+ * start every chat from whatever the clone had the day it was made.
+ */
+export async function worktreeBaseRef(
+  userId: string,
+  options: { repoDir: string; defaultBranch: string },
+): Promise<string> {
+  const remoteRef = `origin/${options.defaultBranch}`;
+  const result = await runGit(userId, {
+    cwd: options.repoDir,
+    args: ["rev-parse", "--verify", "--quiet", remoteRef],
+    allowFailure: true,
+  });
+  return result.exitCode === 0 ? remoteRef : options.defaultBranch;
+}
+
+/** The commit a ref points at, or "" when it does not resolve. */
+export async function refSha(userId: string, dir: string, ref: string): Promise<string> {
+  const result = await runGit(userId, {
+    cwd: dir,
+    args: ["rev-parse", "--verify", "--quiet", ref],
+    allowFailure: true,
+  });
+  return result.exitCode === 0 ? result.stdout.trim() : "";
+}
+
 /** Whether a directory is the top of a git work tree. */
 export async function isGitRepo(userId: string, dir: string): Promise<boolean> {
   const result = await runGit(userId, {
