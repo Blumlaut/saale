@@ -51,13 +51,19 @@ const SESSIONS = [
 let fetchMock: ReturnType<typeof vi.fn>;
 
 /** Server answer for a bulk delete  ids that went, ids that did not. */
-type BulkResponse = { deleted: string[]; failed: Array<{ sessionId: string; error: string }> };
+type BulkResponse = {
+  deleted: string[];
+  failed: Array<{ sessionId: string; error: string; code?: string }>;
+};
 
-function mockSessions(sessions = SESSIONS, bulk?: BulkResponse) {
+function mockSessions(sessions = SESSIONS, bulk?: BulkResponse | BulkResponse[]) {
+  // A list of answers answers one request each. the second one is the retry.
+  const answers = Array.isArray(bulk) ? [...bulk] : null;
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/chat/sessions/bulk") {
-      const { ids } = JSON.parse(String(init?.body)) as { ids: string[] };
-      return new Response(JSON.stringify(bulk ?? { deleted: ids, failed: [] }), { status: 200 });
+      const { ids } = JSON.parse(String(init?.body)) as { ids: string[]; force?: boolean };
+      const answer = answers?.shift() ?? bulk ?? { deleted: ids, failed: [] };
+      return new Response(JSON.stringify(answer), { status: 200 });
     }
     expect(url).toBe("/api/chat/sessions");
     return new Response(JSON.stringify({ sessions }), { status: 200 });
@@ -195,6 +201,57 @@ describe("SessionSidebar older chats", () => {
     const description = box.closest("[role=alertdialog]") as HTMLElement;
     expect(description.textContent).toContain("2 watchers");
     expect(description.textContent).toContain("scheduled checks stop immediately");
+  });
+
+  it("asks again before discarding a checkout's uncommitted changes", async () => {
+    mockSessions(SESSIONS, [
+      {
+        deleted: [],
+        failed: [
+          {
+            sessionId: "s-fresh",
+            error: "fatal: contains modified or untracked files, use --force to delete it",
+            code: "dirty-worktree",
+          },
+        ],
+      },
+      { deleted: ["s-fresh"], failed: [] },
+    ]);
+    await renderSidebar();
+
+    await revealRowActions("Fresh chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    // git refused, so the box stays open and names what is at stake.
+    const again = await screen.findByRole("button", { name: "Delete anyway" });
+    expect(screen.getByText(/discarding this chat's uncommitted changes/)).toBeInTheDocument();
+    expect(screen.getByText("Fresh chat")).toBeInTheDocument();
+    expect(toastError).not.toHaveBeenCalled();
+
+    fireEvent.click(again);
+
+    await waitFor(() => expect(screen.queryByText("Fresh chat")).not.toBeInTheDocument());
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/chat/sessions/bulk",
+      expect.objectContaining({ body: JSON.stringify({ ids: ["s-fresh"], force: true }) }),
+    );
+  });
+
+  it("reports a failure it cannot force instead of offering a retry", async () => {
+    mockSessions(SESSIONS, {
+      deleted: [],
+      failed: [{ sessionId: "s-fresh", error: "Chat not found: s-fresh" }],
+    });
+    await renderSidebar();
+
+    await revealRowActions("Fresh chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Chat not found: s-fresh"));
+    expect(screen.queryByRole("button", { name: "Delete anyway" })).not.toBeInTheDocument();
+    expect(screen.getByText("Fresh chat")).toBeInTheDocument();
   });
 
   it("offers every row's delete action without a hover state", async () => {

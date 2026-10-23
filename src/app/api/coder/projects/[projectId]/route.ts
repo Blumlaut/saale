@@ -55,7 +55,10 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof CoderCleanupError) {
-      return NextResponse.json({ error: err.message }, { status: err.status });
+      return NextResponse.json(
+        { error: err.message, ...(err.code ? { code: err.code } : {}) },
+        { status: err.status },
+      );
     }
     console.error(`Failed to delete coder project ${projectId}:`, err);
     return NextResponse.json({ error: "Could not delete the project" }, { status: 500 });

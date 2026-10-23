@@ -5,6 +5,8 @@
 
 export interface FetchError extends Error {
   status?: number;
+  /** Machine-readable reason, when the API sends one (e.g. a refusal a retry can override). */
+  code?: string;
 }
 
 /**
@@ -19,6 +21,7 @@ export async function fetchJson<T = unknown>(url: string, init?: RequestInit): P
       (body.error as string) || `Request failed with status ${res.status}`,
     ) as FetchError;
     err.status = res.status;
+    if (typeof body.code === "string") err.code = body.code;
     throw err;
   }
   return res.json() as Promise<T>;

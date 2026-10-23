@@ -47,18 +47,32 @@ describe("POST /api/chat/sessions/bulk", () => {
     expect(mockDeleteChatSessions).toHaveBeenCalledWith(USER_ID, ["chat-1", "chat-2"], false);
   });
 
+  it("passes force through to the deletion so a dirty checkout can go", async () => {
+    await bulkRequest({ ids: ["chat-1"], force: true });
+
+    expect(mockDeleteChatSessions).toHaveBeenCalledWith(USER_ID, ["chat-1"], true);
+  });
+
+  it("treats a missing force as a plain delete", async () => {
+    await bulkRequest({ ids: ["chat-1"], force: "yes" });
+
+    expect(mockDeleteChatSessions).not.toHaveBeenCalled();
+  });
+
   it("reports the chats that survived instead of failing the whole batch", async () => {
     mockDeleteChatSessions.mockResolvedValue({
       deleted: ["chat-1"],
-      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2" }],
+      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2", code: "dirty-worktree" }],
     });
 
     const res = await bulkRequest({ ids: ["chat-1", "chat-2"] });
 
     expect(res.status).toBe(200);
+    // The refusal's code travels with the error: the sidebar needs it to offer a
+    // confirmed retry instead of a plain failure.
     expect(await res.json()).toEqual({
       deleted: ["chat-1"],
-      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2" }],
+      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2", code: "dirty-worktree" }],
     });
   });
 

@@ -334,7 +334,7 @@ export async function addWorktreeOnBranch(
   });
 }
 
-/** Remove a worktree. No `--force`: a dirty tree is git's decision to refuse. */
+/** Remove a worktree. Without `force`, a dirty tree is git's decision to refuse. */
 export async function removeWorktree(
   userId: string,
   options: { repoDir: string; dir: string; force?: boolean },

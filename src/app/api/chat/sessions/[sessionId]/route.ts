@@ -108,7 +108,10 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
     console.error(`Failed to delete chat session ${sessionId}:`, err);
     // A worktree git will not let go keeps the chat. the reason is the answer.
     if (err instanceof CoderCleanupError) {
-      return NextResponse.json({ error: err.message }, { status: err.status });
+      return NextResponse.json(
+        { error: err.message, ...(err.code ? { code: err.code } : {}) },
+        { status: err.status },
+      );
     }
     return NextResponse.json(
       {

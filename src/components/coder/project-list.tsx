@@ -23,8 +23,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Page } from "@/components/layout/page";
 import { Separator } from "@/components/ui/separator";
-import { deleteJson } from "@/lib/http";
+import { deleteJson, type FetchError } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
+import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
 import { ROW_ACTION, cn } from "@/lib/utils";
 import { ProjectCreateDialog } from "./project-create-dialog";
 import { useProjects, type CoderProjectSummary } from "./use-coder-data";
@@ -58,13 +59,10 @@ export function ProjectList() {
       reload();
     } catch (err) {
       console.error(`Failed to delete coder project ${project.id}:`, err);
-      const message = err instanceof Error ? err.message : "Could not delete the project.";
-      if (!force && /modified or untracked/i.test(message)) {
-        setForcePending(true);
-        setDeleteError(message);
-      } else {
-        setDeleteError(message);
-      }
+      setDeleteError(err instanceof Error ? err.message : "Could not delete the project.");
+      // A chat's checkout refused: the project stays until the user says its
+      // uncommitted work can go.
+      setForcePending(!force && (err as FetchError).code === DIRTY_WORKTREE_CODE);
     } finally {
       setBusy(false);
     }
@@ -184,6 +182,11 @@ export function ProjectList() {
           {deleteError && (
             <p className="text-destructive text-sm break-words whitespace-pre-wrap">
               {deleteError}
+            </p>
+          )}
+          {forcePending && (
+            <p className="text-sm break-words">
+              Delete anyway, discarding the uncommitted changes in its chats&apos; checkouts?
             </p>
           )}
           <AlertDialogFooter>
