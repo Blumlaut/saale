@@ -33,7 +33,8 @@ export type StreamAction =
  *   (in-process in-flight guard)
  * - `pendingPromptMessageId`. the message the POST /messages route wants the
  *   SSE connection to prompt (the "claim")
- * - `bufferHasDone`. the buffer holds a finished run's terminal event
+ * - `bufferHasDone`. the buffer's newest event ended a run (nothing is
+ *   streaming), so there is nothing to replay and nothing to wait for
  * - `queueHeld`. the user pressed Stop on this session and has not sent
  *   anything since (see redis.ts). Stop means "nothing more until I say so",
  *   so an unanswered message must not be re-prompted by a reconnect. that
@@ -75,9 +76,11 @@ export function decideStreamAction(params: {
     if (params.hasAssistantAfterLastUser) {
       return { type: "done", reason: "last user message already answered" };
     }
-    // A finished run's events are buffered. replay delivers `done`.
+    // A finished run is still marked in the buffer. Nothing is streaming, so
+    // settle the client here: its events are never replayed (see
+    // `liveRunEvents`), and `observe` would leave it loading forever.
     if (params.bufferHasDone) {
-      return { type: "observe", reason: "done event already buffered" };
+      return { type: "done", reason: "buffered run already finished" };
     }
     // Unanswered user message and nothing running: we own the prompt. This
     // covers recovery. a message whose run never started (the client died
