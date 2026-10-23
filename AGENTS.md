@@ -20,23 +20,16 @@ the error string.
 
 ## Commits
 
-- Commit before moving on. Subject ≤50 chars, imperative, descriptive
-  (`add prisma schema for users and sessions`). Group related changes.
-- Run the checks that cover the change before committing — eslint `--fix` on the
-  changed files (it formats too; `prettier --write` for `.md`/`e2e/`), then
-  `NODE_OPTIONS=--max-old-space-size=1700 npx tsc --noEmit` when `.ts`/`.tsx`
-  changed (`tsc` is whole-project; the heap flag avoids this box's 2 GB OOM
-  kill), then `npx vitest run <paths|dir>` for the tests covering it.
-- Widen to `npm run check` when the change reaches beyond a couple of files (a
-  shared primitive, the Prisma schema, the agent runtime) or the run is cheap. If
-  a check cannot run, say which and why.
-- A PR runs `.github/workflows/checks.yml`: eslint, prettier and vitest on the
-  touched files, and a cached project-wide `tsc`. Touched-file scope means a
-  green check only covers your diff — still run `npm run check` for a wide
-  change.
-- Local build: `NODE_ENV=production npm run build`. With `NODE_ENV=development`
-  it dies prerendering `/_global-error` — a known Next 16 symptom
-  (vercel/next.js#86178), not this app's bug.
+- Commit before moving on. Subject ≤50 chars, imperative and descriptive (e.g. `add prisma schema for users and sessions`). Group related changes.
+- **Run only checks relevant to changed code.** Prefer targeted tests over full suites.
+  - Run eslint `--fix` on changed files; use `prettier --write` for `.md` and `e2e/` files.
+  - Run `npx vitest run <specific test paths>` for tests covering changed behavior.
+  - Run `npx tsc --noEmit` only when broader type checking is warranted.
+- Never test untouched code, run the same check twice, or run the full suite just to be safe. Retest only when relevant code changes.
+- Run `npm run check` only for broad or cross-cutting changes (e.g. shared primitives, Prisma schema, agent runtime), or when it's cheap.
+- CI (`.github/workflows/checks.yml`) checks touched files and runs cached project-wide `tsc`. Add broader checks only when the change warrants them.
+- Run `NODE_ENV=production npm run build` only when build behavior is affected. Development builds may fail prerendering `/_global-error` due to a known [Next.js issue](https://github.com/vercel/next.js/issues/86178).
+- If a check cannot run, briefly state why.
 
 ## Never swallow errors
 
@@ -76,6 +69,9 @@ the error string.
   auth, tool execution, parsing, scheduling, edge cases. No trivial tests.
 - A new feature or non-trivial change gets a happy path and an edge case.
 - A failing test: fix the code or the test. Never skip it.
+- Tests follow code, not the other way around: write/adjust tests only for the
+  change in hand, and run only the affected files. Do not run the whole suite
+  unless the change is broad.
 
 ## UI
 

@@ -70,7 +70,13 @@ vi.mock("@/lib/redis", () => ({
   }),
 }));
 
-import { bufferEvent, getBufferedEvents, clearBuffer } from "@/lib/pi/sse-buffer";
+import {
+  bufferEvent,
+  getBufferedEvents,
+  getLiveRunEvents,
+  liveRunEvents,
+  clearBuffer,
+} from "@/lib/pi/sse-buffer";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -374,5 +380,48 @@ describe("SSE buffer lifecycle", () => {
     expect(result).toHaveLength(5);
     expect(result[0]!.id).toBe(6);
     expect(result[4]!.id).toBe(10);
+  });
+});
+
+describe("liveRunEvents", () => {
+  const ev = (id: number, event: string) => ({ id, event, data: {} });
+
+  it("keeps every event while a run is still going", () => {
+    const events = [ev(1, "turn_start"), ev(2, "token"), ev(3, "thinking")];
+    expect(liveRunEvents(events)).toEqual(events);
+  });
+
+  it("drops a finished run, so a reconnect cannot rebuild it", () => {
+    // The whole run is still buffered after it ended. replaying it would
+    // rebuild a reply that is already on screen from the DB, token by token,
+    // and then drop the rebuild on the following done.
+    const events = [ev(1, "turn_start"), ev(2, "token"), ev(3, "token"), ev(4, "done")];
+    expect(liveRunEvents(events)).toEqual([]);
+  });
+
+  it("keeps what a new run wrote after the previous one finished", () => {
+    const events = [ev(1, "turn_start"), ev(2, "done"), ev(3, "turn_start"), ev(4, "token")];
+    expect(liveRunEvents(events)).toEqual([ev(3, "turn_start"), ev(4, "token")]);
+  });
+
+  it("treats an error as terminal too", () => {
+    expect(liveRunEvents([ev(1, "token"), ev(2, "error")])).toEqual([]);
+  });
+
+  it("is empty for an empty buffer", () => {
+    expect(liveRunEvents([])).toEqual([]);
+  });
+
+  it("reads only the live run from redis", async () => {
+    mockRedisZrangebyscore.mockResolvedValueOnce([
+      makePayload(1, "turn_start", { turnId: "t1" }),
+      makePayload(2, "done", {}),
+      makePayload(3, "turn_start", { turnId: "t2" }),
+      makePayload(4, "token", { turnId: "t2", text: "live" }),
+    ]);
+
+    const live = await getLiveRunEvents("session-1", -1);
+
+    expect(live.map((e) => e.id)).toEqual([3, 4]);
   });
 });
