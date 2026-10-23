@@ -12,7 +12,6 @@ import { ProjectList } from "@/components/coder/project-list";
 import { WorktreePanel } from "@/components/coder/worktree-panel";
 import { useSessionState } from "@/components/coder/use-coder-data";
 import { createChatSession } from "@/lib/chat-session";
-import { patchJson } from "@/lib/http";
 
 /** How often an open coder chat re-reads its worktree while visible. */
 const WORKTREE_POLL_MS = 20_000;
@@ -53,18 +52,6 @@ export default function CoderLayout() {
       });
   }, [projectId, router]);
 
-  // Temporary chats are a chat feature; a coder chat is bound to its worktree,
-  // so the toggle is inert but still reflects the row.
-  const toggleTemporary = useCallback(
-    (checked: boolean) => {
-      if (!sessionId) return;
-      patchJson(`/api/chat/sessions/${sessionId}`, { temporary: checked }).catch((err: unknown) => {
-        console.error("Failed to update temporary mode:", err);
-      });
-    },
-    [sessionId],
-  );
-
   if (!projectId) return <ProjectList />;
 
   if (!sessionId) {
@@ -100,9 +87,8 @@ export default function CoderLayout() {
           <ChatInterface
             key={sessionId}
             sessionId={sessionId}
-            temporaryMode={false}
-            onTemporaryChange={toggleTemporary}
             onNewChat={newChat}
+            hideTemporaryToggle
             mobileListTrigger={
               <Sheet>
                 <SheetTrigger aria-label="Open chat list">

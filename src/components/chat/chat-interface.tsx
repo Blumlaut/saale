@@ -48,20 +48,23 @@ type CommandApiResponse =
 
 export function ChatInterface({
   sessionId,
-  temporaryMode,
-  onTemporaryChange,
+  temporaryMode = false,
+  onTemporaryChange = () => {},
   onNewChat,
   mobileListTrigger,
   headerActions,
+  hideTemporaryToggle,
 }: {
   sessionId: string;
-  temporaryMode: boolean;
-  onTemporaryChange: (checked: boolean) => void;
+  temporaryMode?: boolean;
+  onTemporaryChange?: (checked: boolean) => void;
   onNewChat: () => void;
   /** Header slot for a view that lists something other than chat sessions. */
   mobileListTrigger?: React.ReactNode;
   /** Extra header controls, rendered last. */
   headerActions?: React.ReactNode;
+  /** Hide temporary mode; a coder chat is bound to its worktree. */
+  hideTemporaryToggle?: boolean;
 }) {
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -853,6 +856,7 @@ export function ChatInterface({
             onToggleLinks={() => setLinksOpen((open) => !open)}
             {...(mobileListTrigger ? { mobileListTrigger } : {})}
             {...(headerActions ? { extraActions: headerActions } : {})}
+            {...(hideTemporaryToggle ? { hideTemporaryToggle } : {})}
           />
 
           <div className="flex min-h-0 flex-1 flex-col">
