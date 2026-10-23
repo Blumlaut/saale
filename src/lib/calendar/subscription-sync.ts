@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { chunk, IN_LIST_CHUNK_SIZE } from "@/lib/db-batch";
 import { parseICS, type ParsedEvent } from "./ics-import";
 
 /**
@@ -23,8 +24,6 @@ function subscriptionEventData(evt: ParsedEvent) {
   };
 }
 
-/** Postgres bind-parameter headroom for `in` lists (the cap is 65535). */
-const UIDS_PER_QUERY = 5000;
 /** createMany binds every column of every row (16 here); keep batches far under 65535. */
 const CREATE_BATCH_SIZE = 1000;
 
@@ -144,12 +143,12 @@ export async function syncSubscription(
   // one per event. A large yearly subscription used to mean thousands of
   // round trips per sync.
   const existingByUid = new Map<string, string>();
-  for (let i = 0; i < events.length; i += UIDS_PER_QUERY) {
+  for (const uidBatch of chunk(
+    events.map((e) => e.uid),
+    IN_LIST_CHUNK_SIZE,
+  )) {
     const existing = await prisma.calendarEvent.findMany({
-      where: {
-        calendarId: subscription.calendarId,
-        uid: { in: events.slice(i, i + UIDS_PER_QUERY).map((e) => e.uid) },
-      },
+      where: { calendarId: subscription.calendarId, uid: { in: uidBatch } },
       select: { uid: true, id: true },
     });
     for (const row of existing) {
@@ -160,9 +159,9 @@ export async function syncSubscription(
   const toCreate = events.filter((evt) => !existingByUid.has(evt.uid));
   const toUpdate = events.filter((evt) => existingByUid.has(evt.uid));
 
-  for (let i = 0; i < toCreate.length; i += CREATE_BATCH_SIZE) {
+  for (const batch of chunk(toCreate, CREATE_BATCH_SIZE)) {
     await prisma.calendarEvent.createMany({
-      data: toCreate.slice(i, i + CREATE_BATCH_SIZE).map((evt) => ({
+      data: batch.map((evt) => ({
         calendarId: subscription.calendarId,
         uid: evt.uid,
         ...subscriptionEventData(evt),
