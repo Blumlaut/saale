@@ -41,6 +41,7 @@ model User {
   agentDefinitions   AgentDefinition[]
   scriptWatchers     ScriptWatcher[]
   telegramLink       TelegramLink?
+  telegramOutboundMessages TelegramOutboundMessage[]
   telegramLinkCodes  TelegramLinkCode[]
   sandboxEnvVars     SandboxEnvVar[]
   infraMachines      InfraMachine[]
@@ -842,6 +843,9 @@ model TelegramLink {
   displayName    String?
   /// Saale ChatSession this link talks through (null until the first message).
   sessionId      String?
+  /// The chat that last sent a Telegram message, so a message that is not a
+  /// reply continues that conversation instead of the home thread.
+  lastOutboundSessionId String?
   bot            TelegramBot @relation(fields: [botId], references: [id], onDelete: Cascade)
   user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime    @default(now())
@@ -850,6 +854,32 @@ model TelegramLink {
   @@index([botId])
   @@index([sessionId])
   @@map("TelegramLink")
+}
+
+/// One message Saale sent into Telegram, so a reply can find the chat that
+/// produced it.
+///
+/// A reply is matched on `messageId`, which Telegram guarantees is unique within
+/// a chat. A long message is split into several Telegram messages, so one
+/// delivery leaves several rows, all naming the same source session. Rows are
+/// pruned on a TTL; `TelegramLink.lastOutboundSessionId` covers the case where
+/// the user replies without quoting anything.
+model TelegramOutboundMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  botId     String
+  chatId    BigInt
+  messageId BigInt
+  /// The chat that produced the message. Null when the delivery had no source
+  /// chat, such as a task reminder or an agent job run.
+  sessionId String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([chatId, messageId])
+  @@index([userId, createdAt])
+  @@index([sessionId])
+  @@map("TelegramOutboundMessage")
 }
 
 /// Short-lived single-use code that binds a Telegram identity to the Saale

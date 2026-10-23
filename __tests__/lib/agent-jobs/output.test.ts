@@ -27,9 +27,14 @@ vi.mock("@/lib/telegram/client", () => ({
   sendTypingIndicator: (...args: unknown[]) => mockSendTypingIndicator(...args),
 }));
 
-const mockRecordTelegramJobOutput = vi.fn();
+const mockRecordOutboundMessage = vi.fn();
 vi.mock("@/lib/telegram/outbound", () => ({
-  recordTelegramJobOutput: (...args: unknown[]) => mockRecordTelegramJobOutput(...args),
+  recordOutboundMessage: (...args: unknown[]) => mockRecordOutboundMessage(...args),
+}));
+
+const mockRecordOutboundMessages = vi.fn();
+vi.mock("@/lib/telegram/outbound-messages", () => ({
+  recordOutboundMessages: (...args: unknown[]) => mockRecordOutboundMessages(...args),
 }));
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -71,7 +76,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetTelegramBot.mockResolvedValue(bot);
   mockGetLinkByUserId.mockResolvedValue(link);
-  mockRecordTelegramJobOutput.mockResolvedValue(undefined);
+  mockRecordOutboundMessage.mockResolvedValue(undefined);
+  mockRecordOutboundMessages.mockResolvedValue(undefined);
   mockSendTelegramMessage.mockResolvedValue([42]);
 });
 
@@ -140,9 +146,10 @@ describe("buildAgentOutputHandler", () => {
     );
 
     // The outbound message is recorded so a reply to it has context.
-    expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({
+    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
       userId,
       content: "Job finished  here is the report",
+      sourceSessionId: undefined,
     });
     expect(output!.deliveryErrors?.()).toEqual([]);
   });
@@ -179,7 +186,7 @@ describe("buildAgentOutputHandler", () => {
   });
 
   it("still delivers when recording the message for replies fails", async () => {
-    mockRecordTelegramJobOutput.mockRejectedValue(new Error("db down"));
+    mockRecordOutboundMessage.mockRejectedValue(new Error("db down"));
 
     const { output } = await buildAgentOutputHandler({ userId, outputChannel: "telegram" });
     await output!.send("hello");

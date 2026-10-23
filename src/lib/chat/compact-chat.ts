@@ -20,6 +20,28 @@ export type CompactChatResult =
   | { ok: true; tokensBefore: number | undefined }
   | { ok: false; code: CompactChatErrorCode; message: string };
 
+/**
+ * The `/compact` outcome for a chat compaction, so the web and Telegram
+ * surfaces say the same thing about the same result.
+ */
+export function compactionOutcome(result: CompactChatResult): {
+  message: string;
+  tone: "success" | "info" | "error";
+  refresh?: "messages";
+} {
+  if (!result.ok) {
+    // "already compacted" and "too short" are states, not failures.
+    const informational =
+      result.code === "already-compacted" || result.code === "nothing-to-compact";
+    return { message: result.message, tone: informational ? "info" : "error" };
+  }
+
+  const tokensInfo = result.tokensBefore
+    ? ` (was ${result.tokensBefore.toLocaleString()} tokens)`
+    : "";
+  return { message: `Conversation compacted${tokensInfo}.`, tone: "success", refresh: "messages" };
+}
+
 /** Refresh interval for the compaction flag. well inside its TTL, so a long
  * summarization never lets the session read as idle mid-compaction. */
 const COMPACTION_FLAG_REFRESH_MS = 30_000;

@@ -6,12 +6,14 @@ const {
   mockGetTelegramBot,
   mockGetLinkByUserId,
   mockSendTelegramMessage,
-  mockRecordTelegramJobOutput,
+  mockRecordOutboundMessage,
+  mockRecordOutboundMessages,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
   mockGetLinkByUserId: vi.fn(),
   mockSendTelegramMessage: vi.fn(),
-  mockRecordTelegramJobOutput: vi.fn(),
+  mockRecordOutboundMessage: vi.fn(),
+  mockRecordOutboundMessages: vi.fn(),
 }));
 
 vi.mock("@/lib/telegram/bot", () => ({
@@ -27,7 +29,11 @@ vi.mock("@/lib/telegram/client", () => ({
 }));
 
 vi.mock("@/lib/telegram/outbound", () => ({
-  recordTelegramJobOutput: (...args: unknown[]) => mockRecordTelegramJobOutput(...args),
+  recordOutboundMessage: (...args: unknown[]) => mockRecordOutboundMessage(...args),
+}));
+
+vi.mock("@/lib/telegram/outbound-messages", () => ({
+  recordOutboundMessages: (...args: unknown[]) => mockRecordOutboundMessages(...args),
 }));
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -69,7 +75,8 @@ beforeEach(() => {
   mockGetTelegramBot.mockResolvedValue(bot);
   mockGetLinkByUserId.mockResolvedValue(link);
   mockSendTelegramMessage.mockResolvedValue([42]);
-  mockRecordTelegramJobOutput.mockResolvedValue(undefined);
+  mockRecordOutboundMessage.mockResolvedValue(undefined);
+  mockRecordOutboundMessages.mockResolvedValue(undefined);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -115,10 +122,18 @@ describe("sendTelegramToUser", () => {
     expect(result).toEqual({ ok: true, chatId: "119075844", label: "Jane" });
     expect(mockGetLinkByUserId).toHaveBeenCalledWith(userId);
     expect(mockSendTelegramMessage).toHaveBeenCalledWith("enc", chatId, "Dentist in 30 minutes");
-    // Recorded so a reply to the reminder continues the thread.
-    expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({
+    // Recorded so a reply to the reminder continues the thread, and ledgered so
+    // the reply itself can be routed back.
+    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
       userId,
       content: "Dentist in 30 minutes",
+      sourceSessionId: undefined,
+    });
+    expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
+      userId,
+      chatId,
+      messageIds: [42],
+      sourceSessionId: undefined,
     });
   });
 
@@ -151,7 +166,7 @@ describe("sendTelegramToUser", () => {
   });
 
   it("delivers even when recording the message for replies fails", async () => {
-    mockRecordTelegramJobOutput.mockRejectedValue(new Error("db down"));
+    mockRecordOutboundMessage.mockRejectedValue(new Error("db down"));
 
     const result = await sendTelegramToUser({ userId, content: "hello" });
 
@@ -176,7 +191,50 @@ describe("deliverTelegramMessage", () => {
 
     expect(result).toEqual({ ok: true, chatId: "119075844" });
     expect(mockSendTelegramMessage).toHaveBeenCalledWith("enc", chatId, "hello");
-    expect(mockRecordTelegramJobOutput).toHaveBeenCalledWith({ userId, content: "hello" });
+    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
+      userId,
+      content: "hello",
+      sourceSessionId: undefined,
+    });
+  });
+
+  it("carries the source chat into both records", async () => {
+    await deliverTelegramMessage({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      content: "CVE-2026-1 affects lodash",
+      sourceSessionId: "sess-9",
+    });
+
+    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
+      userId,
+      content: "CVE-2026-1 affects lodash",
+      sourceSessionId: "sess-9",
+    });
+    expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
+      userId,
+      chatId,
+      messageIds: [42],
+      sourceSessionId: "sess-9",
+    });
+  });
+
+  it("delivers even when the ledger write fails", async () => {
+    mockRecordOutboundMessages.mockRejectedValue(new Error("db down"));
+
+    const result = await deliverTelegramMessage({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      content: "hello",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to ledger outbound messages"),
+      expect.any(Error),
+    );
   });
 
   it("returns a failed result rather than throwing", async () => {

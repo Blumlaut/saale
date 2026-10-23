@@ -2,6 +2,7 @@ import path from "path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { getUploadsDir } from "@/lib/uploads";
+import { isSessionBusy } from "@/lib/redis";
 import { getLinkByUserId } from "./links";
 import { withChatLock } from "./chat-lock";
 
@@ -9,35 +10,51 @@ import { withChatLock } from "./chat-lock";
 const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
 
 /**
- * Persist an outbound job message into the user's Telegram chat session so a
- * follow-up reply has context.
+ * Persist an outbound message into the chat that produced it, so a reply has
+ * context.
  *
- * Jobs run in their own in-memory Pi session, so without this the Telegram
- * chat agent never sees what the job told the user. replying to the message
- * reads as amnesia. Recording it:
+ * The chat's agent lives in its own Pi transcript, and the web UI reads the
+ * `ChatMessage` rows, so both are written:
  *
- *  - writes a `ChatMessage` row (assistant) so the web UI shows the same
- *    thread, and keeps the session from expiring between the job message and
- *    the reply (session expiry is driven by the latest message timestamp),
- *  - appends a custom message entry to the chat's Pi transcript, which the
- *    agent reads as conversation context (custom entries convert to a user
- *    message for the model).
+ *  - a `ChatMessage` row (assistant) so the web UI shows the message in the
+ *    thread that sent it, and the session does not expire between the message
+ *    and the reply (session expiry is driven by the latest message timestamp),
+ *  - a custom entry in that chat's Pi transcript, which the agent reads as
+ *    conversation context (custom entries convert to a user message for the
+ *    model).
  *
- * No-ops when the user has no link or the link has no session yet (they have
- * never messaged the bot). there is nothing to attach the message to, and the
- * reply-to context injection covers that case.
+ * `sourceSessionId` is the chat that sent the message. Without one (a task
+ * reminder, an agent job run) the message lands in the link's home thread,
+ * which is where a reply to it would go anyway.
+ *
+ * The transcript entry is skipped while the chat is generating: Pi's session
+ * manager owns that file for the duration of a run. The DB row still lands, so
+ * the thread is never missing the message.
  */
-export async function recordTelegramJobOutput(params: {
+export async function recordOutboundMessage(params: {
   userId: string;
   content: string;
+  sourceSessionId?: string | null | undefined;
 }): Promise<void> {
-  const { userId, content } = params;
+  const { userId, content, sourceSessionId } = params;
   if (!content.trim()) return;
 
   const link = await getLinkByUserId(userId);
-  if (!link?.sessionId) return;
+  const sessionId = sourceSessionId ?? link?.sessionId ?? null;
+  if (!sessionId) return;
 
-  const { sessionId, telegramChatId } = link;
+  // Defence in depth: the caller passes a session it resolved, but a session id
+  // is not proof of ownership.
+  const chat = await prisma.chatSession.findFirst({
+    where: { id: sessionId, userId },
+    select: { id: true },
+  });
+  if (!chat) {
+    console.warn(
+      `[telegram] Outbound message for user ${userId} named an unknown chat ${sessionId}`,
+    );
+    return;
+  }
 
   await prisma.chatMessage.create({
     data: { sessionId, role: "assistant", content },
@@ -51,14 +68,19 @@ export async function recordTelegramJobOutput(params: {
       console.error(`Failed to bump lastActivityAt for telegram session ${sessionId}:`, err);
     });
 
+  if (await isSessionBusy(userId, sessionId)) {
+    console.warn(`[telegram] Chat ${sessionId} is busy. transcript entry skipped`);
+    return;
+  }
+
   // Append under the chat lock so it cannot interleave with an active run
   // writing to the same transcript file.
-  await withChatLock(`${userId}:${telegramChatId}`, async () => {
+  await withChatLock(`${userId}:${link?.telegramChatId ?? sessionId}`, async () => {
     const sessionDir = path.join(getUploadsDir(), "pi_sessions", userId, sessionId);
     const manager = SessionManager.continueRecent(sessionDir, sessionDir);
     manager.appendCustomMessageEntry(
       JOB_OUTPUT_CUSTOM_TYPE,
-      `[Telegram message sent to the user by an automated job]\n${content}`,
+      `[Telegram message sent to the user]\n${content}`,
       false,
       { channel: "telegram" },
     );

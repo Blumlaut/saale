@@ -5,6 +5,8 @@ chat that sent it. Phase 2 makes a Telegram group a destination for autonomous
 sends. Phase 2 wants Phase 1, because a group alert should be answerable in the
 chat that produced it.
 
+**Status:** Phase 1 is implemented. Phase 2 is not started.
+
 ## Why
 
 Today a Telegram conversation is its own chat: `upsertTelegramSession`

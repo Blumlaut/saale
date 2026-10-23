@@ -41,6 +41,8 @@ interface PromptSession {
   token: string;
   userId: string;
   command: string;
+  /** The chat the command acts on. Absent when there is no conversation yet. */
+  sessionId?: string | undefined;
   /** bigint as string. JSON cannot carry a bigint. */
   telegramChatId: string;
   replyToMessageId?: number | undefined;
@@ -71,17 +73,21 @@ export async function handleTelegramCommand(params: {
   userId: string;
   encryptedToken: string;
   telegramChatId: bigint;
+  /** The chat the command acts on. Absent when there is no conversation yet. */
+  sessionId?: string | undefined;
   name: string;
   args: string;
   replyToMessageId?: number | undefined;
 }): Promise<void> {
-  const { userId, encryptedToken, telegramChatId, name, args, replyToMessageId } = params;
+  const { userId, encryptedToken, telegramChatId, sessionId, name, args, replyToMessageId } =
+    params;
 
   const reply = replyToMessageId != null ? { replyToMessageId } : undefined;
   const result = await executeCommand(name, {
     surface: "telegram",
     userId,
     args,
+    sessionId,
     telegramChatId,
     encryptedToken,
     replyToMessageId,
@@ -106,6 +112,7 @@ export async function handleTelegramCommand(params: {
     userId,
     encryptedToken,
     telegramChatId,
+    sessionId,
     command: result.name,
     prompt: result.prompt,
     replyToMessageId,
@@ -123,6 +130,8 @@ export async function sendCommandPrompt(params: {
   userId: string;
   encryptedToken: string;
   telegramChatId: bigint;
+  /** The chat the command acts on. Absent when there is no conversation yet. */
+  sessionId?: string | undefined;
   command: string;
   prompt: CommandPrompt;
   replyToMessageId?: number | undefined;
@@ -146,6 +155,7 @@ export async function sendCommandPrompt(params: {
     token,
     userId,
     command,
+    sessionId: params.sessionId,
     telegramChatId: telegramChatId.toString(),
     replyToMessageId: params.replyToMessageId,
     title: prompt.title,
@@ -294,6 +304,7 @@ export async function handleCommandPromptCallback(
       surface: "telegram",
       userId: session.userId,
       args: "",
+      sessionId: session.sessionId,
       telegramChatId: BigInt(session.telegramChatId),
       encryptedToken: botConfig.encryptedToken,
       replyToMessageId: session.replyToMessageId,

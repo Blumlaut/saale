@@ -67,6 +67,7 @@ describe("executeCommand", () => {
       surface: "telegram",
       userId: "u1",
       args: "",
+      sessionId: "sess-1",
       telegramChatId: BigInt(1),
       encryptedToken: "token",
     });
