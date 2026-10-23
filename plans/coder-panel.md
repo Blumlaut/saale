@@ -213,7 +213,10 @@ DELETE /api/coder/projects/:id                 removes worktrees first (see Clea
 GET    /api/coder/projects/:id/changes         branch, ahead/behind, changed files, recent commits
 GET    /api/coder/sessions/:sessionId/diff     ?path=&staged=   unified diff text
 GET    /api/coder/sessions/:sessionId/status   worktree state for the right panel
-POST   /api/coder/sessions/:sessionId/terminal  (later phase) run a command in the worktree
+POST   /api/coder/sessions/:sessionId/terminal       start a command in the worktree
+GET    /api/coder/sessions/:sessionId/terminal/stream  SSE: the chat's run, replayed then live
+POST   /api/coder/sessions/:sessionId/terminal/stop    stop that run
+POST   /api/coder/sessions/:sessionId/terminal/input   type into it
 ```
 
 Every route authenticates, then scopes by `project.userId` / `session.userId` in the
@@ -279,9 +282,10 @@ git worktree remove <dir>                  no --force
 - A worker sweep (daily, alongside the existing task runner) removes `CoderWorktree` rows
   whose directory is gone, prunes `git worktree` metadata, and logs directories under
   `worktrees/` that no row claims. It never deletes a directory git still tracks.
-- Processes: the terminal panel records the exec ids it starts; worktree removal kills those
-  first, then `pkill -f` on the worktree path for anything a background command left
-  (dev servers, watchers). A stopped-by-cleanup exec reads as "exited" everywhere else.
+- Processes: a terminal command belongs to the chat, not to the panel: it keeps running when
+  the panel closes, and reopening the chat replays what it printed. Its exec id is recorded, so
+  worktree removal kills it (then `pkill -f` on the worktree path for anything a background
+  command left: dev servers, watchers). A stopped-by-cleanup exec reads as "exited".
 - Archived chats do not exist in Saale today. When one is added, the worktree
   removal belongs at the same hook as chat deletion.
 

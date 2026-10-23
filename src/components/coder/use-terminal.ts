@@ -8,6 +8,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * One command at a time, like a shell. Output is kept as segments so a build's
  * stdout and stderr can be tinted apart, and it is capped: a dev server prints
  * for as long as it runs, and the panel is not a log file.
+ *
+ * The command is not this panel's: it runs on the server until it exits or the
+ * user stops it, so leaving the page detaches the stream and nothing else. Coming
+ * back replays what the run printed while it was gone.
  */
 
 /** How much output a panel keeps before it drops the oldest. */
@@ -64,17 +68,27 @@ function parseFrames(buffer: string): {
   return { frames, rest };
 }
 
+/** A command's exit as the panel writes it. */
+function exitNote(code: number, millis: number): string {
+  return `exit ${code} · ${(millis / 1000).toFixed(1)}s\n`;
+}
+
 export function useTerminal(sessionId: string): TerminalState {
   const [segments, setSegments] = useState<TerminalSegment[]>([]);
   const [running, setRunning] = useState<TerminalRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
 
-  const abortRef = useRef<AbortController | null>(null);
+  const streamRef = useRef<AbortController | null>(null);
   const nextId = useRef(0);
   // Mirrors `running` for the keystroke path, which needs it without waiting
   // for a render.
   const runningRef = useRef<TerminalRun | null>(null);
+
+  const setRun = useCallback((next: TerminalRun | null) => {
+    runningRef.current = next;
+    setRunning(next);
+  }, []);
 
   const append = useCallback((stream: TerminalSegment["stream"], text: string) => {
     if (!text) return;
@@ -98,30 +112,98 @@ export function useTerminal(sessionId: string): TerminalState {
     });
   }, []);
 
+  /**
+   * Follow the chat's run.
+   *
+   * The panel renders what the server replays, so it shows the same thing
+   * whether the command was started here a moment ago or an hour ago.
+   */
+  const attach = useCallback(async () => {
+    streamRef.current?.abort();
+    const controller = new AbortController();
+    streamRef.current = controller;
+
+    setSegments([]);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/coder/sessions/${sessionId}/terminal/stream`, {
+        headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        console.error(`Terminal stream answered ${response.status} for chat ${sessionId}`);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parsed = parseFrames(buffer);
+        buffer = parsed.rest;
+
+        for (const frame of parsed.frames) {
+          let payload: Record<string, unknown>;
+          try {
+            payload = JSON.parse(frame.data) as Record<string, unknown>;
+          } catch (err) {
+            console.error("Malformed terminal frame:", err);
+            continue;
+          }
+
+          if (frame.event === "command" && typeof payload.command === "string") {
+            append("input", `$ ${payload.command}\n`);
+            setRun({ execId: runningRef.current?.execId ?? null, command: payload.command });
+          } else if (frame.event === "started" && typeof payload.execId === "string") {
+            setRun({ execId: payload.execId, command: runningRef.current?.command ?? "" });
+          } else if (frame.event === "data" && typeof payload.text === "string") {
+            append(payload.stream === "stderr" ? "stderr" : "stdout", payload.text);
+          } else if (frame.event === "exit") {
+            const code = typeof payload.exitCode === "number" ? payload.exitCode : 1;
+            const millis = typeof payload.durationMs === "number" ? payload.durationMs : 0;
+            append("note", exitNote(code, millis));
+            setRun(null);
+          } else if (frame.event === "error" && typeof payload.message === "string") {
+            setError(payload.message);
+            append("note", `${payload.message}\n`);
+            setRun(null);
+          }
+        }
+      }
+    } catch (err) {
+      // Detaching is how leaving the page works, not a failure.
+      if ((err as Error)?.name !== "AbortError") {
+        console.error("Terminal stream failed:", err);
+        setError(err instanceof Error ? err.message : "Terminal failed");
+      }
+    } finally {
+      if (streamRef.current === controller) streamRef.current = null;
+    }
+  }, [append, sessionId, setRun]);
+
   const run = useCallback(
     async (command: string) => {
       const trimmed = command.trim();
       if (!trimmed || runningRef.current) return;
 
       setError(null);
-      append("input", `$ ${trimmed}\n`);
       setHistory((current) => [...current.slice(-(MAX_HISTORY - 1)), trimmed]);
-
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const started: TerminalRun = { execId: null, command: trimmed };
-      runningRef.current = started;
-      setRunning(started);
 
       try {
         const response = await fetch(`/api/coder/sessions/${sessionId}/terminal`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ command: trimmed }),
-          signal: controller.signal,
         });
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           const message = await response
             .json()
             .then((body: { error?: string }) => body.error ?? `Command failed (${response.status})`)
@@ -133,65 +215,37 @@ export function useTerminal(sessionId: string): TerminalState {
           append("note", `${message}\n`);
           return;
         }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const parsed = parseFrames(buffer);
-          buffer = parsed.rest;
-
-          for (const frame of parsed.frames) {
-            let payload: Record<string, unknown>;
-            try {
-              payload = JSON.parse(frame.data) as Record<string, unknown>;
-            } catch (err) {
-              console.error("Malformed terminal frame:", err);
-              continue;
-            }
-
-            if (frame.event === "started" && typeof payload.execId === "string") {
-              const withId: TerminalRun = { execId: payload.execId, command: trimmed };
-              runningRef.current = withId;
-              setRunning(withId);
-            } else if (frame.event === "data" && typeof payload.text === "string") {
-              append(payload.stream === "stderr" ? "stderr" : "stdout", payload.text);
-            } else if (frame.event === "exit") {
-              const code = typeof payload.exitCode === "number" ? payload.exitCode : 1;
-              const millis = typeof payload.durationMs === "number" ? payload.durationMs : 0;
-              append("note", `exit ${code} · ${(millis / 1000).toFixed(1)}s\n`);
-            } else if (frame.event === "error" && typeof payload.message === "string") {
-              setError(payload.message);
-              append("note", `${payload.message}\n`);
-            }
-          }
-        }
       } catch (err) {
-        // An abort is the stop button, not a failure.
-        if ((err as Error)?.name !== "AbortError") {
-          console.error("Terminal command failed:", err);
-          setError(err instanceof Error ? err.message : "Terminal failed");
-          append("note", `${err instanceof Error ? err.message : "Terminal failed"}\n`);
-        } else {
-          append("note", "stopped\n");
-        }
-      } finally {
-        abortRef.current = null;
-        runningRef.current = null;
-        setRunning(null);
+        console.error("Terminal command failed:", err);
+        setError(err instanceof Error ? err.message : "Terminal failed");
+        return;
       }
+
+      // The run is the server's now; the stream shows it from the first byte.
+      setRun({ execId: null, command: trimmed });
+      await attach();
     },
-    [append, sessionId],
+    [append, attach, sessionId, setRun],
   );
 
   const stop = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
+    void fetch(`/api/coder/sessions/${sessionId}/terminal/stop`, { method: "POST" })
+      .then((response) => {
+        if (!response.ok) append("note", `Could not stop the command (${response.status})\n`);
+      })
+      .catch((err) => {
+        console.error("Failed to stop the terminal command:", err);
+        append("note", "Could not stop the command\n");
+      });
+  }, [append, sessionId]);
+
+  const clear = useCallback(() => {
+    setSegments([]);
+    setError(null);
+    void fetch(`/api/coder/sessions/${sessionId}/terminal`, { method: "DELETE" }).catch((err) => {
+      console.error("Failed to clear the terminal:", err);
+    });
+  }, [sessionId]);
 
   const sendInput = useCallback(
     async (text: string) => {
@@ -218,13 +272,14 @@ export function useTerminal(sessionId: string): TerminalState {
     [append, sessionId],
   );
 
-  const clear = useCallback(() => {
-    setSegments([]);
-    setError(null);
-  }, []);
-
-  // Leaving the page stops what it started; the server kills on disconnect.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // Pick up whatever the chat already has running; leaving only detaches.
+  useEffect(() => {
+    void attach();
+    return () => {
+      streamRef.current?.abort();
+      streamRef.current = null;
+    };
+  }, [attach]);
 
   return { segments, running, error, history, run, stop, sendInput, clear };
 }

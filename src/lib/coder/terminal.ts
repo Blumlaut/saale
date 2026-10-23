@@ -5,12 +5,15 @@
  * attached, so the panel can type into whatever it started. The exec ids are
  * kept in Redis per chat: worktree removal has to stop them before it takes the
  * checkout away, and a process id nobody wrote down cannot be stopped.
+ *
+ * The run itself lives in `terminal-runs`: it outlives the request that started
+ * it, so closing the panel leaves a dev server running.
  */
 
 import { prisma } from "@/lib/db";
-import { exec as sandboxExec, kill, writeInput } from "@/lib/sandbox/client";
+import { kill, writeInput } from "@/lib/sandbox/client";
 import { userIdentity } from "@/lib/sandbox/identity";
-import { getTerminalExecs, registerTerminalExec, unregisterTerminalExec } from "@/lib/redis";
+import { getTerminalExecs, unregisterTerminalExec } from "@/lib/redis";
 import { resolveCoderPath } from "./paths";
 
 /** Longest command the panel will run. */
@@ -24,12 +27,6 @@ export interface TerminalTarget {
   worktreePath: string;
   branch: string;
 }
-
-/** A terminal command's events, as the panel shows them. */
-export type TerminalEvent =
-  | { type: "started"; execId: string }
-  | { type: "data"; stream: "stdout" | "stderr"; text: string }
-  | { type: "exit"; exitCode: number; timedOut: boolean; durationMs: number };
 
 /** Raised when a chat has no worktree to run in yet. */
 export class TerminalNotReadyError extends Error {
@@ -58,56 +55,6 @@ export async function resolveTerminalTarget(
     worktreePath: worktree.path,
     branch: worktree.branch,
   };
-}
-
-/**
- * Run one command in the chat's worktree and yield what it prints.
- *
- * Aborting kills the command rather than leaving it running: closing the panel
- * is how a person stops a dev server they no longer want.
- */
-export async function* runTerminalCommand(options: {
-  userId: string;
-  sessionId: string;
-  target: TerminalTarget;
-  command: string;
-  signal?: AbortSignal;
-}): AsyncGenerator<TerminalEvent> {
-  const { userId, sessionId, target, command, signal } = options;
-  const identity = userIdentity(userId);
-  // Chunk boundaries land mid-character, so text is decoded as a stream.
-  const decoder = new TextDecoder();
-
-  let execId: string | null = null;
-  try {
-    for await (const event of sandboxExec({
-      identity,
-      command,
-      cwd: target.cwd,
-      interactive: true,
-      ...(signal ? { signal } : {}),
-    })) {
-      if (event.type === "started") {
-        execId = event.execId;
-        await registerTerminalExec(userId, sessionId, event.execId);
-        yield { type: "started", execId: event.execId };
-      } else if (event.type === "chunk") {
-        const text = decoder.decode(event.data, { stream: true });
-        if (text) yield { type: "data", stream: event.stream, text };
-      } else {
-        const tail = decoder.decode();
-        if (tail) yield { type: "data", stream: "stdout", text: tail };
-        yield {
-          type: "exit",
-          exitCode: event.exitCode,
-          timedOut: event.timedOut,
-          durationMs: event.durationMs,
-        };
-      }
-    }
-  } finally {
-    if (execId) await unregisterTerminalExec(userId, sessionId, execId);
-  }
 }
 
 /** Type into a command this chat started. */
