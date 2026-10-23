@@ -39,6 +39,7 @@ interface ChatHeaderProps {
   onModelChange: (value: string) => void;
   onThinkingChange: (value: string) => void;
   onTemporaryChange: (checked: boolean) => void;
+  /** False when the view has no temporary mode (a coder chat). */
   onNewChat: () => void;
   linksCount: number;
   linksOpen: boolean;
@@ -47,6 +48,8 @@ interface ChatHeaderProps {
   mobileListTrigger?: React.ReactNode;
   /** Extra header controls, rendered last (the coder chat's worktree panel). */
   extraActions?: React.ReactNode;
+  /** Hide the temporary-mode toggle. a coder chat is bound to its worktree. */
+  hideTemporaryToggle?: boolean;
 }
 
 /**
@@ -76,6 +79,7 @@ export function ChatHeader({
   onToggleLinks,
   mobileListTrigger,
   extraActions,
+  hideTemporaryToggle,
 }: ChatHeaderProps) {
   const [provider, ...modelParts] = modelId.split("/");
   const modelName = modelParts.join("/");
@@ -146,7 +150,9 @@ export function ChatHeader({
             </span>
           </Button>
         )}
-        <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
+        {!hideTemporaryToggle && (
+          <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
+        )}
         <div className={cn("items-center gap-1", linksOpen ? "hidden" : "hidden md:flex")}>
           <ModelPicker value={modelId} onChange={onModelChange} />
           <ThinkingSelector
