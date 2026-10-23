@@ -8,22 +8,25 @@ import {
   type SandboxChunk,
   type SandboxExecRequest,
 } from "@/sandbox/containers";
-import { UnknownExecError } from "@/sandbox/registry";
+import { ExecStdinClosedError, UnknownExecError } from "@/sandbox/registry";
 
 /** A manager that runs whatever it is handed, scripted per test. */
 function fakeManager(script: (request: SandboxExecRequest) => SandboxChunk[]): ContainerManager & {
   calls: SandboxExecRequest[];
   killed: string[];
   removed: string[];
+  input: { id: string; identity: string; data: string }[];
 } {
   const calls: SandboxExecRequest[] = [];
   const killed: string[] = [];
   const removed: string[] = [];
+  const input: { id: string; identity: string; data: string }[] = [];
 
   return {
     calls,
     killed,
     removed,
+    input,
     async ensure() {
       throw new Error("not used");
     },
@@ -38,6 +41,11 @@ function fakeManager(script: (request: SandboxExecRequest) => SandboxChunk[]): C
     async kill(id) {
       if (id === "unknown") throw new UnknownExecError(id);
       killed.push(id);
+    },
+    async write(id, identity, data) {
+      if (id === "unknown") throw new UnknownExecError(id);
+      if (id === "closed") throw new ExecStdinClosedError(id);
+      input.push({ id, identity, data: data.toString("utf8") });
     },
     async remove(identity) {
       removed.push(identity);
@@ -274,6 +282,89 @@ describe("DELETE /exec/:id", () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe("POST /exec/:id/input", () => {
+  async function write(
+    id: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
+    return fetch(`${baseUrl}/exec/${id}/input`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-key",
+        "X-Identity": "user-abc",
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("decodes base64 and hands the bytes to the command", async () => {
+    const manager = fakeManager(() => []);
+    await start(manager);
+
+    const response = await write("exec-1", {
+      data: Buffer.from("npm test\n").toString("base64"),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ written: 9 });
+    expect(manager.input).toEqual([{ id: "exec-1", identity: "user-abc", data: "npm test\n" }]);
+  });
+
+  it("sends control bytes unchanged, so a ctrl-c keystroke survives", async () => {
+    const manager = fakeManager(() => []);
+    await start(manager);
+
+    await write("exec-1", { data: Buffer.from("\x03").toString("base64") });
+
+    expect(manager.input[0]?.data).toBe("\x03");
+  });
+
+  it("refuses a write to a command of another identity", async () => {
+    const manager: ContainerManager = {
+      ...fakeManager(() => []),
+      async write(id) {
+        throw new UnknownExecError(id);
+      },
+    };
+    await start(manager);
+
+    const response = await write("exec-other", { data: "aGk=" });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("409s a command running without stdin", async () => {
+    await start(fakeManager(() => []));
+
+    const response = await write("closed", { data: "aGk=" });
+
+    expect(response.status).toBe(409);
+  });
+
+  it("refuses a body without data", async () => {
+    await start(fakeManager(() => []));
+
+    const response = await write("exec-1", {});
+
+    expect(response.status).toBe(400);
+  });
+
+  it("requires the key", async () => {
+    await start(fakeManager(() => []));
+
+    const response = await fetch(`${baseUrl}/exec/exec-1/input`, {
+      method: "POST",
+      headers: { "X-Identity": "user-abc" },
+      body: JSON.stringify({ data: "aGk=" }),
+    });
+
+    expect(response.status).toBe(401);
   });
 });
 

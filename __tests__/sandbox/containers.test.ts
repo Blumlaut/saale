@@ -29,16 +29,29 @@ function frame(type: 1 | 2, text: string): Buffer {
 class FakeExec implements ExecHandle {
   readonly id = `exec-${Math.random().toString(16).slice(2)}`;
   readonly stream = new PassThrough();
+  /** Bytes a caller typed into the command, in order. */
+  readonly written: Buffer[] = [];
   finished = false;
   exitCode: number | null = null;
   started = false;
 
   constructor(readonly options: unknown) {}
 
-  async start(): Promise<NodeJS.ReadableStream> {
+  async start(options: { stdin?: boolean } = {}): Promise<NodeJS.ReadableStream> {
     this.started = true;
+    this.stdin = options.stdin === true;
+    if (this.stdin) {
+      this.stream.write = ((chunk: Buffer, callback?: (error?: Error | null) => void) => {
+        this.written.push(Buffer.from(chunk));
+        callback?.(null);
+        return true;
+      }) as typeof this.stream.write;
+    }
     return this.stream;
   }
+
+  /** Whether the manager asked the daemon to attach stdin. */
+  stdin = false;
 
   async inspect(): Promise<Dockerode.ExecInspectInfo> {
     return { Running: !this.finished, ExitCode: this.exitCode } as Dockerode.ExecInspectInfo;
@@ -453,6 +466,84 @@ describe("kill", () => {
     await session.result;
 
     await expect(managerInstance.kill(session.id)).rejects.toThrow(/No running command/);
+  });
+});
+
+describe("write", () => {
+  it("attaches stdin only when the command asked for it", async () => {
+    const managerInstance = manager();
+    const plain = await managerInstance.run("user-abc", { command: "ls" }, () => {});
+    const interactive = await managerInstance.run(
+      "user-abc",
+      { command: "npm init", interactive: true },
+      () => {},
+    );
+
+    const execs = docker
+      .byIdentity("user-abc")
+      .execs.filter((exec) => (exec.options as { Cmd?: string[] }).Cmd?.[0] === "setsid");
+    expect((execs[0]!.options as { AttachStdin?: boolean }).AttachStdin).toBeFalsy();
+    expect((execs[1]!.options as { AttachStdin?: boolean }).AttachStdin).toBe(true);
+    // The socket is only busy for a command that can read it.
+    expect(execs[0]!.stdin).toBe(false);
+    expect(execs[1]!.stdin).toBe(true);
+
+    await expect(managerInstance.write(plain.id, "user-abc", Buffer.from("a"))).rejects.toThrow(
+      /not started with stdin/,
+    );
+    await managerInstance.write(interactive.id, "user-abc", Buffer.from("y\n"));
+    expect(execs[1]!.written.map((bytes) => bytes.toString("utf8"))).toEqual(["y\n"]);
+
+    execs[1]!.finish(0);
+    await interactive.result;
+  });
+
+  it("refuses an identity that does not own the command", async () => {
+    const managerInstance = manager();
+    const session = await managerInstance.run(
+      "user-abc",
+      { command: "cat", interactive: true },
+      () => {},
+    );
+
+    await expect(managerInstance.write(session.id, "user-other", Buffer.from("x"))).rejects.toThrow(
+      /No running command/,
+    );
+
+    docker.byIdentity("user-abc").commandExec().finish(0);
+    await session.result;
+  });
+
+  it("refuses a command that already finished", async () => {
+    const managerInstance = manager();
+    const session = await managerInstance.run(
+      "user-abc",
+      { command: "cat", interactive: true },
+      () => {},
+    );
+    docker.byIdentity("user-abc").commandExec().finish(0);
+    await session.result;
+
+    await expect(managerInstance.write(session.id, "user-abc", Buffer.from("x"))).rejects.toThrow(
+      /No running command/,
+    );
+  });
+
+  it("sends control bytes through unchanged", async () => {
+    const managerInstance = manager();
+    const session = await managerInstance.run(
+      "user-abc",
+      { command: "sleep 100", interactive: true },
+      () => {},
+    );
+
+    await managerInstance.write(session.id, "user-abc", Buffer.from("\x03"));
+
+    const exec = docker.byIdentity("user-abc").commandExec();
+    expect(exec.written).toEqual([Buffer.from([0x03])]);
+
+    exec.finish(130);
+    await session.result;
   });
 });
 
