@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson, patchJson } from "@/lib/http";
+import { broadcastChatRenamed } from "@/lib/chat/session-events";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 
 /**
@@ -11,6 +12,7 @@ import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
  */
 
 interface SessionData {
+  title?: string;
   modelProvider?: string;
   modelName?: string;
   thinkingLevel?: string;
@@ -27,18 +29,28 @@ export function useChatSessionState(sessionId: string) {
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
 
+  // The title the lists outside this component are showing. A chat is named by
+  // its first message, server-side, so the only way a sidebar learns about it
+  // is this comparison: nothing here was clicked.
+  const titleRef = useRef("");
+
+  const applyTitle = useCallback((title: string) => {
+    if (!title || title === titleRef.current) return;
+    titleRef.current = title;
+    setSessionTitle(title);
+    broadcastChatRenamed();
+  }, []);
+
   const loadSessionTitle = useCallback(async () => {
     try {
       const data = await fetchJson<{ session: { title: string } }>(
         `/api/chat/sessions/${sessionId}`,
       );
-      if (data.session?.title) {
-        setSessionTitle(data.session.title);
-      }
+      if (data.session?.title) applyTitle(data.session.title);
     } catch (err) {
       console.error("Failed to load session title:", err);
     }
-  }, [sessionId]);
+  }, [sessionId, applyTitle]);
 
   // ── Apply server session metadata (from GET /messages) ─────────────────
   // Syncing the prev refs here prevents the debounced persistence effect from
@@ -46,31 +58,38 @@ export function useChatSessionState(sessionId: string) {
   const prevModelIdRef = useRef(modelId);
   const prevThinkingLevelRef = useRef(thinkingLevel);
 
-  const applySession = useCallback((session?: SessionData) => {
-    if (!session) return;
-    if (session.modelProvider && session.modelName) {
-      const modelStr = `${session.modelProvider}/${session.modelName}`;
-      setModelId(modelStr);
-      prevModelIdRef.current = modelStr;
-    }
-    if (session.thinkingLevel) {
-      setThinkingLevel(session.thinkingLevel);
-      prevThinkingLevelRef.current = session.thinkingLevel;
-    }
-    if (session.toolConfig) {
-      setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...session.toolConfig });
-    }
-  }, []);
+  const applySession = useCallback(
+    (session?: SessionData) => {
+      if (!session) return;
+      // A reload after a run is when a fresh chat's auto title arrives, so the
+      // sidebars follow without a request of their own.
+      if (session.title) applyTitle(session.title);
+      if (session.modelProvider && session.modelName) {
+        const modelStr = `${session.modelProvider}/${session.modelName}`;
+        setModelId(modelStr);
+        prevModelIdRef.current = modelStr;
+      }
+      if (session.thinkingLevel) {
+        setThinkingLevel(session.thinkingLevel);
+        prevThinkingLevelRef.current = session.thinkingLevel;
+      }
+      if (session.toolConfig) {
+        setToolConfig({ ...DEFAULT_TOOL_CONFIG, ...session.toolConfig });
+      }
+    },
+    [applyTitle],
+  );
 
   const saveTitle = useCallback(
     async (newTitle: string) => {
       const sanitized = newTitle.replace(/\0/g, "").slice(0, 50).trim();
       if (!sanitized) return;
+      titleRef.current = sanitized;
       setSessionTitle(sanitized);
       setEditingTitle(false);
       try {
         await patchJson(`/api/chat/sessions/${sessionId}`, { title: sanitized });
-        window.dispatchEvent(new CustomEvent("chat-renamed"));
+        broadcastChatRenamed();
       } catch (err) {
         console.error("Failed to save session title:", err);
       }

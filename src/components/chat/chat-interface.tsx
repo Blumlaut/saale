@@ -165,6 +165,7 @@ export function ChatInterface({
         messages: Message[];
         queuedMessages?: Message[];
         session: {
+          title?: string;
           modelProvider?: string;
           modelName?: string;
           thinkingLevel?: string;

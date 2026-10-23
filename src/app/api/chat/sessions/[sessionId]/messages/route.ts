@@ -77,6 +77,10 @@ export async function GET(
   return NextResponse.json({
     session: {
       id: chatSession.id,
+      // A chat is named by its first message, so the list beside the
+      // conversation learns the title from this reload instead of a request of
+      // its own.
+      title: chatSession.title,
       temporary: chatSession.temporary,
       modelProvider: chatSession.modelProvider,
       modelName: chatSession.modelName,

@@ -84,6 +84,42 @@ describe("useChatSessionState", () => {
     expect(result.current.sessionTitle).toBe("My Chat");
   });
 
+  it("applySession announces a title the server assigned to a new chat", () => {
+    // A new chat is named by its first message, server-side: no click happens,
+    // so the lists outside this component only learn about it from the event.
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const { result } = renderHook(() => useChatSessionState("sess-1"));
+
+    act(() => {
+      result.current.applySession({ title: "Fix the sidebar refresh" });
+    });
+
+    expect(result.current.sessionTitle).toBe("Fix the sidebar refresh");
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "chat-renamed" }));
+  });
+
+  it("applySession stays quiet when the title did not change", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const { result } = renderHook(() => useChatSessionState("sess-1"));
+
+    act(() => {
+      result.current.applySession({ title: "Same title" });
+    });
+    dispatchSpy.mockClear();
+
+    // Every reload after a run carries the title again. an unchanged one must
+    // not send the sidebars off to refetch.
+    act(() => {
+      result.current.applySession({
+        title: "Same title",
+        modelProvider: "openai",
+        modelName: "gpt-4o",
+      });
+    });
+
+    expect(dispatchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "chat-renamed" }));
+  });
+
   it("saveTitle sanitizes, patches and notifies other tabs", async () => {
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     const { result } = renderHook(() => useChatSessionState("sess-1"));
