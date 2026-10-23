@@ -104,6 +104,41 @@ const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram
 const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a schedule behind it: create a one-off agent job (\`agent_job_create\` with \`runAt\`) whose output channel is Telegram, and it will reach the user at that time. Do that instead of promising to remember.`;
 
 /**
+ * The capability blocks for the tool categories a session has enabled.
+ *
+ * Shared by the chat prompt and the coder prompt: a category describes its
+ * tools in one place, so the two prompts cannot drift, and a category that is
+ * off contributes nothing. Callers supply their own identity and rules around
+ * these blocks.
+ */
+export function capabilitySections(
+  toolConfig: Record<string, boolean | undefined> = {},
+  sandboxEnvNames: string[] = [],
+): string[] {
+  // Resolve through the category registry, exactly as `resolveTools` does: an
+  // absent key means the category sits at its default, not off. Reading the raw
+  // snapshot with `=== true` dropped the Terminal block. and with it any mention
+  // of `write`. for every chat whose stored `toolConfig` was null.
+  const terminalEnabled =
+    isCategoryEnabled(toolConfig, "terminal") ||
+    toolConfig.files === true ||
+    toolConfig.bash === true;
+
+  const telegramEnabled = isCategoryEnabled(toolConfig, "telegram");
+
+  const sections = [
+    TOOLS_PROMPT,
+    terminalEnabled ? terminalSection(sandboxEnvNames) : null,
+    isCategoryEnabled(toolConfig, "memory") ? MEMORY_PROMPT : null,
+    isCategoryEnabled(toolConfig, "infra") ? INFRA_PROMPT : null,
+    telegramEnabled ? TELEGRAM_PROMPT : null,
+    telegramEnabled && isCategoryEnabled(toolConfig, "agentJobs") ? TELEGRAM_SCHEDULE_PROMPT : null,
+  ];
+
+  return sections.filter((section): section is string => section !== null);
+}
+
+/**
  * Build the default agent system prompt for a chat session.
  *
  * Sections are composed in priority order: identity first, then the user's
@@ -120,26 +155,10 @@ export function buildAgentSystemPrompt(options: {
   const toolConfig = (options.toolConfig ?? {}) as Record<string, boolean | undefined>;
   const customInstructions = options.customInstructions?.trim();
 
-  // Resolve through the category registry, exactly as `resolveTools` does: an
-  // absent key means the category sits at its default, not off. Reading the raw
-  // snapshot with `=== true` dropped the Terminal block. and with it any mention
-  // of `write`. for every chat whose stored `toolConfig` was null.
-  const terminalEnabled =
-    isCategoryEnabled(toolConfig, "terminal") ||
-    toolConfig.files === true ||
-    toolConfig.bash === true;
-
-  const telegramEnabled = isCategoryEnabled(toolConfig, "telegram");
-
   const sections = [
     IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
-    TOOLS_PROMPT,
-    terminalEnabled ? terminalSection(options.sandboxEnvNames ?? []) : null,
-    isCategoryEnabled(toolConfig, "memory") ? MEMORY_PROMPT : null,
-    isCategoryEnabled(toolConfig, "infra") ? INFRA_PROMPT : null,
-    telegramEnabled ? TELEGRAM_PROMPT : null,
-    telegramEnabled && isCategoryEnabled(toolConfig, "agentJobs") ? TELEGRAM_SCHEDULE_PROMPT : null,
+    ...capabilitySections(toolConfig, options.sandboxEnvNames ?? []),
   ];
 
   return sections.filter((section): section is string => section !== null).join("\n\n");

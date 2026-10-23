@@ -1,0 +1,136 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+/**
+ * Coder chats share the chat table, so the chat list has to keep them out.
+ *
+ * Without `?projectId=` the list must be exactly what it was before coder
+ * chats existed (`projectId: null`), and with it the project's chats. Creating
+ * one checks the project against the user: a guessed id must not attach a chat
+ * to someone else's repo.
+ */
+
+const { mockRequireSession, mockFindMany, mockCreate, mockGetActiveSessions, mockOwnedProjectId } =
+  vi.hoisted(() => ({
+    mockRequireSession: vi.fn(),
+    mockFindMany: vi.fn(),
+    mockCreate: vi.fn(),
+    mockGetActiveSessions: vi.fn(),
+    mockOwnedProjectId: vi.fn(),
+  }));
+
+vi.mock("@/lib/auth", () => ({ requireSession: mockRequireSession }));
+
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    chatSession: { findMany: mockFindMany, create: mockCreate },
+    // A coder chat's tool config comes from the user's coder defaults.
+    appSettings: { findUnique: vi.fn(async () => ({ coderToolConfig: null })) },
+  },
+}));
+
+vi.mock("@/lib/redis", () => ({ getActiveSessions: mockGetActiveSessions }));
+
+vi.mock("@/lib/coder/projects", () => ({ ownedProjectId: mockOwnedProjectId }));
+
+import { GET, POST } from "@/app/api/chat/sessions/route";
+
+const USER = "user-1";
+const NOW = new Date("2026-01-01T00:00:00.000Z");
+
+const STORED_ROW = {
+  id: "chat-1",
+  title: "Normal chat",
+  temporary: false,
+  messageCount: 2,
+  createdAt: NOW,
+  updatedAt: NOW,
+  lastActivityAt: NOW,
+  _count: { scriptWatchers: 0 },
+};
+
+function listRequest(query = ""): NextRequest {
+  return new NextRequest(`http://localhost/api/chat/sessions${query}`);
+}
+
+function postRequest(body: Record<string, unknown>): NextRequest {
+  return new NextRequest("http://localhost/api/chat/sessions", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockRequireSession.mockResolvedValue({ ok: true, user: { id: USER, email: "ada@example.com" } });
+  mockFindMany.mockResolvedValue([STORED_ROW]);
+  mockGetActiveSessions.mockResolvedValue(new Set<string>());
+  mockOwnedProjectId.mockResolvedValue(null);
+  mockCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+    Promise.resolve({ ...STORED_ROW, ...data }),
+  );
+});
+
+describe("GET /api/chat/sessions", () => {
+  it("lists only normal chats when no project is given", async () => {
+    const res = await GET(listRequest());
+
+    expect(res.status).toBe(200);
+    const args = mockFindMany.mock.calls[0]![0] as { where: Record<string, unknown> };
+    expect(args.where).toEqual({ userId: USER, projectId: null });
+    const body = (await res.json()) as { sessions: Array<{ id: string; isGenerating: boolean }> };
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0]?.id).toBe("chat-1");
+    expect(body.sessions[0]?.isGenerating).toBe(false);
+  });
+
+  it("lists one project's coder chats when a project is given", async () => {
+    const res = await GET(listRequest("?projectId=project-1"));
+
+    expect(res.status).toBe(200);
+    const args = mockFindMany.mock.calls[0]![0] as { where: Record<string, unknown> };
+    expect(args.where).toEqual({ userId: USER, projectId: "project-1" });
+  });
+
+  it("marks a chat that is generating from the redis set", async () => {
+    mockGetActiveSessions.mockResolvedValue(new Set(["chat-1"]));
+
+    const res = await GET(listRequest("?projectId=project-1"));
+    const body = (await res.json()) as { sessions: Array<{ isGenerating: boolean }> };
+
+    expect(body.sessions[0]?.isGenerating).toBe(true);
+  });
+});
+
+describe("POST /api/chat/sessions with a project", () => {
+  it("stores the project on the new coder chat", async () => {
+    mockOwnedProjectId.mockResolvedValue("project-1");
+
+    const res = await POST(postRequest({ title: "Fix it", projectId: "project-1" }));
+
+    expect(res.status).toBe(200);
+    expect(mockOwnedProjectId).toHaveBeenCalledWith(USER, "project-1");
+    const data = mockCreate.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(data.projectId).toBe("project-1");
+    expect(data.userId).toBe(USER);
+  });
+
+  it("answers 404 for another user's project and creates nothing", async () => {
+    mockOwnedProjectId.mockResolvedValue(null);
+
+    const res = await POST(postRequest({ title: "Fix it", projectId: "someone-elses" }));
+
+    expect(res.status).toBe(404);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("creates a normal chat when no project is given", async () => {
+    const res = await POST(postRequest({ title: "Just chatting" }));
+
+    expect(res.status).toBe(200);
+    expect(mockOwnedProjectId).not.toHaveBeenCalled();
+    const data = mockCreate.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(data.projectId).toBeUndefined();
+  });
+});

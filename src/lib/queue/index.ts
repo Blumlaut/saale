@@ -413,6 +413,40 @@ export async function scheduleOrphanCleanup(intervalMinutes: number): Promise<st
   return removed;
 }
 
+// ─── Coder worktree sweep ──────────────────────────────────────────────────
+
+/** Job scheduler id of the coder worktree sweep. */
+export const CODER_SWEEP_SCHEDULER_ID = "coder-worktree-sweep";
+
+/** Job name the coder worktree sweep scheduler enqueues. */
+export const CODER_SWEEP_JOB_NAME = "coder_worktree_sweep";
+
+/**
+ * Register the sweep that reconciles coder worktree rows with their checkouts.
+ *
+ * Runs once a day: it only fixes bookkeeping after a crash or a manual delete,
+ * and the directories it reports are never removed for us.
+ *
+ * @param intervalMinutes - How often to reconcile
+ * @returns Scheduler ids removed while cleaning up legacy repeatable jobs
+ */
+export async function scheduleCoderSweep(intervalMinutes: number): Promise<string[]> {
+  const queue = getQueue();
+  const removed = await removeLegacyRepeatableJobs(
+    queue,
+    CODER_SWEEP_JOB_NAME,
+    CODER_SWEEP_SCHEDULER_ID,
+  );
+
+  await queue.upsertJobScheduler(
+    CODER_SWEEP_SCHEDULER_ID,
+    { pattern: `*/${intervalMinutes} * * * *`, tz: "UTC" },
+    { name: CODER_SWEEP_JOB_NAME, data: {} },
+  );
+
+  return removed;
+}
+
 // ─── Council runs ───────────────────────────────────────────────────────────
 
 export const COUNCIL_SWEEP_SCHEDULER_ID = "council-run-sweep";

@@ -197,16 +197,12 @@ describe("moveSidebarNavEntry", () => {
   it("moves an entry to a new position", () => {
     const entries = defaultSidebarNav();
 
-    expect(ids(moveSidebarNavEntry(entries, 0, 2)).slice(0, 3)).toEqual([
-      "mail",
-      "calendar",
-      "chat",
-    ]);
+    expect(ids(moveSidebarNavEntry(entries, 0, 2)).slice(0, 3)).toEqual(["coder", "mail", "chat"]);
     expect(ids(moveSidebarNavEntry(entries, 3, 1)).slice(0, 4)).toEqual([
       "chat",
-      "tasks",
-      "mail",
       "calendar",
+      "coder",
+      "mail",
     ]);
   });
 

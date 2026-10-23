@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
+import { CoderCleanupError } from "@/lib/coder/worktree-removal";
 import { syncPooledAgentSession } from "@/lib/pi/sync-pooled-session";
 
 /**
@@ -104,6 +105,10 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
     await deleteChatSession(authResult.userId, sessionId);
   } catch (err) {
     console.error(`Failed to delete chat session ${sessionId}:`, err);
+    // A worktree git will not let go keeps the chat. the reason is the answer.
+    if (err instanceof CoderCleanupError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     return NextResponse.json(
       {
         error: "Failed to delete chat",

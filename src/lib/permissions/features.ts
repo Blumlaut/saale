@@ -36,11 +36,19 @@ export const FEATURES = [
   "memory",
   "chatSearch",
   "agentJobs",
+  "coder",
 ] as const;
 
 export type FeatureKey = (typeof FEATURES)[number];
 
 export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
+  coder: {
+    label: "Coder",
+    description: "Project worktrees and coding chats, with the terminal and file tools.",
+    toolCategories: ["terminal"],
+    navId: "coder",
+    defaultOn: true,
+  },
   mail: {
     label: "Mail",
     description: "Inbox, contacts and the assistant's email tools.",

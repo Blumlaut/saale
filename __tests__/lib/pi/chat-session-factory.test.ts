@@ -39,6 +39,7 @@ const CHAT: ChatSessionModelConfig = {
   modelName: "claude-sonnet-4-5",
   thinkingLevel: "high",
   toolConfig: { terminal: true, memory: false },
+  projectId: null,
 };
 
 describe("chat session factory", () => {
@@ -145,6 +146,7 @@ describe("chat session factory", () => {
           modelName: null,
           thinkingLevel: "off",
           toolConfig: null,
+          projectId: null,
         },
         model: { provider: "openai", name: "gpt-6" },
         customInstructions: null,

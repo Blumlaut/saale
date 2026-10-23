@@ -195,6 +195,8 @@ export function parseLog(stdout: string): GitCommit[] {
  */
 export interface GitWorktreeEntry {
   path: string;
+  /** The same path relative to the workspace, added once it is resolved. */
+  relative?: string;
   head: string;
   /** Branch short name, "" when detached. */
   branch: string;

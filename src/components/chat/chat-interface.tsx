@@ -51,11 +51,17 @@ export function ChatInterface({
   temporaryMode,
   onTemporaryChange,
   onNewChat,
+  mobileListTrigger,
+  headerActions,
 }: {
   sessionId: string;
   temporaryMode: boolean;
   onTemporaryChange: (checked: boolean) => void;
   onNewChat: () => void;
+  /** Header slot for a view that lists something other than chat sessions. */
+  mobileListTrigger?: React.ReactNode;
+  /** Extra header controls, rendered last. */
+  headerActions?: React.ReactNode;
 }) {
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -845,6 +851,8 @@ export function ChatInterface({
             linksCount={links?.length ?? 0}
             linksOpen={linksOpen}
             onToggleLinks={() => setLinksOpen((open) => !open)}
+            {...(mobileListTrigger ? { mobileListTrigger } : {})}
+            {...(headerActions ? { extraActions: headerActions } : {})}
           />
 
           <div className="flex min-h-0 flex-1 flex-col">

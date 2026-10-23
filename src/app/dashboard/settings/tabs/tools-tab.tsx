@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Wrench, Info, ChevronDown, ChevronRight, Code2 } from "lucide-react";
+import { Wrench, Info, ChevronDown, ChevronRight, Code2, GitBranch } from "lucide-react";
 import { SaveFooter } from "../components/save-footer";
 import type { UserSettings, ToolConfig, ToolExposureConfig } from "../types";
 import type { ToolInfo, ToolPolicy } from "@/lib/pi/tool-infos";
@@ -25,6 +25,7 @@ import {
   type ToolExposure,
 } from "@/lib/pi/tool-categories";
 import { getToolsByCategory, getUncategorizedTools, getDefaultPolicy } from "@/lib/pi/tool-infos";
+import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
 
 interface ToolsTabProps {
   settings: UserSettings | null;
@@ -47,6 +48,7 @@ export function ToolsTab({
   onSave,
 }: ToolsTabProps) {
   const toolConfig = (settings?.defaultToolConfig ?? DEFAULT_TOOL_CONFIG) as Required<ToolConfig>;
+  const coderToolConfig = resolveCoderToolConfig(settings?.coderToolConfig);
   const toolPolicies = (settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>;
   const toolExposure = (settings?.toolExposure ?? {}) as ToolExposureConfig;
   const uncategorizedTools = getUncategorizedTools();
@@ -64,6 +66,19 @@ export function ToolsTab({
     onSettingsChange({
       ...settings,
       defaultToolConfig: updated,
+    });
+  };
+
+  /** A coder toggle, written to the same column shape as `defaultToolConfig`. */
+  const handleCoderToggle = (key: string) => {
+    if (!settings) return;
+    const categoryKey = key as (typeof TOOL_CATEGORIES)[number]["key"];
+    onSettingsChange({
+      ...settings,
+      coderToolConfig: {
+        ...coderToolConfig,
+        [categoryKey]: !coderToolConfig[categoryKey],
+      },
     });
   };
 
@@ -257,6 +272,48 @@ export function ToolsTab({
               </div>
             </div>
           )}
+        </GlassPanelContent>
+      </GlassPanel>
+
+      <GlassPanel>
+        <GlassPanelContent className="p-0">
+          <div className="px-4 pt-5 pb-4 md:px-6">
+            <h3 className="flex items-center gap-2 text-lg font-medium">
+              <GitBranch className="h-5 w-5" />
+              Coder
+            </h3>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Categories a new coder chat starts with. The terminal, web and memory categories are
+              on and the rest are off; turn on whatever a project needs.
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-1 px-4 py-4 md:px-6">
+            {TOOL_CATEGORIES.map((category, index) => {
+              const Icon = category.icon;
+              return (
+                <div key={category.key}>
+                  {index > 0 && <Separator className="mx-2" />}
+                  <div className="flex items-center justify-between gap-3 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
+                      <div className="min-w-0 space-y-0.5">
+                        <Label className="text-sm font-medium">{category.label}</Label>
+                        <p className="text-muted-foreground text-xs">{category.description}</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={coderToolConfig[category.key]}
+                      onCheckedChange={() => handleCoderToggle(category.key)}
+                      aria-label={`${category.label} in coder chats`}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </GlassPanelContent>
       </GlassPanel>
 
