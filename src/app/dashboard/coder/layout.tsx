@@ -47,6 +47,10 @@ export default function CoderLayout() {
   const { state, loading, error } = useSessionState(sessionId, refreshKey);
   const panel = useResizableWidth(WORKTREE_PANEL);
 
+  // The step, not the record: every poll re-fetches, so depending on the
+  // object would restart the timer on each answer and never keep a cadence.
+  const provisioningStep = state?.provisioning?.step ?? null;
+
   useEffect(() => {
     if (!sessionId) return;
     // Building a workspace is a minute-long event, not a background change: the
@@ -55,7 +59,7 @@ export default function CoderLayout() {
       () => {
         if (document.visibilityState === "visible") reload();
       },
-      state?.provisioning ? PROVISIONING_POLL_MS : WORKTREE_POLL_MS,
+      provisioningStep ? PROVISIONING_POLL_MS : WORKTREE_POLL_MS,
     );
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
@@ -63,7 +67,7 @@ export default function CoderLayout() {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [sessionId, reload, state?.provisioning]);
+  }, [sessionId, reload, provisioningStep]);
 
   const newChat = useCallback(() => {
     if (!projectId) return;
