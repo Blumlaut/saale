@@ -23,6 +23,7 @@ export function isSidebarNavPinned(id: SidebarNavItemId): boolean {
 /** Item ids in default display order. */
 export const SIDEBAR_NAV_ITEM_IDS = [
   "chat",
+  "coder",
   "mail",
   "calendar",
   "tasks",
@@ -58,6 +59,9 @@ export interface SidebarNavEntry {
 /** Route and labels per id. Exhaustive: a new id must be described here. */
 const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id">> = {
   chat: { href: "/dashboard/chat", label: "Chat" },
+  // Off until the user turns it on: coding is a project workflow, and someone
+  // without a project should not be offered an empty one.
+  coder: { href: "/dashboard/coder", label: "Coder", defaultHidden: true },
   mail: { href: "/dashboard/mail", label: "Mail" },
   calendar: { href: "/dashboard/calendar", label: "Calendar" },
   tasks: { href: "/dashboard/tasks", label: "Tasks" },

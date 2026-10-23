@@ -155,6 +155,64 @@ export async function getActiveSessions(userId: string): Promise<Set<string>> {
   }
 }
 
+// ─── Coder Terminal Tracking ────────────────────────────────────────────────
+
+/**
+ * The commands a coder chat's terminal is running.
+ *
+ * Worktree removal has to stop them before it takes the checkout away, and a
+ * dev server the panel started never names its directory on the command line,
+ * so `pkill -f` cannot find it. The TTL bounds the set: a process that dies
+ * without clearing it leaves ids that `kill` then reports as unknown.
+ *
+ * Key format: `coder:terminal:{userId}:{sessionId}`, a set of exec ids.
+ */
+
+const TERMINAL_EXEC_PREFIX = "coder:terminal:";
+const TERMINAL_EXEC_TTL_SECONDS = 12 * 3600;
+
+const terminalExecKey = (userId: string, sessionId: string) =>
+  `${TERMINAL_EXEC_PREFIX}${userId}:${sessionId}`;
+
+/** Remember a command the terminal started. */
+export async function registerTerminalExec(
+  userId: string,
+  sessionId: string,
+  execId: string,
+): Promise<void> {
+  try {
+    const redis = getRedis();
+    const key = terminalExecKey(userId, sessionId);
+    await redis.sadd(key, execId);
+    await redis.expire(key, TERMINAL_EXEC_TTL_SECONDS);
+  } catch (err) {
+    console.error("Failed to register terminal command:", err);
+  }
+}
+
+/** Forget a command that finished. */
+export async function unregisterTerminalExec(
+  userId: string,
+  sessionId: string,
+  execId: string,
+): Promise<void> {
+  try {
+    await getRedis().srem(terminalExecKey(userId, sessionId), execId);
+  } catch (err) {
+    console.error("Failed to unregister terminal command:", err);
+  }
+}
+
+/** The commands a chat's terminal is still running. */
+export async function getTerminalExecs(userId: string, sessionId: string): Promise<Set<string>> {
+  try {
+    return new Set(await getRedis().smembers(terminalExecKey(userId, sessionId)));
+  } catch (err) {
+    console.error("Failed to read terminal commands:", err);
+    return new Set();
+  }
+}
+
 // ─── Compaction-in-Progress Tracking ────────────────────────────────────────
 
 /**

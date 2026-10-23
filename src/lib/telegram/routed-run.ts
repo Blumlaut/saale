@@ -72,6 +72,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
       modelName: true,
       thinkingLevel: true,
       toolConfig: true,
+      projectId: true,
     },
   });
   if (!chat) {

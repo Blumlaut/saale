@@ -49,6 +49,7 @@ model User {
   mcpServers         McpServer[]
   mcpOAuthCredentials McpOAuthCredential[]
   councils           Council[]
+  coderProjects      CoderProject[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -157,10 +158,62 @@ model ChatSession {
   // touched by tool state, background jobs (memory extraction, title
   // generation), etc. and would make every chat look "active today".
   lastActivityAt    DateTime      @default(now())
+  /// Set for a coder chat: the project it works in. null is a normal chat.
+  projectId        String?
+  coderWorktree    CoderWorktree?
+  project          CoderProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([projectId, lastActivityAt])
   @@index([shareToken])
   @@map("ChatSession")
+}
+
+// ─── Coder ─────────────────────────────────────────────────────
+//
+// A project is a git repo inside the user's workspace; a coder chat runs in a
+// git worktree of one project. Both paths are workspace-relative, so a chat is
+// never tied to a mount point.
+
+model CoderProject {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String   @db.VarChar(100)
+  slug          String   @db.VarChar(100)
+  /// Workspace-relative repo dir, e.g. "projects/saale-web".
+  repoPath      String
+  originUrl     String?
+  defaultBranch String   @default("main")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats         ChatSession[]
+  worktrees     CoderWorktree[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@map("CoderProject")
+}
+
+/// One worktree, one coder chat. The row holds the path so cleanup can retry
+/// after a directory and the registry disagree.
+model CoderWorktree {
+  id        String    @id @default(cuid())
+  projectId String
+  sessionId String    @unique
+  /// Workspace-relative, e.g. "worktrees/saale-web/c-1a2b3c4d".
+  path      String
+  branch    String
+  /// Commit the branch started from, for the ahead count.
+  baseSha   String
+  status    String    @default("active") // "active" | "removed"
+  removedAt DateTime?
+  createdAt DateTime  @default(now())
+  project   CoderProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  session   ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("CoderWorktree")
 }
 
 model ChatMessage {
@@ -413,6 +466,7 @@ model AppSettings {
   purposeModelOverrides  Json?                  // Per-purpose model overrides: { "email_draft": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } }
   disabledModels       Json?                  // Array of "provider:modelId" strings for models the user has disabled
   defaultToolConfig    Json?                  // Default tool config for new chat sessions: { "files": true, "email": true, ... }
+  coderToolConfig      Json?                  // Default tool config for new coder chats, sparse against CODER_TOOL_DEFAULTS
   toolPolicies         Json?                  // Per-tool approval policies: { "bash": "ask", "mail_send": "off", ... }
   toolExposure         Json?                  // Per-category how tools reach the model: { "email": "codemode", "jobs": "deferred" }. Sparse — absent = "direct".
   sidebarItems         Json?                  // Sidebar layout, in display order: [{ "id": "chat", "hidden": false }, ...]. null = default order, everything visible

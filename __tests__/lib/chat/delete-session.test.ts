@@ -68,7 +68,7 @@ describe("deleteChatSession", () => {
     // Ownership is part of the lookup, not a separate check that could be skipped.
     expect(mockFindFirst).toHaveBeenCalledWith({
       where: { id: SESSION_ID, userId: USER_ID },
-      select: { title: true },
+      select: { title: true, projectId: true },
     });
     expect(mockDeleteMany).toHaveBeenCalledWith({
       where: { id: SESSION_ID, userId: USER_ID },
