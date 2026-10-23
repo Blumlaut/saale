@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { fetchJson } from "@/lib/http";
 import { MobileSessionSheet } from "./mobile-session-sheet";
 import { TemporaryToggle } from "./temporary-toggle";
 import { createChatSession } from "@/lib/chat-session";
@@ -41,16 +40,6 @@ interface ChatEmptyStateProps {
 
 export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptyStateProps) {
   const router = useRouter();
-  // The New Chat CTA only earns its place when there is no chat to go back to.
-  const [hasSessions, setHasSessions] = useState(true);
-  useEffect(() => {
-    fetchJson<{ sessions: unknown[] }>("/api/chat/sessions")
-      .then((data) => setHasSessions(data.sessions.length > 0))
-      .catch((err) => {
-        console.error("Failed to load chat sessions for empty state:", err);
-        setHasSessions(true);
-      });
-  }, []);
 
   const handleNewChat = () => {
     createChatSession({ temporary: temporaryMode })
@@ -82,12 +71,10 @@ export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptySt
                   Temporary mode. chat will be deleted on close
                 </span>
               )}
-              {!hasSessions && (
-                <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
-                  <MessageSquarePlus className="mr-2 h-4 w-4" />
-                  New Chat
-                </Button>
-              )}
+              <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
+                <MessageSquarePlus className="mr-2 h-4 w-4" />
+                New Chat
+              </Button>
             </>
           }
         />
