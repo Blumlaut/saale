@@ -23,8 +23,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { deleteJson } from "@/lib/http";
+import { deleteJson, type FetchError } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
+import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
 import { ROW_ACTION, cn } from "@/lib/utils";
 import { useProject, type CoderProjectChat } from "./use-coder-data";
 
@@ -63,13 +64,10 @@ export function ProjectChats({
       if (chat.id === activeSessionId) router.push(`/dashboard/coder/${projectId}`);
     } catch (err) {
       console.error(`Failed to delete coder chat ${chat.id}:`, err);
-      const message = err instanceof Error ? err.message : "Could not delete this chat.";
-      if (!force && /modified or untracked/i.test(message)) {
-        setForcePending(true);
-        setDeleteError(message);
-      } else {
-        setDeleteError(message);
-      }
+      setDeleteError(err instanceof Error ? err.message : "Could not delete this chat.");
+      // git refused a checkout with uncommitted work: it stays until the user
+      // says that work can go.
+      setForcePending(!force && (err as FetchError).code === DIRTY_WORKTREE_CODE);
     } finally {
       setBusy(false);
     }

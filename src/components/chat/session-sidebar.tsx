@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { fetchJson, postJson } from "@/lib/http";
+import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
 import { useLongPress } from "@/hooks/use-long-press";
 import { splitSessionsByActivity } from "@/lib/chat/session-recency";
 import {
@@ -56,7 +57,7 @@ interface ChatSession {
 /** Answer of the bulk delete endpoint. ids that went, ids that did not. */
 interface BulkDeleteResponse {
   deleted: string[];
-  failed: Array<{ sessionId: string; error: string }>;
+  failed: Array<{ sessionId: string; error: string; code?: string }>;
 }
 
 /**
@@ -237,6 +238,8 @@ export function SessionSidebar({
   // selection bar. so both paths run through the same confirmation.
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [forcePending, setForcePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // No separate mode flag: a selection exists exactly as long as chats are
   // picked, so dropping the last one leaves the list back in its normal state.
@@ -288,33 +291,57 @@ export function SessionSidebar({
 
   // One delete for one or many: the bulk endpoint takes both, and a failed
   // single delete reports like a failed batch.
-  const deleteChats = async (ids: string[]) => {
+  const deleteChats = async (ids: string[], force = false) => {
     setDeletingIds(ids);
+    setDeleteError(null);
+    setForcePending(false);
     try {
-      const result = await postJson<BulkDeleteResponse>("/api/chat/sessions/bulk", { ids });
+      const result = await postJson<BulkDeleteResponse>(
+        "/api/chat/sessions/bulk",
+        force ? { ids, force: true } : { ids },
+      );
       const deleted = new Set(result.deleted);
       broadcastSessionsDeleted(result.deleted);
+      const survivors = result.failed.map((failure) => failure.sessionId);
       // Whatever survived stays picked, so a retry is one tap away.
-      setSelectedIds(new Set(result.failed.map((failure) => failure.sessionId)));
+      setSelectedIds(new Set(survivors));
       if (activeSessionId && deleted.has(activeSessionId)) {
         router.push("/dashboard/chat");
       }
-      if (result.failed.length > 0) {
-        const reason = result.failed[0]?.error;
-        toast.error(
-          ids.length === 1
-            ? (reason ?? "Could not delete the chat")
-            : `Could not delete ${result.failed.length} of ${ids.length} chats. they are still selected${reason ? `: ${reason}` : ""}`,
-        );
+      const dirty =
+        result.failed.length > 0 &&
+        result.failed.every((failure) => failure.code === DIRTY_WORKTREE_CODE);
+      if (!force && dirty) {
+        // The chats keep their checkouts until the user says the uncommitted
+        // work can go, so the box asks again instead of just reporting.
+        setPendingDelete(survivors);
+        setDeleteError(result.failed[0]?.error ?? null);
+        setForcePending(true);
+      } else {
+        setPendingDelete(null);
+        if (result.failed.length > 0) {
+          const reason = result.failed[0]?.error;
+          toast.error(
+            ids.length === 1
+              ? (reason ?? "Could not delete the chat")
+              : `Could not delete ${result.failed.length} of ${ids.length} chats. they are still selected${reason ? `: ${reason}` : ""}`,
+          );
+        }
       }
     } catch (err) {
       console.error("Failed to delete chat sessions:", err);
+      setPendingDelete(null);
       toast.error(err instanceof Error ? err.message : "Could not delete the selected chats");
+    } finally {
+      setDeletingIds([]);
     }
-    setDeletingIds([]);
   };
 
-  const requestDelete = (ids: string[]) => setPendingDelete(ids);
+  const requestDelete = (ids: string[]) => {
+    setForcePending(false);
+    setDeleteError(null);
+    setPendingDelete(ids);
+  };
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -461,7 +488,10 @@ export function SessionSidebar({
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
+          if (open) return;
+          setPendingDelete(null);
+          setForcePending(false);
+          setDeleteError(null);
         }}
       >
         <AlertDialogContent>
@@ -483,16 +513,30 @@ export function SessionSidebar({
               This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteError && (
+            <p className="text-destructive text-sm break-words whitespace-pre-wrap">
+              {deleteError}
+            </p>
+          )}
+          {forcePending && (
+            <p className="text-sm break-words">
+              {pendingCount === 1
+                ? "Delete anyway, discarding this chat's uncommitted changes?"
+                : "Delete anyway, discarding the uncommitted changes in these chats' checkouts?"}
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => {
-                if (pendingDelete) void deleteChats(pendingDelete);
+              onClick={(event) => {
+                // The box stays open only to confirm a forced retry.
+                event.preventDefault();
+                if (pendingDelete) void deleteChats(pendingDelete, forcePending);
               }}
             >
               <Trash2 />
-              Delete
+              {forcePending ? "Delete anyway" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -140,6 +140,19 @@ describe("worktrees", () => {
     const options = execOptions[0] as { command: string };
     expect(options.command).toBe(`git --no-pager worktree remove ${root}/worktrees/saale/c-1`);
   });
+
+  it("discards the checkout's changes when forced", async () => {
+    await removeWorktree(USER, {
+      repoDir: "projects/saale",
+      dir: "worktrees/saale/c-1",
+      force: true,
+    });
+
+    const options = execOptions[0] as { command: string };
+    expect(options.command).toBe(
+      `git --no-pager worktree remove --force ${root}/worktrees/saale/c-1`,
+    );
+  });
 });
 
 describe("cloneRepo", () => {

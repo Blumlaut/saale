@@ -44,7 +44,15 @@ vi.mock("@/lib/pi/agent-pool", () => ({
 const mockRm = vi.fn();
 vi.mock("fs/promises", () => ({ default: { rm: (...args: unknown[]) => mockRm(...args) } }));
 
+const mockRemoveChatWorktree = vi.fn();
+vi.mock("@/lib/coder/worktree-removal", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/coder/worktree-removal")>();
+  return { ...actual, removeChatWorktree: (...args: unknown[]) => mockRemoveChatWorktree(...args) };
+});
+
 import { deleteChatSession, deleteChatSessions } from "@/lib/chat/delete-session";
+import { CoderCleanupError } from "@/lib/coder/worktree-removal";
+import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
 
 const USER_ID = "user-1";
 const SESSION_ID = "chat-1";
@@ -59,6 +67,7 @@ describe("deleteChatSession", () => {
     mockWatcherFindMany.mockResolvedValue([]);
     mockRemove.mockResolvedValue(undefined);
     mockRm.mockResolvedValue(undefined);
+    mockRemoveChatWorktree.mockResolvedValue({ path: null, removed: false });
   });
 
   it("deletes a chat the user owns and returns its title", async () => {
@@ -142,6 +151,15 @@ describe("deleteChatSession", () => {
 
     expect(mockUnscheduleWatcher).not.toHaveBeenCalled();
   });
+
+  it("forwards force to the checkout removal", async () => {
+    mockFindFirst.mockResolvedValue({ title: "Coder chat", projectId: "project-1" });
+
+    await deleteChatSession(USER_ID, SESSION_ID, true);
+
+    expect(mockRemoveChatWorktree).toHaveBeenCalledWith(USER_ID, SESSION_ID, true);
+    expect(mockDeleteMany).toHaveBeenCalled();
+  });
 });
 
 describe("deleteChatSessions", () => {
@@ -156,6 +174,7 @@ describe("deleteChatSessions", () => {
     mockWatcherFindMany.mockResolvedValue([]);
     mockRemove.mockResolvedValue(undefined);
     mockRm.mockResolvedValue(undefined);
+    mockRemoveChatWorktree.mockResolvedValue({ path: null, removed: false });
   });
 
   it("deletes every chat in the batch, each scoped to its owner", async () => {
@@ -186,6 +205,44 @@ describe("deleteChatSessions", () => {
 
     expect(result).toEqual({ deleted: ["chat-1"], failed: [] });
     expect(mockDeleteMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the caller which refusal a force delete would override", async () => {
+    mockFindFirst.mockResolvedValue({ title: "Coder chat", projectId: "project-1" });
+    mockRemoveChatWorktree.mockRejectedValue(
+      new CoderCleanupError(
+        "fatal: contains modified or untracked files, use --force to delete it",
+        409,
+        DIRTY_WORKTREE_CODE,
+      ),
+    );
+
+    const result = await deleteChatSessions(USER_ID, ["chat-1"]);
+
+    expect(result.deleted).toEqual([]);
+    expect(result.failed).toEqual([
+      {
+        sessionId: "chat-1",
+        error: "fatal: contains modified or untracked files, use --force to delete it",
+        code: DIRTY_WORKTREE_CODE,
+      },
+    ]);
+    // The chat and its checkout survive, ready for the confirmed retry.
+    expect(mockDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it("passes force on to every chat in the batch", async () => {
+    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+      title: where.id,
+      projectId: "project-1",
+    }));
+
+    await deleteChatSessions(USER_ID, ["chat-1", "chat-2"], true);
+
+    expect(mockRemoveChatWorktree.mock.calls).toEqual([
+      [USER_ID, "chat-1", true],
+      [USER_ID, "chat-2", true],
+    ]);
   });
 
   it("unschedules only the watchers of the chats that actually went", async () => {

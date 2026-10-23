@@ -71,6 +71,7 @@ vi.mock("@/lib/coder/git", () => ({
 }));
 
 import { GitError } from "@/lib/coder/git";
+import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
 import { removeProject } from "@/lib/coder/cleanup";
 import { CoderCleanupError, removeChatWorktree } from "@/lib/coder/worktree-removal";
 
@@ -134,18 +135,47 @@ describe("removeChatWorktree", () => {
 
   it("keeps the chat when git refuses a dirty worktree", async () => {
     mocks.removeWorktree.mockRejectedValue(
-      new GitError("error: the working tree is dirty, use --force to remove", [], {
+      new GitError("fatal: contains modified or untracked files, use --force to delete it", [], {
         stdout: "",
         stderr: "",
-        exitCode: 1,
+        exitCode: 128,
       }),
     );
 
     const error = await removeChatWorktree(USER, SESSION).catch((err: unknown) => err);
 
     expect(error).toBeInstanceOf(CoderCleanupError);
-    expect((error as CoderCleanupError).message).toContain("working tree is dirty");
+    expect((error as CoderCleanupError).message).toContain("modified or untracked");
+    // The code is what lets a delete dialog offer "Delete anyway".
+    expect((error as CoderCleanupError).code).toBe(DIRTY_WORKTREE_CODE);
     expect(mocks.updateWorktree).not.toHaveBeenCalled();
+  });
+
+  it("deletes a dirty checkout when the caller forced it", async () => {
+    const result = await removeChatWorktree(USER, SESSION, true);
+
+    expect(result).toEqual({ path: "worktrees/saale/c-1a2b3c4d", removed: true });
+    expect(mocks.removeWorktree).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      dir: "worktrees/saale/c-1a2b3c4d",
+      force: true,
+    });
+    expect(mocks.updateWorktree).toHaveBeenCalled();
+  });
+
+  it("leaves a refusal without a force code when git failed for another reason", async () => {
+    mocks.removeWorktree.mockRejectedValue(
+      new GitError("fatal: not a git repository", [], {
+        stdout: "",
+        stderr: "",
+        exitCode: 128,
+      }),
+    );
+
+    const error = await removeChatWorktree(USER, SESSION, true).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(CoderCleanupError);
+    expect((error as CoderCleanupError).code).toBeUndefined();
   });
 
   it("does nothing for a chat that is not a coder chat", async () => {
@@ -286,6 +316,19 @@ describe("removeProject", () => {
     await expect(removeProject(USER, "project-1")).rejects.toBeInstanceOf(CoderCleanupError);
     expect(mocks.deleteChat).not.toHaveBeenCalled();
     expect(mocks.deleteManyProject).not.toHaveBeenCalled();
+  });
+
+  it("forces every worktree when the project delete was confirmed anyway", async () => {
+    mocks.isRepoFullyPushed.mockResolvedValue(true);
+
+    await removeProject(USER, "project-1", true);
+
+    expect(mocks.removeWorktree).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      dir: "worktrees/saale/c-1a2b3c4d",
+      force: true,
+    });
+    expect(mocks.deleteManyProject).toHaveBeenCalled();
   });
 
   it("deletes a project whose directory was removed by hand", async () => {

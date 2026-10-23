@@ -20,7 +20,8 @@ import { prisma } from "@/lib/db";
 import { deleteAllImages } from "@/lib/image-attachment";
 import { unscheduleWatcher } from "@/lib/queue";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
-import { removeChatWorktree } from "@/lib/coder/worktree-removal";
+import { removeChatWorktree, CoderCleanupError } from "@/lib/coder/worktree-removal";
+import type { CoderCleanupCode } from "@/lib/coder/cleanup-codes";
 
 /** The deleted chat's title, for a confirmation message. */
 export interface DeletedChat {
@@ -30,7 +31,7 @@ export interface DeletedChat {
 /** Outcome of a multi-chat delete: what went, and what is still there. */
 export interface BulkDeleteResult {
   deleted: string[];
-  failed: Array<{ sessionId: string; error: string }>;
+  failed: Array<{ sessionId: string; error: string; code?: CoderCleanupCode }>;
 }
 
 /**
@@ -111,7 +112,11 @@ export async function deleteChatSessions(
       deleted.push(sessionId);
     } catch (err) {
       console.error(`Failed to delete chat session ${sessionId}:`, err);
-      failed.push({ sessionId, error: err instanceof Error ? err.message : String(err) });
+      failed.push({
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+        ...(err instanceof CoderCleanupError && err.code ? { code: err.code } : {}),
+      });
     }
   }
 

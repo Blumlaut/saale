@@ -2,9 +2,10 @@
  * Removing a coder chat's worktree.
  *
  * git decides whether a checkout may go: `git worktree remove` refuses a dirty
- * tree, and that refusal is the answer, never something to retry with
- * `--force`. The branch and its commits stay in the repo either way, so the
- * only thing at stake is uncommitted work. which exists nowhere else.
+ * tree, and that refusal comes back as a `dirty-worktree` code so the user can
+ * decide to discard the uncommitted work and retry with `--force`. The branch
+ * and its commits stay in the repo either way, so the only thing at stake is
+ * uncommitted work, which exists nowhere else.
  *
  * Order is directory first, then the row, so a failed removal leaves a record
  * that can be retried instead of a directory nobody claims.
@@ -13,6 +14,7 @@
 import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
+import { DIRTY_WORKTREE_CODE, type CoderCleanupCode } from "./cleanup-codes";
 import { GitError, removeWorktree, runInWorkspace } from "./git";
 import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
 import { stopProcessesCommand, SWEEP_TIMEOUT_SECONDS } from "./processes";
@@ -23,10 +25,19 @@ export class CoderCleanupError extends Error {
   constructor(
     message: string,
     readonly status: number = 409,
+    readonly code?: CoderCleanupCode,
   ) {
     super(message);
     this.name = "CoderCleanupError";
   }
+}
+
+/** git's wording for a checkout with uncommitted work. `force` overrides it. */
+const DIRTY_WORKTREE_PATTERN = /contains modified or untracked files|working tree is dirty/i;
+
+/** The code a refusal carries, when the caller can retry it with `force`. */
+function refusalCode(message: string): CoderCleanupCode | undefined {
+  return DIRTY_WORKTREE_PATTERN.test(message) ? DIRTY_WORKTREE_CODE : undefined;
 }
 
 /** What removing a chat's worktree did. */
@@ -112,7 +123,7 @@ export async function removeChatWorktree(
     } catch (err) {
       if (err instanceof GitError) {
         console.error(`git refused to remove ${worktree.path} for ${sessionId}:`, err);
-        throw new CoderCleanupError(err.message);
+        throw new CoderCleanupError(err.message, 409, refusalCode(err.message));
       }
       throw err;
     }
