@@ -39,6 +39,11 @@ export interface FileBrowserController {
 export interface UseFileBrowserOptions {
   /** Workspace token: `user`, or `council:<id>`. */
   target: string;
+  /**
+   * Where browsing starts, relative to the workspace root. A caller that shows
+   * one directory (a worktree) passes it here, and going up stops there.
+   */
+  startPath?: string;
   onError?: (message: string) => void;
 }
 
@@ -99,7 +104,11 @@ function reportUpload(
   }
 }
 
-export function useFileBrowser({ target, onError }: UseFileBrowserOptions): FileBrowserController {
+export function useFileBrowser({
+  target,
+  startPath,
+  onError,
+}: UseFileBrowserOptions): FileBrowserController {
   const [listing, setListing] = useState<FileListing | null>(null);
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
@@ -115,6 +124,8 @@ export function useFileBrowser({ target, onError }: UseFileBrowserOptions): File
   const root = useRef("");
   /** The path of the newest request, so a stale reply is discarded. */
   const current = useRef("");
+  /** The directory the caller opened the browser at. never navigated above it. */
+  const start = useRef(startPath ?? "");
 
   const report = useCallback(
     (message: string) => {
@@ -175,7 +186,7 @@ export function useFileBrowser({ target, onError }: UseFileBrowserOptions): File
   );
 
   useEffect(() => {
-    void load("");
+    void load(start.current);
   }, [load]);
 
   /** Re-read the current folder after a write, keeping the listing on screen. */
@@ -274,8 +285,13 @@ export function useFileBrowser({ target, onError }: UseFileBrowserOptions): File
   );
 
   const up = useCallback(() => {
-    if (!path || !root.current || path === root.current) return;
-    open(path.slice(0, path.lastIndexOf("/")) || root.current);
+    if (!path || !root.current) return;
+    const floor = start.current || root.current;
+    // A caller that opened one directory keeps the browser inside it.
+    if (path === floor || path === root.current) return;
+    const parent = path.slice(0, path.lastIndexOf("/")) || root.current;
+    if (start.current && parent.length < floor.length) return;
+    open(parent);
   }, [path, open]);
 
   /** Re-read the current folder without dropping what is on screen. */

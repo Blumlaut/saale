@@ -3,7 +3,8 @@
  *
  * A small HTTP API the app calls to run a command in an identity's container.
  * `POST /exec` streams output as server-sent events, `DELETE /exec/:id` stops a
- * command. Both are keyed on an identity, never on a path.
+ * command, `POST /exec/:id/input` types into one started with `interactive`.
+ * All of them are keyed on an identity, never on a path.
  *
  * It holds the Docker socket, so it is as privileged as the host it runs on.
  * Only web and worker talk to it, with a shared bearer key.
@@ -22,10 +23,13 @@ import {
   type ContainerManager,
   type SandboxChunk,
 } from "./containers";
-import { UnknownExecError } from "./registry";
+import { ExecStdinClosedError, UnknownExecError } from "./registry";
 
 /** Largest request body accepted. An exec body holds a command and its env. */
 const MAX_BODY_BYTES = 1024 * 1024;
+
+/** Largest stdin write accepted, well above a paste into a terminal. */
+const MAX_INPUT_BYTES = 256 * 1024;
 
 /** How often idle containers are reaped. */
 const REAP_INTERVAL_MS = 60_000;
@@ -102,6 +106,7 @@ function asExecRequest(body: Record<string, unknown>): {
   cwd?: string;
   env?: Record<string, string>;
   timeoutSeconds?: number;
+  interactive?: boolean;
 } {
   const command = body.command;
   if (typeof command !== "string" || !command.trim()) {
@@ -130,12 +135,43 @@ function asExecRequest(body: Record<string, unknown>): {
     timeoutSeconds = body.timeoutSeconds;
   }
 
+  if (body.interactive !== undefined && typeof body.interactive !== "boolean") {
+    throw new HttpError(400, "interactive must be a boolean");
+  }
+
   return {
     command,
     ...(cwd ? { cwd } : {}),
     ...(env ? { env } : {}),
     ...(timeoutSeconds ? { timeoutSeconds } : {}),
+    ...(body.interactive === true ? { interactive: true } : {}),
   };
+}
+
+/** POST /exec/:id/input: write to a running command's stdin. */
+async function handleInput(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  manager: ContainerManager,
+  execId: string,
+  identity: string,
+): Promise<void> {
+  const body = await readJson(req);
+  // base64 because a keystroke is bytes, and a terminal sends control codes.
+  const data = body.data;
+  if (typeof data !== "string") throw new HttpError(400, "data is required");
+
+  const bytes = Buffer.from(data, "base64");
+  if (bytes.length > MAX_INPUT_BYTES) throw new HttpError(413, "Input too large");
+
+  try {
+    await manager.write(execId, identity, bytes);
+  } catch (err) {
+    if (err instanceof UnknownExecError) throw new HttpError(404, err.message);
+    if (err instanceof ExecStdinClosedError) throw new HttpError(409, err.message);
+    throw err;
+  }
+  json(res, 200, { written: bytes.length });
 }
 
 /** POST /exec: run a command, stream `started`, `chunk`s and `exit`. */
@@ -215,6 +251,18 @@ export function createSandboxServer(options: SandboxServerOptions): http.Server 
 
         if (req.method === "POST" && url.pathname === "/exec") {
           await handleExec(req, res, manager, identityFrom(req));
+          return;
+        }
+
+        const inputMatch = /^\/exec\/([^/]+)\/input$/.exec(url.pathname);
+        if (req.method === "POST" && inputMatch?.[1]) {
+          await handleInput(
+            req,
+            res,
+            manager,
+            decodeURIComponent(inputMatch[1]),
+            identityFrom(req),
+          );
           return;
         }
 

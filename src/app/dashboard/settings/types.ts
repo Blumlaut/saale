@@ -23,6 +23,8 @@ export interface UserSettings {
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
   disabledModels: string[] | null; // Array of "provider:modelId" strings
   defaultToolConfig: ToolConfig | null;
+  /** Category on/off for new coder chats. */
+  coderToolConfig: ToolConfig | null;
   toolPolicies: Record<string, ToolPolicy> | null;
   toolExposure: ToolExposureConfig | null;
 }

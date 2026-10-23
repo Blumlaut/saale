@@ -48,7 +48,7 @@ describe("SidebarNavEditor", () => {
 
     expect(labels[0]).toBe("Move Chat up");
     expect(labels[1]).toBe("Move Chat down");
-    expect(labels[2]).toBe("Move Mail up");
+    expect(labels[2]).toBe("Move Coder up");
     expect(screen.getByRole("switch", { name: "Show Settings in the sidebar" })).toBeChecked();
   });
 
@@ -58,7 +58,7 @@ describe("SidebarNavEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move Chat down" }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(ids(changedEntries(onChange)).slice(0, 3)).toEqual(["mail", "chat", "calendar"]);
+    expect(ids(changedEntries(onChange)).slice(0, 3)).toEqual(["coder", "chat", "mail"]);
   });
 
   it("disables the boundary arrows", () => {

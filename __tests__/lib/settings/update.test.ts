@@ -55,6 +55,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     purposeModelOverrides: null,
     disabledModels: null,
     defaultToolConfig: null,
+    coderToolConfig: null,
     toolPolicies: null,
     toolExposure: null,
     sidebarItems: null,

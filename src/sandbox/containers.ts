@@ -13,7 +13,7 @@
 
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { PassThrough } from "node:stream";
+import { PassThrough, type Duplex } from "node:stream";
 import type Dockerode from "dockerode";
 import type { SandboxConfig } from "@/lib/sandbox/config";
 import { parseIdentity } from "@/lib/sandbox/identity";
@@ -22,6 +22,7 @@ import { ensureWorkspace } from "@/lib/sandbox/workspace";
 import { checkMountinfo } from "./mount-check";
 import {
   createExecRegistry,
+  ExecStdinClosedError,
   UnknownExecError,
   type ExecRegistry,
   type RunningExec,
@@ -72,6 +73,8 @@ export interface SandboxExecRequest {
   /** Variables for this command only. */
   env?: Record<string, string> | undefined;
   timeoutSeconds?: number | undefined;
+  /** Attach stdin, so a caller can type into the command while it runs. */
+  interactive?: boolean | undefined;
 }
 
 export interface SandboxChunk {
@@ -118,6 +121,8 @@ export interface ContainerManager {
     onChunk: (chunk: SandboxChunk) => void,
   ): Promise<SandboxExecSession>;
   kill(id: string): Promise<void>;
+  /** Type into a command that was started with `interactive`. */
+  write(id: string, identity: string, data: Buffer): Promise<void>;
   /** Remove an identity's container. Its directory stays. */
   remove(identity: string): Promise<boolean>;
   stop(identity: string): Promise<boolean>;
@@ -325,6 +330,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
   ): Promise<SandboxExecSession> {
     const id = parseIdentity(identity);
     if (!request.command.trim()) throw new SandboxRequestError("A command is required");
+    const interactive = request.interactive === true;
 
     const container = await ensure(id);
     const execId = randomUUID();
@@ -349,13 +355,21 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
       User: config.user,
       WorkingDir: cwd,
       Env: envList(request.env),
+      AttachStdin: interactive,
       AttachStdout: true,
       AttachStderr: true,
       Tty: false,
     });
 
-    const stream = await exec.start({ hijack: true, stdin: true });
-    const entry: RunningExec = { identity: id, pgidFile, container, exec, settled: false };
+    const stream = await exec.start({ hijack: true, stdin: interactive });
+    const entry: RunningExec = {
+      identity: id,
+      pgidFile,
+      container,
+      exec,
+      settled: false,
+      ...(interactive ? { stdin: stream as Duplex } : {}),
+    };
     registry.add(execId, entry);
     lastUsed.set(id, now());
 
@@ -426,6 +440,28 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     }, KILL_GRACE_MS);
     timer.unref?.();
     killTimers.set(execId, timer);
+  }
+
+  /**
+   * Write to a command's stdin.
+   *
+   * The socket is hijacked and duplex, so writes go straight to the process.
+   * There is no EOF: Docker cannot half-close a hijacked connection, and
+   * closing it would take the output down with it.
+   */
+  async function write(execId: string, identity: string, data: Buffer): Promise<void> {
+    const entry = registry.get(execId);
+    if (!entry || entry.identity !== parseIdentity(identity)) throw new UnknownExecError(execId);
+    if (entry.settled) throw new UnknownExecError(execId);
+    if (!entry.stdin) throw new ExecStdinClosedError(execId);
+    if (data.length === 0) return;
+
+    await new Promise<void>((resolve, reject) => {
+      entry.stdin?.write(data, (err: Error | null | undefined) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
   }
 
   async function stop(identity: string): Promise<boolean> {
@@ -537,7 +573,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     return { stopped, removed };
   }
 
-  return { ensure, run, kill, remove, stop, sweep, reapIdle };
+  return { ensure, run, kill, write, remove, stop, sweep, reapIdle };
 }
 
 export function isAlreadyStarted(err: unknown): boolean {

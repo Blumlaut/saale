@@ -4,6 +4,8 @@ import { getSessionDir } from "./agent-pool";
 import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
+import { buildCoderSystemPrompt } from "./coder-prompt";
+import { resolveCoderToolConfig } from "./coder-tools";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import type { ApprovalRequest } from "./tool-approval-gate";
 import type { ToolConfig, ToolExposureConfig } from "./tool-categories";
@@ -48,6 +50,8 @@ export interface ChatSessionModelConfig {
   modelName: string | null;
   thinkingLevel: string | null;
   toolConfig: unknown;
+  /** Set on a coder chat, which runs in its project's worktree. */
+  projectId: string | null;
 }
 
 /** The chat's model, falling back to the user's default chat model. */
@@ -85,6 +89,27 @@ export interface CreateChatAgentSessionOptions {
    * their gate publishes through this instead (`lib/pi/mcp-tool-policy.ts`).
    */
   emitApprovalRequest: (request: ApprovalRequest) => void;
+  /**
+   * Workspace-relative directory the agent works in. A coder chat passes its
+   * worktree; every other chat leaves it unset and gets the workspace root.
+   */
+  workspaceCwd?: string | undefined;
+}
+
+/** The prompt a session starts with: the coder one for a project chat. */
+async function buildSessionPrompt(options: {
+  userId: string;
+  projectId: string | null;
+  customInstructions: string | null;
+  toolConfig: ToolConfig;
+}): Promise<string> {
+  const sandboxEnvNames = await listSandboxEnvNames(options.userId);
+  const shared = {
+    customInstructions: options.customInstructions,
+    toolConfig: options.toolConfig,
+    sandboxEnvNames,
+  };
+  return options.projectId ? buildCoderSystemPrompt(shared) : buildAgentSystemPrompt(shared);
 }
 
 /**
@@ -101,14 +126,20 @@ export async function createChatAgentSession(
   const sessionDir = getSessionDir(userId, sessionId);
 
   const model = options.model ?? (await resolveChatModel(userId, chatSession));
-  const toolConfig: ToolConfig = chatSession.toolConfig
-    ? { ...(chatSession.toolConfig as ToolConfig) }
-    : {};
+  // A coder chat follows the coder defaults for a category its stored config
+  // does not name. A chat keeps the registry defaults it always had.
+  const stored = chatSession.toolConfig as ToolConfig | null;
+  const toolConfig: ToolConfig = chatSession.projectId
+    ? (resolveCoderToolConfig(stored as Record<string, unknown> | null) as ToolConfig)
+    : stored
+      ? { ...stored }
+      : {};
 
   const result = await createPersistentSession({
     userId,
     sessionId,
     sessionDir,
+    ...(options.workspaceCwd ? { workspaceCwd: options.workspaceCwd } : {}),
     customTools: [],
     toolConfig,
     toolExposure: options.toolExposure,
@@ -118,10 +149,11 @@ export async function createChatAgentSession(
     emitApprovalRequest: options.emitApprovalRequest,
     toolPolicies: options.toolPolicies,
     mcp: true,
-    systemPrompt: buildAgentSystemPrompt({
+    systemPrompt: await buildSessionPrompt({
+      userId,
+      projectId: chatSession.projectId,
       customInstructions: options.customInstructions,
       toolConfig,
-      sandboxEnvNames: await listSandboxEnvNames(userId),
     }),
   });
 

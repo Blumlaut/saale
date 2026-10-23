@@ -17,6 +17,8 @@ interface UserSettings {
 export async function createChatSession(options?: {
   title?: string;
   temporary?: boolean;
+  /** Set to start a coder chat; the server applies the coder tool defaults. */
+  projectId?: string;
 }): Promise<{ id: string }> {
   // Fetch user settings for default model
   let settings: UserSettings | null = null;
@@ -34,7 +36,11 @@ export async function createChatSession(options?: {
     modelProvider: settings?.defaultModelProvider || undefined,
     modelName: settings?.defaultModelName || undefined,
     thinkingLevel: settings?.defaultThinkingLevel || DEFAULT_THINKING_LEVEL_SETTING,
-    toolConfig: settings?.defaultToolConfig || undefined,
+    // A coder chat's tools come from the coder defaults on the server, not
+    // from the chat defaults fetched here.
+    ...(options?.projectId
+      ? { projectId: options.projectId }
+      : { toolConfig: settings?.defaultToolConfig || undefined }),
   });
 
   return data.session;

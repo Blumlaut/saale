@@ -24,6 +24,7 @@ import type { ApprovalRequest } from "./tool-approval-gate";
  * @param options.userId - The authenticated user's ID
  * @param options.sessionId - ChatSession.id from DB (used for tool resolution and directory naming)
  * @param options.sessionDir - Directory for Pi's JSONL session files (pi_sessions/{userId}/{sessionId}/)
+ * @param options.workspaceCwd - Workspace-relative directory the agent works in (a coder chat's worktree)
  * @param options.customTools - Additional custom tools to register
  * @param options.toolConfig - Tool category configuration
  * @param options.toolExposure - Per-category exposure (how tools reach the model)
@@ -40,6 +41,8 @@ export async function createPersistentSession(options: {
   userId: string;
   sessionId: string; // ChatSession.id from DB
   sessionDir: string; // pi_sessions/{userId}/{sessionId}/
+  /** Workspace-relative directory the agent works in; the workspace root when omitted. */
+  workspaceCwd?: string | undefined;
   customTools: ToolDefinition[];
   toolConfig?: ToolConfig;
   /** Per-category exposure (`AppSettings.toolExposure`). */
@@ -85,7 +88,8 @@ export async function createPersistentSession(options: {
   //
   // The manager's cwd is only the JSONL store (and the value recorded in the
   // session header); the *agent* cwd that tool paths resolve against is set by
-  // `createSaaleAgentSession` to the Open Terminal home.
+  // `createSaaleAgentSession` to the workspace root, or to the worktree a
+  // coder chat passes as `workspaceCwd`.
   const sessionManager = SessionManager.continueRecent(
     options.sessionDir, // cwd. stored in session header
     options.sessionDir, // sessionDir. where JSONL files are written
@@ -93,6 +97,7 @@ export async function createPersistentSession(options: {
 
   const result = await createSaaleAgentSession(options.userId, {
     sessionManager, // File-based. entries persist to JSONL
+    ...(options.workspaceCwd ? { workspaceCwd: options.workspaceCwd } : {}),
     modelRuntime,
     noTools: "builtin",
     ...(model ? { model } : {}),
