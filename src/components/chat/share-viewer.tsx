@@ -212,7 +212,9 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
       <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
         <Bot className="h-4 w-4" />
       </div>
-      <div className="max-w-[85%] min-w-0 space-y-2">
+      {/* Stretched, not shrink-to-fit: the summary cards below are as wide as
+          this column, and a shrinking column would resize them per token. */}
+      <div className="max-w-[85%] min-w-0 flex-1 space-y-2">
         {/*
          * The same condensed transcript the owner gets with "Compact activity"
          * on: a run of steps folds into one "Used N tools" row, and prose ends
@@ -269,7 +271,7 @@ function ShareMessageBody({ message }: { message: Message }) {
   return (
     <>
       {message.content && (
-        <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+        <div className="liquid-glass-inner w-fit max-w-full rounded-2xl px-4 py-3">
           <MarkdownRenderer content={message.content} />
         </div>
       )}

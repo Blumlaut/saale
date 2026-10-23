@@ -56,6 +56,12 @@ export interface CoderCommit {
   author: string;
 }
 
+/** One stage of building a chat's workspace, as the server reports it. */
+export interface CoderProvisioning {
+  step: "worktree" | "setup";
+  startedAt: string;
+}
+
 /** `GET /api/coder/sessions/:id/status`. */
 export interface CoderSessionState {
   worktree: { path: string; branch: string; baseSha: string } | null;
@@ -68,6 +74,8 @@ export interface CoderSessionState {
   changes: CoderChange[];
   commits: CoderCommit[];
   scripts: { name: string; command: string; runCommand: string }[];
+  /** Set while the chat is building its workspace (first message). */
+  provisioning: CoderProvisioning | null;
 }
 
 /** How often an open coder list re-reads itself while the tab is visible. */
@@ -221,4 +229,65 @@ export function useSessionState(sessionId: string | null, refreshKey: number) {
   }, [sessionId, refreshKey]);
 
   return { state, loading, error };
+}
+
+/** How often a waiting chat asks whether its workspace is still being built. */
+const PROVISIONING_POLL_MS = 1_500;
+
+/**
+ * Whether this chat is building its workspace right now.
+ *
+ * Polled, not streamed: the SSE connection that prompts the first message is
+ * the very request that builds the workspace, so it answers nothing until the
+ * build is over. There is no event to wait for.
+ *
+ * `waiting` is the caller's window (a reply is owed and none has started), and
+ * it is what bounds the polling: a chat that has answered one message keeps its
+ * workspace, so nobody goes on asking.
+ */
+export function useProvisioning(sessionId: string | null, waiting: boolean) {
+  const [state, setState] = useState<CoderProvisioning | null>(null);
+
+  useEffect(() => {
+    setState(null);
+    if (!sessionId || !waiting) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let seen = false;
+
+    const stop = () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+
+    const tick = async () => {
+      try {
+        const body = await fetchJson<{ provisioning: CoderProvisioning | null }>(
+          `/api/coder/sessions/${encodeURIComponent(sessionId)}/provisioning`,
+        );
+        if (cancelled) return;
+        if (body.provisioning) {
+          seen = true;
+          setState(body.provisioning);
+        } else {
+          setState(null);
+          // One record seen and then gone means the build finished: asking for
+          // the rest of the run would only ever answer null again.
+          if (seen) {
+            stop();
+            return;
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to read the provisioning step for ${sessionId}:`, err);
+      }
+      if (!cancelled) timer = setTimeout(() => void tick(), PROVISIONING_POLL_MS);
+    };
+
+    void tick();
+    return stop;
+  }, [sessionId, waiting]);
+
+  return state;
 }

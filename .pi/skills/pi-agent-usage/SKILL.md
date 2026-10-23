@@ -125,7 +125,7 @@ replaces them.
 | Feature     | Prompt style                                                         | Reference                                               |
 | ----------- | -------------------------------------------------------------------- | ------------------------------------------------------- |
 | Chat        | `buildAgentSystemPrompt()` (assistant + custom instructions + tools) | `src/app/api/chat/sessions/[sessionId]/stream/route.ts` |
-| Coder chat  | `buildCoderSystemPrompt()` (coding identity + git rules + tools)      | `src/lib/pi/coder-prompt.ts`                            |
+| Coder chat  | `buildCoderSystemPrompt()` (coding identity + git rules + tools)     | `src/lib/pi/coder-prompt.ts`                            |
 | Email draft | Task-specific, output-only rules                                     | `src/app/api/email/draft/route.ts`                      |
 | Queue jobs  | JSON-only, structured output                                         | `src/lib/queue/job-handler.ts`                          |
 
@@ -285,7 +285,7 @@ their own**, and one click that stands in for all of them.
 
 - **What a card covers** is read from the script source
   (`readScriptToolReferences`, `src/lib/pi/codemode-script.ts`; shared with the
-transcript card) and resolved against the registry (`pi.getAllTools()` plus
+  transcript card) and resolved against the registry (`pi.getAllTools()` plus
   `pi.getActiveTools()`, Pi's own callable rule — `codemode` itself is
   `model-only`, so a script can never start a script).
 - **Only `ask` tools are covered.** A command-aware `auto` tool (`bash`,
@@ -522,6 +522,28 @@ message following the old conversation.
 - Rewinding past a compaction entry drops the summary from the active path (the
   entries it summarized are still there) — editing pre-compaction history means
   reverting to pre-compaction context, the same as Pi's TUI.
+
+## Tool Construction (`defineStructuredTool`)
+
+Every Saale tool is built with `defineStructuredTool`
+(`src/lib/pi/tools/tool-result.ts`), never Pi's `defineTool`: one object
+produces both forms of a result, so the model's text and the programmatic result
+cannot drift.
+
+- `text` — what the model reads: the existing prose, or
+  `JSON.stringify(payload, null, 2)`.
+- `structuredContent` — what a codemode script or a watcher tick receives.
+- `meta` — UI metadata (the `_saale*Meta` block: file cards, links, approvals).
+  Never inside the value, which is what a script reads.
+
+`outputSchema` is not optional. Pi hands `structuredContent` to a script only
+for tools that declare one; without it the script gets the model's text instead
+— text that carries UI metadata and an echo of the call's own arguments, which
+is how a script ends up matching a marker against its own query.
+`__tests__/lib/pi/tool-results.test.ts` fails CI when a tool skips it.
+
+A new tool needs no registry entry: `ALL_TOOL_INFOS`, `TOOL_CATEGORIES` and the
+codemode exposure derive it. A new _category_ or _purpose_ is likewise derived.
 
 ## Anti-Patterns
 

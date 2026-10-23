@@ -222,7 +222,7 @@ export const DEFAULT_TOOL_EXPOSURE: Record<ToolCategoryKey, ToolExposure> = Obje
  * this covers all of them with room to spare; `tool-catalog-drift.test.ts` fails
  * if a newly listed tool no longer fits.
  */
-export const CODEMODE_INLINE_BUDGET = 5000;
+export const CODEMODE_INLINE_BUDGET = 6000;
 
 /** Display metadata for the exposure selector, in preference order. */ export const TOOL_EXPOSURES: Array<{
   value: ToolExposure;
@@ -245,6 +245,24 @@ export const CODEMODE_INLINE_BUDGET = 5000;
     description: "Hidden entirely; found by searching from a codemode script.",
   },
 ];
+
+/**
+ * Whether any enabled category reaches the model through codemode.
+ *
+ * What decides whether the session's prompt describes codemode at all: a chat
+ * that declares every tool it has pays for that explanation, and the model would
+ * be told to search for tools that are already in front of it.
+ */
+export function hasCodemodeCategory(
+  config: Record<string, boolean | undefined> | null | undefined,
+  exposure: ToolExposureConfig | null | undefined = null,
+): boolean {
+  return TOOL_CATEGORIES.some((category) => {
+    if (!isCategoryEnabled(config, category.key)) return false;
+    const chosen = exposure?.[category.key] ?? category.defaultExposure;
+    return chosen !== "direct";
+  });
+}
 
 /** Whether a value is a known exposure. */
 export function isToolExposure(value: unknown): value is ToolExposure {

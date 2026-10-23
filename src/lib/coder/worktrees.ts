@@ -40,6 +40,7 @@ import {
   writeEnvFiles,
   type EnvFile,
 } from "./project-config";
+import { clearProvisioning, setProvisioningStep } from "./provisioning";
 import { coderBranchName, coderChatSlug } from "./slug";
 
 /** The branch and directory a chat runs in. */
@@ -237,16 +238,23 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
   });
   if (!project) throw new Error(`Project not found: ${chat.projectId}`);
 
-  const result = await withProjectLock(project.id, () =>
-    withLockRetry(() => resolveWorktree(userId, sessionId, project)),
-  );
-  if (result.changed) await evictPooledAgent(userId, sessionId);
-  // Outside the lock: an install takes minutes, and a second chat in the same
-  // project must not wait for it.
-  if (result.created) {
-    await runSetupScript(userId, result.path, project.setupScript);
+  try {
+    const result = await withProjectLock(project.id, () =>
+      withLockRetry(() => resolveWorktree(userId, sessionId, project)),
+    );
+    if (result.changed) await evictPooledAgent(userId, sessionId);
+    // Outside the lock: an install takes minutes, and a second chat in the same
+    // project must not wait for it.
+    if (result.created) {
+      if (project.setupScript) await setProvisioningStep(sessionId, "setup");
+      await runSetupScript(userId, result.path, project.setupScript);
+    }
+    return { path: result.path, branch: result.branch };
+  } finally {
+    // Whatever happened, the chat is no longer building a workspace: the agent
+    // starts next, and a stuck hint is worse than none.
+    await clearProvisioning(sessionId);
   }
-  return { path: result.path, branch: result.branch };
 }
 
 async function resolveWorktree(
@@ -265,6 +273,7 @@ async function resolveWorktree(
     }
     // The row is what the panel shows; prune drops git's half of a checkout
     // that was deleted by hand, so the branch can be checked out again.
+    await setProvisioningStep(sessionId, "worktree");
     await pruneWorktrees(userId, project.repoPath);
     await addWorktreeForBranch(userId, {
       repoDir: project.repoPath,
@@ -278,6 +287,9 @@ async function resolveWorktree(
 
   const path = worktreePath(project.slug, sessionId);
   const branch = coderBranchName(coderChatSlug(sessionId));
+  // Set before the first slow step: the fetch alone can take minutes on a big
+  // repo, and the chat has to be able to say why it is silent.
+  await setProvisioningStep(sessionId, "worktree");
   await refreshRepo(userId, project.repoPath);
   const headSha = await ensureBaseCommit(userId, project.repoPath);
   const base = await worktreeBaseRef(userId, {

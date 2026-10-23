@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { loadSessionState } from "@/lib/coder/changes";
 import { GitError } from "@/lib/coder/git";
+import { getProvisioning } from "@/lib/coder/provisioning";
 
 /**
  * GET /api/coder/sessions/:id/status. The worktree's branch, changes and recent
@@ -10,7 +11,8 @@ import { GitError } from "@/lib/coder/git";
  *
  * A chat whose worktree does not exist yet answers with `worktree: null` rather
  * than a 404: the panel is open, there is just nothing in it until the first
- * message builds the worktree.
+ * message builds the worktree. `provisioning` says whether that build is
+ * happening right now, so the panel shows the work instead of an empty box.
  */
 export async function GET(
   _request: NextRequest,
@@ -24,7 +26,7 @@ export async function GET(
   try {
     const state = await loadSessionState(authResult.user.id, sessionId);
     if (!state) return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    return NextResponse.json(state);
+    return NextResponse.json({ ...state, provisioning: await getProvisioning(sessionId) });
   } catch (err) {
     if (err instanceof GitError) {
       return NextResponse.json({ error: err.message }, { status: 502 });

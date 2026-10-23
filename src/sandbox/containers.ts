@@ -591,6 +591,9 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
       }
 
       if (!state.State.Running) continue;
+      // A command still running is the container being used, however long ago it
+      // was started: a dev server is not idleness.
+      if (registry.idsFor(identity).length > 0) continue;
       const used = lastUsed.get(identity) ?? created;
       if (Number.isFinite(used) && at - used > idleMs) {
         try {
