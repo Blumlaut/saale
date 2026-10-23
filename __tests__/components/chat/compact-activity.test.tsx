@@ -98,9 +98,9 @@ function renderTranscript(messages: Message[], compactActivity = true, isLoading
   );
 }
 
-/** The reasoning row's toggle  its label reports whether the turn is working. */
+/** The reasoning row's toggle. Its label names the row, never the state. */
 function reasoningRow(): HTMLElement {
-  return screen.getByRole("button", { name: /(Thought process|Thinking)/ });
+  return screen.getByRole("button", { name: /Thinking/ });
 }
 
 /** The marks in the tool row's sliding window, oldest first. */
@@ -127,7 +127,7 @@ describe("compact activity", () => {
     ]);
 
     // One reasoning line and one counter  not a thinking block per step.
-    expect(screen.getByText("Thought process:")).toBeInTheDocument();
+    expect(screen.getByText("Thinking")).toBeInTheDocument();
     expect(screen.getByText(/The search yielded three candidate pages/)).toBeInTheDocument();
     expect(screen.getByText("Used 2 tools")).toBeInTheDocument();
 
@@ -226,7 +226,7 @@ describe("compact activity", () => {
       step({ id: "a2", thinking: "Then I checked the queue depth, which was not." }),
     ]);
 
-    const line = screen.getByRole("button", { name: /Thought process/ });
+    const line = screen.getByRole("button", { name: /Thinking/ });
     expect(line).toHaveTextContent("Then I checked the queue depth");
     expect(line).not.toHaveTextContent("First I looked at the logs");
 
@@ -278,10 +278,60 @@ describe("compact activity", () => {
     expect(screen.getByText("quarterly.pdf")).toBeInTheDocument();
   });
 
+  it("holds the transcript's width instead of following the reasoning", () => {
+    // The column the summary cards sit in is shrink-to-fit by default, which
+    // made it exactly as wide as its widest child: every token of the newest
+    // reasoning widened both cards, and the next step's shorter reasoning
+    // snapped them back. It claims the line now, so the cards stay put.
+    const { rerender } = renderTranscript([
+      step({ id: "a1", thinking: "Short.", toolCalls: [exec("tc-1", "uptime")] }),
+      step({ id: "a2", content: "Both machines are healthy." }),
+    ]);
+
+    const column = reasoningRow().closest("[data-transcript-column]")!;
+    expect(column).toHaveClass("flex-1", "min-w-0");
+
+    // The prose bubble hugs its own text rather than filling that width.
+    const bubble = screen.getByText("Both machines are healthy.").closest(".liquid-glass-inner")!;
+    expect(bubble).toHaveClass("w-fit", "max-w-full");
+
+    // Reasoning that arrives mid-stream changes the text, never the width.
+    rerender(
+      <MessageList
+        messages={[
+          step({
+            id: "a1",
+            thinking: "Short.".concat(" Then a great deal more, streaming in."),
+            toolCalls: [exec("tc-1", "uptime")],
+          }),
+          step({ id: "a2", content: "Both machines are healthy." }),
+        ]}
+        compactActivity
+        isLoading
+      />,
+    );
+    expect(column).toHaveClass("flex-1");
+  });
+
+  it("leaves the step-by-step column shrink-to-fit", () => {
+    // Off, every step is its own card in a bubble-width column, exactly as before.
+    renderTranscript(
+      [step({ id: "a1", thinking: "Checked.", content: "Both machines are healthy." })],
+      false,
+    );
+
+    // Step by step keeps its own wording, and its own bubble-width column.
+    const stepByStep = screen.getByRole("button", { name: /Thought process/ });
+    const column = stepByStep.closest("[data-transcript-column]")!;
+    expect(column).not.toHaveClass("flex-1");
+    const bubble = screen.getByText("Both machines are healthy.").closest(".liquid-glass-inner")!;
+    expect(bubble).not.toHaveClass("w-fit");
+  });
+
   it("reports progress for the whole turn, tools included", () => {
     // The real event sequence, through the real reducer: a step's message is
     // saved (losing its `streaming-` id) before its tool reports back, which is
-    // what used to drop the row out of "Thinking..." for the length of a call.
+    // what used to drop the row out of "Thinking" for the length of a call.
     const events: StreamAction[] = [
       { type: "turn_start", turnId: "t1" },
       { type: "thinking", turnId: "t1", thinking: "Looking at the queue depth." },
@@ -294,12 +344,12 @@ describe("compact activity", () => {
     let state = streamReducer({ messages: [], rootMessageId: null }, events[0]!);
     state = streamReducer(state, events[1]!);
     const { rerender } = renderTranscript(state.messages, true, true);
-    expect(reasoningRow()).toHaveTextContent("Thinking...");
+    expect(reasoningRow()).toHaveTextContent("Thinking");
 
     for (const event of events.slice(2)) {
       state = streamReducer(state, event);
       rerender(<MessageList messages={state.messages} compactActivity isLoading />);
-      expect(reasoningRow()).toHaveTextContent("Thinking...");
+      expect(reasoningRow()).toHaveTextContent("Thinking");
       expect(reasoningRow().querySelector(".animate-spin")).not.toBeNull();
     }
 
@@ -307,12 +357,29 @@ describe("compact activity", () => {
     // the thing that is growing.
     state = streamReducer(state, { type: "token", turnId: "t2", text: "All healthy." });
     rerender(<MessageList messages={state.messages} compactActivity isLoading />);
-    expect(reasoningRow()).toHaveTextContent("Thought process:");
+    expect(reasoningRow()).toHaveTextContent("Thinking");
 
     // Done: everything is settled, tool cards and all.
     state = streamReducer(state, { type: "generation_done" });
     rerender(<MessageList messages={state.messages} compactActivity isLoading={false} />);
-    expect(reasoningRow()).toHaveTextContent("Thought process:");
+    expect(reasoningRow()).toHaveTextContent("Thinking");
+    expect(reasoningRow().querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("keeps the same label once the turn has settled", () => {
+    // A row that renames itself when it finishes reads as a different row: a
+    // transcript of finished turns looked unlike the running one, and the name
+    // changed under the reading eye. The spinner is the only thing that moves.
+    const settled = [
+      step({ id: "a1", thinking: "Checked the box.", toolCalls: [exec("tc-1", "uptime")] }),
+    ];
+    const { rerender } = renderTranscript(settled, true, true);
+    expect(reasoningRow()).toHaveTextContent("Thinking");
+    expect(reasoningRow().querySelector(".animate-spin")).not.toBeNull();
+
+    rerender(<MessageList messages={settled} compactActivity isLoading={false} />);
+    expect(reasoningRow()).toHaveTextContent("Thinking");
+    expect(reasoningRow()).not.toHaveTextContent("Thought process");
     expect(reasoningRow().querySelector(".animate-spin")).toBeNull();
   });
 
@@ -328,7 +395,7 @@ describe("compact activity", () => {
 
     // The activity is behind us and the reply is its own block, so the run
     // settles instead of claiming to still be thinking.
-    expect(reasoningRow()).toHaveTextContent("Thought process:");
+    expect(reasoningRow()).toHaveTextContent("Thinking");
     expect(reasoningRow().querySelector(".animate-spin")).toBeNull();
   });
 
@@ -356,6 +423,6 @@ describe("compact activity", () => {
       true,
     );
 
-    expect(reasoningRow()).toHaveTextContent("Thinking...");
+    expect(reasoningRow()).toHaveTextContent("Thinking");
   });
 });
