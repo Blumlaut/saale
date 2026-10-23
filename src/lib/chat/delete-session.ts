@@ -21,7 +21,7 @@ import { deleteAllImages } from "@/lib/image-attachment";
 import { unscheduleWatcher } from "@/lib/queue";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
 import { removeChatWorktree, CoderCleanupError } from "@/lib/coder/worktree-removal";
-import type { CoderCleanupCode } from "@/lib/coder/cleanup-codes";
+import type { CleanupCode } from "@/lib/coder/force-delete";
 
 /** The deleted chat's title, for a confirmation message. */
 export interface DeletedChat {
@@ -31,7 +31,7 @@ export interface DeletedChat {
 /** Outcome of a multi-chat delete: what went, and what is still there. */
 export interface BulkDeleteResult {
   deleted: string[];
-  failed: Array<{ sessionId: string; error: string; code?: CoderCleanupCode }>;
+  failed: Array<{ sessionId: string; error: string; code?: CleanupCode }>;
 }
 
 /**

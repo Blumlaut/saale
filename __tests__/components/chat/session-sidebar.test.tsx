@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
+import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { LONG_PRESS_MS } from "@/hooks/use-long-press";
 
 /**
@@ -211,7 +212,7 @@ describe("SessionSidebar older chats", () => {
           {
             sessionId: "s-fresh",
             error: "fatal: contains modified or untracked files, use --force to delete it",
-            code: "dirty-worktree",
+            code: WORKTREE_KEPT_CODE,
           },
         ],
       },
@@ -238,7 +239,7 @@ describe("SessionSidebar older chats", () => {
     );
   });
 
-  it("reports a failure it cannot force instead of offering a retry", async () => {
+  it("shows a failure it cannot force instead of offering a retry", async () => {
     mockSessions(SESSIONS, {
       deleted: [],
       failed: [{ sessionId: "s-fresh", error: "Chat not found: s-fresh" }],
@@ -249,7 +250,7 @@ describe("SessionSidebar older chats", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Chat not found: s-fresh"));
+    expect(await screen.findByText("Chat not found: s-fresh")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete anyway" })).not.toBeInTheDocument();
     expect(screen.getByText("Fresh chat")).toBeInTheDocument();
   });

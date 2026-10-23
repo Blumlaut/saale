@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderGit2, Loader2, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { FolderGit2, MoreVertical, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import {
@@ -11,21 +11,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Page } from "@/components/layout/page";
 import { Separator } from "@/components/ui/separator";
-import { deleteJson, type FetchError } from "@/lib/http";
+import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
+import { deleteJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
-import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
 import { ROW_ACTION, cn } from "@/lib/utils";
 import { ProjectCreateDialog } from "./project-create-dialog";
 import { useProjects, type CoderProjectSummary } from "./use-coder-data";
@@ -43,29 +33,17 @@ export function ProjectList() {
   const { projects, loading, error, reload } = useProjects();
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<CoderProjectSummary | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [forcePending, setForcePending] = useState(false);
-  const [busy, setBusy] = useState(false);
 
-  const remove = async (project: CoderProjectSummary, force = false) => {
-    setBusy(true);
-    setDeleteError(null);
-    setForcePending(false);
+  const remove = async (project: CoderProjectSummary, force: boolean) => {
     try {
       await deleteJson(
         `/api/coder/projects/${encodeURIComponent(project.id)}${force ? "?force=1" : ""}`,
       );
-      setDeleting(null);
-      reload();
     } catch (err) {
       console.error(`Failed to delete coder project ${project.id}:`, err);
-      setDeleteError(err instanceof Error ? err.message : "Could not delete the project.");
-      // A chat's checkout refused: the project stays until the user says its
-      // uncommitted work can go.
-      setForcePending(!force && (err as FetchError).code === DIRTY_WORKTREE_CODE);
-    } finally {
-      setBusy(false);
+      throw err;
     }
+    reload();
   };
 
   return (
@@ -148,7 +126,6 @@ export function ProjectList() {
                         onClick={(event) => {
                           event.stopPropagation();
                           setDeleting(project);
-                          setDeleteError(null);
                         }}
                       >
                         <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -170,40 +147,14 @@ export function ProjectList() {
         onCreated={(project) => router.push(`/dashboard/coder/${project.id}`)}
       />
 
-      <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Its chats go with it. The repo directory goes when its tree is clean and every commit
-              is pushed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteError && (
-            <p className="text-destructive text-sm break-words whitespace-pre-wrap">
-              {deleteError}
-            </p>
-          )}
-          {forcePending && (
-            <p className="text-sm break-words">
-              Delete anyway, discarding the uncommitted changes in its chats&apos; checkouts?
-            </p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busy}
-              onClick={(event) => {
-                event.preventDefault();
-                if (deleting) void remove(deleting, forcePending);
-              }}
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {forcePending ? "Delete anyway" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ForceDeleteDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={`Delete ${deleting?.name}?`}
+        description="Its chats go with it. The repo directory goes when its tree is clean and every commit is pushed."
+        discard="the uncommitted changes in its chats' checkouts"
+        onDelete={(force) => (deleting ? remove(deleting, force) : Promise.resolve())}
+      />
     </Page>
   );
 }

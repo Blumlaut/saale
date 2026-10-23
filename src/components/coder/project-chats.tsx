@@ -8,24 +8,14 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { deleteJson, type FetchError } from "@/lib/http";
+import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
+import { deleteJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
-import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
 import { ROW_ACTION, cn } from "@/lib/utils";
 import { useProject, type CoderProjectChat } from "./use-coder-data";
 
@@ -47,30 +37,18 @@ export function ProjectChats({
   const router = useRouter();
   const { project, chats, loading, error, reload } = useProject(projectId);
   const [deleting, setDeleting] = useState<CoderProjectChat | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [forcePending, setForcePending] = useState(false);
-  const [busy, setBusy] = useState(false);
 
-  const remove = async (chat: CoderProjectChat, force = false) => {
-    setBusy(true);
-    setDeleteError(null);
-    setForcePending(false);
+  const remove = async (chat: CoderProjectChat, force: boolean) => {
     try {
       await deleteJson(
         `/api/chat/sessions/${encodeURIComponent(chat.id)}${force ? "?force=1" : ""}`,
       );
-      setDeleting(null);
-      reload();
-      if (chat.id === activeSessionId) router.push(`/dashboard/coder/${projectId}`);
     } catch (err) {
       console.error(`Failed to delete coder chat ${chat.id}:`, err);
-      setDeleteError(err instanceof Error ? err.message : "Could not delete this chat.");
-      // git refused a checkout with uncommitted work: it stays until the user
-      // says that work can go.
-      setForcePending(!force && (err as FetchError).code === DIRTY_WORKTREE_CODE);
-    } finally {
-      setBusy(false);
+      throw err;
     }
+    reload();
+    if (chat.id === activeSessionId) router.push(`/dashboard/coder/${projectId}`);
   };
 
   return (
@@ -153,13 +131,7 @@ export function ProjectChats({
                   )}
                 />
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => {
-                      setDeleting(chat);
-                      setDeleteError(null);
-                    }}
-                  >
+                  <DropdownMenuItem variant="destructive" onClick={() => setDeleting(chat)}>
                     <Trash2 className="mr-2 h-3.5 w-3.5" />
                     Delete chat
                   </DropdownMenuItem>
@@ -171,49 +143,26 @@ export function ProjectChats({
         ))}
       </div>
 
-      <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
-            <AlertDialogDescription>
-              It takes the chat&apos;s worktree with it. git refuses a checkout with uncommitted
-              work, and then nothing is deleted.
-              {deleting?.worktree && (
-                <>
-                  {" "}
-                  Branch <span className="font-mono break-all">
-                    {deleting.worktree.branch}
-                  </span>{" "}
-                  stays in the repo.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteError && (
-            <p className="text-destructive text-sm break-words whitespace-pre-wrap">
-              {deleteError}
-            </p>
-          )}
-          {forcePending && (
-            <p className="text-sm break-words">
-              Delete anyway, discarding the uncommitted changes in this checkout?
-            </p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busy}
-              onClick={(event) => {
-                event.preventDefault();
-                if (deleting) void remove(deleting, forcePending);
-              }}
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {forcePending ? "Delete anyway" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ForceDeleteDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Delete this chat?"
+        description={
+          <>
+            It takes the chat&apos;s worktree with it. git refuses a checkout with uncommitted work,
+            and then nothing is deleted.
+            {deleting?.worktree && (
+              <>
+                {" "}
+                Branch <span className="font-mono break-all">{deleting.worktree.branch}</span> stays
+                in the repo.
+              </>
+            )}
+          </>
+        }
+        discard="this chat's uncommitted changes"
+        onDelete={(force) => (deleting ? remove(deleting, force) : Promise.resolve())}
+      />
     </GlassPanel>
   );
 }

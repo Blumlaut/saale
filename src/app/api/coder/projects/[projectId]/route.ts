@@ -4,6 +4,8 @@ import { requireSession } from "@/lib/auth";
 import { removeProject } from "@/lib/coder/cleanup";
 import { getProject, serializeProjectDetail } from "@/lib/coder/projects";
 import { CoderCleanupError } from "@/lib/coder/worktree-removal";
+import { cleanupRefusalResponse } from "@/lib/coder/cleanup-response";
+import { forceRequested } from "@/lib/coder/force-delete";
 import { getActiveSessions } from "@/lib/redis";
 
 /**
@@ -49,17 +51,11 @@ export async function DELETE(
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const force = new URL(request.url).searchParams.get("force") === "1";
   try {
-    await removeProject(authResult.user.id, projectId, force);
+    await removeProject(authResult.user.id, projectId, forceRequested(request.url));
     return NextResponse.json({ ok: true });
   } catch (err) {
-    if (err instanceof CoderCleanupError) {
-      return NextResponse.json(
-        { error: err.message, ...(err.code ? { code: err.code } : {}) },
-        { status: err.status },
-      );
-    }
+    if (err instanceof CoderCleanupError) return cleanupRefusalResponse(err);
     console.error(`Failed to delete coder project ${projectId}:`, err);
     return NextResponse.json({ error: "Could not delete the project" }, { status: 500 });
   }

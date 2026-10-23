@@ -35,10 +35,8 @@ const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
 const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
-const SESSION_SIDEBAR = "src/components/chat/session-sidebar.tsx";
 const CODER_CREATE_DIALOG = "src/components/coder/project-create-dialog.tsx";
-const CODER_PROJECT_LIST = "src/components/coder/project-list.tsx";
-const CODER_PROJECT_CHATS = "src/components/coder/project-chats.tsx";
+const FORCE_DELETE_DIALOG = "src/components/shared/force-delete-dialog.tsx";
 const CODER_LAYOUT = "src/app/dashboard/coder/layout.tsx";
 const SETTINGS = "/dashboard/settings";
 
@@ -753,7 +751,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "chat · delete selected chats",
     path: "/dashboard/chat",
-    sources: [SESSION_SIDEBAR],
+    sources: [FORCE_DELETE_DIALOG],
     open: async (page) => {
       // At phone widths the session list only exists inside the sheet, so the
       // selection has to be started from there.
@@ -1189,7 +1187,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "coder · delete project confirmation",
     path: "/dashboard/coder",
-    sources: [CODER_PROJECT_LIST],
+    sources: [FORCE_DELETE_DIALOG],
     mock: mockCoderProjects,
     open: async (page) => {
       await openRowMenu(page, "e2e-project-with-a-long-name");
@@ -1199,7 +1197,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "coder · delete chat confirmation",
     path: "/dashboard/coder/e2e-project",
-    sources: [CODER_PROJECT_CHATS],
+    sources: [FORCE_DELETE_DIALOG],
     mock: mockCoderProjects,
     open: async (page) => {
       await click(page, '[aria-label^="Actions for A coder chat with a long title"]');

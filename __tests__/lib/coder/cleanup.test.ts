@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   deleteChat: vi.fn(),
   getActiveSessions: vi.fn(),
   removeWorktree: vi.fn(),
+  deleteWorktreeDirectory: vi.fn(),
   isRepoFullyPushed: vi.fn(),
   runInWorkspace: vi.fn(),
   pooledEntry: vi.fn(),
@@ -65,13 +66,14 @@ vi.mock("@/lib/sandbox/client", () => ({
 vi.mock("@/lib/coder/git", () => ({
   GitError: class FakeGitError extends Error {},
   removeWorktree: mocks.removeWorktree,
+  deleteWorktreeDirectory: mocks.deleteWorktreeDirectory,
   isRepoFullyPushed: mocks.isRepoFullyPushed,
   runInWorkspace: mocks.runInWorkspace,
   shellQuote: (value: string) => `'${value}'`,
 }));
 
 import { GitError } from "@/lib/coder/git";
-import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
+import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { removeProject } from "@/lib/coder/cleanup";
 import { CoderCleanupError, removeChatWorktree } from "@/lib/coder/worktree-removal";
 
@@ -98,6 +100,7 @@ beforeEach(async () => {
     status: "active",
   });
   mocks.removeWorktree.mockResolvedValue(undefined);
+  mocks.deleteWorktreeDirectory.mockResolvedValue(undefined);
   mocks.updateWorktree.mockResolvedValue({});
   mocks.runInWorkspace.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
   mocks.pooledEntry.mockReturnValue(undefined);
@@ -147,7 +150,7 @@ describe("removeChatWorktree", () => {
     expect(error).toBeInstanceOf(CoderCleanupError);
     expect((error as CoderCleanupError).message).toContain("modified or untracked");
     // The code is what lets a delete dialog offer "Delete anyway".
-    expect((error as CoderCleanupError).code).toBe(DIRTY_WORKTREE_CODE);
+    expect((error as CoderCleanupError).code).toBe(WORKTREE_KEPT_CODE);
     expect(mocks.updateWorktree).not.toHaveBeenCalled();
   });
 
@@ -163,19 +166,30 @@ describe("removeChatWorktree", () => {
     expect(mocks.updateWorktree).toHaveBeenCalled();
   });
 
-  it("leaves a refusal without a force code when git failed for another reason", async () => {
+  it("reports a checkout even a forced deletion could not remove", async () => {
     mocks.removeWorktree.mockRejectedValue(
-      new GitError("fatal: not a git repository", [], {
+      new GitError("fatal: could not delete the directory", [], {
         stdout: "",
         stderr: "",
         exitCode: 128,
       }),
     );
 
-    const error = await removeChatWorktree(USER, SESSION, true).catch((err: unknown) => err);
+    // No code: nothing left to confirm, so the dialog just shows the reason.
+    await expect(removeChatWorktree(USER, SESSION, true)).rejects.toThrow(/could not delete/);
+    expect(mocks.updateWorktree).not.toHaveBeenCalled();
+  });
 
-    expect(error).toBeInstanceOf(CoderCleanupError);
-    expect((error as CoderCleanupError).code).toBeUndefined();
+  it("deletes the files of a checkout whose repo is gone when forced", async () => {
+    await fs.rm(path.join(workspaceDir, `user-${USER}`, "projects"), { recursive: true });
+
+    const result = await removeChatWorktree(USER, SESSION, true);
+
+    expect(result).toEqual({ path: "worktrees/saale/c-1a2b3c4d", removed: true });
+    // git has no repo to ask, so the directory goes directly.
+    expect(mocks.removeWorktree).not.toHaveBeenCalled();
+    expect(mocks.deleteWorktreeDirectory).toHaveBeenCalledWith(USER, "worktrees/saale/c-1a2b3c4d");
+    expect(mocks.updateWorktree).toHaveBeenCalled();
   });
 
   it("does nothing for a chat that is not a coder chat", async () => {

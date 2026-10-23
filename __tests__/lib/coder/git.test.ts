@@ -150,8 +150,32 @@ describe("worktrees", () => {
 
     const options = execOptions[0] as { command: string };
     expect(options.command).toBe(
-      `git --no-pager worktree remove --force ${root}/worktrees/saale/c-1`,
+      `git --no-pager worktree remove --force --force ${root}/worktrees/saale/c-1`,
     );
+  });
+
+  it("deletes the directory when git still refuses a forced removal", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    execQueue = [
+      { stdout: "", stderr: "fatal: contains submodule at 'vendor'\n", exitCode: 128 },
+      { stdout: "", stderr: "", exitCode: 0 },
+      { stdout: "", stderr: "", exitCode: 0 },
+    ];
+
+    await removeWorktree(USER, {
+      repoDir: "projects/saale",
+      dir: "worktrees/saale/c-1",
+      force: true,
+    });
+
+    const commands = execOptions.map((options) => (options as { command: string }).command);
+    expect(commands).toEqual([
+      `git --no-pager worktree remove --force --force ${root}/worktrees/saale/c-1`,
+      `rm -rf -- ${root}/worktrees/saale/c-1`,
+      "git --no-pager worktree prune",
+    ]);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

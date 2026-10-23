@@ -52,7 +52,7 @@ vi.mock("@/lib/coder/worktree-removal", async (importOriginal) => {
 
 import { deleteChatSession, deleteChatSessions } from "@/lib/chat/delete-session";
 import { CoderCleanupError } from "@/lib/coder/worktree-removal";
-import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
+import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 
 const USER_ID = "user-1";
 const SESSION_ID = "chat-1";
@@ -213,7 +213,7 @@ describe("deleteChatSessions", () => {
       new CoderCleanupError(
         "fatal: contains modified or untracked files, use --force to delete it",
         409,
-        DIRTY_WORKTREE_CODE,
+        WORKTREE_KEPT_CODE,
       ),
     );
 
@@ -224,7 +224,7 @@ describe("deleteChatSessions", () => {
       {
         sessionId: "chat-1",
         error: "fatal: contains modified or untracked files, use --force to delete it",
-        code: DIRTY_WORKTREE_CODE,
+        code: WORKTREE_KEPT_CODE,
       },
     ]);
     // The chat and its checkout survive, ready for the confirmed retry.

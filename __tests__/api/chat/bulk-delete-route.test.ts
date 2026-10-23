@@ -62,7 +62,7 @@ describe("POST /api/chat/sessions/bulk", () => {
   it("reports the chats that survived instead of failing the whole batch", async () => {
     mockDeleteChatSessions.mockResolvedValue({
       deleted: ["chat-1"],
-      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2", code: "dirty-worktree" }],
+      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2", code: "worktree-kept" }],
     });
 
     const res = await bulkRequest({ ids: ["chat-1", "chat-2"] });
@@ -72,7 +72,7 @@ describe("POST /api/chat/sessions/bulk", () => {
     // confirmed retry instead of a plain failure.
     expect(await res.json()).toEqual({
       deleted: ["chat-1"],
-      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2", code: "dirty-worktree" }],
+      failed: [{ sessionId: "chat-2", error: "Chat not found: chat-2", code: "worktree-kept" }],
     });
   });
 
