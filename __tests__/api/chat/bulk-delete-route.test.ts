@@ -44,7 +44,7 @@ describe("POST /api/chat/sessions/bulk", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ deleted: ["chat-1", "chat-2"], failed: [] });
-    expect(mockDeleteChatSessions).toHaveBeenCalledWith(USER_ID, ["chat-1", "chat-2"]);
+    expect(mockDeleteChatSessions).toHaveBeenCalledWith(USER_ID, ["chat-1", "chat-2"], false);
   });
 
   it("reports the chats that survived instead of failing the whole batch", async () => {
