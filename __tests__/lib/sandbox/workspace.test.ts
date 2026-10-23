@@ -61,6 +61,17 @@ describe("ensureWorkspace", () => {
     expect(stats.mode & 0o777).toBe(0o770);
   });
 
+  it("keeps 0770 whatever umask the deployment runs under", async () => {
+    const previous = process.umask(0o077);
+    try {
+      const dir = await ensureWorkspace("user-umask");
+
+      expect((await fs.stat(dir)).mode & 0o777).toBe(0o770);
+    } finally {
+      process.umask(previous);
+    }
+  });
+
   it("keeps one identity out of another's path", () => {
     expect(identityPath("user-a").startsWith(`${identityPath("user-b")}/`)).toBe(false);
   });
