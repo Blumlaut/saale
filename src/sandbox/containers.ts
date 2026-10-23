@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { PassThrough, type Duplex } from "node:stream";
 import type Dockerode from "dockerode";
 import type { SandboxConfig } from "@/lib/sandbox/config";
+import { previewIdentitySlug } from "@/lib/preview/url";
 import { parseIdentity } from "@/lib/sandbox/identity";
 import { containerName, containerSpec, containerWorkspacePath } from "@/lib/sandbox/spec";
 import { ensureWorkspace } from "@/lib/sandbox/workspace";
@@ -113,6 +114,9 @@ const KILL_GRACE_MS = 2000;
 const EXIT_POLL_MS = 100;
 const EXIT_POLL_TRIES = 50;
 
+/** How long a slug lookup may reuse one container list. */
+const SLUG_INDEX_TTL_MS = 10_000;
+
 export interface ContainerManager {
   ensure(identity: string): Promise<ContainerHandle>;
   run(
@@ -130,6 +134,8 @@ export interface ContainerManager {
   sweep(): Promise<number>;
   /** Stop idle containers, remove ones past their time to live. */
   reapIdle(): Promise<{ stopped: number; removed: number }>;
+  /** The workspace a preview hostname's slug stands for, or null. */
+  identityForSlug(slug: string): Promise<string | null>;
 }
 
 export interface ContainerManagerOptions {
@@ -190,6 +196,8 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
   const killTimers = new Map<string, NodeJS.Timeout>();
   /** Containers being brought up, so parallel commands share one start. */
   const starting = new Map<string, Promise<ContainerHandle>>();
+  /** Slug to identity, rebuilt when it ages out or a container changes. */
+  let slugIndex: { at: number; bySlug: Map<string, string> } | null = null;
 
   async function inspectOrNull(name: string): Promise<Dockerode.ContainerInspectInfo | null> {
     try {
@@ -309,6 +317,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     }
 
     const container = await create(id);
+    slugIndex = null;
     lastUsed.set(id, now());
     return container;
   }
@@ -490,6 +499,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
       return false;
     }
     await docker.getContainer(name).remove({ force: true });
+    slugIndex = null;
     lastUsed.delete(id);
     return true;
   }
@@ -509,6 +519,29 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
       rows.push({ identity, summary, container: docker.getContainer(summary.Id) });
     }
     return rows;
+  }
+
+  /**
+   * Which workspace a preview hostname's slug names.
+   *
+   * The hash is one-way, so the answer comes from the containers that exist:
+   * their labels carry the identity. One list serves every request for a few
+   * seconds, because a page load is dozens of them.
+   */
+  async function identityForSlug(slug: string): Promise<string | null> {
+    if (!slugIndex || now() - slugIndex.at > SLUG_INDEX_TTL_MS) {
+      const bySlug = new Map<string, string>();
+      try {
+        for (const { identity } of await labelled()) {
+          bySlug.set(previewIdentitySlug(identity), identity);
+        }
+      } catch (err) {
+        console.error("Failed to list containers for a preview hostname:", err);
+        return null;
+      }
+      slugIndex = { at: now(), bySlug };
+    }
+    return slugIndex.bySlug.get(slug) ?? null;
   }
 
   async function sweep(): Promise<number> {
@@ -573,7 +606,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     return { stopped, removed };
   }
 
-  return { ensure, run, kill, write, remove, stop, sweep, reapIdle };
+  return { ensure, run, kill, write, remove, stop, sweep, reapIdle, identityForSlug };
 }
 
 export function isAlreadyStarted(err: unknown): boolean {

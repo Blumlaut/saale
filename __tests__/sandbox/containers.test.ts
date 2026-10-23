@@ -4,6 +4,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import type Dockerode from "dockerode";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { previewIdentitySlug } from "@/lib/preview/url";
 import { sandboxConfig } from "@/lib/sandbox/config";
 import type { containerSpec } from "@/lib/sandbox/spec";
 import {
@@ -617,6 +618,32 @@ describe("sweep and reapIdle", () => {
 
     // idleMinutes 0 still stops an idle container; TTL 0 disables removal.
     expect((await managerInstance.reapIdle()).removed).toBe(0);
+  });
+});
+
+describe("identityForSlug", () => {
+  it("maps a preview slug back to the workspace it was hashed from", async () => {
+    const managerInstance = manager();
+    await managerInstance.ensure("user-abc");
+
+    expect(await managerInstance.identityForSlug(previewIdentitySlug("user-abc"))).toBe("user-abc");
+    expect(await managerInstance.identityForSlug(previewIdentitySlug("user-other"))).toBeNull();
+  });
+
+  it("lists containers once for a burst of requests", async () => {
+    const list = vi.spyOn(docker, "listContainers");
+    const managerInstance = manager();
+    await managerInstance.ensure("user-abc");
+    list.mockClear();
+
+    const slug = previewIdentitySlug("user-abc");
+    await managerInstance.identityForSlug(slug);
+    await managerInstance.identityForSlug(slug);
+    expect(list).toHaveBeenCalledTimes(1);
+
+    // A container created since the list was read is found on the next read.
+    await managerInstance.ensure("user-xyz");
+    expect(await managerInstance.identityForSlug(previewIdentitySlug("user-xyz"))).toBe("user-xyz");
   });
 });
 

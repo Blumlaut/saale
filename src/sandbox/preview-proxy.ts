@@ -1,9 +1,10 @@
 /**
  * The preview listener.
  *
- * A request for `<identity>-<port>-<token>.<preview domain>` is a request for
- * one port of one workspace. The signature in the hostname is checked here, the
- * container is dialled by name on the sandbox network, and the request is passed
+ * A request for `<slug>-<port>-<token>.<preview domain>` is a request for one
+ * port of one workspace. The slug is turned back into the workspace it hashes
+ * from, the signature in the hostname is checked against it, the container is
+ * dialled by name on the sandbox network, and the request is passed
  * through as it stands: the app inside sees its own hostname at the root of its
  * own origin, so it builds the URLs it always builds.
  *
@@ -13,6 +14,7 @@
 
 import http from "node:http";
 import net from "node:net";
+import type { Duplex } from "node:stream";
 import { parsePreviewHost } from "@/lib/preview/url";
 import { verifyPreviewToken } from "@/lib/preview/token";
 import { containerName } from "@/lib/sandbox/spec";
@@ -26,6 +28,8 @@ const NO_TIMEOUT = 0;
 export interface PreviewProxyOptions {
   /** `SANDBOX_API_KEY`: the key the app signs preview URLs with. */
   key: string;
+  /** The workspace a hostname's slug stands for, or null. */
+  resolveIdentity: (slug: string) => Promise<string | null> | string | null;
   /** Where a workspace's container answers. Docker's DNS by default. */
   upstreamHost?: (identity: string) => string;
 }
@@ -97,11 +101,15 @@ export function createPreviewProxy(options: PreviewProxyOptions): http.Server {
   const upstreamHost = options.upstreamHost ?? containerName;
   const agent = new http.Agent({ keepAlive: true, maxSockets: 256 });
 
-  function resolveTarget(hostHeader: string | undefined): PreviewTarget | null {
+  async function resolveTarget(hostHeader: string | undefined): Promise<PreviewTarget | null> {
     if (!hostHeader) return null;
     const parsed = parsePreviewHost(hostHeader);
     if (!parsed) return null;
-    const scope = { identity: parsed.identity, port: parsed.port };
+    // A slug that names no workspace gets the same answer as a bad signature,
+    // so a hostname says nothing about which workspaces this server has.
+    const identity = await options.resolveIdentity(parsed.slug);
+    if (!identity) return null;
+    const scope = { identity, port: parsed.port };
     if (!verifyPreviewToken(parsed.token, scope, options.key)) return null;
     return scope;
   }
@@ -156,22 +164,42 @@ export function createPreviewProxy(options: PreviewProxyOptions): http.Server {
       return;
     }
 
-    const target = resolveTarget(req.headers.host);
-    if (!target) {
-      sendPage(res, 404, NOT_FOUND_PAGE);
-      return;
-    }
-    forward(req, res, target);
+    resolveTarget(req.headers.host)
+      .then((target) => {
+        if (!target) {
+          sendPage(res, 404, NOT_FOUND_PAGE);
+          return;
+        }
+        forward(req, res, target);
+      })
+      .catch((err: unknown) => {
+        console.error("[preview] resolving a hostname failed:", err);
+        sendPage(res, 404, NOT_FOUND_PAGE);
+      });
   });
 
   // A websocket upgrade is a handshake this process relays byte for byte.
   server.on("upgrade", (req, socket, head) => {
-    const target = resolveTarget(req.headers.host);
-    if (!target) {
-      socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
-      return;
-    }
+    resolveTarget(req.headers.host)
+      .catch((err: unknown) => {
+        console.error("[preview] resolving an upgrade hostname failed:", err);
+        return null;
+      })
+      .then((target) => {
+        if (!target) {
+          socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+          return;
+        }
+        relayUpgrade(req, socket, head, target);
+      });
+  });
 
+  function relayUpgrade(
+    req: http.IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+    target: PreviewTarget,
+  ): void {
     const upstream = net.connect({ host: upstreamHost(target.identity), port: target.port }, () => {
       const lines = [`${req.method ?? "GET"} ${req.url ?? "/"} HTTP/1.1`];
       for (let index = 0; index < req.rawHeaders.length; index += 2) {
@@ -195,7 +223,7 @@ export function createPreviewProxy(options: PreviewProxyOptions): http.Server {
       console.warn(`[preview] upgrade socket closed:`, err);
       upstream.destroy();
     });
-  });
+  }
 
   server.requestTimeout = NO_TIMEOUT;
   server.timeout = NO_TIMEOUT;

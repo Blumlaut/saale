@@ -60,6 +60,9 @@ function fakeManager(script: (request: SandboxExecRequest) => SandboxChunk[]): C
     async reapIdle() {
       return { stopped: 0, removed: 0 };
     },
+    async identityForSlug() {
+      return null;
+    },
   };
 }
 

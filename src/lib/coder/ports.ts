@@ -62,10 +62,20 @@ export async function listChatPorts(userId: string, sessionId: string): Promise<
   };
 }
 
+/** One URL failing to build must not take the rest of the list down with it. */
+function urlOrNull(identity: string, port: number): string | null {
+  try {
+    return previewUrl(identity, port);
+  } catch (err) {
+    console.error(`Failed to build the preview URL for port ${port}:`, err);
+    return null;
+  }
+}
+
 function toCoderPort(entry: SandboxPort, identity: string): CoderPort {
   const { domain } = previewConfig();
   // A loopback bind cannot be reached from the proxy either, so it gets no link.
-  const url = domain && !entry.loopback ? previewUrl(identity, entry.port) : null;
+  const url = domain && !entry.loopback ? urlOrNull(identity, entry.port) : null;
 
   return {
     port: entry.port,
