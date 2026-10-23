@@ -5,6 +5,8 @@ const openMailbox = { current: "INBOX" };
 const serverMessages = new Map<string, Record<string, unknown>[]>();
 /** Folder → the error `mailboxOpen` should raise for it. */
 const folderErrors = new Map<string, Error>();
+/** Folder → how many messages `fetch` yields before it fails. */
+const fetchFailsAfter = new Map<string, number>();
 const mailboxList: Array<{ path: string; name: string; flags: Set<string>; specialUse?: string }> =
   [];
 
@@ -24,8 +26,12 @@ vi.mock("imapflow", () => {
     fetch(uids: number[]) {
       const messages = serverMessages.get(openMailbox.current) ?? [];
       const matched = messages.filter((m) => uids.includes(m.uid as number));
+      const failAfter = fetchFailsAfter.get(openMailbox.current);
       return (async function* () {
-        for (const message of matched) yield message;
+        for (let i = 0; i < matched.length; i++) {
+          if (failAfter !== undefined && i >= failAfter) throw new Error("connection lost");
+          yield matched[i];
+        }
       })();
     }
   }
@@ -86,6 +92,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   serverMessages.clear();
   folderErrors.clear();
+  fetchFailsAfter.clear();
   mailboxList.length = 0;
   vi.mocked(prisma.emailAccount.findUnique).mockResolvedValue(account as never);
   vi.mocked(prisma.emailAccount.update).mockResolvedValue(account as never);
@@ -193,6 +200,40 @@ describe("syncEmailAccount folder-scoped messages", () => {
       { data: unknown[] },
     ];
     expect(firstCall[0].data).toHaveLength(2);
+  });
+
+  it("flushes a big folder in batches instead of holding every envelope at once", async () => {
+    // One past the batch size: the second flush carries the overflow.
+    serverMessages.set(
+      "INBOX",
+      Array.from({ length: 2001 }, (_, i) => fetched(i + 1, `Message ${i + 1}`, "a@example.com")),
+    );
+
+    const result = await syncEmailAccount("acc-1");
+
+    expect(result).toMatchObject({ newMessages: 2001, updatedMessages: 0 });
+    expect(prisma.emailMessage.createMany).toHaveBeenCalledTimes(2);
+    const sizes = vi
+      .mocked(prisma.emailMessage.createMany)
+      .mock.calls.map((call) => (call[0]!.data as unknown[]).length);
+    expect(sizes).toEqual([2000, 1]);
+  });
+
+  it("keeps the batches already written when the fetch fails midway", async () => {
+    // The iterator hands over a full batch and then errors, the way a dropped
+    // IMAP connection does half-way through a big folder.
+    serverMessages.set(
+      "INBOX",
+      Array.from({ length: 2001 }, (_, i) => fetched(i + 1, `Message ${i + 1}`, "a@example.com")),
+    );
+    fetchFailsAfter.set("INBOX", 2000);
+
+    const result = await syncEmailAccount("acc-1");
+
+    // The first batch is committed, the failure is reported for the folder.
+    expect(prisma.emailMessage.createMany).toHaveBeenCalledTimes(1);
+    expect(result.newMessages).toBe(2000);
+    expect(result.errors).toEqual([expect.stringContaining("Failed to sync folder INBOX")]);
   });
 
   it("leaves the fetched body of an existing message alone", async () => {
