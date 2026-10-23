@@ -82,6 +82,18 @@ const BOTTOM_EPSILON_PX = 1; // px from the tail that still counts as the tail
 const RETURN_BAND_PX = 80;
 /** Touch drag distance that counts as a deliberate scroll, not a tap. */
 const TOUCH_SLOP_PX = 4;
+/**
+ * How long after a scroll input (wheel, touch, key, scrollbar press) the view
+ * still counts as the user's.
+ *
+ * Only the user can re-arm following. Without this, a *layout* clamp counts
+ * too: a tool card collapsing or a turn being saved shortens the transcript,
+ * the browser clamps the view to the new tail, and the scroll event that
+ * reports it looks exactly like someone arriving there on purpose. Following
+ * then turns itself back on under a reader who had scrolled away. and every
+ * token drags them down again.
+ */
+const INPUT_GRACE_MS = 500;
 
 /** The scroll offset that pins a container to its tail. */
 const tailOffset = (el: HTMLElement) => Math.max(0, el.scrollHeight - el.clientHeight);
@@ -128,31 +140,55 @@ export const MessageList = memo(
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const bottomRef = useRef<HTMLDivElement>(null);
+    /** The transcript itself, whose height changes are what the follow watches. */
+    const contentRef = useRef<HTMLDivElement>(null);
     const [isAtBottom, setIsAtBottom] = useState(true);
-    // Auto-scroll is armed until the user scrolls up away from the tail.
-    // Re-armed by scrolling back down, the jump-to-bottom button, and
-    // enableAutoScroll (send, approval). Kept separate from isAtBottom,
-    // which is purely scroll-derived and also selects the render window.
-    const [autoScroll, setAutoScroll] = useState(true);
-    /** `autoScroll` for the follow effect and the handlers below. They must read
-     * it synchronously: a token can commit in the same frame as the user's wheel,
-     * and a stale `true` would drag the view back down over them. */
+    // Auto-scroll is armed until the user scrolls away from the tail. Re-armed
+    // by scrolling back down, the jump-to-bottom button, and enableAutoScroll
+    // (send, approval). Kept separate from isAtBottom, which is purely
+    // scroll-derived and also selects the render window.
+    // A ref, not state: every reader of it is an input handler or the follow
+    // itself, and all of them need the value synchronously. a token can commit
+    // in the same frame as the user's wheel, and a stale `true` read from the
+    // last render would drag the view back down over them.
     const autoScrollRef = useRef(true);
     const armAutoScroll = useCallback((armed: boolean) => {
       autoScrollRef.current = armed;
-      setAutoScroll(armed);
     }, []);
     /** The position the last scroll event reported. Every movement reaches us
      * as a scroll event. ours, the user's, the browser's. and unlike a read
      * after a programmatic scroll, a dispatched event is never stale. */
     const observedTopRef = useRef(0);
     const touchStartYRef = useRef<number | null>(null);
+    /** When the last scroll input arrived (see `INPUT_GRACE_MS`). */
+    const lastInputAtRef = useRef(Number.NEGATIVE_INFINITY);
+    /** A pointer or finger is down on the transcript right now (a scrollbar
+     * drag reports its movement without any further input event). */
+    const pointerDownRef = useRef(false);
+    /**
+     * Is the view the user's to move right now?
+     *
+     * Every scroll input says yes as it happens, and keeps saying it for a
+     * moment afterwards, so a layout clamp in the same breath cannot arm the
+     * follow back up under them. Following is *only* ever re-armed from here:
+     * a position that merely happens to be at the tail is not intent.
+     */
+    const userIsDriving = useCallback(
+      () => pointerDownRef.current || Date.now() - lastInputAtRef.current < INPUT_GRACE_MS,
+      [],
+    );
+    const noteInput = useCallback(() => {
+      lastInputAtRef.current = Date.now();
+    }, []);
 
-    // Bump on every content change so the selection-quote button can re-check
-    // a selection after streaming tokens or a DB reload shift the layout.
+    // Bump on content changes so the selection-quote button can re-check a
+    // selection after streaming tokens or a DB reload shift the layout. Only
+    // while something is actually selected: unconditional bumps re-rendered
+    // the whole transcript a second time for every token.
     const [selectionVersion, setSelectionVersion] = useState(0);
     useEffect(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return;
       setSelectionVersion((v) => v + 1);
     }, [messages]);
 
@@ -183,14 +219,19 @@ export const MessageList = memo(
       // Reading back: pin the window where the user left it, so arriving turns
       // only append below. Back at the bottom, follow the tail again.
       setPinnedStart(atBottom ? null : windowStart);
-      if (atBottom || (movedDown && atTail(el, RETURN_BAND_PX))) {
-        // On the tail, or scrolling back down into it: following is what they
-        // want. Gated on direction, so a wheel *up* can never re-arm this way.
-        armAutoScroll(true);
-      } else if (movedUp) {
+      if (movedUp) {
+        // Above the last position we saw: nothing drags the view *up* on its
+        // own except the browser safeguarding the reader's place, and that is
+        // still the reader's place.
         armAutoScroll(false);
+      } else if (userIsDriving() && (atBottom || (movedDown && atTail(el, RETURN_BAND_PX)))) {
+        // On the tail, or moving back down into it: following is what they
+        // want. Requires an input behind the movement. a transcript that a
+        // collapsing tool card shortened clamps to its new tail by itself, and
+        // that must not turn following back on under a reader who left.
+        armAutoScroll(true);
       }
-    }, [windowStart, armAutoScroll]);
+    }, [windowStart, armAutoScroll, userIsDriving]);
 
     // Input drives the view, never the other way round: wheel, touch and keys
     // release auto-scroll as they happen, before the follow effect can pull the
@@ -199,6 +240,7 @@ export const MessageList = memo(
       (e: React.WheelEvent) => {
         const el = containerRef.current;
         if (!el) return;
+        noteInput();
         // `scrollTop > 0`: a transcript that fits cannot scroll up, so an
         // upward wheel there is not the user leaving the tail.
         if (e.deltaY < 0) {
@@ -207,19 +249,21 @@ export const MessageList = memo(
           armAutoScroll(true);
         }
       },
-      [armAutoScroll],
+      [armAutoScroll, noteInput],
     );
 
     const handlePointerDown = useCallback(
       (e: React.PointerEvent) => {
         const el = containerRef.current;
         if (!el) return;
+        noteInput();
+        pointerDownRef.current = true;
         // A press in the scrollbar gutter (inside the container's box, outside
         // its content area) starts a thumb drag. a scroll input like any other.
         const gutter = el.offsetWidth - el.clientWidth;
         if (gutter > 0 && e.nativeEvent.offsetX >= el.clientWidth) armAutoScroll(false);
       },
-      [armAutoScroll],
+      [armAutoScroll, noteInput],
     );
 
     const handleKeyDown = useCallback(
@@ -228,11 +272,31 @@ export const MessageList = memo(
         // Keys typed into a message's editor are not a scroll.
         if (target?.closest("input, textarea, [contenteditable='true']")) return;
         if (e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") {
+          noteInput();
           armAutoScroll(false);
+        } else if (e.key === "End" || e.key === "PageDown" || e.key === "ArrowDown") {
+          // Following is what jumping to the end means.
+          noteInput();
+          const el = containerRef.current;
+          if (e.key === "End" && el) armAutoScroll(true);
         }
       },
-      [armAutoScroll],
+      [armAutoScroll, noteInput],
     );
+
+    // A release anywhere ends the drag (a thumb dragged out of the panel still
+    // releases): the transcript must not think the reader is in charge forever.
+    useEffect(() => {
+      const release = () => {
+        pointerDownRef.current = false;
+      };
+      window.addEventListener("pointerup", release);
+      window.addEventListener("pointercancel", release);
+      return () => {
+        window.removeEventListener("pointerup", release);
+        window.removeEventListener("pointercancel", release);
+      };
+    }, []);
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
       touchStartYRef.current = e.touches[0]?.clientY ?? null;
@@ -244,6 +308,7 @@ export const MessageList = memo(
         const start = touchStartYRef.current;
         const y = e.touches[0]?.clientY;
         if (start === null || y === undefined || !el) return;
+        if (Math.abs(y - start) > TOUCH_SLOP_PX) noteInput();
         if (y - start > TOUCH_SLOP_PX) {
           // Finger dragged down pulls earlier turns back into view: reading back.
           if (el.scrollTop > 0) armAutoScroll(false);
@@ -251,13 +316,13 @@ export const MessageList = memo(
           armAutoScroll(true);
         }
       },
-      [armAutoScroll],
+      [armAutoScroll, noteInput],
     );
 
     // Jump to the tail and re-arm auto-scroll (button click, send, approval).
     const jumpToBottom = useCallback(() => {
       const el = containerRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      if (el) el.scrollTop = tailOffset(el);
       // Set state directly too: a programmatic scroll may not emit a scroll
       // event (e.g. already at the bottom), and the button must hide now.
       setIsAtBottom(true);
@@ -266,6 +331,30 @@ export const MessageList = memo(
     }, [armAutoScroll]);
 
     useImperativeHandle(ref, () => ({ enableAutoScroll: jumpToBottom }), [jumpToBottom]);
+
+    /**
+     * Pin the view to the tail, unless the reader is holding it.
+     *
+     * Writes `scrollTop` instead of calling `scrollIntoView` on a tail
+     * sentinel: the offset is the one we just computed, it cannot scroll an
+     * ancestor scroller out from under another panel, and it costs no element
+     * lookup or layout read beyond the two the offset needs.
+     */
+    const followTail = useCallback(() => {
+      const el = containerRef.current;
+      if (!el || !autoScrollRef.current) return;
+      // Mid-gesture, or just after one: the reader is in charge of the view.
+      if (userIsDriving()) return;
+      el.scrollTop = tailOffset(el);
+      // The write above reports itself as a scroll event. Record the position
+      // it reached so that event cannot be mistaken for the user's movement.
+      observedTopRef.current = el.scrollTop;
+    }, [userIsDriving]);
+
+    // Content arriving (a token, a tool result) is the other half: follow it.
+    useEffect(() => {
+      followTail();
+    }, [messages, followTail]);
 
     const visibleGroups = windowStart > 0 ? groupedMessages.slice(windowStart) : groupedMessages;
     const hiddenMessageCount = useMemo(
@@ -279,16 +368,18 @@ export const MessageList = memo(
       [groupedMessages, windowStart],
     );
 
-    // Follow the tail on every content change while auto-scroll is armed.
-    // Scrolling up disarms it (reading position is preserved through reloads);
-    // the jump button, a send, or an approval re-arms it.
-    // Instant, not smooth. queued smooth scrolls lag a fast token stream,
-    // which is what made the old auto-scroll feel flaky.
+    // Follow the tail whenever the transcript's *height* changes, not only
+    // when a message arrives: a thinking block unfolding, a tool card
+    // reporting live output, a code block laying out. Those are exactly the
+    // growths a reader watching a run is pinned to, and they explain most of
+    // the "it snapped back" reports. the message effect above catches the rest.
     useEffect(() => {
-      const el = containerRef.current;
-      if (!el || !autoScrollRef.current) return;
-      bottomRef.current?.scrollIntoView({ behavior: "auto" });
-    }, [messages, autoScroll]);
+      const content = contentRef.current;
+      if (!content || typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(() => followTail());
+      observer.observe(content);
+      return () => observer.disconnect();
+    }, [followTail]);
 
     if (messages.length === 0) {
       // While a generation is loading, never show the "Start a conversation"
@@ -343,7 +434,7 @@ export const MessageList = memo(
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
         >
-          <div className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
+          <div ref={contentRef} className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
             {hiddenMessageCount > 0 && (
               <div className="flex justify-center">
                 <Button
@@ -413,8 +504,6 @@ export const MessageList = memo(
                 </span>
               </div>
             )}
-
-            <div ref={bottomRef} />
           </div>
 
           {onQuoteSelection && (
