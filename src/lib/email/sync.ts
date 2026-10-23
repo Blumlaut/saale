@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { discoverFolders } from "@/lib/email/folders";
 import { sanitizePostgresString } from "@/lib/email/utils";
+import { chunk, IN_LIST_CHUNK_SIZE } from "@/lib/db-batch";
 
 /**
  * Extract a comma-separated address list from an imapflow address array.
@@ -13,21 +14,14 @@ function addressesToString(addrs: MessageAddressObject[] | undefined): string {
   return addrs.map((a) => a.address ?? "").join(",");
 }
 
-/**
- * Postgres caps bind parameters at 65535; keep `in` lists comfortably under
- * that so a very large folder cannot blow up a single query.
- */
-const UIDS_PER_QUERY = 5000;
 /** createMany binds every column of every row (10 here); keep batches well under the cap. */
 const CREATE_BATCH_SIZE = 2000;
-
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    out.push(items.slice(i, i + size));
-  }
-  return out;
-}
+/**
+ * Envelopes held in memory at once. The fetch iterator is drained in batches of
+ * this size so a full sync of a huge folder stays memory-bounded, and so the
+ * rows that did arrive are committed when the iterator fails halfway.
+ */
+const MESSAGES_PER_BATCH = CREATE_BATCH_SIZE;
 
 /** An IMAP envelope, parsed once, ready to be written. */
 interface ParsedEmailRow {
@@ -104,7 +98,7 @@ async function upsertEmailMessages(
   const byUid = new Map<string, string>();
   for (const uidChunk of chunk(
     parsed.map((p) => p.uid),
-    UIDS_PER_QUERY,
+    IN_LIST_CHUNK_SIZE,
   )) {
     const existing = await prisma.emailMessage.findMany({
       where: { accountId, folder, uid: { in: uidChunk } },
@@ -259,18 +253,27 @@ export async function syncEmailAccount(accountId: string): Promise<{
           flags: true,
         };
 
-        // Collect the folder's envelopes, then upsert them as a batch: the
-        // old per-message loop made one existence check plus one write per
-        // message, which dominated the run on a busy INBOX.
-        const envelopes: FetchMessageObject[] = [];
-        for await (const msg of mailbox.fetch(uids, fetchOpts)) {
-          envelopes.push(msg);
-        }
+        // Upsert the folder's envelopes a batch at a time: the old per-message
+        // loop made one existence check plus one write per message, which
+        // dominated the run on a busy INBOX. The iterator is drained into a
+        // batch and flushed once it is full, so a folder with tens of thousands
+        // of messages neither holds every envelope in memory nor loses the
+        // batches already written if the fetch fails midway.
+        let batch: FetchMessageObject[] = [];
+        const flush = async () => {
+          if (batch.length === 0) return;
+          const outcome = await upsertEmailMessages(batch, accountId, folder);
+          newMessages += outcome.created;
+          updatedMessages += outcome.updated;
+          errors.push(...outcome.errors);
+          batch = [];
+        };
 
-        const outcome = await upsertEmailMessages(envelopes, accountId, folder);
-        newMessages += outcome.created;
-        updatedMessages += outcome.updated;
-        errors.push(...outcome.errors);
+        for await (const msg of mailbox.fetch(uids, fetchOpts)) {
+          batch.push(msg);
+          if (batch.length >= MESSAGES_PER_BATCH) await flush();
+        }
+        await flush();
       } catch (err) {
         const folderErr = err as Error & {
           responseStatus?: string;
