@@ -10,6 +10,7 @@ import { ChangesView } from "./changes-view";
 import { PortsView } from "./ports-view";
 import { TerminalView } from "./terminal-view";
 import type { CoderSessionState } from "./use-coder-data";
+import { usePorts } from "./use-ports";
 
 function NoWorktree() {
   return (
@@ -30,9 +31,9 @@ function NoWorktree() {
  * A chat that has not sent its first message has no worktree yet, so the panel
  * says that instead of rendering a browser over the wrong directory.
  *
- * The terminal and the preview keep running while another tab is open, so both
- * are mounted alongside the tab contents instead of inside one. Their polling
- * pauses with the tab; only the iframe stays loaded.
+ * The terminal keeps running while another tab is open, so it is mounted
+ * alongside the tab contents instead of inside one. The ports list pauses its
+ * polling with the tab and picks up again when it comes back.
  */
 export function WorktreePanel({
   sessionId,
@@ -50,6 +51,9 @@ export function WorktreePanel({
   refreshing: boolean;
 }) {
   const [tab, setTab] = useState("changes");
+  // Lifted out of the tab, because the badge has to light while another tab is
+  // open. The poll slows down when Ports is not the visible one.
+  const ports = usePorts(sessionId, tab === "ports");
 
   return (
     <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">
@@ -78,6 +82,12 @@ export function WorktreePanel({
             <TabsTrigger value="ports" className="gap-1.5 text-xs">
               <Globe className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Ports
+              {ports.data?.ports.length ? (
+                <span
+                  aria-label={`${ports.data.ports.length} listening`}
+                  className="bg-primary inline-block size-1.5 rounded-full"
+                />
+              ) : null}
             </TabsTrigger>
           </TabsList>
         </PageTabStrip>
@@ -117,7 +127,7 @@ export function WorktreePanel({
               : "hidden min-h-0 flex-1 flex-col overflow-hidden"
           }
         >
-          <PortsView sessionId={sessionId} active={tab === "ports"} />
+          <PortsView view={ports} />
         </div>
 
         {/* Outside the tab content: a tab switch must not stop a dev server. */}

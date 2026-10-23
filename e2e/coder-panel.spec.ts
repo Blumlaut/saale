@@ -85,12 +85,11 @@ const STATUS = {
   ],
 };
 
-const PREVIEW_URL = `https://user-e2e-5173-0123456789abcdef01234567.preview.e2e.test`;
+const PREVIEW_URL = `https://3c21cf2806-5173-0123456789abcdef.preview.e2e.test`;
 
 const PORTS = {
   enabled: true,
   domain: "preview.e2e.test",
-  setup: null,
   ports: [
     {
       port: 5173,
@@ -199,15 +198,6 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
 
   await page.route(new RegExp(`/api/coder/sessions/[^/]+/ports/\\d+/kill$`), (route) =>
     route.fulfill({ json: { port: 5173, killed: true } }),
-  );
-
-  // The preview itself: the iframe points at a host that does not exist here.
-  await page.route(/preview\.e2e\.test/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "text/html",
-      body: "<!doctype html><title>preview</title><h1>E2E app</h1>",
-    }),
   );
 
   await page.route(/\/api\/files\/list/, (route) =>
@@ -358,7 +348,7 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
-  test("lists the ports a dev server took and embeds the one that is open", async ({ browser }) => {
+  test("lists the ports a dev server took, each with a link that opens it", async ({ browser }) => {
     test.skip(!session, "login failed");
     const context = await browser.newContext({ storageState: session!.storageState });
     const page = await context.newPage();
@@ -371,12 +361,12 @@ test.describe("coder panel", () => {
     // A loopback bind is listed with a hint rather than a link.
     await expect(page.locator("text=8080").first()).toBeVisible();
     await expect(page.locator("text=loopback").first()).toBeVisible();
+    await expect(page.locator('[aria-label="Open port 8080 in a new tab"]')).toHaveCount(0);
 
-    await shown(page, '[aria-label="Show port 5173"]').click();
-    // Whether the frame is allowed is the CSP's business (middleware-headers
-    // covers that); the panel's contract is the URL it points the frame at.
-    const frame = page.locator(`iframe[title="Preview of port 5173"]`).first();
-    await expect(frame).toHaveAttribute("src", PREVIEW_URL);
+    const open = page.locator('[aria-label="Open port 5173 in a new tab"]');
+    await expect(open).toHaveAttribute("href", PREVIEW_URL);
+    await expect(open).toHaveAttribute("target", "_blank");
+    await expect(open).toHaveAttribute("rel", "noreferrer");
 
     await context.close();
   });

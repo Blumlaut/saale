@@ -95,12 +95,12 @@ server {
 A coder chat can start a dev server, and the Ports tab in the panel shows it and opens it.
 Nothing is registered per project: whatever listens inside the chat's worktree shows up.
 
-Each port gets a hostname of its own — `https://<port>-<signature>.preview.example.com` —
-so the app inside it runs at the root of its own origin and needs no base path. That is why
-this needs a wildcard domain: **`*.preview.example.com`**.
+Each port gets a hostname of its own —
+`https://<workspace>-<port>-<signature>.preview.example.com` — so the app inside it runs at
+the root of its own origin and needs no base path. That is why this needs a wildcard
+domain: **`*.preview.example.com`**.
 
-Three things to set up once. Saale fills in the block below with your own domain and has a
-**Check** button that tests all three at the same time.
+Three things to set up once.
 
 ### 1. The DNS record
 
@@ -158,9 +158,14 @@ Reload nginx: `nginx -t && systemctl reload nginx`.
 
 ### 4. Check it
 
-In Saale, open a coder chat and go to the **Ports** tab. If previews are off there, the tab
-shows this setup with your domain already in it. Press **Check**: green means DNS, the
-certificate, nginx, and the listener are all correct.
+The proxy answers a health probe at a hostname in the wildcard, so one `curl` proves DNS,
+the certificate, nginx and the listener:
+
+```bash
+curl -i https://probe.preview.example.com/__preview/health
+# HTTP/2 200
+# {"ok":true}
+```
 
 Nothing else is needed. The port stays `8101` inside your own network: changing it means
 changing `SANDBOX_PREVIEW_PORT` in `.env` and the port in the vhost together.
@@ -174,25 +179,21 @@ tab:
 npm run dev            # or: python3 -m http.server 8080
 ```
 
-Within a couple of seconds the port appears in **Ports** with the URL, the command that
-started it, and a menu to copy the link, open it in a new tab, or stop the server. Deleting
-the chat stops everything it left running.
+Within a couple of seconds the port appears in **Ports** with the command that started it
+and a button that opens it in a new tab; the row's menu copies the link or stops the
+server. Deleting the chat stops everything it left running.
 
 ### If a preview does not load
 
-| What you see                        | Why                                               | Fix                                                                                                                |
-| ----------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Check** stays red                 | DNS, certificate or nginx is wrong                | `dig +short 1.preview.example.com`, then `curl -kI https://1.preview.example.com/__preview/health` from the server |
-| "This preview link does not work"   | Wrong signature                                   | Copy the link from the Ports tab; an edited hostname stops working                                                 |
-| "Nothing is listening on port 8080" | The server stopped, or it is bound to `127.0.0.1` | Restart it, and bind `0.0.0.0`                                                                                     |
-| The port says `loopback`            | The dev server only listens inside the container  | `npm run dev -- --host 0.0.0.0`; flask: `flask run --host 0.0.0.0`; Django: `runserver 0.0.0.0:8000`               |
-| Blank frame, `403 Blocked request`  | Vite rejects a host it was not told about         | `server.allowedHosts: ['.preview.example.com']` in `vite.config.ts`                                                |
-| Blank frame, `/_next/*` blocked     | Next blocks cross-origin dev requests             | `allowedDevOrigins: ['*.preview.example.com']` in `next.config.ts`                                                 |
-| Frame is empty, tab works           | The app sends `X-Frame-Options: DENY`             | Use **Open in a new tab**; or remove that header in dev                                                            |
-| Previews are off                    | `BETTER_AUTH_URL` is `localhost` or an IP         | Set the public URL, or set `PREVIEW_DOMAIN="preview.example.com"`                                                  |
-
-If you serve Saale behind a CSP of your own, let it frame the previews:
-`frame-src 'self' https://*.preview.example.com`. Saale's own CSP already does this.
+| What you see                        | Why                                               | Fix                                                                                                                        |
+| ----------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| The probe above does not answer     | DNS, certificate or nginx is wrong                | `dig +short probe.preview.example.com`, then `curl -kI https://probe.preview.example.com/__preview/health` from the server |
+| "This preview link does not work"   | Wrong signature                                   | Copy the link from the Ports tab; an edited hostname stops working                                                         |
+| "Nothing is listening on port 8080" | The server stopped, or it is bound to `127.0.0.1` | Restart it, and bind `0.0.0.0`                                                                                             |
+| The port says `loopback`            | The dev server only listens inside the container  | `npm run dev -- --host 0.0.0.0`; flask: `flask run --host 0.0.0.0`; Django: `runserver 0.0.0.0:8000`                       |
+| `403 Blocked request`               | Vite rejects a host it was not told about         | `server.allowedHosts: ['.preview.example.com']` in `vite.config.ts`                                                        |
+| A page of blocked `/_next/*`        | Next blocks cross-origin dev requests             | `allowedDevOrigins: ['*.preview.example.com']` in `next.config.ts`                                                         |
+| Previews are off                    | `BETTER_AUTH_URL` is `localhost` or an IP         | Set the public URL, or set `PREVIEW_DOMAIN="preview.example.com"`                                                          |
 
 ## Configuration
 

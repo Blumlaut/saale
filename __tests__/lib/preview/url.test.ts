@@ -4,8 +4,6 @@ import {
   previewConfig,
   previewHost,
   previewIdentitySlug,
-  PREVIEW_PLACEHOLDER_DOMAIN,
-  previewSetup,
   previewUrl,
 } from "@/lib/preview/url";
 
@@ -115,26 +113,5 @@ describe("reading a preview hostname", () => {
       parsePreviewHost(`user-c1a2b3c4d5e6f7g8h9i0j1k2l-5173-${token}.preview.test`),
     ).toBeNull();
     expect(parsePreviewHost(`${slug}-70000-${token}.preview.saale.example.com`)).toBeNull();
-  });
-});
-
-describe("the setup block", () => {
-  it("is filled in with this deployment's domain", () => {
-    const setup = previewSetup();
-
-    expect(setup.domain).toBe("preview.saale.example.com");
-    expect(setup.probeUrl).toBe("https://probe.preview.saale.example.com/__preview/health");
-    expect(setup.nginx).toContain("server_name *.preview.saale.example.com;");
-    expect(setup.nginx).toContain("proxy_pass http://127.0.0.1:8101;");
-    expect(setup.nginx).toContain("proxy_set_header Host $host;");
-  });
-
-  it("still shows a block, filled in with a placeholder, while previews are off", () => {
-    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3630");
-
-    const setup = previewSetup();
-    expect(setup.domain).toBe(PREVIEW_PLACEHOLDER_DOMAIN);
-    expect(setup.probeUrl).toBeNull();
-    expect(setup.nginx).toContain(`server_name *.${PREVIEW_PLACEHOLDER_DOMAIN};`);
   });
 });

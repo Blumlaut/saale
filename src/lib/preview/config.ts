@@ -54,9 +54,3 @@ export function previewConfig(): PreviewConfig {
 export function previewsEnabled(): boolean {
   return previewConfig().domain !== null;
 }
-
-/** The `frame-src` a page needs to embed a preview, and nothing else. */
-export function previewFrameSource(): string {
-  const { domain, scheme } = previewConfig();
-  return domain ? `frame-src 'self' ${scheme}://*.${domain}` : "frame-src 'self'";
-}

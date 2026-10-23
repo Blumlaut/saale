@@ -4,29 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson, postJson } from "@/lib/http";
 import type { ChatPorts } from "@/lib/coder/ports";
 
-/** What the operator has to put in front of the proxy. */
-export interface PreviewSetupInfo {
-  domain: string;
-  nginx: string;
-  /** Null while previews are off: there is nothing to probe yet. */
-  probeUrl: string | null;
-}
-
-export interface CoderPortsResponse extends ChatPorts {
-  setup: PreviewSetupInfo;
-}
-
 /** How often a visible Ports tab asks again. A dev server can appear any time. */
 const POLL_MS = 3000;
+/** A slower beat while another tab is open, which is enough for the badge. */
+const IDLE_POLL_MS = 10_000;
 
 /**
- * A chat's listening ports, polled while the tab is open.
+ * A chat's listening ports, polled while the panel is open.
  *
- * Polling stops with the tab and comes back when the window regains focus, so a
- * panel left open in a background tab costs nothing.
+ * The tab's own poll is fast; the badge that says a port is up gets a slower
+ * one. Both stop when the window is hidden, so a background tab costs nothing.
  */
 export function usePorts(sessionId: string | null, active: boolean) {
-  const [data, setData] = useState<CoderPortsResponse | null>(null);
+  const [data, setData] = useState<ChatPorts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(0);
 
@@ -37,7 +27,7 @@ export function usePorts(sessionId: string | null, active: boolean) {
     }
     const ticket = ++latest.current;
     try {
-      const body = await fetchJson<CoderPortsResponse>(
+      const body = await fetchJson<ChatPorts>(
         `/api/coder/sessions/${encodeURIComponent(sessionId)}/ports`,
       );
       if (ticket !== latest.current) return;
@@ -51,9 +41,8 @@ export function usePorts(sessionId: string | null, active: boolean) {
   }, [sessionId]);
 
   useEffect(() => {
-    if (!active) return;
     void load();
-    const timer = setInterval(() => void load(), POLL_MS);
+    const timer = setInterval(() => void load(), active ? POLL_MS : IDLE_POLL_MS);
     const onFocus = () => void load();
     window.addEventListener("focus", onFocus);
     return () => {
