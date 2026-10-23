@@ -6,6 +6,7 @@
  * every stream it was serving.
  */
 
+import type { Duplex } from "node:stream";
 import type { ContainerHandle, ExecHandle } from "./containers";
 
 export interface RunningExec {
@@ -16,6 +17,8 @@ export interface RunningExec {
   exec: ExecHandle;
   /** Set once the exec has finished on its own or been signalled. */
   settled: boolean;
+  /** The hijacked socket, kept only when the command was started with stdin. */
+  stdin?: Duplex | undefined;
 }
 
 export interface ExecRegistry {
@@ -61,5 +64,13 @@ export class UnknownExecError extends Error {
   constructor(id: string) {
     super(`No running command ${id}`);
     this.name = "UnknownExecError";
+  }
+}
+
+/** Raised when a caller writes to a command that was not started with stdin. */
+export class ExecStdinClosedError extends Error {
+  constructor(id: string) {
+    super(`Command ${id} was not started with stdin`);
+    this.name = "ExecStdinClosedError";
   }
 }
