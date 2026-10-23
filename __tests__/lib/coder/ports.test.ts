@@ -16,11 +16,17 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ prisma: { chatSession: { findFirst: mocks.findChat } } }));
 vi.mock("@/lib/sandbox/client", () => ({
+  isConfigured: () => process.env.SANDBOX_URL !== "",
   listPorts: mocks.listPorts,
   killPort: mocks.killPort,
 }));
 
-import { killChatPort, listChatPorts, UnknownChatPortError } from "@/lib/coder/ports";
+import {
+  killChatPort,
+  listChatPorts,
+  SandboxUnavailableError,
+  UnknownChatPortError,
+} from "@/lib/coder/ports";
 
 const USER = "user-1";
 const SESSION = "chat-1";
@@ -100,6 +106,13 @@ describe("listing a chat's ports", () => {
 
     expect(result).toMatchObject({ enabled: false, domain: null });
     expect(result?.ports[0]?.url).toBeNull();
+  });
+
+  it("says the sandbox is off rather than reporting no ports", async () => {
+    vi.stubEnv("SANDBOX_URL", "");
+
+    await expect(listChatPorts(USER, SESSION)).rejects.toBeInstanceOf(SandboxUnavailableError);
+    expect(mocks.listPorts).not.toHaveBeenCalled();
   });
 
   it("answers null for a chat that is not the caller's", async () => {

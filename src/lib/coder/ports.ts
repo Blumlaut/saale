@@ -8,7 +8,7 @@
  * deployment has previews at all.
  */
 
-import { listPorts, killPort, type SandboxPort } from "@/lib/sandbox/client";
+import { isConfigured, killPort, listPorts, type SandboxPort } from "@/lib/sandbox/client";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { previewConfig, previewUrl } from "@/lib/preview/url";
 import { resolveTerminalTarget } from "./terminal";
@@ -45,6 +45,7 @@ function isInside(cwd: string | null, root: string): boolean {
  * terminal's "not ready" error, because both panels wait for the same thing.
  */
 export async function listChatPorts(userId: string, sessionId: string): Promise<ChatPorts | null> {
+  if (!isConfigured()) throw new SandboxUnavailableError();
   const target = await resolveTerminalTarget(userId, sessionId);
   if (!target) return null;
 
@@ -87,6 +88,7 @@ export async function killChatPort(
   sessionId: string,
   port: number,
 ): Promise<{ port: number; killed: boolean } | null> {
+  if (!isConfigured()) throw new SandboxUnavailableError();
   const target = await resolveTerminalTarget(userId, sessionId);
   if (!target) return null;
 
@@ -98,6 +100,14 @@ export async function killChatPort(
 
   const result = await killPort(identity, port);
   return { port: result.port, killed: result.killed };
+}
+
+/** A deployment without a sandbox service has nowhere to look for ports. */
+export class SandboxUnavailableError extends Error {
+  constructor() {
+    super("Commands are off on this instance, so there is nothing to preview");
+    this.name = "SandboxUnavailableError";
+  }
 }
 
 export class UnknownChatPortError extends Error {

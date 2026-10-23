@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { listChatPorts } from "@/lib/coder/ports";
+import { listChatPorts, SandboxUnavailableError } from "@/lib/coder/ports";
 import { TerminalNotReadyError } from "@/lib/coder/terminal";
 import { SandboxApiError } from "@/lib/sandbox/client";
 import { previewSetup } from "@/lib/preview/url";
@@ -35,6 +35,9 @@ export async function GET(
         ports: [],
         setup,
       });
+    }
+    if (err instanceof SandboxUnavailableError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
     }
     if (err instanceof SandboxApiError) {
       console.error(`Failed to list ports for ${sessionId}:`, err);
