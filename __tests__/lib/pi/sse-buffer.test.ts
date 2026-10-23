@@ -304,6 +304,19 @@ describe("clearBuffer", () => {
     expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
   });
 
+  it("forgets the throttle state so the next generation's first snapshot is buffered", async () => {
+    await bufferEvent("s-new-gen", "token", { text: "first" });
+    // A second generation starting inside the throttle window: without the
+    // reset its first cumulative snapshot would be dropped from the (already
+    // cleared) buffer, leaving a reconnecting client nothing to replay.
+    await clearBuffer("s-new-gen");
+    await bufferEvent("s-new-gen", "token", { text: "second" });
+
+    const writes = recordedCommands().filter((c) => c.command === "zadd");
+    expect(writes).toHaveLength(2);
+    expect(writes[1]!.args[2]).toBe(makePayload(2, "token", { text: "second" }));
+  });
+
   it("handles Redis errors gracefully", async () => {
     mockRedisDel.mockRejectedValueOnce(new Error("Redis down"));
 
