@@ -24,18 +24,35 @@ const DEFAULT_LABEL: Record<ToolStatusTone, string> = {
 /** The tone a call's own state implies; an error always wins. */
 function toolStatusTone(toolCall: Pick<ToolCallData, "status" | "error">): ToolStatusTone {
   if (toolCall.error || toolCall.status === "error") return "danger";
-  if (toolCall.status === "running") return "running";
+  if (toolCall.status === "pending" || toolCall.status === "running") return "running";
   return "success";
 }
 
-/** Badge status for a tool call, with the card's own label and optional tone. */
+/**
+ * Whether the call has not finished yet: its arguments are still being written,
+ * or it is executing. Descriptors ask this rather than comparing to `running`,
+ * so a call that has not run yet is never mistaken for a finished one.
+ */
+export function isToolCallInProgress(toolCall: Pick<ToolCallData, "status">): boolean {
+  return toolCall.status === "pending" || toolCall.status === "running";
+}
+
+/**
+ * Badge status for a tool call, with the card's own label and optional tone.
+ *
+ * A call whose arguments are still being written says so: its spinner reports
+ * the turn is alive either way, but "running" would claim work that has not
+ * started.
+ */
 export function toolStatus(
   toolCall: Pick<ToolCallData, "status" | "error">,
   label?: string,
   tone?: ToolStatusTone,
 ): ToolStatus {
   const resolvedTone = tone ?? toolStatusTone(toolCall);
-  return { tone: resolvedTone, label: label ?? DEFAULT_LABEL[resolvedTone] };
+  if (label) return { tone: resolvedTone, label };
+  if (toolCall.status === "pending") return { tone: resolvedTone, label: "preparing" };
+  return { tone: resolvedTone, label: DEFAULT_LABEL[resolvedTone] };
 }
 
 /**
@@ -46,7 +63,7 @@ export function toolStatus(
  */
 export function aggregateToolStatus(calls: readonly ToolCallData[]): ToolStatus {
   const failed = calls.some((call) => call.error || call.status === "error");
-  const running = calls.some((call) => call.status === "running");
+  const running = calls.some(isToolCallInProgress);
   return failed
     ? { tone: "danger", label: "failed" }
     : running

@@ -4,6 +4,7 @@ import { resolveToolCard, splitToolCalls } from "@/components/chat/tool-cards";
 import { calendarToolDescriptor } from "@/components/chat/tool-descriptors/calendar";
 import { codemodeDescriptor } from "@/components/chat/tool-descriptors/codemode";
 import { describeGenericToolCall } from "@/components/chat/tool-descriptors/generic";
+import { aggregateToolStatus } from "@/components/chat/tool-status";
 import { infraToolDescriptor } from "@/components/chat/tool-descriptors/infra";
 import { mailToolDescriptor } from "@/components/chat/tool-descriptors/mail";
 import { webToolDescriptor } from "@/components/chat/tool-descriptors/web";
@@ -611,5 +612,29 @@ describe("splitting a turn's calls", () => {
 
   it("splits an empty turn into nothing", () => {
     expect(splitToolCalls([])).toEqual({ attachments: [], work: [] });
+  });
+});
+
+describe("a call whose arguments are still being written", () => {
+  const pending = (extra: Partial<ToolCallData> = {}) =>
+    call("bash", undefined, { status: "pending", args: { command: "git sta" }, ...extra });
+
+  it("says it is preparing, not that it is running", () => {
+    const model = describeGenericToolCall(pending());
+    expect(model.status).toEqual({ tone: "running", label: "preparing" });
+    // The arguments written so far are on the card: watching a long command
+    // appear is the whole point of showing a call before it runs.
+    expect(model.blocks).toEqual([{ kind: "code", label: "Arguments", text: "command: git sta" }]);
+  });
+
+  it("never reports a failure before the call has run", () => {
+    expect(infraToolDescriptor.describe(pending({ name: "infra_exec" }))).toBeNull();
+    expect(describeGenericToolCall(pending()).defaultOpen).toBeUndefined();
+  });
+
+  it("keeps a run of calls in the running tone while a call is in flight", () => {
+    const done = call("bash", "ok");
+    expect(aggregateToolStatus([done, pending()])).toEqual({ tone: "running", label: "running" });
+    expect(aggregateToolStatus([done])).toEqual({ tone: "success", label: "done" });
   });
 });

@@ -2,7 +2,14 @@ export interface ToolCallData {
   id: string;
   name: string;
   args: Record<string, unknown>;
-  status: "running" | "completed" | "error";
+  /**
+   * `pending` is the client-only state of a call whose arguments the model is
+   * still writing. Pi announces the call (`toolcall_start`) well before it
+   * starts executing, so a card that waits for `running` leaves the agent
+   * looking idle while it fills in the arguments. Never persisted: every row
+   * in the database was executed.
+   */
+  status: "pending" | "running" | "completed" | "error";
   result: string | undefined;
   error: string | undefined;
   /**
