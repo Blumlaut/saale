@@ -41,15 +41,17 @@ vi.mock("@/lib/coder/gitconfig", async (importOriginal) => ({
 }));
 
 import { CoderProjectError, updateProject } from "@/lib/coder/projects";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
+const IDENTITY = userIdentity(USER);
 const PROJECT_ID = "project-1";
 
 let workspaceDir = "";
 let originalWorkspacesDir: string | undefined;
 
 function inWorkspace(relative: string): string {
-  return path.join(workspaceDir, `user-${USER}`, relative);
+  return path.join(workspaceDir, IDENTITY, relative);
 }
 
 /** The row as the query returns it: the settings themselves, nothing derived. */

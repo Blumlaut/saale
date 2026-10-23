@@ -32,13 +32,15 @@ vi.mock("@/lib/coder/git", () => ({
 }));
 
 import { sweepWorktrees } from "@/lib/coder/sweep";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "u1";
+const IDENTITY = userIdentity(USER);
 let workspaceDir = "";
 
 /** A directory inside the user's workspace. */
 async function makeDir(relative: string): Promise<void> {
-  await fs.mkdir(path.join(workspaceDir, `user-${USER}`, relative), { recursive: true });
+  await fs.mkdir(path.join(workspaceDir, IDENTITY, relative), { recursive: true });
 }
 
 beforeEach(async () => {
@@ -97,7 +99,7 @@ describe("sweepWorktrees", () => {
   });
 
   it("reports a directory no row claims and removes nothing", async () => {
-    const orphan = path.join(workspaceDir, `user-${USER}`, "worktrees/live/c-orphan");
+    const orphan = path.join(workspaceDir, IDENTITY, "worktrees/live/c-orphan");
 
     const result = await sweepWorktrees();
 
@@ -108,7 +110,7 @@ describe("sweepWorktrees", () => {
   it("does not call a checkout git still tracks an orphan", async () => {
     mocks.listWorktrees.mockResolvedValue([
       {
-        path: path.join(workspaceDir, `user-${USER}`, "worktrees/live/c-orphan"),
+        path: path.join(workspaceDir, IDENTITY, "worktrees/live/c-orphan"),
         branch: "wt/c-orphan",
         relative: "worktrees/live/c-orphan",
       },

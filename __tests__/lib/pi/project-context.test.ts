@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { projectContextFiles, projectSkillPaths, sessionWorkspace } from "@/lib/pi/project-context";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 /**
  * What a session inherits from its workspace.
@@ -13,6 +14,7 @@ import { projectContextFiles, projectSkillPaths, sessionWorkspace } from "@/lib/
  */
 
 const USER = "user-1";
+const IDENTITY = userIdentity(USER);
 
 let volumeDir = "";
 let root = "";
@@ -22,7 +24,7 @@ beforeEach(async () => {
   originalWorkspacesDir = process.env.SANDBOX_WORKSPACES_DIR;
   volumeDir = await fs.mkdtemp(path.join(os.tmpdir(), "saale-project-context-"));
   process.env.SANDBOX_WORKSPACES_DIR = volumeDir;
-  root = path.join(volumeDir, `user-${USER}`);
+  root = path.join(volumeDir, IDENTITY);
   await fs.mkdir(root, { recursive: true });
 });
 

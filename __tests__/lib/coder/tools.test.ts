@@ -43,9 +43,11 @@ vi.mock("@/lib/coder/gitconfig", async (importOriginal) => ({
 }));
 
 import { createProjectSettingsTools } from "@/lib/coder/tools";
+import { userIdentity } from "@/lib/sandbox/identity";
 import { createSettingsTools } from "@/lib/settings/tools";
 
 const USER = "user-1";
+const IDENTITY = userIdentity(USER);
 const SESSION = "chat-1";
 const PROJECT_ID = "project-1";
 
@@ -53,7 +55,7 @@ let workspaceDir = "";
 let originalWorkspacesDir: string | undefined;
 
 function inWorkspace(relative: string): string {
-  return path.join(workspaceDir, `user-${USER}`, relative);
+  return path.join(workspaceDir, IDENTITY, relative);
 }
 
 function row(overrides: Record<string, unknown> = {}) {
