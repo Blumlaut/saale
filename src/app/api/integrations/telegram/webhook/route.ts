@@ -18,6 +18,7 @@ import type { TelegramFileInfo } from "@/lib/telegram/files";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
 import { handleCommandPromptCallback, handleTelegramCommand } from "@/lib/telegram/command-prompts";
 import { extractQuotedMessage } from "@/lib/telegram/reply-context";
+import { handleGroupServiceMessage } from "@/lib/telegram/group-events";
 import { resolveExistingTelegramTarget } from "@/lib/telegram/routing";
 import { getCommandMeta } from "@/lib/commands/catalog";
 import { parseCommand } from "@/lib/commands/parse";
@@ -118,9 +119,11 @@ function senderDisplayName(from: { first_name?: string; last_name?: string }): s
  *   refused. Nothing in the message body can name a different account.
  * - Inline button presses are verified against the same link, because a
  *   forwarded card keeps its buttons and one bot now serves every user.
- * - Only private chats are processed. a shared, discoverable bot in a group
- *   would run one member's message against another member's account in front
- *   of everyone.
+ * - Group messages are never read. Only the service messages that say who added
+ *   or removed the bot are acted on, and a group the bot is not registered in
+ *   is refused and left (`group-events.ts`). Everything a group member types
+ *   would otherwise run one person's message against another person's account
+ *   in front of everyone.
  */
 export async function POST(request: NextRequest) {
   // 1. The instance's bot must exist and be switched on
@@ -198,21 +201,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // 5. Extract message from update (private chats only)
+  // 5. Extract message from update
   const message = update.message as
     | {
         text?: string;
         caption?: string;
         photo?: unknown[];
         document?: unknown;
-        chat: { id: number; type: string };
-        from: { id: number; first_name?: string; last_name?: string };
+        chat: { id: number; type: string; title?: string };
+        from?: { id: number; first_name?: string; last_name?: string };
         message_id: number;
         reply_to_message?: unknown;
+        new_chat_members?: Array<{ id: number; is_bot?: boolean }>;
+        left_chat_member?: { id: number; is_bot?: boolean };
+        new_chat_title?: string;
+        migrate_to_chat_id?: number;
+        migrate_from_chat_id?: number;
       }
     | undefined;
 
-  if (!message || message.chat.type !== "private") {
+  if (!message) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // 5a. A group update is read for membership only. Awaiting it keeps the
+  //     refusal-and-leave inside the request, so a worker restart cannot drop
+  //     the exit and leave the bot sitting in a group it refuses.
+  if (message.chat.type !== "private") {
+    await handleGroupServiceMessage({
+      message,
+      botId: botConfig.botId,
+      encryptedToken,
+    }).catch((err) => {
+      console.error("Failed to handle a Telegram group service message:", err);
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // A private message always carries its sender. without one there is no
+  // account to act for, and guessing would be the cross-account leak this
+  // design exists to prevent.
+  if (!message.from) {
+    console.error("Telegram private message arrived without a sender. ignoring it");
     return NextResponse.json({ ok: true });
   }
 

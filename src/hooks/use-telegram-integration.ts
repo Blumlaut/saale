@@ -22,9 +22,22 @@ export interface TelegramLink {
   linkedAt: string;
 }
 
+/** A group the bot may post into, as the console lists it. */
+export interface TelegramChat {
+  /** Group chat id (may exceed JS safe integers, so it travels as a string). */
+  chatId: string;
+  title: string | null;
+  /** "group" | "supergroup" */
+  kind: string;
+  memberCount: number | null;
+  /** False once the bot was removed from the group. */
+  enabled: boolean;
+}
+
 export interface TelegramIntegration {
   bot: TelegramBotStatus;
   link: TelegramLink | null;
+  chats: TelegramChat[];
 }
 
 /** A freshly minted one-time link code and where to redeem it. */
@@ -38,6 +51,7 @@ export interface TelegramLinkCode {
 const NOT_CONFIGURED: TelegramIntegration = {
   bot: { configured: false, enabled: false, username: null, loginEnabled: false },
   link: null,
+  chats: [],
 };
 
 /**
@@ -62,12 +76,15 @@ export function useTelegramIntegration() {
   // Unlinking
   const [unlinking, setUnlinking] = useState(false);
 
+  // Removing a group
+  const [removingChatId, setRemovingChatId] = useState<string | null>(null);
+
   const loadIntegration = useCallback(async () => {
     try {
       const data = await fetchJson<{ integration: TelegramIntegration }>(
         "/api/integrations/telegram",
       );
-      setIntegration(data.integration);
+      setIntegration({ ...data.integration, chats: data.integration.chats ?? [] });
     } catch (err) {
       console.error("Failed to load the Telegram integration:", err);
       setIntegration(NOT_CONFIGURED);
@@ -120,11 +137,28 @@ export function useTelegramIntegration() {
     }
   }, [loadIntegration]);
 
+  /** Remove a group: the row goes, and the bot leaves the group. */
+  const removeChat = useCallback(
+    async (chatId: string) => {
+      setRemovingChatId(chatId);
+      try {
+        await deleteJson(`/api/integrations/telegram/chats/${chatId}`);
+        await loadIntegration();
+      } catch (err) {
+        console.error("Failed to remove the Telegram group:", err);
+      } finally {
+        setRemovingChatId(null);
+      }
+    },
+    [loadIntegration],
+  );
+
   return {
     integration,
     loading,
     link: integration.link,
     bot: integration.bot,
+    chats: integration.chats,
     loadIntegration,
 
     linkCode,
@@ -135,5 +169,8 @@ export function useTelegramIntegration() {
 
     unlinking,
     unlink,
+
+    removingChatId,
+    removeChat,
   };
 }

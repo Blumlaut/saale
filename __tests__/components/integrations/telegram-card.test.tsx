@@ -5,6 +5,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { TelegramBox, TelegramLinkPanel } from "@/components/integrations/telegram-card";
 import type {
   TelegramBotStatus,
+  TelegramChat,
   TelegramLink,
   TelegramLinkCode,
 } from "@/hooks/use-telegram-integration";
@@ -37,19 +38,23 @@ const linkCode: TelegramLinkCode = {
 function renderBox(overrides: Partial<Parameters<typeof TelegramBox>[0]> = {}) {
   const onUnlink = vi.fn();
   const onLink = vi.fn();
+  const onRemoveChat = vi.fn();
 
   render(
     <TelegramBox
       link={link}
       bot={bot}
+      chats={[]}
       unlinking={false}
+      removingChatId={null}
       onUnlink={onUnlink}
       onLink={onLink}
+      onRemoveChat={onRemoveChat}
       {...overrides}
     />,
   );
 
-  return { onUnlink, onLink };
+  return { onUnlink, onLink, onRemoveChat };
 }
 
 function renderPanel(overrides: Partial<Parameters<typeof TelegramLinkPanel>[0]> = {}) {
@@ -119,6 +124,40 @@ describe("TelegramBox", () => {
 
     expect(onLink).toHaveBeenCalledTimes(1);
     expect(onUnlink).not.toHaveBeenCalled();
+  });
+
+  it("lists the groups the bot can post into", () => {
+    const chats: TelegramChat[] = [
+      { chatId: "-100123", title: "CVEs", kind: "supergroup", memberCount: 42, enabled: true },
+      { chatId: "-100456", title: null, kind: "group", memberCount: null, enabled: false },
+    ];
+
+    renderBox({ chats });
+
+    expect(screen.getByText("Groups")).toBeInTheDocument();
+    expect(screen.getByText("CVEs")).toBeInTheDocument();
+    expect(screen.getByText(/42 members/)).toBeInTheDocument();
+    // A group the bot was removed from stays listed, so the user can clear it.
+    expect(screen.getByText("Untitled group")).toBeInTheDocument();
+    expect(screen.getByText(/bot removed/)).toBeInTheDocument();
+  });
+
+  it("removes a group by its chat id", () => {
+    const { onRemoveChat } = renderBox({
+      chats: [
+        { chatId: "-100123", title: "CVEs", kind: "supergroup", memberCount: 42, enabled: true },
+      ],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove CVEs" }));
+
+    expect(onRemoveChat).toHaveBeenCalledWith("-100123");
+  });
+
+  it("shows no group section when the bot is in none", () => {
+    renderBox();
+
+    expect(screen.queryByText("Groups")).not.toBeInTheDocument();
   });
 });
 

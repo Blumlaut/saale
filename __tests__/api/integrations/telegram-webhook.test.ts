@@ -15,6 +15,7 @@ const {
   mockHandleTelegramCommand,
   mockInterruptTelegramChat,
   mockNextMessageSeq,
+  mockHandleGroupServiceMessage,
 } = vi.hoisted(() => ({
   fakeBot: {
     api: {
@@ -32,6 +33,7 @@ const {
   mockHandleTelegramCommand: vi.fn(),
   mockInterruptTelegramChat: vi.fn(),
   mockNextMessageSeq: vi.fn(),
+  mockHandleGroupServiceMessage: vi.fn(),
 }));
 
 // Keep the real message builders (their text is what the user reads) and stub
@@ -51,6 +53,10 @@ vi.mock("@/lib/telegram/links", () => ({
   consumeLinkCode: (...args: unknown[]) => mockConsumeLinkCode(...args),
   getLinkByTelegramUserId: (...args: unknown[]) => mockGetLinkByTelegramUserId(...args),
   updateLinkDisplayName: (...args: unknown[]) => mockUpdateLinkDisplayName(...args),
+}));
+
+vi.mock("@/lib/telegram/group-events", () => ({
+  handleGroupServiceMessage: (...args: unknown[]) => mockHandleGroupServiceMessage(...args),
 }));
 
 vi.mock("@/lib/telegram/processor", () => ({
@@ -141,6 +147,7 @@ beforeEach(() => {
   mockNextMessageSeq.mockReturnValue(1);
   mockInterruptTelegramChat.mockResolvedValue(undefined);
   mockHandleTelegramCommand.mockResolvedValue(undefined);
+  mockHandleGroupServiceMessage.mockResolvedValue(undefined);
   mockHandleApprovalCallback.mockResolvedValue({ handled: false });
   mockHandleCommandPromptCallback.mockResolvedValue({ handled: false });
   mockHandleCommandPromptCallback.mockResolvedValue({ handled: false });
@@ -355,12 +362,41 @@ describe("message routing", () => {
     expect(mockUpdateLinkDisplayName).toHaveBeenCalledWith(BigInt(SENDER_ID), "Jane Doe");
   });
 
-  it("ignores group chats", async () => {
-    const response = await POST(update(messageUpdate({ chat: { id: -100123, type: "group" } })));
+  it("hands a group update to the membership handler, as nothing else", async () => {
+    const response = await POST(
+      update(
+        messageUpdate({
+          chat: { id: -100123, type: "supergroup", title: "CVEs" },
+          from: { id: SENDER_ID, first_name: "Jane" },
+          new_chat_members: [{ id: 1, is_bot: true }],
+        }),
+      ),
+    );
 
     expect(response.status).toBe(200);
+    expect(mockHandleGroupServiceMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({ chat: expect.objectContaining({ id: -100123 }) }),
+        botId: botConfig.botId,
+        encryptedToken: botConfig.encryptedToken,
+      }),
+    );
+    // A group member's text is never a prompt, and no link lookup happens for it.
     expect(mockProcessTelegramMessage).not.toHaveBeenCalled();
     expect(mockGetLinkByTelegramUserId).not.toHaveBeenCalled();
+  });
+
+  it("keeps the request open until the group refusal and leave finish", async () => {
+    let settled = false;
+    mockHandleGroupServiceMessage.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      settled = true;
+    });
+
+    await POST(update(messageUpdate({ chat: { id: -100123, type: "group" } })));
+
+    // A worker restart after a 200 would otherwise drop the leaveChat.
+    expect(settled).toBe(true);
   });
 
   it("ignores a message with nothing to process", async () => {

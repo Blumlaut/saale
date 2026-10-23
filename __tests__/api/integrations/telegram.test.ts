@@ -9,12 +9,14 @@ const {
   mockUnlinkUser,
   mockGetLinkByUserId,
   mockHashLinkCode,
+  mockListTelegramChats,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
   mockIssueLinkCode: vi.fn(),
   mockUnlinkUser: vi.fn(),
   mockGetLinkByUserId: vi.fn(),
   mockHashLinkCode: vi.fn((code: string) => `hash(${code})`),
+  mockListTelegramChats: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireSession: vi.fn() }));
@@ -25,6 +27,23 @@ vi.mock("@/lib/telegram/bot", () => ({
 
 vi.mock("@/lib/telegram/oidc", () => ({
   getTelegramLoginStatus: vi.fn(),
+}));
+
+vi.mock("@/lib/telegram/chats", () => ({
+  listTelegramChats: (...args: unknown[]) => mockListTelegramChats(...args),
+  toChatView: (chat: {
+    chatId: bigint;
+    title: string | null;
+    kind: string;
+    memberCount: number | null;
+    enabled: boolean;
+  }) => ({
+    chatId: chat.chatId.toString(),
+    title: chat.title,
+    kind: chat.kind,
+    memberCount: chat.memberCount,
+    enabled: chat.enabled,
+  }),
 }));
 
 vi.mock("@/lib/telegram/links", () => ({
@@ -84,6 +103,7 @@ const link = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockListTelegramChats.mockResolvedValue([]);
   vi.mocked(getTelegramLoginStatus).mockResolvedValue({
     configured: true,
     clientId: "1",
@@ -116,6 +136,7 @@ describe("GET /api/integrations/telegram", () => {
     expect(body.integration).toEqual({
       bot: { configured: false, enabled: false, username: null, loginEnabled: false },
       link: null,
+      chats: [],
     });
   });
 
@@ -184,6 +205,41 @@ describe("GET /api/integrations/telegram", () => {
     await GET();
 
     expect(mockGetLinkByUserId).toHaveBeenCalledWith(userId);
+  });
+
+  it("lists the caller's groups next to the link", async () => {
+    authenticate();
+    mockGetTelegramBot.mockResolvedValue(bot);
+    mockGetLinkByUserId.mockResolvedValue(link);
+    mockListTelegramChats.mockResolvedValue([
+      {
+        id: "chat-row-1",
+        botId: "global",
+        ownerUserId: userId,
+        chatId: BigInt("-1001234567890"),
+        title: "CVEs",
+        kind: "supergroup",
+        memberCount: 42,
+        enabled: true,
+        syncedAt: new Date("2026-02-01T00:00:00.000Z"),
+        createdAt: new Date("2026-02-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+      },
+    ]);
+
+    const body = await (await GET()).json();
+
+    // The chat id travels as a string: a supergroup id overflows a JS number.
+    expect(body.integration.chats).toEqual([
+      {
+        chatId: "-1001234567890",
+        title: "CVEs",
+        kind: "supergroup",
+        memberCount: 42,
+        enabled: true,
+      },
+    ]);
+    expect(mockListTelegramChats).toHaveBeenCalledWith(userId);
   });
 });
 

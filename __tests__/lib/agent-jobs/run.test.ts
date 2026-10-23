@@ -93,6 +93,7 @@ describe("triggerAgentRun", () => {
     expect(buildAgentOutputHandler).toHaveBeenCalledWith({
       userId,
       outputChannel: "telegram",
+      outputChannelId: "12345",
     });
     expect(executeAgentRun).toHaveBeenCalledWith(
       "run-1",

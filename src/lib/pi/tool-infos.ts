@@ -152,13 +152,22 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
   {
     name: "telegram_send",
     label: "Send Telegram Message",
-    description: "Message the user on Telegram",
+    description: "Message the user on Telegram, or a group they added the bot to",
     category: "telegram",
     // Delivers to the user's own chat only, and is the one tool that can reach
     // them unattended (reminders run without an approval channel), so it must
     // not sit behind a prompt that nobody can answer.
     defaultPolicy: "allow",
-    summaryTemplate: "Messaging the user on Telegram",
+    summaryTemplate: "Messaging on Telegram",
+  },
+  {
+    name: "telegram_chats",
+    label: "List Telegram Chats",
+    description: "List the Telegram chats the agent can post to",
+    category: "telegram",
+    // Read-only, and the only way to learn a group's chat id, so it costs no
+    // approval and has to be visible without a discovery step.
+    defaultPolicy: "allow",
   },
 
   // ── Email ─────────────────────────────────────────────────────────

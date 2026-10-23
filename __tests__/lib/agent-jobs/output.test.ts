@@ -7,11 +7,15 @@ const {
   mockGetLinkByUserId,
   mockSendTelegramMessage,
   mockSendTypingIndicator,
+  mockResolveTelegramSendTarget,
+  TelegramTargetError,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
   mockGetLinkByUserId: vi.fn(),
   mockSendTelegramMessage: vi.fn(),
   mockSendTypingIndicator: vi.fn(),
+  mockResolveTelegramSendTarget: vi.fn(),
+  TelegramTargetError: class TelegramTargetError extends Error {},
 }));
 
 vi.mock("@/lib/telegram/bot", () => ({
@@ -20,6 +24,13 @@ vi.mock("@/lib/telegram/bot", () => ({
 
 vi.mock("@/lib/telegram/links", () => ({
   getLinkByUserId: (...args: unknown[]) => mockGetLinkByUserId(...args),
+}));
+
+// The resolver has its own test (`chats.test.ts`). Here it only has to answer
+// with the chat the definition names, which is what the handler wires up.
+vi.mock("@/lib/telegram/chats", () => ({
+  TelegramTargetError,
+  resolveTelegramSendTarget: (...args: unknown[]) => mockResolveTelegramSendTarget(...args),
 }));
 
 vi.mock("@/lib/telegram/client", () => ({
@@ -79,6 +90,14 @@ beforeEach(() => {
   mockRecordOutboundMessage.mockResolvedValue(undefined);
   mockRecordOutboundMessages.mockResolvedValue(undefined);
   mockSendTelegramMessage.mockResolvedValue([42]);
+  mockResolveTelegramSendTarget.mockImplementation(
+    async ({ target }: { target?: string | null }) => {
+      if (target) {
+        return { chatId: BigInt(target), label: "CVEs", group: true };
+      }
+      return { chatId, label: "Jane", group: false };
+    },
+  );
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -150,18 +169,80 @@ describe("buildAgentOutputHandler", () => {
       userId,
       content: "Job finished  here is the report",
       sourceSessionId: undefined,
+      sentTo: null,
     });
     expect(output!.deliveryErrors?.()).toEqual([]);
   });
 
   it("never targets a chat other than the caller's own link", async () => {
-    // There is no chat parameter any more: the target is the link, full stop.
+    // With no `outputChannelId` the target is the link, full stop.
     const { output } = await buildAgentOutputHandler({ userId, outputChannel: "telegram" });
 
     await output!.send("hello");
 
+    expect(mockResolveTelegramSendTarget).toHaveBeenCalledWith({ userId, target: undefined });
     expect(mockSendTelegramMessage).toHaveBeenCalledTimes(1);
     expect(mockSendTelegramMessage.mock.calls[0]![1]).toBe(chatId);
+  });
+
+  it("posts into the group the definition names, with a breadcrumb", async () => {
+    const groupId = BigInt("-1001234567890");
+
+    const { output } = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "telegram",
+      outputChannelId: "-1001234567890",
+    });
+    await output!.send("Two new CVEs today");
+
+    expect(mockResolveTelegramSendTarget).toHaveBeenCalledWith({
+      userId,
+      target: "-1001234567890",
+    });
+    expect(mockSendTelegramMessage).toHaveBeenCalledWith(
+      "enc-token",
+      groupId,
+      "Two new CVEs today",
+    );
+    // The chat that produced it learns where the message went, not its text.
+    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
+      userId,
+      content: "Two new CVEs today",
+      sourceSessionId: undefined,
+      sentTo: "CVEs",
+    });
+  });
+
+  it("reports a group the caller does not own instead of posting into it", async () => {
+    mockResolveTelegramSendTarget.mockRejectedValue(
+      new TelegramTargetError('Unknown Telegram target "-100999". Available groups: "CVEs".'),
+    );
+
+    const result = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "telegram",
+      outputChannelId: "-100999",
+    });
+
+    expect(result.output).toBeUndefined();
+    expect(result.error).toContain('Available groups: "CVEs"');
+    expect(mockSendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a send into a group the bot was kicked from", async () => {
+    mockSendTelegramMessage.mockRejectedValue(
+      new Error("Forbidden: bot was kicked from the group"),
+    );
+
+    const { output } = await buildAgentOutputHandler({
+      userId,
+      outputChannel: "telegram",
+      outputChannelId: "-1001234567890",
+    });
+    await output!.send("hello");
+
+    // A kicked bot must leave a delivery error, not a run that reads delivered.
+    expect(output!.deliveryErrors?.()).toEqual(["Forbidden: bot was kicked from the group"]);
   });
 
   it("collects a rejected send instead of swallowing it", async () => {

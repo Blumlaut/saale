@@ -92,7 +92,10 @@ export function IntegrationsTab() {
             <TelegramBox
               link={telegram.link}
               bot={telegram.bot}
+              chats={telegram.chats}
               unlinking={telegram.unlinking}
+              removingChatId={telegram.removingChatId}
+              onRemoveChat={telegram.removeChat}
               onLink={openTelegramDialog}
               onUnlink={() => {
                 setDeleteIntegrationId("telegram");

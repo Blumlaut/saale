@@ -41,6 +41,7 @@ model User {
   agentDefinitions   AgentDefinition[]
   scriptWatchers     ScriptWatcher[]
   telegramLink       TelegramLink?
+  telegramChats      TelegramChat[]
   telegramOutboundMessages TelegramOutboundMessage[]
   telegramLinkCodes  TelegramLinkCode[]
   sandboxEnvVars     SandboxEnvVar[]
@@ -819,6 +820,7 @@ model TelegramBot {
   /// Admin who last saved this configuration (audit trail).
   updatedByUserId String?
   links           TelegramLink[]
+  chats           TelegramChat[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -880,6 +882,33 @@ model TelegramOutboundMessage {
   @@index([userId, createdAt])
   @@index([sessionId])
   @@map("TelegramOutboundMessage")
+}
+
+/// A Telegram group the bot may post into. One owner per group.
+///
+/// Membership is the permission: the bot is in a group because a linked user
+/// added it, so `ownerUserId` is who that was. `chatId` is unique, which is what
+/// makes a refused re-add enforceable and keeps ownership from moving.
+model TelegramChat {
+  id          String      @id @default(cuid())
+  botId       String
+  ownerUserId String
+  chatId      BigInt      @unique
+  title       String?
+  /// "group" | "supergroup"
+  kind        String
+  memberCount Int?
+  /// False once the bot was removed from the group, so the UI shows it is gone.
+  enabled     Boolean     @default(true)
+  /// Last successful getChat, which drives the lazy title refresh.
+  syncedAt    DateTime?
+  bot         TelegramBot @relation(fields: [botId], references: [id], onDelete: Cascade)
+  owner       User        @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([ownerUserId])
+  @@map("TelegramChat")
 }
 
 /// Short-lived single-use code that binds a Telegram identity to the Saale

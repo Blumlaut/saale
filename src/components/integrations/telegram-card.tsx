@@ -12,6 +12,7 @@ import {
   Copy,
   AlertCircle,
   Check,
+  Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import type {
   TelegramBotStatus,
+  TelegramChat,
   TelegramLink,
   TelegramLinkCode,
 } from "@/hooks/use-telegram-integration";
@@ -41,23 +43,30 @@ import { IntegrationBox } from "./integration-box";
  * The Telegram box on the Integrations tab.
  *
  * There is no bot token, no whitelist and no notification-chat picker. a
- * link is one user and one private chat. So the box shows either the linked
- * account (with relink/unlink behind the menu) or a button into the link
- * dialog.
+ * link is one user and one private chat. Groups are added in Telegram (a linked
+ * user adds the bot to one) and only listed here, with a way to remove them.
  */
 export function TelegramBox({
   link,
   bot,
+  chats,
   unlinking,
+  removingChatId,
   onUnlink,
   onLink,
+  onRemoveChat,
 }: {
   link: TelegramLink | null;
   bot: TelegramBotStatus;
+  /** Groups the bot may post into. */
+  chats: TelegramChat[];
   unlinking: boolean;
+  /** Chat id currently being removed, so its row shows the spinner. */
+  removingChatId: string | null;
   onUnlink: () => void;
   /** Opens the link dialog. first link or relink, the panel adapts. */
   onLink: () => void;
+  onRemoveChat: (chatId: string) => void;
 }) {
   return (
     <IntegrationBox
@@ -110,6 +119,43 @@ export function TelegramBox({
           <Link2 className="mr-2 h-4 w-4" />
           Link Telegram
         </Button>
+      )}
+
+      {chats.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <p className="console-label">Groups</p>
+          <ul className="space-y-1">
+            {chats.map((chat) => (
+              <li
+                key={chat.chatId}
+                className="hover:bg-accent/60 flex min-h-9 items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-xs">{chat.title ?? "Untitled group"}</p>
+                  <p className="text-muted-foreground text-[11px]">
+                    <Users className="mr-1 inline h-3 w-3 align-[-1px]" />
+                    {chat.memberCount == null ? "members unknown" : `${chat.memberCount} members`}
+                    {chat.enabled ? "" : " · bot removed"}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground hover:text-destructive shrink-0"
+                  aria-label={`Remove ${chat.title ?? "group"}`}
+                  disabled={removingChatId === chat.chatId}
+                  onClick={() => onRemoveChat(chat.chatId)}
+                >
+                  {removingChatId === chat.chatId ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </IntegrationBox>
   );
