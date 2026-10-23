@@ -90,9 +90,10 @@ const STALE_GENERATION_POLL_MS = 10_000;
  * - Browser's EventSource automatically sends Last-Event-ID on reconnect
  * - The dispatcher replays buffered events after that ID, then forwards live
  *
- * Emits: turn_start, token, thinking, tool_start, tool_end, turn_end,
- * message_saved, token_usage, compaction_start, compaction_end, done, error,
- * tool_approval_request, queue_update, messages_changed
+ * Emits: turn_start, token, thinking, tool_pending, tool_start, tool_update,
+ * tool_end, turn_end, message_saved, token_usage, compaction_start,
+ * compaction_end, done, error, tool_approval_request, queue_update,
+ * messages_changed
  */
 export async function GET(
   request: NextRequest,

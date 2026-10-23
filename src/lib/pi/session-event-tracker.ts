@@ -28,6 +28,11 @@
  *    server's timestamp for it (what the turn's DB row is stamped with too)
  *  - `token { turnId, text }` / `thinking { turnId, thinking }`. cumulative
  *  - `tool_start { turnId, toolCallId, toolName, args }`
+ *  - `tool_pending { turnId, toolCallId, toolName, args }`. the model announced
+ *    a call and is still writing its arguments (cumulative, like `token`). Pi
+ *    emits the call in the assistant message it streams, well before executing
+ *    it, so without this the UI has nothing to show while the arguments are
+ *    filled in
  *  - `tool_update { turnId, toolCallId, partialResult }`. live progress from
  *    a running tool (Pi's tool_execution_update, e.g. bash streaming output)
  *  - `tool_end { turnId, toolCallId, result, isError }`
@@ -107,6 +112,13 @@ export function createSessionEventTracker(
 
   // Tool call results tracking
   const toolCallResults = new Map<string, ToolCallResult>();
+
+  // Arguments already announced for a call the model is still writing, keyed by
+  // toolCallId. Pi re-sends the whole assistant message on every delta, so this
+  // is what turns "the same partial call, one event per delta" into one publish
+  // per actual change. Cleared when the call starts executing: its arguments
+  // are final from then on, and `tool_start` carries them.
+  const announcedToolArgs = new Map<string, string>();
 
   // Throttle map for tool_execution_update forwarding. bash emits output
   // updates at ~100ms intervals; flooding the Redis buffer + SSE would be
@@ -242,6 +254,46 @@ export function createSessionEventTracker(
     }
   };
 
+  /**
+   * Announce the tool calls a streamed assistant message carries but has not
+   * run yet, with the arguments written so far.
+   *
+   * Pi streams the assistant message as it is generated: a block appears as
+   * `toolcall_start` (id and name known, arguments empty) and its arguments grow
+   * with every `toolcall_delta`. Execution only begins afterwards, so the model
+   * can spend many seconds writing a long command or file body with nothing on
+   * the stream to show for it. This is that gap: published as a cumulative
+   * argument object, one event per change.
+   */
+  const publishPendingToolCalls = (content: unknown[], turnId: string): void => {
+    for (const block of content) {
+      if (typeof block !== "object" || block === null) continue;
+      const call = block as Record<string, unknown>;
+      if (call.type !== "toolCall") continue;
+      const toolCallId = typeof call.id === "string" ? call.id : null;
+      const toolName = typeof call.name === "string" ? call.name : null;
+      // An id Pi has not assigned yet cannot be matched to its execution, so
+      // there is nothing a client could do with the call.
+      if (!toolCallId || !toolName) continue;
+      // Already executing (or done): execution's arguments are authoritative.
+      if (toolCallResults.has(toolCallId)) continue;
+
+      const args = (call.arguments ?? {}) as Record<string, unknown>;
+      const serialized = JSON.stringify(args);
+      if (announcedToolArgs.get(toolCallId) === serialized) continue;
+      announcedToolArgs.set(toolCallId, serialized);
+
+      publishSessionEvent(sessionId, "tool_pending", {
+        turnId,
+        toolCallId,
+        toolName,
+        args,
+      }).catch((err) => {
+        console.error("Failed to publish tool_pending:", err);
+      });
+    }
+  };
+
   function handleEvent(event: AgentSessionEvent): void {
     switch (event.type) {
       // ── New run: reset the event buffer so stale events from previous
@@ -351,12 +403,21 @@ export function createSessionEventTracker(
             },
           );
         }
+
+        // Calls the model has announced but not started: it is writing their
+        // arguments right now. Announced ahead of execution so the transcript
+        // can show the work instead of an idle spinner. the gap is the model
+        // generating a long command or file body, which takes many seconds.
+        publishPendingToolCalls(msg.content, turnId);
         break;
       }
 
       // ── Tool execution ───────────────────────────────────────────────────
       case "tool_execution_start": {
         const turnId = startTurn();
+        // Its arguments are final from here on, and `tool_start` carries them:
+        // nothing is left to announce.
+        announcedToolArgs.delete(event.toolCallId);
         toolCallResults.set(event.toolCallId, {
           name: event.toolName,
           args: event.args,
