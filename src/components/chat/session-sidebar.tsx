@@ -16,6 +16,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { fetchJson, postJson } from "@/lib/http";
+import {
+  broadcastSessionsDeleted,
+  CHAT_RENAMED_EVENT,
+  CHAT_SESSIONS_DELETED_EVENT,
+} from "@/lib/chat/session-events";
 import { forcedRetryError, isForcedRetry } from "@/lib/coder/force-delete";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -49,17 +54,6 @@ interface ChatSession {
 interface BulkDeleteResponse {
   deleted: string[];
   failed: Array<{ sessionId: string; error: string; code?: string }>;
-}
-
-/**
- * Broadcast that chats are gone. Both sidebars (the desktop panel and the
- * mobile sheet's) are mounted at once, so the other one has to prune the same
- * rows. and the ids travel with the event, so neither list needs a refetch.
- */
-const SESSIONS_DELETED_EVENT = "chat-sessions-deleted";
-
-function broadcastSessionsDeleted(ids: string[]) {
-  window.dispatchEvent(new CustomEvent(SESSIONS_DELETED_EVENT, { detail: { ids } }));
 }
 
 const TITLE_MAX_CHARS = 25;
@@ -260,11 +254,11 @@ export function SessionSidebar({
       setSessions((prev) => prev.filter((session) => !gone.has(session.id)));
     };
 
-    window.addEventListener("chat-renamed", onRenamed);
-    window.addEventListener(SESSIONS_DELETED_EVENT, onDeleted);
+    window.addEventListener(CHAT_RENAMED_EVENT, onRenamed);
+    window.addEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
     return () => {
-      window.removeEventListener("chat-renamed", onRenamed);
-      window.removeEventListener(SESSIONS_DELETED_EVENT, onDeleted);
+      window.removeEventListener(CHAT_RENAMED_EVENT, onRenamed);
+      window.removeEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
     };
   }, [fetchSessions]);
 
