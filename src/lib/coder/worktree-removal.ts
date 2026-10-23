@@ -2,20 +2,21 @@
  * Removing a coder chat's worktree.
  *
  * git decides whether a checkout may go: `git worktree remove` refuses a dirty
- * tree, and that refusal comes back as a `dirty-worktree` code so the user can
- * decide to discard the uncommitted work and retry with `--force`. The branch
- * and its commits stay in the repo either way, so the only thing at stake is
+ * tree, and that refusal comes back as `WORKTREE_KEPT_CODE` so the user can
+ * decide to discard the uncommitted work and retry with `force`. The branch and
+ * its commits stay in the repo either way, so the only thing at stake is
  * uncommitted work, which exists nowhere else.
  *
- * Order is directory first, then the row, so a failed removal leaves a record
- * that can be retried instead of a directory nobody claims.
+ * A confirmed delete never gets stuck: git's own removal is tried with both
+ * force flags, and the directory is deleted outright when git still refuses.
+ * The row goes last, so a failure leaves something to retry.
  */
 
 import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
-import { DIRTY_WORKTREE_CODE, type CoderCleanupCode } from "./cleanup-codes";
-import { GitError, removeWorktree, runInWorkspace } from "./git";
+import { WORKTREE_KEPT_CODE, type CleanupCode } from "./force-delete";
+import { deleteWorktreeDirectory, GitError, removeWorktree, runInWorkspace } from "./git";
 import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
 import { stopProcessesCommand, SWEEP_TIMEOUT_SECONDS } from "./processes";
 import { stopTerminalExecs } from "./terminal";
@@ -25,19 +26,16 @@ export class CoderCleanupError extends Error {
   constructor(
     message: string,
     readonly status: number = 409,
-    readonly code?: CoderCleanupCode,
+    readonly code?: CleanupCode,
   ) {
     super(message);
     this.name = "CoderCleanupError";
   }
 }
 
-/** git's wording for a checkout with uncommitted work. `force` overrides it. */
-const DIRTY_WORKTREE_PATTERN = /contains modified or untracked files|working tree is dirty/i;
-
-/** The code a refusal carries, when the caller can retry it with `force`. */
-function refusalCode(message: string): CoderCleanupCode | undefined {
-  return DIRTY_WORKTREE_PATTERN.test(message) ? DIRTY_WORKTREE_CODE : undefined;
+/** A checkout holding work a confirmed delete was not asked to keep. */
+function keptWork(message: string): CoderCleanupError {
+  return new CoderCleanupError(message, 409, WORKTREE_KEPT_CODE);
 }
 
 /** What removing a chat's worktree did. */
@@ -111,21 +109,28 @@ export async function removeChatWorktree(
 
   if (exists) {
     await stopProcesses(userId, sessionId, absolute);
+    const repoPath = project?.repoPath ?? null;
+    const repoExists = repoPath !== null && (await workspaceDirectoryExists(userId, repoPath));
+
     // Nothing left to compare the checkout against, so what is in it is all
     // that is left of the work done there.
-    if (!project || !(await workspaceDirectoryExists(userId, project.repoPath))) {
-      throw new CoderCleanupError(
-        `The repo for ${worktree.path} is gone, so its files may be the only copy. Delete them by hand if you are sure.`,
-      );
-    }
-    try {
-      await removeWorktree(userId, { repoDir: project.repoPath, dir: worktree.path, force });
-    } catch (err) {
-      if (err instanceof GitError) {
-        console.error(`git refused to remove ${worktree.path} for ${sessionId}:`, err);
-        throw new CoderCleanupError(err.message, 409, refusalCode(err.message));
+    if (repoPath === null || !repoExists) {
+      if (!force) {
+        throw keptWork(
+          `The repo for ${worktree.path} is gone, so its files may be the only copy. Delete them by hand if you are sure.`,
+        );
       }
-      throw err;
+      await deleteWorktreeDirectory(userId, worktree.path);
+    } else {
+      try {
+        await removeWorktree(userId, { repoDir: repoPath, dir: worktree.path, force });
+      } catch (err) {
+        if (err instanceof GitError && !force) {
+          console.error(`git refused to remove ${worktree.path} for ${sessionId}:`, err);
+          throw keptWork(err.message);
+        }
+        throw err;
+      }
     }
   }
 

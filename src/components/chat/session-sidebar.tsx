@@ -9,16 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -26,7 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { fetchJson, postJson } from "@/lib/http";
-import { DIRTY_WORKTREE_CODE } from "@/lib/coder/cleanup-codes";
+import { forcedRetryError, isForcedRetry } from "@/lib/coder/force-delete";
+import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { useLongPress } from "@/hooks/use-long-press";
 import { splitSessionsByActivity } from "@/lib/chat/session-recency";
 import {
@@ -238,8 +229,6 @@ export function SessionSidebar({
   // selection bar. so both paths run through the same confirmation.
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
-  const [forcePending, setForcePending] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // No separate mode flag: a selection exists exactly as long as chats are
   // picked, so dropping the last one leaves the list back in its normal state.
@@ -291,57 +280,46 @@ export function SessionSidebar({
 
   // One delete for one or many: the bulk endpoint takes both, and a failed
   // single delete reports like a failed batch.
-  const deleteChats = async (ids: string[], force = false) => {
+  const deleteChats = async (ids: string[], force: boolean) => {
     setDeletingIds(ids);
-    setDeleteError(null);
-    setForcePending(false);
+    let result: BulkDeleteResponse;
     try {
-      const result = await postJson<BulkDeleteResponse>(
+      result = await postJson<BulkDeleteResponse>(
         "/api/chat/sessions/bulk",
         force ? { ids, force: true } : { ids },
       );
-      const deleted = new Set(result.deleted);
-      broadcastSessionsDeleted(result.deleted);
-      const survivors = result.failed.map((failure) => failure.sessionId);
-      // Whatever survived stays picked, so a retry is one tap away.
-      setSelectedIds(new Set(survivors));
-      if (activeSessionId && deleted.has(activeSessionId)) {
-        router.push("/dashboard/chat");
-      }
-      const dirty =
-        result.failed.length > 0 &&
-        result.failed.every((failure) => failure.code === DIRTY_WORKTREE_CODE);
-      if (!force && dirty) {
-        // The chats keep their checkouts until the user says the uncommitted
-        // work can go, so the box asks again instead of just reporting.
-        setPendingDelete(survivors);
-        setDeleteError(result.failed[0]?.error ?? null);
-        setForcePending(true);
-      } else {
-        setPendingDelete(null);
-        if (result.failed.length > 0) {
-          const reason = result.failed[0]?.error;
-          toast.error(
-            ids.length === 1
-              ? (reason ?? "Could not delete the chat")
-              : `Could not delete ${result.failed.length} of ${ids.length} chats. they are still selected${reason ? `: ${reason}` : ""}`,
-          );
-        }
-      }
     } catch (err) {
       console.error("Failed to delete chat sessions:", err);
-      setPendingDelete(null);
-      toast.error(err instanceof Error ? err.message : "Could not delete the selected chats");
+      throw err;
     } finally {
       setDeletingIds([]);
     }
+
+    const deleted = new Set(result.deleted);
+    broadcastSessionsDeleted(result.deleted);
+    const survivors = result.failed.map((failure) => failure.sessionId);
+    // Whatever survived stays picked, and stays in the box, so the retry that
+    // confirms the discard targets only the chats still there.
+    setSelectedIds(new Set(survivors));
+    setPendingDelete(survivors.length > 0 ? survivors : null);
+    if (activeSessionId && deleted.has(activeSessionId)) {
+      router.push("/dashboard/chat");
+    }
+    if (result.failed.length === 0) return;
+
+    const reason = result.failed[0]?.error ?? "Could not delete the chat";
+    if (deleted.size > 0) {
+      toast.error(
+        `Deleted ${deleted.size} of ${ids.length} chats. the rest are still selected: ${reason}`,
+      );
+    }
+    // The box shows the reason, and asks again when a confirmation overrides it.
+    throw result.failed.every((failure) => isForcedRetry(failure.code))
+      ? forcedRetryError(reason)
+      : new Error(reason);
   };
 
-  const requestDelete = (ids: string[]) => {
-    setForcePending(false);
-    setDeleteError(null);
-    setPendingDelete(ids);
-  };
+  const requestDelete = (ids: string[]) => setPendingDelete(ids);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -485,62 +463,34 @@ export function SessionSidebar({
       {/* One confirmation for both delete paths. Watchers ride along with the
           chat (the DB cascade removes them), so the box says so when any are
           attached. otherwise the user loses scheduled jobs without a trace. */}
-      <AlertDialog
+      <ForceDeleteDialog
         open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (open) return;
-          setPendingDelete(null);
-          setForcePending(false);
-          setDeleteError(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {pendingCount} {pendingCount === 1 ? "chat" : "chats"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes {pendingCount === 1 ? "the chat" : "the chats"}, along with{" "}
-              {pendingCount === 1 ? "its" : "their"} messages and attachments.
-              {pendingWatcherCount > 0 && (
-                <>
-                  {" "}
-                  This also deletes {pendingWatcherCount}{" "}
-                  {pendingWatcherCount === 1 ? "watcher" : "watchers"}. their scheduled checks stop
-                  immediately.
-                </>
-              )}{" "}
-              This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteError && (
-            <p className="text-destructive text-sm break-words whitespace-pre-wrap">
-              {deleteError}
-            </p>
-          )}
-          {forcePending && (
-            <p className="text-sm break-words">
-              {pendingCount === 1
-                ? "Delete anyway, discarding this chat's uncommitted changes?"
-                : "Delete anyway, discarding the uncommitted changes in these chats' checkouts?"}
-            </p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={(event) => {
-                // The box stays open only to confirm a forced retry.
-                event.preventDefault();
-                if (pendingDelete) void deleteChats(pendingDelete, forcePending);
-              }}
-            >
-              <Trash2 />
-              {forcePending ? "Delete anyway" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title={`Delete ${pendingCount} ${pendingCount === 1 ? "chat" : "chats"}?`}
+        description={
+          <>
+            This removes {pendingCount === 1 ? "the chat" : "the chats"}, along with{" "}
+            {pendingCount === 1 ? "its" : "their"} messages and attachments.
+            {pendingWatcherCount > 0 && (
+              <>
+                {" "}
+                This also deletes {pendingWatcherCount}{" "}
+                {pendingWatcherCount === 1 ? "watcher" : "watchers"}. their scheduled checks stop
+                immediately.
+              </>
+            )}{" "}
+            This cannot be undone.
+          </>
+        }
+        discard={
+          pendingCount === 1
+            ? "this chat's uncommitted changes"
+            : "these chats' uncommitted changes"
+        }
+        onDelete={(force) =>
+          pendingDelete ? deleteChats(pendingDelete, force) : Promise.resolve()
+        }
+      />
     </GlassPanel>
   );
 }

@@ -334,21 +334,56 @@ export async function addWorktreeOnBranch(
   });
 }
 
-/** Remove a worktree. Without `force`, a dirty tree is git's decision to refuse. */
+/**
+ * Remove a worktree.
+ *
+ * Without `force`, a dirty tree is git's decision to refuse. With it, git is not
+ * the last word: a locked checkout, or one holding a submodule, still refuses,
+ * so the directory is deleted and its metadata pruned instead.
+ */
 export async function removeWorktree(
   userId: string,
   options: { repoDir: string; dir: string; force?: boolean },
 ): Promise<void> {
-  await runGit(userId, {
+  const path = checkoutPath(userId, options.dir);
+
+  if (!options.force) {
+    await runGit(userId, {
+      cwd: options.repoDir,
+      args: ["worktree", "remove", path],
+      timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
+    });
+    return;
+  }
+
+  // git needs the flag twice before it lets go of a locked checkout or one
+  // that holds a submodule.
+  const result = await runGit(userId, {
     cwd: options.repoDir,
-    args: [
-      "worktree",
-      "remove",
-      ...(options.force ? ["--force"] : []),
-      checkoutPath(userId, options.dir),
-    ],
+    args: ["worktree", "remove", "--force", "--force", path],
+    allowFailure: true,
     timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
   });
+  if (result.exitCode === 0) return;
+
+  console.warn(
+    `[coder] git would not remove ${options.dir}, deleting it instead: ${failureMessage(result)}`,
+  );
+  await deleteWorktreeDirectory(userId, options.dir);
+  await pruneWorktrees(userId, options.repoDir);
+}
+
+/** Delete a checkout's directory without asking git. */
+export async function deleteWorktreeDirectory(userId: string, dir: string): Promise<void> {
+  const path = checkoutPath(userId, dir);
+  const result = await runInWorkspace(userId, {
+    cwd: ".",
+    command: `rm -rf -- ${shellQuote(path)}`,
+    timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
+  });
+  if (result.exitCode !== 0) {
+    throw new GitError(failureMessage(result), ["rm", "-rf", path], result);
+  }
 }
 
 /** Drop metadata for worktrees whose directories are gone. */
