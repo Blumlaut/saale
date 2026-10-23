@@ -1,4 +1,4 @@
-import { Bot, ShieldCheck, Sparkles, Square } from "lucide-react";
+import { Bot, MessageSquarePlus, ShieldCheck, Sparkles, Square } from "lucide-react";
 import type { CommandMeta, CommandSurface } from "./types";
 
 /**
@@ -12,6 +12,13 @@ import type { CommandMeta, CommandSurface } from "./types";
  * typecheck.
  */
 export const COMMAND_CATALOG = [
+  {
+    name: "new",
+    // The web starts a chat with a button; on Telegram this is the only way to.
+    description: "Start a new chat",
+    surfaces: ["telegram"],
+    icon: MessageSquarePlus,
+  },
   {
     name: "compact",
     description: "Summarise this conversation to free up context",
@@ -49,7 +56,9 @@ export function getCommandMeta(name: string): CommandMeta | undefined {
 
 /** Commands offered on a surface, in catalog order. */
 export function listCommands(surface: CommandSurface): readonly CommandMeta[] {
-  return COMMAND_CATALOG.filter((meta) => meta.surfaces.includes(surface));
+  return COMMAND_CATALOG.filter((meta) =>
+    (meta.surfaces as readonly CommandSurface[]).includes(surface),
+  );
 }
 
 /**

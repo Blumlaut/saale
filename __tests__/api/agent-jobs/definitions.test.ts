@@ -61,22 +61,6 @@ describe("System-managed agent definitions", () => {
   });
 
   describe("POST /api/agent-jobs/definitions", () => {
-    it("rejects creating a job with the reserved Telegram Assistant name", async () => {
-      authAs("user-1");
-
-      const response = await createDefinition(
-        jsonRequest("http://localhost/api/agent-jobs/definitions", {
-          name: "Telegram Assistant",
-          prompt: "Do a thing",
-        }),
-      );
-
-      expect(response.status).toBe(400);
-      const body = await response.json();
-      expect(body.error).toContain('"Telegram Assistant" is managed by Saale');
-      expect(mockAgentDefinition.create).not.toHaveBeenCalled();
-    });
-
     it("allows creating a job with any other name", async () => {
       authAs("user-1");
       mockAgentDefinition.create.mockResolvedValue({
@@ -182,28 +166,6 @@ describe("System-managed agent definitions", () => {
       expect(response.status).toBe(403);
       const body = await response.json();
       expect(body.error).toContain("managed by Saale");
-      expect(mockAgentDefinition.update).not.toHaveBeenCalled();
-    });
-
-    it("rejects renaming a normal definition to the reserved name", async () => {
-      authAs("user-1");
-      mockAgentDefinition.findFirst.mockResolvedValue({
-        id: "def-1",
-        userId: "user-1",
-        systemManaged: false,
-        modelId: null,
-      });
-
-      const response = await patchDefinition(
-        jsonRequest(
-          "http://localhost/api/agent-jobs/definitions/def-1",
-          { name: "Telegram Assistant" },
-          "PATCH",
-        ),
-        { params: Promise.resolve({ id: "def-1" }) },
-      );
-
-      expect(response.status).toBe(400);
       expect(mockAgentDefinition.update).not.toHaveBeenCalled();
     });
 

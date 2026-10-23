@@ -36,8 +36,7 @@ export interface TelegramLinkInfo {
   telegramUserId: bigint;
   telegramChatId: bigint;
   displayName: string | null;
-  sessionId: string | null;
-  lastOutboundSessionId: string | null;
+  activeSessionId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -250,7 +249,12 @@ export async function updateLinkDisplayName(
   });
 }
 
-/** Point a link at the Saale chat session it is currently talking through. */
-export async function setLinkSession(userId: string, sessionId: string): Promise<void> {
-  await prisma.telegramLink.update({ where: { userId }, data: { sessionId } });
+/**
+ * Point the link at the chat this Telegram conversation is in.
+ *
+ * Every routed message and `/new` set it, so a message that answers nothing
+ * continues the same conversation instead of starting a chat of the bot's own.
+ */
+export async function setActiveTelegramSession(userId: string, sessionId: string): Promise<void> {
+  await prisma.telegramLink.update({ where: { userId }, data: { activeSessionId: sessionId } });
 }

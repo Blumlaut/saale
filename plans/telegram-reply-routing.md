@@ -5,7 +5,8 @@ chat that sent it. Phase 2 makes a Telegram group a destination for autonomous
 sends. Phase 2 wants Phase 1, because a group alert should be answerable in the
 chat that produced it.
 
-**Status:** both phases are implemented.
+**Status:** both phases are implemented. The Telegram home thread is retired:
+a message runs in an ordinary chat, and `/new` starts one.
 
 ## Why
 
@@ -29,14 +30,14 @@ Phase 1 replaces that with session routing. Phase 2 adds groups.
 
 1. The message is a Telegram reply (`message.reply_to_message.message_id`) and a
    mapping row exists for it → the message continues **that** session.
-2. No reply, or no mapping → the session that last sent a Telegram message.
-3. Neither → the link's home thread, i.e. today's dedicated chat, which stays as
-   the fallback so a first message works and `TelegramLink.sessionId` keeps its
-   meaning.
+2. No reply, or no mapping → the chat this Telegram conversation is in
+   (`TelegramLink.activeSessionId`), which every routed message and `/new` set.
+3. Neither → the bot says so. Telegram is a transport into ordinary chats, so
+   there is no chat of its own to fall back to; `/new` starts one.
 
 The quoted message still reaches the agent through `replyToQuoted`
 (`processor.ts` → `buildQuotedContext`), so when the mapping is missing (a task
-reminder, a job alert with no source chat) the reply lands in the home thread and
+reminder, a job alert with no source chat) the reply lands in the active chat and
 still carries what it is answering.
 
 ## Schema

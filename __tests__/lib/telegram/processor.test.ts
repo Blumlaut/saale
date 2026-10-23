@@ -117,53 +117,6 @@ describe("Telegram processor  context loading", () => {
   });
 });
 
-describe("Telegram processor  chat session expiry", () => {
-  it("6 hour expiry is correct in milliseconds", () => {
-    const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
-    expect(TELEGRAM_CHAT_EXPIRY_MS).toBe(21_600_000);
-  });
-
-  it("session is expired when last message + expiry < now", () => {
-    const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
-    const lastMessageAt = new Date(Date.now() - 7 * 60 * 60 * 1000); // 7 hours ago
-    const needsNewSession = lastMessageAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
-    expect(needsNewSession).toBe(true);
-  });
-
-  it("session is not expired when within 6 hours", () => {
-    const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
-    const lastMessageAt = new Date(Date.now() - 3 * 60 * 60 * 1000); // 3 hours ago
-    const needsNewSession = lastMessageAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now();
-    expect(needsNewSession).toBe(false);
-  });
-
-  it("session is expired when there are no messages", () => {
-    // A session with no messages (edge case) should be treated as expired
-    const lastMessage = null;
-    const needsNewSession = lastMessage == null;
-    expect(needsNewSession).toBe(true);
-  });
-});
-
-describe("Telegram processor  agent definition naming", () => {
-  it("Telegram agent has a fixed name", () => {
-    const TELEGRAM_AGENT_NAME = "Telegram Assistant";
-    expect(TELEGRAM_AGENT_NAME).toBe("Telegram Assistant");
-  });
-
-  it("agent name is unique per user via composite key", () => {
-    // The schema has @@unique([userId, name])
-    const userId1 = "user-1";
-    const userId2 = "user-2";
-    const name = "Telegram Assistant";
-
-    // Different users can have the same agent name
-    const key1 = `${userId1}:${name}`;
-    const key2 = `${userId2}:${name}`;
-    expect(key1).not.toBe(key2);
-  });
-});
-
 describe("Telegram processor  output handler", () => {
   it("send handler calls both Telegram API and saves to ChatSession", async () => {
     const sendTelegramMessage = vi.fn().mockResolvedValue([123]);

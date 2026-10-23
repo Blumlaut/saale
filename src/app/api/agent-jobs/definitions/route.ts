@@ -5,7 +5,6 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { scheduleAgentDefinition } from "@/lib/queue";
-import { isReservedAgentName, RESERVED_AGENT_NAME_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 
 /**
@@ -132,10 +131,6 @@ export async function POST(request: NextRequest) {
   if (!prompt?.trim()) {
     return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
   }
-  if (isReservedAgentName(name)) {
-    return NextResponse.json({ error: RESERVED_AGENT_NAME_ERROR }, { status: 400 });
-  }
-
   let resolvedRunAt: Date | null;
   try {
     resolvedRunAt = normalizeRunAt(runAt);

@@ -1,36 +1,24 @@
 import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
-import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { splitModelReference } from "@/lib/pi/model-ref";
 import { setChatSessionModel } from "@/lib/chat/session-model";
-import { ensureTelegramAgentDefinition } from "@/lib/telegram/processor";
 import type { CommandHandler, CommandOption } from "../types";
 
 /**
  * `/model`. pick the model a chat answers with.
  *
- * The choice is stored per surface: a web chat keeps its model on the
- * `ChatSession`, while Telegram chats share the system-managed "Telegram
- * Assistant" agent definition. Both list the same user-available models.
+ * The choice is stored on the `ChatSession`, whichever surface the command came
+ * from. a Telegram message runs in an ordinary chat, so the phone and the
+ * browser change the same setting.
  */
 export const modelHandler: CommandHandler = {
   prepare: async (ctx) => {
-    if (ctx.surface === "telegram") {
-      const definition = await ensureTelegramAgentDefinition(ctx.userId);
-      const current =
-        definition.modelId ??
-        formatReference(await resolveModelForPurpose(ctx.userId, "telegram", null));
-      return {
-        title: "Model for Telegram chats",
-        description: "Applies to every chat you have with this bot.",
-        options: await listModelOptions(ctx.userId, current),
-      };
-    }
-
-    const session = await prisma.chatSession.findFirst({
-      where: { id: ctx.sessionId, userId: ctx.userId },
-      select: { modelProvider: true, modelName: true },
-    });
+    const session = ctx.sessionId
+      ? await prisma.chatSession.findFirst({
+          where: { id: ctx.sessionId, userId: ctx.userId },
+          select: { modelProvider: true, modelName: true },
+        })
+      : null;
     return {
       title: "Model for this chat",
       options: await listModelOptions(
@@ -50,13 +38,8 @@ export const modelHandler: CommandHandler = {
       return { message: `"${value}" is not a model reference.`, tone: "error" };
     }
 
-    if (ctx.surface === "telegram") {
-      const definition = await ensureTelegramAgentDefinition(ctx.userId);
-      await prisma.agentDefinition.update({
-        where: { id: definition.id },
-        data: { modelId: value },
-      });
-      return { message: `Model set to ${value} for your Telegram chats.`, tone: "success" };
+    if (!ctx.sessionId) {
+      return { message: "This message doesn't belong to a chat yet.", tone: "info" };
     }
 
     await setChatSessionModel({

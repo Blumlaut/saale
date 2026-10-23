@@ -22,11 +22,7 @@ import { handleGroupServiceMessage } from "@/lib/telegram/group-events";
 import { resolveExistingTelegramTarget } from "@/lib/telegram/routing";
 import { getCommandMeta } from "@/lib/commands/catalog";
 import { parseCommand } from "@/lib/commands/parse";
-import {
-  attachTelegramSession,
-  interruptTelegramChat,
-  nextMessageSeq,
-} from "@/lib/telegram/session-registry";
+import { interruptTelegramChat, nextMessageSeq } from "@/lib/telegram/session-registry";
 
 /**
  * Extract processable content from a Telegram message.
@@ -373,9 +369,6 @@ export async function POST(request: NextRequest) {
     replyToQuoted: extractQuotedMessage(message.reply_to_message),
     messageSeq,
     donePromise: processingPromise,
-    onSessionCreated: (session, tgChatId) => {
-      attachTelegramSession(userId, tgChatId, session);
-    },
     processingDone,
   }).catch((err) => {
     console.error("Telegram message processing failed:", err);

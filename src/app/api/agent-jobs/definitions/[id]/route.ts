@@ -4,11 +4,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
-import {
-  isReservedAgentName,
-  RESERVED_AGENT_NAME_ERROR,
-  SYSTEM_MANAGED_ERROR,
-} from "@/lib/agent-jobs/system-managed";
+import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 
 /**
@@ -107,12 +103,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     nextCron = null;
   } else if (nextCron) {
     nextRunAt = null;
-  }
-
-  // The Telegram chat agent name is reserved. renaming to it would silently
-  // hijack the telegram definition lookup (which matches by name).
-  if (name !== undefined && isReservedAgentName(name)) {
-    return NextResponse.json({ error: RESERVED_AGENT_NAME_ERROR }, { status: 400 });
   }
 
   const updated = await prisma.agentDefinition.update({

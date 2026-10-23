@@ -53,8 +53,7 @@ const link = {
   telegramUserId: chatId,
   telegramChatId: chatId,
   displayName: "Jane",
-  sessionId: "sess-home",
-  lastOutboundSessionId: null,
+  activeSessionId: null as string | null,
   createdAt: new Date("2026-02-01T00:00:00.000Z"),
   updatedAt: new Date("2026-02-01T00:00:00.000Z"),
 };
@@ -62,7 +61,7 @@ const link = {
 beforeEach(() => {
   vi.resetAllMocks();
   mockGetLinkByUserId.mockResolvedValue(link);
-  mockChatSession.findFirst.mockResolvedValue({ id: "sess-home" });
+  mockChatSession.findFirst.mockResolvedValue({ id: "sess-active" });
   mockChatMessage.create.mockResolvedValue({ id: "msg-1" });
   mockChatSession.update.mockResolvedValue({});
   mockIsSessionBusy.mockResolvedValue(false);
@@ -121,11 +120,13 @@ describe("recordOutboundMessage", () => {
     expect(mockAppendCustomMessageEntry.mock.calls[0]![1]).not.toContain("axios");
   });
 
-  it("falls back to the link's home thread when nothing in Saale sent the message", async () => {
+  it("falls back to the chat the Telegram conversation is in", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
+
     await recordOutboundMessage({ userId, content: "Standup in 5" });
 
     expect(mockChatMessage.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ sessionId: "sess-home" }),
+      data: expect.objectContaining({ sessionId: "sess-active" }),
     });
   });
 
@@ -144,8 +145,8 @@ describe("recordOutboundMessage", () => {
     expect(mockChatMessage.create).not.toHaveBeenCalled();
   });
 
-  it("no-ops when the link has no session yet and no source is given", async () => {
-    mockGetLinkByUserId.mockResolvedValue({ ...link, sessionId: null });
+  it("no-ops when the conversation has no chat yet and no source is given", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: null });
 
     await recordOutboundMessage({ userId, content: "hi" });
 
@@ -181,9 +182,9 @@ describe("recordOutboundMessage", () => {
       throw new Error("transcript write failed");
     });
 
-    await expect(recordOutboundMessage({ userId, content: "hi" })).rejects.toThrow(
-      "transcript write failed",
-    );
+    await expect(
+      recordOutboundMessage({ userId, content: "hi", sourceSessionId: "sess-source" }),
+    ).rejects.toThrow("transcript write failed");
 
     expect(mockChatMessage.create).toHaveBeenCalled();
   });
@@ -191,7 +192,7 @@ describe("recordOutboundMessage", () => {
   it("keeps going when the session timestamp bump fails", async () => {
     mockChatSession.update.mockRejectedValue(new Error("db down"));
 
-    await recordOutboundMessage({ userId, content: "hi" });
+    await recordOutboundMessage({ userId, content: "hi", sourceSessionId: "sess-source" });
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("Failed to bump lastActivityAt"),

@@ -3,11 +3,7 @@ import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { triggerAgentRun } from "@/lib/agent-jobs/run";
 import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
-import {
-  isReservedAgentName,
-  RESERVED_AGENT_NAME_ERROR,
-  SYSTEM_MANAGED_ERROR,
-} from "@/lib/agent-jobs/system-managed";
+import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 
@@ -278,10 +274,6 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
       }),
       outputSchema: AGENT_JOB_CREATE_SCHEMA,
       execute: async (_toolCallId, params) => {
-        if (isReservedAgentName(params.name)) {
-          throw new Error(RESERVED_AGENT_NAME_ERROR);
-        }
-
         // Normalize modelId
         const rawModelId = params.modelId || null;
         const resolvedModelId = rawModelId?.includes("/")
@@ -442,9 +434,6 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         const data: Record<string, unknown> = {};
 
         if (params.name !== undefined) {
-          if (isReservedAgentName(params.name)) {
-            throw new Error(RESERVED_AGENT_NAME_ERROR);
-          }
           data.name = params.name.trim();
         }
         if (params.prompt !== undefined) data.prompt = params.prompt.trim();

@@ -843,18 +843,16 @@ model TelegramLink {
   telegramUserId BigInt      @unique
   telegramChatId BigInt
   displayName    String?
-  /// Saale ChatSession this link talks through (null until the first message).
-  sessionId      String?
-  /// The chat that last sent a Telegram message, so a message that is not a
-  /// reply continues that conversation instead of the home thread.
-  lastOutboundSessionId String?
+  /// The chat this Telegram conversation is in. Set by a routed message and by
+  /// `/new`, so a message that answers nothing continues the same conversation.
+  activeSessionId String?
   bot            TelegramBot @relation(fields: [botId], references: [id], onDelete: Cascade)
   user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
   @@index([botId])
-  @@index([sessionId])
+  @@index([activeSessionId])
   @@map("TelegramLink")
 }
 

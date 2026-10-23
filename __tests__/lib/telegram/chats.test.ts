@@ -81,7 +81,7 @@ const link = {
   telegramChatId: BigInt("119075844"),
   displayName: "Jane",
   sessionId: null,
-  lastOutboundSessionId: null,
+  activeSessionId: null,
   createdAt: new Date("2026-02-01T00:00:00.000Z"),
   updatedAt: new Date("2026-02-01T00:00:00.000Z"),
 };

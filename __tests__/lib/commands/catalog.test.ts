@@ -54,10 +54,13 @@ describe("command catalog", () => {
 
     expect(web).toContain("compact");
     expect(telegram).toContain("compact");
-    // A web-only command must not leak into the Telegram menu.
+    // Starting a chat is a Telegram-only command: the web has a button.
+    expect(telegram).toContain("new");
+    expect(web).not.toContain("new");
+    // A command must not leak into a surface it does not declare.
     for (const meta of COMMAND_CATALOG) {
       for (const surface of ["web", "telegram"] as CommandSurface[]) {
-        expect(meta.surfaces.includes(surface)).toBe(
+        expect((meta.surfaces as readonly CommandSurface[]).includes(surface)).toBe(
           (surface === "web" ? web : telegram).includes(meta.name),
         );
       }
@@ -77,7 +80,7 @@ describe("command catalog", () => {
     // "s" matches two names and every description: the names come first.
     const ranked = searchCommands("web", "s").map((meta) => meta.name);
     expect(ranked.slice(0, 2)).toEqual(["stfu", "stop"]);
-    expect(ranked).toHaveLength(COMMAND_CATALOG.length);
+    expect(ranked).toHaveLength(listCommands("web").length);
 
     expect(searchCommands("web", "zzz")).toEqual([]);
   });

@@ -1,16 +1,11 @@
 import { compactChatSession, compactionOutcome } from "@/lib/chat/compact-chat";
-import { compactTelegramSession } from "@/lib/telegram/processor";
 import type { CommandHandler } from "../types";
 
 /** `/compact`. summarise the conversation to free up context. */
 export const compactHandler: CommandHandler = {
   run: async (ctx) => {
-    if (ctx.surface === "telegram") {
-      return compactTelegramSession({
-        userId: ctx.userId,
-        telegramChatId: ctx.telegramChatId,
-        sessionId: ctx.sessionId ?? null,
-      });
+    if (!ctx.sessionId) {
+      return { message: "This message doesn't belong to a chat yet.", tone: "info" };
     }
 
     return compactionOutcome(

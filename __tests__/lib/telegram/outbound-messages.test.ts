@@ -53,7 +53,7 @@ describe("recordOutboundMessages", () => {
     // The link remembers the chat that spoke last, for a reply that quotes nothing.
     expect(mockLink.updateMany).toHaveBeenCalledWith({
       where: { userId },
-      data: { lastOutboundSessionId: "sess-1" },
+      data: { activeSessionId: "sess-1" },
     });
   });
 
