@@ -638,3 +638,22 @@ describe("a call whose arguments are still being written", () => {
     expect(aggregateToolStatus([done])).toEqual({ tone: "success", label: "done" });
   });
 });
+
+describe("aggregate status of a run of calls", () => {
+  const failed = call("bash", "boom", { status: "error", error: "boom" });
+  const running = call("bash", undefined, { status: "running" });
+
+  it("reports a call that is still running, not an earlier failure", () => {
+    // A failed call does not end the run: the model often recovers and calls
+    // another tool. Freezing the collapsed badge on "failed" made a live run
+    // read as finished.
+    expect(aggregateToolStatus([failed, running])).toEqual({ tone: "running", label: "running" });
+  });
+
+  it("reports a run with a failure once nothing is left in flight", () => {
+    expect(aggregateToolStatus([failed, call("bash", "ok")])).toEqual({
+      tone: "danger",
+      label: "failed",
+    });
+  });
+});

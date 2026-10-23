@@ -56,17 +56,20 @@ export function toolStatus(
 }
 
 /**
- * One badge for a run of calls: an error anywhere wins, then running, then done.
+ * One badge for a run of calls: work in progress wins, then an error, then done.
  *
  * A run that failed halfway has to say so. reporting a mixed run as "done"
- * would hide the failure behind a collapsed row.
+ * would hide the failure behind a collapsed row. But a run that is still going
+ * says that instead: a call that is executing (or still having its arguments
+ * written) is what the run is doing right now, and freezing the badge on a
+ * failure from three calls ago makes a live run look finished.
  */
 export function aggregateToolStatus(calls: readonly ToolCallData[]): ToolStatus {
+  const inProgress = calls.some(isToolCallInProgress);
   const failed = calls.some((call) => call.error || call.status === "error");
-  const running = calls.some(isToolCallInProgress);
-  return failed
-    ? { tone: "danger", label: "failed" }
-    : running
-      ? { tone: "running", label: "running" }
+  return inProgress
+    ? { tone: "running", label: "running" }
+    : failed
+      ? { tone: "danger", label: "failed" }
       : { tone: "success", label: "done" };
 }
