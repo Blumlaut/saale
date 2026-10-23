@@ -517,6 +517,18 @@ export async function GET(
         .then(async () => {
           if (aborted) {
             dispatcher.unsubscribe(controller);
+            // The client left while its workspace was being built (a checkout
+            // plus an install takes minutes, and `prepareRun` above claims the
+            // prompt before the response even starts). The run is this
+            // process's, not the connection's: dispatch it anyway, or the
+            // claimed prompt dies with the closed tab. `promptInFlight` would
+            // stay set, and every later connection would treat the chat as
+            // already answered. Runs its own subscriberless stream: the events
+            // land in the buffer and a returning client replays them.
+            if (action.type === "prompt" && pendingRun) {
+              log("stream", "client gone before dispatch. running anyway");
+              void dispatchRun(pendingRun).then(drainQueueSafely);
+            }
             return;
           }
 
