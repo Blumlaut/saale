@@ -124,6 +124,7 @@ describe("removeChatWorktree", () => {
     expect(mocks.removeWorktree).toHaveBeenCalledWith(USER, {
       repoDir: "projects/saale",
       dir: "worktrees/saale/c-1a2b3c4d",
+      force: false,
     });
     expect(mocks.updateWorktree).toHaveBeenCalledWith({
       where: { sessionId: SESSION },

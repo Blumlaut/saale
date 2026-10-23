@@ -9,6 +9,7 @@ const MAX_BATCH = 100;
 
 const bodySchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(MAX_BATCH),
+  force: z.boolean().optional(),
 });
 
 /**
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result = await deleteChatSessions(authResult.user.id, parsed.data.ids);
+  const result = await deleteChatSessions(
+    authResult.user.id,
+    parsed.data.ids,
+    parsed.data.force === true,
+  );
   return NextResponse.json(result);
 }

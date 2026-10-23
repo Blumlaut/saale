@@ -20,7 +20,11 @@ import { CoderCleanupError, removeChatWorktree } from "./worktree-removal";
  * survives. The chats go only after every checkout is gone, and the directory
  * only when the repo is clean and fully pushed.
  */
-export async function removeProject(userId: string, projectId: string): Promise<void> {
+export async function removeProject(
+  userId: string,
+  projectId: string,
+  force: boolean = false,
+): Promise<void> {
   const project = await prisma.coderProject.findFirst({
     where: { id: projectId, userId },
     select: { id: true, repoPath: true, name: true, chats: { select: { id: true } } },
@@ -35,7 +39,7 @@ export async function removeProject(userId: string, projectId: string): Promise<
 
   // Worktrees first: a dirty one refuses, and then nothing has been deleted.
   for (const chat of project.chats) {
-    await removeChatWorktree(userId, chat.id);
+    await removeChatWorktree(userId, chat.id, force);
   }
 
   // A repo directory deleted by hand leaves no git to ask and no work to lose,

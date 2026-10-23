@@ -13,7 +13,7 @@ import { getActiveSessions } from "@/lib/redis";
  * chat's spinner in the coder panel matches the one in the chat list.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   const { projectId } = await params;
@@ -41,7 +41,7 @@ export async function GET(
  * delete never takes the only copy of anything.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   const { projectId } = await params;
@@ -49,8 +49,9 @@ export async function DELETE(
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
+  const force = new URL(request.url).searchParams.get("force") === "1";
   try {
-    await removeProject(authResult.user.id, projectId);
+    await removeProject(authResult.user.id, projectId, force);
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof CoderCleanupError) {

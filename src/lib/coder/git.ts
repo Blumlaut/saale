@@ -337,11 +337,11 @@ export async function addWorktreeOnBranch(
 /** Remove a worktree. No `--force`: a dirty tree is git's decision to refuse. */
 export async function removeWorktree(
   userId: string,
-  options: { repoDir: string; dir: string },
+  options: { repoDir: string; dir: string; force?: boolean },
 ): Promise<void> {
   await runGit(userId, {
     cwd: options.repoDir,
-    args: ["worktree", "remove", checkoutPath(userId, options.dir)],
+    args: ["worktree", "remove", ...(options.force ? ["--force"] : []), checkoutPath(userId, options.dir)],
     timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
   });
 }

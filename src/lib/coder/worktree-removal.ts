@@ -74,6 +74,7 @@ async function stopProcesses(
 export async function removeChatWorktree(
   userId: string,
   sessionId: string,
+  force: boolean = false,
 ): Promise<RemovedWorktree> {
   const chat = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId },
@@ -107,7 +108,7 @@ export async function removeChatWorktree(
       );
     }
     try {
-      await removeWorktree(userId, { repoDir: project.repoPath, dir: worktree.path });
+      await removeWorktree(userId, { repoDir: project.repoPath, dir: worktree.path, force });
     } catch (err) {
       if (err instanceof GitError) {
         console.error(`git refused to remove ${worktree.path} for ${sessionId}:`, err);
