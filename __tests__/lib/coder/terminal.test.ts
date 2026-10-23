@@ -32,11 +32,9 @@ vi.mock("@/lib/redis", () => ({
 
 import {
   resolveTerminalTarget,
-  runTerminalCommand,
   sendTerminalInput,
   stopTerminalExecs,
   TerminalNotReadyError,
-  type TerminalEvent,
   type TerminalTarget,
 } from "@/lib/coder/terminal";
 
@@ -47,19 +45,6 @@ const TARGET: TerminalTarget = {
   worktreePath: "worktrees/saale/c-1a2b3c4d",
   branch: "wt/c-1a2b3c4d",
 };
-
-/** An exec stream scripted as a list of events. */
-function scriptedExec(events: Array<Record<string, unknown>>) {
-  return async function* () {
-    for (const event of events) yield event;
-  };
-}
-
-async function collect(options: Parameters<typeof runTerminalCommand>[0]) {
-  const collected: TerminalEvent[] = [];
-  for await (const event of runTerminalCommand(options)) collected.push(event);
-  return collected;
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -105,102 +90,6 @@ describe("resolveTerminalTarget", () => {
     });
 
     await expect(resolveTerminalTarget(USER, SESSION)).rejects.toThrow(/no worktree yet/);
-  });
-});
-
-describe("runTerminalCommand", () => {
-  it("runs in the worktree with stdin, and writes the exec id down while it runs", async () => {
-    mocks.exec.mockImplementation(
-      scriptedExec([
-        { type: "started", execId: "exec-1" },
-        { type: "chunk", stream: "stdout", data: Buffer.from("hello\n") },
-        { type: "exit", exitCode: 0, timedOut: false, durationMs: 42 },
-      ]),
-    );
-
-    const events = await collect({
-      userId: USER,
-      sessionId: SESSION,
-      target: TARGET,
-      command: "ls",
-    });
-
-    expect(mocks.exec).toHaveBeenCalledWith({
-      identity: "user-user-1",
-      command: "ls",
-      cwd: TARGET.cwd,
-      interactive: true,
-    });
-    expect(events).toEqual([
-      { type: "started", execId: "exec-1" },
-      { type: "data", stream: "stdout", text: "hello\n" },
-      { type: "exit", exitCode: 0, timedOut: false, durationMs: 42 },
-    ]);
-    expect(mocks.registerTerminalExec).toHaveBeenCalledWith(USER, SESSION, "exec-1");
-    expect(mocks.unregisterTerminalExec).toHaveBeenCalledWith(USER, SESSION, "exec-1");
-  });
-
-  it("keeps the two streams apart", async () => {
-    mocks.exec.mockImplementation(
-      scriptedExec([
-        { type: "started", execId: "exec-1" },
-        { type: "chunk", stream: "stdout", data: Buffer.from("out") },
-        { type: "chunk", stream: "stderr", data: Buffer.from("err") },
-        { type: "exit", exitCode: 1, timedOut: false, durationMs: 5 },
-      ]),
-    );
-
-    const events = await collect({
-      userId: USER,
-      sessionId: SESSION,
-      target: TARGET,
-      command: "x",
-    });
-
-    expect(events.filter((event) => event.type === "data")).toEqual([
-      { type: "data", stream: "stdout", text: "out" },
-      { type: "data", stream: "stderr", text: "err" },
-    ]);
-  });
-
-  it("holds half a character until the rest of it arrives", async () => {
-    // "é" is two bytes; a chunk boundary between them must not print garbage.
-    const bytes = Buffer.from("é");
-    mocks.exec.mockImplementation(
-      scriptedExec([
-        { type: "started", execId: "exec-1" },
-        { type: "chunk", stream: "stdout", data: bytes.subarray(0, 1) },
-        { type: "chunk", stream: "stdout", data: bytes.subarray(1) },
-        { type: "exit", exitCode: 0, timedOut: false, durationMs: 1 },
-      ]),
-    );
-
-    const events = await collect({
-      userId: USER,
-      sessionId: SESSION,
-      target: TARGET,
-      command: "x",
-    });
-    const text = events
-      .filter((event): event is Extract<TerminalEvent, { type: "data" }> => event.type === "data")
-      .map((event) => event.text)
-      .join("");
-
-    expect(text).toBe("é");
-  });
-
-  it("forgets the command when the run fails partway", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.exec.mockImplementation(async function* () {
-      yield { type: "started", execId: "exec-1" };
-      throw new Error("container went away");
-    });
-
-    await expect(
-      collect({ userId: USER, sessionId: SESSION, target: TARGET, command: "sleep 1" }),
-    ).rejects.toThrow(/container went away/);
-    expect(mocks.unregisterTerminalExec).toHaveBeenCalledWith(USER, SESSION, "exec-1");
-    error.mockRestore();
   });
 });
 

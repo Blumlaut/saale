@@ -20,6 +20,7 @@ import { deleteWorktreeDirectory, GitError, removeWorktree, runInWorkspace } fro
 import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
 import { stopProcessesCommand, SWEEP_TIMEOUT_SECONDS } from "./processes";
 import { stopTerminalExecs } from "./terminal";
+import { forgetTerminalRun } from "./terminal-runs";
 
 /** A removal git refused, with the reason it gave. */
 export class CoderCleanupError extends Error {
@@ -63,6 +64,8 @@ async function stopProcesses(
   const stopped = await stopTerminalExecs(userId, sessionId);
   if (stopped > 0)
     console.warn(`[coder] stopped ${stopped} terminal command(s) in ${absolutePath}`);
+  // The checkout is going, so the run it belonged to goes with it.
+  forgetTerminalRun(userId, sessionId);
 
   const result = await runInWorkspace(userId, {
     cwd: ".",
