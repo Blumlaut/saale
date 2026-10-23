@@ -44,6 +44,7 @@ services:
       - SANDBOX_USER=${SANDBOX_USER:-root}
       - SANDBOX_UID=${SANDBOX_UID:-1000}
       - SANDBOX_GID=${SANDBOX_GID:-1000}
+      - PREVIEW_DOMAIN=${PREVIEW_DOMAIN:-}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
       - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
       - TELEGRAM_OIDC_CLIENT_ID=${TELEGRAM_OIDC_CLIENT_ID:-}
@@ -172,6 +173,10 @@ services:
     container_name: saale-sandbox-exec
     restart: unless-stopped
     command: ["node", "sandbox.mjs"]
+    # The preview listener, reachable only from this host: nginx proxies the
+    # wildcard vhost here and nothing else can reach it.
+    ports:
+      - "127.0.0.1:${SANDBOX_PREVIEW_PORT:-8101}:${SANDBOX_PREVIEW_PORT:-8101}"
     # Joining the sandbox network makes Compose create it before this starts;
     # the tenant containers attach to it by name.
     networks:
@@ -182,6 +187,7 @@ services:
       - saale_workspaces:/workspaces
     environment:
       - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_PREVIEW_PORT=${SANDBOX_PREVIEW_PORT:-8101}
       - SANDBOX_WORKSPACES_DIR=/workspaces
       - SANDBOX_VOLUME=saale_workspaces
       - SANDBOX_NETWORK=saale-sandbox
