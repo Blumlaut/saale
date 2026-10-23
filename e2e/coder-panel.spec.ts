@@ -19,6 +19,16 @@ const BRANCH = "wt/c-1a2b3c4d-with-a-name-long-enough-to-need-wrapping";
 
 const NOW = "2026-01-01T09:00:00.000Z";
 
+/**
+ * The copy of an element that is on screen.
+ *
+ * The app shell renders the page once per shell and hides one with CSS, so
+ * every locator matches twice.
+ */
+function shown(page: Page, selector: string) {
+  return page.locator(`${selector}:visible`).first();
+}
+
 const PROJECT = {
   id: PROJECT_ID,
   name: "e2e-project-with-a-long-name",
@@ -200,7 +210,9 @@ test.describe("coder panel", () => {
       .locator("text=" + PROJECT.name)
       .first()
       .click();
-    await expect(page.getByText("A coder chat with a long title", { exact: false })).toBeVisible();
+    await expect(
+      page.getByText("A coder chat with a long title", { exact: false }).first(),
+    ).toBeVisible();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
 
     await context.close();
@@ -220,7 +232,7 @@ test.describe("coder panel", () => {
 
     await page.getByText("notes.md", { exact: false }).first().click();
     await expect(page.getByText("+added line", { exact: false })).toBeVisible();
-    await expect(page.getByText("−removed line", { exact: false })).toBeVisible();
+    await expect(page.getByText("-removed line", { exact: false })).toBeVisible();
 
     await context.close();
   });
@@ -232,10 +244,10 @@ test.describe("coder panel", () => {
     await mockCoder(page);
 
     await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
-    await page.getByRole("tab", { name: "Terminal" }).click();
+    await shown(page, '[role="tab"]:text-is("Terminal")').click();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
 
-    const input = page.getByLabel("Terminal command");
+    const input = shown(page, '[aria-label="Terminal command"]');
     await input.fill("npm test");
     await input.press("Enter");
 
@@ -255,13 +267,18 @@ test.describe("coder panel", () => {
     );
 
     await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}`);
-    await page.getByRole("button", { name: /Actions for A coder chat/ }).click();
+    await page
+      .getByRole("button", { name: /Actions for A coder chat/ })
+      .first()
+      .click();
     await page.getByRole("menuitem", { name: "Delete chat" }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
 
     await expect(page.getByText(/working tree is dirty/)).toBeVisible();
     // The row is still there: nothing was half-deleted.
-    await expect(page.getByText("A coder chat with a long title", { exact: false })).toBeVisible();
+    await expect(
+      page.getByText("A coder chat with a long title", { exact: false }).first(),
+    ).toBeVisible();
 
     await context.close();
   });

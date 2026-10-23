@@ -546,6 +546,40 @@ async function mockCoderProjects(page: Page) {
   );
 }
 
+/** A chat inside a project, so the coder chat header's sheets have somewhere to open from. */
+async function mockCoderChat(page: Page) {
+  await mockCoderProjects(page);
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/status$`), (route) =>
+    route.fulfill({
+      json: {
+        worktree: {
+          path: "worktrees/e2e-project-with-a-long-name/c-1a2b3c4d",
+          branch: "wt/c-1a2b3c4d",
+          baseSha: "0".repeat(40),
+        },
+        project: {
+          id: "e2e-project",
+          name: "e2e-project-with-a-long-name",
+          slug: "e2e-project-with-a-long-name",
+        },
+        branch: "wt/c-1a2b3c4d",
+        head: "1".repeat(40),
+        upstream: "",
+        ahead: 0,
+        behind: 0,
+        changes: [],
+        commits: [],
+      },
+    }),
+  );
+  await page.route(/\/api\/chat\/sessions\/[^/]+\/messages/, (route) =>
+    route.fulfill({ json: { messages: [] } }),
+  );
+  await page.route(/\/api\/chat\/sessions\/[^/]+\/stream/, (route) =>
+    route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }),
+  );
+}
+
 export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Infrastructure ────────────────────────────────────────────────────────
   {
@@ -1146,15 +1180,26 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [CODER_PROJECT_CHATS],
     mock: mockCoderProjects,
     open: async (page) => {
-      await click(page, '[aria-label="Actions for A coder chat with a long title"]');
+      await click(page, '[aria-label^="Actions for A coder chat with a long title"]');
       await click(page, '[role="menuitem"]:has-text("Delete chat")');
     },
   },
   {
-    name: "coder · chat sheets",
-    path: "/dashboard/coder",
+    name: "coder · chat list sheet",
+    path: "/dashboard/coder/e2e-project/e2e-coder-chat",
     sources: [CODER_LAYOUT],
-    skip: "the coder chat header owns two sheets that need a live chat with a built worktree; e2e/coder-panel.spec.ts drives the desktop panel instead",
+    mock: mockCoderChat,
+    open: (page) => click(page, '[aria-label="Open chat list"]'),
+  },
+  {
+    name: "coder · worktree sheet",
+    path: "/dashboard/coder/e2e-project/e2e-coder-chat",
+    sources: [CODER_LAYOUT],
+    mock: mockCoderChat,
+    open: async (page) => {
+      await click(page, '[aria-label="Open worktree panel"]');
+      await click(page, '[role="tab"]:has-text("Terminal")');
+    },
   },
 
   // ── Council workspace files ───────────────────────────────────────────────

@@ -114,19 +114,26 @@ export function ProjectList() {
                   </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      render={(triggerProps) => (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className={cn("shrink-0", ROW_ACTION)}
-                          aria-label={`Actions for ${project.name}`}
-                          onClick={(event) => event.stopPropagation()}
-                          {...triggerProps}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      )}
+                      render={(triggerProps) => {
+                        // The row navigates on click, so the menu keeps its own.
+                        const { onClick, ...rest } = triggerProps;
+                        return (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className={cn("shrink-0", ROW_ACTION)}
+                            aria-label={`Actions for ${project.name}`}
+                            {...rest}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onClick?.(event);
+                            }}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        );
+                      }}
                     />
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
