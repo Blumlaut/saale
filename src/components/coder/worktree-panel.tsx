@@ -109,8 +109,8 @@ export function WorktreePanel({
               state={state}
               onRefresh={onRefresh}
               refreshing={refreshing}
-              onRunScript={(name) => {
-                terminalRunRef.current(`npm run ${name}`);
+              onRunScript={(command) => {
+                terminalRunRef.current(command);
                 setTab("terminal");
               }}
             />

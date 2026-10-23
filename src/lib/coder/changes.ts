@@ -27,6 +27,7 @@ export interface CoderChange {
 export interface CoderScript {
   name: string;
   command: string;
+  runCommand: string;
 }
 
 /** A chat's worktree and everything git says about it. */
@@ -109,12 +110,16 @@ export async function loadSessionState(
   }
 
   const worktree = session.coderWorktree;
-  const [status, numstat, commits, packageJson] = await Promise.all([
-    readStatus(userId, worktree.path),
-    readNumstat(userId, worktree.path),
-    readLog(userId, worktree.path),
-    readWorktreeFile(userId, worktree.path, "package.json"),
-  ]);
+  const [status, numstat, commits, packageJson, makefile, pyproject, composerJson] =
+    await Promise.all([
+      readStatus(userId, worktree.path),
+      readNumstat(userId, worktree.path),
+      readLog(userId, worktree.path),
+      readWorktreeFile(userId, worktree.path, "package.json"),
+      readWorktreeFile(userId, worktree.path, "Makefile"),
+      readWorktreeFile(userId, worktree.path, "pyproject.toml"),
+      readWorktreeFile(userId, worktree.path, "composer.json"),
+    ]);
 
   return {
     worktree: { path: worktree.path, branch: worktree.branch, baseSha: worktree.baseSha },
@@ -126,7 +131,12 @@ export async function loadSessionState(
     behind: status.behind,
     changes: mergeChanges(status, numstat),
     commits,
-    scripts: parsePackageScripts(packageJson),
+    scripts: [
+      ...parsePackageScripts(packageJson),
+      ...parseMakefile(makefile),
+      ...parsePyproject(pyproject),
+      ...parseComposer(composerJson),
+    ],
   };
 }
 
@@ -183,5 +193,71 @@ function parsePackageScripts(raw: string | null): CoderScript[] {
   const relevant = /^(dev|start|preview|serve|watch)(:|$)/i;
   return Object.entries(scripts)
     .filter(([name]) => relevant.test(name))
-    .map(([name, command]) => ({ name, command: String(command ?? "") }));
+    .map(([name, command]) => ({
+      name,
+      command: String(command ?? ""),
+      runCommand: `npm run ${name}`,
+    }));
+}
+
+/** Makefile targets that look like dev servers. */
+function parseMakefile(raw: string | null): CoderScript[] {
+  if (!raw) return [];
+  const relevant = /^(dev|start|preview|serve|watch|run)(:|$)/i;
+  const scripts: CoderScript[] = [];
+  for (const line of raw.split("\n")) {
+    const match = line.match(/^([A-Za-z0-9_.-]+)\s*:/);
+    if (!match) continue;
+    const name = match[1] as string;
+    if (name.startsWith(".")) continue;
+    if (!relevant.test(name)) continue;
+    scripts.push({ name, command: "make target", runCommand: `make ${name}` });
+  }
+  return scripts;
+}
+
+/** Poetry/poe scripts from pyproject.toml. */
+function parsePyproject(raw: string | null): CoderScript[] {
+  if (!raw) return [];
+  const relevant = /^(dev|start|preview|serve|watch|run)(:|$)/i;
+  const scripts: CoderScript[] = [];
+  // crude: look for [tool.poetry.scripts] or [tool.poe.tasks] sections
+  let inSection = false;
+  for (const line of raw.split("\n")) {
+    if (/^\[tool\.(poetry\.scripts|poe\.tasks)\]/.test(line.trim())) {
+      inSection = true;
+      continue;
+    }
+    if (/^\[/.test(line.trim())) {
+      inSection = false;
+      continue;
+    }
+    if (!inSection) continue;
+    const match = line.match(/^([A-Za-z0-9_.-]+)\s*=/);
+    if (!match) continue;
+    const name = match[1] as string;
+    if (!relevant.test(name)) continue;
+    scripts.push({ name, command: "python task", runCommand: `poetry run ${name}` });
+  }
+  return scripts;
+}
+
+/** Composer scripts from composer.json. */
+function parseComposer(raw: string | null): CoderScript[] {
+  if (!raw) return [];
+  let parsed: { scripts?: Record<string, unknown> } | null = null;
+  try {
+    parsed = JSON.parse(raw) as { scripts?: Record<string, unknown> };
+  } catch {
+    return [];
+  }
+  const scripts = parsed?.scripts ?? {};
+  const relevant = /^(dev|start|preview|serve|watch|run)(:|$)/i;
+  return Object.entries(scripts)
+    .filter(([name]) => relevant.test(name))
+    .map(([name, command]) => ({
+      name,
+      command: String(command ?? ""),
+      runCommand: `composer run ${name}`,
+    }));
 }

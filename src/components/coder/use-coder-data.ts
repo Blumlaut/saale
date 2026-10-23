@@ -66,7 +66,7 @@ export interface CoderSessionState {
   behind: number;
   changes: CoderChange[];
   commits: CoderCommit[];
-  scripts: { name: string; command: string }[];
+  scripts: { name: string; command: string; runCommand: string }[];
 }
 
 /** Load one thing, with the reload the panels need after a run finishes. */
