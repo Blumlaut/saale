@@ -44,13 +44,27 @@ vi.mock("@/lib/pi/agent-pool", () => ({
 const mockRm = vi.fn();
 vi.mock("fs/promises", () => ({ default: { rm: (...args: unknown[]) => mockRm(...args) } }));
 
+const mockIsSessionActive = vi.fn();
+vi.mock("@/lib/redis", () => ({
+  isSessionActive: (...args: unknown[]) => mockIsSessionActive(...args),
+}));
+
+const mockGetProvisioning = vi.fn();
+vi.mock("@/lib/coder/provisioning", () => ({
+  getProvisioning: (...args: unknown[]) => mockGetProvisioning(...args),
+}));
+
 const mockRemoveChatWorktree = vi.fn();
 vi.mock("@/lib/coder/worktree-removal", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/coder/worktree-removal")>();
   return { ...actual, removeChatWorktree: (...args: unknown[]) => mockRemoveChatWorktree(...args) };
 });
 
-import { deleteChatSession, deleteChatSessions } from "@/lib/chat/delete-session";
+import {
+  autoDeleteChatSession,
+  deleteChatSession,
+  deleteChatSessions,
+} from "@/lib/chat/delete-session";
 import { CoderCleanupError } from "@/lib/coder/worktree-removal";
 import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 
@@ -258,5 +272,89 @@ describe("deleteChatSessions", () => {
     expect(result.deleted).toEqual(["chat-1", "chat-2"]);
     expect(mockUnscheduleWatcher).toHaveBeenCalledTimes(1);
     expect(mockUnscheduleWatcher).toHaveBeenCalledWith("watcher-chat-1");
+  });
+});
+
+describe("autoDeleteChatSession", () => {
+  // The leave-the-page path. Its input is a browser guess that the chat is
+  // empty, so every case here is about what the server knows better.
+  const idleSession = { temporary: false, _count: { messages: 0 } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindFirst.mockResolvedValue(idleSession);
+    mockFindMany.mockResolvedValue([]);
+    mockDeleteMany.mockResolvedValue({ count: 1 });
+    mockDeleteAllImages.mockResolvedValue(undefined);
+    mockWatcherFindMany.mockResolvedValue([]);
+    mockRemove.mockResolvedValue(undefined);
+    mockRm.mockResolvedValue(undefined);
+    mockRemoveChatWorktree.mockResolvedValue({ path: null, removed: false });
+    mockIsSessionActive.mockResolvedValue(false);
+    mockGetProvisioning.mockResolvedValue(null);
+  });
+
+  it("deletes a chat the user abandoned before sending anything", async () => {
+    const result = await autoDeleteChatSession(USER_ID, SESSION_ID);
+
+    expect(result).toEqual({ deleted: true });
+    expect(mockDeleteMany).toHaveBeenCalledWith({ where: { id: SESSION_ID, userId: USER_ID } });
+  });
+
+  it("keeps a chat whose workspace is still being built", async () => {
+    mockFindFirst.mockResolvedValue({ temporary: false, _count: { messages: 1 } });
+    mockGetProvisioning.mockResolvedValue({ step: "setup", startedAt: new Date().toISOString() });
+
+    const result = await autoDeleteChatSession(USER_ID, SESSION_ID);
+
+    expect(result).toEqual({ deleted: false, kept: "provisioning" });
+    expect(mockDeleteMany).not.toHaveBeenCalled();
+    // The worktree is untouched: the install running in it is still wanted.
+    expect(mockRemoveChatWorktree).not.toHaveBeenCalled();
+  });
+
+  it("keeps a chat a generation is running in", async () => {
+    mockIsSessionActive.mockResolvedValue(true);
+
+    const result = await autoDeleteChatSession(USER_ID, SESSION_ID);
+
+    expect(result).toEqual({ deleted: false, kept: "running" });
+    expect(mockDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps a chat that has messages, whatever the client thought", async () => {
+    mockFindFirst.mockResolvedValue({ temporary: false, _count: { messages: 2 } });
+
+    const result = await autoDeleteChatSession(USER_ID, SESSION_ID);
+
+    expect(result).toEqual({ deleted: false, kept: "started" });
+    expect(mockDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it("still deletes a temporary chat, messages and all", async () => {
+    mockFindFirst.mockResolvedValue({ temporary: true, _count: { messages: 5 } });
+
+    const result = await autoDeleteChatSession(USER_ID, SESSION_ID);
+
+    expect(result).toEqual({ deleted: true });
+    expect(mockDeleteMany).toHaveBeenCalled();
+  });
+
+  it("is a no-op for a chat that is already gone or not the user's", async () => {
+    mockFindFirst.mockResolvedValue(null);
+
+    const result = await autoDeleteChatSession(USER_ID, "someone-elses-chat");
+
+    expect(result).toEqual({ deleted: false, kept: "missing" });
+    expect(mockDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it("looks the chat up with the owner in the query", async () => {
+    await autoDeleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockFindFirst).toHaveBeenCalledWith({
+      where: { id: SESSION_ID, userId: USER_ID },
+      select: { temporary: true, _count: { select: { messages: true } } },
+    });
   });
 });
