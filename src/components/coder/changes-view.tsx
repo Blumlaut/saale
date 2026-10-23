@@ -277,7 +277,7 @@ export function ChangesView({
                 <button
                   key={script.name}
                   type="button"
-                  onClick={() => onRunScript?.(script.name)}
+                  onClick={() => onRunScript?.(script.runCommand)}
                   className="hover:bg-accent/60 flex items-center gap-2 rounded px-2 py-1 text-left transition-colors"
                   title={script.command}
                 >
