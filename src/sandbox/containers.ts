@@ -18,7 +18,12 @@ import type Dockerode from "dockerode";
 import type { SandboxConfig } from "@/lib/sandbox/config";
 import { previewIdentitySlug } from "@/lib/preview/url";
 import { parseIdentity } from "@/lib/sandbox/identity";
-import { containerName, containerSpec, containerWorkspacePath } from "@/lib/sandbox/spec";
+import {
+  containerName,
+  containerSpec,
+  containerWorkspacePath,
+  limitDrift,
+} from "@/lib/sandbox/spec";
 import { ensureWorkspace } from "@/lib/sandbox/workspace";
 import { checkMountinfo } from "./mount-check";
 import {
@@ -198,6 +203,8 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
   const starting = new Map<string, Promise<ContainerHandle>>();
   /** Slug to identity, rebuilt when it ages out or a container changes. */
   let slugIndex: { at: number; bySlug: Map<string, string> } | null = null;
+  /** Identities already warned that their container's limits are stale. */
+  const warnedDrift = new Set<string>();
 
   async function inspectOrNull(name: string): Promise<Dockerode.ContainerInspectInfo | null> {
     try {
@@ -310,10 +317,32 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     const existing = await inspectOrNull(name);
 
     if (existing) {
-      const container = docker.getContainer(name);
-      if (!existing.State.Running) await startOnce(container);
-      lastUsed.set(id, now());
-      return container;
+      const drift = limitDrift(existing.HostConfig, config);
+      // Docker fixes HostConfig at create time and cannot change a memory limit
+      // on a running container, so a changed SANDBOX_MEMORY (or pids/cpus) only
+      // reaches a container that is replaced. Replacing one mid-command would
+      // kill it, so a busy container keeps its old limits until it falls idle.
+      if (drift.length === 0 || registry.idsFor(id).length > 0) {
+        if (drift.length > 0 && !warnedDrift.has(id)) {
+          warnedDrift.add(id);
+          console.warn(
+            `[sandbox] container ${name} keeps its old limits while in use: ${drift.join(", ")}`,
+          );
+        }
+        const container = docker.getContainer(name);
+        if (!existing.State.Running) await startOnce(container);
+        lastUsed.set(id, now());
+        return container;
+      }
+
+      console.warn(`[sandbox] replacing container ${name}: ${drift.join(", ")}`);
+      warnedDrift.delete(id);
+      try {
+        await docker.getContainer(name).remove({ force: true });
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+      }
+      slugIndex = null;
     }
 
     const container = await create(id);
