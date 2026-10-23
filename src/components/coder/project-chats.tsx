@@ -72,12 +72,28 @@ export function ProjectChats({
           variant="ghost"
           size="icon-sm"
           aria-label="New coder chat"
+          className="hidden md:inline-flex"
           onClick={onNewChat}
           disabled={!project}
         >
           <MessageSquarePlus className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Full-width on phones, mirroring the chat sidebar: the header icon is
+          too easy to miss at the corner of the panel. */}
+      {onNewChat && (
+        <div className="border-border/30 border-b p-2 md:hidden">
+          <Button
+            className="liquid-glass-accent h-9 w-full justify-center gap-2 rounded-lg"
+            onClick={onNewChat}
+            disabled={!project}
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            New coder chat
+          </Button>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="text-destructive p-3 text-sm break-words">{error}</p>}

@@ -70,10 +70,12 @@ export default function CoderLayout() {
   if (!sessionId) {
     return (
       <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
-        <div className="w-64 shrink-0">
+        {/* Phones show only the chat list; the header button starts a new
+            chat, so the empty state only earns its half at md and up. */}
+        <div className="min-w-0 flex-1 md:w-64 md:flex-none">
           <ProjectChats projectId={projectId} onNewChat={newChat} />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="hidden min-w-0 flex-1 md:block">
           <GlassPanel className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
             <FolderGit2 className="text-muted-foreground h-8 w-8" />
             <p className="text-sm font-medium">No chat open</p>
