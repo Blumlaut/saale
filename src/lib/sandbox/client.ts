@@ -31,6 +31,8 @@ export interface SandboxExecOptions {
   /** Variables for this command only. Never stored, never logged. */
   env?: Record<string, string>;
   timeoutSeconds?: number;
+  /** Attach stdin, so `writeInput` can type into the command while it runs. */
+  interactive?: boolean;
   signal?: AbortSignal;
 }
 
@@ -90,7 +92,7 @@ export async function health(): Promise<{ status: string }> {
  * process, not just stop listening to it.
  */
 export async function* exec(options: SandboxExecOptions): AsyncGenerator<SandboxEvent> {
-  const { identity, command, cwd, env, timeoutSeconds, signal } = options;
+  const { identity, command, cwd, env, timeoutSeconds, interactive, signal } = options;
 
   const response = await fetch(`${serviceUrl()}/exec`, {
     method: "POST",
@@ -100,6 +102,7 @@ export async function* exec(options: SandboxExecOptions): AsyncGenerator<Sandbox
       ...(cwd ? { cwd } : {}),
       ...(env && Object.keys(env).length > 0 ? { env } : {}),
       ...(timeoutSeconds ? { timeoutSeconds } : {}),
+      ...(interactive ? { interactive: true } : {}),
     }),
     ...(signal ? { signal } : {}),
   });
@@ -181,6 +184,22 @@ export async function kill(execId: string): Promise<void> {
     headers: authHeaders("user-none"),
   });
   if (!response.ok && response.status !== 404) throw await failure(response);
+}
+
+/**
+ * Type into a command started with `interactive`.
+ *
+ * There is no EOF: Docker cannot half-close a hijacked connection without
+ * taking the command's output with it.
+ */
+export async function writeInput(execId: string, identity: string, data: Buffer | string) {
+  const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
+  const response = await fetch(`${serviceUrl()}/exec/${encodeURIComponent(execId)}/input`, {
+    method: "POST",
+    headers: authHeaders(identity),
+    body: JSON.stringify({ data: bytes.toString("base64") }),
+  });
+  if (!response.ok) throw await failure(response);
 }
 
 /** Remove an identity's container. Its directory stays. */

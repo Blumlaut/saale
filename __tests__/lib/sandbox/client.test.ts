@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { exec, isConfigured, kill, removeContainer, SandboxApiError } from "@/lib/sandbox/client";
+import {
+  exec,
+  isConfigured,
+  kill,
+  removeContainer,
+  SandboxApiError,
+  writeInput,
+} from "@/lib/sandbox/client";
 import type { SandboxEvent } from "@/lib/sandbox/client";
 
 /** A response whose body streams the given SSE frames. */
@@ -163,6 +170,19 @@ describe("exec", () => {
     });
   });
 
+  it("asks for stdin only when the command is interactive", async () => {
+    fetchMock.mockResolvedValue(sseResponse([frame("exit", { exitCode: 0, durationMs: 1 })]));
+
+    await collect({ identity: "user-abc", command: "ls" });
+    await collect({ identity: "user-abc", command: "npm init", interactive: true });
+
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ command: "ls" });
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({
+      command: "npm init",
+      interactive: true,
+    });
+  });
+
   it("reports a service error with its status and body", async () => {
     fetchMock.mockImplementation(async () => new Response("no such identity", { status: 400 }));
 
@@ -189,6 +209,26 @@ describe("exec", () => {
     expect(events.map((event) => event.type)).toEqual(["started", "exit"]);
     expect(error).toHaveBeenCalled();
     error.mockRestore();
+  });
+});
+
+describe("writeInput", () => {
+  it("sends the keystrokes base64-encoded, so control bytes survive", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ written: 1 }), { status: 200 }));
+
+    await writeInput("exec-1", "user-abc", "\x03");
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("http://sandbox-exec:8100/exec/exec-1/input");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({ "X-Identity": "user-abc" });
+    expect(JSON.parse(init.body)).toEqual({ data: Buffer.from("\x03").toString("base64") });
+  });
+
+  it("reports a command that is no longer running", async () => {
+    fetchMock.mockResolvedValue(new Response("No running command exec-1", { status: 404 }));
+
+    await expect(writeInput("exec-1", "user-abc", "x")).rejects.toBeInstanceOf(SandboxApiError);
   });
 });
 

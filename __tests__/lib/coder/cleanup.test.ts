@@ -25,6 +25,9 @@ const mocks = vi.hoisted(() => ({
   runInWorkspace: vi.fn(),
   pooledEntry: vi.fn(),
   removePooled: vi.fn(),
+  getTerminalExecs: vi.fn(),
+  killExec: vi.fn(),
+  unregisterTerminalExec: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -39,7 +42,11 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/redis", () => ({ getActiveSessions: mocks.getActiveSessions }));
+vi.mock("@/lib/redis", () => ({
+  getActiveSessions: mocks.getActiveSessions,
+  getTerminalExecs: mocks.getTerminalExecs,
+  unregisterTerminalExec: mocks.unregisterTerminalExec,
+}));
 
 vi.mock("@/lib/chat/delete-session", () => ({ deleteChatSession: mocks.deleteChat }));
 
@@ -47,6 +54,12 @@ vi.mock("@/lib/pi/agent-pool", () => ({
   getPoolKey: (userId: string, sessionId: string) => `${userId}:${sessionId}`,
   get: mocks.pooledEntry,
   remove: mocks.removePooled,
+}));
+
+vi.mock("@/lib/sandbox/client", () => ({
+  kill: mocks.killExec,
+  exec: vi.fn(),
+  writeInput: vi.fn(),
 }));
 
 vi.mock("@/lib/coder/git", () => ({
@@ -88,6 +101,9 @@ beforeEach(async () => {
   mocks.runInWorkspace.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
   mocks.pooledEntry.mockReturnValue(undefined);
   mocks.getActiveSessions.mockResolvedValue(new Set<string>());
+  mocks.getTerminalExecs.mockResolvedValue(new Set<string>());
+  mocks.killExec.mockResolvedValue(undefined);
+  mocks.unregisterTerminalExec.mockResolvedValue(undefined);
 
   await fs.mkdir(path.join(workspaceDir, `user-${USER}`, "worktrees/saale/c-1a2b3c4d"), {
     recursive: true,
@@ -134,6 +150,29 @@ describe("removeChatWorktree", () => {
     mocks.findChat.mockResolvedValue({ projectId: null });
     expect(await removeChatWorktree(USER, SESSION)).toEqual({ path: null, removed: false });
     expect(mocks.removeWorktree).not.toHaveBeenCalled();
+  });
+
+  it("stops the commands the terminal started before anything else", async () => {
+    mocks.getTerminalExecs.mockResolvedValue(new Set(["exec-1", "exec-2"]));
+
+    await removeChatWorktree(USER, SESSION);
+
+    expect(mocks.getTerminalExecs).toHaveBeenCalledWith(USER, SESSION);
+    expect(mocks.killExec.mock.calls.map(([id]) => id)).toEqual(["exec-1", "exec-2"]);
+    expect(mocks.unregisterTerminalExec).toHaveBeenCalledWith(USER, SESSION, "exec-1");
+  });
+
+  it("still removes the checkout when a terminal command refuses to die", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getTerminalExecs.mockResolvedValue(new Set(["gone"]));
+    mocks.killExec.mockRejectedValueOnce(new Error("No running command gone"));
+
+    const result = await removeChatWorktree(USER, SESSION);
+
+    expect(result.removed).toBe(true);
+    expect(mocks.removeWorktree).toHaveBeenCalled();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it("kills what is still running in the worktree first", async () => {
