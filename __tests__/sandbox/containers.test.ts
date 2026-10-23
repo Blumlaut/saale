@@ -627,11 +627,21 @@ describe("sweep and reapIdle", () => {
     await manager().ensure("user-a");
     await manager().ensure("council-b");
 
-    const stopped = await manager().sweep();
+    const swept = await manager().sweep();
 
-    expect(stopped).toBe(2);
+    expect(swept).toEqual({ stopped: 2, removed: 0 });
     expect(docker.byIdentity("user-a").running).toBe(false);
     expect(docker.byIdentity("council-b").running).toBe(false);
+  });
+
+  it("removes a container whose directory was renamed away", async () => {
+    await manager().ensure("user-old");
+    // What the identity migration does to a workspace: the name changes, so the
+    // container that mounts it names a directory nothing has any more.
+    await fs.rm(path.join(workspaces, "user-old"), { recursive: true, force: true });
+
+    expect(await manager().sweep()).toEqual({ stopped: 0, removed: 1 });
+    expect(docker.byIdentity("user-old").removed).toBe(true);
   });
 
   it("stops a container idle past SANDBOX_IDLE_MINUTES", async () => {

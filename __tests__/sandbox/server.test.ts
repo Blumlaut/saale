@@ -55,7 +55,7 @@ function fakeManager(script: (request: SandboxExecRequest) => SandboxChunk[]): C
       return true;
     },
     async sweep() {
-      return 0;
+      return { stopped: 0, removed: 0 };
     },
     async reapIdle() {
       return { stopped: 0, removed: 0 };

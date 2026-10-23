@@ -26,7 +26,6 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "workspaces:migrate": "node scripts/migrate-workspace-keys.mjs",
     "prepare": "prisma generate",
     "check": "npm run lint && npm run typecheck && npm run format:check && npm run test:run",
     "dup": "jscpd src/",

@@ -19,6 +19,7 @@ import { pathToFileURL } from "node:url";
 import Docker from "dockerode";
 import { sandboxConfig, type SandboxConfig } from "@/lib/sandbox/config";
 import { parseIdentity, InvalidSandboxIdentityError } from "@/lib/sandbox/identity";
+import { migrateWorkspaceIdentitiesOnBoot } from "@/lib/sandbox/legacy-identities";
 import { sweepWorkspaceTmp } from "@/lib/sandbox/tmp";
 import { listListeningPorts, killListeningPort, UnknownPortError } from "./listening";
 import { createPreviewProxy } from "./preview-proxy";
@@ -353,13 +354,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Before any container exists or any exec is served: the directories a
+  // deployment inherited are moved to the short identity scheme first.
+  await migrateWorkspaceIdentitiesOnBoot("sandbox");
+
   const docker = new Docker();
   const manager = createContainerManager({ docker: asDockerHandle(docker), config });
   const server = createSandboxServer({ manager, config });
 
-  await manager.sweep().catch((err) => {
+  const swept = await manager.sweep().catch((err) => {
     console.error("[sandbox] sweep at startup failed:", err);
+    return null;
   });
+  if (swept && swept.removed > 0) {
+    console.warn(`[sandbox] removed ${swept.removed} container(s) whose workspace is gone`);
+  }
 
   const timer = setInterval(() => {
     void manager.reapIdle().catch((err) => {
