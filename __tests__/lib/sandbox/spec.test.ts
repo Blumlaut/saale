@@ -22,25 +22,25 @@ describe("containerSpec", () => {
     expect(spec.HostConfig.Mounts[0]).toEqual({
       Type: "volume",
       Source: "saale_workspaces",
-      Target: "/workspaces/user-abc123",
+      Target: "/w/user-abc123",
       VolumeOptions: { Subpath: "user-abc123" },
     });
   });
 
   it("never mounts the volume root, so the other tenants are not at any path", () => {
     for (const mount of spec.HostConfig.Mounts) {
-      expect(mount.Target).not.toBe("/workspaces");
-      expect(mount.Target.startsWith("/workspaces/")).toBe(true);
+      expect(mount.Target).not.toBe("/w");
+      expect(mount.Target.startsWith("/w/")).toBe(true);
     }
   });
 
   it("runs as a named user and works in the mounted directory", () => {
     expect(spec.User).toBe("root");
-    expect(spec.WorkingDir).toBe("/workspaces/user-abc123");
-    expect(spec.Env).toContain("HOME=/workspaces/user-abc123");
-    expect(
-      containerPath("user-abc123", config()).startsWith("/workspaces/user-abc123/.local/bin:"),
-    ).toBe(true);
+    expect(spec.WorkingDir).toBe("/w/user-abc123");
+    expect(spec.Env).toContain("HOME=/w/user-abc123");
+    expect(containerPath("user-abc123", config()).startsWith("/w/user-abc123/.local/bin:")).toBe(
+      true,
+    );
   });
 
   it("joins the sandbox network, not the compose project's", () => {
@@ -129,7 +129,7 @@ describe("sandboxConfig", () => {
     const value = sandboxConfig();
     expect(value.url).toBeUndefined();
     expect(value.volume).toBe("saale_workspaces");
-    expect(value.workspacesDir).toBe("/workspaces");
+    expect(value.workspacesDir).toBe("/w");
     expect(value.user).toBe("root");
     expect(value.memory).toBe("4g");
     vi.unstubAllEnvs();

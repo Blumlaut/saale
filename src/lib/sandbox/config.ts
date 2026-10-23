@@ -42,7 +42,8 @@ export interface SandboxConfig {
 }
 
 const DEFAULTS = {
-  workspacesDir: "/workspaces",
+  // Two characters because every file path an agent reads or types repeats it.
+  workspacesDir: "/w",
   volume: "saale_workspaces",
   image: "saale-sandbox",
   network: "saale-sandbox",
