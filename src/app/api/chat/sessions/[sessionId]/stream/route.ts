@@ -19,11 +19,7 @@ import {
   type DbMessage,
   type StreamAction,
 } from "@/lib/pi/stream-logic";
-import {
-  getBufferedEvents,
-  getLastBufferedEvent,
-  isTerminalBufferedEvent,
-} from "@/lib/pi/sse-buffer";
+import { getLastBufferedEvent, isTerminalBufferedEvent } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
 import {
@@ -141,15 +137,18 @@ export async function GET(
   });
   const lastMessage = messages[messages.length - 1];
 
-  const [isGenerating, pendingPromptMessageId, bufferedEvents, queuedCount, queueHeld] =
+  const [isGenerating, pendingPromptMessageId, bufferedTail, queuedCount, queueHeld] =
     await Promise.all([
       isSessionActive(authResult.userId, sessionId),
       getPendingPrompt(sessionId),
-      getBufferedEvents(sessionId, lastEventId),
+      getLastBufferedEvent(sessionId),
       countQueuedMessages(sessionId),
       isSendQueueHeld(sessionId),
     ]);
-  const bufferHasDone = bufferedEvents.some(isTerminalBufferedEvent);
+  // A finished run stays marked in the buffer so a reconnect cannot re-prompt
+  // it. It is never replayed (see `liveRunEvents`), so the decision has to
+  // settle the client itself.
+  const bufferHasDone = bufferedTail !== null && isTerminalBufferedEvent(bufferedTail);
 
   // Did the last user message already receive a response?
   let hasAssistantAfterLastUser = false;
@@ -464,7 +463,7 @@ export async function GET(
    * generation off the books, and the unanswered message is prompted again.
    *
    * The buffered `done` check keeps a normally finished run from looking dead
-   *. its client already settled from the replay.
+   *. its client already settled from the `done` the decision emits.
    */
   const startGenerationSupervisor = () => {
     if (supervisorTimer) return;
