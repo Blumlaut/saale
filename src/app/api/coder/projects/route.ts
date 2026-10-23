@@ -25,7 +25,6 @@ const createProjectSchema = z.object({
     .max(2048)
     .refine((value) => !/\s/.test(value), "A clone URL cannot contain whitespace")
     .optional(),
-  authFromEnv: z.boolean().optional(),
 });
 
 /** GET /api/coder/projects: the user's projects, most recent first. */
@@ -53,10 +52,7 @@ export async function POST(request: NextRequest) {
   });
   const parsed = createProjectSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Expected { name, cloneUrl?, authFromEnv? }" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Expected { name, cloneUrl? }" }, { status: 400 });
   }
 
   try {

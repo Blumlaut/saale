@@ -205,13 +205,11 @@ describe("createProject: clone", () => {
     const project = await createProject(USER, {
       name: "acme-api",
       cloneUrl: "https://github.com/acme/api.git",
-      authFromEnv: true,
     });
 
     expect(mockCloneRepo).toHaveBeenCalledWith(USER, {
       dir: "projects/acme-api",
       url: "https://github.com/acme/api.git",
-      authFromEnv: true,
     });
     expect(mockRunGit).toHaveBeenCalledWith(
       USER,
@@ -239,7 +237,6 @@ describe("createProject: clone", () => {
     expect(mockCloneRepo).toHaveBeenCalledWith(USER, {
       dir: "projects/acme",
       url: "git@github.com:acme/api.git",
-      authFromEnv: false,
     });
   });
 
