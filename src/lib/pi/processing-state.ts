@@ -4,7 +4,9 @@ import {
   getAgentDir,
   type AgentSession,
   type ExtensionFactory,
+  type ResourceDiagnostic,
   type ResourceLoader,
+  type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { createUserMcpExtension } from "@/lib/mcp/servers";
 import { createCodemodeApprovalExtension } from "./codemode-approval";
@@ -17,6 +19,12 @@ import {
 } from "./plugins";
 import { hasFeature } from "@/lib/permissions/check";
 import { createSessionSettings } from "./settings";
+import {
+  isInWorkspace,
+  projectContextFiles,
+  projectSkillPaths,
+  type SessionWorkspace,
+} from "./project-context";
 import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
@@ -200,6 +208,11 @@ export interface AgentResourceOptions {
   prompt: string;
   cwd: string;
   /**
+   * The workspace the session works in. Given, the session reads the project's
+   * AGENTS.md files and `.pi/skills`; without it, no file is discovered.
+   */
+  workspace?: SessionWorkspace | undefined;
+  /**
    * The user behind the tools Pi registers after the session exists.
    *
    * `codemode` comes from its extension and MCP tools from the user's servers
@@ -255,9 +268,15 @@ export async function createAgentResourceLoader(
     }
   }
 
+  const workspace = options.workspace;
+  // Pi reads context files and skills from a working directory. Inside a
+  // workspace that directory is the user's own, so its root takes the place of
+  // the host's agent dir.
+  const discoveryCwd = workspace?.cwd ?? options.cwd;
+
   const loader = new DefaultResourceLoader({
-    cwd: options.cwd,
-    agentDir: getAgentDir(),
+    cwd: discoveryCwd,
+    agentDir: workspace?.root ?? getAgentDir(),
     settingsManager: createSessionSettings(),
     systemPrompt: options.prompt,
     extensionFactories,
@@ -265,14 +284,28 @@ export async function createAgentResourceLoader(
     // Pi settings out: these paths are the only file extensions that load.
     additionalExtensionPaths: await globalPluginPaths(),
     noExtensions: true,
-    noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
-    noContextFiles: true,
+    // A session outside a workspace has no directory of its own to read.
+    noContextFiles: !workspace,
+    noSkills: !workspace,
+    additionalSkillPaths: workspace ? await projectSkillPaths(workspace) : [],
     // An empty list, not an omitted option: Pi otherwise *discovers*
     // `<agentDir>/APPEND_SYSTEM.md`, which is `getAgentDir()`. the host's Pi
     // directory. Its owner's text would be appended to every tenant's prompt.
     appendSystemPrompt: [],
+    // Pi walks from the working directory up to the filesystem root and reads
+    // the host's own `~/.agents/skills`; above and beside the workspace root is
+    // the operator's, not the tenant's.
+    ...(workspace
+      ? {
+          agentsFilesOverride: () => ({ agentsFiles: projectContextFiles(workspace) }),
+          skillsOverride: (base: { skills: Skill[]; diagnostics: ResourceDiagnostic[] }) => ({
+            ...base,
+            skills: base.skills.filter((skill) => isInWorkspace(workspace, skill.filePath)),
+          }),
+        }
+      : {}),
   });
   await loader.reload();
   // A plugin that fails to load must not fail the session, but it must not

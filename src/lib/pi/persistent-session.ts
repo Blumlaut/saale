@@ -5,7 +5,8 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createAgentResourceLoader, startSessionExtensions } from "./processing-state";
-import { createSaaleAgentSession } from "./agent-session";
+import { createSaaleAgentSession, resolveAgentCwd } from "./agent-session";
+import { sessionWorkspace } from "./project-context";
 import { buildSessionDeps, type ToolConfig } from "./session";
 import type { ToolExposureConfig } from "./tool-categories";
 import { thinkingLevelOption } from "./thinking-levels";
@@ -74,6 +75,13 @@ export async function createPersistentSession(options: {
     ...(options.wrapTool ? { wrapTool: options.wrapTool } : {}),
   });
 
+  // The workspace the session works in: a coder chat's worktree, or the
+  // workspace root every other chat gets. Its AGENTS.md and skills come with it.
+  const workspace = sessionWorkspace(
+    options.userId,
+    resolveAgentCwd(options.userId, options.workspaceCwd),
+  );
+
   // Create or resume file-based SessionManager.
   //
   // SessionManager.continueRecent() (session-manager.js:1354-1362):
@@ -105,6 +113,7 @@ export async function createPersistentSession(options: {
     resourceLoader: await createAgentResourceLoader({
       prompt: options.systemPrompt,
       cwd: options.sessionDir,
+      workspace,
       ...(options.mcp && options.emitApprovalRequest
         ? {
             interactive: {
