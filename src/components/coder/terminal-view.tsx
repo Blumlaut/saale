@@ -105,7 +105,7 @@ export function TerminalView({
       <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
         <TerminalSquare className="text-muted-foreground h-5 w-5" />
         <p className="text-muted-foreground text-xs">
-          The terminal opens in the worktree, which this chat gets with its first message.
+          The worktree appears after this chat&apos;s first message, and the terminal opens in it.
         </p>
       </div>
     );

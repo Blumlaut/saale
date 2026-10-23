@@ -86,10 +86,9 @@ export function ProjectList() {
             {!error && !loading && projects.length === 0 && (
               <div className="flex flex-col items-center gap-3 p-8 text-center">
                 <FolderGit2 className="text-muted-foreground h-8 w-8" />
-                <p className="text-sm font-medium">No projects yet</p>
+                <p className="text-sm font-medium">No projects yet.</p>
                 <p className="text-muted-foreground max-w-sm text-sm">
-                  A project is a git repo in your workspace. Start an empty one, or clone a repo you
-                  already have.
+                  A project is a git repo in your workspace.
                 </p>
                 <Button size="sm" onClick={() => setCreating(true)}>
                   <Plus className="h-4 w-4" />
@@ -168,8 +167,8 @@ export function ProjectList() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The repo directory goes only when git proves nothing is left behind: a clean tree with
-              every commit pushed. Its chats are deleted with it.
+              Its chats go with it. The repo directory goes when its tree is clean and every commit
+              is pushed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteError && (

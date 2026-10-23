@@ -98,8 +98,8 @@ export function ProjectChats({
         {error && <p className="text-destructive p-3 text-sm break-words">{error}</p>}
 
         {!error && !loading && chats.length === 0 && (
-          <p className="text-muted-foreground p-3 text-sm">
-            No chats yet. Start one and it gets its own worktree.
+          <p className="text-muted-foreground flex h-full items-center justify-center p-3 text-center text-sm">
+            No chats yet.
           </p>
         )}
 
@@ -169,8 +169,8 @@ export function ProjectChats({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
             <AlertDialogDescription>
-              Its worktree is removed first. git refuses a checkout with uncommitted work, and then
-              nothing is deleted.
+              It takes the chat&apos;s worktree with it. git refuses a checkout with uncommitted
+              work, and then nothing is deleted.
               {deleting?.worktree && (
                 <>
                   {" "}

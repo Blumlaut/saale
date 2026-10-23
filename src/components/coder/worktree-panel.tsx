@@ -67,8 +67,7 @@ export function WorktreePanel({
             <p className="text-destructive px-3 py-3 text-xs break-words">{error}</p>
           ) : !state?.worktree ? (
             <p className="text-muted-foreground px-3 py-3 text-xs">
-              This chat gets its worktree with the first message. Then the branch, the changes and
-              the commits show up here.
+              The worktree appears after this chat&apos;s first message.
             </p>
           ) : (
             <ChangesView
@@ -85,7 +84,7 @@ export function WorktreePanel({
             <FileBrowser target="user" rootPath={state.worktree.path} />
           ) : (
             <p className="text-muted-foreground px-3 py-3 text-xs">
-              The worktree appears once this chat has sent its first message.
+              The worktree appears after this chat&apos;s first message.
             </p>
           )}
         </TabsContent>
