@@ -18,6 +18,7 @@ function serializeSettings(settings: AppSettings) {
     purposeModelOverrides: settings.purposeModelOverrides,
     disabledModels: settings.disabledModels,
     defaultToolConfig: settings.defaultToolConfig,
+    coderToolConfig: settings.coderToolConfig,
     toolPolicies: settings.toolPolicies,
     toolExposure: normalizeToolExposure(settings.toolExposure),
   };
