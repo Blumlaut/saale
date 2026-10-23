@@ -158,22 +158,26 @@ Telegram tells us who added the bot: `message.new_chat_members` arrives as a
 service message, and bots receive **all** service messages regardless of privacy
 mode. The adder is `message.from`.
 
-- **Auto-link (primary).** On `new_chat_members` where the bot itself is among the
-  members, resolve `message.from.id` against `TelegramLink.telegramUserId`. When
-  it matches, create the group row owned by that user and confirm in the private
-  chat. When it does not match, ignore the update. The security-critical branch in
-  `src/app/api/integrations/telegram/webhook/route.ts` keeps refusing group
-  *content*; only membership service messages are read.
-- **Picker (fallback).** For a group the bot was added to by someone without an
-  account: Settings → Integrations → Telegram → "Add group" sends a reply
-  keyboard with `KeyboardButtonRequestChat` (`chat_is_channel: false`,
-  `bot_is_member: true`, `request_title: true`). Telegram delivers `chat_shared`
-  in the **private** chat with the id and title; confirm with `getChat` before
-  storing.
+The bot stays in a group only when a Saale user put it there. Anything else is
+refused: post one short line naming what is needed, then `leaveChat`.
 
-  Telegram cannot exclude chats from that picker. Privacy is enforced after the
-  fact: a `chat_shared` for a chat another user owns is answered with "that group
-  is already connected" and nothing is stored.
+On `new_chat_members` containing the bot:
+
+| Adder | Group row | Action |
+|---|---|---|
+| linked | none | create it, `getChat` for title/kind/memberCount, confirm in the private chat |
+| linked, the owner | exists, enabled | nothing, the bot is already where it belongs |
+| linked, the owner | exists, disabled | re-enable |
+| linked, not the owner | exists | refuse and leave, ownership never moves silently |
+| unlinked | any | refuse and leave |
+| not identifiable (`from` absent, added by a bot or through a link) | any | refuse and leave |
+
+The refusal goes out before the bot leaves, and names only the Settings page, so
+it says nothing about who owns the group.
+
+The security-critical branch in
+`src/app/api/integrations/telegram/webhook/route.ts` keeps refusing group
+*content*; only membership service messages are read.
 
 ## Schema
 
@@ -199,8 +203,8 @@ model TelegramChat {
 }
 ```
 
-`chatId` is globally unique, so a group has exactly one owner and the picker
-conflict is enforceable. Deleting the user frees the group.
+`chatId` is globally unique, so a group has exactly one owner and a refused
+re-add is enforceable. Deleting the user frees the group.
 
 ## Service messages from known groups
 
@@ -237,14 +241,16 @@ guaranteed only for admin bots. Expose `memberCount`, skip members.
 ## UI
 
 Integrations tab lists the groups with title, member count and a remove action,
-next to the linked private account. "Add group" sends the picker. Every new
-overlay registers in `e2e/modal-scenarios.ts`.
+next to the linked private account. Adding a group happens in Telegram; the UI
+only shows and removes. Every new overlay registers in
+`e2e/modal-scenarios.ts`.
 
 ## Tests
 
-- `new_chat_members` with a linked adder creates the row; unlinked is ignored;
-  a second group for the same chat is rejected.
-- `chat_shared` for an owned chat is refused and stored nowhere.
+- `new_chat_members` with a linked adder creates the row, and with an unlinked
+  adder replies then leaves without storing anything.
+- A re-add by another linked user neither reassigns the row nor keeps the bot in
+  the chat, and a disabled row is re-enabled only by its owner.
 - `telegram_chats` lists private plus groups and is auto-approved.
 - `telegram_send` with an unregistered target throws and names the valid ones.
 - `outputChannelId` resolves to the right group, and a kicked bot surfaces a
