@@ -237,6 +237,45 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("widens the worktree panel by dragging its edge and remembers the width", async ({
+    browser,
+  }) => {
+    test.skip(!session, "login failed");
+    const context = await browser.newContext({ storageState: session!.storageState });
+    const page = await context.newPage();
+    await mockCoder(page);
+
+    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const handle = shown(page, '[role="separator"][aria-label="Resize the worktree panel"]');
+    const panel = page.locator("text=Project").first();
+
+    const before = (await handle.boundingBox())!;
+    await page.mouse.move(before.x + before.width / 2, before.y + 200);
+    await page.mouse.down();
+    // The handle is the panel's left edge: pulling it left widens the panel.
+    await page.mouse.move(before.x - 200, before.y + 200, { steps: 10 });
+    await page.mouse.up();
+
+    const after = (await handle.boundingBox())!;
+    expect(before.x - after.x).toBeGreaterThan(100);
+    await expect(panel).toBeVisible();
+
+    // The width is the browser's, not the server's: a reload keeps it.
+    const handleX = after.x;
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const handleAfterReload = shown(
+      page,
+      '[role="separator"][aria-label="Resize the worktree panel"]',
+    );
+    await expect(handleAfterReload).toBeVisible();
+    // The width arrives with the effect that reads it, a frame after paint.
+    await expect
+      .poll(async () => (await handleAfterReload.boundingBox())?.x ?? 0)
+      .toBeLessThan(handleX + 4);
+
+    await context.close();
+  });
+
   test("keeps the file rows tight in the worktree panel", async ({ browser }) => {
     test.skip(!session, "login failed");
     const context = await browser.newContext({ storageState: session!.storageState });

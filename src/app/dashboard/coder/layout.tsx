@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import { FolderGit2, PanelRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -11,10 +12,21 @@ import { ProjectChats } from "@/components/coder/project-chats";
 import { ProjectList } from "@/components/coder/project-list";
 import { WorktreePanel } from "@/components/coder/worktree-panel";
 import { useSessionState } from "@/components/coder/use-coder-data";
+import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { createChatSession } from "@/lib/chat-session";
 
 /** How often an open coder chat re-reads its worktree while visible. */
 const WORKTREE_POLL_MS = 20_000;
+
+/** The worktree panel's width, remembered per browser. */
+const WORKTREE_PANEL = {
+  storageKey: "saale.coder.panelWidth",
+  label: "Resize the worktree panel",
+  defaultWidth: 320,
+  minWidth: 280,
+  maxWidth: 720,
+  handle: "left",
+} as const;
 
 export default function CoderLayout() {
   const pathname = usePathname();
@@ -29,6 +41,7 @@ export default function CoderLayout() {
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => setRefreshKey((value) => value + 1), []);
   const { state, loading, error } = useSessionState(sessionId, refreshKey);
+  const panel = useResizableWidth(WORKTREE_PANEL);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -78,12 +91,12 @@ export default function CoderLayout() {
 
   return (
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="hidden w-64 shrink-0 md:block">
           <ProjectChats projectId={projectId} activeSessionId={sessionId} onNewChat={newChat} />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col md:ml-4">
           <ChatInterface
             key={sessionId}
             sessionId={sessionId}
@@ -139,7 +152,16 @@ export default function CoderLayout() {
           />
         </div>
 
-        <div className="hidden w-80 shrink-0 lg:block xl:w-96">
+        {/* Drag to widen the worktree panel; arrow keys do the same from the
+            keyboard and the width survives a reload. */}
+        <div
+          {...panel.handleProps}
+          className={cn(
+            "group hover:bg-border focus-visible:ring-ring mx-1 hidden w-1.5 shrink-0 cursor-col-resize touch-none items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none lg:flex",
+            panel.dragging && "bg-border",
+          )}
+        />
+        <div className="hidden shrink-0 lg:block" style={{ width: panel.width }}>
           <WorktreePanel
             sessionId={sessionId}
             state={state}

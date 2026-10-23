@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FolderTree, GitCompare, Loader2, SquareTerminal } from "lucide-react";
+import { FolderTree, GitBranch, Loader2, SquareTerminal } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileBrowser } from "@/components/files/file-browser";
@@ -43,8 +43,8 @@ export function WorktreePanel({
         <PageTabStrip className="border-b px-2 py-1.5">
           <TabsList>
             <TabsTrigger value="changes" className="gap-1.5 text-xs">
-              <GitCompare className="h-3.5 w-3.5" />
-              Changes
+              <GitBranch className="h-3.5 w-3.5" />
+              Project
             </TabsTrigger>
             <TabsTrigger value="files" className="gap-1.5 text-xs">
               <FolderTree className="h-3.5 w-3.5" />
