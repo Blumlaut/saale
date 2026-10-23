@@ -226,7 +226,7 @@ Everything with a default is optional. The compose file sets the database and Re
 | `PREVIEW_DOMAIN`             | Preview wildcard, when it is not `preview.<BETTER_AUTH_URL host>`. | No       |
 | `SANDBOX_PREVIEW_PORT`       | Port the preview listener binds. `0` turns previews off.           | No       |
 | `SANDBOX_USER`               | `root` lets the agent install packages; `agent` is stricter.       | No       |
-| `SANDBOX_MEMORY`             | Memory limit per container, e.g. `2g`.                             | No       |
+| `SANDBOX_MEMORY`             | Memory limit per container, e.g. `4g`.                             | No       |
 | `SANDBOX_IDLE_MINUTES`       | Minutes before an idle container is stopped.                       | No       |
 | `SANDBOX_CONTAINER_TTL_DAYS` | Days before a container is removed. `0` keeps them forever.        | No       |
 | `SEARXNG_URL`                | Search backend for the web tools.                                  | No       |

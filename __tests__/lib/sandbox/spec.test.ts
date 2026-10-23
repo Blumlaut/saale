@@ -131,6 +131,7 @@ describe("sandboxConfig", () => {
     expect(value.volume).toBe("saale_workspaces");
     expect(value.workspacesDir).toBe("/workspaces");
     expect(value.user).toBe("root");
+    expect(value.memory).toBe("4g");
     vi.unstubAllEnvs();
   });
 
