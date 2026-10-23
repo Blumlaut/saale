@@ -154,9 +154,7 @@ export function ChangesView({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {state.changes.length === 0 ? (
-          <p className="text-muted-foreground px-3 py-2 text-xs">
-            The worktree is clean. Changes show up here as the agent works.
-          </p>
+          <p className="text-muted-foreground px-3 py-2 text-xs">The worktree is clean.</p>
         ) : (
           state.changes.map((change) => (
             <div key={change.path}>

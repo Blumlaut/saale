@@ -65,7 +65,7 @@ export default function CoderLayout() {
             <FolderGit2 className="text-muted-foreground h-8 w-8" />
             <p className="text-sm font-medium">No chat open</p>
             <p className="text-muted-foreground max-w-sm text-sm">
-              Each chat gets a worktree of its own, so two lines of work never share a checkout.
+              Each chat gets its own worktree.
             </p>
             <Button size="sm" onClick={newChat}>
               New coder chat

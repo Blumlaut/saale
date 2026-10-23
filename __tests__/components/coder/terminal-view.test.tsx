@@ -55,7 +55,7 @@ describe("TerminalView", () => {
     render(<TerminalView sessionId="chat-1" worktree={null} />);
 
     expect(screen.queryByLabelText("Terminal command")).toBeNull();
-    expect(screen.getByText(/opens in the worktree/)).toBeInTheDocument();
+    expect(screen.getByText(/the terminal opens in it/)).toBeInTheDocument();
   });
 
   it("runs a command, shows its output and its exit code", async () => {
