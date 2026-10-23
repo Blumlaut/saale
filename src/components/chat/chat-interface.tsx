@@ -54,6 +54,7 @@ export function ChatInterface({
   mobileListTrigger,
   headerActions,
   hideTemporaryToggle,
+  renderWaitingNotice,
 }: {
   sessionId: string;
   temporaryMode?: boolean;
@@ -65,6 +66,11 @@ export function ChatInterface({
   headerActions?: React.ReactNode;
   /** Hide temporary mode; a coder chat is bound to its worktree. */
   hideTemporaryToggle?: boolean;
+  /**
+   * Coder only: chrome above the composer while the first message is on its
+   * way to being answered, which is when the workspace is being built.
+   */
+  renderWaitingNotice?: (waiting: boolean) => React.ReactNode;
 }) {
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -813,6 +819,10 @@ export function ChatInterface({
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
+  // A reply is owed and nothing of it has started. for a coder chat this is
+  // also the window its workspace is built in, before the agent can answer.
+  const awaitingFirstReply = isLoading && !messages.some((message) => message.role === "assistant");
+
   return (
     <div className="relative flex min-h-0 flex-1 md:gap-4">
       <div
@@ -869,6 +879,8 @@ export function ChatInterface({
             />
           </div>
         </GlassPanel>
+
+        {renderWaitingNotice?.(awaitingFirstReply)}
 
         <QueuedMessages
           messages={queuedMessages}
