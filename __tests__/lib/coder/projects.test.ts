@@ -127,7 +127,7 @@ describe("createProject: init", () => {
     expect(mockCloneRepo).not.toHaveBeenCalled();
   });
 
-  it("writes the default .gitignore into the new repo and makes no commit", async () => {
+  it("writes the default .gitignore into the new repo and commits it", async () => {
     await createProject(USER, { name: "saale-web" });
 
     expect(mockWriteWorkspaceFile).toHaveBeenCalledWith(
@@ -139,7 +139,16 @@ describe("createProject: init", () => {
     expect(written.toString("utf8")).toBe(DEFAULT_GITIGNORE);
     expect(DEFAULT_GITIGNORE).toContain("node_modules/");
     expect(DEFAULT_GITIGNORE).toContain(".env.*");
-    expect(mockRunGit).not.toHaveBeenCalled();
+    // Committed, because a worktree branches from a commit and has to carry
+    // the ignore file with it.
+    expect(mockRunGit).toHaveBeenCalledWith(USER, {
+      cwd: "projects/saale-web",
+      args: ["add", "--", ".gitignore"],
+    });
+    expect(mockRunGit).toHaveBeenCalledWith(USER, {
+      cwd: "projects/saale-web",
+      args: ["commit", "-m", "Add .gitignore"],
+    });
   });
 
   it("writes the git identity before the first git command", async () => {

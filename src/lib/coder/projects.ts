@@ -161,8 +161,9 @@ function isUniqueViolation(err: unknown): boolean {
 /**
  * Put a repo at `dir` and report the branch it tracks.
  *
- * An init gets the default `.gitignore` and no commit: an empty repo is a
- * valid starting point, and the first real commit belongs to the model.
+ * An init commits nothing but the default `.gitignore`: git cannot create a
+ * worktree from a repo with no commits at all, and a checkout without the
+ * ignore file would show every `node_modules` as untracked.
  */
 async function prepareRepo(
   userId: string,
@@ -185,6 +186,10 @@ async function prepareRepo(
 
   await initRepo(userId, { dir: options.dir, defaultBranch: DEFAULT_BRANCH });
   await writeWorkspaceFile(userId, `${options.dir}/.gitignore`, Buffer.from(DEFAULT_GITIGNORE));
+  // Committed here, because a worktree branches from a commit and it has to
+  // carry the ignore file with it.
+  await runGit(userId, { cwd: options.dir, args: ["add", "--", ".gitignore"] });
+  await runGit(userId, { cwd: options.dir, args: ["commit", "-m", "Add .gitignore"] });
   return DEFAULT_BRANCH;
 }
 
