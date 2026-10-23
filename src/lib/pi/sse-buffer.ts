@@ -43,7 +43,7 @@ const MAX_THROTTLE_TRACKED_SESSIONS = 1000;
 function shouldSkipCumulativeSnapshot(sessionId: string, event: string): boolean {
   if (!CUMULATIVE_EVENTS.has(event)) return false;
 
-  // Opportunistic cleanup. the map grows with every streaming session and is
+  // Opportunistic cleanup: the map grows with every streaming session and is
   // never evicted, so drop entries older than the buffer's own TTL before
   // adding a new one.
   if (lastCumulativeBufferedAt.size >= MAX_THROTTLE_TRACKED_SESSIONS) {
