@@ -2,11 +2,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { chunk, IN_LIST_CHUNK_SIZE } from "@/lib/db-batch";
 import { parseICS, type ParsedEvent } from "@/lib/calendar/ics-import";
 import { resolveNewEventTimes } from "@/lib/calendar/event-times";
 
-/** Postgres bind-parameter headroom for `in` lists (the cap is 65535). */
-const UIDS_PER_QUERY = 5000;
 /** createMany binds every column of every row (17 here); keep batches far under the cap. */
 const CREATE_BATCH_SIZE = 1000;
 
@@ -224,21 +223,26 @@ export async function PUT(request: NextRequest) {
 
   // A malformed ICS may repeat a UID; the first occurrence is imported and
   // later ones are skipped (the old loop created the first, then skipped its
-  // duplicates).
+  // duplicates). Duplicates still count as skipped in the response.
   const eventsByUid = new Map<string, ParsedEvent>();
+  const duplicateUids: string[] = [];
   for (const evt of parsedEvents) {
-    if (!eventsByUid.has(evt.uid)) eventsByUid.set(evt.uid, evt);
+    if (eventsByUid.has(evt.uid)) {
+      duplicateUids.push(evt.uid);
+      continue;
+    }
+    eventsByUid.set(evt.uid, evt);
   }
   const events = Array.from(eventsByUid.values());
 
   // One existence lookup per chunk of UIDs instead of one findUnique per event.
   const existingUids = new Set<string>();
-  for (let i = 0; i < events.length; i += UIDS_PER_QUERY) {
+  for (const uidBatch of chunk(
+    events.map((e) => e.uid),
+    IN_LIST_CHUNK_SIZE,
+  )) {
     const existing = await prisma.calendarEvent.findMany({
-      where: {
-        calendarId: targetCalendarId,
-        uid: { in: events.slice(i, i + UIDS_PER_QUERY).map((e) => e.uid) },
-      },
+      where: { calendarId: targetCalendarId, uid: { in: uidBatch } },
       select: { uid: true },
     });
     for (const row of existing) {
@@ -247,11 +251,14 @@ export async function PUT(request: NextRequest) {
   }
 
   const toCreate = events.filter((evt) => !existingUids.has(evt.uid));
-  const skipped = events.filter((evt) => existingUids.has(evt.uid)).map((evt) => evt.uid);
+  const skipped = [
+    ...events.filter((evt) => existingUids.has(evt.uid)).map((evt) => evt.uid),
+    ...duplicateUids,
+  ];
 
-  for (let i = 0; i < toCreate.length; i += CREATE_BATCH_SIZE) {
+  for (const batch of chunk(toCreate, CREATE_BATCH_SIZE)) {
     await prisma.calendarEvent.createMany({
-      data: toCreate.slice(i, i + CREATE_BATCH_SIZE).map((evt) => ({
+      data: batch.map((evt) => ({
         calendarId: targetCalendarId,
         uid: evt.uid,
         summary: evt.summary,
