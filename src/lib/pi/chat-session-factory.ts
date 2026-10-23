@@ -9,8 +9,9 @@ import { resolveCoderToolConfig } from "./coder-tools";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import { previewConfig } from "@/lib/preview/config";
 import type { ApprovalRequest } from "./tool-approval-gate";
-import type { ToolConfig, ToolExposureConfig } from "./tool-categories";
+import { hasCodemodeCategory, type ToolConfig, type ToolExposureConfig } from "./tool-categories";
 import { normalizeToolExposure } from "./tool-exposure";
+import { loadUserMcpServers } from "@/lib/mcp/servers";
 
 /**
  * The single place a chat session's Pi agent is created.
@@ -103,13 +104,23 @@ async function buildSessionPrompt(options: {
   projectId: string | null;
   customInstructions: string | null;
   toolConfig: ToolConfig;
+  toolExposure: ToolExposureConfig | null | undefined;
 }): Promise<string> {
   const sandboxEnvNames = await listSandboxEnvNames(options.userId);
+  // MCP tools are codemode's by default, so a user with servers needs the hint
+  // even when every category they enabled is declared in full.
+  const mcpServers = await loadUserMcpServers(options.userId).catch((err: unknown) => {
+    console.error(`Failed to load the MCP servers of ${options.userId} for its prompt:`, err);
+    return { entries: [] };
+  });
   const shared = {
     customInstructions: options.customInstructions,
     toolConfig: options.toolConfig,
     sandboxEnvNames,
     previewDomain: previewConfig().domain,
+    codemodeTools:
+      mcpServers.entries.length > 0 ||
+      hasCodemodeCategory(options.toolConfig, options.toolExposure),
   };
   return options.projectId ? buildCoderSystemPrompt(shared) : buildAgentSystemPrompt(shared);
 }
@@ -156,6 +167,7 @@ export async function createChatAgentSession(
       projectId: chatSession.projectId,
       customInstructions: options.customInstructions,
       toolConfig,
+      toolExposure: options.toolExposure,
     }),
   });
 

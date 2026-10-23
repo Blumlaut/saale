@@ -65,6 +65,8 @@ export function buildCoderSystemPrompt(options: {
   sandboxEnvNames?: string[] | undefined;
   /** The domain preview hostnames live under, when this deployment has one. */
   previewDomain?: string | null | undefined;
+  /** Whether the session has tools behind codemode. See `capabilitySections`. */
+  codemodeTools?: boolean | undefined;
 }): string {
   const toolConfig = (options.toolConfig ?? {}) as Record<string, boolean | undefined>;
   const envNames = options.sandboxEnvNames ?? [];
@@ -77,7 +79,7 @@ export function buildCoderSystemPrompt(options: {
     devServerPrompt(options.previewDomain),
     envNames.includes("GH_TOKEN") ? GH_TOKEN_PROMPT : null,
     REPORTING_PROMPT,
-    ...capabilitySections(toolConfig, envNames),
+    ...capabilitySections(toolConfig, envNames, options.codemodeTools),
   ];
 
   return sections.filter((section): section is string => section !== null).join("\n\n");

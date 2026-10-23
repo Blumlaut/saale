@@ -24,6 +24,7 @@ import { createWatcherTools } from "@/lib/pi/tools/watcher-tools";
 import { createTelegramTools } from "@/lib/pi/tools/telegram-tools";
 import { createInfraTools } from "@/lib/pi/tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
+import { CODER_TOOL_DEFAULTS } from "@/lib/pi/coder-tools";
 import { createSandboxScopedTools } from "@/lib/pi/session";
 
 // The terminal tools are Pi built-ins wrapped by Saale; building them must not
@@ -123,6 +124,31 @@ describe("tool catalog ↔ implementation drift", () => {
     expect(listedAndGuarded.map((info) => info.name)).toEqual([]);
   });
 
+  it("lists only what the chat was given", async () => {
+    // A coder chat starts with terminal, web, memory and settings: the catalog
+    // it is handed must not advertise (or spend tokens on) the rest.
+    const callable = (await implementedTools()).filter((tool) => {
+      const info = findToolInfo(tool.name);
+      const category = info?.category;
+      if (!category) return false;
+      return CODER_TOOL_DEFAULTS[category] && defaultExposureOf(tool.name) !== "direct";
+    });
+
+    const listed = [...(await listedToolNames(callable))];
+    expect(listed.length).toBeGreaterThan(0);
+
+    const offCategory = listed.filter((name) => {
+      const category = findToolInfo(name)?.category;
+      return !category || !CODER_TOOL_DEFAULTS[category];
+    });
+    expect(
+      offCategory,
+      "a coder chat's codemode catalog must only hold tools of the categories it has",
+    ).toEqual([]);
+    expect(listed).not.toContain("mail_send");
+    expect(listed).not.toContain("calendar_create");
+  });
+
   it("lists the read-only entry points of every area", async () => {
     const listed = await listedToolNames();
     // The regression this guards: the codemode budget filled with whichever
@@ -152,6 +178,7 @@ describe("tool catalog ↔ implementation drift", () => {
       "mail_read",
       "mail_search",
       "model_list",
+      "project_settings_get",
       "settings_list",
       "task_list_pending",
       "task_search",
@@ -177,9 +204,10 @@ function defaultExposureOf(name: string): ToolExposure {
  * the active tools change, so the check runs the real renderer  including its
  * token budget  rather than a re-implementation of it that could not fail.
  */
-async function listedToolNames(): Promise<Set<string>> {
+async function listedToolNames(tools?: ToolDefinition[]): Promise<Set<string>> {
   const exposureOf = defaultExposureOf;
-  const callable = (await implementedTools()).filter((t) => exposureOf(t.name) !== "direct");
+  const callable =
+    tools ?? (await implementedTools()).filter((t) => exposureOf(t.name) !== "direct");
 
   let registered: ToolDefinition | undefined;
   createCodemodeExtension({ inlineBudget: CODEMODE_INLINE_BUDGET })({

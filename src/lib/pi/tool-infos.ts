@@ -771,7 +771,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     category: "settings",
     // Reading is safe to do unprompted. Changing it is not.
     defaultPolicy: "allow",
-    defaultExposure: "deferred",
+    defaultExposure: "codemode",
   },
   {
     name: "project_settings_set",
