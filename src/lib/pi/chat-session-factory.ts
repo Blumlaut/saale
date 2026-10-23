@@ -7,6 +7,7 @@ import { buildAgentSystemPrompt } from "./processing-state";
 import { buildCoderSystemPrompt } from "./coder-prompt";
 import { resolveCoderToolConfig } from "./coder-tools";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
+import { previewConfig } from "@/lib/preview/config";
 import type { ApprovalRequest } from "./tool-approval-gate";
 import type { ToolConfig, ToolExposureConfig } from "./tool-categories";
 import { normalizeToolExposure } from "./tool-exposure";
@@ -108,6 +109,7 @@ async function buildSessionPrompt(options: {
     customInstructions: options.customInstructions,
     toolConfig: options.toolConfig,
     sandboxEnvNames,
+    previewDomain: previewConfig().domain,
   };
   return options.projectId ? buildCoderSystemPrompt(shared) : buildAgentSystemPrompt(shared);
 }

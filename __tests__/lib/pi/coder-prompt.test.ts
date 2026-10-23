@@ -34,7 +34,20 @@ describe("buildCoderSystemPrompt git rules", () => {
     expect(prompt).toContain("Ports panel");
     expect(prompt).toContain("Bind the server to `0.0.0.0`");
     expect(prompt).toContain("server.allowedHosts");
-    expect(prompt).toContain("allowedDevOrigins");
+  });
+
+  it("names the preview wildcard an app has to allow, once the domain is known", () => {
+    const withDomain = buildCoderSystemPrompt({
+      toolConfig: { terminal: true },
+      previewDomain: "preview.example.com",
+    });
+    expect(withDomain).toContain("`https://*.preview.example.com`");
+    expect(withDomain).toContain("trustedOrigins");
+    expect(withDomain).toContain("CSRF_TRUSTED_ORIGINS");
+    expect(withDomain).toContain("config.hosts");
+
+    // No domain means no preview, so the rule would name nothing.
+    expect(prompt).not.toContain("trustedOrigins");
   });
 
   it("asks for a report of what changed, what is committed, what is dirty", () => {
