@@ -17,9 +17,9 @@ Any UI work (pages, panels, forms, lists, modals, buttons, inputs, styling) **mu
 - **Fixed app shell** — the body/viewport NEVER scrolls. Pages use `h-full flex flex-col` with internal scroll regions (`flex-1 min-h-0 overflow-y-auto`); toolbars/action rows are pinned with `shrink-0` and never scroll away. Never `h-dvh`/`h-screen`/`calc(100vh - X)` inside page components.
 - **No page titles** — the nav already names the page. List pages are a single full-height panel whose first row is the toolbar (actions right, icon-only on mobile; functional context left — never a bare page name).
 - **Pages are built from `src/components/layout/page.tsx`** (`Page`, `PageToolbar`, `PageScroll`, `PageTabStrip`) — never hand-roll the flex chain. No `w-full` on `TabsList`; grid items holding lists need `min-w-0`.
-- **Overlays never scroll horizontally** — long unbreakable values wrap (`break-all` / `whitespace-pre-wrap`) or scroll in their *own* `overflow-x-auto` box. No bare `grid` in overlays (declare `grid-cols-1` first). Register every new overlay in `e2e/modal-scenarios.ts`.
+- **Overlays never scroll horizontally** — long unbreakable values wrap (`break-all` / `whitespace-pre-wrap`) or scroll in their _own_ `overflow-x-auto` box. No bare `grid` in overlays (declare `grid-cols-1` first). Register every new overlay in `e2e/modal-scenarios.ts`.
 - **`liquid-glass` is baked into `GlassPanel` and all overlay components** — never add it manually; use `liquid-glass-inner` for nested content areas, `liquid-glass-pill`/`liquid-glass-accent` for buttons/badges/toggles.
-- **Chat is the one full-bleed view** — `src/app/dashboard/chat/layout.tsx` marks its root `full-bleed`: on phones the shell gutter is dropped so the view runs to the window edges, with square panels. Desktop keeps the console gutter and the rounded panels (there is room for the floating nav *and* the view there). Don't add page padding to the phone layout, and don't strip the desktop spacing/radius.
+- **Chat is the one full-bleed view** — `src/app/dashboard/chat/layout.tsx` marks its root `full-bleed`: on phones the shell gutter is dropped so the view runs to the window edges, with square panels. Desktop keeps the console gutter and the rounded panels (there is room for the floating nav _and_ the view there). Don't add page padding to the phone layout, and don't strip the desktop spacing/radius.
 - **Row actions must be reachable without hover** — touch devices can't hover, so use `ROW_ACTION` (`@/lib/utils`) for row menus/buttons and destructive row actions belong behind the row menu. A hover-only control is invisible on a phone.
 - **A list reused inside a side panel is dense** — the panel's gutter adds to the component's own, so a page-sized row reads as huge in a column. Pass the component's `dense` variant (`FileBrowser` is the reference: `text-xs`, `py-1`, `px-2`) and never nest `GlassPanelContent` in a panel; `e2e/coder-panel.spec.ts` measures a file row at ≤ 28px.
 - `e2e/mobile-overflow.spec.ts`, `e2e/modal-overflow.spec.ts`, `e2e/chat-full-bleed.spec.ts` and `__tests__/overlay-coverage.test.ts` enforce all of this at 375px and 320px — a regression fails CI.
@@ -36,21 +36,33 @@ Any UI work (pages, panels, forms, lists, modals, buttons, inputs, styling) **mu
 - Every change **must** be committed before moving on.
 - Commit messages: **max 50 chars**, imperative mood, descriptive (e.g. ✅ `add prisma schema for users and sessions`, ❌ `update stuff`).
 - Group related changes into a single commit. No atomic-one-line commits.
-- Run `npm run check` (lint + typecheck + format + tests) **before committing**. Nothing lands broken.
+- Run the checks that cover what you touched **before committing** — scoped, not the whole repo (see below). Nothing lands broken.
 
-### Check in the cheap order
+### Check narrowly, and only where it is relevant
 
-`npm run check` ends with the test suite, which is by far the slowest part. Fixing a
-missing newline after waiting minutes for it is a waste, so clear the fast,
-mechanical failures first and run the full suite **once**, as the gate:
+A full-repo `npm run check` runs eslint, `tsc` and ~5000 tests over every file. It
+is slow, it is memory-hungry (`tsc` over the whole app exceeds this container's
+2 GB and gets OOM-killed — `NODE_OPTIONS=--max-old-space-size=1700 npx tsc --noEmit`
+completes), and it reports failures in code you never opened. So scope every step
+to the files the change actually touches:
 
-1. `npm run lint:fix` — eslint `--fix` also applies prettier formatting (it runs as
-   a lint rule), so one command clears both cheap failure modes. `npm run lint`
-   only reports them.
-2. `npm run typecheck` — type errors next; they are quick, and they are often why a
-   test would fail anyway.
-3. `npx vitest run <path>` — while iterating, run only the test files you touched.
-4. `npm run check` — once, at the end.
+1. `npx eslint --fix <changed files>` — eslint `--fix` also applies prettier
+   formatting (it runs as a lint rule), so one command clears both cheap failure
+   modes. Plain `prettier --write <files>` for anything eslint does not cover
+   (`.md`, `e2e/`).
+2. `NODE_OPTIONS=--max-old-space-size=1700 npx tsc --noEmit` — type errors next.
+   `tsc` has no per-file mode and a single file's types pull in its imports, so
+   this one stays whole-project; run it when you changed `.ts`/`.tsx` source, not
+   for docs, styles or config-only edits.
+3. `npx vitest run <paths>` — only the test files covering what changed (the
+   test file you added or edited, plus the ones for modules you modified). Use
+   `npx vitest run <dir>` for a feature area, never the bare suite, while
+   iterating.
+
+Skip a step that cannot be affected: a docs-only change needs no test run, a
+CSS-only change needs no `tsc`. Reserve the full `npm run check` for a change
+that spans the app (a shared primitive, the Prisma schema, the agent runtime) or
+when the user asks for it — and say so when you do.
 
 ### A local build needs a production `NODE_ENV`
 
@@ -71,7 +83,7 @@ not a bug in this app: don't go hunting for a context provider or a bad layout.
 - No trivial tests (`1 + 1 = 2`, empty renders, etc.).
 - Test actual behaviour: API responses, auth flows, tool execution, email parsing, task scheduling, edge cases.
 - Every new feature or non-trivial change needs at least one test covering the happy path and one edge case.
-- Tests must pass before committing. If a test fails, fix the code or the test — don't skip it.
+- Tests must pass before committing. Run the tests that cover the change (`npx vitest run <paths>`), not the whole suite. If a test fails, fix the code or the test — don't skip it.
 
 ## Code Style
 
@@ -84,7 +96,7 @@ not a bug in this app: don't go hunting for a context provider or a bad layout.
 ## Never Swallow Errors
 
 - **Every `catch` block must log the error.** No empty `catch {}`, no `.catch(() => {})`, no `// silently fail`.
-- Use `console.error("descriptive context:", err)` at minimum — the context identifies *what* failed, not just the message.
+- Use `console.error("descriptive context:", err)` at minimum — the context identifies _what_ failed, not just the message.
 - Fire-and-forget promises (`.catch(...)`) must still log.
 - Intentional early-exit guards (`if (!condition) return;`) are not error handling and need no log.
 
@@ -125,10 +137,16 @@ await fetch(url).catch((err) => {
 
 ```ts
 // ❌ BAD — ID-only filter, no user scope
-await prisma.memory.updateMany({ where: { id: { in: memoryIds } }, data: { accessCount: { increment: 1 } } });
+await prisma.memory.updateMany({
+  where: { id: { in: memoryIds } },
+  data: { accessCount: { increment: 1 } },
+});
 
 // ✅ GOOD — userId guard on every query
-await prisma.memory.updateMany({ where: { id: { in: memoryIds }, userId }, data: { accessCount: { increment: 1 } } });
+await prisma.memory.updateMany({
+  where: { id: { in: memoryIds }, userId },
+  data: { accessCount: { increment: 1 } },
+});
 
 // ❌ BAD — prisma.$queryRawUnsafe(`SELECT * FROM Memory WHERE userId = ${userId}`)
 // ✅ GOOD — prisma.$queryRaw`SELECT * FROM Memory WHERE userId = ${userId}`
@@ -152,12 +170,12 @@ await prisma.memory.updateMany({ where: { id: { in: memoryIds }, userId }, data:
 
 - **User and admin settings are declared once, in `src/lib/settings/properties.ts`** — key, columns, validation, and whether a change must rebuild pooled agent sessions (`apply: "sessions"`). The agent's `settings_list` / `settings_set` tools and the settings API routes all read that registry.
 - **Never write `prisma.appSettings` / `prisma.adminSettings` directly.** Go through `setSetting()` or `applyUserSettingsPatch()` / `applyAdminSettingsPatch()` in `src/lib/settings/update.ts`; ESLint rejects a direct write elsewhere, because it would skip the registry's validation, its scope check, and session eviction.
-- **A new tool category, purpose, tool or sidebar item needs no work here** — those properties are derived from `TOOL_CATEGORIES`, `MODEL_PURPOSES`, `ALL_TOOL_INFOS` and `SIDEBAR_NAV_ITEMS`. A new *column* needs one registry entry; `__tests__/lib/settings/properties.test.ts` fails CI if it is missed.
+- **A new tool category, purpose, tool or sidebar item needs no work here** — those properties are derived from `TOOL_CATEGORIES`, `MODEL_PURPOSES`, `ALL_TOOL_INFOS` and `SIDEBAR_NAV_ITEMS`. A new _column_ needs one registry entry; `__tests__/lib/settings/properties.test.ts` fails CI if it is missed.
 - **Admin-scope properties are role-checked at write time**, not only in the tool: a non-admin must not be able to change global settings even if they reach the write path another way.
 
 ## Agent Tools
 
-- **Every tool is built with `defineStructuredTool`, not Pi's `defineTool`** (`src/lib/pi/tools/tool-result.ts`). It renders the model-facing text *and* the `structuredContent` a programmatic caller receives from one object, so the two cannot drift.
+- **Every tool is built with `defineStructuredTool`, not Pi's `defineTool`** (`src/lib/pi/tools/tool-result.ts`). It renders the model-facing text _and_ the `structuredContent` a programmatic caller receives from one object, so the two cannot drift.
 - **Every tool declares an `outputSchema`.** Pi hands `structuredContent` to a codemode script or a watcher tick only for tools that declare one; without it the script gets the model's text instead — text that carries UI metadata and an echo of the call's own arguments, which is how a script ends up matching a marker against its own query. `__tests__/lib/pi/tool-results.test.ts` fails CI when a tool skips the declaration.
 - **The model's text is unchanged when a tool adopts the helper.** Pass the existing prose or `JSON.stringify(payload, null, 2)` through, and UI metadata as `meta` (the `_saale*Meta` block) — never inside the value, which is what a script reads.
 
