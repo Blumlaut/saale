@@ -216,20 +216,21 @@ walk through such a flow.
 
 Everything with a default is optional. The compose file sets the database and Redis URLs.
 
-| Variable               | What it does                                                       | Required |
-| ---------------------- | ------------------------------------------------------------------ | -------- |
-| `BETTER_AUTH_URL`      | Public URL of the app. Sessions, redirects, webhooks, previews.    | Yes      |
-| `BETTER_AUTH_SECRET`   | Session encryption (32+ characters).                               | Yes      |
-| `ENCRYPTION_KEY`       | Encrypts stored mail passwords. 64 hex characters.                 | Yes      |
-| `SANDBOX_API_KEY`      | Shared key between the app and the sandbox service.                | Yes      |
-| `WORKER_API_KEY`       | Shared key for internal worker calls.                              | Yes      |
-| `PREVIEW_DOMAIN`       | Preview wildcard, when it is not `preview.<BETTER_AUTH_URL host>`. | No       |
-| `SANDBOX_PREVIEW_PORT` | Port the preview listener binds. `0` turns previews off.           | No       |
-| `SANDBOX_USER`         | `root` lets the agent install packages; `agent` is stricter.       | No       |
-| `SANDBOX_MEMORY`       | Memory limit per container, e.g. `2g`.                             | No       |
-| `SANDBOX_IDLE_MINUTES` | Minutes before an idle container is stopped.                       | No       |
-| `SEARXNG_URL`          | Search backend for the web tools.                                  | No       |
-| `COUNCIL_ENABLED`      | `0` removes the council module entirely.                           | No       |
+| Variable                     | What it does                                                       | Required |
+| ---------------------------- | ------------------------------------------------------------------ | -------- |
+| `BETTER_AUTH_URL`            | Public URL of the app. Sessions, redirects, webhooks, previews.    | Yes      |
+| `BETTER_AUTH_SECRET`         | Session encryption (32+ characters).                               | Yes      |
+| `ENCRYPTION_KEY`             | Encrypts stored mail passwords. 64 hex characters.                 | Yes      |
+| `SANDBOX_API_KEY`            | Shared key between the app and the sandbox service.                | Yes      |
+| `WORKER_API_KEY`             | Shared key for internal worker calls.                              | Yes      |
+| `PREVIEW_DOMAIN`             | Preview wildcard, when it is not `preview.<BETTER_AUTH_URL host>`. | No       |
+| `SANDBOX_PREVIEW_PORT`       | Port the preview listener binds. `0` turns previews off.           | No       |
+| `SANDBOX_USER`               | `root` lets the agent install packages; `agent` is stricter.       | No       |
+| `SANDBOX_MEMORY`             | Memory limit per container, e.g. `2g`.                             | No       |
+| `SANDBOX_IDLE_MINUTES`       | Minutes before an idle container is stopped.                       | No       |
+| `SANDBOX_CONTAINER_TTL_DAYS` | Days before a container is removed. `0` keeps them forever.        | No       |
+| `SEARXNG_URL`                | Search backend for the web tools.                                  | No       |
+| `COUNCIL_ENABLED`            | `0` removes the council module entirely.                           | No       |
 
 `.env.example` lists the rest, with comments.
 
@@ -238,6 +239,15 @@ Docker fixes a container's limits when it is created, so a changed
 container on its next command — the workspace directory is untouched. Redeploy
 the stack first: the limits reach the containers only through `sandbox-exec`'s
 environment, and only after that service is recreated.
+
+`SANDBOX_CONTAINER_TTL_DAYS` (7 by default) removes a container once it is that
+old, and with it everything installed into the container's own filesystem:
+`apt-get`, `npm -g`, global `pip`. Packages an agent installs for itself under
+`$HOME` (`pip install --user`, `~/.local/bin`) live in the workspaces volume and
+survive. A tenant that should keep its system packages needs
+`SANDBOX_CONTAINER_TTL_DAYS=0`, which never removes on age. Containers are made
+outside the compose project, so `docker compose down` leaves them alone; only an
+explicit remove does.
 
 ## Development
 
