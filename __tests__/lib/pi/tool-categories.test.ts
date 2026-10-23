@@ -3,6 +3,7 @@ import {
   TOOL_CATEGORIES,
   DEFAULT_TOOL_CONFIG,
   getToolCategory,
+  hasCodemodeCategory,
   isCategoryEnabled,
   type ToolConfig,
 } from "@/lib/pi/tool-categories";
@@ -152,5 +153,29 @@ describe("ToolConfig type", () => {
       settings: true,
     };
     expect(Object.keys(config)).toHaveLength(12);
+  });
+});
+
+describe("hasCodemodeCategory", () => {
+  it("is true for the defaults, where most categories go through codemode", () => {
+    expect(hasCodemodeCategory({})).toBe(true);
+  });
+
+  it("is false when every enabled category is declared in full", () => {
+    const config = Object.fromEntries(
+      TOOL_CATEGORIES.map((c) => [c.key, c.defaultExposure === "direct"]),
+    );
+    expect(hasCodemodeCategory(config)).toBe(false);
+  });
+
+  it("follows the exposure a category was moved to", () => {
+    const onlyTerminal = Object.fromEntries(
+      TOOL_CATEGORIES.map((c) => [c.key, c.key === "terminal"]),
+    );
+    expect(hasCodemodeCategory(onlyTerminal)).toBe(false);
+    // Settings on, but every one of its tools declared: nothing behind codemode.
+    const withSettings = { ...onlyTerminal, settings: true };
+    expect(hasCodemodeCategory(withSettings, { settings: "direct" })).toBe(false);
+    expect(hasCodemodeCategory(withSettings)).toBe(true);
   });
 });

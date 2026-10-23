@@ -21,7 +21,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("persistent memory system");
   });
 
-  it("always tells the model how to reach hidden tools", () => {
+  it("tells the model how to reach hidden tools", () => {
     // Pi's own "use codemode to batch calls" guideline lives in the default
     // system prompt, which a custom prompt replaces  so Saale states it here.
     for (const config of [undefined, {}, { terminal: false, memory: false }]) {
@@ -30,6 +30,15 @@ describe("buildAgentSystemPrompt", () => {
       expect(prompt).toContain("tools.<name>");
       expect(prompt).toContain("searchTools");
     }
+  });
+
+  it("leaves codemode out of a session that has nothing behind it", () => {
+    const prompt = buildAgentSystemPrompt({ codemodeTools: false });
+
+    expect(prompt).not.toContain("Tool use:");
+    expect(prompt).not.toContain("searchTools");
+    // The tools the session does have are still described.
+    expect(prompt).toContain("A Terminal is available");
   });
 
   it("includes custom instructions when provided", () => {
