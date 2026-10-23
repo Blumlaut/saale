@@ -76,7 +76,7 @@ function CommitList({ commits }: { commits: CoderCommit[] }) {
 }
 
 /**
- * The Changes tab: branch position, changed files with line counts, the diff of
+ * The Project tab: branch position, changed files with line counts, the diff of
  * whichever file is open, and the branch's recent commits.
  */
 export function ChangesView({
