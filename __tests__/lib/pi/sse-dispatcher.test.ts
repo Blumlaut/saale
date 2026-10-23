@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
-const mockGetBufferedEvents = vi.fn().mockResolvedValue([]);
+const mockGetLiveRunEvents = vi.fn().mockResolvedValue([]);
 vi.mock("@/lib/pi/sse-buffer", () => ({
-  getBufferedEvents: (...args: unknown[]) => mockGetBufferedEvents(...args),
+  getLiveRunEvents: (...args: unknown[]) => mockGetLiveRunEvents(...args),
 }));
 
 // subscribeSessionEvents: register the listener; resolve with an unsubscribe.
@@ -58,7 +58,7 @@ describe("SseDispatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     busListeners = new Set();
-    mockGetBufferedEvents.mockResolvedValue([]);
+    mockGetLiveRunEvents.mockResolvedValue([]);
     mockSubscribeSessionEvents.mockImplementation(
       (_sessionId: string, listener: (evt: unknown) => void) => {
         busListeners.add(listener as never);
@@ -96,8 +96,8 @@ describe("SseDispatcher", () => {
       expect(decodeChunks(b.chunks)).toContain('{"turnId":"t1","text":"hello"}');
     });
 
-    it("replays buffered events after lastEventId", async () => {
-      mockGetBufferedEvents.mockResolvedValueOnce([
+    it("replays the live run's events after lastEventId", async () => {
+      mockGetLiveRunEvents.mockResolvedValueOnce([
         { id: 3, event: "token", data: { turnId: "t1", text: "third" } },
         { id: 4, event: "turn_end", data: { turnId: "t1" } },
       ]);
@@ -105,30 +105,30 @@ describe("SseDispatcher", () => {
 
       await dispatcher.subscribe(mock.controller, mock.encoder, 2);
 
-      expect(mockGetBufferedEvents).toHaveBeenCalledWith("session-1", 2);
+      expect(mockGetLiveRunEvents).toHaveBeenCalledWith("session-1", 2);
       expect(decodeChunks(mock.chunks)).toContain("id: 3");
       expect(decodeChunks(mock.chunks)).toContain("id: 4");
     });
 
-    it("replays ALL buffered events for a fresh connect (lastEventId = -1)", async () => {
-      mockGetBufferedEvents.mockResolvedValueOnce([
+    it("replays a whole live run for a fresh connect (lastEventId = -1)", async () => {
+      mockGetLiveRunEvents.mockResolvedValueOnce([
         { id: 1, event: "turn_start", data: { turnId: "t1" } },
-        { id: 2, event: "done", data: {} },
+        { id: 2, event: "token", data: { turnId: "t1", text: "hi" } },
       ]);
       const mock = createMockController();
 
       await dispatcher.subscribe(mock.controller, mock.encoder, -1);
 
-      expect(mockGetBufferedEvents).toHaveBeenCalledWith("session-1", -1);
+      expect(mockGetLiveRunEvents).toHaveBeenCalledWith("session-1", -1);
       expect(decodeChunks(mock.chunks)).toContain("event: turn_start");
-      expect(decodeChunks(mock.chunks)).toContain("event: done");
+      expect(decodeChunks(mock.chunks)).toContain("event: token");
     });
 
     it("does not duplicate events delivered live during the replay", async () => {
       // The bus delivers id 5 live while the buffer query is in flight;
       // the buffer then returns the same event  it must be delivered once.
       const mock = createMockController();
-      mockGetBufferedEvents.mockResolvedValue([
+      mockGetLiveRunEvents.mockResolvedValue([
         { id: 5, event: "token", data: { text: "once" } },
         { id: 6, event: "token", data: { text: "twice" } },
       ]);

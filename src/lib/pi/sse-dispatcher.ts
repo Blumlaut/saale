@@ -21,7 +21,7 @@
  * fan-out hub.
  */
 
-import { getBufferedEvents } from "./sse-buffer";
+import { getLiveRunEvents } from "./sse-buffer";
 import { subscribeSessionEvents, type SessionStreamEvent } from "./session-events";
 import { formatSseEvent } from "./stream-logic";
 
@@ -86,7 +86,9 @@ export class SseDispatcher {
       this.unsubBus = await subscribeSessionEvents(this.sessionId, (evt) => this.forward(evt));
     }
 
-    const buffered = await getBufferedEvents(this.sessionId, lastEventId).catch((err) => {
+    // Only the run still in flight: a finished one is already in the DB and
+    // replaying it would rebuild it on top of itself (see `liveRunEvents`).
+    const buffered = await getLiveRunEvents(this.sessionId, lastEventId).catch((err) => {
       console.error(`Failed to read SSE buffer for session ${this.sessionId}:`, err);
       return [] as SessionStreamEvent[];
     });
