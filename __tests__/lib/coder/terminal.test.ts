@@ -118,7 +118,12 @@ describe("runTerminalCommand", () => {
       ]),
     );
 
-    const events = await collect({ userId: USER, sessionId: SESSION, target: TARGET, command: "ls" });
+    const events = await collect({
+      userId: USER,
+      sessionId: SESSION,
+      target: TARGET,
+      command: "ls",
+    });
 
     expect(mocks.exec).toHaveBeenCalledWith({
       identity: "user-user-1",
@@ -145,7 +150,12 @@ describe("runTerminalCommand", () => {
       ]),
     );
 
-    const events = await collect({ userId: USER, sessionId: SESSION, target: TARGET, command: "x" });
+    const events = await collect({
+      userId: USER,
+      sessionId: SESSION,
+      target: TARGET,
+      command: "x",
+    });
 
     expect(events.filter((event) => event.type === "data")).toEqual([
       { type: "data", stream: "stdout", text: "out" },
@@ -165,7 +175,12 @@ describe("runTerminalCommand", () => {
       ]),
     );
 
-    const events = await collect({ userId: USER, sessionId: SESSION, target: TARGET, command: "x" });
+    const events = await collect({
+      userId: USER,
+      sessionId: SESSION,
+      target: TARGET,
+      command: "x",
+    });
     const text = events
       .filter((event): event is Extract<TerminalEvent, { type: "data" }> => event.type === "data")
       .map((event) => event.text)
