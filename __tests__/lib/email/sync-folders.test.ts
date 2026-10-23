@@ -36,7 +36,13 @@ vi.mock("imapflow", () => {
 vi.mock("@/lib/db", () => ({
   prisma: {
     emailAccount: { findUnique: vi.fn(), update: vi.fn() },
-    emailMessage: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    emailMessage: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      createMany: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }));
 
@@ -84,7 +90,9 @@ beforeEach(() => {
   vi.mocked(prisma.emailAccount.findUnique).mockResolvedValue(account as never);
   vi.mocked(prisma.emailAccount.update).mockResolvedValue(account as never);
   vi.mocked(prisma.emailMessage.findUnique).mockResolvedValue(null as never);
+  vi.mocked(prisma.emailMessage.findMany).mockResolvedValue([] as never);
   vi.mocked(prisma.emailMessage.create).mockResolvedValue({} as never);
+  vi.mocked(prisma.emailMessage.createMany).mockResolvedValue({ count: 0 } as never);
   vi.mocked(prisma.emailMessage.update).mockResolvedValue({} as never);
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -109,29 +117,44 @@ describe("syncEmailAccount folder-scoped messages", () => {
     const result = await syncEmailAccount("acc-1");
 
     expect(result.errors).toEqual([]);
-    expect(vi.mocked(prisma.emailMessage.findUnique).mock.calls).toEqual([
-      [{ where: { accountId_folder_uid: { accountId: "acc-1", folder: "INBOX", uid: "5" } } }],
-      [{ where: { accountId_folder_uid: { accountId: "acc-1", folder: "Sent", uid: "5" } } }],
-    ]);
-    expect(vi.mocked(prisma.emailMessage.create).mock.calls).toEqual([
+    // One existence lookup per folder, keyed by the UIDs the server returned.
+    expect(vi.mocked(prisma.emailMessage.findMany).mock.calls).toEqual([
       [
         {
-          data: expect.objectContaining({
-            accountId: "acc-1",
-            folder: "INBOX",
-            uid: "5",
-            subject: "Invoice",
-          }),
+          where: { accountId: "acc-1", folder: "INBOX", uid: { in: ["5"] } },
+          select: { uid: true, id: true },
         },
       ],
       [
         {
-          data: expect.objectContaining({
-            accountId: "acc-1",
-            folder: "Sent",
-            uid: "5",
-            subject: "Re: Invoice",
-          }),
+          where: { accountId: "acc-1", folder: "Sent", uid: { in: ["5"] } },
+          select: { uid: true, id: true },
+        },
+      ],
+    ]);
+    expect(vi.mocked(prisma.emailMessage.createMany).mock.calls).toEqual([
+      [
+        {
+          data: [
+            expect.objectContaining({
+              accountId: "acc-1",
+              folder: "INBOX",
+              uid: "5",
+              subject: "Invoice",
+            }),
+          ],
+        },
+      ],
+      [
+        {
+          data: [
+            expect.objectContaining({
+              accountId: "acc-1",
+              folder: "Sent",
+              uid: "5",
+              subject: "Re: Invoice",
+            }),
+          ],
         },
       ],
     ]);
@@ -139,7 +162,7 @@ describe("syncEmailAccount folder-scoped messages", () => {
 
   it("updates the row for the same folder and UID instead of creating a second one", async () => {
     serverMessages.set("INBOX", [fetched(5, "Invoice (edited)", "alice@example.com")]);
-    vi.mocked(prisma.emailMessage.findUnique).mockResolvedValue({ id: "msg-1" } as never);
+    vi.mocked(prisma.emailMessage.findMany).mockResolvedValue([{ id: "msg-1", uid: "5" }] as never);
 
     const result = await syncEmailAccount("acc-1");
 
@@ -151,6 +174,7 @@ describe("syncEmailAccount folder-scoped messages", () => {
         },
       ],
     ]);
+    expect(prisma.emailMessage.createMany).not.toHaveBeenCalled();
     expect(prisma.emailMessage.create).not.toHaveBeenCalled();
     expect(result).toMatchObject({ newMessages: 0, updatedMessages: 1 });
   });
@@ -164,11 +188,16 @@ describe("syncEmailAccount folder-scoped messages", () => {
     const result = await syncEmailAccount("acc-1");
 
     expect(result).toMatchObject({ newMessages: 2, updatedMessages: 0 });
+    expect(prisma.emailMessage.createMany).toHaveBeenCalledTimes(1);
+    const firstCall = vi.mocked(prisma.emailMessage.createMany).mock.calls[0] as unknown as [
+      { data: unknown[] },
+    ];
+    expect(firstCall[0].data).toHaveLength(2);
   });
 
   it("leaves the fetched body of an existing message alone", async () => {
     serverMessages.set("INBOX", [fetched(5, "Invoice", "alice@example.com")]);
-    vi.mocked(prisma.emailMessage.findUnique).mockResolvedValue({ id: "msg-1" } as never);
+    vi.mocked(prisma.emailMessage.findMany).mockResolvedValue([{ id: "msg-1", uid: "5" }] as never);
 
     await syncEmailAccount("acc-1");
 
@@ -219,7 +248,7 @@ describe("syncEmailAccount folder-scoped messages", () => {
     const { errors } = await syncEmailAccount("acc-1");
 
     expect(errors).toEqual([]);
-    expect(prisma.emailMessage.create).toHaveBeenCalledTimes(1);
+    expect(prisma.emailMessage.createMany).toHaveBeenCalledTimes(1);
     expect(console.error).not.toHaveBeenCalled();
   });
 
@@ -232,6 +261,6 @@ describe("syncEmailAccount folder-scoped messages", () => {
 
     expect(newMessages).toBe(1);
     expect(errors).toEqual(["Failed to sync folder Broken: Invalid mailbox name"]);
-    expect(prisma.emailMessage.create).toHaveBeenCalledTimes(1);
+    expect(prisma.emailMessage.createMany).toHaveBeenCalledTimes(1);
   });
 });
