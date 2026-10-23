@@ -12,6 +12,7 @@ vi.mock("@/lib/sandbox/client", () => ({
 }));
 
 import { sandboxIdentity } from "@/lib/council/accounts";
+import { userIdentity } from "@/lib/sandbox/identity";
 import { destroyCouncilSandbox, ensureCouncilSandbox } from "@/lib/council/sandbox";
 
 let workspacesRoot: string;
@@ -60,7 +61,7 @@ describe("ensureCouncilSandbox", () => {
   });
 
   it("keeps the council's directory next to, not inside, the owner's", async () => {
-    const userDir = path.join(workspacesRoot, "user-user-1");
+    const userDir = path.join(workspacesRoot, userIdentity("user-1"));
     await fs.mkdir(userDir, { recursive: true });
 
     await ensureCouncilSandbox(identity());

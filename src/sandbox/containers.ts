@@ -13,10 +13,12 @@
 
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
 import { PassThrough, type Duplex } from "node:stream";
 import type Dockerode from "dockerode";
 import type { SandboxConfig } from "@/lib/sandbox/config";
 import { previewIdentitySlug } from "@/lib/preview/url";
+import { isNotFoundError } from "@/lib/files/errors";
 import { parseIdentity } from "@/lib/sandbox/identity";
 import {
   containerName,
@@ -24,7 +26,7 @@ import {
   containerWorkspacePath,
   limitDrift,
 } from "@/lib/sandbox/spec";
-import { ensureWorkspace } from "@/lib/sandbox/workspace";
+import { ensureWorkspace, identityPath } from "@/lib/sandbox/workspace";
 import { checkMountinfo } from "./mount-check";
 import {
   createExecRegistry,
@@ -135,8 +137,11 @@ export interface ContainerManager {
   /** Remove an identity's container. Its directory stays. */
   remove(identity: string): Promise<boolean>;
   stop(identity: string): Promise<boolean>;
-  /** Stop anything a previous process left behind. */
-  sweep(): Promise<number>;
+  /**
+   * Stop anything a previous process left behind, and remove the containers
+   * whose workspace directory is no longer there (a renamed identity).
+   */
+  sweep(): Promise<{ stopped: number; removed: number }>;
   /** Stop idle containers, remove ones past their time to live. */
   reapIdle(): Promise<{ stopped: number; removed: number }>;
   /** The workspace a preview hostname's slug stands for, or null. */
@@ -573,9 +578,29 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     return slugIndex.bySlug.get(slug) ?? null;
   }
 
-  async function sweep(): Promise<number> {
+  async function sweep(): Promise<{ stopped: number; removed: number }> {
     let stopped = 0;
+    let removed = 0;
     for (const { identity, container, summary } of await labelled()) {
+      // A container whose directory is gone mounts nothing this deployment can
+      // name any more: it is a leftover of an identity that changed, and the
+      // workspace it held now lives under the new name.
+      const orphaned = await fs.stat(identityPath(identity)).then(
+        () => false,
+        (err: unknown) => isNotFoundError(err),
+      );
+      if (orphaned) {
+        try {
+          await container.remove({ force: true });
+          lastUsed.delete(identity);
+          slugIndex = null;
+          removed += 1;
+        } catch (err) {
+          console.error(`Failed to remove orphaned sandbox container ${identity}:`, err);
+        }
+        continue;
+      }
+
       if (summary.State === "exited" || summary.State === "created") continue;
       try {
         await container.stop({ t: 10 });
@@ -585,7 +610,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
         console.error(`Failed to stop leftover sandbox container ${identity}:`, err);
       }
     }
-    return stopped;
+    return { stopped, removed };
   }
 
   async function reapIdle(): Promise<{ stopped: number; removed: number }> {

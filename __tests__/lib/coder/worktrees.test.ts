@@ -89,8 +89,10 @@ vi.mock("@/lib/pi/agent-pool", () => ({
 }));
 
 import { ensureWorktree } from "@/lib/coder/worktrees";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
+const IDENTITY = userIdentity(USER);
 const PROJECT = {
   id: "proj-1",
   slug: "saale",
@@ -106,7 +108,7 @@ function worktreeDir(sessionId: string): string {
     .replace(/[^a-z0-9]/gi, "")
     .toLowerCase()
     .slice(0, 8)}`;
-  return path.join(workspaceRoot, "user-user-1", "worktrees", "saale", chat);
+  return path.join(workspaceRoot, IDENTITY, "worktrees", "saale", chat);
 }
 
 /**
@@ -114,7 +116,7 @@ function worktreeDir(sessionId: string): string {
  * directory is what the existence check looks for.
  */
 async function createsCheckout(_user: string, options: { dir: string }): Promise<void> {
-  await fs.mkdir(path.join(workspaceRoot, "user-user-1", options.dir), { recursive: true });
+  await fs.mkdir(path.join(workspaceRoot, IDENTITY, options.dir), { recursive: true });
 }
 
 beforeEach(async () => {
@@ -349,9 +351,9 @@ describe("ensureWorktree", () => {
       new mocks.MockGitError("fatal: a branch named 'wt/c-chat1' already exists"),
     );
     mocks.listWorktrees.mockResolvedValue([
-      { path: `${workspaceRoot}/user-user-1/projects/saale`, branch: "main", main: true },
+      { path: `${workspaceRoot}/${IDENTITY}/projects/saale`, branch: "main", main: true },
       {
-        path: `${workspaceRoot}/user-user-1/projects/saale/worktrees/saale/c-chat1`,
+        path: `${workspaceRoot}/${IDENTITY}/projects/saale/worktrees/saale/c-chat1`,
         branch: "wt/c-chat1",
         relative: "projects/saale/worktrees/saale/c-chat1",
       },
@@ -467,7 +469,7 @@ describe("ensureWorktree: what the project hands over", () => {
 
     await ensureWorktree(USER, "chat-setup");
 
-    const cwd = path.relative(path.join(workspaceRoot, "user-user-1"), worktreeDir("chat-setup"));
+    const cwd = path.relative(path.join(workspaceRoot, IDENTITY), worktreeDir("chat-setup"));
     expect(mocks.runInWorkspace).toHaveBeenCalledWith(
       USER,
       expect.objectContaining({ cwd, command: "bash -lc 'npm install'" }),

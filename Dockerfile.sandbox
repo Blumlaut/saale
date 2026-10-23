@@ -13,7 +13,7 @@ FROM debian:trixie-slim
 ARG SANDBOX_UID=1000
 ARG SANDBOX_GID=1000
 RUN groupadd --gid "$SANDBOX_GID" agent \
-    && useradd --uid "$SANDBOX_UID" --gid "$SANDBOX_GID" --create-home --home-dir /workspaces --shell /bin/bash agent
+    && useradd --uid "$SANDBOX_UID" --gid "$SANDBOX_GID" --create-home --home-dir /w --shell /bin/bash agent
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -59,11 +59,11 @@ RUN pip install --break-system-packages --no-cache-dir yt-dlp \
 
 # $HOME is the mounted workspace, and ~/.local/bin is on PATH so anything
 # installed there is found by the next command.
-ENV HOME=/workspaces
-ENV PATH="/workspaces/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV HOME=/w
+ENV PATH="/w/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ENV LANG=C.UTF-8
 
-WORKDIR /workspaces
+WORKDIR /w
 
 # The container idles; `docker exec` carries the commands. `sleep` is PID 1
 # under Docker's init, which reaps anything a command backgrounds.

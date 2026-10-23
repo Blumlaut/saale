@@ -28,7 +28,7 @@ services:
       - "3630:3000"
     volumes:
       - uploads_data:/app/uploads
-      - saale_workspaces:/workspaces
+      - saale_workspaces:/w
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
@@ -40,7 +40,7 @@ services:
       - SEARXNG_URL=http://searxng:8080
       - SANDBOX_URL=http://sandbox-exec:8100
       - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
-      - SANDBOX_WORKSPACES_DIR=/workspaces
+      - SANDBOX_WORKSPACES_DIR=/w
       - SANDBOX_USER=${SANDBOX_USER:-root}
       - SANDBOX_UID=${SANDBOX_UID:-1000}
       - SANDBOX_GID=${SANDBOX_GID:-1000}
@@ -88,7 +88,7 @@ services:
     restart: unless-stopped
     volumes:
       - uploads_data:/app/uploads
-      - saale_workspaces:/workspaces
+      - saale_workspaces:/w
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
@@ -100,7 +100,7 @@ services:
       - SEARXNG_URL=http://searxng:8080
       - SANDBOX_URL=http://sandbox-exec:8100
       - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
-      - SANDBOX_WORKSPACES_DIR=/workspaces
+      - SANDBOX_WORKSPACES_DIR=/w
       - SANDBOX_USER=${SANDBOX_USER:-root}
       - SANDBOX_UID=${SANDBOX_UID:-1000}
       - SANDBOX_GID=${SANDBOX_GID:-1000}
@@ -184,11 +184,11 @@ services:
       - sandbox
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - saale_workspaces:/workspaces
+      - saale_workspaces:/w
     environment:
       - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
       - SANDBOX_PREVIEW_PORT=${SANDBOX_PREVIEW_PORT:-8101}
-      - SANDBOX_WORKSPACES_DIR=/workspaces
+      - SANDBOX_WORKSPACES_DIR=/w
       - SANDBOX_VOLUME=saale_workspaces
       - SANDBOX_NETWORK=saale-sandbox
       - SANDBOX_CONTAINER_IMAGE=saale-sandbox

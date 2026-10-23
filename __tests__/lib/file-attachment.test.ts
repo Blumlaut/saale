@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import sharp from "sharp";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 let attachmentsModule: typeof import("@/lib/file-attachment");
 let tmpRoot: string;
@@ -19,7 +20,7 @@ beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-chat-files-"));
   vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
   vi.stubEnv("SANDBOX_USER", "root");
-  userRoot = path.join(tmpRoot, "user-user-1");
+  userRoot = path.join(tmpRoot, userIdentity("user-1"));
   vi.resetModules();
   attachmentsModule = await import("@/lib/file-attachment");
 });

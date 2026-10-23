@@ -20,10 +20,9 @@ const LABEL_PATTERN = new RegExp(
 /**
  * The short name a preview hostname carries for a workspace.
  *
- * An identity is `user-<id>`, and an id can be longer than a DNS label allows
- * next to a port and a signature. A hash keeps the label to a fixed width and
- * leaves the user id out of a URL that gets pasted around; the proxy maps the
- * slug back to the container it already knows.
+ * A hash keeps the label to a fixed width whatever the identity is, and leaves
+ * the workspace behind it out of a URL that gets pasted around; the proxy maps
+ * the slug back to the container it already knows.
  */
 export function previewIdentitySlug(identity: string): string {
   return createHash("sha256").update(identity).digest("hex").slice(0, PREVIEW_SLUG_LENGTH);

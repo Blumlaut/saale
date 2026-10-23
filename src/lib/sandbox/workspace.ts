@@ -87,6 +87,10 @@ async function mkdirOwned(target: string, mode?: number): Promise<void> {
   }
 
   await fs.mkdir(target, { recursive: true, ...(mode ? { mode } : {}) });
+  // `mkdir` masks the mode with the process umask, so a deployment running
+  // under 022 would get 0750 and a group that cannot write. The mode is set
+  // again to what was asked for.
+  if (mode) await fs.chmod(target, mode);
   for (const dir of created.reverse()) await chownWorkspacePath(dir);
 }
 

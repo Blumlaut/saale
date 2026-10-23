@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const userId = "user-1";
 
@@ -14,7 +15,7 @@ beforeAll(async () => {
   workspacesRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-workspace-file-"));
   vi.stubEnv("SANDBOX_WORKSPACES_DIR", workspacesRoot);
   vi.stubEnv("SANDBOX_USER", "root");
-  userRoot = path.join(workspacesRoot, `user-${userId}`);
+  userRoot = path.join(workspacesRoot, userIdentity(userId));
   await fs.mkdir(userRoot, { recursive: true });
 });
 

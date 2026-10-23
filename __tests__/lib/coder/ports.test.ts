@@ -27,10 +27,12 @@ import {
   SandboxUnavailableError,
   UnknownChatPortError,
 } from "@/lib/coder/ports";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
 const SESSION = "chat-1";
-const WORKTREE = "/workspaces/user-user-1/worktrees/saale/c-1a2b3c4d";
+const IDENTITY = userIdentity(USER);
+const WORKTREE = `/workspaces/${IDENTITY}/worktrees/saale/c-1a2b3c4d`;
 
 const PORT = (overrides: Record<string, unknown> = {}) => ({
   port: 5173,
@@ -60,7 +62,7 @@ describe("listing a chat's ports", () => {
   it("mints a URL that fits a DNS label for a real user id", async () => {
     // A 32 character id and a five digit port used to overflow the label.
     const userId = "yy7vfya8Gg33Y5ROHdK2WhZRKvGqs5NA";
-    const worktree = `/workspaces/user-${userId}/worktrees/saale/c-1a2b3c4d`;
+    const worktree = `/workspaces/${userIdentity(userId)}/worktrees/saale/c-1a2b3c4d`;
     mocks.findChat.mockResolvedValue({
       coderWorktree: { path: "worktrees/saale/c-1a2b3c4d", branch: "wt/c-1", status: "active" },
     });
@@ -78,7 +80,7 @@ describe("listing a chat's ports", () => {
   it("mints a preview URL for a reachable port", async () => {
     const result = await listChatPorts(USER, SESSION);
 
-    expect(mocks.listPorts).toHaveBeenCalledWith("user-user-1");
+    expect(mocks.listPorts).toHaveBeenCalledWith(IDENTITY);
     expect(result).toMatchObject({ enabled: true, domain: "preview.saale.example.com" });
     expect(result?.ports).toHaveLength(1);
     expect(result?.ports[0]).toMatchObject({ port: 5173, command: "node vite", loopback: false });
@@ -90,8 +92,8 @@ describe("listing a chat's ports", () => {
   it("keeps out a server another worktree started", async () => {
     mocks.listPorts.mockResolvedValue([
       PORT({ port: 5173 }),
-      PORT({ port: 4000, cwd: "/workspaces/user-user-1/worktrees/saale/c-zzzz", pid: 200 }),
-      PORT({ port: 5000, cwd: "/workspaces/user-user-1/projects/saale", pid: 300 }),
+      PORT({ port: 4000, cwd: `/workspaces/${IDENTITY}/worktrees/saale/c-zzzz`, pid: 200 }),
+      PORT({ port: 5000, cwd: `/workspaces/${IDENTITY}/projects/saale`, pid: 300 }),
       // A directory nobody could read is nobody's port.
       PORT({ port: 6000, cwd: null, pid: 400 }),
     ]);
@@ -147,11 +149,11 @@ describe("stopping a chat's port", () => {
       port: 5173,
       killed: true,
     });
-    expect(mocks.killPort).toHaveBeenCalledWith("user-user-1", 5173);
+    expect(mocks.killPort).toHaveBeenCalledWith(IDENTITY, 5173);
   });
 
   it("refuses a port that belongs to another worktree", async () => {
-    mocks.listPorts.mockResolvedValue([PORT({ cwd: "/workspaces/user-user-1/worktrees/x/y" })]);
+    mocks.listPorts.mockResolvedValue([PORT({ cwd: `/workspaces/${IDENTITY}/worktrees/x/y` })]);
 
     await expect(killChatPort(USER, SESSION, 5173)).rejects.toBeInstanceOf(UnknownChatPortError);
     expect(mocks.killPort).not.toHaveBeenCalled();
