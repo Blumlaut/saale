@@ -3,19 +3,20 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+type GitExecResult = { stdout: string; stderr: string; exitCode: number };
+
 const execOptions: Array<Record<string, unknown>> = [];
-let execResult: { stdout: string; stderr: string; exitCode: number } = {
-  stdout: "",
-  stderr: "",
-  exitCode: 0,
-};
+let execResult: GitExecResult = { stdout: "", stderr: "", exitCode: 0 };
+/** One result per command, for a test whose commands differ. */
+let execQueue: GitExecResult[] | null = null;
 
 vi.mock("@/lib/sandbox/client", () => ({
   exec: async function* (options: Record<string, unknown>) {
     execOptions.push(options);
-    yield { type: "chunk", stream: "stdout", data: Buffer.from(execResult.stdout) };
-    yield { type: "chunk", stream: "stderr", data: Buffer.from(execResult.stderr) };
-    yield { type: "exit", exitCode: execResult.exitCode, timedOut: false, durationMs: 1 };
+    const result = execQueue?.shift() ?? execResult;
+    yield { type: "chunk", stream: "stdout", data: Buffer.from(result.stdout) };
+    yield { type: "chunk", stream: "stderr", data: Buffer.from(result.stderr) };
+    yield { type: "exit", exitCode: result.exitCode, timedOut: false, durationMs: 1 };
   },
 }));
 
@@ -30,9 +31,12 @@ import {
   addWorktree,
   addWorktreeOnBranch,
   cloneRepo,
+  fetchOrigin,
+  refSha,
   removeWorktree,
   runGit,
   shellQuote,
+  worktreeBaseRef,
 } from "@/lib/coder/git";
 
 const USER = "user-1";
@@ -40,6 +44,7 @@ const USER = "user-1";
 beforeEach(() => {
   execOptions.length = 0;
   execResult = { stdout: "", stderr: "", exitCode: 0 };
+  execQueue = null;
   sandboxEnv = { GH_TOKEN: "secret-token" };
 });
 
@@ -231,5 +236,64 @@ describe("ensureGitconfig", () => {
       name: "a",
       email: "a@b.c",
     });
+  });
+});
+
+describe("refreshing the repo", () => {
+  it("fetches the remote when the repo has one", async () => {
+    await fetchOrigin(USER, "projects/saale");
+
+    const commands = execOptions.map((options) => (options as { command: string }).command);
+    expect(commands).toEqual([
+      "git --no-pager remote get-url origin",
+      "git --no-pager fetch --prune --quiet origin",
+    ]);
+  });
+
+  it("does not fetch a repo with no remote", async () => {
+    execResult = { stdout: "", stderr: "error: No such remote 'origin'", exitCode: 2 };
+
+    await fetchOrigin(USER, "projects/local-only");
+
+    expect(execOptions).toHaveLength(1);
+  });
+
+  it("keeps going when the fetch itself fails", async () => {
+    execQueue = [
+      { stdout: "git@github.com:acme/api.git", stderr: "", exitCode: 0 },
+      { stdout: "", stderr: "fatal: could not resolve host: github.com", exitCode: 128 },
+    ];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      // An unreachable remote leaves a usable local copy; a chat still starts.
+      await expect(fetchOrigin(USER, "projects/saale")).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("could not resolve host"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("starts a worktree from origin/<default> when it resolves", async () => {
+    execResult = { stdout: "origin/main\n", stderr: "", exitCode: 0 };
+
+    expect(await worktreeBaseRef(USER, { repoDir: "projects/saale", defaultBranch: "main" })).toBe(
+      "origin/main",
+    );
+  });
+
+  it("falls back to the local default branch when there is no remote ref", async () => {
+    execResult = { stdout: "", stderr: "", exitCode: 1 };
+
+    expect(await worktreeBaseRef(USER, { repoDir: "projects/saale", defaultBranch: "main" })).toBe(
+      "main",
+    );
+  });
+
+  it("reads the commit a ref points at, and nothing for a ref that is not there", async () => {
+    execResult = { stdout: "abc123\n", stderr: "", exitCode: 0 };
+    expect(await refSha(USER, "projects/saale", "origin/main")).toBe("abc123");
+
+    execResult = { stdout: "", stderr: "", exitCode: 1 };
+    expect(await refSha(USER, "projects/saale", "origin/gone")).toBe("");
   });
 });

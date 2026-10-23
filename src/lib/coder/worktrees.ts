@@ -17,12 +17,15 @@ import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib
 import {
   addWorktree,
   addWorktreeOnBranch,
+  fetchOrigin,
   GitError,
   headSha,
   listWorktrees,
   pruneWorktrees,
+  refSha,
   removeWorktree,
   runGit,
+  worktreeBaseRef,
 } from "./git";
 import {
   coderPathRelativeTo,
@@ -46,6 +49,12 @@ interface ProjectRow {
   repoPath: string;
   defaultBranch: string;
 }
+
+/** How stale a repo may be before a new chat refreshes it. */
+const FETCH_TTL_MS = 5 * 60_000;
+
+/** When each repo was last fetched, so a burst of chats fetches once. */
+const lastFetched = new Map<string, number>();
 
 /** git says the branch is already there, so there is nothing to create. */
 const BRANCH_EXISTS_PATTERN = /branch named .* already exists|already exists/i;
@@ -157,6 +166,19 @@ async function ensureBaseCommit(userId: string, repoDir: string): Promise<string
   return headSha(userId, repoDir);
 }
 
+/**
+ * Bring the repo up to date before a worktree branches off it.
+ *
+ * A project is cloned once and never touched again, so without this every chat
+ * would start from the day the project was made.
+ */
+async function refreshRepo(userId: string, repoDir: string): Promise<void> {
+  const last = lastFetched.get(repoDir) ?? 0;
+  if (Date.now() - last < FETCH_TTL_MS) return;
+  lastFetched.set(repoDir, Date.now());
+  await fetchOrigin(userId, repoDir);
+}
+
 /** Drop the pooled agent for a chat whose directory just changed. */
 async function evictPooledAgent(userId: string, sessionId: string): Promise<void> {
   const poolKey = getPoolKey(userId, sessionId);
@@ -222,13 +244,14 @@ async function resolveWorktree(
 
   const path = worktreePath(project.slug, sessionId);
   const branch = coderBranchName(coderChatSlug(sessionId));
-  const baseSha = await ensureBaseCommit(userId, project.repoPath);
-  await addWorktreeForBranch(userId, {
+  await refreshRepo(userId, project.repoPath);
+  const headSha = await ensureBaseCommit(userId, project.repoPath);
+  const base = await worktreeBaseRef(userId, {
     repoDir: project.repoPath,
-    dir: path,
-    branch,
-    base: project.defaultBranch,
+    defaultBranch: project.defaultBranch,
   });
+  await addWorktreeForBranch(userId, { repoDir: project.repoPath, dir: path, branch, base });
+  const baseSha = (await refSha(userId, project.repoPath, base)) || headSha;
 
   try {
     await prisma.coderWorktree.create({
