@@ -599,13 +599,6 @@ export function ChatInterface({
     setPendingApprovals((prev) => prev.filter((a) => a.toolCallId !== toolCallId));
   }, []);
 
-  const handleSuggestionSend = useCallback(
-    (content: string) => {
-      void handleSend(content);
-    },
-    [handleSend],
-  );
-
   const handleQuoteSelection = useCallback((text: string) => {
     inputBarRef.current?.insertQuote(text);
     // Drop the highlight so the floating Quote button doesn't reappear.
@@ -866,7 +859,6 @@ export function ChatInterface({
               isLoading={isLoading}
               isCompacting={isCompacting}
               onEditMessage={handleEditMessage}
-              onSendMessage={handleSuggestionSend}
               onQuoteSelection={handleQuoteSelection}
               pendingApprovals={pendingApprovals}
               onApprovalResolved={handleApprovalResolved}

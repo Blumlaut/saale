@@ -11,6 +11,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { ChatWelcome } from "./chat-empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { downloadFile } from "@/lib/download";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -59,7 +60,6 @@ interface MessageListProps {
   isLoading?: boolean;
   isCompacting?: boolean;
   onEditMessage?: (messageId: string, newContent: string) => Promise<void>;
-  onSendMessage?: (content: string) => void;
   /** Inserts a quoted selection into the composer. */
   onQuoteSelection?: (text: string) => void;
   pendingApprovals?: ApprovalData[];
@@ -117,7 +117,6 @@ export const MessageList = memo(
       isLoading,
       isCompacting,
       onEditMessage,
-      onSendMessage,
       onQuoteSelection,
       pendingApprovals = [],
       onApprovalResolved,
@@ -149,7 +148,6 @@ export const MessageList = memo(
      * after a programmatic scroll, a dispatched event is never stale. */
     const observedTopRef = useRef(0);
     const touchStartYRef = useRef<number | null>(null);
-    const [hasJobs, setHasJobs] = useState<boolean | null>(null);
 
     // Bump on every content change so the selection-quote button can re-check
     // a selection after streaming tokens or a DB reload shift the layout.
@@ -157,19 +155,6 @@ export const MessageList = memo(
     useEffect(() => {
       setSelectionVersion((v) => v + 1);
     }, [messages]);
-
-    // Fetch job status to customize empty state suggestions
-    useEffect(() => {
-      if (messages.length === 0 && hasJobs === null) {
-        fetch("/api/jobs")
-          .then((res) => res.json())
-          .then((data) => setHasJobs(Array.isArray(data.jobs) && data.jobs.length > 0))
-          .catch((err) => {
-            console.error("Failed to fetch jobs for onboarding:", err);
-            setHasJobs(false);
-          });
-      }
-    }, [messages.length, hasJobs]);
 
     // Group consecutive assistant messages that share a parentMessageId
     const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
@@ -329,50 +314,9 @@ export const MessageList = memo(
         );
       }
 
-      const suggestions = [
-        ...(hasJobs === false
-          ? [
-              {
-                label: "✨ Create some jobs",
-                prompt:
-                  "Please create some jobs for my account, give them realistic execution times and if a model is required, try being efficient (i.e. prefer cheap/lightweight models for simple tasks, or non-thinking over thinking models)",
-              },
-            ]
-          : []),
-        {
-          label: "🔍 Search my emails",
-          prompt: "Search my emails for recent updates on my projects.",
-        },
-        {
-          label: "📂 List my files",
-          prompt: "Show me a list of my recently uploaded files.",
-        },
-      ];
-
       return (
         <div className="flex flex-1 items-center justify-center">
-          <div className="max-w-md px-4 text-center">
-            <Bot className="text-muted-foreground/50 mx-auto h-12 w-12" />
-            <h3 className="mt-4 text-lg font-medium">Start a conversation</h3>
-            <p className="text-muted-foreground mt-1 mb-6 text-sm">
-              {hasJobs === false
-                ? "It looks like you don't have any jobs set up. Would you like me to create some for you?"
-                : "Ask anything. I can search emails, manage files, and run jobs."}
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {suggestions.map((s) => (
-                <Button
-                  key={s.label}
-                  variant="outline"
-                  size="sm"
-                  className="liquid-glass border-border bg-muted/50 hover:bg-accent/60"
-                  onClick={() => onSendMessage?.(s.prompt)}
-                >
-                  {s.label}
-                </Button>
-              ))}
-            </div>
-          </div>
+          <ChatWelcome />
         </div>
       );
     }

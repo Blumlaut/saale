@@ -1,12 +1,38 @@
 "use client";
 
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
+import { fetchJson } from "@/lib/http";
 import { MobileSessionSheet } from "./mobile-session-sheet";
 import { TemporaryToggle } from "./temporary-toggle";
 import { createChatSession } from "@/lib/chat-session";
 import { MessageSquarePlus, Ghost } from "lucide-react";
+
+/**
+ * The centered welcome block shared by the no-session view and the
+ * in-session empty state (message-list.tsx). Pass `action` for a CTA
+ * button; omit it to show hero copy only.
+ */
+export function ChatWelcome({
+  subtitle = "Ask me anything!",
+  action,
+}: {
+  subtitle?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="bg-accent mb-4 flex h-16 w-16 items-center justify-center rounded-2xl">
+        <MessageSquarePlus className="text-muted-foreground h-8 w-8" />
+      </div>
+      <h2 className="text-base font-medium">Start a conversation</h2>
+      <p className="text-muted-foreground mt-1 max-w-sm text-sm">{subtitle}</p>
+      {action}
+    </div>
+  );
+}
 
 interface ChatEmptyStateProps {
   temporaryMode: boolean;
@@ -15,6 +41,16 @@ interface ChatEmptyStateProps {
 
 export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptyStateProps) {
   const router = useRouter();
+  // The New Chat CTA only earns its place when there is no chat to go back to.
+  const [hasSessions, setHasSessions] = useState(true);
+  useEffect(() => {
+    fetchJson<{ sessions: unknown[] }>("/api/chat/sessions")
+      .then((data) => setHasSessions(data.sessions.length > 0))
+      .catch((err) => {
+        console.error("Failed to load chat sessions for empty state:", err);
+        setHasSessions(true);
+      });
+  }, []);
 
   const handleNewChat = () => {
     createChatSession({ temporary: temporaryMode })
@@ -36,25 +72,25 @@ export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptySt
         </div>
       </div>
       <GlassPanelContent className="flex flex-1 items-center justify-center">
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="bg-accent mb-4 flex h-16 w-16 items-center justify-center rounded-2xl">
-            <MessageSquarePlus className="text-muted-foreground h-8 w-8" />
-          </div>
-          <h2 className="text-base font-medium">Start a conversation</h2>
-          <p className="text-muted-foreground mt-1 max-w-sm text-sm">
-            Ask questions, brainstorm ideas, or get help with your work.
-          </p>
-          {temporaryMode && (
-            <span className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
-              <Ghost className="h-3 w-3" />
-              Temporary mode. chat will be deleted on close
-            </span>
-          )}
-          <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
-            <MessageSquarePlus className="mr-2 h-4 w-4" />
-            New Chat
-          </Button>
-        </div>
+        <ChatWelcome
+          subtitle="Ask questions, brainstorm ideas, or get help with your work."
+          action={
+            <>
+              {temporaryMode && (
+                <span className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
+                  <Ghost className="h-3 w-3" />
+                  Temporary mode. chat will be deleted on close
+                </span>
+              )}
+              {!hasSessions && (
+                <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
+                  <MessageSquarePlus className="mr-2 h-4 w-4" />
+                  New Chat
+                </Button>
+              )}
+            </>
+          }
+        />
       </GlassPanelContent>
     </GlassPanel>
   );
