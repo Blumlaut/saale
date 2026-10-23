@@ -83,7 +83,7 @@ export function ForceDeleteDialog({
           <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           {/* A plain button: the box closes here, once the delete has landed. */}
           <Button variant="destructive" disabled={busy} onClick={() => void confirm()}>
-            {busy ? <Loader2 /> : <Trash2 />}
+            {busy ? <Loader2 className="animate-spin" /> : <Trash2 />}
             {forcePending ? "Delete anyway" : "Delete"}
           </Button>
         </AlertDialogFooter>
