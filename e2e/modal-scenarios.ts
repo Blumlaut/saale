@@ -37,6 +37,7 @@ const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
 const CODER_CREATE_DIALOG = "src/components/coder/project-create-dialog.tsx";
 const FORCE_DELETE_DIALOG = "src/components/shared/force-delete-dialog.tsx";
+const PROJECT_SETTINGS_SHEET = "src/components/coder/project-settings-sheet.tsx";
 const CODER_LAYOUT = "src/app/dashboard/coder/layout.tsx";
 const SETTINGS = "/dashboard/settings";
 
@@ -525,6 +526,14 @@ async function mockCoderProjects(page: Page) {
           repoPath: "projects/e2e-project-with-a-long-name",
           defaultBranch: "main",
           originUrl: null,
+          envFiles: [
+            {
+              path: "apps/a-very-long-app-directory-name-that-must-wrap/.env.local",
+              content:
+                "DATABASE_URL=postgresql://saale:a-very-long-password-that-has-to-wrap@localhost:5432/saale\n",
+            },
+          ],
+          setupScript: "npm install && npm run db:generate -- --a-very-long-flag-that-has-to-wrap",
         },
         chats: [
           {
@@ -1183,6 +1192,16 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: "/dashboard/coder",
     sources: [CODER_CREATE_DIALOG],
     open: (page) => click(page, 'button:has-text("New project")'),
+  },
+  {
+    name: "coder · project settings",
+    path: "/dashboard/coder",
+    sources: [PROJECT_SETTINGS_SHEET],
+    mock: mockCoderProjects,
+    open: async (page) => {
+      await openRowMenu(page, "e2e-project-with-a-long-name");
+      await click(page, '[role="menuitem"]:has-text("Project settings")');
+    },
   },
   {
     name: "coder · delete project confirmation",

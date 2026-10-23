@@ -9,8 +9,14 @@
 
 import { TOOL_CATEGORIES, type ToolCategoryKey } from "./tool-categories";
 
-/** Categories a coder chat starts with, on top of the worktree tools. */
-const CODER_CATEGORIES_ON: readonly ToolCategoryKey[] = ["terminal", "web", "memory"];
+/**
+ * Categories a coder chat starts with, on top of the worktree tools.
+ *
+ * `settings` is here for the project's own: a chat runs in one checkout, and the
+ * env files every checkout inherits are set on the project, so the agent that
+ * finds one missing is the one that should fix it for the next chat.
+ */
+const CODER_CATEGORIES_ON: readonly ToolCategoryKey[] = ["terminal", "web", "memory", "settings"];
 
 /** Default on/off per category for a new coder chat. */
 export const CODER_TOOL_DEFAULTS: Record<ToolCategoryKey, boolean> = Object.fromEntries(

@@ -12,12 +12,29 @@
  * shell.
  */
 
-import type { CoderProject } from "@prisma/client";
+import type { CoderProject, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { GitError, cloneRepo, initRepo, runGit } from "./git";
 import { ensureGitconfig, gitIdentityFor } from "./gitconfig";
-import { PROJECTS_DIR, coderWorkspaceRoot, projectRepoPath, resolveCoderPath } from "./paths";
+import { CoderProjectError } from "./project-error";
+import {
+  excludeEnvFiles,
+  parseEnvFiles,
+  parseSetupScript,
+  storedEnvFiles,
+  writeEnvFiles,
+  type EnvFile,
+} from "./project-config";
+
+export { CoderProjectError } from "./project-error";
+import {
+  PROJECTS_DIR,
+  coderWorkspaceRoot,
+  projectRepoPath,
+  resolveCoderPath,
+  workspaceDirectoryExists,
+} from "./paths";
 import { isCoderSlug, repoSlugFromUrl, toCoderSlug, uniqueSlug } from "./slug";
 
 /** Branch a fresh repo starts on, and the fallback for a detached clone. */
@@ -31,6 +48,17 @@ const MAX_CLONE_URL_LENGTH = 2048;
 
 /** A conflicting slug is retried this many times before giving up. */
 const MAX_SLUG_ATTEMPTS = 3;
+
+const SETTINGS_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  repoPath: true,
+  defaultBranch: true,
+  originUrl: true,
+  envFiles: true,
+  setupScript: true,
+} as const;
 
 /** Worktree rows in this state count towards a project's worktrees. */
 const WORKTREE_STATUS_ACTIVE = "active";
@@ -49,17 +77,6 @@ export const DEFAULT_GITIGNORE = [
 export interface CreateProjectInput {
   name: string;
   cloneUrl?: string | null | undefined;
-}
-
-/** A project operation the route can report as-is. `status` is the HTTP code. */
-export class CoderProjectError extends Error {
-  constructor(
-    message: string,
-    readonly status: number = 400,
-  ) {
-    super(message);
-    this.name = "CoderProjectError";
-  }
 }
 
 /** A project as the list shows it. */
@@ -84,13 +101,20 @@ export interface CoderProjectChat {
   worktree: { path: string; branch: string; status: string } | null;
 }
 
-export interface CoderProjectDetail {
+/** The settings the panel edits, and what the detail response carries. */
+export interface ProjectSettings {
   id: string;
   name: string;
   slug: string;
   repoPath: string;
   defaultBranch: string;
   originUrl: string | null;
+  /** What every worktree of this project gets. */
+  envFiles: EnvFile[];
+  setupScript: string | null;
+}
+
+export interface CoderProjectDetail extends ProjectSettings {
   chats: CoderProjectChat[];
 }
 
@@ -295,12 +319,7 @@ export async function getProject(
   const project = await prisma.coderProject.findFirst({
     where: { id: projectId, userId },
     select: {
-      id: true,
-      name: true,
-      slug: true,
-      repoPath: true,
-      originUrl: true,
-      defaultBranch: true,
+      ...SETTINGS_SELECT,
       chats: {
         orderBy: { lastActivityAt: "desc" },
         select: {
@@ -321,6 +340,8 @@ export async function getProject(
     repoPath: project.repoPath,
     originUrl: project.originUrl,
     defaultBranch: project.defaultBranch,
+    envFiles: storedEnvFiles(project.envFiles),
+    setupScript: project.setupScript,
     chats: project.chats.map((chat) => ({
       id: chat.id,
       title: chat.title,
@@ -330,6 +351,18 @@ export async function getProject(
   };
 }
 
+/** One project's settings, without its chats. Null when it is not this user's. */
+export async function getProjectSettings(
+  userId: string,
+  projectId: string,
+): Promise<ProjectSettings | null> {
+  const project = await prisma.coderProject.findFirst({
+    where: { id: projectId, userId },
+    select: SETTINGS_SELECT,
+  });
+  return project ? { ...project, envFiles: storedEnvFiles(project.envFiles) } : null;
+}
+
 /** The project id when it belongs to `userId`, null otherwise. */
 export async function ownedProjectId(userId: string, projectId: string): Promise<string | null> {
   const project = await prisma.coderProject.findFirst({
@@ -337,6 +370,106 @@ export async function ownedProjectId(userId: string, projectId: string): Promise
     select: { id: true },
   });
   return project?.id ?? null;
+}
+
+/** A branch a repo could create, so a typo cannot become a checkout path. */
+const BRANCH_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+function cleanBranch(branch: string): string {
+  const cleaned = branch.trim();
+  if (
+    !cleaned ||
+    cleaned.length > 200 ||
+    !BRANCH_NAME_PATTERN.test(cleaned) ||
+    cleaned.includes("..") ||
+    cleaned.endsWith("/")
+  ) {
+    throw new CoderProjectError(`"${branch}" is not a branch name`);
+  }
+  return cleaned;
+}
+
+export interface UpdateProjectInput {
+  name?: string | undefined;
+  defaultBranch?: string | undefined;
+  envFiles?: EnvFile[] | undefined;
+  setupScript?: string | null | undefined;
+}
+
+/**
+ * Write the project's env files into the checkouts that already exist.
+ *
+ * Only missing files are written: a file that is there may have been edited by
+ * the agent working in that checkout, and its version is the newer one. The
+ * excludes are updated for the repo either way, so a file added later still
+ * leaves the checkout clean.
+ */
+async function applyEnvToWorktrees(
+  userId: string,
+  project: { id: string; repoPath: string },
+  envFiles: EnvFile[],
+): Promise<void> {
+  await excludeEnvFiles(userId, project.repoPath, envFiles);
+
+  const worktrees = await prisma.coderWorktree.findMany({
+    where: {
+      projectId: project.id,
+      status: WORKTREE_STATUS_ACTIVE,
+      project: { userId },
+    },
+    select: { path: true },
+  });
+
+  for (const worktree of worktrees) {
+    if (!(await workspaceDirectoryExists(userId, worktree.path))) continue;
+    try {
+      await writeEnvFiles(userId, worktree.path, envFiles, { onlyMissing: true });
+    } catch (err) {
+      console.error(`Failed to write the env files into ${worktree.path}:`, err);
+    }
+  }
+}
+
+/**
+ * Change a project's settings.
+ *
+ * The slug, the repo directory and the existing branches are what the paths
+ * are built from, so a rename changes the label only: nothing on disk moves.
+ */
+export async function updateProject(
+  userId: string,
+  projectId: string,
+  input: UpdateProjectInput,
+): Promise<ProjectSettings> {
+  const project = await prisma.coderProject.findFirst({
+    where: { id: projectId, userId },
+    select: SETTINGS_SELECT,
+  });
+  if (!project) throw new CoderProjectError("Not found", 404);
+
+  const name = input.name === undefined ? project.name : cleanName(input.name);
+  const defaultBranch =
+    input.defaultBranch === undefined ? project.defaultBranch : cleanBranch(input.defaultBranch);
+  const envFiles =
+    input.envFiles === undefined ? storedEnvFiles(project.envFiles) : parseEnvFiles(input.envFiles);
+  const setupScript =
+    input.setupScript === undefined ? project.setupScript : parseSetupScript(input.setupScript);
+
+  const updated = await prisma.coderProject.update({
+    where: { id: project.id },
+    data: {
+      name,
+      defaultBranch,
+      envFiles: envFiles as unknown as Prisma.InputJsonValue,
+      setupScript,
+    },
+    select: SETTINGS_SELECT,
+  });
+
+  // Only a save that carried files has anything to hand the checkouts.
+  if (input.envFiles !== undefined) await applyEnvToWorktrees(userId, updated, envFiles);
+
+  return { ...updated, envFiles: storedEnvFiles(updated.envFiles) };
 }
 
 /** A summary row as JSON, dates as ISO strings. */
@@ -384,6 +517,8 @@ export function serializeProjectDetail(
       repoPath: project.repoPath,
       defaultBranch: project.defaultBranch,
       originUrl: project.originUrl,
+      envFiles: project.envFiles,
+      setupScript: project.setupScript,
     },
     chats: project.chats.map((chat) => ({
       id: chat.id,

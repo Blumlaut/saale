@@ -53,8 +53,10 @@ beforeEach(() => {
 });
 
 describe("settings tools", () => {
-  it("registers settings_list and settings_set only", () => {
+  it("registers the registry's tools and the project's own", () => {
     expect(createSettingsTools(USER_ID).map((candidate) => candidate.name)).toEqual([
+      "project_settings_get",
+      "project_settings_set",
       "settings_list",
       "settings_set",
     ]);

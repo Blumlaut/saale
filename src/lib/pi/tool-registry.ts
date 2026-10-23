@@ -53,7 +53,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   agentJobs: (userId) => createAgentJobTools(userId),
   watchers: (userId, sessionId) => createWatcherTools(userId, sessionId),
   infra: (userId) => createInfraTools(userId),
-  settings: (userId) => createSettingsTools(userId),
+  settings: (userId, sessionId) => createSettingsTools(userId, sessionId),
 };
 
 // ─── Tool Resolution ─────────────────────────────────────────────────────────

@@ -184,6 +184,11 @@ model CoderProject {
   repoPath      String
   originUrl     String?
   defaultBranch String   @default("main")
+  /// Files every worktree gets: [{ path, content }]. Worktrees are separate
+  /// checkouts, so an untracked .env in the repo never reaches them.
+  envFiles      Json?
+  /// Command run in a worktree once it exists, e.g. "npm install".
+  setupScript   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)

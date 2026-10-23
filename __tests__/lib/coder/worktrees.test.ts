@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
     pruneWorktrees: vi.fn(),
     removeWorktree: vi.fn(),
     runGit: vi.fn(),
+    runInWorkspace: vi.fn(),
     getPooled: vi.fn(),
     removePooled: vi.fn(),
   };
@@ -70,6 +71,8 @@ vi.mock("@/lib/coder/git", () => ({
   pruneWorktrees: (...args: unknown[]) => mocks.pruneWorktrees(...args),
   removeWorktree: (...args: unknown[]) => mocks.removeWorktree(...args),
   runGit: (...args: unknown[]) => mocks.runGit(...args),
+  runInWorkspace: (...args: unknown[]) => mocks.runInWorkspace(...args),
+  shellQuote: (value: string) => `'${value}'`,
 }));
 
 vi.mock("@/lib/pi/agent-pool", () => ({
@@ -132,6 +135,7 @@ beforeEach(async () => {
   mocks.pruneWorktrees.mockResolvedValue(undefined);
   mocks.removeWorktree.mockResolvedValue(undefined);
   mocks.runGit.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+  mocks.runInWorkspace.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
   mocks.getPooled.mockReturnValue(undefined);
   mocks.removePooled.mockResolvedValue(undefined);
 });
@@ -226,6 +230,7 @@ describe("ensureWorktree", () => {
       dir: "worktrees/saale/c-chat1",
       branch: "wt/c-chat1",
       base: "sha-start",
+      envFiles: [],
     });
     expect(mocks.createWorktree).not.toHaveBeenCalled();
   });
@@ -242,6 +247,7 @@ describe("ensureWorktree", () => {
       dir: "worktrees/saale/c-chat1",
       branch: "wt/c-chat1",
       base: "main",
+      envFiles: [],
     });
     expect(mocks.createWorktree).toHaveBeenCalledWith({
       data: {
@@ -317,6 +323,7 @@ describe("ensureWorktree", () => {
       dir: "worktrees/saale/c-chat1",
       branch: "wt/c-chat1",
       base: "sha-start",
+      envFiles: [],
     });
   });
 
@@ -430,5 +437,48 @@ describe("ensureWorktree", () => {
     ]);
 
     expect(peak).toBe(1);
+  });
+});
+
+describe("ensureWorktree: what the project hands over", () => {
+  const envFiles = [{ path: "apps/web/.env.local", content: "API_URL=http://localhost:3000\n" }];
+
+  it("writes the project's env files into a new checkout", async () => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, envFiles });
+
+    await ensureWorktree(USER, "chat-env");
+
+    expect(
+      await fs.readFile(path.join(worktreeDir("chat-env"), "apps/web/.env.local"), "utf8"),
+    ).toBe("API_URL=http://localhost:3000\n");
+  });
+
+  it("runs the setup script in the checkout it just made", async () => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, setupScript: "npm install" });
+
+    await ensureWorktree(USER, "chat-setup");
+
+    const cwd = path.relative(path.join(workspaceRoot, "user-user-1"), worktreeDir("chat-setup"));
+    expect(mocks.runInWorkspace).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ cwd, command: "bash -lc 'npm install'" }),
+    );
+  });
+
+  it("leaves an existing checkout alone", async () => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, setupScript: "npm install" });
+    mocks.findWorktree.mockResolvedValue({
+      id: "wt-1",
+      projectId: PROJECT.id,
+      sessionId: "chat-1",
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      baseSha: "sha-base",
+    });
+    await fs.mkdir(worktreeDir("chat-1"), { recursive: true });
+
+    await ensureWorktree(USER, "chat-1");
+
+    expect(mocks.runInWorkspace).not.toHaveBeenCalled();
   });
 });

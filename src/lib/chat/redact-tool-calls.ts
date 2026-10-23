@@ -179,6 +179,8 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   telegram_chats: { text: "Listed Telegram chats" },
   settings_list: { text: "Listed settings" },
   settings_set: { text: "Changed a setting" },
+  project_settings_get: { text: "Read a project's setup" },
+  project_settings_set: { text: "Changed a project's setup" },
 };
 
 const UNKNOWN_TOOL_SUMMARY: SummaryRule = { text: "Ran a tool" };
