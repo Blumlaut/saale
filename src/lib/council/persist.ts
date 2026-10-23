@@ -444,16 +444,33 @@ export async function failStaleRuns(staleAfterMs: number, userId?: string): Prom
     select: { id: true, councilId: true, userId: true },
   });
 
+  if (stale.length === 0) return 0;
+
+  // One bulk write for all stale runs. The sweep fires every 30 s, and a
+  // crash with many running council runs used to cost one update per run.
+  await prisma.councilRun.updateMany({
+    where: {
+      // Scoped to the runs just read, so a run that goes stale between the
+      // two queries is picked up by the next sweep, not double-handled here.
+      id: { in: stale.map((r) => r.id) },
+      status: "running",
+      ...(userId ? { userId } : {}),
+      OR: [{ lastHeartbeatAt: null }, { lastHeartbeatAt: { lt: cutoff } }],
+    },
+    data: {
+      status: "failed",
+      stopReason: "timeout",
+      error: "The run stopped responding (the app restarted or the run was abandoned).",
+      completedAt: new Date(),
+    },
+  });
+
+  // Re-settle each affected council exactly once (several stale runs can
+  // belong to the same council).
+  const settled = new Set<string>();
   for (const run of stale) {
-    await prisma.councilRun.update({
-      where: { id: run.id },
-      data: {
-        status: "failed",
-        stopReason: "timeout",
-        error: "The run stopped responding (the app restarted or the run was abandoned).",
-        completedAt: new Date(),
-      },
-    });
+    if (settled.has(run.councilId)) continue;
+    settled.add(run.councilId);
     await setCouncilStatus(run.councilId, run.userId, "idle");
   }
 

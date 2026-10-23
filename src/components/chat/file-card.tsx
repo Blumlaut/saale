@@ -217,6 +217,16 @@ function SharedImageTile({ file }: { file: SharedFile }) {
   );
 }
 
+/** A `show_file` call whose arguments are still being written: no file yet. */
+function SharedFilePending() {
+  return (
+    <div className="liquid-glass-inner flex min-w-0 items-center gap-3 rounded-xl px-4 py-3">
+      <Loader2 className="text-muted-foreground h-4 w-4 shrink-0 animate-spin" />
+      <p className="text-muted-foreground text-xs">Preparing file…</p>
+    </div>
+  );
+}
+
 /**
  * A `show_file` call: the file the assistant shared, as an attachment.
  *
@@ -227,6 +237,11 @@ function SharedImageTile({ file }: { file: SharedFile }) {
 export function ShowFileCard({ toolCall }: { toolCall: ToolCallData }) {
   const file = readSharedFile(toolCall);
   const { url, failed } = useFilePreview(file.filePath, file.isImage && !file.isError);
+
+  // The model is still writing this call's arguments, so there is no file
+  // behind it yet. An attachment with a half-written name and a download that
+  // cannot work reads as broken.
+  if (toolCall.status === "pending") return <SharedFilePending />;
 
   if (file.isError) return <SharedFileError file={file} />;
 

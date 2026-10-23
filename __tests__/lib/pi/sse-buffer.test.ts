@@ -1,26 +1,82 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Redis mocks ────────────────────────────────────────────────────────────
+//
+// The buffer talks to Redis through two MULTI transactions per buffered event
+// (counter increment, then sorted-set write), so the mock records each
+// transaction as a chain of commands and resolves exec() with results for
+// them.
 
-const mockRedisIncr = vi.fn().mockResolvedValue(1);
-const mockRedisExpire = vi.fn().mockResolvedValue(1);
-const mockRedisZadd = vi.fn().mockResolvedValue(true);
-const mockRedisZremrangebyrank = vi.fn().mockResolvedValue(0);
+interface FakeChain {
+  commands: Array<[command: string, args: unknown[]]>;
+  incr: (...args: unknown[]) => FakeChain;
+  expire: (...args: unknown[]) => FakeChain;
+  zadd: (...args: unknown[]) => FakeChain;
+  zremrangebyrank: (...args: unknown[]) => FakeChain;
+  exec: ReturnType<typeof vi.fn>;
+}
+
+const chains: FakeChain[] = [];
+let nextId = 1;
+
+function makeChain(): FakeChain {
+  const commands: FakeChain["commands"] = [];
+  const chain: FakeChain = {
+    commands,
+    incr: (...args) => {
+      commands.push(["incr", args]);
+      return chain;
+    },
+    expire: (...args) => {
+      commands.push(["expire", args]);
+      return chain;
+    },
+    zadd: (...args) => {
+      commands.push(["zadd", args]);
+      return chain;
+    },
+    zremrangebyrank: (...args) => {
+      commands.push(["zremrangebyrank", args]);
+      return chain;
+    },
+    exec: vi.fn().mockImplementation(async () => {
+      // ioredis resolves exec() with [error, value] pairs, one per command.
+      return Promise.all(
+        commands.map(([command]) => {
+          if (command === "incr") return [null, nextId++];
+          if (command === "expire") return [null, 1];
+          if (command === "zadd") return [null, true];
+          return [null, 0];
+        }),
+      );
+    }),
+  };
+  return chain;
+}
+
+const mockRedisMulti = vi.fn(() => {
+  const chain = makeChain();
+  chains.push(chain);
+  return chain;
+});
 const mockRedisZrangebyscore = vi.fn().mockResolvedValue([]);
 const mockRedisDel = vi.fn().mockResolvedValue(1);
 
 vi.mock("@/lib/redis", () => ({
   getRedis: () => ({
-    incr: mockRedisIncr,
-    expire: mockRedisExpire,
-    zadd: mockRedisZadd,
-    zremrangebyrank: mockRedisZremrangebyrank,
+    multi: mockRedisMulti,
     zrangebyscore: mockRedisZrangebyscore,
     del: mockRedisDel,
   }),
 }));
 
-import { nextEventId, bufferEvent, getBufferedEvents, clearBuffer } from "@/lib/pi/sse-buffer";
+import {
+  bufferEvent,
+  getBufferedEvents,
+  getLiveRunEvents,
+  liveRunEvents,
+  clearBuffer,
+} from "@/lib/pi/sse-buffer";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -28,95 +84,128 @@ function makePayload(id: number, event: string, data: unknown): string {
   return JSON.stringify({ id, event, data });
 }
 
+/** All commands recorded so far, with the issuing chain index. */
+function recordedCommands(): Array<{ chain: number; command: string; args: unknown[] }> {
+  return chains.flatMap((chain, chainIndex) =>
+    chain.commands.map((entry) => ({ chain: chainIndex, command: entry[0], args: entry[1] })),
+  );
+}
+
+/** Buffer one event, advancing the clock first so cumulative snapshots are not throttled. */
+async function bufferEventNoThrottle(
+  sessionId: string,
+  event: string,
+  data: unknown,
+): Promise<number> {
+  vi.advanceTimersByTime(1100);
+  return bufferEvent(sessionId, event, data);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  chains.length = 0;
+  nextId = 1;
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+  mockRedisZrangebyscore.mockResolvedValue([]);
+  mockRedisDel.mockResolvedValue(1);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-describe("nextEventId", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedisIncr.mockResolvedValue(1);
-    mockRedisExpire.mockResolvedValue(1);
-  });
+describe("nextEventId (via bufferEvent)", () => {
+  it("increments the per-session counter and refreshes its TTL in one transaction", async () => {
+    await bufferEvent("session-1", "done", {});
 
-  it("returns incrementing IDs", async () => {
-    mockRedisIncr.mockResolvedValueOnce(1).mockResolvedValueOnce(2).mockResolvedValueOnce(3);
-
-    expect(await nextEventId("session-1")).toBe(1);
-    expect(await nextEventId("session-1")).toBe(2);
-    expect(await nextEventId("session-1")).toBe(3);
-  });
-
-  it("sets a long TTL on counter key so IDs never reset mid-generation", async () => {
-    await nextEventId("session-1");
-
-    expect(mockRedisIncr).toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
+    // The "done" event is not throttled, so two transactions: counter, then write.
+    expect(chains).toHaveLength(2);
+    expect(chains[0]!.commands).toEqual([
+      ["incr", ["chat:sse:buf:session-1:counter"]],
+      ["expire", ["chat:sse:buf:session-1:counter", 86400]],
+    ]);
     // 24h: a tool call can run for many minutes without emitting events. If
     // the counter expired, IDs would restart at 1 and clients holding a
     // higher Last-Event-ID would silently skip every new event.
-    expect(mockRedisExpire).toHaveBeenCalledWith("chat:sse:buf:session-1:counter", 86400);
+  });
+
+  it("returns incrementing IDs", async () => {
+    expect(await bufferEventNoThrottle("s-incr-a", "token", { text: "a" })).toBe(1);
+    expect(await bufferEventNoThrottle("s-incr-a", "token", { text: "b" })).toBe(2);
+    expect(await bufferEventNoThrottle("s-incr-a", "token", { text: "c" })).toBe(3);
   });
 
   it("uses separate counters per session", async () => {
-    mockRedisIncr.mockResolvedValue(1);
+    await bufferEventNoThrottle("session-a", "done", {});
+    await bufferEventNoThrottle("session-b", "done", {});
 
-    await nextEventId("session-a");
-    await nextEventId("session-b");
-
-    expect(mockRedisIncr).toHaveBeenCalledWith("chat:sse:buf:session-a:counter");
-    expect(mockRedisIncr).toHaveBeenCalledWith("chat:sse:buf:session-b:counter");
+    const incrKeys = recordedCommands()
+      .filter((c) => c.command === "incr")
+      .map((c) => c.args[0]);
+    expect(incrKeys).toEqual(["chat:sse:buf:session-a:counter", "chat:sse:buf:session-b:counter"]);
   });
 });
 
 describe("bufferEvent", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedisIncr.mockResolvedValue(1);
-    mockRedisExpire.mockResolvedValue(1);
-    mockRedisZadd.mockResolvedValue(true);
-    mockRedisZremrangebyrank.mockResolvedValue(0);
-  });
-
-  it("stores event in sorted set with ID as score", async () => {
-    const id = await bufferEvent("session-1", "token", { text: "hello" });
+  it("stores event in sorted set with ID as score, trimmed, TTL refreshed. one transaction", async () => {
+    const id = await bufferEvent("s-store", "token", { text: "hello" });
 
     expect(id).toBe(1);
-    const expectedPayload = makePayload(1, "token", { text: "hello" });
-    expect(mockRedisZadd).toHaveBeenCalledWith("chat:sse:buf:session-1", 1, expectedPayload);
+    expect(chains).toHaveLength(2);
+    expect(chains[1]!.commands).toEqual([
+      ["zadd", ["chat:sse:buf:s-store", 1, makePayload(1, "token", { text: "hello" })]],
+      ["zremrangebyrank", ["chat:sse:buf:s-store", 0, -(500 + 1)]],
+      ["expire", ["chat:sse:buf:s-store", 1800]],
+    ]);
   });
 
   it("returns the assigned ID", async () => {
-    mockRedisIncr.mockResolvedValue(42);
-    const id = await bufferEvent("session-1", "done", {});
-    expect(id).toBe(42);
+    const id = await bufferEvent("s-return-id", "done", {});
+    expect(id).toBe(1);
   });
 
-  it("trims buffer to max size", async () => {
-    await bufferEvent("session-1", "token", { text: "hello" });
-
-    expect(mockRedisZremrangebyrank).toHaveBeenCalledWith("chat:sse:buf:session-1", 0, -(500 + 1));
+  it("still assigns an ID to a skipped cumulative snapshot, without writing the buffer", async () => {
+    expect(await bufferEvent("s-skip", "token", { text: "first" })).toBe(1);
+    // Inside the 1s window: ID advances, no sorted-set write.
+    const id = await bufferEvent("s-skip", "token", { text: "second" });
+    expect(id).toBe(2);
+    // First token: counter + write. Second (throttled): counter only.
+    expect(chains).toHaveLength(3);
+    expect(chains[2]!.commands).toEqual([
+      ["incr", ["chat:sse:buf:s-skip:counter"]],
+      ["expire", ["chat:sse:buf:s-skip:counter", 86400]],
+    ]);
   });
 
-  it("sets TTL on buffer key", async () => {
-    await bufferEvent("session-1", "token", { text: "hello" });
-
-    expect(mockRedisExpire).toHaveBeenCalledWith("chat:sse:buf:session-1", 1800);
+  it("buffers a new cumulative snapshot once the interval has passed", async () => {
+    await bufferEvent("s-interval", "token", { text: "first" });
+    vi.advanceTimersByTime(1000);
+    await bufferEvent("s-interval", "token", { text: "second" });
+    expect(chains).toHaveLength(4); // counter + write, twice
+    expect(chains[3]!.commands[0]).toEqual([
+      "zadd",
+      ["chat:sse:buf:s-interval", 2, makePayload(2, "token", { text: "second" })],
+    ]);
   });
 
-  it("handles Redis errors gracefully", async () => {
-    mockRedisIncr.mockRejectedValueOnce(new Error("Redis down"));
+  it("never throttles non-cumulative events, even back to back", async () => {
+    await bufferEvent("s-nottl", "tool_start", { toolCallId: "1" });
+    await bufferEvent("s-nottl", "tool_end", { toolCallId: "1" });
+    await bufferEvent("s-nottl", "done", {});
+    expect(chains).toHaveLength(6); // counter + write for each
+  });
 
-    // Should not throw  the error is caught and logged
-    await expect(bufferEvent("session-1", "token", { text: "hello" })).rejects.toThrow(
-      "Redis down",
-    );
+  it("throttles per session, not globally", async () => {
+    await bufferEvent("s-thr-a", "token", { text: "a" });
+    await bufferEvent("s-thr-b", "token", { text: "b" });
+    expect(chains).toHaveLength(4); // both buffered
   });
 });
 
 describe("getBufferedEvents", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedisZrangebyscore.mockResolvedValue([]);
-  });
-
   it("returns events with ID > lastEventId", async () => {
     const events = [
       makePayload(3, "token", { text: "third" }),
@@ -211,11 +300,6 @@ describe("getBufferedEvents", () => {
 });
 
 describe("clearBuffer", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedisDel.mockResolvedValue(1);
-  });
-
   it("deletes the buffer key but NOT the counter key", async () => {
     await clearBuffer("session-1");
 
@@ -224,6 +308,19 @@ describe("clearBuffer", () => {
     // across generations  clients reconnecting with a Last-Event-ID from a
     // previous generation must keep receiving newer events.
     expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
+  });
+
+  it("forgets the throttle state so the next generation's first snapshot is buffered", async () => {
+    await bufferEvent("s-new-gen", "token", { text: "first" });
+    // A second generation starting inside the throttle window: without the
+    // reset its first cumulative snapshot would be dropped from the (already
+    // cleared) buffer, leaving a reconnecting client nothing to replay.
+    await clearBuffer("s-new-gen");
+    await bufferEvent("s-new-gen", "token", { text: "second" });
+
+    const writes = recordedCommands().filter((c) => c.command === "zadd");
+    expect(writes).toHaveLength(2);
+    expect(writes[1]!.args[2]).toBe(makePayload(2, "token", { text: "second" }));
   });
 
   it("handles Redis errors gracefully", async () => {
@@ -235,52 +332,37 @@ describe("clearBuffer", () => {
 });
 
 describe("SSE buffer lifecycle", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRedisIncr.mockResolvedValue(1);
-    mockRedisExpire.mockResolvedValue(1);
-    mockRedisZadd.mockResolvedValue(true);
-    mockRedisZremrangebyrank.mockResolvedValue(0);
-    mockRedisZrangebyscore.mockResolvedValue([]);
-    mockRedisDel.mockResolvedValue(1);
-  });
-
   it("full lifecycle: buffer events, read them back, clear", async () => {
-    // Buffer three events
-    mockRedisIncr.mockResolvedValue(1);
-    const id1 = await bufferEvent("session-1", "token", { text: "hello" });
+    // Buffer three events (spaced out so cumulative snapshots are not throttled)
+    const id1 = await bufferEventNoThrottle("s-lifecycle", "token", { text: "hello" });
     expect(id1).toBe(1);
-
-    mockRedisIncr.mockResolvedValue(2);
-    const id2 = await bufferEvent("session-1", "thinking", { thinking: "reasoning" });
+    const id2 = await bufferEventNoThrottle("s-lifecycle", "tool_end", { toolCallId: "t1" });
     expect(id2).toBe(2);
-
-    mockRedisIncr.mockResolvedValue(3);
-    const id3 = await bufferEvent("session-1", "done", {});
+    const id3 = await bufferEventNoThrottle("s-lifecycle", "done", {});
     expect(id3).toBe(3);
 
     // Read back events after ID 0 (all events)
     mockRedisZrangebyscore.mockResolvedValueOnce([
       makePayload(1, "token", { text: "hello" }),
-      makePayload(2, "thinking", { thinking: "reasoning" }),
+      makePayload(2, "tool_end", { toolCallId: "t1" }),
       makePayload(3, "done", {}),
     ]);
-    const allEvents = await getBufferedEvents("session-1", 0);
+    const allEvents = await getBufferedEvents("s-lifecycle", 0);
     expect(allEvents).toHaveLength(3);
 
     // Read back events after ID 1 (skip first event)
     mockRedisZrangebyscore.mockResolvedValueOnce([
-      makePayload(2, "thinking", { thinking: "reasoning" }),
+      makePayload(2, "tool_end", { toolCallId: "t1" }),
       makePayload(3, "done", {}),
     ]);
-    const afterFirst = await getBufferedEvents("session-1", 1);
+    const afterFirst = await getBufferedEvents("s-lifecycle", 1);
     expect(afterFirst).toHaveLength(2);
     expect(afterFirst[0]!.id).toBe(2);
 
     // Clear buffer (events only  counter survives)
-    await clearBuffer("session-1");
-    expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:session-1");
-    expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:session-1:counter");
+    await clearBuffer("s-lifecycle");
+    expect(mockRedisDel).toHaveBeenCalledWith("chat:sse:buf:s-lifecycle");
+    expect(mockRedisDel).not.toHaveBeenCalledWith("chat:sse:buf:s-lifecycle:counter");
   });
 
   it("reconnect scenario: client reconnects with lastEventId", async () => {
@@ -298,5 +380,48 @@ describe("SSE buffer lifecycle", () => {
     expect(result).toHaveLength(5);
     expect(result[0]!.id).toBe(6);
     expect(result[4]!.id).toBe(10);
+  });
+});
+
+describe("liveRunEvents", () => {
+  const ev = (id: number, event: string) => ({ id, event, data: {} });
+
+  it("keeps every event while a run is still going", () => {
+    const events = [ev(1, "turn_start"), ev(2, "token"), ev(3, "thinking")];
+    expect(liveRunEvents(events)).toEqual(events);
+  });
+
+  it("drops a finished run, so a reconnect cannot rebuild it", () => {
+    // The whole run is still buffered after it ended. replaying it would
+    // rebuild a reply that is already on screen from the DB, token by token,
+    // and then drop the rebuild on the following done.
+    const events = [ev(1, "turn_start"), ev(2, "token"), ev(3, "token"), ev(4, "done")];
+    expect(liveRunEvents(events)).toEqual([]);
+  });
+
+  it("keeps what a new run wrote after the previous one finished", () => {
+    const events = [ev(1, "turn_start"), ev(2, "done"), ev(3, "turn_start"), ev(4, "token")];
+    expect(liveRunEvents(events)).toEqual([ev(3, "turn_start"), ev(4, "token")]);
+  });
+
+  it("treats an error as terminal too", () => {
+    expect(liveRunEvents([ev(1, "token"), ev(2, "error")])).toEqual([]);
+  });
+
+  it("is empty for an empty buffer", () => {
+    expect(liveRunEvents([])).toEqual([]);
+  });
+
+  it("reads only the live run from redis", async () => {
+    mockRedisZrangebyscore.mockResolvedValueOnce([
+      makePayload(1, "turn_start", { turnId: "t1" }),
+      makePayload(2, "done", {}),
+      makePayload(3, "turn_start", { turnId: "t2" }),
+      makePayload(4, "token", { turnId: "t2", text: "live" }),
+    ]);
+
+    const live = await getLiveRunEvents("session-1", -1);
+
+    expect(live.map((e) => e.id)).toEqual([3, 4]);
   });
 });

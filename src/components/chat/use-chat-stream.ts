@@ -14,6 +14,12 @@ const STALL_THRESHOLD_MS = 60_000;
 const WATCHDOG_TICK_MS = 15_000;
 
 /**
+ * Fallback batching interval for an environment with no animation frames.
+ * Real browsers always have them (see the coalesced dispatch below).
+ */
+const FRAME_FALLBACK_MS = 16;
+
+/**
  * Shared SSE stream orchestration for chat.
  *
  * Single source of truth: the `messages` array. Streaming messages are
@@ -40,9 +46,11 @@ const WATCHDOG_TICK_MS = 15_000;
  * Server events:
  * - `turn_start { turnId, startedAt }`. create a streaming message for the
  *   turn, positioned by the server's turn start
- * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end`. update
- *   the turn (tool_update carries live partial output from a running tool;
- *   tool_end carries toolName so the UI can react to specific tools)
+ * - `token` / `thinking` / `tool_pending` / `tool_start` / `tool_update` /
+ *   `tool_end`. update the turn (`tool_pending` is a call whose arguments the
+ *   model is still writing, `tool_update` carries live partial output from a
+ *   running tool; tool_end carries toolName so the UI can react to specific
+ *   tools)
  * - `turn_end { turnId }`. finalize the turn (safety net for final token)
  * - `turn_discarded { turnId }`. the SDK discarded a failed turn to retry it
  * - `retry_start` / `retry_end`. the provider call failed and is being retried
@@ -199,12 +207,69 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
   /**
    * Route a parsed stream event through the pure reducer. All message-state
    * transitions live there (unit-tested); here we only glue React state.
+   *
+   * Cumulative events. a token, a reasoning chunk, a tool's live output. are
+   * queued and applied once per frame instead of once per event. Each one
+   * re-renders the transcript (markdown, highlighting, layout), and a provider
+   * emits them faster than any screen refreshes: rendering every one of them
+   * saturated the main thread, and scrolling the transcript while a run
+   * streamed came to feel stuck because the scroll never got a frame.
+   * Everything else is applied immediately, after whatever is queued, so the
+   * reducer still sees events in order.
+   *
+   * `rootMessageId` is captured per queued action: the ref moves on at
+   * `message_saved`, and a queued token must still be grouped by the root it
+   * arrived under.
    */
-  const dispatch = (action: StreamAction) => {
-    setMessages(
-      (prev) =>
-        streamReducer({ messages: prev, rootMessageId: rootMessageIdRef.current }, action).messages,
-    );
+  interface QueuedAction {
+    action: StreamAction;
+    rootMessageId: string | null;
+  }
+  let queued: QueuedAction[] = [];
+  /** Cancels the frame (or fallback timer) that will apply the queue. */
+  let cancelScheduled: (() => void) | null = null;
+
+  /** Run `callback` on the next frame, or the next tick where there is none. */
+  const scheduleFlush = (callback: () => void): (() => void) => {
+    if (typeof requestAnimationFrame === "function") {
+      const id = requestAnimationFrame(callback);
+      return () => cancelAnimationFrame(id);
+    }
+    const id = setTimeout(callback, FRAME_FALLBACK_MS);
+    return () => clearTimeout(id);
+  };
+
+  const applyQueued = () => {
+    if (queued.length === 0) return;
+    const batch = queued;
+    queued = [];
+    setMessages((prev) => {
+      let messages = prev;
+      for (const { action, rootMessageId } of batch) {
+        messages = streamReducer({ messages, rootMessageId }, action).messages;
+      }
+      return messages;
+    });
+  };
+
+  const flushQueued = () => {
+    cancelScheduled?.();
+    cancelScheduled = null;
+    applyQueued();
+  };
+
+  const dispatch = (action: StreamAction, { coalesce = false }: { coalesce?: boolean } = {}) => {
+    queued.push({ action, rootMessageId: rootMessageIdRef.current });
+    if (!coalesce) {
+      flushQueued();
+      return;
+    }
+    if (cancelScheduled === null) {
+      cancelScheduled = scheduleFlush(() => {
+        cancelScheduled = null;
+        applyQueued();
+      });
+    }
   };
 
   /** Parse an SSE payload; malformed events are logged and dropped. */
@@ -254,13 +319,38 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
   eventSource.addEventListener("token", (event: MessageEvent) => {
     markLoading();
     const parsed = parseEvent<{ turnId: string; text: string }>(event.data);
-    if (parsed) dispatch({ type: "token", turnId: parsed.turnId, text: parsed.text });
+    if (parsed)
+      dispatch({ type: "token", turnId: parsed.turnId, text: parsed.text }, { coalesce: true });
   });
 
   eventSource.addEventListener("thinking", (event: MessageEvent) => {
     markLoading();
     const parsed = parseEvent<{ turnId: string; thinking: string }>(event.data);
-    if (parsed) dispatch({ type: "thinking", turnId: parsed.turnId, thinking: parsed.thinking });
+    if (parsed) {
+      dispatch(
+        { type: "thinking", turnId: parsed.turnId, thinking: parsed.thinking },
+        { coalesce: true },
+      );
+    }
+  });
+
+  eventSource.addEventListener("tool_pending", (event: MessageEvent) => {
+    markLoading();
+    const parsed = parseEvent<{
+      turnId: string;
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    }>(event.data);
+    if (parsed) {
+      dispatch({
+        type: "tool_pending",
+        turnId: parsed.turnId,
+        toolCallId: parsed.toolCallId,
+        toolName: parsed.toolName,
+        args: parsed.args ?? {},
+      });
+    }
   });
 
   eventSource.addEventListener("tool_start", (event: MessageEvent) => {
@@ -288,12 +378,15 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
       event.data,
     );
     if (parsed) {
-      dispatch({
-        type: "tool_update",
-        turnId: parsed.turnId,
-        toolCallId: parsed.toolCallId,
-        ...(parsed.partialResult !== undefined ? { partialResult: parsed.partialResult } : {}),
-      });
+      dispatch(
+        {
+          type: "tool_update",
+          turnId: parsed.turnId,
+          toolCallId: parsed.toolCallId,
+          ...(parsed.partialResult !== undefined ? { partialResult: parsed.partialResult } : {}),
+        },
+        { coalesce: true },
+      );
     }
   });
 

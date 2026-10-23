@@ -14,7 +14,7 @@ import {
 import { formatFileSize } from "@/lib/utils";
 import { formatRelativeDate, plural, truncate } from "@/lib/format";
 import { extractToolMeta } from "@/lib/chat/tool-meta";
-import { toolStatus } from "../tool-status";
+import { isToolCallInProgress, toolStatus } from "../tool-status";
 import type {
   ToolCardBlock,
   ToolCardModel,
@@ -393,14 +393,15 @@ function execModel(toolCall: ToolCallData, meta: InfraExecMeta): ToolCardModel {
  * card starts open.
  */
 function execFailed(toolCall: ToolCallData, meta: InfraExecMeta): boolean {
-  if (toolCall.status === "running") return false;
+  if (isToolCallInProgress(toolCall)) return false;
   return (
     meta.timedOut || (meta.exitCode !== null && meta.exitCode !== 0) || Boolean(toolCall.error)
   );
 }
 
 function execStatus(toolCall: ToolCallData, meta: InfraExecMeta) {
-  if (toolCall.status === "running") return toolStatus(toolCall, "running");
+  // Not run yet, or still running: there is no exit to report.
+  if (isToolCallInProgress(toolCall)) return toolStatus(toolCall);
   if (meta.timedOut) return toolStatus(toolCall, "timed out", "danger");
   if (meta.exitCode !== null) {
     return meta.exitCode === 0

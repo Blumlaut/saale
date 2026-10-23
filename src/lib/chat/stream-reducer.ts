@@ -31,6 +31,19 @@ export type StreamAction =
   | { type: "turn_start"; turnId: string; startedAt?: string }
   | { type: "token"; turnId: string; text: string }
   | { type: "thinking"; turnId: string; thinking: string }
+  /**
+   * The model announced a call and is still writing its arguments. Pi emits the
+   * call in the assistant message it streams (`toolcall_start` / `toolcall_delta`)
+   * long before execution (`tool_start`), so without this the transcript shows
+   * nothing at all while the arguments are being filled in.
+   */
+  | {
+      type: "tool_pending";
+      turnId: string;
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    }
   | {
       type: "tool_start";
       turnId: string;
@@ -60,8 +73,19 @@ export interface StreamState {
 
 /**
  * The message a turn's stream events belong to, streaming or already saved.
+ *
+ * Fast path: the bubble the turn is streaming into is the most recently
+ * appended message, and token/thinking events (the hot path) target exactly
+ * that one, so the tail check lands in O(1). Anything else falls back to the
+ * scan. The tail can only match the same message the scan would return first:
+ * a turnId is unique per bubble, and a folded (saved) row is the only
+ * survivor for its turn.
  */
 function findTurnMessage(messages: Message[], turnId: string): Message | undefined {
+  const tail = messages[messages.length - 1];
+  if (tail && (tail.turnId === turnId || tail.id === `streaming-${turnId}`)) {
+    return tail;
+  }
   return (
     messages.find((m) => m.turnId === turnId) ??
     messages.find((m) => m.id === `streaming-${turnId}`)
@@ -122,6 +146,45 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           : ensureTurnMessage(state.messages, action.turnId, state.rootMessageId),
       };
 
+    case "tool_pending": {
+      const existing = findTurnMessage(state.messages, action.turnId);
+      if (!existing) {
+        return {
+          ...state,
+          messages: ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, {
+            toolCalls: [buildPendingToolCall(action)],
+          }),
+        };
+      }
+      const known = existing.toolCalls?.find((tc) => tc.id === action.toolCallId);
+      if (!known) {
+        return {
+          ...state,
+          messages: state.messages.map((m) =>
+            m === existing
+              ? { ...m, toolCalls: [...(m.toolCalls || []), buildPendingToolCall(action)] }
+              : m,
+          ),
+        };
+      }
+      // Already executing (or finished, after a replay): its arguments are the
+      // authoritative ones and must not be overwritten by a later partial.
+      if (known.status !== "pending") return state;
+      return {
+        ...state,
+        messages: state.messages.map((m) =>
+          m === existing
+            ? {
+                ...m,
+                toolCalls: (m.toolCalls || []).map((tc) =>
+                  tc.id === action.toolCallId ? { ...tc, args: action.args } : tc,
+                ),
+              }
+            : m,
+        ),
+      };
+    }
+
     case "tool_start": {
       const existing = findTurnMessage(state.messages, action.turnId);
       if (!existing) {
@@ -132,8 +195,26 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           }),
         };
       }
-      // Dedupe. the same tool call may be re-delivered on reconnect.
-      if (existing.toolCalls?.some((tc) => tc.id === action.toolCallId)) return state;
+      const known = existing.toolCalls?.find((tc) => tc.id === action.toolCallId);
+      if (known) {
+        // The card is already on screen from `tool_pending`: execution starts,
+        // so the badge flips and the arguments become the call's final ones.
+        // Any other status means a re-delivered event (a replay); leave it.
+        if (known.status !== "pending") return state;
+        return {
+          ...state,
+          messages: state.messages.map((m) =>
+            m === existing
+              ? {
+                  ...m,
+                  toolCalls: (m.toolCalls || []).map((tc) =>
+                    tc.id === action.toolCallId ? buildRunningToolCall(action) : tc,
+                  ),
+                }
+              : m,
+          ),
+        };
+      }
       return {
         ...state,
         messages: state.messages.map((m) =>
@@ -273,6 +354,22 @@ export function buildRunningToolCall(parsed: {
     name: parsed.toolName,
     args: parsed.args,
     status: "running",
+    result: undefined,
+    error: undefined,
+  };
+}
+
+/** A call the model has announced but not started yet: its arguments are still arriving. */
+export function buildPendingToolCall(parsed: {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+}): ToolCallData {
+  return {
+    id: parsed.toolCallId,
+    name: parsed.toolName,
+    args: parsed.args,
+    status: "pending",
     result: undefined,
     error: undefined,
   };

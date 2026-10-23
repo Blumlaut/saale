@@ -19,11 +19,7 @@ import {
   type DbMessage,
   type StreamAction,
 } from "@/lib/pi/stream-logic";
-import {
-  getBufferedEvents,
-  getLastBufferedEvent,
-  isTerminalBufferedEvent,
-} from "@/lib/pi/sse-buffer";
+import { getLastBufferedEvent, isTerminalBufferedEvent } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
 import {
@@ -90,9 +86,10 @@ const STALE_GENERATION_POLL_MS = 10_000;
  * - Browser's EventSource automatically sends Last-Event-ID on reconnect
  * - The dispatcher replays buffered events after that ID, then forwards live
  *
- * Emits: turn_start, token, thinking, tool_start, tool_end, turn_end,
- * message_saved, token_usage, compaction_start, compaction_end, done, error,
- * tool_approval_request, queue_update, messages_changed
+ * Emits: turn_start, token, thinking, tool_pending, tool_start, tool_update,
+ * tool_end, turn_end, message_saved, token_usage, compaction_start,
+ * compaction_end, done, error, tool_approval_request, queue_update,
+ * messages_changed
  */
 export async function GET(
   request: NextRequest,
@@ -129,26 +126,32 @@ export async function GET(
   // Queued messages (submitted while a generation ran) are not part of the
   // conversation: they are delivered by the drain below, not by the normal
   // prompt path, so they must not be mistaken for the last user message.
-  const messages = await prisma.chatMessage.findMany({
+  //
+  // The decision only needs the LAST message: one indexed lookup (the
+  // [sessionId, createdAt] index, scanned backwards) instead of loading
+  // every message the session has ever had, on every SSE connection.
+  const lastMessage = await prisma.chatMessage.findFirst({
     where: { sessionId, queuedAt: null },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     include: {
       attachments: {
         select: { storagePath: true, mimeType: true },
       },
     },
   });
-  const lastMessage = messages[messages.length - 1];
 
-  const [isGenerating, pendingPromptMessageId, bufferedEvents, queuedCount, queueHeld] =
+  const [isGenerating, pendingPromptMessageId, bufferedTail, queuedCount, queueHeld] =
     await Promise.all([
       isSessionActive(authResult.userId, sessionId),
       getPendingPrompt(sessionId),
-      getBufferedEvents(sessionId, lastEventId),
+      getLastBufferedEvent(sessionId),
       countQueuedMessages(sessionId),
       isSendQueueHeld(sessionId),
     ]);
-  const bufferHasDone = bufferedEvents.some(isTerminalBufferedEvent);
+  // A finished run stays marked in the buffer so a reconnect cannot re-prompt
+  // it. It is never replayed (see `liveRunEvents`), so the decision has to
+  // settle the client itself.
+  const bufferHasDone = bufferedTail !== null && isTerminalBufferedEvent(bufferedTail);
 
   // Did the last user message already receive a response?
   let hasAssistantAfterLastUser = false;
@@ -463,7 +466,7 @@ export async function GET(
    * generation off the books, and the unanswered message is prompted again.
    *
    * The buffered `done` check keeps a normally finished run from looking dead
-   *. its client already settled from the replay.
+   *. its client already settled from the `done` the decision emits.
    */
   const startGenerationSupervisor = () => {
     if (supervisorTimer) return;

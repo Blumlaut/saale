@@ -1,6 +1,31 @@
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { parseICS } from "./ics-import";
+import { chunk, IN_LIST_CHUNK_SIZE } from "@/lib/db-batch";
+import { parseICS, type ParsedEvent } from "./ics-import";
+
+/**
+ * The shared columns written for a subscription event, create and update alike.
+ */
+function subscriptionEventData(evt: ParsedEvent) {
+  return {
+    summary: evt.summary,
+    description: evt.description ?? null,
+    location: evt.location ?? null,
+    url: evt.url ?? null,
+    status: evt.status ?? null,
+    transparency: evt.transparency ?? null,
+    sequence: evt.sequence,
+    dtStart: evt.dtStart,
+    dtEnd: evt.dtEnd ?? null,
+    allDay: evt.allDay,
+    timeZone: evt.timeZone ?? null,
+    recurrenceRule: evt.recurrenceRule ?? null,
+    alerts: evt.alerts ? JSON.stringify(evt.alerts) : null,
+  };
+}
+
+/** createMany binds every column of every row (16 here); keep batches far under 65535. */
+const CREATE_BATCH_SIZE = 1000;
 
 /**
  * Fetch a remote ICS URL and merge events into the target calendar.
@@ -105,66 +130,61 @@ export async function syncSubscription(
   // Parse ICS
   const parsedEvents = parseICS(icsContent);
 
-  let created = 0;
-  let updated = 0;
-
+  // A malformed ICS may carry the same UID twice; the last occurrence wins.
+  // The old sequential loop created on the first and updated on the second.
+  const eventsByUid = new Map<string, ParsedEvent>();
   for (const evt of parsedEvents) {
-    const existing = await prisma.calendarEvent.findUnique({
-      where: {
-        calendarId_uid: {
-          calendarId: subscription.calendarId,
-          uid: evt.uid,
-        },
-      },
-    });
+    eventsByUid.set(evt.uid, evt);
+  }
+  const events = Array.from(eventsByUid.values());
 
-    if (existing) {
-      // Update existing event
-      await prisma.calendarEvent.update({
-        where: { id: existing.id },
-        data: {
-          summary: evt.summary,
-          description: evt.description ?? null,
-          location: evt.location ?? null,
-          url: evt.url ?? null,
-          status: evt.status ?? null,
-          transparency: evt.transparency ?? null,
-          sequence: evt.sequence,
-          dtStart: evt.dtStart,
-          dtEnd: evt.dtEnd ?? null,
-          allDay: evt.allDay,
-          timeZone: evt.timeZone ?? null,
-          recurrenceRule: evt.recurrenceRule ?? null,
-          alerts: evt.alerts ? JSON.stringify(evt.alerts) : null,
-          source: "subscription",
-        },
-      });
-      updated++;
-    } else {
-      // Create new event
-      await prisma.calendarEvent.create({
-        data: {
-          calendarId: subscription.calendarId,
-          uid: evt.uid,
-          summary: evt.summary,
-          description: evt.description ?? null,
-          location: evt.location ?? null,
-          url: evt.url ?? null,
-          status: evt.status ?? null,
-          transparency: evt.transparency ?? null,
-          sequence: evt.sequence,
-          dtStart: evt.dtStart,
-          dtEnd: evt.dtEnd ?? null,
-          allDay: evt.allDay,
-          timeZone: evt.timeZone ?? null,
-          recurrenceRule: evt.recurrenceRule ?? null,
-          alerts: evt.alerts ? JSON.stringify(evt.alerts) : null,
-          source: "subscription",
-        },
-      });
-      created++;
+  // Which UIDs already have a row in this calendar (any source, matching the
+  // old findUnique on calendarId_uid). One query per chunk of UIDs instead of
+  // one per event. A large yearly subscription used to mean thousands of
+  // round trips per sync.
+  const existingByUid = new Map<string, string>();
+  for (const uidBatch of chunk(
+    events.map((e) => e.uid),
+    IN_LIST_CHUNK_SIZE,
+  )) {
+    const existing = await prisma.calendarEvent.findMany({
+      where: { calendarId: subscription.calendarId, uid: { in: uidBatch } },
+      select: { uid: true, id: true },
+    });
+    for (const row of existing) {
+      existingByUid.set(row.uid, row.id);
     }
   }
+
+  const toCreate = events.filter((evt) => !existingByUid.has(evt.uid));
+  const toUpdate = events.filter((evt) => existingByUid.has(evt.uid));
+
+  for (const batch of chunk(toCreate, CREATE_BATCH_SIZE)) {
+    await prisma.calendarEvent.createMany({
+      data: batch.map((evt) => ({
+        calendarId: subscription.calendarId,
+        uid: evt.uid,
+        ...subscriptionEventData(evt),
+        source: "subscription",
+      })),
+    });
+  }
+
+  let updated = 0;
+  for (const evt of toUpdate) {
+    const id = existingByUid.get(evt.uid);
+    if (!id) continue;
+    await prisma.calendarEvent.update({
+      where: { id },
+      data: {
+        ...subscriptionEventData(evt),
+        source: "subscription",
+      },
+    });
+    updated++;
+  }
+
+  const created = toCreate.length;
 
   // Delete events that are no longer in the ICS
   const currentUids = new Set(parsedEvents.map((e) => e.uid));

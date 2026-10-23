@@ -80,6 +80,64 @@ function globToRegExp(pattern: string): RegExp {
   return new RegExp(`${out}$`);
 }
 
+/**
+ * Chainable MULTI queue mirroring the ioredis surface used by the app
+ * (`multi().cmd(...).cmd(...).exec()`). Commands run in order when `exec()`
+ * is awaited; results come back as `[error, value]` tuples like ioredis.
+ */
+export interface MemoryMultiQueue {
+  set(key: string, value: string, ...args: unknown[]): MemoryMultiQueue;
+  get(key: string): MemoryMultiQueue;
+  del(...keys: string[]): MemoryMultiQueue;
+  incr(key: string): MemoryMultiQueue;
+  expire(key: string, seconds: number): MemoryMultiQueue;
+  zadd(key: string, score: number, member: string): MemoryMultiQueue;
+  zremrangebyrank(key: string, start: number, stop: number): MemoryMultiQueue;
+  exec(): Promise<Array<[error: null, result: unknown]>>;
+}
+
+function createMultiQueue(client: MemoryRedisClient): MemoryMultiQueue {
+  const queue: Array<() => unknown> = [];
+  const queueObj: MemoryMultiQueue = {
+    set(key, value, ...args) {
+      queue.push(() => client.set(key, value, ...args));
+      return queueObj;
+    },
+    get(key) {
+      queue.push(() => client.get(key));
+      return queueObj;
+    },
+    del(...keys) {
+      queue.push(() => client.del(...keys));
+      return queueObj;
+    },
+    incr(key) {
+      queue.push(() => client.incr(key));
+      return queueObj;
+    },
+    expire(key, seconds) {
+      queue.push(() => client.expire(key, seconds));
+      return queueObj;
+    },
+    zadd(key, score, member) {
+      queue.push(() => client.zadd(key, score, member));
+      return queueObj;
+    },
+    zremrangebyrank(key, start, stop) {
+      queue.push(() => client.zremrangebyrank(key, start, stop));
+      return queueObj;
+    },
+    async exec() {
+      const results: Array<[error: null, result: unknown]> = [];
+      for (const run of queue) {
+        results.push([null, await run()]);
+      }
+      return results;
+    },
+  };
+  return queueObj;
+}
+
 // ─── Client ─────────────────────────────────────────────────────────────────
 
 /** Handler signature for the `.on("message")` subscriber callback. */
@@ -116,6 +174,8 @@ export interface MemoryRedisClient {
     count: number,
   ): Promise<[string, string[]]>;
   mget(keys: string[]): Promise<Array<string | null>>;
+  // transactions
+  multi(): MemoryMultiQueue;
   // pub/sub
   publish(channel: string, message: string): Promise<number>;
   subscribe(...channels: string[]): Promise<unknown>;
@@ -313,6 +373,10 @@ function createClient(): MemoryRedisClient {
         const entry = getEntry(key);
         return entry?.kind === "string" ? entry.value : null;
       });
+    },
+
+    multi() {
+      return createMultiQueue(client);
     },
 
     // ── pub/sub ────────────────────────────────────────────────────────────
