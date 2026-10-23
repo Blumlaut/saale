@@ -11,10 +11,8 @@
  * when two chats start at once.
  */
 
-import fs from "node:fs/promises";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { isNotFoundError } from "@/lib/files/errors";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
 import {
   addWorktree,
@@ -26,7 +24,12 @@ import {
   removeWorktree,
   runGit,
 } from "./git";
-import { coderPathRelativeTo, resolveCoderPath, worktreePath } from "./paths";
+import {
+  coderPathRelativeTo,
+  resolveCoderPath,
+  workspaceDirectoryExists,
+  worktreePath,
+} from "./paths";
 import { coderBranchName, coderChatSlug } from "./slug";
 
 /** The branch and directory a chat runs in. */
@@ -84,16 +87,6 @@ async function withLockRetry<T>(task: () => Promise<T>): Promise<T> {
   }
 }
 
-async function directoryExists(userId: string, relative: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(resolveCoderPath(userId, relative));
-    return stat.isDirectory();
-  } catch (err) {
-    if (isNotFoundError(err)) return false;
-    throw err;
-  }
-}
-
 /**
  * Drop a checkout that holds `branch` at some other path.
  *
@@ -141,7 +134,7 @@ async function addWorktreeForBranch(
 
   // The container is started in this directory, so a chat whose checkout is not
   // here would come up with a shell that cannot start.
-  if (!(await directoryExists(userId, options.dir))) {
+  if (!(await workspaceDirectoryExists(userId, options.dir))) {
     throw new Error(`Worktree ${options.dir} was not created`);
   }
 }
@@ -212,7 +205,7 @@ async function resolveWorktree(
     if (row.projectId !== project.id) {
       throw new Error(`Worktree ${row.path} belongs to another project`);
     }
-    if (await directoryExists(userId, row.path)) {
+    if (await workspaceDirectoryExists(userId, row.path)) {
       return { path: row.path, branch: row.branch, changed: false };
     }
     // The row is what the panel shows; prune drops git's half of a checkout

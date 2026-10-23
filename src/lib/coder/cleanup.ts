@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
 import { getActiveSessions } from "@/lib/redis";
 import { GitError, isRepoFullyPushed, runInWorkspace, shellQuote } from "./git";
+import { workspaceDirectoryExists } from "./paths";
 import { CoderCleanupError, removeChatWorktree } from "./worktree-removal";
 
 /**
@@ -37,14 +38,19 @@ export async function removeProject(userId: string, projectId: string): Promise<
     await removeChatWorktree(userId, chat.id);
   }
 
-  const pushed = await isRepoFullyPushed(userId, project.repoPath).catch((err: unknown) => {
-    if (err instanceof GitError) return false;
-    throw err;
-  });
-  if (!pushed) {
-    throw new CoderCleanupError(
-      "The project has uncommitted changes or commits that are not pushed. Commit and push them first.",
-    );
+  // A repo directory deleted by hand leaves no git to ask and no work to lose,
+  // so the row is all that is left of the project.
+  const repoExists = await workspaceDirectoryExists(userId, project.repoPath);
+  if (repoExists) {
+    const pushed = await isRepoFullyPushed(userId, project.repoPath).catch((err: unknown) => {
+      if (err instanceof GitError) return false;
+      throw err;
+    });
+    if (!pushed) {
+      throw new CoderCleanupError(
+        "The project has uncommitted changes or commits that are not pushed. Commit and push them first.",
+      );
+    }
   }
 
   for (const chat of project.chats) {

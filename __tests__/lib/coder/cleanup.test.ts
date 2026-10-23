@@ -108,6 +108,7 @@ beforeEach(async () => {
   await fs.mkdir(path.join(workspaceDir, `user-${USER}`, "worktrees/saale/c-1a2b3c4d"), {
     recursive: true,
   });
+  await fs.mkdir(path.join(workspaceDir, `user-${USER}`, "projects/saale"), { recursive: true });
 });
 
 afterEach(async () => {
@@ -208,9 +209,20 @@ describe("removeChatWorktree", () => {
     expect(mocks.removeWorktree).not.toHaveBeenCalled();
   });
 
-  it("refuses when the repo is gone, so the files are not the last copy lost", async () => {
+  it("refuses when the project row is gone, so the files are not the last copy lost", async () => {
     mocks.findProject.mockResolvedValue(null);
     await expect(removeChatWorktree(USER, SESSION)).rejects.toBeInstanceOf(CoderCleanupError);
+  });
+
+  it("refuses when only the repo directory is gone, not the checkout", async () => {
+    await fs.rm(path.join(workspaceDir, `user-${USER}`, "projects"), { recursive: true });
+
+    const error = await removeChatWorktree(USER, SESSION).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(CoderCleanupError);
+    expect((error as CoderCleanupError).message).toContain("may be the only copy");
+    expect(mocks.removeWorktree).not.toHaveBeenCalled();
+    expect(mocks.updateWorktree).not.toHaveBeenCalled();
   });
 });
 
@@ -269,6 +281,27 @@ describe("removeProject", () => {
 
     await expect(removeProject(USER, "project-1")).rejects.toBeInstanceOf(CoderCleanupError);
     expect(mocks.deleteChat).not.toHaveBeenCalled();
+    expect(mocks.deleteManyProject).not.toHaveBeenCalled();
+  });
+
+  it("deletes a project whose directory was removed by hand", async () => {
+    await fs.rm(path.join(workspaceDir, `user-${USER}`, "projects"), { recursive: true });
+    await fs.rm(path.join(workspaceDir, `user-${USER}`, "worktrees"), { recursive: true });
+
+    await removeProject(USER, "project-1");
+
+    // Nothing is left on disk to check, so git is never asked about it.
+    expect(mocks.isRepoFullyPushed).not.toHaveBeenCalled();
+    expect(mocks.deleteChat).toHaveBeenCalledWith(USER, SESSION);
+    expect(mocks.deleteManyProject).toHaveBeenCalledWith({
+      where: { id: "project-1", userId: USER },
+    });
+  });
+
+  it("still refuses a project whose directory survived with unpushed work", async () => {
+    mocks.isRepoFullyPushed.mockResolvedValue(false);
+
+    await expect(removeProject(USER, "project-1")).rejects.toMatchObject({ status: 409 });
     expect(mocks.deleteManyProject).not.toHaveBeenCalled();
   });
 
