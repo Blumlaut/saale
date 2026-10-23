@@ -5,7 +5,7 @@ needs no tool for this: it runs the project the way it always would (`npm run de
 `python -m http.server 8080`, `flask run`), Saale notices the port, and the panel grows an
 entry with the URL, the process and a kill button. Deleting the chat kills what it started.
 
-Every port gets its own origin: `https://<identity>-<port>-<token>.preview.<apex>`
+Every port gets its own origin: `https://<workspace>-<port>-<token>.preview.<apex>`
 reverse-proxies to `http://saale-sandbox-<identity>:<port>`. An app served at the root of its own hostname
 emits the URLs it always emits, sets its own cookies, and needs no rewriting, no injected
 `<base>` and no base-path configuration. That is the whole reason for the wildcard host.
@@ -32,13 +32,16 @@ Settled in the kickoff conversation:
   inode maps to a pid through `/proc/<pid>/fd`, which also gives the command line and the
   cwd.
 - **The token is deterministic.** `HMAC(SANDBOX_API_KEY, "saale:preview:<identity>:<port>")`,
-  hex, truncated to 12 bytes. The identity travels in the hostname in front of it, so the
-  proxy can find the container from the URL alone, and the port sits between them for
-  whoever has to read the URL. Stable across reloads, so a preview survives a refresh and
+  hex, truncated to 8 bytes. Stable across reloads, so a preview survives a refresh and
   can be bookmarked. No expiry, no server state, no database table: possession of the URL
   is access to that port, like a share link, and the port stops answering the moment its
-  process dies. The hostname is the constraint that shapes the token: a DNS label allows
-  63 characters, and `user-` plus a cuid already uses 30 of them.
+  process dies.
+- **The label carries a hash of the workspace, not the workspace.** A DNS label allows 63
+  characters and a user id alone can be 32 of them, next to a port and a token, in a name
+  that is case-insensitive. Ten hex characters of `sha256(identity)` keep the label at 33
+  however long the id is, keep the id out of a URL that gets pasted around, and cannot be
+  broken by a browser lowercasing the host. The proxy already knows which containers
+  exist, so it maps the slug back to the identity and the container from that list.
 - **The domain comes from `BETTER_AUTH_URL`.** `<scheme>://preview.<host>`, so a deployment
   sets no new variable. `PREVIEW_DOMAIN` overrides it, and previews switch off when the
   derived host is `localhost` or an IP.
@@ -109,11 +112,12 @@ reverse proxy that sets a CSP of its own has to allow it too.
    inodes to pids, and returns `{ port, address, pid, command, cwd, loopback }`. Entries
    whose cwd is outside the chat's worktree are dropped by the app route, so a port is only
    ever attributed to the chat that owns it.
-4. The browser loads
-   `https://user-abc-5173-<token>.preview.example.com/x`. nginx forwards to 8101 with `Host`
-   intact. The proxy parses `<identity>-<port>-<token>`, verifies the HMAC, derives the
-   container name with `containerName(identity)` and dials
-   `http://saale-sandbox-user-abc:5173/x` with `Host` set to the preview hostname.
+4. The browser loads `https://3c21cf2806-5173-<token>.preview.example.com/x`. nginx
+   forwards to 8101 with `Host` intact. The proxy reads `<slug>-<port>-<token>`, turns the
+   slug back into a workspace from the containers that carry the `saale.sandbox` label
+   (one list serves every request for a few seconds), verifies the HMAC over that identity
+   and the port, and dials `http://saale-sandbox-<identity>:5173/x` with `Host` set to the
+   preview hostname.
 5. Unknown host, bad token, or a port that stopped listening all get a small HTML page that
    says so. Nothing else on the preview listener is reachable.
 6. WebSocket upgrades take the same path through a `net` socket, so Vite HMR and
@@ -143,8 +147,8 @@ Shared (`src/lib/`):
 - `preview/token.ts` — `previewToken({ identity, chatId, port })` and
   `verifyPreviewToken(hostname)`. Imported by both the app and the service, so the format
   cannot drift.
-- `preview/url.ts` — the derived domain, `<port>-<token>.<domain>`, and the reverse
-  direction. Refuses a host that does not match the configured domain.
+- `preview/url.ts` — the derived domain, `previewIdentitySlug()`, `<slug>-<port>-<token>`,
+  the reverse direction, and the setup block. Refuses a label of any other shape.
 - `preview/config.ts` — `previewDomain()` from `PREVIEW_DOMAIN` or `BETTER_AUTH_URL`;
   `enabled`.
 - `sandbox/config.ts` — `previewPort` (`SANDBOX_PREVIEW_PORT`, `0` disables).
@@ -196,9 +200,13 @@ Parsing and tokens are pure, so they are unit tests with real fixtures:
 - Token: sign then verify round-trips; a tampered token, a token for another port, and a
   token for another identity are all refused; `containerName` is derived from the identity
   in the token, never from the request.
-- Hostname: `user-abc-5173-<token>.preview.example.com` parses; uppercase, a missing port, a
-  bare `preview.example.com`, a port that is not a port, and a token of the wrong length
-  are refused.
+- Hostname: `3c21cf2806-5173-<token>.preview.example.com` parses; uppercase, a missing
+  port, a bare `preview.example.com`, a port out of range, an id where the slug belongs,
+  and a token of the wrong length are refused.
+- Label width: a 32 character user id at port 65535 still fits, which is the case that
+  used to throw and take the whole Ports tab down with it.
+- Slug lookup: a running container's slug resolves to its identity, an unknown slug gives
+  null, and a burst of requests shares one container list.
 - Proxy, against a real `http.createServer` upstream: path, query and `Host` arrive
   unchanged; a response body passes through byte for byte; a 502 page when nothing listens;
   a real WebSocket echo through the upgrade bridge (both directions).

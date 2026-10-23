@@ -388,7 +388,12 @@ async function main(): Promise<void> {
   // A deployment without a wildcard domain leaves this off and still gets
   // everything else.
   const preview =
-    config.previewPort > 0 && config.apiKey ? createPreviewProxy({ key: config.apiKey }) : null;
+    config.previewPort > 0 && config.apiKey
+      ? createPreviewProxy({
+          key: config.apiKey,
+          resolveIdentity: (slug) => manager.identityForSlug(slug),
+        })
+      : null;
   preview?.listen(config.previewPort, () => {
     console.warn(`[sandbox] previews on :${config.previewPort}`);
   });

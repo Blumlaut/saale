@@ -3,13 +3,31 @@
  * the proxy to serve them.
  */
 
-import { isSandboxIdentity } from "@/lib/sandbox/identity";
+import { createHash } from "node:crypto";
 import { previewConfig } from "./config";
 import { PREVIEW_TOKEN_LENGTH, previewToken } from "./token";
 
 export { previewConfig, previewsEnabled, previewFrameSource } from "./config";
 
-const LABEL_PATTERN = /^(.+)-(\d{1,5})-([0-9a-f]+)$/;
+/** Hex characters standing in for an identity, so the label fits a DNS name. */
+export const PREVIEW_SLUG_LENGTH = 10;
+
+/** `<slug>-<port>-<token>`, at most 33 characters, whatever the user id is. */
+const LABEL_PATTERN = new RegExp(
+  `^([0-9a-f]{${PREVIEW_SLUG_LENGTH}})-(\\d{1,5})-([0-9a-f]{${PREVIEW_TOKEN_LENGTH}})$`,
+);
+
+/**
+ * The short name a preview hostname carries for a workspace.
+ *
+ * An identity is `user-<id>`, and an id can be longer than a DNS label allows
+ * next to a port and a signature. A hash keeps the label to a fixed width and
+ * leaves the user id out of a URL that gets pasted around; the proxy maps the
+ * slug back to the container it already knows.
+ */
+export function previewIdentitySlug(identity: string): string {
+  return createHash("sha256").update(identity).digest("hex").slice(0, PREVIEW_SLUG_LENGTH);
+}
 
 /** The hostname for one port of one workspace. */
 export function previewHost(identity: string, port: number): string {
@@ -19,10 +37,8 @@ export function previewHost(identity: string, port: number): string {
   const key = process.env.SANDBOX_API_KEY?.trim();
   if (!key) throw new Error("SANDBOX_API_KEY is not set, so preview URLs cannot be signed");
 
-  const label = `${identity.toLowerCase()}-${port}-${previewToken({ identity, port }, key)}`;
-  if (label.length > 63) throw new Error(`Preview hostname label too long: ${label}`);
-
-  return `${label}.${domain}`;
+  const slug = previewIdentitySlug(identity);
+  return `${slug}-${port}-${previewToken({ identity, port }, key)}.${domain}`;
 }
 
 /** The host port the proxy listens on, published by compose. */
@@ -74,16 +90,16 @@ export function previewUrl(identity: string, port: number): string {
 
 /** A parsed preview hostname. */
 export interface ParsedPreviewHost {
-  identity: string;
+  slug: string;
   port: number;
   token: string;
 }
 
 /**
- * The identity, port and token a hostname carries, or null.
+ * The workspace slug, port and token a hostname carries, or null.
  *
- * The label is read right to left: the token is fixed length hex, the port is
- * the number before it, and everything left is the identity.
+ * The label is read right to left: the token and the slug are fixed length hex,
+ * and the port is the number between them.
  */
 export function parsePreviewHost(hostname: string): ParsedPreviewHost | null {
   const host = hostname.trim().replace(/:\d+$/, "").replace(/\.+$/, "").toLowerCase();
@@ -93,11 +109,10 @@ export function parsePreviewHost(hostname: string): ParsedPreviewHost | null {
   const match = LABEL_PATTERN.exec(label);
   if (!match) return null;
 
-  const [, identity, portText, token] = match;
+  const [, slug, portText, token] = match;
   const port = Number(portText);
-  if (!identity || !token || !isSandboxIdentity(identity)) return null;
+  if (!slug || !token) return null;
   if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
-  if (token.length !== PREVIEW_TOKEN_LENGTH) return null;
 
-  return { identity, port, token };
+  return { slug, port, token };
 }

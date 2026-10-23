@@ -2,7 +2,7 @@
  * Where preview URLs live, and whether this deployment has them.
  *
  * A preview is served from a hostname of its own so the app inside it needs no
- * base path and no rewriting: `https://user-abc-5173-<token>.preview.<apex>`
+ * base path and no rewriting: `https://<slug>-<port>-<token>.preview.<apex>`
  * reaches port 5173 of that workspace. The apex comes from `BETTER_AUTH_URL`,
  * so a deployment that already serves Saale over HTTPS needs no new variable,
  * and `PREVIEW_DOMAIN` replaces it when the wildcard lives elsewhere.

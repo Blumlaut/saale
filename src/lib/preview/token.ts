@@ -7,14 +7,15 @@
  * share, so the proxy can check a URL without asking the app and nothing has to
  * be stored.
  *
- * 12 bytes, because the whole label has to stay inside the 63 characters a DNS
- * label allows: `user-<25 char id>-<port>-<24 hex>`.
+ * 8 bytes, sixteen hex characters: the whole label has to stay well inside the
+ * 63 characters a DNS label allows, and a capability that is unguessable at
+ * that width is all a dev server's URL needs.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /** Hex characters in a token. */
-export const PREVIEW_TOKEN_LENGTH = 24;
+export const PREVIEW_TOKEN_LENGTH = 16;
 
 const TOKEN_PATTERN = new RegExp(`^[0-9a-f]{${PREVIEW_TOKEN_LENGTH}}$`);
 

@@ -3,6 +3,7 @@ import net from "node:net";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { previewToken } from "@/lib/preview/token";
+import { previewIdentitySlug } from "@/lib/preview/url";
 import { PREVIEW_HEALTH_PATH, createPreviewProxy } from "@/sandbox/preview-proxy";
 
 /**
@@ -15,6 +16,12 @@ import { PREVIEW_HEALTH_PATH, createPreviewProxy } from "@/sandbox/preview-proxy
 
 const KEY = "0123456789abcdef0123456789abcdef";
 const IDENTITY = "user-c1a2b3c4d5e6f7g8h9i0j1k2l";
+const OTHER = "user-d9e8f7a6b5c4d3e2f1a0b9c8d";
+/** The workspaces the proxy is told about; any other slug names nothing. */
+const IDENTITY_BY_SLUG = {
+  [previewIdentitySlug(IDENTITY)]: IDENTITY,
+  [previewIdentitySlug(OTHER)]: OTHER,
+};
 
 const servers: http.Server[] = [];
 /** Upgraded sockets, which `closeAllConnections` leaves alone. */
@@ -40,7 +47,8 @@ let upstreamPort: number;
 let proxyPort: number;
 
 function previewHostFor(port: number, identity = IDENTITY): string {
-  return `${identity}-${port}-${previewToken({ identity, port }, KEY)}.preview.test`;
+  const slug = previewIdentitySlug(identity);
+  return `${slug}-${port}-${previewToken({ identity, port }, KEY)}.preview.test`;
 }
 
 /** A request straight to the proxy with the preview hostname in `Host`. */
@@ -91,7 +99,13 @@ beforeEach(async () => {
   });
 
   upstreamPort = await startServer(upstream);
-  proxyPort = await startServer(createPreviewProxy({ key: KEY, upstreamHost: () => "127.0.0.1" }));
+  proxyPort = await startServer(
+    createPreviewProxy({
+      key: KEY,
+      resolveIdentity: (slug) => IDENTITY_BY_SLUG[slug] ?? null,
+      upstreamHost: () => "127.0.0.1",
+    }),
+  );
 });
 
 afterEach(async () => {
@@ -144,17 +158,24 @@ describe("the preview proxy", () => {
   });
 
   it("refuses a hostname whose signature does not match the port", async () => {
-    const wrong = `${IDENTITY}-${upstreamPort}-${previewToken({ identity: IDENTITY, port: upstreamPort + 1 }, KEY)}.preview.test`;
+    const wrong = `${previewIdentitySlug(IDENTITY)}-${upstreamPort}-${previewToken({ identity: IDENTITY, port: upstreamPort + 1 }, KEY)}.preview.test`;
     const response = await request("/", { host: wrong });
 
     expect(response.status).toBe(404);
     expect(response.body).toContain("This preview link does not work");
   });
 
-  it("refuses a hostname that names a workspace the token was not signed for", async () => {
+  it("refuses a token signed for a different workspace", async () => {
     const token = previewToken({ identity: IDENTITY, port: upstreamPort }, KEY);
-    const other = `user-zzzzzzzzzzzzzzzzzzzzzzzzz-${upstreamPort}-${token}.preview.test`;
+    const other = `${previewIdentitySlug(OTHER)}-${upstreamPort}-${token}.preview.test`;
     const response = await request("/", { host: other });
+    expect(response.status).toBe(404);
+  });
+
+  it("refuses a hostname whose slug names no workspace", async () => {
+    const token = previewToken({ identity: IDENTITY, port: upstreamPort }, KEY);
+    const unknown = `0123456789-${upstreamPort}-${token}.preview.test`;
+    const response = await request("/", { host: unknown });
     expect(response.status).toBe(404);
   });
 

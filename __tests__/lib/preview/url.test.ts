@@ -3,14 +3,15 @@ import {
   parsePreviewHost,
   previewConfig,
   previewHost,
+  previewIdentitySlug,
   PREVIEW_PLACEHOLDER_DOMAIN,
   previewSetup,
   previewUrl,
 } from "@/lib/preview/url";
 
 const KEY = "0123456789abcdef0123456789abcdef";
-// A user identity is `user-` and a 25 character cuid: the longest label case.
-const USER = "user-c1234567890123456789012ab";
+// A real user id is 32 base62 characters, mixed case.
+const USER = "user-yy7vfya8Gg33Y5ROHdK2WhZRKvGqs5NA";
 const IDENTITY = "user-c1a2b3c4d5e6f7g8h9i0j1k2l";
 
 beforeEach(() => {
@@ -48,19 +49,25 @@ describe("the preview domain", () => {
 });
 
 describe("building a preview hostname", () => {
-  it("carries the identity, the port and a signature, inside one DNS label", () => {
+  it("carries the workspace, the port and a signature, inside one DNS label", () => {
     const host = previewHost(IDENTITY, 5173);
     const [label, ...rest] = host.split(".");
 
     expect(rest.join(".")).toBe("preview.saale.example.com");
-    expect(label).toMatch(/^user-c1a2b3c4d5e6f7g8h9i0j1k2l-5173-[0-9a-f]{24}$/);
-    expect(label!.length).toBeLessThanOrEqual(63);
+    expect(label).toMatch(/^[0-9a-f]{10}-5173-[0-9a-f]{16}$/);
     expect(previewUrl(IDENTITY, 5173)).toBe(`https://${host}`);
   });
 
-  it("fits the longest identity a user id can produce", () => {
-    const label = previewHost(USER, 5173).split(".")[0]!;
+  it("stays inside a DNS label for the longest user id at the highest port", () => {
+    // The label used to carry the id itself, which overflowed at 67 characters.
+    const label = previewHost(USER, 65535).split(".")[0]!;
     expect(label.length).toBeLessThanOrEqual(63);
+    expect(label).toContain("-65535-");
+  });
+
+  it("gives different workspaces different slugs", () => {
+    expect(previewIdentitySlug(IDENTITY)).not.toBe(previewIdentitySlug(USER));
+    expect(previewHost(IDENTITY, 5173)).not.toBe(previewHost(USER, 5173));
   });
 
   it("refuses to build a URL with no domain or no key", () => {
@@ -74,12 +81,12 @@ describe("building a preview hostname", () => {
 });
 
 describe("reading a preview hostname", () => {
-  it("recovers the identity, port and token", () => {
+  it("recovers the workspace slug, port and token", () => {
     const host = previewHost(IDENTITY, 5173);
     const parsed = parsePreviewHost(host);
 
     expect(parsed).toEqual({
-      identity: IDENTITY,
+      slug: previewIdentitySlug(IDENTITY),
       port: 5173,
       token: host.split(".")[0]!.split("-").at(-1),
     });
@@ -97,20 +104,17 @@ describe("reading a preview hostname", () => {
     const [label] = host.split(".");
     const token = label!.split("-").at(-1)!;
 
+    const slug = previewIdentitySlug(IDENTITY);
     expect(parsePreviewHost("preview.saale.example.com")).toBeNull();
     expect(parsePreviewHost(`saale.example.com`)).toBeNull();
     expect(parsePreviewHost("")).toBeNull();
-    // Port missing, token too short, identity not one.
+    // Port missing, token too short, slug not one, port out of range.
+    expect(parsePreviewHost(`${slug}-${token}.preview.saale.example.com`)).toBeNull();
+    expect(parsePreviewHost(`${slug}-5173-abc.preview.saale.example.com`)).toBeNull();
     expect(
-      parsePreviewHost(`user-c1a2b3c4d5e6f7g8h9i0j1k2l-${token}.preview.saale.example.com`),
+      parsePreviewHost(`user-c1a2b3c4d5e6f7g8h9i0j1k2l-5173-${token}.preview.test`),
     ).toBeNull();
-    expect(
-      parsePreviewHost(`user-c1a2b3c4d5e6f7g8h9i0j1k2l-5173-abc.preview.saale.example.com`),
-    ).toBeNull();
-    expect(parsePreviewHost(`someone-5173-${token}.preview.saale.example.com`)).toBeNull();
-    expect(
-      parsePreviewHost(`user-c1a2b3c4d5e6f7g8h9i0j1k2l-70000-${token}.preview.saale.example.com`),
-    ).toBeNull();
+    expect(parsePreviewHost(`${slug}-70000-${token}.preview.saale.example.com`)).toBeNull();
   });
 });
 

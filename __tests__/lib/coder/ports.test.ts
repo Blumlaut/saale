@@ -57,6 +57,24 @@ beforeEach(() => {
 });
 
 describe("listing a chat's ports", () => {
+  it("mints a URL that fits a DNS label for a real user id", async () => {
+    // A 32 character id and a five digit port used to overflow the label.
+    const userId = "yy7vfya8Gg33Y5ROHdK2WhZRKvGqs5NA";
+    const worktree = `/workspaces/user-${userId}/worktrees/saale/c-1a2b3c4d`;
+    mocks.findChat.mockResolvedValue({
+      coderWorktree: { path: "worktrees/saale/c-1a2b3c4d", branch: "wt/c-1", status: "active" },
+    });
+    mocks.listPorts.mockResolvedValue([PORT({ port: 65535, cwd: worktree })]);
+    vi.stubEnv("SANDBOX_WORKSPACES_DIR", "/workspaces");
+
+    const result = await listChatPorts(userId, SESSION);
+
+    const url = result?.ports[0]?.url ?? "";
+    expect(url).toMatch(
+      /^https:\/\/[0-9a-f]{10}-65535-[0-9a-f]{16}\.preview\.saale\.example\.com$/,
+    );
+  });
+
   it("mints a preview URL for a reachable port", async () => {
     const result = await listChatPorts(USER, SESSION);
 
@@ -65,7 +83,7 @@ describe("listing a chat's ports", () => {
     expect(result?.ports).toHaveLength(1);
     expect(result?.ports[0]).toMatchObject({ port: 5173, command: "node vite", loopback: false });
     expect(result?.ports[0]?.url).toMatch(
-      /^https:\/\/user-user-1-5173-[0-9a-f]{24}\.preview\.saale\.example\.com$/,
+      /^https:\/\/[0-9a-f]{10}-5173-[0-9a-f]{16}\.preview\.saale\.example\.com$/,
     );
   });
 
