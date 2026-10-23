@@ -27,6 +27,9 @@ the error string.
   `NODE_OPTIONS=--max-old-space-size=1700 npx tsc --noEmit` when `.ts`/`.tsx`
   changed (`tsc` is whole-project; the heap flag avoids this box's 2 GB OOM
   kill), then `npx vitest run <paths|dir>` for the tests covering it.
+- Only run a test suite when its code changed (or a dependency of it). Never run
+  tests "to be safe" on an untouched tree, and never re-run an identical suite
+  twice. If nothing changed, there is nothing to test.
 - Widen to `npm run check` when the change reaches beyond a couple of files (a
   shared primitive, the Prisma schema, the agent runtime) or the run is cheap. If
   a check cannot run, say which and why.
@@ -76,6 +79,9 @@ the error string.
   auth, tool execution, parsing, scheduling, edge cases. No trivial tests.
 - A new feature or non-trivial change gets a happy path and an edge case.
 - A failing test: fix the code or the test. Never skip it.
+- Tests follow code, not the other way around: write/adjust tests only for the
+  change in hand, and run only the affected files. Do not run the whole suite
+  unless the change is broad.
 
 ## UI
 
