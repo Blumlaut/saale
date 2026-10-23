@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { middleware } from "@/middleware";
 
@@ -18,6 +18,10 @@ async function headersFor(path: string) {
   const response = await middleware(request(path));
   return response.headers;
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("PWA response headers", () => {
   it("allows a same-origin service worker and manifest", async () => {
@@ -51,5 +55,25 @@ describe("PWA response headers", () => {
 
     expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(headers.get("X-Frame-Options")).toBe("DENY");
+  });
+});
+
+describe("the preview frame", () => {
+  it("lets the worktree panel embed a preview on the wildcard host", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://saale.example.com");
+    vi.stubEnv("PREVIEW_DOMAIN", "");
+
+    const csp = (await headersFor("/dashboard/coder/p/c")).get("Content-Security-Policy");
+    expect(csp).toContain("frame-src 'self' https://*.preview.saale.example.com");
+    // Saale itself stays unframeable.
+    expect(csp).toContain("frame-ancestors 'none'");
+  });
+
+  it("embeds nothing cross-origin when previews are off", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3630");
+
+    const csp = (await headersFor("/dashboard/coder/p/c")).get("Content-Security-Policy");
+    expect(csp).toContain("frame-src 'self'");
+    expect(csp).not.toContain("preview.");
   });
 });

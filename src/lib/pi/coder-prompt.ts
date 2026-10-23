@@ -21,6 +21,11 @@ const GIT_PROMPT = `Git:
 - Only this worktree's branch is yours to change.
 - Never rewrite history that exists on a remote.`;
 
+const DEV_SERVER_PROMPT = `Development servers:
+- When the user wants to see the app, start its dev server in the background and say which port it took. The chat's Ports panel lists every port the worktree is listening on and opens any of them as a preview.
+- Bind the server to \`0.0.0.0\`. A server on \`127.0.0.1\` is reachable only from inside the container, so no preview can load it.
+- A preview arrives on a hostname of its own, so a dev server that vets its own host names has to allow it: Vite has \`server.allowedHosts\` and Next has \`allowedDevOrigins\`. When the panel shows a 403 or a blocked \`/_next\` request, that setting is why.`;
+
 const REPORTING_PROMPT = `Reporting:
 End a turn by saying what you changed, what you committed and what is still uncommitted in the worktree.`;
 
@@ -50,6 +55,7 @@ export function buildCoderSystemPrompt(options: {
     CODER_IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
     GIT_PROMPT,
+    DEV_SERVER_PROMPT,
     envNames.includes("GH_TOKEN") ? GH_TOKEN_PROMPT : null,
     REPORTING_PROMPT,
     ...capabilitySections(toolConfig, envNames),

@@ -202,6 +202,37 @@ export async function writeInput(execId: string, identity: string, data: Buffer 
   if (!response.ok) throw await failure(response);
 }
 
+/** One listening port in a workspace, as the service reports it. */
+export interface SandboxPort {
+  port: number;
+  address: string;
+  loopback: boolean;
+  pid: number | null;
+  command: string | null;
+  cwd: string | null;
+}
+
+/** What a workspace is listening on right now. */
+export async function listPorts(identity: string): Promise<SandboxPort[]> {
+  const response = await fetch(`${serviceUrl()}/ports`, { headers: authHeaders(identity) });
+  if (!response.ok) throw await failure(response);
+  const body = (await response.json()) as { ports?: unknown };
+  return Array.isArray(body.ports) ? (body.ports as SandboxPort[]) : [];
+}
+
+/** Stop the process listening on `port`. */
+export async function killPort(
+  identity: string,
+  port: number,
+): Promise<{ port: number; pid: number; killed: boolean }> {
+  const response = await fetch(`${serviceUrl()}/ports/${port}/kill`, {
+    method: "POST",
+    headers: authHeaders(identity),
+  });
+  if (!response.ok) throw await failure(response);
+  return response.json() as Promise<{ port: number; pid: number; killed: boolean }>;
+}
+
 /** Remove an identity's container. Its directory stays. */
 export async function removeContainer(identity: string): Promise<void> {
   const response = await fetch(`${serviceUrl()}/container/${encodeURIComponent(identity)}`, {

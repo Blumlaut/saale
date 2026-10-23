@@ -30,6 +30,13 @@ describe("buildCoderSystemPrompt git rules", () => {
     expect(prompt).toContain("Never rewrite history that exists on a remote");
   });
 
+  it("tells the agent how a dev server becomes visible, and what blocks it", () => {
+    expect(prompt).toContain("Ports panel");
+    expect(prompt).toContain("Bind the server to `0.0.0.0`");
+    expect(prompt).toContain("server.allowedHosts");
+    expect(prompt).toContain("allowedDevOrigins");
+  });
+
   it("asks for a report of what changed, what is committed, what is dirty", () => {
     expect(prompt).toContain("what you changed");
     expect(prompt).toContain("what you committed");
