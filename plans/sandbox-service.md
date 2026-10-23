@@ -642,9 +642,9 @@ What the agent sees today, and what it sees after, for the features in use:
 | read/write/edit, image preview, `show_file`, zip, browser                 | unchanged                                                     |
 
 One behaviour changes: a background process started in a chat lives as long as
-the container stays warm, then it is stopped. `SANDBOX_IDLE_MINUTES` (default 60)
-is the knob; upstream kept such processes alive until the container restarted for
-some other reason.
+the container stays warm, then it is stopped. `SANDBOX_IDLE_MINUTES` (default 240) is the knob, and a container with a command
+still running in it is never reaped; upstream kept such processes alive until the
+container restarted for some other reason.
 
 ## Out of scope
 

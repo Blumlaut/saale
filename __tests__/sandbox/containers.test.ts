@@ -600,6 +600,25 @@ describe("sweep and reapIdle", () => {
     expect(docker.byIdentity("user-abc").running).toBe(false);
   });
 
+  it("keeps a container running while one of its commands is still going", async () => {
+    let clock = Date.parse("2026-01-01T01:00:00Z");
+    const managerInstance = manager(() => clock);
+    await managerInstance.ensure("user-abc");
+    const session = await managerInstance.run("user-abc", { command: "npm run dev" }, () => {});
+
+    // A dev server left running for hours is the container being used.
+    clock += 8 * 60 * 60_000;
+    expect(await managerInstance.reapIdle()).toEqual({ stopped: 0, removed: 0 });
+    expect(docker.byIdentity("user-abc").running).toBe(true);
+
+    docker.byIdentity("user-abc").commandExec().finish(0);
+    await session.result;
+
+    // The idle clock starts again once nothing is running in it.
+    clock += 5 * 60 * 60_000;
+    expect(await managerInstance.reapIdle()).toEqual({ stopped: 1, removed: 0 });
+  });
+
   it("removes a container past SANDBOX_CONTAINER_TTL_DAYS", async () => {
     const created = Date.parse("2026-01-01T00:00:00Z");
     const managerInstance = manager(() => created + 8 * 86_400_000);

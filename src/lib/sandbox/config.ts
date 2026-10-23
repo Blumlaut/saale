@@ -52,7 +52,7 @@ const DEFAULTS = {
   memory: "2g",
   pids: 512,
   cpus: 2,
-  idleMinutes: 60,
+  idleMinutes: 240,
   ttlDays: 7,
   tmpHours: 72,
   port: 8100,
