@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { killChatPort, UnknownChatPortError } from "@/lib/coder/ports";
+import { killChatPort, SandboxUnavailableError, UnknownChatPortError } from "@/lib/coder/ports";
 import { TerminalNotReadyError } from "@/lib/coder/terminal";
 import { SandboxApiError } from "@/lib/sandbox/client";
 
@@ -32,6 +32,9 @@ export async function POST(
     }
     if (err instanceof TerminalNotReadyError) {
       return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    if (err instanceof SandboxUnavailableError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
     }
     if (err instanceof SandboxApiError) {
       console.error(`Failed to stop port ${port} for ${sessionId}:`, err);
