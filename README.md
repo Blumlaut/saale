@@ -183,6 +183,22 @@ Within a couple of seconds the port appears in **Ports** with the command that s
 and a button that opens it in a new tab; the row's menu copies the link or stops the
 server. Deleting the chat stops everything it left running.
 
+### Apps that pin their own hostname
+
+Some frameworks only answer on the hostname they were configured with: better-auth's
+`baseURL`, Django's `ALLOWED_HOSTS`, Rails' `config.hosts`. A wildcard for the preview
+domain keeps them happy in every workspace, without naming a workspace:
+
+| Framework   | Setting                                                                                                   |
+| ----------- | --------------------------------------------------------------------------------------------------------- |
+| better-auth | `trustedOrigins: ["https://*.preview.example.com"]` in the auth config                                    |
+| Django      | `ALLOWED_HOSTS = [".preview.example.com"]`, plus the same value in `CSRF_TRUSTED_ORIGINS` with the scheme |
+| Rails       | `config.hosts << ".preview.example.com"`                                                                  |
+
+Absolute URLs the app builds from its own base URL (OAuth redirect URIs, emailed links)
+still point at the configured hostname, so set those to the preview link when you need to
+walk through such a flow.
+
 ### If a preview does not load
 
 | What you see                        | Why                                               | Fix                                                                                                                                                                                       |
@@ -193,6 +209,7 @@ server. Deleting the chat stops everything it left running.
 | The port says `loopback`            | The dev server only listens inside the container  | `npm run dev -- --host 0.0.0.0`; flask: `flask run --host 0.0.0.0`; Django: `runserver 0.0.0.0:8000`                                                                                      |
 | `403 Blocked request`               | Vite rejects a host it was not told about         | `server.allowedHosts: ['.preview.example.com']` in `vite.config.ts`                                                                                                                       |
 | A page of blocked `/_next/*`        | Next blocks cross-origin dev requests             | Nothing, when the app is opened through its preview link: the proxy presents those paths as its own. A dev server addressed directly needs `allowedDevOrigins: ['*.preview.example.com']` |
+| `Invalid origin` logged by the app  | It trusts only the hostname it was configured for | Add the preview domain to the app's trusted hosts, see above                                                                                                                              |
 | Previews are off                    | `BETTER_AUTH_URL` is `localhost` or an IP         | Set the public URL, or set `PREVIEW_DOMAIN="preview.example.com"`                                                                                                                         |
 
 ## Configuration
