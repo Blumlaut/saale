@@ -1,0 +1,119 @@
+name: checks
+
+# Pull-request checks that scale with the diff, not with the repo.
+#
+# Lint, formatting and tests are file-scoped: only what the PR touches is
+# passed to eslint, prettier and vitest. Typechecking is the one step that
+# cannot be honest per-file (a changed signature breaks callers elsewhere), so
+# it runs project-wide with a build-info cache, which makes a re-run cheap.
+#
+# `npm run check` stays the thing to run before a big change; this is the floor
+# that keeps a one-file fix from merging untested.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # `prisma generate` runs on install and reads the datasource through
+  # prisma.config.mjs. Nothing connects, so any parseable URL will do.
+  DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  changed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base with the target branch is the diff this job is about.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Collect the files this PR touches
+        id: files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.base_ref }}"
+            git fetch --no-tags origin "$base"
+            range="origin/$base...HEAD"
+          else
+            range="HEAD~1...HEAD"
+          fi
+
+          list() {
+            local kind="$1" pattern="$2"
+            local path="$RUNNER_TEMP/$kind.txt"
+            # -z: NUL separated, so a path with spaces or brackets survives.
+            git diff --name-only -z --diff-filter=ACMR "$range" \
+              | grep -zE "$pattern" > "$path" || true
+            if [ -s "$path" ]; then
+              echo "$kind=true" >> "$GITHUB_OUTPUT"
+              echo "($kind)" && tr '\0' '\n' < "$path"
+            else
+              echo "$kind=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          list lint   '\.(ts|tsx|js|mjs|cjs|mts)$'
+          # Same scope as `npm run format:check`. Loose markdown in plans/ and
+          # docs/ is deliberately not held to prettier, and src TS is already
+          # formatted by eslint's prettier plugin above.
+          list format '^src/.*\.md$|^e2e/.*\.(ts|tsx)$'
+          list code   '\.(ts|tsx|mts|cts)$'
+          list tests  '\.(test|spec)\.(ts|tsx)$'
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint the touched files
+        if: steps.files.outputs.lint == 'true'
+        run: xargs -0 -a "$RUNNER_TEMP/lint.txt" npx eslint --max-warnings=0
+
+      - name: Check formatting of the touched files
+        if: steps.files.outputs.format == 'true'
+        run: xargs -0 -a "$RUNNER_TEMP/format.txt" npx prettier --check
+
+      # Whole-project by necessity. The cache key changes with every push, so
+      # the restore-keys prefix always hands over the previous run's build info
+      # and tsc only re-checks what the diff can affect.
+      - name: Restore the typecheck cache
+        if: steps.files.outputs.code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: "**/*.tsbuildinfo"
+          key: tsc-${{ runner.os }}-${{ github.base_ref || 'main' }}-${{ github.sha }}
+          restore-keys: |
+            tsc-${{ runner.os }}-${{ github.base_ref || 'main' }}-
+            tsc-${{ runner.os }}-
+
+      - name: Typecheck
+        if: steps.files.outputs.code == 'true'
+        run: npm run typecheck
+
+      - name: Test the touched suites
+        if: steps.files.outputs.tests == 'true'
+        run: xargs -0 -a "$RUNNER_TEMP/tests.txt" npx vitest run --reporter=dot
+
+      - name: Nothing to check
+        if: |
+          steps.files.outputs.lint == 'false' &&
+          steps.files.outputs.format == 'false' &&
+          steps.files.outputs.code == 'false' &&
+          steps.files.outputs.tests == 'false'
+        run: echo "No code, markdown or test files in this diff."

@@ -18,7 +18,10 @@
 import fs from "fs/promises";
 import { prisma } from "@/lib/db";
 import { deleteAllImages } from "@/lib/image-attachment";
+import { isSessionActive } from "@/lib/redis";
 import { unscheduleWatcher } from "@/lib/queue";
+import { keepAutoDeletedSession, type AutoDeleteKeepReason } from "./auto-delete";
+import { getProvisioning } from "@/lib/coder/provisioning";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
 import { removeChatWorktree, CoderCleanupError } from "@/lib/coder/worktree-removal";
 import type { CleanupCode } from "@/lib/coder/force-delete";
@@ -27,6 +30,9 @@ import type { CleanupCode } from "@/lib/coder/force-delete";
 export interface DeletedChat {
   title: string;
 }
+
+/** What the automatic delete did, and why when it did nothing. */
+export type AutoDeleteResult = { deleted: true } | { deleted: false; kept: AutoDeleteKeepReason };
 
 /** Outcome of a multi-chat delete: what went, and what is still there. */
 export interface BulkDeleteResult {
@@ -121,4 +127,43 @@ export async function deleteChatSessions(
   }
 
   return { deleted, failed };
+}
+
+/**
+ * Delete a chat on its way out of the browser, but only one nothing has
+ * happened in: a "new chat" the user abandoned, or a temporary chat.
+ *
+ * The request comes from a `sendBeacon` on unmount/`pagehide`, so it carries a
+ * client-side guess about the chat being empty. That guess is not good enough
+ * for a delete: a coder chat whose workspace is being built (minutes, before
+ * the run is even registered as active) looks idle from the browser, and
+ * removing it while `ensureWorktree` is installing would throw the whole chat
+ * away. Hence the check against the server's own state before anything is
+ * deleted.
+ */
+export async function autoDeleteChatSession(
+  userId: string,
+  sessionId: string,
+): Promise<AutoDeleteResult> {
+  const session = await prisma.chatSession.findFirst({
+    where: { id: sessionId, userId },
+    select: { temporary: true, _count: { select: { messages: true } } },
+  });
+  if (!session) return { deleted: false, kept: "missing" };
+
+  const [running, provisioning] = await Promise.all([
+    isSessionActive(userId, sessionId),
+    getProvisioning(sessionId).then((state) => state !== null),
+  ]);
+
+  const kept = keepAutoDeletedSession({
+    temporary: session.temporary,
+    messageCount: session._count.messages,
+    running,
+    provisioning,
+  });
+  if (kept) return { deleted: false, kept };
+
+  await deleteChatSession(userId, sessionId);
+  return { deleted: true };
 }

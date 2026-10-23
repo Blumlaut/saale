@@ -49,6 +49,20 @@ describe("settleSentMessage", () => {
     ]);
   });
 
+  it("stamps the saved row with the moment it exists", () => {
+    // A message snapshot requested before the POST committed cannot hold this
+    // row. `savedAt` is how the merge tells "not committed yet" from "gone", so
+    // the just-sent message survives a stale reload instead of the chat
+    // flashing back to its empty state.
+    const before = Date.now();
+    const merged = settleSentMessage([msg("temp-1")], msg("temp-1"), msg("db-1"));
+    const savedAt = merged[0]!.savedAt;
+
+    expect(savedAt).toBeDefined();
+    expect(savedAt!).toBeGreaterThanOrEqual(before);
+    expect(savedAt!).toBeLessThanOrEqual(Date.now());
+  });
+
   it("does not duplicate a saved row a DB reload already delivered", () => {
     const saved = msg("db-2");
     const list = [msg("db-1"), saved];

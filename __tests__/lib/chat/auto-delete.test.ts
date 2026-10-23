@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { AUTO_DELETE_MIN_MOUNT_MS, shouldAutoDeleteSession } from "@/lib/chat/auto-delete";
+import {
+  AUTO_DELETE_MIN_MOUNT_MS,
+  keepAutoDeletedSession,
+  shouldAutoDeleteSession,
+} from "@/lib/chat/auto-delete";
 
 const settled = { mountedForMs: AUTO_DELETE_MIN_MOUNT_MS + 1000 };
 
@@ -48,5 +52,36 @@ describe("shouldAutoDeleteSession", () => {
     expect(
       shouldAutoDeleteSession({ ...base, temporary: true, messageCount: 5, mountedForMs: 500 }),
     ).toBe(false);
+  });
+});
+
+describe("keepAutoDeletedSession", () => {
+  /** A chat the browser called abandoned: no messages, nothing running. */
+  const idle = { temporary: false, messageCount: 0, running: false, provisioning: false };
+
+  it("lets an abandoned chat go", () => {
+    expect(keepAutoDeletedSession(idle)).toBeNull();
+  });
+
+  it("keeps a chat whose workspace is being built", () => {
+    // The reported bug: a first message whose worktree and install are still
+    // running looks empty from the browser, and deleting it threw the chat away.
+    expect(keepAutoDeletedSession({ ...idle, provisioning: true })).toBe("provisioning");
+  });
+
+  it("keeps a chat a generation is running in", () => {
+    expect(keepAutoDeletedSession({ ...idle, running: true })).toBe("running");
+    expect(
+      keepAutoDeletedSession({ ...idle, temporary: true, messageCount: 4, running: true }),
+    ).toBe("running");
+  });
+
+  it("keeps a chat that has a conversation", () => {
+    expect(keepAutoDeletedSession({ ...idle, messageCount: 1 })).toBe("started");
+  });
+
+  it("still deletes a temporary chat that was used", () => {
+    // Temporary is the privacy feature: its messages do not save it.
+    expect(keepAutoDeletedSession({ ...idle, temporary: true, messageCount: 9 })).toBeNull();
   });
 });

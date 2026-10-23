@@ -33,16 +33,22 @@ export function placementForSend(busy: boolean): OutboundPlacement {
  * the optimistic copy is not in the list (the send was placed in the queue, so
  * the conversation never showed it). Idempotent: a DB reload that already
  * delivered the saved row is not duplicated.
+ *
+ * The row is stamped with `savedAt` (the client clock now) because it exists
+ * from this moment on, even though a message snapshot requested before the POST
+ * committed cannot contain it. Without the stamp `mergeMessagesWithLive` drops
+ * it and the chat reverts to its empty state while the reply is still coming.
  */
 export function settleSentMessage(
   messages: Message[],
   optimistic: Message,
   saved: Message,
 ): Message[] {
+  const row: Message = { ...saved, savedAt: Date.now() };
   if (!messages.some((m) => m.id === optimistic.id)) {
-    return messages.some((m) => m.id === saved.id) ? messages : [...messages, saved];
+    return messages.some((m) => m.id === saved.id) ? messages : [...messages, row];
   }
-  return messages.map((m) => (m.id === optimistic.id ? saved : m));
+  return messages.map((m) => (m.id === optimistic.id ? row : m));
 }
 
 /**
