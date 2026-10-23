@@ -1,6 +1,5 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { previewFrameSource } from "@/lib/preview/config";
 
 /**
  * Rate limiting for API routes.
@@ -71,8 +70,6 @@ export async function middleware(request: NextRequest) {
       // The offline service worker and the web app manifest are same-origin.
       "worker-src 'self'",
       "manifest-src 'self'",
-      // The worktree panel embeds a preview on its own wildcard host.
-      previewFrameSource(),
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { previewConfig } from "./config";
 import { PREVIEW_TOKEN_LENGTH, previewToken } from "./token";
 
-export { previewConfig, previewsEnabled, previewFrameSource } from "./config";
+export { previewConfig, previewsEnabled } from "./config";
 
 /** Hex characters standing in for an identity, so the label fits a DNS name. */
 export const PREVIEW_SLUG_LENGTH = 10;
@@ -39,47 +39,6 @@ export function previewHost(identity: string, port: number): string {
 
   const slug = previewIdentitySlug(identity);
   return `${slug}-${port}-${previewToken({ identity, port }, key)}.${domain}`;
-}
-
-/** The host port the proxy listens on, published by compose. */
-export const PREVIEW_PROXY_PORT = 8101;
-
-/** Shown in the block when this deployment has no domain yet. */
-export const PREVIEW_PLACEHOLDER_DOMAIN = "preview.example.com";
-
-/** What an operator has to put in front of the proxy, filled in and ready to paste. */
-export interface PreviewSetup {
-  /** The real domain, or a placeholder to show while previews are off. */
-  domain: string;
-  /** The nginx vhost for the wildcard host. */
-  nginx: string;
-  /** Hits the proxy at the wildcard host, so the answer proves DNS, TLS and nginx. */
-  probeUrl: string | null;
-}
-
-export function previewSetup(): PreviewSetup {
-  const { domain: configured, scheme } = previewConfig();
-  const domain = configured ?? PREVIEW_PLACEHOLDER_DOMAIN;
-
-  return {
-    domain,
-    probeUrl: configured ? `${scheme}://probe.${configured}/__preview/health` : null,
-    nginx: `server {
-    listen 443 ssl http2;
-    server_name *.${domain};
-    ssl_certificate     /etc/letsencrypt/live/${domain}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
-    location / {
-        proxy_pass http://127.0.0.1:${PREVIEW_PROXY_PORT};
-        proxy_set_header Host $host;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_buffering off;
-        proxy_read_timeout 1h;
-    }
-}`,
-  };
 }
 
 /** The full URL for one port of one workspace. */

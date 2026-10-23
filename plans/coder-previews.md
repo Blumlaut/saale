@@ -47,16 +47,16 @@ Settled in the kickoff conversation:
   derived host is `localhost` or an IP.
 - **A loopback-bound port gets the hint instead of a proxy.** Nothing outside the container
   can dial `127.0.0.1` there, so the row says to bind `0.0.0.0`.
-- **Saale allows its own frames.** The app's CSP is `default-src 'self'`, which blocks the
-  iframe before the browser ever asks the proxy. The middleware adds
-  `frame-src 'self' <scheme>://*.<preview domain>`, and nothing else.
-- **The setup lives where the previews would be.** The Ports tab prints the nginx block,
-  filled in with the derived domain (or `preview.example.com` while previews are off), with
-  a copy button and a check that goes through the public hostname. A settings page would be
-  a second place to look; this one appears exactly when a preview is missing.
+- **The panel links, it does not embed.** A preview opens in its own browser tab from the
+  row's button. An iframe was tried and dropped: it costs a CSP allowance, loses the
+  browser's own chrome and reload, and a dev server that refuses framing shows nothing at
+  all. A link works for every app.
+- **Setup instructions are the README's job.** The panel shows what a user needs (the
+  running ports and their links), and nothing about DNS, certificates or nginx. The block
+  and the health probe are an operator's, documented once in the README.
 - **The preview listener is a second face of the service, on its own port.** Port
   `SANDBOX_PREVIEW_PORT` serves previews only: the host-and-token handshake, and one
-  `__preview/health` endpoint so the settings page can prove that DNS, TLS and nginx are in
+  `__preview/health` endpoint an operator can curl to prove that DNS, TLS and nginx are in
   place. The admin API keeps its bearer check on `SANDBOX_PORT` and is not reachable
   through a preview hostname.
 - **Long-lived connections are the normal case.** An HMR socket stays open for the length
@@ -98,8 +98,8 @@ server {
 ```
 
 Compose publishes `8101` on `sandbox-exec` and binds it to `127.0.0.1`, so only the proxy
-on the same host can reach the listener. Saale's own CSP already allows the frame; a
-reverse proxy that sets a CSP of its own has to allow it too.
+on the same host can reach the listener. A preview opens in its own tab, so no CSP
+allowance is involved.
 
 ## How a preview comes up
 
@@ -148,7 +148,7 @@ Shared (`src/lib/`):
   `verifyPreviewToken(hostname)`. Imported by both the app and the service, so the format
   cannot drift.
 - `preview/url.ts` — the derived domain, `previewIdentitySlug()`, `<slug>-<port>-<token>`,
-  the reverse direction, and the setup block. Refuses a label of any other shape.
+  and the reverse direction. Refuses a label of any other shape.
 - `preview/config.ts` — `previewDomain()` from `PREVIEW_DOMAIN` or `BETTER_AUTH_URL`;
   `enabled`.
 - `sandbox/config.ts` — `previewPort` (`SANDBOX_PREVIEW_PORT`, `0` disables).
@@ -161,18 +161,12 @@ App:
 - `src/app/api/coder/sessions/[sessionId]/ports/route.ts` and `.../ports/[port]/kill/route.ts`
   — thin, session-scoped, `userId` on every query.
 - `src/components/coder/ports-view.tsx` — the Ports tab: one row per port (port number,
-  command, URL, copy, open in new tab), an iframe for the selected one with reload and
-  width control, a kill button per row, the loopback hint, and an empty state that says to
-  run the project in the terminal.
+  command), a button that opens the row's URL in a new tab, a menu with copy and stop, the
+  loopback hint, and an empty state that says to run the project in the terminal.
 - `src/components/coder/worktree-panel.tsx` — fourth tab, badge with the count.
 - `src/lib/coder/worktree-removal.ts` — `stopProcesses` also sweeps by cwd (see Cleanup).
 - `src/lib/pi/coder-prompt.ts` — one paragraph: dev servers are reachable from the panel,
   and the two host allowlists.
-- `src/components/coder/setup` in the Ports tab — the nginx block with a copy button, and a
-  check that probes `https://probe.<domain>/__preview/health` at the wildcard host, so a
-  green answer means DNS, the certificate, nginx and the listener are all in place.
-- `src/middleware.ts` — `frame-src` for the wildcard host, without which the iframe is
-  blocked by Saale's own `default-src 'self'`.
 
 ## Cleanup
 
@@ -216,7 +210,7 @@ Parsing and tokens are pure, so they are unit tests with real fixtures:
 - Cleanup: real `sleep` processes with a fake `/proc` tree of symlinks, one inside the
   worktree and one outside, assert only the inside one dies.
 - Prompt: the preview paragraph is present for a coder chat and absent from the chat prompt.
-- E2E: the Ports tab lists a mocked port, opens the iframe, and the kill button posts; the
+- E2E: the Ports tab lists a mocked port, its open button carries the URL, and the kill menu posts; the
   four tabs fit at 320px and 375px. Layout checks reuse the coder spec's mocked API so no
   container is needed.
 
@@ -232,8 +226,8 @@ Parsing and tokens are pure, so they are unit tests with real fixtures:
 - **Framing.** An app that sends `X-Frame-Options: DENY` (or `frame-ancestors 'none'`) can
   still be opened in a new tab. The panel always offers that.
 - **Wildcard prerequisite.** DNS-01 credentials are the one thing an operator might not
-  have. Previews stay off when the domain cannot be derived, and the settings page says
-  why rather than shipping a `location` block that would work for half the apps.
+  have. Previews stay off when the domain cannot be derived, and the port rows come back
+  without links rather than shipping a `location` block that would work for half the apps.
 - **`/proc` cost.** Two execs per poll, ~40ms in a container that is already up. Polling
   stops when the tab is closed; the container's cold start is `ensure`'s existing problem.
 - **Shareable links.** The token has no expiry by design. It only opens a port that is
@@ -252,10 +246,9 @@ Parsing and tokens are pure, so they are unit tests with real fixtures:
 4. **Kill and cwd sweep**, wired into `worktree-removal.ts`.
 5. **App routes** (`src/lib/coder/ports.ts` and the two API routes).
 6. **Ports tab** (design skill first), plus the badge and the empty state.
-7. **Settings → Previews** with the printed block and the probe.
-8. **Compose, README, `.pi/skills`**: publish 8101, document DNS/cert/nginx and the two
-   framework allowlists.
-9. **E2E** and the 320/375 layout checks.
+7. **Compose, README, `.pi/skills`**: publish 8101, document DNS/cert/nginx, the health
+   probe and the two framework allowlists.
+8. **E2E** and the 320/375 layout checks.
 
 No schema change and no migration.
 

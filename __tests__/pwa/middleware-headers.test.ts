@@ -58,22 +58,16 @@ describe("PWA response headers", () => {
   });
 });
 
-describe("the preview frame", () => {
-  it("lets the worktree panel embed a preview on the wildcard host", async () => {
+describe("framing", () => {
+  it("never lets another page frame Saale, with or without previews", async () => {
     vi.stubEnv("BETTER_AUTH_URL", "https://saale.example.com");
     vi.stubEnv("PREVIEW_DOMAIN", "");
 
     const csp = (await headersFor("/dashboard/coder/p/c")).get("Content-Security-Policy");
-    expect(csp).toContain("frame-src 'self' https://*.preview.saale.example.com");
-    // Saale itself stays unframeable.
     expect(csp).toContain("frame-ancestors 'none'");
-  });
 
-  it("embeds nothing cross-origin when previews are off", async () => {
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3630");
-
-    const csp = (await headersFor("/dashboard/coder/p/c")).get("Content-Security-Policy");
-    expect(csp).toContain("frame-src 'self'");
-    expect(csp).not.toContain("preview.");
+    const local = (await headersFor("/dashboard/coder/p/c")).get("Content-Security-Policy");
+    expect(local).toContain("frame-ancestors 'none'");
   });
 });
