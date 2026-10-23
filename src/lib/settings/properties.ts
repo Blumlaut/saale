@@ -48,6 +48,7 @@ import {
   TOOL_EXPOSURES,
   type ToolCategoryKey,
 } from "@/lib/pi/tool-categories";
+import { CODER_TOOL_DEFAULTS } from "@/lib/pi/coder-tools";
 import { ALL_TOOL_INFOS, type ToolPolicy } from "@/lib/pi/tool-infos";
 import { getAllPurposes } from "@/lib/pi/purposes";
 import { normalizeToolExposure } from "@/lib/pi/tool-exposure-rules";
@@ -211,6 +212,7 @@ const GROUP = {
   models: "models",
   agent: "agent",
   tools: "tools",
+  coder: "coder",
   sidebar: "sidebar",
   admin: "admin",
   plugins: "plugins",
@@ -452,7 +454,52 @@ function toolPolicyProperties(): UserProperty[] {
 }
 
 /**
- * `sidebar.<item>.hidden`. whether a navigation item is hidden.
+ * `coder.tools.category.<key>.enabled`. whether a category is on for new coder
+ * chats, where the default set is the worktree tools and little else.
+ */
+function coderCategoryProperties(): UserProperty[] {
+  return TOOL_CATEGORIES.map((category) => {
+    const fallback = CODER_TOOL_DEFAULTS[category.key];
+    return {
+      key: `coder.tools.category.${category.key}.enabled`,
+      group: GROUP.coder,
+      label: `${category.label} in coder chats`,
+      description: `${category.description}. Enabled by default for new coder chats: ${fallback}. Set to true/false, or null to restore the default.`,
+      columns: ["coderToolConfig"],
+      apply: "sessions" as const,
+      scope: "user" as const,
+      schema: z.boolean(),
+      read: (row) => {
+        const stored = asRecord(row.coderToolConfig)[category.key];
+        return typeof stored === "boolean" ? stored : fallback;
+      },
+      write: (row, value) => {
+        const config = normalizeCoderToolConfig(row.coderToolConfig);
+        if (value === null) {
+          delete config[category.key];
+        } else {
+          config[category.key] = Boolean(value);
+        }
+        return { coderToolConfig: orDbNull(normalizeCoderToolConfig(config)) };
+      },
+    };
+  });
+}
+
+/** Canonical `coderToolConfig`: known categories only, defaults dropped. */
+function normalizeCoderToolConfig(value: unknown): Record<string, boolean> {
+  const stored = asRecord(value);
+  const result: Record<string, boolean> = {};
+  for (const category of TOOL_CATEGORIES) {
+    const entry = stored[category.key];
+    if (typeof entry !== "boolean") continue;
+    if (entry === CODER_TOOL_DEFAULTS[category.key]) continue;
+    result[category.key] = entry;
+  }
+  return result;
+}
+
+/** `sidebar.<item>.hidden`. whether a navigation item is hidden.
  *
  * Pinned items (Settings) are excluded: they cannot be hidden, so a property
  * for them would silently do nothing.
@@ -623,6 +670,7 @@ export const USER_PROPERTIES: readonly UserProperty[] = [
   ...categoryEnabledProperties(),
   ...categoryExposureProperties(),
   ...toolPolicyProperties(),
+  ...coderCategoryProperties(),
   ...sidebarProperties(),
 ];
 
