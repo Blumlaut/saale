@@ -47,20 +47,29 @@ export function ProjectChats({
   const { project, chats, loading, error, reload } = useProject(projectId);
   const [deleting, setDeleting] = useState<CoderProjectChat | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [forcePending, setForcePending] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const remove = async (chat: CoderProjectChat) => {
+  const remove = async (chat: CoderProjectChat, force = false) => {
     setBusy(true);
     setDeleteError(null);
+    setForcePending(false);
     try {
-      await deleteJson(`/api/chat/sessions/${encodeURIComponent(chat.id)}`);
+      await deleteJson(
+        `/api/chat/sessions/${encodeURIComponent(chat.id)}${force ? "?force=1" : ""}`,
+      );
       setDeleting(null);
       reload();
       if (chat.id === activeSessionId) router.push(`/dashboard/coder/${projectId}`);
     } catch (err) {
       console.error(`Failed to delete coder chat ${chat.id}:`, err);
-      // git's refusal is the answer, and it names what is in the way.
-      setDeleteError(err instanceof Error ? err.message : "Could not delete this chat.");
+      const message = err instanceof Error ? err.message : "Could not delete this chat.";
+      if (!force && /modified or untracked/i.test(message)) {
+        setForcePending(true);
+        setDeleteError(message);
+      } else {
+        setDeleteError(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -187,17 +196,22 @@ export function ProjectChats({
               {deleteError}
             </p>
           )}
+          {forcePending && (
+            <p className="text-sm break-words">
+              Delete anyway, discarding the uncommitted changes in this checkout?
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={busy}
               onClick={(event) => {
                 event.preventDefault();
-                if (deleting) void remove(deleting);
+                if (deleting) void remove(deleting, forcePending);
               }}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete
+              {forcePending ? "Delete anyway" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

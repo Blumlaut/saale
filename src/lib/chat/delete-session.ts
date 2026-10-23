@@ -38,7 +38,11 @@ export interface BulkDeleteResult {
  *
  * @throws when the chat does not exist or is not owned by the user.
  */
-export async function deleteChatSession(userId: string, sessionId: string): Promise<DeletedChat> {
+export async function deleteChatSession(
+  userId: string,
+  sessionId: string,
+  force: boolean = false,
+): Promise<DeletedChat> {
   const session = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId },
     select: { title: true, projectId: true },
@@ -47,7 +51,7 @@ export async function deleteChatSession(userId: string, sessionId: string): Prom
 
   // A coder chat owns a checkout. When git will not let it go, the chat stays:
   // nothing half-deleted, and the work is still where it was.
-  if (session.projectId) await removeChatWorktree(userId, sessionId);
+  if (session.projectId) await removeChatWorktree(userId, sessionId, force);
 
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId, session: { userId } },
@@ -95,6 +99,7 @@ export async function deleteChatSession(userId: string, sessionId: string): Prom
 export async function deleteChatSessions(
   userId: string,
   sessionIds: string[],
+  force: boolean = false,
 ): Promise<BulkDeleteResult> {
   const deleted: string[] = [];
   const failed: BulkDeleteResult["failed"] = [];
@@ -102,7 +107,7 @@ export async function deleteChatSessions(
   // A repeated id would report a "not found" failure on its second pass.
   for (const sessionId of new Set(sessionIds)) {
     try {
-      await deleteChatSession(userId, sessionId);
+      await deleteChatSession(userId, sessionId, force);
       deleted.push(sessionId);
     } catch (err) {
       console.error(`Failed to delete chat session ${sessionId}:`, err);

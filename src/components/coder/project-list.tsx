@@ -43,18 +43,28 @@ export function ProjectList() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<CoderProjectSummary | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [forcePending, setForcePending] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const remove = async (project: CoderProjectSummary) => {
+  const remove = async (project: CoderProjectSummary, force = false) => {
     setBusy(true);
     setDeleteError(null);
+    setForcePending(false);
     try {
-      await deleteJson(`/api/coder/projects/${encodeURIComponent(project.id)}`);
+      await deleteJson(
+        `/api/coder/projects/${encodeURIComponent(project.id)}${force ? "?force=1" : ""}`,
+      );
       setDeleting(null);
       reload();
     } catch (err) {
       console.error(`Failed to delete coder project ${project.id}:`, err);
-      setDeleteError(err instanceof Error ? err.message : "Could not delete the project.");
+      const message = err instanceof Error ? err.message : "Could not delete the project.";
+      if (!force && /modified or untracked/i.test(message)) {
+        setForcePending(true);
+        setDeleteError(message);
+      } else {
+        setDeleteError(message);
+      }
     } finally {
       setBusy(false);
     }
@@ -182,11 +192,11 @@ export function ProjectList() {
               disabled={busy}
               onClick={(event) => {
                 event.preventDefault();
-                if (deleting) void remove(deleting);
+                if (deleting) void remove(deleting, forcePending);
               }}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete
+              {forcePending ? "Delete anyway" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

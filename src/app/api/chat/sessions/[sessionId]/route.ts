@@ -101,8 +101,9 @@ async function deleteSession(request: NextRequest, params: Promise<{ sessionId: 
   const authResult = await requireChatSessionOwner(sessionId);
   if (!authResult.ok) return authResult.response;
 
+  const force = new URL(request.url).searchParams.get("force") === "1";
   try {
-    await deleteChatSession(authResult.userId, sessionId);
+    await deleteChatSession(authResult.userId, sessionId, force);
   } catch (err) {
     console.error(`Failed to delete chat session ${sessionId}:`, err);
     // A worktree git will not let go keeps the chat. the reason is the answer.
