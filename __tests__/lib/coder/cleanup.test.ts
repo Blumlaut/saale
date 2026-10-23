@@ -179,12 +179,15 @@ describe("removeChatWorktree", () => {
   it("kills what is still running in the worktree first", async () => {
     await removeChatWorktree(USER, SESSION);
 
-    expect(mocks.runInWorkspace).toHaveBeenCalledWith(USER, {
-      cwd: ".",
-      command: expect.stringContaining("pkill -f"),
-    });
+    expect(mocks.runInWorkspace).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ cwd: ".", command: expect.stringContaining("pkill -f") }),
+    );
     const command = (mocks.runInWorkspace.mock.calls[0]?.[1] as { command: string }).command;
     expect(command).toContain("c-1a2b3c4d");
+    // The command-line match misses a server whose cwd is all it shares, so the
+    // checkout is swept by working directory too.
+    expect(command).toContain('readlink "$p/cwd"');
   });
 
   it("only forgets the row when the checkout is already gone", async () => {
