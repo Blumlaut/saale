@@ -114,7 +114,7 @@ export default function CoderLayout() {
               <div className="lg:hidden">
                 <Sheet>
                   <SheetTrigger aria-label="Open worktree panel">
-                    <span className="hover:bg-accent/60 inline-flex h-8 w-8 items-center justify-center rounded transition-colors md:md:h-9 md:md:w-9">
+                    <span className="hover:bg-accent/60 inline-flex h-8 w-8 items-center justify-center rounded transition-colors md:h-9 md:w-9">
                       <PanelRight className="h-4 w-4" />
                     </span>
                   </SheetTrigger>
