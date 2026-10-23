@@ -80,6 +80,41 @@ export function isTerminalBufferedEvent(event: BufferedEvent): boolean {
 }
 
 /**
+ * The part of a buffer that belongs to the run still in flight.
+ *
+ * Everything up to and including the last terminal event is a run that already
+ * ended, and replaying it is what made a freshly opened chat flicker: the
+ * client rebuilt a reply that was already on screen from the DB, token by
+ * token and card by card, and then dropped the rebuild on the `done` that
+ * follows. A finished run settles its clients from the stream's own decision
+ * instead (see `decideStreamAction` and the stream route), so its events are
+ * never replayed.
+ *
+ * A buffer normally holds one run (it is cleared when the next one starts), so
+ * this is either the whole buffer or nothing.
+ */
+export function liveRunEvents(events: readonly BufferedEvent[]): BufferedEvent[] {
+  let start = 0;
+  events.forEach((event, index) => {
+    if (isTerminalBufferedEvent(event)) start = index + 1;
+  });
+  return events.slice(start);
+}
+
+/**
+ * The buffered events of the live run, with ID greater than lastEventId.
+ *
+ * The replay a connecting client gets: only what is still being written. See
+ * `liveRunEvents` for why a finished run is skipped.
+ */
+export async function getLiveRunEvents(
+  sessionId: string,
+  lastEventId: number,
+): Promise<BufferedEvent[]> {
+  return liveRunEvents(await getBufferedEvents(sessionId, lastEventId));
+}
+
+/**
  * Get all buffered events with ID greater than lastEventId.
  * Returns events in order (oldest first).
  */

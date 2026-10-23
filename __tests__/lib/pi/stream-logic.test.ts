@@ -136,13 +136,17 @@ describe("decideStreamAction", () => {
       expect(action.type).toBe("done");
     });
 
-    it("observes when only a buffered done exists (replay delivers it)", () => {
+    it("settles the client when the buffered run already finished", () => {
+      // Nothing is streaming, and a finished run is never replayed (it would
+      // rebuild the reply already on screen). `observe` would leave the chat
+      // loading forever with no event to settle it.
       const action = decideStreamAction({
         ...base,
         lastMessage: userMsg,
         bufferHasDone: true,
       });
-      expect(action.type).toBe("observe");
+      expect(action.type).toBe("done");
+      expect(action.reason).toBe("buffered run already finished");
     });
   });
 
