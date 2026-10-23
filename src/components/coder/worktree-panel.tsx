@@ -81,7 +81,7 @@ export function WorktreePanel({
 
         <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
           {state?.worktree ? (
-            <FileBrowser target="user" rootPath={state.worktree.path} />
+            <FileBrowser target="user" rootPath={state.worktree.path} dense />
           ) : (
             <p className="text-muted-foreground px-3 py-3 text-xs">
               The worktree appears after this chat&apos;s first message.

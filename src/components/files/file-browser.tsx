@@ -50,6 +50,11 @@ export interface FileBrowserProps {
   leading?: ReactNode;
   /** What to say when the workspace is empty. */
   emptyHint?: ReactNode;
+  /**
+   * Tight rows, for a component dropped into a side panel: the panel's gutter
+   * and the browser's own add up otherwise, and the list reads as a page.
+   */
+  dense?: boolean;
 }
 
 type PromptState = { mode: "folder" } | { mode: "rename"; entry: FileEntry };
@@ -79,7 +84,7 @@ function iconFor(entry: FileEntry) {
  * toolbar (context left, actions right, icon-only on phones) and whose list is
  * the only scroll region.
  */
-export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowserProps) {
+export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: FileBrowserProps) {
   const browser = useFileBrowser({ target, ...(rootPath ? { startPath: rootPath } : {}) });
   const [viewing, setViewing] = useState<FileEntry | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
@@ -154,7 +159,12 @@ export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowse
       onDrop={onDrop}
     >
       {/* Toolbar. workspace context left, actions right, icon-only on phones */}
-      <div className="flex shrink-0 items-center gap-1 border-b px-2 py-2 md:px-4">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1 border-b px-2 py-2",
+          dense ? "md:px-2 md:py-1.5" : "md:px-4",
+        )}
+      >
         {leading}
 
         {!atRoot && (
@@ -260,7 +270,12 @@ export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowse
 
       {/* Selection actions. only while something is selected */}
       {browser.selected.size > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2 md:px-6">
+        <div
+          className={cn(
+            "flex shrink-0 flex-wrap items-center gap-2 border-b py-2",
+            dense ? "px-2" : "px-4 md:px-6",
+          )}
+        >
           <span className="console-label">{browser.selected.size} selected</span>
           <Button
             type="button"
@@ -302,18 +317,28 @@ export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowse
         )}
       >
         {browser.loading && !listing ? (
-          <div className="flex items-center justify-center py-10">
+          <div className={cn("flex items-center justify-center", dense ? "py-6" : "py-10")}>
             <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
           </div>
         ) : browser.error && !listing ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center">
+          <div
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 text-center",
+              dense ? "px-2 py-6" : "px-4 py-12",
+            )}
+          >
             <p className="text-destructive text-sm">{browser.error}</p>
             <Button type="button" size="sm" variant="secondary" onClick={browser.refresh}>
               Try again
             </Button>
           </div>
         ) : entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-4 py-14 text-center">
+          <div
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 text-center",
+              dense ? "px-2 py-8" : "px-4 py-14",
+            )}
+          >
             <Folder className="text-muted-foreground h-5 w-5" />
             <p className="text-muted-foreground text-sm">Nothing here yet.</p>
             {emptyHint && <p className="text-muted-foreground max-w-sm text-xs">{emptyHint}</p>}
@@ -327,7 +352,8 @@ export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowse
               <div key={entry.path}>
                 <div
                   className={cn(
-                    "group hover:bg-accent/60 flex items-center gap-3 px-4 py-2.5 transition-colors md:px-6",
+                    "group hover:bg-accent/60 flex items-center transition-colors",
+                    dense ? "gap-2 px-2 py-0.5" : "gap-3 px-4 py-2.5 md:px-6",
                     selected && "bg-accent/70",
                   )}
                 >
@@ -351,19 +377,44 @@ export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowse
                     }}
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
-                    <Icon className="text-muted-foreground h-4 w-4 shrink-0" aria-hidden />
+                    <Icon
+                      className={cn(
+                        "text-muted-foreground shrink-0",
+                        dense ? "h-3.5 w-3.5" : "h-4 w-4",
+                      )}
+                      aria-hidden
+                    />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{entry.name}</span>
-                      <span className="text-muted-foreground block truncate text-xs md:hidden">
+                      <span
+                        className={cn("block truncate font-medium", dense ? "text-xs" : "text-sm")}
+                      >
+                        {entry.name}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-muted-foreground block truncate md:hidden",
+                          dense ? "text-[11px]" : "text-xs",
+                        )}
+                      >
                         {entry.kind === "file" ? formatFileSize(entry.size) : "Folder"}
                       </span>
                     </span>
                   </button>
 
-                  <span className="text-muted-foreground hidden shrink-0 text-xs md:block">
+                  <span
+                    className={cn(
+                      "text-muted-foreground hidden shrink-0 md:block",
+                      dense ? "text-[11px]" : "text-xs",
+                    )}
+                  >
                     {entry.kind === "file" ? formatFileSize(entry.size) : ""}
                   </span>
-                  <span className="text-muted-foreground hidden shrink-0 text-xs lg:block">
+                  <span
+                    className={cn(
+                      "text-muted-foreground hidden shrink-0 lg:block",
+                      dense ? "text-[11px]" : "text-xs",
+                    )}
+                  >
                     {formatRelativeDate(new Date(entry.modified).toISOString())}
                   </span>
 
@@ -374,7 +425,7 @@ export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowse
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          className={cn("shrink-0", ROW_ACTION)}
+                          className={cn("shrink-0", dense && "h-6 w-6", ROW_ACTION)}
                           aria-label={`Actions for ${entry.name}`}
                           {...triggerProps}
                         >
@@ -427,7 +478,12 @@ export function FileBrowser({ target, rootPath, leading, emptyHint }: FileBrowse
       </div>
 
       {listing?.truncated && (
-        <p className="text-muted-foreground shrink-0 border-t px-4 py-2 text-xs md:px-6">
+        <p
+          className={cn(
+            "text-muted-foreground shrink-0 border-t py-2 text-xs",
+            dense ? "px-2" : "px-4 md:px-6",
+          )}
+        >
           Showing the first {entries.length} entries of this folder.
         </p>
       )}
