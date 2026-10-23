@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
 import { GitError, removeWorktree, runInWorkspace, shellQuote } from "./git";
 import { resolveCoderPath } from "./paths";
+import { stopTerminalExecs } from "./terminal";
 
 /** A removal git refused, with the reason it gave. */
 export class CoderCleanupError extends Error {
@@ -39,10 +40,19 @@ export interface RemovedWorktree {
  *
  * A dev server or a watcher the agent left behind holds its files open and
  * keeps working after the chat is gone, so it is killed before the checkout is
- * removed. `pkill -f` matches the absolute path, which only commands started in
- * that directory carry.
+ * removed. Commands the terminal panel started are stopped by id first, because
+ * their command lines never name the directory; `pkill -f` then catches what
+ * the agent left in the background.
  */
-async function stopProcesses(userId: string, absolutePath: string): Promise<void> {
+async function stopProcesses(
+  userId: string,
+  sessionId: string,
+  absolutePath: string,
+): Promise<void> {
+  const stopped = await stopTerminalExecs(userId, sessionId);
+  if (stopped > 0)
+    console.warn(`[coder] stopped ${stopped} terminal command(s) in ${absolutePath}`);
+
   const result = await runInWorkspace(userId, {
     cwd: ".",
     command: `pkill -f ${shellQuote(absolutePath)} >/dev/null 2>&1`,
@@ -86,7 +96,7 @@ export async function removeChatWorktree(
     });
 
   if (exists) {
-    await stopProcesses(userId, absolute);
+    await stopProcesses(userId, sessionId, absolute);
     // A repo that is gone cannot remove its own worktree; the directory is
     // then all that is left of the branch, so it stays for a human.
     if (!project) {

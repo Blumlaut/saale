@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { FolderTree, GitCompare, Loader2 } from "lucide-react";
+import { FolderTree, GitCompare, Loader2, SquareTerminal } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileBrowser } from "@/components/files/file-browser";
 import { PageTabStrip } from "@/components/layout/page";
 import { ChangesView } from "./changes-view";
+import { TerminalView } from "./terminal-view";
 import type { CoderSessionState } from "./use-coder-data";
 
 /**
@@ -15,6 +16,9 @@ import type { CoderSessionState } from "./use-coder-data";
  *
  * A chat that has not sent its first message has no worktree yet, so the panel
  * says that instead of rendering a browser over the wrong directory.
+ *
+ * The terminal keeps running while another tab is open, so it is mounted
+ * alongside the tab contents instead of inside one.
  */
 export function WorktreePanel({
   sessionId,
@@ -45,6 +49,10 @@ export function WorktreePanel({
             <TabsTrigger value="files" className="gap-1.5 text-xs">
               <FolderTree className="h-3.5 w-3.5" />
               Files
+            </TabsTrigger>
+            <TabsTrigger value="terminal" className="gap-1.5 text-xs">
+              <SquareTerminal className="h-3.5 w-3.5" />
+              Terminal
             </TabsTrigger>
           </TabsList>
         </PageTabStrip>
@@ -81,6 +89,22 @@ export function WorktreePanel({
             </p>
           )}
         </TabsContent>
+
+        {/* Outside the tab content: a tab switch must not stop a dev server. */}
+        <div
+          className={
+            tab === "terminal"
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+              : "hidden min-h-0 flex-1 flex-col overflow-hidden"
+          }
+        >
+          <TerminalView
+            sessionId={sessionId}
+            worktree={
+              state?.worktree ? { path: state.worktree.path, branch: state.worktree.branch } : null
+            }
+          />
+        </div>
       </Tabs>
     </GlassPanel>
   );

@@ -141,6 +141,22 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
     route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }),
   );
 
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/terminal$`), (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: [
+        `event: started\ndata: ${JSON.stringify({ type: "started", execId: "e2e-exec-1" })}\n\n`,
+        `event: data\ndata: ${JSON.stringify({ type: "data", stream: "stdout", text: "2 passed\n" })}\n\n`,
+        `event: exit\ndata: ${JSON.stringify({ type: "exit", exitCode: 0, timedOut: false, durationMs: 1500 })}\n\n`,
+      ].join(""),
+    }),
+  );
+
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/terminal/input$`), (route) =>
+    route.fulfill({ json: { written: 4 } }),
+  );
+
   await page.route(/\/api\/files\/list/, (route) =>
     route.fulfill({
       json: {
@@ -205,6 +221,26 @@ test.describe("coder panel", () => {
     await page.getByText("notes.md", { exact: false }).first().click();
     await expect(page.getByText("+added line", { exact: false })).toBeVisible();
     await expect(page.getByText("−removed line", { exact: false })).toBeVisible();
+
+    await context.close();
+  });
+
+  test("runs a command in the worktree from the terminal tab", async ({ browser }) => {
+    test.skip(!session, "login failed");
+    const context = await browser.newContext({ storageState: session!.storageState });
+    const page = await context.newPage();
+    await mockCoder(page);
+
+    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.getByRole("tab", { name: "Terminal" }).click();
+    await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
+
+    const input = page.getByLabel("Terminal command");
+    await input.fill("npm test");
+    await input.press("Enter");
+
+    await expect(page.getByText(/2 passed/, { exact: false })).toBeVisible();
+    await expect(page.getByText(/exit 0/, { exact: false })).toBeVisible();
 
     await context.close();
   });
