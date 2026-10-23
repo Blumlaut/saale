@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FolderTree, GitBranch, Globe, Loader2, SquareTerminal } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,6 +51,7 @@ export function WorktreePanel({
   refreshing: boolean;
 }) {
   const [tab, setTab] = useState("changes");
+  const terminalRunRef = useRef<(command: string) => void>(() => {});
   // Lifted out of the tab, because the badge has to light while another tab is
   // open. The poll slows down when Ports is not the visible one.
   const ports = usePorts(sessionId, tab === "ports");
@@ -108,6 +109,10 @@ export function WorktreePanel({
               state={state}
               onRefresh={onRefresh}
               refreshing={refreshing}
+              onRunScript={(name) => {
+                terminalRunRef.current(`npm run ${name}`);
+                setTab("terminal");
+              }}
             />
           )}
         </TabsContent>
@@ -143,6 +148,9 @@ export function WorktreePanel({
             worktree={
               state?.worktree ? { path: state.worktree.path, branch: state.worktree.branch } : null
             }
+            registerRun={(run) => {
+              terminalRunRef.current = run;
+            }}
           />
         </div>
       </Tabs>

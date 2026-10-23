@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   readNumstat: vi.fn(),
   readLog: vi.fn(),
   readFileDiff: vi.fn(),
+  readWorktreeFile: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -25,6 +26,7 @@ vi.mock("@/lib/coder/git", () => ({
   readNumstat: mocks.readNumstat,
   readLog: mocks.readLog,
   readFileDiff: mocks.readFileDiff,
+  readWorktreeFile: mocks.readWorktreeFile,
 }));
 
 import { assertRepoRelativePath, loadSessionDiff, loadSessionState } from "@/lib/coder/changes";
@@ -67,6 +69,7 @@ beforeEach(() => {
   mocks.readLog.mockResolvedValue([
     { sha: "abc", shortSha: "abc", subject: "add a thing", date: "2026-01-01", author: "Ada" },
   ]);
+  mocks.readWorktreeFile.mockResolvedValue(null);
 });
 
 describe("loadSessionState", () => {

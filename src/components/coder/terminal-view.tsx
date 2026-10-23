@@ -17,12 +17,20 @@ import { useTerminal } from "./use-terminal";
 export function TerminalView({
   sessionId,
   worktree,
+  registerRun,
 }: {
   sessionId: string;
   /** Null until the chat's first message has built the worktree. */
   worktree: { path: string; branch: string } | null;
+  /** Hands the terminal's run function to a parent so other tabs can launch commands. */
+  registerRun?: (run: (command: string) => void) => void;
 }) {
   const { segments, running, error, history, run, stop, sendInput, clear } = useTerminal(sessionId);
+
+  // Let the parent launch commands into this terminal (e.g. a script button).
+  useEffect(() => {
+    registerRun?.(run);
+  }, [registerRun, run]);
   const [draft, setDraft] = useState("");
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);

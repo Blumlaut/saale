@@ -101,11 +101,13 @@ export function ChangesView({
   state,
   onRefresh,
   refreshing,
+  onRunScript,
 }: {
   sessionId: string;
   state: CoderSessionState;
   onRefresh: () => void;
   refreshing: boolean;
+  onRunScript?: (name: string) => void;
 }) {
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [diff, setDiff] = useState<string | null>(null);
@@ -264,6 +266,29 @@ export function ChangesView({
               </div>
             );
           })
+        )}
+
+        {state.scripts.length > 0 && (
+          <>
+            <Separator className="mt-1" />
+            <p className="console-label px-3 pt-2 pb-1">Scripts</p>
+            <div className="flex flex-col gap-1 px-3 py-1.5">
+              {state.scripts.map((script) => (
+                <button
+                  key={script.name}
+                  type="button"
+                  onClick={() => onRunScript?.(script.name)}
+                  className="hover:bg-accent/60 flex items-center gap-2 rounded px-2 py-1 text-left transition-colors"
+                  title={script.command}
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{script.name}</span>
+                  <span className="text-muted-foreground min-w-0 truncate font-mono text-[10px]">
+                    npm run {script.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
 
         <Separator className="mt-1" />
