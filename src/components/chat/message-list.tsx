@@ -726,15 +726,25 @@ function lastAssistantGroupId(groups: readonly MessageGroup[]): string | null {
 function AssistantMessageBody({
   message,
   isStreaming,
+  hug,
 }: {
   message: Message;
   isStreaming: boolean;
+  /**
+   * The column this sits in has a definite width, so the bubble has to hug its
+   * own text. only the condensed transcript stretches its column (see
+   * `AssistantGroup`), and there the prose would otherwise span the full line.
+   */
+  hug?: boolean;
 }) {
+  // Hugging, but never past the column when the prose is long.
+  const bubble = hug ? "w-fit max-w-full" : "";
+
   return (
     <>
       {/* Message bubble (only when there's text) */}
       {message.content && (
-        <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
+        <div className={`liquid-glass-inner rounded-2xl px-4 py-3 ${bubble}`} data-quoteable>
           <MarkdownRenderer content={message.content} />
         </div>
       )}
@@ -744,7 +754,9 @@ function AssistantMessageBody({
 
       {/* Streaming indicator for empty current turn */}
       {!message.content && !message.errorMessage && isStreaming && (
-        <div className="liquid-glass-inner flex items-center gap-1 rounded-2xl px-4 py-3">
+        <div
+          className={`liquid-glass-inner flex items-center gap-1 rounded-2xl px-4 py-3 ${bubble}`}
+        >
           <span className="animate-pulse">...</span>
         </div>
       )}
@@ -816,8 +828,15 @@ function AssistantGroup({
         <Bot className="h-4 w-4" />
       </div>
 
-      {/* All turns' content flowing naturally */}
-      <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
+      {/* All turns' content flowing naturally. With the condensed transcript
+          the column claims its whole line instead of shrinking to fit: a
+          shrink-to-fit column is as wide as its widest child, so every token
+          of the newest reasoning widened both summary cards and the next step
+          snapped them back. */}
+      <div
+        data-transcript-column
+        className={`max-w-full min-w-0 space-y-2 md:max-w-[85%] ${compactActivity ? "flex-1" : ""}`}
+      >
         {compactActivity
           ? compactBlocks(visibleMessages, splitToolCalls).map((block) =>
               block.kind === "activity" ? (
@@ -836,6 +855,7 @@ function AssistantGroup({
                   key={block.key}
                   message={block.message}
                   isStreaming={block.message.id === activeTurnId}
+                  hug
                 />
               ),
             )
