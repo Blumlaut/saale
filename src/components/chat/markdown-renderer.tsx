@@ -1,7 +1,9 @@
 "use client";
 
-import React, { memo } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { cn } from "@/lib/utils";
@@ -13,16 +15,24 @@ import { cn } from "@/lib/utils";
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /**
+   * Treat single newlines as line breaks (GFM "hard break") instead of
+   * merging them. For typed chat input; LLM output writes real markdown
+   * line structure and stays on the default.
+   */
+  hardBreaks?: boolean;
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className,
+  hardBreaks = false,
 }: MarkdownRendererProps) {
+  const remarkPlugins = hardBreaks ? [remarkBreaks, remarkGfm] : [remarkGfm];
   return (
     <div className={cn("markdown-body text-sm leading-relaxed", className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={[
           [rehypeHighlight, { detect: true, ignoreMissing: true, placeholderLanguage: "text" }],
         ]}
@@ -33,6 +43,62 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     </div>
   );
 });
+
+/* ------------------------------------------------------------------ */
+/*  Code block with copy button                                       */
+/* ------------------------------------------------------------------ */
+
+const COPY_RESET_MS = 2000;
+
+function CodeBlock({ children, className, ...rest }: React.ComponentProps<"pre">) {
+  const preRef = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    // innerText reflects rendered text; jsdom only implements textContent.
+    const text = preRef.current?.innerText ?? preRef.current?.textContent;
+    if (text === undefined) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => setCopied(false), COPY_RESET_MS);
+    } catch (err) {
+      console.error("Failed to copy code to clipboard:", err);
+    }
+  };
+
+  return (
+    <div className="group/code relative my-2 overflow-hidden rounded-xl last:mb-0">
+      <button
+        type="button"
+        onClick={handleCopy}
+        aria-label={copied ? "Code copied" : "Copy code"}
+        title={copied ? "Copied" : "Copy code"}
+        className="absolute top-2 right-2 z-10 rounded-md bg-white/10 p-1.5 text-gray-300 opacity-0 transition-opacity group-hover/code:opacity-100 hover:bg-white/20 focus-visible:opacity-100 any-pointer-coarse:opacity-100"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+      <pre
+        ref={preRef}
+        className={cn(
+          "overflow-x-auto bg-[#1e1e2e] p-4 font-mono text-xs leading-relaxed text-gray-200",
+          className,
+        )}
+        {...rest}
+      >
+        {children}
+      </pre>
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Component overrides                                               */
@@ -128,20 +194,7 @@ const COMPONENTS = {
   },
 
   /* ---- Code block (pre wrapping code) ---- */
-  pre: (props: React.ComponentProps<"pre">) => {
-    const { className, children, ...rest } = props;
-    return (
-      <pre
-        className={cn(
-          "overflow-x-auto rounded-xl bg-[#1e1e2e] p-4 font-mono text-xs leading-relaxed text-gray-200",
-          className,
-        )}
-        {...rest}
-      >
-        {children}
-      </pre>
-    );
-  },
+  pre: (props: React.ComponentProps<"pre">) => <CodeBlock {...props} />,
 
   /* ---- Blockquote ---- */
   blockquote: ({ className, children, ...props }: React.HTMLAttributes<HTMLQuoteElement>) => (

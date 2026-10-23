@@ -641,7 +641,7 @@ function UserMessageItem({
         {/* Text content (only when there's text) */}
         {displayContent && (
           <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
-            <div className="text-sm whitespace-pre-wrap">{displayContent}</div>
+            <MarkdownRenderer content={displayContent} hardBreaks />
           </div>
         )}
         {/* Timestamp + edit button */}
