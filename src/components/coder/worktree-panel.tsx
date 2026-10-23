@@ -8,11 +8,25 @@ import { FileBrowser } from "@/components/files/file-browser";
 import { PageTabStrip } from "@/components/layout/page";
 import { ChangesView } from "./changes-view";
 import { PortsView } from "./ports-view";
+import { PROVISIONING_STEP_COPY } from "./provisioning-copy";
 import { TerminalView } from "./terminal-view";
-import type { CoderSessionState } from "./use-coder-data";
+import type { CoderProvisioning, CoderSessionState } from "./use-coder-data";
 import { usePorts } from "./use-ports";
 
-function NoWorktree() {
+function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }) {
+  // Building the workspace is what makes the worktree, so the panel names the
+  // work instead of saying there is nothing yet.
+  if (provisioning) {
+    const copy = PROVISIONING_STEP_COPY[provisioning.step];
+    return (
+      <div role="status" className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
+        <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+        <p className="text-xs font-medium">{copy.label}</p>
+        <p className="text-muted-foreground text-xs">{copy.detail}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-1.5 px-4 py-10 text-center">
       <GitBranch className="text-muted-foreground/50 h-5 w-5" />
@@ -102,7 +116,7 @@ export function WorktreePanel({
           ) : error ? (
             <p className="text-destructive px-3 py-3 text-xs break-words">{error}</p>
           ) : !state?.worktree ? (
-            <NoWorktree />
+            <NoWorktree provisioning={state?.provisioning ?? null} />
           ) : (
             <ChangesView
               sessionId={sessionId}
@@ -121,7 +135,7 @@ export function WorktreePanel({
           {state?.worktree ? (
             <FileBrowser target="user" rootPath={state.worktree.path} dense />
           ) : (
-            <NoWorktree />
+            <NoWorktree provisioning={state?.provisioning ?? null} />
           )}
         </TabsContent>
 

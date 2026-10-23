@@ -122,6 +122,12 @@ const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a sch
 export function capabilitySections(
   toolConfig: Record<string, boolean | undefined> = {},
   sandboxEnvNames: string[] = [],
+  /**
+   * Whether any tool this session can call is reached through codemode. False
+   * drops the explanation of a tool set the session declared in full: the model
+   * would be told to go looking for what is already in front of it.
+   */
+  codemodeTools: boolean = true,
 ): string[] {
   // Resolve through the category registry, exactly as `resolveTools` does: an
   // absent key means the category sits at its default, not off. Reading the raw
@@ -135,7 +141,7 @@ export function capabilitySections(
   const telegramEnabled = isCategoryEnabled(toolConfig, "telegram");
 
   const sections = [
-    TOOLS_PROMPT,
+    codemodeTools ? TOOLS_PROMPT : null,
     terminalEnabled ? terminalSection(sandboxEnvNames) : null,
     isCategoryEnabled(toolConfig, "memory") ? MEMORY_PROMPT : null,
     isCategoryEnabled(toolConfig, "infra") ? INFRA_PROMPT : null,
@@ -159,6 +165,8 @@ export function buildAgentSystemPrompt(options: {
   toolConfig?: Record<string, unknown> | undefined;
   /** Names of the user's sandbox variables. never their values. */
   sandboxEnvNames?: string[] | undefined;
+  /** Whether the session has tools behind codemode. See `capabilitySections`. */
+  codemodeTools?: boolean | undefined;
 }): string {
   const toolConfig = (options.toolConfig ?? {}) as Record<string, boolean | undefined>;
   const customInstructions = options.customInstructions?.trim();
@@ -166,7 +174,7 @@ export function buildAgentSystemPrompt(options: {
   const sections = [
     IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
-    ...capabilitySections(toolConfig, options.sandboxEnvNames ?? []),
+    ...capabilitySections(toolConfig, options.sandboxEnvNames ?? [], options.codemodeTools),
   ];
 
   return sections.filter((section): section is string => section !== null).join("\n\n");

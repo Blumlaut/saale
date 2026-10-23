@@ -76,7 +76,14 @@ export function CompactActivity({
   );
 }
 
-/** "Thought process: …". the newest reasoning, full text one click down. */
+/**
+ * "Thinking". the newest reasoning, full text one click down.
+ *
+ * The label never changes with the turn's state. a row that flips to "Thought
+ * process" once it settles reads as a different row, and a transcript full of
+ * them makes the finished turns look nothing like the running one. The spinner
+ * is what reports progress, and it alone comes and goes.
+ */
 function ReasoningRow({
   reasoning,
   isActive,
@@ -107,9 +114,7 @@ function ReasoningRow({
           <ChevronRight className="text-muted-foreground size-3 shrink-0" />
         )}
         <Lightbulb className="text-muted-foreground size-3 shrink-0" />
-        <span className="shrink-0 text-xs font-medium">
-          {isActive ? "Thinking..." : "Thought process:"}
-        </span>
+        <span className="shrink-0 text-xs font-medium">Thinking</span>
         <span
           key={stepCount}
           className="text-muted-foreground animate-in fade-in min-w-0 flex-1 truncate text-xs duration-150 ease-out"

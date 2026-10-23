@@ -176,17 +176,40 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
     route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }),
   );
 
-  await page.route(new RegExp(`/api/coder/sessions/[^/]+/terminal$`), (route) =>
+  // The run stream answers with a command only once the panel has started one,
+  // so mounting the terminal on an idle chat settles like the real thing.
+  let terminalStarted = false;
+
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/terminal/stream$`), (route) =>
     route.fulfill({
       status: 200,
       contentType: "text/event-stream",
-      body: [
-        `event: started\ndata: ${JSON.stringify({ type: "started", execId: "e2e-exec-1" })}\n\n`,
-        `event: data\ndata: ${JSON.stringify({ type: "data", stream: "stdout", text: "2 passed\n" })}\n\n`,
-        `event: exit\ndata: ${JSON.stringify({ type: "exit", exitCode: 0, timedOut: false, durationMs: 1500 })}\n\n`,
-      ].join(""),
+      body: terminalStarted
+        ? [
+            `event: command\ndata: ${JSON.stringify({ type: "command", command: "npm test", startedAt: 0 })}\n\n`,
+            `event: started\ndata: ${JSON.stringify({ type: "started", execId: "e2e-exec-1" })}\n\n`,
+            `event: data\ndata: ${JSON.stringify({ type: "data", stream: "stdout", text: "2 passed\n" })}\n\n`,
+            `event: exit\ndata: ${JSON.stringify({ type: "exit", exitCode: 0, timedOut: false, durationMs: 1500 })}\n\n`,
+          ].join("")
+        : "",
     }),
   );
+
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/terminal$`), (route) => {
+    terminalStarted = true;
+    return route.fulfill({
+      json: {
+        run: {
+          command: "npm test",
+          startedAt: 0,
+          status: "starting",
+          execId: null,
+          exitCode: null,
+          error: null,
+        },
+      },
+    });
+  });
 
   await page.route(new RegExp(`/api/coder/sessions/[^/]+/terminal/input$`), (route) =>
     route.fulfill({ json: { written: 4 } }),
