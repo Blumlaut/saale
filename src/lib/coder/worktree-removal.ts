@@ -14,7 +14,7 @@ import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
 import { GitError, removeWorktree, runInWorkspace, shellQuote } from "./git";
-import { resolveCoderPath } from "./paths";
+import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
 import { stopTerminalExecs } from "./terminal";
 
 /** A removal git refused, with the reason it gave. */
@@ -97,11 +97,11 @@ export async function removeChatWorktree(
 
   if (exists) {
     await stopProcesses(userId, sessionId, absolute);
-    // A repo that is gone cannot remove its own worktree; the directory is
-    // then all that is left of the branch, so it stays for a human.
-    if (!project) {
+    // Nothing left to compare the checkout against, so what is in it is all
+    // that is left of the work done there.
+    if (!project || !(await workspaceDirectoryExists(userId, project.repoPath))) {
       throw new CoderCleanupError(
-        "The project this worktree belongs to is gone, so its files may be the only copy. Delete them by hand if you are sure.",
+        `The repo for ${worktree.path} is gone, so its files may be the only copy. Delete them by hand if you are sure.`,
       );
     }
     try {

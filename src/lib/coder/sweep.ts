@@ -11,7 +11,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/db";
 import { listWorktrees, pruneWorktrees } from "./git";
-import { coderWorkspaceRoot, resolveCoderPath, WORKTREES_DIR } from "./paths";
+import {
+  coderWorkspaceRoot,
+  resolveCoderPath,
+  WORKTREES_DIR,
+  workspaceDirectoryExists,
+} from "./paths";
 
 /** What one sweep pass changed. */
 export interface SweepResult {
@@ -77,6 +82,9 @@ export async function sweepWorktrees(): Promise<SweepResult> {
     // tracks is never mistaken for a stray one.
     const trackedPaths = new Set<string>();
     for (const project of owned) {
+      // A repo directory deleted by hand has no worktrees git can name, and
+      // asking leaves a failure in the log on every pass.
+      if (!(await workspaceDirectoryExists(userId, project.repoPath))) continue;
       const entries = await listWorktrees(userId, project.repoPath).catch((err: unknown) => {
         console.error(`[coder] could not list worktrees of ${project.repoPath}:`, err);
         return [];

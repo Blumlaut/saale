@@ -9,7 +9,9 @@
  * before it reaches git or the container.
  */
 
+import fs from "node:fs/promises";
 import { requireWithinRoot } from "@/lib/files/paths";
+import { isNotFoundError } from "@/lib/files/errors";
 import { userWorkspacePath } from "@/lib/sandbox/workspace";
 import { coderChatSlug, isCoderSlug } from "./slug";
 
@@ -57,6 +59,21 @@ export function coderPathRelativeTo(userId: string, absolute: string): string | 
   const root = coderWorkspaceRoot(userId);
   if (absolute === root) return "";
   return absolute.startsWith(`${root}/`) ? absolute.slice(root.length + 1) : null;
+}
+
+/**
+ * Whether a directory is still on disk.
+ *
+ * A directory deleted by hand leaves a row behind, so anything that is about to
+ * run git in one asks this first: git has nothing to say about a directory that
+ * is not there, and its failure reads like a refusal.
+ */
+export async function workspaceDirectoryExists(userId: string, relative: string): Promise<boolean> {
+  const stat = await fs.stat(resolveCoderPath(userId, relative)).catch((err: unknown) => {
+    if (isNotFoundError(err)) return null;
+    throw err;
+  });
+  return stat?.isDirectory() ?? false;
 }
 
 /** `.gitconfig` at the workspace root, which is `$HOME` in the container. */
