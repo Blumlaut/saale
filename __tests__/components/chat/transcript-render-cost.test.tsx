@@ -96,7 +96,8 @@ describe("transcript render cost", () => {
   it("does not re-render the transcript while typing in the composer", () => {
     const { container } = render(<Harness messages={transcript(8)} />);
     const afterMount = counters.markdown;
-    expect(afterMount).toBe(8);
+    // 8 user + 8 assistant bubbles, each parsed once.
+    expect(afterMount).toBe(16);
 
     const textarea = container.querySelector("textarea")!;
     for (const ch of "the quick brown fox jumps over the lazy dog") {
@@ -111,7 +112,7 @@ describe("transcript render cost", () => {
     const messages = transcript(8);
     const { rerender } = render(<Harness messages={messages} />);
     const afterMount = counters.markdown;
-    expect(afterMount).toBe(8);
+    expect(afterMount).toBe(16);
 
     // A token arrives on the last turn: only that bubble is re-parsed.
     rerender(
@@ -135,14 +136,14 @@ describe("transcript render cost", () => {
 
   it("keeps bubbles that did not change from being re-parsed", () => {
     const { rerender } = render(<Harness messages={transcript(8)} />);
-    expect(counters.markdown).toBe(8);
+    expect(counters.markdown).toBe(16);
 
     // Rebuilt message objects with identical content: no re-parse.
     rerender(<Harness messages={transcript(8)} />);
-    expect(counters.markdown).toBe(8);
-
-    // Every assistant bubble changed: all of them are re-parsed.
-    rerender(<Harness messages={transcript(8).map((m) => ({ ...m, content: `${m.content}!` }))} />);
     expect(counters.markdown).toBe(16);
+
+    // Every bubble changed: all of them are re-parsed.
+    rerender(<Harness messages={transcript(8).map((m) => ({ ...m, content: `${m.content}!` }))} />);
+    expect(counters.markdown).toBe(32);
   });
 });

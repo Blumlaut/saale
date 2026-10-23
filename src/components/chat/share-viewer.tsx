@@ -181,7 +181,7 @@ function ShareUserMessage({ message }: { message: Message }) {
       <div className="max-w-[85%] min-w-0">
         {displayContent && (
           <div className="liquid-glass-inner rounded-2xl px-4 py-3">
-            <div className="text-sm whitespace-pre-wrap">{displayContent}</div>
+            <MarkdownRenderer content={displayContent} hardBreaks />
           </div>
         )}
         <div className="mt-1 text-right text-xs">
