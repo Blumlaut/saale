@@ -104,6 +104,7 @@ async function telegramFetch(url: string): Promise<Response> {
   if (url.includes("/token")) {
     const idToken = await new SignJWT({
       id: telegramUserId,
+      sub: telegramUserId,
       name: "Ada Lovelace",
       ...(nonce ? { nonce } : {}),
     })
