@@ -1,6 +1,7 @@
 import type { DAVClient } from "tsdav";
 import type { DAVCalendar, DAVCalendarObject } from "tsdav";
 import { prisma } from "@/lib/db";
+import { chunk, IN_LIST_CHUNK_SIZE } from "@/lib/db-batch";
 import { connectCalDAV } from "./caldav";
 import { parseICS, type ParsedEvent } from "./ics-import";
 
@@ -261,8 +262,6 @@ function extractUIDFromUrl(url: string): string | null {
   return match?.[1] || null;
 }
 
-/** Postgres bind-parameter headroom for `in` lists (the cap is 65535). */
-const UIDS_PER_QUERY = 5000;
 /** createMany binds every column of every row (19 here); keep batches far under the cap. */
 const CREATE_BATCH_SIZE = 1000;
 
@@ -288,12 +287,12 @@ async function upsertCalendarEvents(
 
   // Existing rows with their sequence, for the "skip unless advanced" check.
   const existing = new Map<string, { id: string; sequence: number }>();
-  for (let i = 0; i < events.length; i += UIDS_PER_QUERY) {
+  for (const uidBatch of chunk(
+    events.map((e) => e.evt.uid),
+    IN_LIST_CHUNK_SIZE,
+  )) {
     const rows = await prisma.calendarEvent.findMany({
-      where: {
-        calendarId,
-        uid: { in: events.slice(i, i + UIDS_PER_QUERY).map((e) => e.evt.uid) },
-      },
+      where: { calendarId, uid: { in: uidBatch } },
       select: { uid: true, id: true, sequence: true },
     });
     for (const row of rows) {
@@ -314,11 +313,9 @@ async function upsertCalendarEvents(
     }
   }
 
-  for (let i = 0; i < toCreate.length; i += CREATE_BATCH_SIZE) {
+  for (const batch of chunk(toCreate, CREATE_BATCH_SIZE)) {
     await prisma.calendarEvent.createMany({
-      data: toCreate
-        .slice(i, i + CREATE_BATCH_SIZE)
-        .map((entry) => ({ ...entry.data, calendarId })),
+      data: batch.map((entry) => ({ ...entry.data, calendarId })),
     });
   }
 
