@@ -8,6 +8,7 @@ import {
   createSystemPromptLoader,
 } from "@/lib/pi/processing-state";
 import { sessionWorkspace } from "@/lib/pi/project-context";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 describe("buildAgentSystemPrompt", () => {
   it("returns default prompt with no options", () => {
@@ -239,7 +240,7 @@ describe("createAgentResourceLoader: workspace", () => {
   });
 
   it("reads the worktree's AGENTS.md and skills", async () => {
-    const root = path.join(volumeDir, "user-user-1");
+    const root = path.join(volumeDir, userIdentity("user-1"));
     const worktree = path.join(root, "worktrees/saale/c-1");
     fs.mkdirSync(path.join(worktree, ".pi/skills/release"), { recursive: true });
     fs.writeFileSync(path.join(worktree, "AGENTS.md"), "worktree rules");
@@ -261,7 +262,7 @@ describe("createAgentResourceLoader: workspace", () => {
   });
 
   it("reads no file from above the workspace root", async () => {
-    const root = path.join(volumeDir, "user-user-1");
+    const root = path.join(volumeDir, userIdentity("user-1"));
     const worktree = path.join(root, "worktrees/saale/c-1");
     fs.mkdirSync(worktree, { recursive: true });
     fs.writeFileSync(path.join(volumeDir, "AGENTS.md"), "the operator's rules");

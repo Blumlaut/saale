@@ -48,7 +48,7 @@ vi.mock("@/lib/infra/client", () => ({
 }));
 
 // The workspace a transfer lands in: a real directory under a stubbed volume.
-const WORKSPACE = path.join(os.tmpdir(), "saale-infra-workspace", "user-user-123");
+const WORKSPACE = path.join(os.tmpdir(), "saale-infra-workspace", userIdentity("user-123"));
 
 // Import mocks for assertions
 import fs from "node:fs/promises";
@@ -57,6 +57,7 @@ import path from "node:path";
 import * as db from "@/lib/db";
 import * as crypto from "@/lib/crypto";
 import * as client from "@/lib/infra/client";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockInfraMachine = db.prisma.infraMachine as any;

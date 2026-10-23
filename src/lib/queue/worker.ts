@@ -14,6 +14,7 @@ import {
   WATCHER_TICK_JOB_NAME,
 } from "@/lib/queue";
 import { isCouncilEnabled } from "@/lib/council/flag";
+import { migrateWorkspaceIdentitiesOnBoot } from "@/lib/sandbox/legacy-identities";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { registerTelegramWebhook } from "@/lib/telegram";
 
@@ -166,6 +167,10 @@ async function retryUntilSuccess(
 }
 
 async function main() {
+  // Before the first job: a job that runs in a workspace still named by the old
+  // scheme would create the new directory beside it. See the sandbox migration.
+  await migrateWorkspaceIdentitiesOnBoot("worker");
+
   console.log("[worker] Starting BullMQ worker...");
   console.log("");
   console.log("[worker] DATABASE_URL:", process.env.DATABASE_URL ? "set" : "missing");

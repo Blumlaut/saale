@@ -223,22 +223,23 @@ async function getKnownStoragePaths(): Promise<Set<string>> {
  * Walk the uploads directory and yield every image file found.
  */
 async function readUserDirs(): Promise<
-  Array<{ userId: string; filePath: string; relativePath: string }>
+  Array<{ identity: string; filePath: string; relativePath: string }>
 > {
-  const entries: Array<{ userId: string; filePath: string; relativePath: string }> = [];
+  const entries: Array<{ identity: string; filePath: string; relativePath: string }> = [];
 
   try {
-    const userNames = await fs.readdir(workspacesDir());
-    for (const userName of userNames) {
-      if (!userName.startsWith("user-")) continue;
-      const imageDir = path.join(workspacesDir(), userName, "images");
+    const identities = await fs.readdir(workspacesDir());
+    for (const identity of identities) {
+      // `user-<key>`: a user's own workspace, never a council's.
+      if (!identity.startsWith("user-")) continue;
+      const imageDir = path.join(workspacesDir(), identity, "images");
       try {
         const files = await fs.readdir(imageDir);
         for (const file of files) {
           if (!file.endsWith(".png")) continue;
           const relativePath = `images/${file}`;
           entries.push({
-            userId: userName,
+            identity,
             filePath: path.join(imageDir, file),
             relativePath,
           });

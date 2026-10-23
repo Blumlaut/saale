@@ -33,6 +33,6 @@ describe("Dockerfile.sandbox", () => {
   });
 
   it("puts the workspace on HOME, so one .gitconfig serves the whole workspace", () => {
-    expect(dockerfile).toContain("ENV HOME=/workspaces");
+    expect(dockerfile).toContain("ENV HOME=/w");
   });
 });

@@ -21,6 +21,10 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 import { createSaaleAgentSession, resolveAgentCwd } from "@/lib/pi/agent-session";
+import { userIdentity } from "@/lib/sandbox/identity";
+
+/** The workspace of `USER`, as the path the app mounts the volume at. */
+const HOME = `/workspaces/${userIdentity("user-1")}`;
 
 /** A session manager whose cwd is the transcript directory. */
 function sessionManager(cwd: string) {
@@ -39,24 +43,22 @@ beforeEach(() => {
 
 describe("resolveAgentCwd", () => {
   it("uses the user's workspace directory", () => {
-    expect(resolveAgentCwd("user-1")).toBe("/workspaces/user-user-1");
+    expect(resolveAgentCwd("user-1")).toBe(HOME);
   });
 
   it("follows a deployment that mounts the volume somewhere else", () => {
     vi.stubEnv("SANDBOX_WORKSPACES_DIR", "/srv/workspaces");
 
-    expect(resolveAgentCwd("user-1")).toBe("/srv/workspaces/user-user-1");
+    expect(resolveAgentCwd("user-1")).toBe(`/srv/workspaces/${userIdentity("user-1")}`);
   });
 
   it("resolves a workspace-relative directory inside the workspace", () => {
-    expect(resolveAgentCwd("user-1", "worktrees/x/y")).toBe(
-      "/workspaces/user-user-1/worktrees/x/y",
-    );
+    expect(resolveAgentCwd("user-1", "worktrees/x/y")).toBe(`${HOME}/worktrees/x/y`);
   });
 
   it("normalises a relative path that stays inside the workspace", () => {
     expect(resolveAgentCwd("user-1", "worktrees/./saale/../saale/c-chat1")).toBe(
-      "/workspaces/user-user-1/worktrees/saale/c-chat1",
+      `${HOME}/worktrees/saale/c-chat1`,
     );
   });
 
@@ -83,7 +85,7 @@ describe("createSaaleAgentSession", () => {
       noTools: "builtin",
     });
 
-    expect(lastOptions().cwd).toBe("/workspaces/user-user-1");
+    expect(lastOptions().cwd).toBe(HOME);
   });
 
   it("does not let a caller override the cwd or the settings manager", async () => {
@@ -94,7 +96,7 @@ describe("createSaaleAgentSession", () => {
       settingsManager: "host-settings",
     } as never);
 
-    expect(lastOptions().cwd).toBe("/workspaces/user-user-1");
+    expect(lastOptions().cwd).toBe(HOME);
     expect(lastOptions().settingsManager).toEqual({ inMemorySettings: true });
   });
 
@@ -111,7 +113,7 @@ describe("createSaaleAgentSession", () => {
       workspaceCwd: "worktrees/saale/c-chat1",
     });
 
-    expect(lastOptions().cwd).toBe("/workspaces/user-user-1/worktrees/saale/c-chat1");
+    expect(lastOptions().cwd).toBe(`${HOME}/worktrees/saale/c-chat1`);
   });
 
   it("refuses a workspace cwd that leaves the workspace", async () => {

@@ -7,8 +7,27 @@
  * a path.
  */
 
-/** `user-<id>` or `council-<sandboxKey>`: no separators, no dots, no `..`. */
+import { createHash } from "node:crypto";
+
+/** `user-<key>` or `council-<sandboxKey>`: no separators, no dots, no `..`. */
 const IDENTITY_PATTERN = /^(user|council)-[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Hex characters in a user's workspace key.
+ *
+ * Twelve is 48 bits: wide enough that two users of one instance do not land in
+ * one directory (a few thousand of them are about 1e-7 apart), short enough
+ * that the paths an agent reads and types stay short. The user id is 30+
+ * characters, and every file path under a workspace repeats the directory name.
+ */
+export const USER_WORKSPACE_KEY_LENGTH = 12;
+
+/**
+ * Namespace for that hash. Domain separation keeps a user's key out of the
+ * space of every other hash in the app (councils' `sandboxKey`, preview slugs),
+ * so no two things can be derived to the same string from the same input.
+ */
+const USER_WORKSPACE_KEY_NAMESPACE = "saale-user-workspace:v1";
 
 /** Raised for a string that is not an identity. */
 export class InvalidSandboxIdentityError extends Error {
@@ -29,9 +48,26 @@ export function parseIdentity(raw: unknown): string {
   return raw;
 }
 
-/** A Saale user's own workspace. */
+/**
+ * The key that names a user's workspace directory.
+ *
+ * Derived rather than stored: the id is the one thing every caller already has,
+ * and a directory name is needed in places that cannot wait for a query. It is
+ * a hash so the key stays short and says nothing about the account behind it.
+ */
+export function deriveUserWorkspaceKey(userId: string): string {
+  if (typeof userId !== "string" || userId.length === 0) {
+    throw new InvalidSandboxIdentityError(userId);
+  }
+  return createHash("sha256")
+    .update(`${USER_WORKSPACE_KEY_NAMESPACE}:${userId}`)
+    .digest("hex")
+    .slice(0, USER_WORKSPACE_KEY_LENGTH);
+}
+
+/** A Saale user's own workspace: `user-<key>`, never the id itself. */
 export function userIdentity(userId: string): string {
-  return parseIdentity(`user-${userId}`);
+  return parseIdentity(`user-${deriveUserWorkspaceKey(userId)}`);
 }
 
 /** A council's shared workspace, named by its stored `sandboxKey`. */

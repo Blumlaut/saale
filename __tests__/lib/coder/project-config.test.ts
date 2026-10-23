@@ -19,6 +19,7 @@ vi.mock("@/lib/coder/git", () => ({
 }));
 
 import { CoderProjectError } from "@/lib/coder/project-error";
+import { userIdentity } from "@/lib/sandbox/identity";
 import {
   MAX_ENV_FILES,
   excludeEnvFiles,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/coder/project-config";
 
 const USER = "user-1";
+const IDENTITY = userIdentity(USER);
 const WORKTREE = "worktrees/saale/c-1a2b3c4d";
 const REPO = "projects/saale";
 
@@ -37,7 +39,7 @@ let workspaceDir = "";
 let originalWorkspacesDir: string | undefined;
 
 function inWorkspace(relative: string): string {
-  return path.join(workspaceDir, `user-${USER}`, relative);
+  return path.join(workspaceDir, IDENTITY, relative);
 }
 
 beforeEach(async () => {

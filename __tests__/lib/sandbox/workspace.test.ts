@@ -11,7 +11,7 @@ import {
   writeOwned,
   writeWorkspaceFile,
 } from "@/lib/sandbox/workspace";
-import { InvalidSandboxIdentityError } from "@/lib/sandbox/identity";
+import { InvalidSandboxIdentityError, userIdentity } from "@/lib/sandbox/identity";
 
 let root: string;
 
@@ -36,12 +36,12 @@ describe("identityPath", () => {
   it("gives each identity its own directory under the volume", () => {
     expect(identityPath("user-abc")).toBe(path.join(root, "user-abc"));
     expect(identityPath("council-abcd")).toBe(path.join(root, "council-abcd"));
-    expect(userWorkspacePath("abc")).toBe(path.join(root, "user-abc"));
+    expect(userWorkspacePath("abc")).toBe(path.join(root, userIdentity("abc")));
   });
 
   it("refuses a string that is not an identity", () => {
     expect(() => identityPath("../../etc")).toThrow(InvalidSandboxIdentityError);
-    expect(() => userWorkspacePath("a/b")).toThrow(InvalidSandboxIdentityError);
+    expect(() => userWorkspacePath("")).toThrow(InvalidSandboxIdentityError);
   });
 });
 
@@ -59,6 +59,17 @@ describe("ensureWorkspace", () => {
     const dir = await ensureWorkspace("user-abc");
     const stats = await fs.stat(dir);
     expect(stats.mode & 0o777).toBe(0o770);
+  });
+
+  it("keeps 0770 whatever umask the deployment runs under", async () => {
+    const previous = process.umask(0o077);
+    try {
+      const dir = await ensureWorkspace("user-umask");
+
+      expect((await fs.stat(dir)).mode & 0o777).toBe(0o770);
+    } finally {
+      process.umask(previous);
+    }
   });
 
   it("keeps one identity out of another's path", () => {
@@ -86,7 +97,7 @@ describe("writeWorkspaceFile", () => {
   it("creates the parents and writes inside the user's directory", async () => {
     const absolute = await writeWorkspaceFile("abc", "uploads/report.pdf", Buffer.from("pdf"));
 
-    expect(absolute).toBe(path.join(root, "user-abc", "uploads", "report.pdf"));
+    expect(absolute).toBe(path.join(root, userIdentity("abc"), "uploads", "report.pdf"));
     expect(await fs.readFile(absolute, "utf8")).toBe("pdf");
   });
 

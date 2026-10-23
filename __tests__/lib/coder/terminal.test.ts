@@ -37,11 +37,13 @@ import {
   TerminalNotReadyError,
   type TerminalTarget,
 } from "@/lib/coder/terminal";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
 const SESSION = "chat-1";
+const IDENTITY = userIdentity(USER);
 const TARGET: TerminalTarget = {
-  cwd: "/workspaces/user-user-1/worktrees/saale/c-1a2b3c4d",
+  cwd: `/workspaces/${IDENTITY}/worktrees/saale/c-1a2b3c4d`,
   worktreePath: "worktrees/saale/c-1a2b3c4d",
   branch: "wt/c-1a2b3c4d",
 };
@@ -99,7 +101,7 @@ describe("sendTerminalInput", () => {
 
     await sendTerminalInput({ userId: USER, sessionId: SESSION, execId: "exec-1", data: "y\n" });
 
-    expect(mocks.writeInput).toHaveBeenCalledWith("exec-1", "user-user-1", "y\n");
+    expect(mocks.writeInput).toHaveBeenCalledWith("exec-1", IDENTITY, "y\n");
   });
 
   it("refuses an exec id this chat never started", async () => {

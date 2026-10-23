@@ -76,8 +76,10 @@ import { GitError } from "@/lib/coder/git";
 import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { removeProject } from "@/lib/coder/cleanup";
 import { CoderCleanupError, removeChatWorktree } from "@/lib/coder/worktree-removal";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
+const IDENTITY = userIdentity(USER);
 const SESSION = "chat-1";
 
 /** A real workspace directory, so a worktree can actually be there or not. */
@@ -109,10 +111,10 @@ beforeEach(async () => {
   mocks.killExec.mockResolvedValue(undefined);
   mocks.unregisterTerminalExec.mockResolvedValue(undefined);
 
-  await fs.mkdir(path.join(workspaceDir, `user-${USER}`, "worktrees/saale/c-1a2b3c4d"), {
+  await fs.mkdir(path.join(workspaceDir, IDENTITY, "worktrees/saale/c-1a2b3c4d"), {
     recursive: true,
   });
-  await fs.mkdir(path.join(workspaceDir, `user-${USER}`, "projects/saale"), { recursive: true });
+  await fs.mkdir(path.join(workspaceDir, IDENTITY, "projects/saale"), { recursive: true });
 });
 
 afterEach(async () => {
@@ -181,7 +183,7 @@ describe("removeChatWorktree", () => {
   });
 
   it("deletes the files of a checkout whose repo is gone when forced", async () => {
-    await fs.rm(path.join(workspaceDir, `user-${USER}`, "projects"), { recursive: true });
+    await fs.rm(path.join(workspaceDir, IDENTITY, "projects"), { recursive: true });
 
     const result = await removeChatWorktree(USER, SESSION, true);
 
@@ -236,7 +238,7 @@ describe("removeChatWorktree", () => {
   });
 
   it("only forgets the row when the checkout is already gone", async () => {
-    await fs.rm(path.join(workspaceDir, `user-${USER}`, "worktrees"), { recursive: true });
+    await fs.rm(path.join(workspaceDir, IDENTITY, "worktrees"), { recursive: true });
 
     const result = await removeChatWorktree(USER, SESSION);
 
@@ -263,7 +265,7 @@ describe("removeChatWorktree", () => {
   });
 
   it("refuses when only the repo directory is gone, not the checkout", async () => {
-    await fs.rm(path.join(workspaceDir, `user-${USER}`, "projects"), { recursive: true });
+    await fs.rm(path.join(workspaceDir, IDENTITY, "projects"), { recursive: true });
 
     const error = await removeChatWorktree(USER, SESSION).catch((err: unknown) => err);
 
@@ -346,8 +348,8 @@ describe("removeProject", () => {
   });
 
   it("deletes a project whose directory was removed by hand", async () => {
-    await fs.rm(path.join(workspaceDir, `user-${USER}`, "projects"), { recursive: true });
-    await fs.rm(path.join(workspaceDir, `user-${USER}`, "worktrees"), { recursive: true });
+    await fs.rm(path.join(workspaceDir, IDENTITY, "projects"), { recursive: true });
+    await fs.rm(path.join(workspaceDir, IDENTITY, "worktrees"), { recursive: true });
 
     await removeProject(USER, "project-1");
 
