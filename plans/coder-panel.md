@@ -15,9 +15,8 @@ Settled in the kickoff conversation:
 - **Workspace is the only filesystem.** Repos at `<workspace>/projects/<slug>`, worktrees
   at `<workspace>/worktrees/<project-slug>/<slug>`. Both are inside the workspace root the
   file tools and the file browser already serve, so nothing new needs to be reachable.
-- **Execution home is the worktree.** A coder chat's agent cwd is its worktree. Before the
-  worktree exists (a chat with no message yet) the cwd falls back to the project repo, then
-  to the workspace.
+- **Execution home is the worktree.** A coder chat's agent cwd is its worktree, always: the
+  worktree is built before a message is dispatched, so there is no fallback directory.
 - **Projects come from `git init` or `git clone`.**
 - **Auth is `gh` in the container.** A user sets `GH_TOKEN` as a sandbox environment
   variable and clones private repos with it; without one, public clones still work.
@@ -132,25 +131,30 @@ here except by going through the same exec path.
 
 ## First message → worktree
 
-`POST /api/chat/sessions/:id/messages` already claims the message before the stream runs.
-The coder path inserts one step before the agent is built:
+A pooled agent exists only once a message is being prompted: `prepareRun` in the stream
+route claims the message and calls `ensureChatAgent`, and the telegram/respond-in-chat
+paths go through the same helper.
 
 ```
 claim message
-  → ensureWorktree(chat)           # idempotent, single-flight per session
-      row exists and dir exists    → nothing
-      row exists, dir gone         → recreate at the same path, same branch
-      no row                       → git worktree add -b wt/<slug> <dir> <defaultBranch>
-                                     record { path, branch, baseSha }
-  → ensureChatAgent(... cwd = worktree )
+  → ensureChatAgent
+      coder chat   → ensureWorktree(chat)     # idempotent, single-flight per session
+                       row exists, dir exists → nothing
+                       row exists, dir gone   → recreate at the same path, same branch
+                       no row                 → git worktree add -b wt/<slug> <dir> <defaultBranch>
+                                                record { path, branch, baseSha }
+      chat         → nothing
+  → build the session with cwd = worktree (coder) / workspace (chat)
   → prompt
 ```
 
+- The worktree lives in `ensureChatAgent`, so no entry point can build a coder agent
+  without one, and a coder session's cwd is never anything but its worktree.
 - `ensureWorktree` is serialized per project (an in-process mutex), and retries once on a
   git lock error.
-- A failed worktree creation fails the message with the git stderr, before the model is
-  prompted. A chat whose worktree cannot be built must not run in the repo and commit
-  there by accident.
+- A failed worktree creation fails the turn with git's stderr and nothing is prompted. A
+  chat whose worktree cannot be built must not run in the repo and commit there by
+  accident.
 - Creating or recreating a worktree evicts that session's pooled agent, since the cwd is
   baked into it.
 - `git worktree add` takes the project's `defaultBranch`. The repo is not fetched on chat
@@ -256,17 +260,19 @@ lines red, hunk headers muted. No Monaco.
 
 ## Cleanup
 
-Deleting a coder chat asks first, then removes the worktree:
+Deleting a coder chat asks first, then removes the worktree. The chat is deleted only when
+that succeeds.
 
 ```
 stop running processes in the worktree     pkill -f <worktree path> in the container
 git worktree remove <dir>                  no --force
-  → refusal (dirty tree)                   shown verbatim, dialog stays open, chat survives
+  → refuses (dirty tree, missing repo)     error shown verbatim, chat stays
   → success                                CoderWorktree.status = "removed", then delete the chat
 ```
 
 - The confirmation names the branch and the dirty file count, so the choice is informed.
   The branch and its commits stay in the repo; only the checkout goes.
+- A failed removal keeps the chat and its worktree. Nothing offers a half-delete.
 - Deleting a project removes each worktree the same way, then the repo directory only when
   git proves it is clean and fully pushed (`workspace-cleanup.ts` rules). Refused while any
   of its chats is generating.
@@ -295,9 +301,9 @@ Each step is a commit that leaves `npm run check` green.
    duplicate slug, and a refusal to create outside `projects/`.
 5. **Cwd plumbing.** `agent-session.ts`, `persistent-session.ts`, `chat-session-factory.ts`
    take a workspace-relative cwd; tests cover accepted and rejected paths.
-6. **Worktree on first message.** `src/lib/coder/worktrees.ts` (`ensureWorktree`),
-   wired into the message route and the agent factory, pool eviction on change, tests for
-   idempotency and for the no-row/row-without-dir cases.
+6. **Worktree on first message.** `src/lib/coder/worktrees.ts` (`ensureWorktree`), called
+   from `ensureChatAgent` before the pooled session is built; pool eviction on change;
+   tests for idempotency and for the no-row/row-without-dir cases.
 7. **Prompt, tools, model.** `coder-prompt.ts`, `CODER_TOOL_DEFAULTS`, the `coder` purpose,
    and the settings toggles. Tests assert the git rules are present and that a disabled
    category's section is absent.
@@ -308,9 +314,9 @@ Each step is a commit that leaves `npm run check` green.
 10. **Cleanup.** Chat-delete worktree removal with confirmation, project delete, the
     worker sweep, process kill; tests for the dirty-tree refusal and the sweep.
 11. **Terminal** (follow-up): a `POST /api/coder/sessions/:id/terminal` stream over
-    `sandboxExec`, exec-id tracking, kill button. Interactive stdin needs a new
-    `/exec/:id/input` route in `sandbox-exec`: the exec starts with a hijacked stdin today
-    and nothing writes to it.
+    `sandboxExec`. Running a command needs no sandbox change. Typing into a command that is
+    already running does: `sandbox-exec` starts every exec with a hijacked stdin that
+    nothing writes to, so that panel also needs a new `/exec/:id/input` route.
 12. **E2E.** `e2e/coder-panel.spec.ts`: create a project from `git init`, send a message,
     assert a worktree appears, edit a file through the file browser, see the change list
     update, delete the chat and see the worktree go. Plus the 375px and 320px overflow
@@ -323,8 +329,7 @@ Real behaviour:
 - `git-status.ts` parses staged, unstaged, untracked, renamed and conflicted trees.
 - `ensureWorktree` is idempotent; two chats in one project get distinct branches and
   directories; a missing directory is recreated on the same branch.
-- A dirty worktree refuses removal and the route reports the reason; a clean one removes
-  both the directory and the row.
+- A dirty worktree refuses removal, the route reports the reason, and the chat survives.
 - `resolveAgentCwd` accepts `worktrees/x/y` and rejects `../other`, `/etc`, and a path in
   another user's workspace.
 - The coder prompt contains the commit rules and omits the section for a disabled category.
