@@ -43,19 +43,21 @@ const MAX_THROTTLE_TRACKED_SESSIONS = 1000;
 function shouldSkipCumulativeSnapshot(sessionId: string, event: string): boolean {
   if (!CUMULATIVE_EVENTS.has(event)) return false;
 
-  // Opportunistic cleanup: the map grows with every streaming session and is
-  // never evicted, so drop entries older than the buffer's own TTL before
-  // adding a new one.
-  if (lastCumulativeBufferedAt.size >= MAX_THROTTLE_TRACKED_SESSIONS) {
-    const cutoff = Date.now() - BUFFER_TTL_SECONDS * 1000;
-    for (const [key, ts] of lastCumulativeBufferedAt) {
-      if (ts < cutoff) lastCumulativeBufferedAt.delete(key);
-    }
-  }
+  const now = Date.now();
+  const last = lastCumulativeBufferedAt.get(sessionId);
+  if (last !== undefined && now - last < CUMULATIVE_BUFFER_INTERVAL_MS) return true;
 
-  const last = lastCumulativeBufferedAt.get(sessionId) ?? 0;
-  if (Date.now() - last < CUMULATIVE_BUFFER_INTERVAL_MS) return true;
-  lastCumulativeBufferedAt.set(sessionId, Date.now());
+  // Re-insert rather than overwrite so the map's insertion order is recency
+  // order, which makes the eviction below the least recently buffered session.
+  // Both operations are O(1): the hot path must not scan the map per token.
+  // Evicting a session only costs it one unthrottled snapshot, never
+  // correctness: `turn_end` always carries the full text.
+  lastCumulativeBufferedAt.delete(sessionId);
+  lastCumulativeBufferedAt.set(sessionId, now);
+  if (lastCumulativeBufferedAt.size > MAX_THROTTLE_TRACKED_SESSIONS) {
+    const oldest = lastCumulativeBufferedAt.keys().next();
+    if (!oldest.done) lastCumulativeBufferedAt.delete(oldest.value);
+  }
   return false;
 }
 
@@ -205,6 +207,11 @@ export async function clearBuffer(sessionId: string): Promise<void> {
   try {
     const redis = getRedis();
     const bufKey = `${BUFFER_KEY_PREFIX}${sessionId}`;
+    // Also forget the throttle state: a generation that starts within a second
+    // of the last buffered token of the previous one must still get its first
+    // snapshot into the (now empty) buffer, or a client reconnecting early
+    // replays nothing until the next one.
+    lastCumulativeBufferedAt.delete(sessionId);
     await redis.del(bufKey);
   } catch (err) {
     console.error("Failed to clear SSE buffer:", err);
