@@ -93,12 +93,23 @@ export function createSandboxOperations(options: SandboxOperationsOptions): Sand
 
       let exitCode: number | null = null;
 
+      // Git has no terminal to answer a credential prompt in a container, so
+      // keep it from opening /dev/tty (which fails with "No such device or
+      // address") and fail fast instead. User variables still win on conflict.
+      const commandEnv = {
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_OPTIONAL_LOCKS: "0",
+        GIT_PAGER: "cat",
+        LC_ALL: "C",
+        ...(env ?? {}),
+      };
+
       try {
         for await (const event of sandboxExec({
           identity,
           command,
           cwd,
-          ...(env && Object.keys(env).length > 0 ? { env } : {}),
+          ...(Object.keys(commandEnv).length > 0 ? { env: commandEnv } : {}),
           ...(timeoutSeconds ? { timeoutSeconds } : {}),
           ...(signal ? { signal } : {}),
         })) {
