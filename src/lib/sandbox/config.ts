@@ -37,6 +37,8 @@ export interface SandboxConfig {
   tmpHours: number;
   /** Port the service listens on. */
   port: number;
+  /** Port preview hostnames are served on. 0 turns previews off. */
+  previewPort: number;
 }
 
 const DEFAULTS = {
@@ -54,6 +56,7 @@ const DEFAULTS = {
   ttlDays: 7,
   tmpHours: 72,
   port: 8100,
+  previewPort: 8101,
 } as const;
 
 function text(name: string, fallback: string): string {
@@ -95,5 +98,6 @@ export function sandboxConfig(): SandboxConfig {
     ttlDays: integer("SANDBOX_CONTAINER_TTL_DAYS", DEFAULTS.ttlDays),
     tmpHours: integer("SANDBOX_TMP_HOURS", DEFAULTS.tmpHours),
     port: integer("SANDBOX_EXEC_PORT", DEFAULTS.port),
+    previewPort: integer("SANDBOX_PREVIEW_PORT", DEFAULTS.previewPort),
   };
 }

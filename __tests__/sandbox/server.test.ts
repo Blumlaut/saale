@@ -403,3 +403,91 @@ describe("unknown routes", () => {
     expect(response.status).toBe(404);
   });
 });
+
+describe("the port routes", () => {
+  const HEADER =
+    "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode";
+  const LISTENING = `   0: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 21011 1 0000000000000000 100 0 0 10 0`;
+
+  /** The three reads discovery makes, answered per command. */
+  const discovery = (request: SandboxExecRequest): SandboxChunk[] => {
+    if (request.command.includes("/proc/net/tcp")) {
+      return [{ stream: "stdout", data: Buffer.from(`${HEADER}\n${LISTENING}`) }];
+    }
+    if (request.command.startsWith("ls -l")) {
+      return [
+        {
+          stream: "stdout",
+          data: Buffer.from(
+            "/proc/120/fd:\ntotal 0\nlrwx------ 1 root root 64 Oct 23 14:00 3 -> socket:[21011]",
+          ),
+        },
+      ];
+    }
+    if (request.command.startsWith("for p in")) {
+      return [
+        {
+          stream: "stdout",
+          data: Buffer.from(
+            "120\t/workspaces/user-abc/worktrees/saale/c-1\tnode vite --host 0.0.0.0\n",
+          ),
+        },
+      ];
+    }
+    return [{ stream: "stdout", data: Buffer.from("killed\n") }];
+  };
+
+  it("lists what the workspace is listening on", async () => {
+    await start(fakeManager(discovery));
+
+    const response = await fetch(`${baseUrl}/ports`, {
+      headers: { Authorization: "Bearer test-key", "X-Identity": "user-abc" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ports: [
+        {
+          port: 8080,
+          address: "0.0.0.0",
+          loopback: false,
+          pid: 120,
+          command: "node vite --host 0.0.0.0",
+          cwd: "/workspaces/user-abc/worktrees/saale/c-1",
+        },
+      ],
+    });
+  });
+
+  it("refuses to list ports without the key", async () => {
+    await start(fakeManager(discovery));
+
+    const response = await fetch(`${baseUrl}/ports`, { headers: { "X-Identity": "user-abc" } });
+    expect(response.status).toBe(401);
+  });
+
+  it("stops the process listening on a port", async () => {
+    const manager = fakeManager(discovery);
+    await start(manager);
+
+    const response = await fetch(`${baseUrl}/ports/8080/kill`, {
+      method: "POST",
+      headers: { Authorization: "Bearer test-key", "X-Identity": "user-abc" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ port: 8080, pid: 120, killed: true });
+    expect(manager.calls.at(-1)?.command).toContain("kill -TERM 120");
+  });
+
+  it("answers 404 for a port that is not listening", async () => {
+    await start(fakeManager(discovery));
+
+    const response = await fetch(`${baseUrl}/ports/9999/kill`, {
+      method: "POST",
+      headers: { Authorization: "Bearer test-key", "X-Identity": "user-abc" },
+    });
+
+    expect(response.status).toBe(404);
+  });
+});

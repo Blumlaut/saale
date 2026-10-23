@@ -3,8 +3,12 @@
  *
  * A small HTTP API the app calls to run a command in an identity's container.
  * `POST /exec` streams output as server-sent events, `DELETE /exec/:id` stops a
- * command, `POST /exec/:id/input` types into one started with `interactive`.
- * All of them are keyed on an identity, never on a path.
+ * command, `POST /exec/:id/input` types into one started with `interactive`,
+ * `GET /ports` lists what a workspace is listening on and `POST /ports/:port/kill`
+ * stops one of them. All of them are keyed on an identity, never on a path.
+ *
+ * A second listener serves previews on `SANDBOX_PREVIEW_PORT`: it is public, so
+ * the only thing it accepts is a signed preview hostname.
  *
  * It holds the Docker socket, so it is as privileged as the host it runs on.
  * Only web and worker talk to it, with a shared bearer key.
@@ -16,6 +20,8 @@ import Docker from "dockerode";
 import { sandboxConfig, type SandboxConfig } from "@/lib/sandbox/config";
 import { parseIdentity, InvalidSandboxIdentityError } from "@/lib/sandbox/identity";
 import { sweepWorkspaceTmp } from "@/lib/sandbox/tmp";
+import { listListeningPorts, killListeningPort, UnknownPortError } from "./listening";
+import { createPreviewProxy } from "./preview-proxy";
 import {
   asDockerHandle,
   createContainerManager,
@@ -278,6 +284,28 @@ export function createSandboxServer(options: SandboxServerOptions): http.Server 
           return;
         }
 
+        if (req.method === "GET" && url.pathname === "/ports") {
+          const identity = identityFrom(req);
+          json(res, 200, { ports: await listListeningPorts(manager, identity) });
+          return;
+        }
+
+        const killPortMatch = /^\/ports\/(\d{1,5})\/kill$/.exec(url.pathname);
+        if (req.method === "POST" && killPortMatch?.[1]) {
+          try {
+            const result = await killListeningPort(
+              manager,
+              identityFrom(req),
+              Number(killPortMatch[1]),
+            );
+            json(res, 200, result);
+          } catch (err) {
+            if (err instanceof UnknownPortError) throw new HttpError(404, err.message);
+            throw err;
+          }
+          return;
+        }
+
         const containerMatch = /^\/container\/([^/]+)$/.exec(url.pathname);
         if (req.method === "DELETE" && containerMatch?.[1]) {
           const removed = await manager.remove(decodeURIComponent(containerMatch[1]));
@@ -357,9 +385,21 @@ async function main(): Promise<void> {
     );
   });
 
+  // A deployment without a wildcard domain leaves this off and still gets
+  // everything else.
+  const preview =
+    config.previewPort > 0 && config.apiKey ? createPreviewProxy({ key: config.apiKey }) : null;
+  preview?.listen(config.previewPort, () => {
+    console.warn(`[sandbox] previews on :${config.previewPort}`);
+  });
+  preview?.on("error", (err) => {
+    console.error(`[sandbox] preview listener failed on :${config.previewPort}:`, err);
+  });
+
   const shutdown = (signal: string) => {
     console.warn(`[sandbox] ${signal} received, closing`);
     clearInterval(timer);
+    preview?.close();
     server.close(() => process.exit(0));
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
