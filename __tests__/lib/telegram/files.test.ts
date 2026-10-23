@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import type { Bot, Context } from "grammy";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -25,8 +26,8 @@ const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 let filesModule: typeof import("@/lib/telegram/files");
 let tmpRoot: string;
-/** `user-<id>` directories live directly under the workspaces root. */
-const workspaceOf = (userId: string) => path.join(tmpRoot, `user-${userId}`);
+/** One directory per user lives directly under the workspaces root. */
+const workspaceOf = (userId: string) => path.join(tmpRoot, userIdentity(userId));
 
 /** Build a minimal grammy Bot double with a canned getFile response. */
 function makeBot(filePath: string, fileId: string): Bot<Context> {

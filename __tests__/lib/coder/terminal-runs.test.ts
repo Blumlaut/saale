@@ -30,10 +30,12 @@ import {
   TerminalBusyError,
   type TerminalRunEvent,
 } from "@/lib/coder/terminal-runs";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
 const SESSION = "chat-1";
-const CWD = "/workspaces/user-user-1/worktrees/saale/c-1a2b3c4d";
+const IDENTITY = userIdentity(USER);
+const CWD = `/workspaces/${IDENTITY}/worktrees/saale/c-1a2b3c4d`;
 
 type SandboxEvent =
   | { type: "started"; execId: string }
@@ -135,7 +137,7 @@ describe("beginTerminalRun", () => {
     const state = beginTerminalRun({ userId: USER, sessionId: SESSION, cwd: CWD, command: "ls" });
 
     expect(mocks.exec).toHaveBeenCalledWith({
-      identity: "user-user-1",
+      identity: IDENTITY,
       command: "ls",
       cwd: CWD,
       interactive: true,

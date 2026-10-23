@@ -38,8 +38,13 @@ import {
   shellQuote,
   worktreeBaseRef,
 } from "@/lib/coder/git";
+import { userIdentity } from "@/lib/sandbox/identity";
+import { sandboxConfig } from "@/lib/sandbox/config";
 
 const USER = "user-1";
+const IDENTITY = userIdentity(USER);
+/** The user's workspace as the app path it is mounted at. */
+const USER_ROOT = `${sandboxConfig().workspacesDir}/${IDENTITY}`;
 
 beforeEach(() => {
   execOptions.length = 0;
@@ -64,7 +69,7 @@ describe("runGit", () => {
 
     const options = execOptions[0] as { command: string; cwd: string; env: Record<string, string> };
     expect(options.command).toBe("git --no-pager status --porcelain=v1 -z");
-    expect(options.cwd).toBe("/workspaces/user-user-1/projects/saale");
+    expect(options.cwd).toBe(`${USER_ROOT}/projects/saale`);
     expect(options.env.GIT_TERMINAL_PROMPT).toBe("0");
   });
 
@@ -104,7 +109,7 @@ describe("runGit", () => {
 });
 
 describe("worktrees", () => {
-  const root = "/workspaces/user-user-1";
+  const root = USER_ROOT;
 
   it("adds a new branch at an absolute path inside the workspace", async () => {
     await addWorktree(USER, {
@@ -234,12 +239,12 @@ describe("ensureGitconfig", () => {
     const target = await ensureGitconfig(USER, identity);
 
     const body = await fs.readFile(target, "utf8");
-    expect(target).toBe(path.join(dir, "user-user-1", ".gitconfig"));
+    expect(target).toBe(path.join(dir, IDENTITY, ".gitconfig"));
     expect(body).toContain("name = Ada");
     expect(body).toContain("email = ada@example.com");
     expect(body).toContain("defaultBranch = main");
     expect(body).toContain("ff = only");
-    expect(body).toContain(`directory = ${path.join(dir, "user-user-1")}`);
+    expect(body).toContain(`directory = ${path.join(dir, IDENTITY)}`);
   });
 
   it("leaves a config that already matches alone", async () => {
