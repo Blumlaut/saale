@@ -45,6 +45,8 @@ const mocks = vi.hoisted(() => {
     runInWorkspace: vi.fn(),
     getPooled: vi.fn(),
     removePooled: vi.fn(),
+    setProvisioning: vi.fn(),
+    clearProvisioning: vi.fn(),
   };
 });
 
@@ -73,6 +75,11 @@ vi.mock("@/lib/coder/git", () => ({
   runGit: (...args: unknown[]) => mocks.runGit(...args),
   runInWorkspace: (...args: unknown[]) => mocks.runInWorkspace(...args),
   shellQuote: (value: string) => `'${value}'`,
+}));
+
+vi.mock("@/lib/coder/provisioning", () => ({
+  setProvisioningStep: (...args: unknown[]) => mocks.setProvisioning(...args),
+  clearProvisioning: (...args: unknown[]) => mocks.clearProvisioning(...args),
 }));
 
 vi.mock("@/lib/pi/agent-pool", () => ({
@@ -138,6 +145,8 @@ beforeEach(async () => {
   mocks.runInWorkspace.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
   mocks.getPooled.mockReturnValue(undefined);
   mocks.removePooled.mockResolvedValue(undefined);
+  mocks.setProvisioning.mockResolvedValue(undefined);
+  mocks.clearProvisioning.mockResolvedValue(undefined);
 });
 
 afterEach(async () => {
@@ -480,5 +489,59 @@ describe("ensureWorktree: what the project hands over", () => {
     await ensureWorktree(USER, "chat-1");
 
     expect(mocks.runInWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * What the chat is told while its workspace is built.
+ *
+ * The agent is silent until the end of this, so the steps are the only thing
+ * standing between a user and a chat that looks broken. They have to be
+ * recorded as the work happens and dropped when it is over. however it ends.
+ */
+describe("ensureWorktree: the provisioning record", () => {
+  it("says it is making the worktree, and stops saying so afterwards", async () => {
+    await ensureWorktree(USER, "chat-build");
+
+    expect(mocks.setProvisioning.mock.calls).toEqual([["chat-build", "worktree"]]);
+    expect(mocks.clearProvisioning).toHaveBeenCalledWith("chat-build");
+  });
+
+  it("moves on to the setup script when the project has one", async () => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, setupScript: "npm ci" });
+
+    await ensureWorktree(USER, "chat-install");
+
+    expect(mocks.setProvisioning.mock.calls).toEqual([
+      ["chat-install", "worktree"],
+      ["chat-install", "setup"],
+    ]);
+    expect(mocks.clearProvisioning).toHaveBeenCalledWith("chat-install");
+  });
+
+  it("records nothing for a checkout that is already there", async () => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, setupScript: "npm ci" });
+    mocks.findWorktree.mockResolvedValue({
+      id: "wt-1",
+      projectId: PROJECT.id,
+      sessionId: "chat-1",
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      baseSha: "sha-base",
+    });
+    await fs.mkdir(worktreeDir("chat-1"), { recursive: true });
+
+    await ensureWorktree(USER, "chat-1");
+
+    expect(mocks.setProvisioning).not.toHaveBeenCalled();
+  });
+
+  it("drops the record when the build fails, so nothing is left claiming work", async () => {
+    mocks.addWorktree.mockRejectedValue(new Error("worktree add failed"));
+
+    await expect(ensureWorktree(USER, "chat-broken")).rejects.toThrow("worktree add failed");
+
+    expect(mocks.setProvisioning).toHaveBeenCalledWith("chat-broken", "worktree");
+    expect(mocks.clearProvisioning).toHaveBeenCalledWith("chat-broken");
   });
 });

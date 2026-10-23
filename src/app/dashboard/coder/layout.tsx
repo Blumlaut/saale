@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { ProjectChats } from "@/components/coder/project-chats";
 import { ProjectList } from "@/components/coder/project-list";
+import { ProvisioningNotice } from "@/components/coder/provisioning-notice";
 import { WorktreePanel } from "@/components/coder/worktree-panel";
 import { useSessionState } from "@/components/coder/use-coder-data";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
@@ -17,6 +18,9 @@ import { createChatSession } from "@/lib/chat-session";
 
 /** How often an open coder chat re-reads its worktree while visible. */
 const WORKTREE_POLL_MS = 20_000;
+
+/** How often it re-reads while the workspace is still being built. */
+const PROVISIONING_POLL_MS = 2_000;
 
 /** The worktree panel's width, remembered per browser. */
 const WORKTREE_PANEL = {
@@ -45,16 +49,21 @@ export default function CoderLayout() {
 
   useEffect(() => {
     if (!sessionId) return;
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") reload();
-    }, WORKTREE_POLL_MS);
+    // Building a workspace is a minute-long event, not a background change: the
+    // panel's empty state has to stop claiming there is nothing there.
+    const interval = setInterval(
+      () => {
+        if (document.visibilityState === "visible") reload();
+      },
+      state?.provisioning ? PROVISIONING_POLL_MS : WORKTREE_POLL_MS,
+    );
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [sessionId, reload]);
+  }, [sessionId, reload, state?.provisioning]);
 
   const newChat = useCallback(() => {
     if (!projectId) return;
@@ -104,6 +113,9 @@ export default function CoderLayout() {
             sessionId={sessionId}
             onNewChat={newChat}
             hideTemporaryToggle
+            renderWaitingNotice={(waiting) => (
+              <ProvisioningNotice sessionId={sessionId} waiting={waiting} />
+            )}
             mobileListTrigger={
               <Sheet>
                 <SheetTrigger aria-label="Open chat list">
