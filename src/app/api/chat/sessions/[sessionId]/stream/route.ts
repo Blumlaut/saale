@@ -129,16 +129,19 @@ export async function GET(
   // Queued messages (submitted while a generation ran) are not part of the
   // conversation: they are delivered by the drain below, not by the normal
   // prompt path, so they must not be mistaken for the last user message.
-  const messages = await prisma.chatMessage.findMany({
+  //
+  // The decision only needs the LAST message: one indexed lookup (the
+  // [sessionId, createdAt] index, scanned backwards) instead of loading
+  // every message the session has ever had, on every SSE connection.
+  const lastMessage = await prisma.chatMessage.findFirst({
     where: { sessionId, queuedAt: null },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     include: {
       attachments: {
         select: { storagePath: true, mimeType: true },
       },
     },
   });
-  const lastMessage = messages[messages.length - 1];
 
   const [isGenerating, pendingPromptMessageId, bufferedEvents, queuedCount, queueHeld] =
     await Promise.all([

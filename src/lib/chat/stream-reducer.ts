@@ -60,8 +60,19 @@ export interface StreamState {
 
 /**
  * The message a turn's stream events belong to, streaming or already saved.
+ *
+ * Fast path: the bubble the turn is streaming into is the most recently
+ * appended message, and token/thinking events (the hot path) target exactly
+ * that one, so the tail check lands in O(1). Anything else falls back to the
+ * scan. The tail can only match the same message the scan would return first:
+ * a turnId is unique per bubble, and a folded (saved) row is the only
+ * survivor for its turn.
  */
 function findTurnMessage(messages: Message[], turnId: string): Message | undefined {
+  const tail = messages[messages.length - 1];
+  if (tail && (tail.turnId === turnId || tail.id === `streaming-${turnId}`)) {
+    return tail;
+  }
   return (
     messages.find((m) => m.turnId === turnId) ??
     messages.find((m) => m.id === `streaming-${turnId}`)

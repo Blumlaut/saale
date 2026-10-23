@@ -14,20 +14,47 @@ function addressesToString(addrs: MessageAddressObject[] | undefined): string {
 }
 
 /**
- * Upsert a single message from its IMAP envelope (headers only).
+ * Postgres caps bind parameters at 65535; keep `in` lists comfortably under
+ * that so a very large folder cannot blow up a single query.
+ */
+const UIDS_PER_QUERY = 5000;
+/** createMany binds every column of every row (10 here); keep batches well under the cap. */
+const CREATE_BATCH_SIZE = 2000;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
+/** An IMAP envelope, parsed once, ready to be written. */
+interface ParsedEmailRow {
+  uid: string;
+  data: {
+    uid: string;
+    fromName: string | null;
+    fromEmail: string;
+    to: string;
+    subject: string;
+    /** imapflow hands this over as `Date | string`; Postgres accepts both. */
+    date: Date | string;
+    folder: string;
+    isRead: boolean;
+    isStarred: boolean;
+  };
+}
+
+/**
+ * Parse an IMAP envelope into its DB row (headers only).
  *
  * Body fields are left alone: a message already in the DB keeps the body that
  * was fetched when it was last opened. Nulling them here would blank out
  * today's mail on every run, because `SINCE` matches by day and re-fetches the
  * whole of today each time.
- *
- * Returns whether the row was new, which is what the sync reports to the user.
  */
-async function syncMessageFromEnvelope(
-  msg: FetchMessageObject,
-  accountId: string,
-  folder: string,
-): Promise<"created" | "updated"> {
+function parseEmailRow(msg: FetchMessageObject, folder: string): ParsedEmailRow {
   const uid = String(msg.uid ?? "");
   const envelope = msg.envelope as MessageEnvelopeObject | undefined;
   const flags = msg.flags ?? new Set<string>();
@@ -40,40 +67,110 @@ async function syncMessageFromEnvelope(
   const subject = envelope?.subject || "(no subject)";
   const date = envelope?.date || new Date();
 
-  const existing = await prisma.emailMessage.findUnique({
-    where: {
-      accountId_folder_uid: {
-        accountId,
-        folder,
-        uid,
-      },
-    },
-  });
-
-  const updateData = {
+  return {
     uid,
-    fromName: sanitizePostgresString(fromName),
-    fromEmail: sanitizePostgresString(fromEmail) ?? "",
-    to: sanitizePostgresString(toList) ?? "",
-    subject: sanitizePostgresString(subject) ?? "(no subject)",
-    date,
-    folder,
-    isRead: flagsArray.includes("\\Seen"),
-    isStarred: flagsArray.includes("\\Flagged"),
+    data: {
+      uid,
+      fromName: sanitizePostgresString(fromName),
+      fromEmail: sanitizePostgresString(fromEmail) ?? "",
+      to: sanitizePostgresString(toList) ?? "",
+      subject: sanitizePostgresString(subject) ?? "(no subject)",
+      date,
+      folder,
+      isRead: flagsArray.includes("\\Seen"),
+      isStarred: flagsArray.includes("\\Flagged"),
+    },
   };
+}
 
-  if (existing) {
-    await prisma.emailMessage.update({
-      where: { id: existing.id },
-      data: updateData,
+/**
+ * Upsert a batch of envelopes in as few round trips as possible: one
+ * existence lookup per chunk of UIDs, one `createMany` for the new rows, one
+ * update per existing row. The old code made a findUnique plus a write per
+ * message, which dominates the run on a busy INBOX.
+ *
+ * A single failing row is reported against its UID and does not stop the
+ * batch, matching the old per-message behaviour.
+ */
+async function upsertEmailMessages(
+  messages: FetchMessageObject[],
+  accountId: string,
+  folder: string,
+): Promise<{ created: number; updated: number; errors: string[] }> {
+  const parsed = messages.map((msg) => parseEmailRow(msg, folder));
+  const errors: string[] = [];
+
+  // Which UIDs already have a row in this account + folder.
+  const byUid = new Map<string, string>();
+  for (const uidChunk of chunk(
+    parsed.map((p) => p.uid),
+    UIDS_PER_QUERY,
+  )) {
+    const existing = await prisma.emailMessage.findMany({
+      where: { accountId, folder, uid: { in: uidChunk } },
+      select: { uid: true, id: true },
     });
-    return "updated";
+    for (const row of existing) byUid.set(row.uid, row.id);
   }
 
-  await prisma.emailMessage.create({
-    data: { ...updateData, accountId },
-  });
-  return "created";
+  const toCreate = parsed.filter((p) => !byUid.has(p.uid));
+  const toUpdate = parsed.filter((p) => byUid.has(p.uid));
+
+  let created = 0;
+  for (const batch of chunk(toCreate, CREATE_BATCH_SIZE)) {
+    const rows = batch.map((p) => ({ ...p.data, accountId }));
+    try {
+      await prisma.emailMessage.createMany({ data: rows });
+      created += rows.length;
+    } catch (err) {
+      // A single bad row would otherwise discard the whole batch; retry
+      // message by message so one error does not block the rest.
+      const batchErr = err as Error;
+      console.error(
+        `[email-sync] Bulk create in ${folder} failed, retrying per message:`,
+        batchErr.message,
+        batchErr.cause,
+      );
+      for (const row of rows) {
+        try {
+          await prisma.emailMessage.create({ data: row });
+          created++;
+        } catch (rowErr) {
+          const msgErr = rowErr as Error;
+          console.error(
+            `[email-sync] Failed to create message UID ${row.uid} in ${folder}:`,
+            msgErr.message,
+            msgErr.cause,
+          );
+          errors.push(
+            `Failed to process message UID ${row.uid}: ${msgErr.message}${msgErr.cause ? ` (${String(msgErr.cause)})` : ""}`,
+          );
+        }
+      }
+    }
+  }
+
+  let updated = 0;
+  for (const p of toUpdate) {
+    const id = byUid.get(p.uid);
+    if (!id) continue;
+    try {
+      await prisma.emailMessage.update({ where: { id }, data: p.data });
+      updated++;
+    } catch (err) {
+      const msgErr = err as Error;
+      console.error(
+        `[email-sync] Failed to update message UID ${p.uid} in ${folder}:`,
+        msgErr.message,
+        msgErr.cause,
+      );
+      errors.push(
+        `Failed to process message UID ${p.uid}: ${msgErr.message}${msgErr.cause ? ` (${String(msgErr.cause)})` : ""}`,
+      );
+    }
+  }
+
+  return { created, updated, errors };
 }
 
 /**
@@ -162,28 +259,18 @@ export async function syncEmailAccount(accountId: string): Promise<{
           flags: true,
         };
 
-        // Process messages from the async iterator
+        // Collect the folder's envelopes, then upsert them as a batch: the
+        // old per-message loop made one existence check plus one write per
+        // message, which dominated the run on a busy INBOX.
+        const envelopes: FetchMessageObject[] = [];
         for await (const msg of mailbox.fetch(uids, fetchOpts)) {
-          try {
-            const outcome = await syncMessageFromEnvelope(msg, accountId, folder);
-
-            if (outcome === "created") {
-              newMessages++;
-            } else {
-              updatedMessages++;
-            }
-          } catch (err) {
-            const msgErr = err as Error;
-            console.error(
-              `[email-sync] Failed to process message UID ${msg.uid} in ${folder}:`,
-              msgErr.message,
-              msgErr.cause,
-            );
-            errors.push(
-              `Failed to process message UID ${msg.uid}: ${msgErr.message}${msgErr.cause ? ` (${String(msgErr.cause)})` : ""}`,
-            );
-          }
+          envelopes.push(msg);
         }
+
+        const outcome = await upsertEmailMessages(envelopes, accountId, folder);
+        newMessages += outcome.created;
+        updatedMessages += outcome.updated;
+        errors.push(...outcome.errors);
       } catch (err) {
         const folderErr = err as Error & {
           responseStatus?: string;
