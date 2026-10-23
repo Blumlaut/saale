@@ -16,8 +16,17 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { isNotFoundError } from "@/lib/files/errors";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
-import { addWorktree, GitError, headSha, pruneWorktrees, runGit } from "./git";
-import { resolveCoderPath, worktreePath } from "./paths";
+import {
+  addWorktree,
+  addWorktreeOnBranch,
+  GitError,
+  headSha,
+  listWorktrees,
+  pruneWorktrees,
+  removeWorktree,
+  runGit,
+} from "./git";
+import { coderPathRelativeTo, resolveCoderPath, worktreePath } from "./paths";
 import { coderBranchName, coderChatSlug } from "./slug";
 
 /** The branch and directory a chat runs in. */
@@ -40,9 +49,6 @@ const BRANCH_EXISTS_PATTERN = /branch named .* already exists|already exists/i;
 
 /** A concurrent git process holds the index or a ref. */
 const LOCK_ERROR_PATTERN = /index\.lock|cannot lock ref/i;
-
-/** Longest a worktree add may take. a big repo checks out a lot of files. */
-const WORKTREE_ADD_TIMEOUT_SECONDS = 120;
 
 /**
  * One promise chain per project, so worktree bookkeeping in one repo never
@@ -89,6 +95,33 @@ async function directoryExists(userId: string, relative: string): Promise<boolea
 }
 
 /**
+ * Drop a checkout that holds `branch` at some other path.
+ *
+ * git refuses to check out one branch twice, and a branch outlives the row that
+ * named it: a chat whose directory moved, or one deleted by hand, leaves the
+ * old checkout registered. The row decides where the checkout belongs, so the
+ * other one goes first. No `--force`: a dirty checkout still stops here.
+ */
+async function releaseBranch(
+  userId: string,
+  options: { repoDir: string; dir: string; branch: string },
+): Promise<void> {
+  const wanted = resolveCoderPath(userId, options.dir);
+  const entries = await listWorktrees(userId, options.repoDir);
+  const stale = entries.find((entry) => entry.branch === options.branch && entry.path !== wanted);
+  if (!stale) return;
+
+  const relative = coderPathRelativeTo(userId, stale.path);
+  if (!relative) {
+    throw new Error(
+      `Branch ${options.branch} is checked out outside the workspace at ${stale.path}`,
+    );
+  }
+  console.warn(`[coder] moving ${options.branch} out of ${relative}`);
+  await removeWorktree(userId, { repoDir: options.repoDir, dir: relative });
+}
+
+/**
  * Add a worktree on `branch`, creating the branch when it does not exist.
  *
  * A recreated worktree's branch outlives its checkout, so `-b` is refused and
@@ -102,11 +135,14 @@ async function addWorktreeForBranch(
     await addWorktree(userId, options);
   } catch (err) {
     if (!(err instanceof GitError) || !BRANCH_EXISTS_PATTERN.test(err.message)) throw err;
-    await runGit(userId, {
-      cwd: options.repoDir,
-      args: ["worktree", "add", options.dir, options.branch],
-      timeoutSeconds: WORKTREE_ADD_TIMEOUT_SECONDS,
-    });
+    await releaseBranch(userId, options);
+    await addWorktreeOnBranch(userId, options);
+  }
+
+  // The container is started in this directory, so a chat whose checkout is not
+  // here would come up with a shell that cannot start.
+  if (!(await directoryExists(userId, options.dir))) {
+    throw new Error(`Worktree ${options.dir} was not created`);
   }
 }
 

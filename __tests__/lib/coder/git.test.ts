@@ -23,7 +23,15 @@ vi.mock("@/lib/sandbox/env", () => ({
   resolveSandboxEnv: async () => ({ GH_TOKEN: "secret-token" }),
 }));
 
-import { GitError, cloneRepo, runGit, shellQuote } from "@/lib/coder/git";
+import {
+  GitError,
+  addWorktree,
+  addWorktreeOnBranch,
+  cloneRepo,
+  removeWorktree,
+  runGit,
+  shellQuote,
+} from "@/lib/coder/git";
 
 const USER = "user-1";
 
@@ -84,6 +92,45 @@ describe("runGit", () => {
 
     expect(error).toBeInstanceOf(GitError);
     expect((error as GitError).result.stderr).toContain("working tree is dirty");
+  });
+});
+
+describe("worktrees", () => {
+  const root = "/workspaces/user-user-1";
+
+  it("adds a new branch at an absolute path inside the workspace", async () => {
+    await addWorktree(USER, {
+      repoDir: "projects/saale",
+      dir: "worktrees/saale/c-1",
+      branch: "wt/c-1",
+      base: "main",
+    });
+
+    const options = execOptions[0] as { command: string; cwd: string };
+    // git resolves the path against its cwd, which is the repo, so a relative
+    // path would check out inside it.
+    expect(options.command).toBe(
+      `git --no-pager worktree add -b wt/c-1 ${root}/worktrees/saale/c-1 main`,
+    );
+    expect(options.cwd).toBe(`${root}/projects/saale`);
+  });
+
+  it("checks out an existing branch at the same absolute path", async () => {
+    await addWorktreeOnBranch(USER, {
+      repoDir: "projects/saale",
+      dir: "worktrees/saale/c-1",
+      branch: "wt/c-1",
+    });
+
+    const options = execOptions[0] as { command: string };
+    expect(options.command).toBe(`git --no-pager worktree add ${root}/worktrees/saale/c-1 wt/c-1`);
+  });
+
+  it("removes the checkout at its absolute path", async () => {
+    await removeWorktree(USER, { repoDir: "projects/saale", dir: "worktrees/saale/c-1" });
+
+    const options = execOptions[0] as { command: string };
+    expect(options.command).toBe(`git --no-pager worktree remove ${root}/worktrees/saale/c-1`);
   });
 });
 
