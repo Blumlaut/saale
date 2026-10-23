@@ -243,12 +243,6 @@ export function createSessionEventTracker(
   };
 
   function handleEvent(event: AgentSessionEvent): void {
-    log(
-      "event",
-      event.type,
-      "message" in event && event.message ? { role: event.message.role } : undefined,
-    );
-
     switch (event.type) {
       // ── New run: reset the event buffer so stale events from previous
       //    runs are never replayed. The counter survives (see clearBuffer).
