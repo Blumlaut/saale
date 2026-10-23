@@ -78,7 +78,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
     await sendTelegramMessage(
       encryptedToken,
       telegramChatId,
-      "⚠️ That conversation no longer exists. Send the message again to start a new one.",
+      "⚠️ That conversation no longer exists. Send /new to start one.",
     ).catch((err) => {
       console.error("Failed to report a missing chat to Telegram:", err);
     });

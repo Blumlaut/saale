@@ -2,21 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockGetLinkByUserId, mockFindOutboundSource, mockChatSession, mockChatMessage, mockTx } =
-  vi.hoisted(() => ({
-    mockGetLinkByUserId: vi.fn(),
-    mockFindOutboundSource: vi.fn(),
-    mockChatSession: { findFirst: vi.fn(), create: vi.fn() },
-    mockChatMessage: { findMany: vi.fn() },
-    mockTx: vi.fn(),
-  }));
+const { mockGetLinkByUserId, mockFindOutboundSource, mockChatSession } = vi.hoisted(() => ({
+  mockGetLinkByUserId: vi.fn(),
+  mockFindOutboundSource: vi.fn(),
+  mockChatSession: { findFirst: vi.fn() },
+}));
 
 vi.mock("@/lib/db", () => ({
-  prisma: {
-    chatSession: mockChatSession,
-    chatMessage: mockChatMessage,
-    $transaction: (...args: unknown[]) => mockTx(...args),
-  },
+  prisma: { chatSession: mockChatSession },
 }));
 
 vi.mock("@/lib/telegram/links", () => ({
@@ -27,7 +20,7 @@ vi.mock("@/lib/telegram/outbound-messages", () => ({
   findOutboundSource: (...args: unknown[]) => mockFindOutboundSource(...args),
 }));
 
-import { resolveTelegramTarget } from "@/lib/telegram/routing";
+import { resolveExistingTelegramTarget, resolveTelegramTarget } from "@/lib/telegram/routing";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -40,27 +33,16 @@ const link = {
   telegramUserId: chatId,
   telegramChatId: chatId,
   displayName: "Jane",
-  sessionId: "sess-home",
-  lastOutboundSessionId: null as string | null,
+  activeSessionId: null as string | null,
   createdAt: new Date("2026-02-01T00:00:00.000Z"),
   updatedAt: new Date("2026-02-01T00:00:00.000Z"),
 };
-
-/** The home thread looks alive: it has a fresh message. */
-const freshMessage = [{ createdAt: new Date() }];
 
 beforeEach(() => {
   vi.resetAllMocks();
   mockGetLinkByUserId.mockResolvedValue(link);
   mockFindOutboundSource.mockResolvedValue(null);
   mockChatSession.findFirst.mockResolvedValue({ id: "sess-x" });
-  mockChatMessage.findMany.mockResolvedValue(freshMessage);
-  mockTx.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
-    fn({
-      chatSession: { create: mockChatSession.create },
-      telegramLink: { update: vi.fn() },
-    }),
-  );
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -83,38 +65,17 @@ describe("resolveTelegramTarget", () => {
     });
   });
 
-  it("ignores a reply to a message it did not send and uses the last chat that spoke", async () => {
-    mockGetLinkByUserId.mockResolvedValue({ ...link, lastOutboundSessionId: "sess-last" });
-
-    const target = await resolveTelegramTarget({
-      userId,
-      telegramChatId: chatId,
-      replyToMessageId: BigInt(1),
-    });
-
-    expect(target).toEqual({ sessionId: "sess-last", via: "last_sent" });
-  });
-
-  it("falls back to the last chat that sent a message when nothing is quoted", async () => {
-    mockGetLinkByUserId.mockResolvedValue({ ...link, lastOutboundSessionId: "sess-last" });
+  it("continues the chat this conversation is in when nothing is quoted", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
 
     const target = await resolveTelegramTarget({ userId, telegramChatId: chatId });
 
-    expect(target).toEqual({ sessionId: "sess-last", via: "last_sent" });
+    expect(target).toEqual({ sessionId: "sess-active", via: "active" });
   });
 
-  it("falls through to the home thread when the recorded chat was deleted", async () => {
-    mockGetLinkByUserId.mockResolvedValue({ ...link, lastOutboundSessionId: "sess-gone" });
-    mockChatSession.findFirst.mockResolvedValue(null);
-
-    const target = await resolveTelegramTarget({ userId, telegramChatId: chatId });
-
-    expect(target).toEqual({ sessionId: "sess-home", via: "home" });
-  });
-
-  it("falls through to the home thread when the replied-to chat was deleted", async () => {
-    mockFindOutboundSource.mockResolvedValue("sess-gone");
-    mockChatSession.findFirst.mockResolvedValue(null);
+  it("prefers the quoted message over the active chat", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
+    mockFindOutboundSource.mockResolvedValue("sess-quoted");
 
     const target = await resolveTelegramTarget({
       userId,
@@ -122,28 +83,40 @@ describe("resolveTelegramTarget", () => {
       replyToMessageId: BigInt(42),
     });
 
-    expect(target).toEqual({ sessionId: "sess-home", via: "home" });
+    expect(target).toEqual({ sessionId: "sess-quoted", via: "reply" });
   });
 
-  it("uses the link's home thread when it is still fresh", async () => {
+  it("returns null when the message belongs to no chat", async () => {
     const target = await resolveTelegramTarget({ userId, telegramChatId: chatId });
 
-    expect(target).toEqual({ sessionId: "sess-home", via: "home" });
-    expect(mockChatSession.create).not.toHaveBeenCalled();
+    // There is no chat of the bot's own to invent. the caller says so.
+    expect(target).toBeNull();
+    expect(mockChatSession.findFirst).not.toHaveBeenCalled();
   });
 
-  it("starts a new home thread when the old one expired", async () => {
-    mockChatMessage.findMany.mockResolvedValue([
-      { createdAt: new Date(Date.now() - 7 * 60 * 60 * 1000) },
-    ]);
+  it("returns null when the recorded chat was deleted", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-gone" });
+    mockChatSession.findFirst.mockResolvedValue(null);
 
     const target = await resolveTelegramTarget({ userId, telegramChatId: chatId });
 
-    expect(target.via).toBe("home");
-    expect(target.sessionId).not.toBe("sess-home");
-    expect(mockChatSession.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ userId, title: "Telegram Chat", temporary: false }),
+    expect(target).toBeNull();
+  });
+
+  it("ignores a reply whose chat was deleted, and falls back to the active chat", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
+    mockFindOutboundSource.mockResolvedValue("sess-gone");
+    mockChatSession.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "sess-active" ? { id: "sess-active" } : null,
+    );
+
+    const target = await resolveTelegramTarget({
+      userId,
+      telegramChatId: chatId,
+      replyToMessageId: BigInt(42),
     });
+
+    expect(target).toEqual({ sessionId: "sess-active", via: "active" });
   });
 
   it("refuses a chat that is not this link's", async () => {
@@ -158,5 +131,21 @@ describe("resolveTelegramTarget", () => {
     await expect(resolveTelegramTarget({ userId, telegramChatId: chatId })).rejects.toThrow(
       "Telegram link not found",
     );
+  });
+});
+
+describe("resolveExistingTelegramTarget", () => {
+  it("returns the chat a command acts on without creating one", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
+
+    const sessionId = await resolveExistingTelegramTarget({ userId, telegramChatId: chatId });
+
+    expect(sessionId).toBe("sess-active");
+  });
+
+  it("returns null when there is no conversation yet", async () => {
+    const sessionId = await resolveExistingTelegramTarget({ userId, telegramChatId: chatId });
+
+    expect(sessionId).toBeNull();
   });
 });

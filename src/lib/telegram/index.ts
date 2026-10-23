@@ -36,7 +36,7 @@ export {
   getLinkByTelegramUserId,
   unlinkUser,
   updateLinkDisplayName,
-  setLinkSession,
+  setActiveTelegramSession,
   linkTelegramFromOidc,
   type TelegramLinkInfo,
   type ConsumeLinkCodeFailure,
@@ -45,8 +45,4 @@ export {
   type LinkTelegramResult,
 } from "./links";
 
-export {
-  processTelegramMessage,
-  compactTelegramSession,
-  ensureTelegramAgentDefinition,
-} from "./processor";
+export { processTelegramMessage, NO_CHAT_MESSAGE } from "./processor";

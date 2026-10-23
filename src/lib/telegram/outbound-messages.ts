@@ -14,6 +14,9 @@ import { TELEGRAM_BOT_ID } from "./bot";
  * Rows are kept for `OUTBOUND_TTL_DAYS` and pruned on the next delivery for the
  * same user. a reply arrives within days, so the table stays small without a
  * scheduler of its own.
+ *
+ * A delivery also points the link at the chat that produced it, so a message
+ * that answers nothing continues that conversation.
  */
 
 /** How long a sent message stays resolvable as a reply target. */
@@ -58,7 +61,7 @@ export async function recordOutboundMessages(params: {
       ? [
           prisma.telegramLink.updateMany({
             where: { userId },
-            data: { lastOutboundSessionId: sourceSessionId },
+            data: { activeSessionId: sourceSessionId },
           }),
         ]
       : []),

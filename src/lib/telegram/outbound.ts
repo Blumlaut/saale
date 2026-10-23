@@ -47,7 +47,7 @@ export async function recordOutboundMessage(params: {
   if (!content.trim()) return;
 
   const link = await getLinkByUserId(userId);
-  const sessionId = sourceSessionId ?? link?.sessionId ?? null;
+  const sessionId = sourceSessionId ?? link?.activeSessionId ?? null;
   if (!sessionId) return;
 
   // Defence in depth: the caller passes a session it resolved, but a session id

@@ -19,28 +19,11 @@ import { findOutboundSource } from "./outbound-messages";
  */
 
 /** How a target was resolved. `home` is the dedicated Telegram thread. */
-export type TelegramTargetVia = "reply" | "last_sent" | "home";
+export type TelegramTargetVia = "reply" | "active";
 
 export interface TelegramTarget {
   sessionId: string;
   via: TelegramTargetVia;
-}
-
-/** Telegram chats expire after this many ms of inactivity (6 hours) */
-const TELEGRAM_CHAT_EXPIRY_MS = 6 * 60 * 60 * 1000;
-
-/** Whether the session has sat unused past the chat's expiry window. */
-async function isSessionExpired(sessionId: string): Promise<boolean> {
-  const [lastMessage] = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "desc" },
-    take: 1,
-  });
-
-  // No messages at all means the session was created but never used. expired.
-  return (
-    lastMessage == null || lastMessage.createdAt.getTime() + TELEGRAM_CHAT_EXPIRY_MS < Date.now()
-  );
 }
 
 /** A chat the user still owns. */
@@ -52,7 +35,7 @@ async function chatExists(userId: string, sessionId: string): Promise<boolean> {
   return chat !== null;
 }
 
-/** The chat a message should continue, or the home thread when nothing else fits. */
+/** The chat a message continues, or null when it belongs to none. */
 export async function resolveTelegramTarget(params: {
   userId: string;
   telegramChatId: bigint;
@@ -60,7 +43,7 @@ export async function resolveTelegramTarget(params: {
   replyToMessageId?: bigint | null | undefined;
   /** The caller's link, when it already has it. */
   link?: TelegramLinkInfo | null;
-}): Promise<TelegramTarget> {
+}): Promise<TelegramTarget | null> {
   const { userId, telegramChatId, replyToMessageId } = params;
 
   const link = params.link ?? (await getLinkByUserId(userId));
@@ -83,12 +66,12 @@ export async function resolveTelegramTarget(params: {
     }
   }
 
-  const lastSent = link.lastOutboundSessionId;
-  if (lastSent && (await chatExists(userId, lastSent))) {
-    return { sessionId: lastSent, via: "last_sent" };
+  const active = link.activeSessionId;
+  if (active && (await chatExists(userId, active))) {
+    return { sessionId: active, via: "active" };
   }
 
-  return { sessionId: await ensureHomeThread(userId, link), via: "home" };
+  return null;
 }
 
 /**
@@ -120,50 +103,8 @@ export async function resolveExistingTelegramTarget(params: {
     if (source && (await chatExists(userId, source))) return source;
   }
 
-  const lastSent = link.lastOutboundSessionId;
-  if (lastSent && (await chatExists(userId, lastSent))) return lastSent;
-
-  if (link.sessionId && (await chatExists(userId, link.sessionId))) return link.sessionId;
+  const active = link.activeSessionId;
+  if (active && (await chatExists(userId, active))) return active;
 
   return null;
-}
-
-/**
- * Find or create the link's home thread.
- *
- * The link remembers it, because a link is exactly one user and one private
- * chat, so there is no per-chat row to look up. It expires after six hours of
- * inactivity so a stale thread starts clean instead of carrying an unbounded
- * history.
- */
-export async function ensureHomeThread(
-  userId: string,
-  link?: TelegramLinkInfo | null,
-): Promise<string> {
-  const current = link ?? (await getLinkByUserId(userId));
-  if (!current) throw new Error("Telegram link not found");
-
-  if (current.sessionId && !(await isSessionExpired(current.sessionId))) {
-    return current.sessionId;
-  }
-
-  const sessionId = crypto.randomUUID();
-
-  await prisma.$transaction(async (tx) => {
-    await tx.chatSession.create({
-      data: {
-        id: sessionId,
-        userId,
-        title: "Telegram Chat",
-        temporary: false,
-      },
-    });
-
-    await tx.telegramLink.update({
-      where: { userId },
-      data: { sessionId },
-    });
-  });
-
-  return sessionId;
 }

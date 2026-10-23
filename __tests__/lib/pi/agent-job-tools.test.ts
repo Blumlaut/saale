@@ -134,16 +134,6 @@ describe("createAgentJobTools", () => {
     const tools = createAgentJobTools(userId);
     const tool = tools.find((t) => t.name === "agent_job_create")!;
 
-    it("throws when using the reserved Telegram Assistant name", async () => {
-      await expect(
-        callExecute(tool.execute, {
-          name: "Telegram Assistant",
-          prompt: "Do a thing",
-        }),
-      ).rejects.toThrow('"Telegram Assistant" is managed by Saale');
-      expect(mockAgentDefinition.create).not.toHaveBeenCalled();
-    });
-
     it("creates definition with output channel fields", async () => {
       const createdDef = {
         id: "def-new",
@@ -427,23 +417,7 @@ describe("createAgentJobTools", () => {
           id: "def-tg",
           outputChannel: "telegram",
         }),
-      ).rejects.toThrow('"Telegram Assistant" is managed by Saale');
-      expect(mockAgentDefinition.update).not.toHaveBeenCalled();
-    });
-
-    it("throws when renaming to the reserved Telegram Assistant name", async () => {
-      mockAgentDefinition.findFirst.mockResolvedValue({
-        id: "def-1",
-        userId,
-        systemManaged: false,
-      });
-
-      await expect(
-        callExecute(tool.execute, {
-          id: "def-1",
-          name: "Telegram Assistant",
-        }),
-      ).rejects.toThrow('"Telegram Assistant" is managed by Saale');
+      ).rejects.toThrow("is managed by Saale");
       expect(mockAgentDefinition.update).not.toHaveBeenCalled();
     });
 
@@ -553,7 +527,7 @@ describe("createAgentJobTools", () => {
       });
 
       await expect(callExecute(tool.execute, { id: "def-tg" })).rejects.toThrow(
-        '"Telegram Assistant" is managed by Saale',
+        "is managed by Saale",
       );
       expect(mockAgentDefinition.delete).not.toHaveBeenCalled();
     });
@@ -729,7 +703,7 @@ describe("createAgentJobTools", () => {
       });
 
       await expect(callExecute(tool.execute, { id: "def-tg" })).rejects.toThrow(
-        '"Telegram Assistant" is managed by Saale',
+        "is managed by Saale",
       );
       expect(executeAgentRun).not.toHaveBeenCalled();
     });
