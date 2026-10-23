@@ -341,7 +341,12 @@ export async function removeWorktree(
 ): Promise<void> {
   await runGit(userId, {
     cwd: options.repoDir,
-    args: ["worktree", "remove", ...(options.force ? ["--force"] : []), checkoutPath(userId, options.dir)],
+    args: [
+      "worktree",
+      "remove",
+      ...(options.force ? ["--force"] : []),
+      checkoutPath(userId, options.dir),
+    ],
     timeoutSeconds: WORKTREE_TIMEOUT_SECONDS,
   });
 }
