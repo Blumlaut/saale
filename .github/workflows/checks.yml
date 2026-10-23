@@ -7,6 +7,11 @@ name: checks
 # cannot be honest per-file (a changed signature breaks callers elsewhere), so
 # it runs project-wide with a build-info cache, which makes a re-run cheap.
 #
+# Installing is the expensive part of a cold run, so it is cached twice:
+# `node_modules` itself (keyed on the lockfile) and npm's download cache. A run
+# whose lockfile is unchanged skips `npm ci` entirely and only regenerates the
+# Prisma client, and a diff with nothing to check skips Node altogether.
+#
 # `npm run check` stays the thing to run before a big change; this is the floor
 # that keeps a one-file fix from merging untested.
 
@@ -27,21 +32,23 @@ env:
   # prisma.config.mjs. Nothing connects, so any parseable URL will do.
   DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
   NEXT_TELEMETRY_DISABLED: "1"
+  # Nothing here reads an audit report or cares who needs funding, and a
+  # restored download cache is good enough without revalidating it.
+  NPM_CONFIG_AUDIT: "false"
+  NPM_CONFIG_FUND: "false"
+  NPM_CONFIG_PREFER_OFFLINE: "true"
 
 jobs:
   changed:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The merge base with the target branch is the diff this job is about.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 26
-          cache: npm
-
+      # Needs nothing but git, and runs before Node so a diff with no code,
+      # markdown or tests never pays for a toolchain.
       - name: Collect the files this PR touches
         id: files
         shell: bash
@@ -56,6 +63,7 @@ jobs:
             range="HEAD~1...HEAD"
           fi
 
+          any=false
           list() {
             local kind="$1" pattern="$2"
             local path="$RUNNER_TEMP/$kind.txt"
@@ -64,6 +72,7 @@ jobs:
               | grep -zE "$pattern" > "$path" || true
             if [ -s "$path" ]; then
               echo "$kind=true" >> "$GITHUB_OUTPUT"
+              any=true
               echo "($kind)" && tr '\0' '\n' < "$path"
             else
               echo "$kind=false" >> "$GITHUB_OUTPUT"
@@ -78,8 +87,38 @@ jobs:
           list code   '\.(ts|tsx|mts|cts)$'
           list tests  '\.(test|spec)\.(ts|tsx)$'
 
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        if: steps.files.outputs.any == 'true'
+        with:
+          node-version: 26
+          # npm's download cache: turns a cold install into an offline one.
+          cache: npm
+
+      # The install itself. Restoring the tree beats re-extracting ~900 MB and
+      # re-running every postinstall (native builds, Prisma engines), and one
+      # cache entry per lockfile is small enough to keep. No `restore-keys`: a
+      # tree that does not match the lockfile is worth less than a fresh
+      # install, and `npm ci` wipes the directory anyway.
+      - name: Restore node_modules
+        id: modules
+        if: steps.files.outputs.any == 'true'
+        uses: actions/cache@v6
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node26-${{ hashFiles('package-lock.json') }}
+
       - name: Install
+        if: steps.files.outputs.any == 'true' && steps.modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      # A restored tree carries the client that was generated when it was
+      # cached, which may be older than the schema in this checkout. Cheap, so
+      # it runs either way rather than relying on `prepare` having fired.
+      - name: Generate the Prisma client
+        if: steps.files.outputs.any == 'true'
+        run: npx prisma generate
 
       - name: Lint the touched files
         if: steps.files.outputs.lint == 'true'
@@ -94,7 +133,7 @@ jobs:
       # and tsc only re-checks what the diff can affect.
       - name: Restore the typecheck cache
         if: steps.files.outputs.code == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: "**/*.tsbuildinfo"
           key: tsc-${{ runner.os }}-${{ github.base_ref || 'main' }}-${{ github.sha }}
@@ -111,9 +150,5 @@ jobs:
         run: xargs -0 -a "$RUNNER_TEMP/tests.txt" npx vitest run --reporter=dot
 
       - name: Nothing to check
-        if: |
-          steps.files.outputs.lint == 'false' &&
-          steps.files.outputs.format == 'false' &&
-          steps.files.outputs.code == 'false' &&
-          steps.files.outputs.tests == 'false'
+        if: steps.files.outputs.any == 'false'
         run: echo "No code, markdown or test files in this diff."
