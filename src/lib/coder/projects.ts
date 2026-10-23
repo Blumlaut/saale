@@ -49,8 +49,6 @@ export const DEFAULT_GITIGNORE = [
 export interface CreateProjectInput {
   name: string;
   cloneUrl?: string | null | undefined;
-  /** Clone through `gh`, which reads the user's `GH_TOKEN`. */
-  authFromEnv?: boolean | undefined;
 }
 
 /** A project operation the route can report as-is. `status` is the HTTP code. */
@@ -167,14 +165,10 @@ function isUniqueViolation(err: unknown): boolean {
  */
 async function prepareRepo(
   userId: string,
-  options: { dir: string; cloneUrl: string | null; authFromEnv: boolean },
+  options: { dir: string; cloneUrl: string | null },
 ): Promise<string> {
   if (options.cloneUrl) {
-    await cloneRepo(userId, {
-      dir: options.dir,
-      url: options.cloneUrl,
-      authFromEnv: options.authFromEnv,
-    });
+    await cloneRepo(userId, { dir: options.dir, url: options.cloneUrl });
     const head = await runGit(userId, {
       cwd: options.dir,
       args: ["symbolic-ref", "--short", "HEAD"],
@@ -225,11 +219,7 @@ export async function createProject(
     if (!repoPath) {
       repoPath = repoDirFor(userId, slug);
       try {
-        defaultBranch = await prepareRepo(userId, {
-          dir: repoPath,
-          cloneUrl,
-          authFromEnv: input.authFromEnv === true,
-        });
+        defaultBranch = await prepareRepo(userId, { dir: repoPath, cloneUrl });
       } catch (err) {
         if (err instanceof GitError) {
           console.error(`Failed to prepare the repo for "${name}" (${userId}):`, err);

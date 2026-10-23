@@ -19,8 +19,10 @@ vi.mock("@/lib/sandbox/client", () => ({
   },
 }));
 
+let sandboxEnv: Record<string, string> = { GH_TOKEN: "secret-token" };
+
 vi.mock("@/lib/sandbox/env", () => ({
-  resolveSandboxEnv: async () => ({ GH_TOKEN: "secret-token" }),
+  resolveSandboxEnv: async () => sandboxEnv,
 }));
 
 import {
@@ -38,6 +40,7 @@ const USER = "user-1";
 beforeEach(() => {
   execOptions.length = 0;
   execResult = { stdout: "", stderr: "", exitCode: 0 };
+  sandboxEnv = { GH_TOKEN: "secret-token" };
 });
 
 describe("shellQuote", () => {
@@ -136,18 +139,19 @@ describe("worktrees", () => {
 
 describe("cloneRepo", () => {
   it("clones with plain git when the user has no token", async () => {
+    sandboxEnv = {};
     await cloneRepo(USER, { dir: "projects/saale", url: "https://github.com/Blumlaut/saale.git" });
-    const options = execOptions[0] as { command: string };
+    const options = execOptions[0] as { command: string; env?: Record<string, string> };
     expect(options.command).toBe(
       "git clone -- https://github.com/Blumlaut/saale.git projects/saale",
     );
+    expect(options.env?.GH_TOKEN).toBeUndefined();
   });
 
-  it("clones through gh when authorizing from the environment", async () => {
+  it("clones through gh on its own when the token is configured", async () => {
     await cloneRepo(USER, {
       dir: "projects/private",
       url: "https://github.com/Blumlaut/private.git",
-      authFromEnv: true,
     });
     const options = execOptions[0] as { command: string; env: Record<string, string> };
     expect(options.command).toBe(

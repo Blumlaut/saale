@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { postJson } from "@/lib/http";
 
 /** The name a clone URL suggests, so the field is not empty when it can be filled. */
@@ -45,14 +44,12 @@ export function ProjectCreateDialog({
 }) {
   const [name, setName] = useState("");
   const [cloneUrl, setCloneUrl] = useState("");
-  const [authFromEnv, setAuthFromEnv] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setName("");
     setCloneUrl("");
-    setAuthFromEnv(false);
     setError(null);
   };
 
@@ -70,7 +67,7 @@ export function ProjectCreateDialog({
         "/api/coder/projects",
         {
           ...(trimmedName ? { name: trimmedName } : {}),
-          ...(cloneUrl.trim() ? { cloneUrl: cloneUrl.trim(), authFromEnv } : {}),
+          ...(cloneUrl.trim() ? { cloneUrl: cloneUrl.trim() } : {}),
         },
       );
       reset();
@@ -96,7 +93,7 @@ export function ProjectCreateDialog({
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
           <DialogDescription>
-            A git repo in your workspace. Leave the clone URL empty to start an empty one.
+            A git repo in your workspace, cloned or started empty.
           </DialogDescription>
         </DialogHeader>
 
@@ -123,21 +120,10 @@ export function ProjectCreateDialog({
               spellCheck={false}
             />
             <p className="text-muted-foreground text-xs break-all">
-              Public repos clone without a token. Private ones need a GH_TOKEN variable under
-              Settings → Integrations.
+              If you clone a private repo, configure a GH_TOKEN variable under Settings →
+              Integrations.
             </p>
           </div>
-
-          {cloneUrl.trim() && (
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="coder-project-auth">Use GH_TOKEN</Label>
-              <Switch
-                id="coder-project-auth"
-                checked={authFromEnv}
-                onCheckedChange={setAuthFromEnv}
-              />
-            </div>
-          )}
 
           {error && <p className="text-destructive text-sm break-words">{error}</p>}
         </div>

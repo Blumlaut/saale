@@ -157,31 +157,29 @@ export async function initRepo(
 /**
  * Clone into a directory that does not exist yet.
  *
- * With `authFromEnv` the clone goes through `gh`, which reads `GH_TOKEN` from
- * the user's sandbox variables, so a private repo clones without the token
- * being written into a config file. Without one, plain `git clone` reaches a
- * public repo and fails fast on a private one.
+ * A `GH_TOKEN` among the user's sandbox variables sends the clone through `gh`,
+ * so a private repo clones without the token reaching a config file. Without
+ * one, plain `git clone` reaches a public repo and fails fast on a private one.
  */
 export async function cloneRepo(
   userId: string,
-  options: { dir: string; url: string; authFromEnv?: boolean },
+  options: { dir: string; url: string },
 ): Promise<void> {
-  const env = options.authFromEnv
-    ? await resolveSandboxEnv(userId).catch((err: unknown) => {
-        console.error(`Failed to load sandbox variables for cloning ${options.url}:`, err);
-        return {};
-      })
-    : undefined;
+  const env: Record<string, string> = await resolveSandboxEnv(userId).catch((err: unknown) => {
+    console.error(`Failed to load sandbox variables for cloning ${options.url}:`, err);
+    return {};
+  });
+  const authorized = Boolean(env.GH_TOKEN);
 
   // `git clone` takes `--` before the URL so a URL starting with a dash is
   // read as a remote; `gh repo clone` has no such separator.
-  const args = options.authFromEnv
+  const args = authorized
     ? ["gh", "repo", "clone", options.url, options.dir]
     : ["git", "clone", "--", options.url, options.dir];
   const result = await runInWorkspace(userId, {
     cwd: ".",
     command: args.map(shellQuote).join(" "),
-    env,
+    env: authorized ? env : undefined,
     timeoutSeconds: CLONE_TIMEOUT_SECONDS,
   });
 
