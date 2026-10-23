@@ -1,8 +1,13 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { describe, it, expect } from "vitest";
-import { buildAgentSystemPrompt, createSystemPromptLoader } from "@/lib/pi/processing-state";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  buildAgentSystemPrompt,
+  createAgentResourceLoader,
+  createSystemPromptLoader,
+} from "@/lib/pi/processing-state";
+import { sessionWorkspace } from "@/lib/pi/project-context";
 
 describe("buildAgentSystemPrompt", () => {
   it("returns default prompt with no options", () => {
@@ -206,5 +211,61 @@ describe("createSystemPromptLoader", () => {
     const extensions = loader.getExtensions().extensions;
     expect(extensions).toHaveLength(1);
     expect(extensions[0]?.path).toContain("inline");
+  });
+});
+
+describe("createAgentResourceLoader: workspace", () => {
+  let volumeDir = "";
+  let originalWorkspacesDir: string | undefined;
+
+  beforeEach(async () => {
+    originalWorkspacesDir = process.env.SANDBOX_WORKSPACES_DIR;
+    volumeDir = fs.mkdtempSync(path.join(os.tmpdir(), "saale-loader-workspace-"));
+    process.env.SANDBOX_WORKSPACES_DIR = volumeDir;
+  });
+
+  afterEach(() => {
+    process.env.SANDBOX_WORKSPACES_DIR = originalWorkspacesDir;
+    fs.rmSync(volumeDir, { recursive: true, force: true });
+  });
+
+  it("reads the worktree's AGENTS.md and skills", async () => {
+    const root = path.join(volumeDir, "user-user-1");
+    const worktree = path.join(root, "worktrees/saale/c-1");
+    fs.mkdirSync(path.join(worktree, ".pi/skills/release"), { recursive: true });
+    fs.writeFileSync(path.join(worktree, "AGENTS.md"), "worktree rules");
+    fs.writeFileSync(
+      path.join(worktree, ".pi/skills/release/SKILL.md"),
+      ["---", "name: release", "description: Cut a release", "---", "", "Steps."].join("\n"),
+    );
+
+    const loader = await createAgentResourceLoader({
+      prompt: "test prompt",
+      cwd: "/tmp/saale-loader-session",
+      workspace: sessionWorkspace("user-1", worktree),
+    });
+
+    expect(loader.getAgentsFiles().agentsFiles).toEqual([
+      { path: path.join(worktree, "AGENTS.md"), content: "worktree rules" },
+    ]);
+    expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["release"]);
+  });
+
+  it("reads no file from above the workspace root", async () => {
+    const root = path.join(volumeDir, "user-user-1");
+    const worktree = path.join(root, "worktrees/saale/c-1");
+    fs.mkdirSync(worktree, { recursive: true });
+    fs.writeFileSync(path.join(volumeDir, "AGENTS.md"), "the operator's rules");
+    fs.writeFileSync(path.join(worktree, "AGENTS.md"), "the project's rules");
+
+    const loader = await createAgentResourceLoader({
+      prompt: "test prompt",
+      cwd: "/tmp/saale-loader-session",
+      workspace: sessionWorkspace("user-1", worktree),
+    });
+
+    expect(loader.getAgentsFiles().agentsFiles.map((file) => file.content)).toEqual([
+      "the project's rules",
+    ]);
   });
 });

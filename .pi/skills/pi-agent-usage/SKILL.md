@@ -82,10 +82,34 @@ await session.prompt(userMessage);
 ```
 
 `createSystemPromptLoader(prompt, cwd)` (from `src/lib/pi/processing-state.ts`)
-wraps `DefaultResourceLoader` with discovery disabled (no extensions/skills/
-context files) — Saale builds its own prompts and runs headless. It calls
-`await loader.reload()` because `createAgentSession` does NOT reload a
-caller-provided loader.
+wraps `DefaultResourceLoader` with no workspace, so it discovers nothing (no
+extensions, skills or context files) — Saale builds its own prompts and runs
+headless. It calls `await loader.reload()` because `createAgentSession` does
+NOT reload a caller-provided loader.
+
+### Project instructions and skills (`workspace`)
+
+`createAgentResourceLoader` takes `workspace: { cwd, root }`
+(`sessionWorkspace(userId, cwd)` in `src/lib/pi/project-context.ts`), which
+`createPersistentSession` always passes: a coder chat names its worktree, every
+other chat the workspace root. Pi then discovers:
+
+- **`AGENTS.md`** (`AGENTS.override.md`, `CLAUDE.md` fallbacks) through its own
+  `loadProjectContextFiles`, with the workspace root standing in for the agent
+  dir, so the user's own root file applies and a project's checkout applies
+  after it.
+- **`.pi/skills`** through `additionalSkillPaths`, so `SKILL.md` discovery,
+  frontmatter and the prompt section stay Pi's.
+
+Two filters keep it to the tenant: `agentsFilesOverride` drops files above the
+workspace root (Pi walks to `/`), and `skillsOverride` drops skills outside it
+(Pi's `loadSkills` also reads the host's `~/.agents/skills`). Both are the
+backstop for the isolation rule — never remove them, and never let a new
+discovery path reach the loader unfiltered.
+
+Without a `workspace`, `noContextFiles`/`noSkills` stay on, which is what the
+one-shot jobs get. Discovery runs at session creation, like the TUI: editing
+`AGENTS.md` mid-run does not re-read it.
 
 `buildAgentSystemPrompt()` builds the Saale assistant prompt from the user's
 custom instructions + tool config.
@@ -101,6 +125,7 @@ replaces them.
 | Feature     | Prompt style                                                         | Reference                                               |
 | ----------- | -------------------------------------------------------------------- | ------------------------------------------------------- |
 | Chat        | `buildAgentSystemPrompt()` (assistant + custom instructions + tools) | `src/app/api/chat/sessions/[sessionId]/stream/route.ts` |
+| Coder chat  | `buildCoderSystemPrompt()` (coding identity + git rules + tools)      | `src/lib/pi/coder-prompt.ts`                            |
 | Email draft | Task-specific, output-only rules                                     | `src/app/api/email/draft/route.ts`                      |
 | Queue jobs  | JSON-only, structured output                                         | `src/lib/queue/job-handler.ts`                          |
 
