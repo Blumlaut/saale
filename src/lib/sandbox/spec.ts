@@ -76,6 +76,50 @@ export function memoryBytes(memory: string): number {
   return Math.round(Number(match[1]) * (factors[unit] ?? 1));
 }
 
+/** The cgroup limits the config asks for, as the create API takes them. */
+export interface ContainerLimits {
+  Memory: number;
+  PidsLimit: number;
+  NanoCpus: number;
+}
+
+export function wantedLimits(config: SandboxConfig): ContainerLimits {
+  return {
+    Memory: memoryBytes(config.memory),
+    PidsLimit: config.pids,
+    NanoCpus: config.cpus * 1e9,
+  };
+}
+
+/** The limits Docker records on a container, loosely typed: an inspect reply. */
+export interface ExistingLimits {
+  Memory?: number | string | undefined;
+  PidsLimit?: number | string | null | undefined;
+  NanoCpus?: number | string | undefined;
+}
+
+const LIMIT_FIELDS = ["Memory", "PidsLimit", "NanoCpus"] as const;
+
+/**
+ * Which limits an existing container disagrees with the config on.
+ *
+ * Docker fixes `HostConfig` at create time and cannot change a memory limit on
+ * a running container, so anything listed here needs the container replaced
+ * before the new setting takes effect. Reported as `field: have → want`.
+ */
+export function limitDrift(existing: ExistingLimits | undefined, config: SandboxConfig): string[] {
+  if (!existing) return [];
+  const want = wantedLimits(config);
+  const drift: string[] = [];
+  for (const field of LIMIT_FIELDS) {
+    const have = Number(existing[field] ?? 0);
+    if (!Number.isFinite(have) || have !== want[field]) {
+      drift.push(`${field}: ${have} → ${want[field]}`);
+    }
+  }
+  return drift;
+}
+
 /**
  * Create options for one identity's container.
  *
@@ -108,9 +152,7 @@ export function containerSpec(identity: string, config: SandboxConfig): SandboxC
         },
       ],
       Init: true,
-      Memory: memoryBytes(config.memory),
-      PidsLimit: config.pids,
-      NanoCpus: config.cpus * 1e9,
+      ...wantedLimits(config),
       ...(untrusted ? { CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges"] } : {}),
     },
     Tty: false,

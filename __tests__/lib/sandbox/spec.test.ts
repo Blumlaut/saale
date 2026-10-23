@@ -5,6 +5,7 @@ import {
   containerPath,
   containerSpec,
   containerWorkspacePath,
+  limitDrift,
   memoryBytes,
 } from "@/lib/sandbox/spec";
 import { InvalidSandboxIdentityError } from "@/lib/sandbox/identity";
@@ -83,6 +84,29 @@ describe("containerSpec", () => {
   });
 });
 
+describe("limitDrift", () => {
+  it("reports nothing when the container already carries the configured limits", () => {
+    const spec = containerSpec("user-abc", config({ memory: "8g", pids: 512, cpus: 2 }));
+    expect(limitDrift(spec.HostConfig, config({ memory: "8g", pids: 512, cpus: 2 }))).toEqual([]);
+  });
+
+  it("names every limit that disagrees, as have → want", () => {
+    const old = containerSpec("user-abc", config({ memory: "2g", pids: 512, cpus: 2 }));
+    const drift = limitDrift(old.HostConfig, config({ memory: "8g", pids: 1024, cpus: 2 }));
+    expect(drift).toEqual([`Memory: ${2 * 1024 ** 3} → ${8 * 1024 ** 3}`, "PidsLimit: 512 → 1024"]);
+  });
+
+  it("treats a container without limits as drifted, and an absent reply as unknown", () => {
+    expect(limitDrift({}, config({ memory: "8g", pids: 512, cpus: 2 }))).toHaveLength(3);
+    // Docker reports the limits as numbers; a numeric string still compares.
+    expect(limitDrift({ Memory: String(8 * 1024 ** 3) }, config({ memory: "8g" }))).toEqual([
+      "PidsLimit: 0 → 512",
+      "NanoCpus: 0 → 2000000000",
+    ]);
+    expect(limitDrift(undefined, config())).toEqual([]);
+  });
+});
+
 describe("memoryBytes", () => {
   it("reads the units an operator writes", () => {
     expect(memoryBytes("2g")).toBe(2 * 1024 ** 3);
@@ -107,6 +131,7 @@ describe("sandboxConfig", () => {
     expect(value.volume).toBe("saale_workspaces");
     expect(value.workspacesDir).toBe("/workspaces");
     expect(value.user).toBe("root");
+    expect(value.memory).toBe("4g");
     vi.unstubAllEnvs();
   });
 

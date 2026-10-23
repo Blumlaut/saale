@@ -49,7 +49,7 @@ const DEFAULTS = {
   user: "root",
   uid: 1000,
   gid: 1000,
-  memory: "2g",
+  memory: "4g",
   pids: 512,
   cpus: 2,
   idleMinutes: 240,

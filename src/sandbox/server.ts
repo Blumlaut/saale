@@ -381,7 +381,8 @@ async function main(): Promise<void> {
 
   server.listen(config.port, () => {
     console.warn(
-      `[sandbox] listening on :${config.port} (volume ${config.volume}, user ${config.user})`,
+      `[sandbox] listening on :${config.port} (volume ${config.volume}, user ${config.user}, ` +
+        `limits ${config.memory}/${config.pids} pids/${config.cpus} cpus)`,
     );
   });
 
