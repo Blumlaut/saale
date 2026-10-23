@@ -75,7 +75,6 @@ function Harness({ messages }: { messages: Message[] }) {
         messages={messages}
         isLoading={false}
         onEditMessage={onEdit}
-        onSendMessage={onSend}
         pendingApprovals={pendingApprovals}
         onApprovalResolved={onApprovalResolved}
         sessionId="session-1"
