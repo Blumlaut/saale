@@ -111,9 +111,15 @@ export async function registerActiveSession(userId: string, sessionId: string): 
   try {
     const redis = getRedis();
     const indexKey = `${ACTIVE_SESSION_PREFIX}${userId}`;
-    await redis.sadd(indexKey, sessionId);
-    await redis.expire(indexKey, ACTIVE_SESSION_INDEX_TTL_SECONDS);
-    await redis.set(activeSessionKey(userId, sessionId), "1", "EX", ACTIVE_SESSION_TTL_SECONDS);
+    // This runs every heartbeat (10s) per active generation, so keep it to one
+    // round trip: the three commands are one MULTI/EXEC, and atomic, so a crash
+    // cannot leave the index member behind without its TTL refresh.
+    await redis
+      .multi()
+      .sadd(indexKey, sessionId)
+      .expire(indexKey, ACTIVE_SESSION_INDEX_TTL_SECONDS)
+      .set(activeSessionKey(userId, sessionId), "1", "EX", ACTIVE_SESSION_TTL_SECONDS)
+      .exec();
   } catch (err) {
     console.error("Failed to register active session:", err);
   }
@@ -134,8 +140,11 @@ export async function isSessionActive(userId: string, sessionId: string): Promis
 export async function unregisterActiveSession(userId: string, sessionId: string): Promise<void> {
   try {
     const redis = getRedis();
-    await redis.srem(`${ACTIVE_SESSION_PREFIX}${userId}`, sessionId);
-    await redis.del(activeSessionKey(userId, sessionId));
+    await redis
+      .multi()
+      .srem(`${ACTIVE_SESSION_PREFIX}${userId}`, sessionId)
+      .del(activeSessionKey(userId, sessionId))
+      .exec();
   } catch (err) {
     console.error("Failed to unregister active session:", err);
   }
