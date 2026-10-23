@@ -300,15 +300,16 @@ export function SessionSidebar({
         router.push("/dashboard/chat");
       }
       if (result.failed.length > 0) {
+        const reason = result.failed[0]?.error;
         toast.error(
           ids.length === 1
-            ? "Could not delete the chat"
-            : `Could not delete ${result.failed.length} of ${ids.length} chats. they are still selected`,
+            ? (reason ?? "Could not delete the chat")
+            : `Could not delete ${result.failed.length} of ${ids.length} chats. they are still selected${reason ? `: ${reason}` : ""}`,
         );
       }
     } catch (err) {
       console.error("Failed to delete chat sessions:", err);
-      toast.error("Could not delete the selected chats");
+      toast.error(err instanceof Error ? err.message : "Could not delete the selected chats");
     }
     setDeletingIds([]);
   };
