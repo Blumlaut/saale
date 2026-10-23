@@ -54,7 +54,7 @@ function previewHostFor(port: number, identity = IDENTITY): string {
 /** A request straight to the proxy with the preview hostname in `Host`. */
 function request(
   path: string,
-  options: { host?: string; method?: string } = {},
+  options: { host?: string; method?: string; origin?: string } = {},
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -63,7 +63,10 @@ function request(
         port: proxyPort,
         path,
         method: options.method ?? "GET",
-        headers: { host: options.host ?? previewHostFor(upstreamPort) },
+        headers: {
+          host: options.host ?? previewHostFor(upstreamPort),
+          ...(options.origin ? { origin: options.origin } : {}),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -85,13 +88,28 @@ function request(
 beforeEach(async () => {
   const upstream = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "application/json", "X-Seen-Host": req.headers.host });
-    res.end(JSON.stringify({ url: req.url, host: req.headers.host, method: req.method }));
+    res.end(
+      JSON.stringify({
+        url: req.url,
+        host: req.headers.host,
+        method: req.method,
+        origin: req.headers.origin ?? null,
+      }),
+    );
   });
 
   // A socket that echoes bytes back after the handshake, standing in for HMR.
   upstream.on("upgrade", (req, socket: net.Socket) => {
     upgraded.push(socket);
-    socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n");
+    socket.write(
+      [
+        "HTTP/1.1 101 Switching Protocols",
+        "Upgrade: websocket",
+        `X-Seen-Origin: ${req.headers.origin ?? "none"}`,
+        "",
+        "",
+      ].join("\r\n"),
+    );
     socket.on("data", (chunk: Buffer) =>
       socket.write(Buffer.concat([Buffer.from("echo:"), chunk])),
     );
@@ -127,6 +145,7 @@ describe("the preview proxy", () => {
       url: "/app/index.html?x=1&y=2",
       host: previewHostFor(upstreamPort),
       method: "GET",
+      origin: null,
     });
   });
 
@@ -155,6 +174,22 @@ describe("the preview proxy", () => {
     });
 
     expect(status).toBe(200);
+  });
+
+  it("presents a dev server's own paths as coming from localhost", async () => {
+    const response = await request("/_next/static/chunks/main.js", {
+      origin: `https://${previewHostFor(upstreamPort)}`,
+    });
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body).origin).toBe(`http://localhost:${upstreamPort}`);
+  });
+
+  it("leaves the origin of an app request alone", async () => {
+    const origin = `https://${previewHostFor(upstreamPort)}`;
+    const response = await request("/api/auth/session", { origin });
+
+    expect(JSON.parse(response.body).origin).toBe(origin);
   });
 
   it("refuses a hostname whose signature does not match the port", async () => {
@@ -208,10 +243,11 @@ describe("the preview proxy", () => {
       socket.on("connect", () => {
         socket.write(
           [
-            "GET /hmr HTTP/1.1",
+            "GET /_next/hmr?session=1 HTTP/1.1",
             `Host: ${previewHostFor(upstreamPort)}`,
             "Upgrade: websocket",
             "Connection: Upgrade",
+            `Origin: https://${previewHostFor(upstreamPort)}`,
             "",
             "",
           ].join("\r\n"),
@@ -223,7 +259,9 @@ describe("the preview proxy", () => {
       });
     });
 
-    expect(Buffer.concat(received).toString("utf8")).toContain("101 Switching Protocols");
+    const handshake = Buffer.concat(received).toString("utf8");
+    expect(handshake).toContain("101 Switching Protocols");
+    expect(handshake).toContain(`X-Seen-Origin: http://localhost:${upstreamPort}`);
 
     socket.write("ping");
     await new Promise<void>((resolve, reject) => {

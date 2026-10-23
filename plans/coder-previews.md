@@ -121,7 +121,10 @@ allowance is involved.
 5. Unknown host, bad token, or a port that stopped listening all get a small HTML page that
    says so. Nothing else on the preview listener is reachable.
 6. WebSocket upgrades take the same path through a `net` socket, so Vite HMR and
-   `socket.io` reconnect work.
+   `socket.io` reconnect work. `/_next/*` and `/__nextjs*` requests carry
+   `Origin: http://localhost:<port>`, because Next's dev server refuses a `_next`
+   request from a hostname it did not learn at boot (`allowedDevOrigins`), and a
+   workspace hostname cannot be written into an app's config.
 7. The kill button calls `POST /api/coder/sessions/:id/ports/:port/kill`, which kills the
    pid the listener belongs to.
 
@@ -134,8 +137,8 @@ Service (`src/sandbox/`, bundled into `dist/sandbox.mjs` with `@/` paths):
   Pure functions, fixtures in the tests.
 - `preview-proxy.ts` — the listener on `SANDBOX_PREVIEW_PORT`: host parsing, token
   verification, HTTP forwarding with the request/response pipes, `net` upgrade bridge,
-  error pages. No rewriting and no `<base>` injection; Node's `http` and `net` carry it,
-  with no proxy package added.
+  error pages, and the dev-server origin for `_next` paths. No `<base>` injection; Node's
+  `http` and `net` carry it, with no proxy package added.
 - `server.ts` — `GET /ports`, `POST /ports/:port/kill`, and starting the preview listener
   next to the API listener. Bearer auth and `X-Identity` unchanged, so the admin API stays
   where it is.

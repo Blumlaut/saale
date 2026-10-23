@@ -86,6 +86,23 @@ function sendPage(
   res.end(body);
 }
 
+/**
+ * Whether a path belongs to a dev server's own client machinery.
+ *
+ * Next refuses `_next` and `__nextjs` requests from an origin it has not seen
+ * at boot (`allowedDevOrigins`), and a workspace hostname cannot be known when
+ * the app's config is written. Those paths carry no app data, so this hop can
+ * present them as a same-origin request to the dev server.
+ */
+function isDevResource(path: string): boolean {
+  return path === "/_next" || path.startsWith("/_next/") || path.includes("/__nextjs");
+}
+
+/** The origin a dev server expects its own client to come from. */
+function devOrigin(port: number): string {
+  return `http://localhost:${port}`;
+}
+
 /** A request's headers, minus the ones this hop owns. */
 function forwardHeaders(headers: http.IncomingHttpHeaders): http.OutgoingHttpHeaders {
   const forwarded: http.OutgoingHttpHeaders = {};
@@ -115,12 +132,16 @@ export function createPreviewProxy(options: PreviewProxyOptions): http.Server {
   }
 
   function forward(req: http.IncomingMessage, res: http.ServerResponse, target: PreviewTarget) {
+    const headers = forwardHeaders(req.headers);
+    const path = (req.url ?? "/").split("?")[0] ?? "/";
+    if (isDevResource(path)) headers.origin = devOrigin(target.port);
+
     const upstream = http.request({
       host: upstreamHost(target.identity),
       port: target.port,
       method: req.method,
       path: req.url ?? "/",
-      headers: forwardHeaders(req.headers),
+      headers,
       agent,
     });
 
@@ -202,9 +223,15 @@ export function createPreviewProxy(options: PreviewProxyOptions): http.Server {
   ): void {
     const upstream = net.connect({ host: upstreamHost(target.identity), port: target.port }, () => {
       const lines = [`${req.method ?? "GET"} ${req.url ?? "/"} HTTP/1.1`];
+      const path = (req.url ?? "/").split("?")[0] ?? "/";
+      // HMR is a websocket, and Next checks its Origin on the upgrade too.
+      const rewriteOrigin = isDevResource(path);
       for (let index = 0; index < req.rawHeaders.length; index += 2) {
-        lines.push(`${req.rawHeaders[index]}: ${req.rawHeaders[index + 1]}`);
+        const name = req.rawHeaders[index] ?? "";
+        if (rewriteOrigin && name.toLowerCase() === "origin") continue;
+        lines.push(`${name}: ${req.rawHeaders[index + 1] ?? ""}`);
       }
+      if (rewriteOrigin) lines.push(`Origin: ${devOrigin(target.port)}`);
       upstream.write(`${lines.join("\r\n")}\r\n\r\n`);
       if (head.length > 0) upstream.write(head);
       upstream.pipe(socket);

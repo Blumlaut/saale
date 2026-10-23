@@ -185,15 +185,15 @@ server. Deleting the chat stops everything it left running.
 
 ### If a preview does not load
 
-| What you see                        | Why                                               | Fix                                                                                                                        |
-| ----------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| The probe above does not answer     | DNS, certificate or nginx is wrong                | `dig +short probe.preview.example.com`, then `curl -kI https://probe.preview.example.com/__preview/health` from the server |
-| "This preview link does not work"   | Wrong signature                                   | Copy the link from the Ports tab; an edited hostname stops working                                                         |
-| "Nothing is listening on port 8080" | The server stopped, or it is bound to `127.0.0.1` | Restart it, and bind `0.0.0.0`                                                                                             |
-| The port says `loopback`            | The dev server only listens inside the container  | `npm run dev -- --host 0.0.0.0`; flask: `flask run --host 0.0.0.0`; Django: `runserver 0.0.0.0:8000`                       |
-| `403 Blocked request`               | Vite rejects a host it was not told about         | `server.allowedHosts: ['.preview.example.com']` in `vite.config.ts`                                                        |
-| A page of blocked `/_next/*`        | Next blocks cross-origin dev requests             | `allowedDevOrigins: ['*.preview.example.com']` in `next.config.ts`                                                         |
-| Previews are off                    | `BETTER_AUTH_URL` is `localhost` or an IP         | Set the public URL, or set `PREVIEW_DOMAIN="preview.example.com"`                                                          |
+| What you see                        | Why                                               | Fix                                                                                                                                                                                       |
+| ----------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The probe above does not answer     | DNS, certificate or nginx is wrong                | `dig +short probe.preview.example.com`, then `curl -kI https://probe.preview.example.com/__preview/health` from the server                                                                |
+| "This preview link does not work"   | Wrong signature                                   | Copy the link from the Ports tab; an edited hostname stops working                                                                                                                        |
+| "Nothing is listening on port 8080" | The server stopped, or it is bound to `127.0.0.1` | Restart it, and bind `0.0.0.0`                                                                                                                                                            |
+| The port says `loopback`            | The dev server only listens inside the container  | `npm run dev -- --host 0.0.0.0`; flask: `flask run --host 0.0.0.0`; Django: `runserver 0.0.0.0:8000`                                                                                      |
+| `403 Blocked request`               | Vite rejects a host it was not told about         | `server.allowedHosts: ['.preview.example.com']` in `vite.config.ts`                                                                                                                       |
+| A page of blocked `/_next/*`        | Next blocks cross-origin dev requests             | Nothing, when the app is opened through its preview link: the proxy presents those paths as its own. A dev server addressed directly needs `allowedDevOrigins: ['*.preview.example.com']` |
+| Previews are off                    | `BETTER_AUTH_URL` is `localhost` or an IP         | Set the public URL, or set `PREVIEW_DOMAIN="preview.example.com"`                                                                                                                         |
 
 ## Configuration
 
