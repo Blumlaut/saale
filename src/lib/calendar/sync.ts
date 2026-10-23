@@ -1,6 +1,7 @@
 import type { DAVClient } from "tsdav";
 import type { DAVCalendar, DAVCalendarObject } from "tsdav";
 import { prisma } from "@/lib/db";
+import { chunk, IN_LIST_CHUNK_SIZE } from "@/lib/db-batch";
 import { connectCalDAV } from "./caldav";
 import { parseICS, type ParsedEvent } from "./ics-import";
 
@@ -170,16 +171,19 @@ async function syncCalendarEvents(
       // Process created/updated URLs
       const changedObjs = [...(result.objects.created ?? []), ...(result.objects.updated ?? [])];
 
+      const pairs: Array<{ evt: ParsedEvent; obj: DAVCalendarObject }> = [];
       for (const changedObj of changedObjs) {
         const object = await fetchSingleObject(client, davCalendar, changedObj.url);
         if (!object?.data) continue;
 
         for (const evt of parseICS(object.data)) {
-          const result2 = await upsertCalendarEvent(calendar.id, evt, object);
-          if (result2 === "created") created++;
-          else if (result2 === "updated") updated++;
+          pairs.push({ evt, obj: object });
         }
       }
+
+      const outcome = await upsertCalendarEvents(calendar.id, pairs);
+      created += outcome.created;
+      updated += outcome.updated;
 
       // Update syncToken
       if (result.syncToken) {
@@ -209,15 +213,18 @@ async function syncCalendarEvents(
     calendar: davCalendar,
   });
 
+  const pairs: Array<{ evt: ParsedEvent; obj: DAVCalendarObject }> = [];
   for (const obj of objects) {
     if (!obj?.data) continue;
 
     for (const evt of parseICS(obj.data)) {
-      const result = await upsertCalendarEvent(calendar.id, evt, obj);
-      if (result === "created") created++;
-      else if (result === "updated") updated++;
+      pairs.push({ evt, obj });
     }
   }
+
+  const outcome = await upsertCalendarEvents(calendar.id, pairs);
+  created += outcome.created;
+  updated += outcome.updated;
 
   // Update calendar metadata
   await prisma.calendar.update({
@@ -255,44 +262,70 @@ function extractUIDFromUrl(url: string): string | null {
   return match?.[1] || null;
 }
 
+/** createMany binds every column of every row (19 here); keep batches far under the cap. */
+const CREATE_BATCH_SIZE = 1000;
+
 /**
- * Upsert a single calendar event (used by both incremental and full sync).
- * Returns "created", "updated", or "skipped".
+ * Upsert a batch of parsed events for one calendar (used by both incremental
+ * and full sync) in as few round trips as possible: one existence lookup per
+ * chunk of UIDs, one createMany per chunk of new rows, one update per row
+ * whose sequence actually advanced. The old per-event loop made two queries
+ * per event, which dominated a full sync of a busy calendar.
+ *
+ * A UID that appears in several objects is written once, last occurrence
+ * winning (the old sequential loop ended in the same state).
  */
-async function upsertCalendarEvent(
+async function upsertCalendarEvents(
   calendarId: string,
-  evt: ParsedEvent,
-  obj: DAVCalendarObject,
-): Promise<"created" | "updated" | "skipped"> {
-  const existing = await prisma.calendarEvent.findUnique({
-    where: {
-      calendarId_uid: {
-        calendarId,
-        uid: evt.uid,
-      },
-    },
-  });
+  pairs: Array<{ evt: ParsedEvent; obj: DAVCalendarObject }>,
+): Promise<{ created: number; updated: number }> {
+  const byUid = new Map<string, { evt: ParsedEvent; obj: DAVCalendarObject }>();
+  for (const pair of pairs) {
+    byUid.set(pair.evt.uid, pair);
+  }
+  const events = Array.from(byUid.values());
 
-  const eventData = buildEventData(evt, obj);
-
-  if (existing) {
-    if (eventData.sequence > existing.sequence) {
-      await prisma.calendarEvent.update({
-        where: { id: existing.id },
-        data: eventData,
-      });
-      return "updated";
+  // Existing rows with their sequence, for the "skip unless advanced" check.
+  const existing = new Map<string, { id: string; sequence: number }>();
+  for (const uidBatch of chunk(
+    events.map((e) => e.evt.uid),
+    IN_LIST_CHUNK_SIZE,
+  )) {
+    const rows = await prisma.calendarEvent.findMany({
+      where: { calendarId, uid: { in: uidBatch } },
+      select: { uid: true, id: true, sequence: true },
+    });
+    for (const row of rows) {
+      existing.set(row.uid, { id: row.id, sequence: row.sequence });
     }
-    return "skipped";
   }
 
-  await prisma.calendarEvent.create({
-    data: {
-      ...eventData,
-      calendarId,
-    },
-  });
-  return "created";
+  const toCreate: Array<{ data: ReturnType<typeof buildEventData> }> = [];
+  const toUpdate: Array<{ id: string; data: ReturnType<typeof buildEventData> }> = [];
+
+  for (const { evt, obj } of events) {
+    const data = buildEventData(evt, obj);
+    const row = existing.get(evt.uid);
+    if (!row) {
+      toCreate.push({ data });
+    } else if (data.sequence > row.sequence) {
+      toUpdate.push({ id: row.id, data });
+    }
+  }
+
+  for (const batch of chunk(toCreate, CREATE_BATCH_SIZE)) {
+    await prisma.calendarEvent.createMany({
+      data: batch.map((entry) => ({ ...entry.data, calendarId })),
+    });
+  }
+
+  let updated = 0;
+  for (const { id, data } of toUpdate) {
+    await prisma.calendarEvent.update({ where: { id }, data });
+    updated++;
+  }
+
+  return { created: toCreate.length, updated };
 }
 
 /**

@@ -4,7 +4,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     council: { findFirst: vi.fn(), updateMany: vi.fn() },
     councilMessage: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
-    councilRun: { create: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    councilRun: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     councilMemberTurn: { create: vi.fn(), update: vi.fn() },
     user: { findFirst: vi.fn() },
     $queryRaw: vi.fn(),
@@ -287,15 +287,19 @@ describe("failStaleRuns", () => {
     db.councilRun.findMany.mockResolvedValue([
       { id: "run-1", councilId: "council-1", userId: "user-1" },
     ]);
-    db.councilRun.update.mockResolvedValue({});
+    db.councilRun.updateMany.mockResolvedValue({ count: 1 });
     db.council.updateMany.mockResolvedValue({ count: 1 });
 
     const failed = await failStaleRuns(90_000);
 
     expect(failed).toBe(1);
-    expect(db.councilRun.update).toHaveBeenCalledWith(
+    expect(db.councilRun.updateMany).toHaveBeenCalledTimes(1);
+    expect(db.councilRun.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "run-1" },
+        where: expect.objectContaining({
+          status: "running",
+          id: { in: ["run-1"] },
+        }),
         data: expect.objectContaining({ status: "failed", stopReason: "timeout" }),
       }),
     );
@@ -305,10 +309,23 @@ describe("failStaleRuns", () => {
     });
   });
 
+  it("releases a council with several stale runs only once", async () => {
+    db.councilRun.findMany.mockResolvedValue([
+      { id: "run-1", councilId: "council-1", userId: "user-1" },
+      { id: "run-2", councilId: "council-1", userId: "user-1" },
+    ]);
+    db.councilRun.updateMany.mockResolvedValue({ count: 2 });
+    db.council.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await failStaleRuns(90_000)).toBe(2);
+    expect(db.councilRun.updateMany).toHaveBeenCalledTimes(1);
+    expect(db.council.updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves a fresh run alone", async () => {
     db.councilRun.findMany.mockResolvedValue([]);
     expect(await failStaleRuns(90_000)).toBe(0);
-    expect(db.councilRun.update).not.toHaveBeenCalled();
+    expect(db.councilRun.updateMany).not.toHaveBeenCalled();
   });
 
   it("only considers runs that claim to be running", async () => {
