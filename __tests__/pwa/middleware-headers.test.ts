@@ -58,6 +58,32 @@ describe("PWA response headers", () => {
   });
 });
 
+describe("scripts", () => {
+  it("allows eval while `next dev` runs, even when NODE_ENV says production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("__NEXT_DEV_SERVER", "1");
+    expect((await headersFor("/dashboard/chat")).get("Content-Security-Policy")).toContain(
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    );
+  });
+
+  it("drops eval from a production build", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("__NEXT_DEV_SERVER", "");
+    const csp = (await headersFor("/dashboard/chat")).get("Content-Security-Policy");
+    expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).not.toContain("unsafe-eval");
+  });
+
+  it("allows eval in a test or development run", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("__NEXT_DEV_SERVER", "");
+    expect((await headersFor("/dashboard/chat")).get("Content-Security-Policy")).toContain(
+      "unsafe-eval",
+    );
+  });
+});
+
 describe("framing", () => {
   it("never lets another page frame Saale, with or without previews", async () => {
     vi.stubEnv("BETTER_AUTH_URL", "https://saale.example.com");

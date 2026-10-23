@@ -34,6 +34,17 @@ function getRateLimitKey(request: NextRequest): string {
   return `${ip}:${request.nextUrl.pathname}`;
 }
 
+/**
+ * Whether this server was started with `next dev`.
+ *
+ * Next's own flag, because `NODE_ENV` alone lies here: a shell that exports
+ * `NODE_ENV=production` (which a local build needs) still runs `next dev` with
+ * eval, and the block would only show up when someone clicks something.
+ */
+function isDevBuild(): boolean {
+  return process.env.__NEXT_DEV_SERVER === "1" || process.env.NODE_ENV !== "production";
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -62,7 +73,10 @@ export async function middleware(request: NextRequest) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      // A dev server compiles modules with eval; a production build does not.
+      isDevBuild()
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
