@@ -9,6 +9,7 @@
 import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
+import { createProjectSettingsTools } from "@/lib/coder/tools";
 import { listSettings, setSetting, SettingsError, type PropertyView } from "./update";
 
 /** Prefixes the model can filter on. a hint, not an allowlist. */
@@ -84,8 +85,15 @@ function groupProperties(
   return [...groups].map(([group, keys]) => ({ group, count: keys.length, keys }));
 }
 
-export function createSettingsTools(userId: string): ToolDefinition[] {
+/**
+ * The settings tools: the registry's, plus a coder project's own.
+ *
+ * `sessionId` is what lets the project tools default to the project of the chat
+ * the agent is running in.
+ */
+export function createSettingsTools(userId: string, sessionId?: string): ToolDefinition[] {
   return [
+    ...createProjectSettingsTools(userId, sessionId),
     defineStructuredTool({
       name: "settings_list",
       label: "List Settings",

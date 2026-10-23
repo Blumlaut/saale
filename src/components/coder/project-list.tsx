@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderGit2, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { FolderGit2, MoreVertical, Plus, Settings, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import {
@@ -18,6 +18,7 @@ import { deleteJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { ROW_ACTION, cn } from "@/lib/utils";
 import { ProjectCreateDialog } from "./project-create-dialog";
+import { ProjectSettingsSheet } from "./project-settings-sheet";
 import { useProjects, type CoderProjectSummary } from "./use-coder-data";
 
 /** What a project row says under its name. */
@@ -33,6 +34,7 @@ export function ProjectList() {
   const { projects, loading, error, reload } = useProjects();
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<CoderProjectSummary | null>(null);
+  const [settingsFor, setSettingsFor] = useState<string | null>(null);
 
   const remove = async (project: CoderProjectSummary, force: boolean) => {
     try {
@@ -122,6 +124,15 @@ export function ProjectList() {
                     />
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSettingsFor(project.id);
+                        }}
+                      >
+                        <Settings className="mr-2 h-3.5 w-3.5" />
+                        Project settings
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
                         variant="destructive"
                         onClick={(event) => {
                           event.stopPropagation();
@@ -140,6 +151,13 @@ export function ProjectList() {
           </div>
         </GlassPanel>
       </div>
+
+      <ProjectSettingsSheet
+        projectId={settingsFor}
+        open={settingsFor !== null}
+        onOpenChange={(open) => !open && setSettingsFor(null)}
+        onSaved={reload}
+      />
 
       <ProjectCreateDialog
         open={creating}

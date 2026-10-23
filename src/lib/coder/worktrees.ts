@@ -33,6 +33,13 @@ import {
   workspaceDirectoryExists,
   worktreePath,
 } from "./paths";
+import {
+  excludeEnvFiles,
+  runSetupScript,
+  storedEnvFiles,
+  writeEnvFiles,
+  type EnvFile,
+} from "./project-config";
 import { coderBranchName, coderChatSlug } from "./slug";
 
 /** The branch and directory a chat runs in. */
@@ -48,6 +55,8 @@ interface ProjectRow {
   slug: string;
   repoPath: string;
   defaultBranch: string;
+  envFiles: unknown;
+  setupScript: string | null;
 }
 
 /** How stale a repo may be before a new chat refreshes it. */
@@ -131,7 +140,13 @@ async function releaseBranch(
  */
 async function addWorktreeForBranch(
   userId: string,
-  options: { repoDir: string; dir: string; branch: string; base: string },
+  options: {
+    repoDir: string;
+    dir: string;
+    branch: string;
+    base: string;
+    envFiles: EnvFile[];
+  },
 ): Promise<void> {
   try {
     await addWorktree(userId, options);
@@ -146,6 +161,11 @@ async function addWorktreeForBranch(
   if (!(await workspaceDirectoryExists(userId, options.dir))) {
     throw new Error(`Worktree ${options.dir} was not created`);
   }
+
+  // Written before the chat's first command, and kept out of `git status` so a
+  // checkout with a `.env` in it still removes cleanly.
+  await writeEnvFiles(userId, options.dir, options.envFiles);
+  await excludeEnvFiles(userId, options.repoDir, options.envFiles);
 }
 
 /**
@@ -206,7 +226,14 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
   // project must not reach their repo.
   const project = await prisma.coderProject.findFirst({
     where: { id: chat.projectId, userId },
-    select: { id: true, slug: true, repoPath: true, defaultBranch: true },
+    select: {
+      id: true,
+      slug: true,
+      repoPath: true,
+      defaultBranch: true,
+      envFiles: true,
+      setupScript: true,
+    },
   });
   if (!project) throw new Error(`Project not found: ${chat.projectId}`);
 
@@ -214,6 +241,11 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
     withLockRetry(() => resolveWorktree(userId, sessionId, project)),
   );
   if (result.changed) await evictPooledAgent(userId, sessionId);
+  // Outside the lock: an install takes minutes, and a second chat in the same
+  // project must not wait for it.
+  if (result.created) {
+    await runSetupScript(userId, result.path, project.setupScript);
+  }
   return { path: result.path, branch: result.branch };
 }
 
@@ -221,14 +253,15 @@ async function resolveWorktree(
   userId: string,
   sessionId: string,
   project: ProjectRow,
-): Promise<EnsuredWorktree & { changed: boolean }> {
+): Promise<EnsuredWorktree & { changed: boolean; created: boolean }> {
+  const envFiles = storedEnvFiles(project.envFiles);
   const row = await prisma.coderWorktree.findUnique({ where: { sessionId } });
   if (row) {
     if (row.projectId !== project.id) {
       throw new Error(`Worktree ${row.path} belongs to another project`);
     }
     if (await workspaceDirectoryExists(userId, row.path)) {
-      return { path: row.path, branch: row.branch, changed: false };
+      return { path: row.path, branch: row.branch, changed: false, created: false };
     }
     // The row is what the panel shows; prune drops git's half of a checkout
     // that was deleted by hand, so the branch can be checked out again.
@@ -238,8 +271,9 @@ async function resolveWorktree(
       dir: row.path,
       branch: row.branch,
       base: row.baseSha,
+      envFiles,
     });
-    return { path: row.path, branch: row.branch, changed: true };
+    return { path: row.path, branch: row.branch, changed: true, created: true };
   }
 
   const path = worktreePath(project.slug, sessionId);
@@ -250,7 +284,13 @@ async function resolveWorktree(
     repoDir: project.repoPath,
     defaultBranch: project.defaultBranch,
   });
-  await addWorktreeForBranch(userId, { repoDir: project.repoPath, dir: path, branch, base });
+  await addWorktreeForBranch(userId, {
+    repoDir: project.repoPath,
+    dir: path,
+    branch,
+    base,
+    envFiles,
+  });
   const baseSha = (await refSha(userId, project.repoPath, base)) || headSha;
 
   try {
@@ -263,10 +303,11 @@ async function resolveWorktree(
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       const raced = await prisma.coderWorktree.findUnique({ where: { sessionId } });
       if (!raced) throw err;
-      return { path: raced.path, branch: raced.branch, changed: true };
+      // The winner runs the setup script. it made the checkout.
+      return { path: raced.path, branch: raced.branch, changed: true, created: false };
     }
     throw err;
   }
 
-  return { path, branch, changed: true };
+  return { path, branch, changed: true, created: true };
 }

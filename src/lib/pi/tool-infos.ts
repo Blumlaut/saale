@@ -765,6 +765,26 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultExposure: "codemode",
   },
   {
+    name: "project_settings_get",
+    label: "Read Project Settings",
+    description: "Read a coder project's env files and setup script",
+    category: "settings",
+    // Reading is safe to do unprompted. Changing it is not.
+    defaultPolicy: "allow",
+    defaultExposure: "deferred",
+  },
+  {
+    name: "project_settings_set",
+    label: "Change Project Settings",
+    description: "Change a coder project's env files and setup script",
+    category: "settings",
+    // These become files in every future checkout, and a setup script that runs
+    // there. Ask before that happens.
+    defaultPolicy: "ask",
+    defaultExposure: "deferred",
+    summaryTemplate: "Changing a project's setup",
+  },
+  {
     name: "settings_set",
     label: "Change Setting",
     description: "Change one Saale setting",
