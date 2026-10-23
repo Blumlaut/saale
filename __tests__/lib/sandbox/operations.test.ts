@@ -79,18 +79,23 @@ describe("bash", () => {
         identity: "user-abc",
         command: "ls",
         cwd: root,
-        env: { GH_TOKEN: "s3cret" },
+        env: expect.objectContaining({ GH_TOKEN: "s3cret" }),
       }),
     );
   });
 
-  it("does not leak the environment into a session with no variables", async () => {
+  it("sends only the app's git defaults into a session with no variables", async () => {
     script([{ type: "exit", exitCode: 0, timedOut: false, durationMs: 1 }]);
 
     await operations().bash.exec("env", root, { onData: () => {} } as never);
 
     const options = hoisted.exec.mock.calls[0]![0] as Record<string, unknown>;
-    expect(options).not.toHaveProperty("env");
+    expect(options.env).toEqual({
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_OPTIONAL_LOCKS: "0",
+      GIT_PAGER: "cat",
+      LC_ALL: "C",
+    });
   });
 
   it("clamps a cwd outside the workspace back to its root", async () => {
