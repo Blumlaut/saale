@@ -86,6 +86,79 @@ describe("streamReducer", () => {
     expect(s.messages[0]!.thinking).toBe("hmm");
   });
 
+  it("tool_pending shows a call whose arguments the model is still writing", () => {
+    // Pi announces the call and streams its arguments long before execution;
+    // the card has to exist in that gap, with the arguments it has so far.
+    let s = streamReducer(empty, {
+      type: "tool_pending",
+      turnId: "t1",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: {},
+    });
+    expect(s.messages[0]!.toolCalls).toEqual([
+      { id: "call-1", name: "bash", args: {}, status: "pending" },
+    ]);
+
+    // Later deltas replace the arguments in place: one card, not one per delta.
+    s = streamReducer(s, {
+      type: "tool_pending",
+      turnId: "t1",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "git sta" },
+    });
+    expect(s.messages[0]!.toolCalls).toHaveLength(1);
+    expect(s.messages[0]!.toolCalls![0]!.args).toEqual({ command: "git sta" });
+  });
+
+  it("tool_start turns a pending call into a running one with its final arguments", () => {
+    let s = streamReducer(empty, {
+      type: "tool_pending",
+      turnId: "t1",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "git stat" },
+    });
+    s = streamReducer(s, {
+      type: "tool_start",
+      turnId: "t1",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "git status" },
+    });
+
+    expect(s.messages[0]!.toolCalls).toHaveLength(1);
+    expect(s.messages[0]!.toolCalls![0]).toMatchObject({
+      status: "running",
+      args: { command: "git status" },
+    });
+  });
+
+  it("a replayed tool_pending never overwrites a call that is already running", () => {
+    // The buffer replays the whole generation on reconnect, so an old partial
+    // argument object can arrive after execution started.
+    let s = streamReducer(empty, {
+      type: "tool_start",
+      turnId: "t1",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "git status" },
+    });
+    s = streamReducer(s, {
+      type: "tool_pending",
+      turnId: "t1",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "git sta" },
+    });
+
+    expect(s.messages[0]!.toolCalls![0]).toMatchObject({
+      status: "running",
+      args: { command: "git status" },
+    });
+  });
+
   it("tool_start adds a running tool call and dedupes re-delivered calls", () => {
     const action = {
       type: "tool_start" as const,

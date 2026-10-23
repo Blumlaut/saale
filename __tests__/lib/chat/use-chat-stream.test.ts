@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Dispatch, SetStateAction } from "react";
 import { wireStreamListeners } from "@/components/chat/use-chat-stream";
-import type { ApprovalData } from "@/components/chat/types";
+import type { ApprovalData, Message } from "@/components/chat/types";
 
 /**
  * `tool_end` carries the tool name so the UI can react to specific tools —
@@ -102,5 +102,27 @@ describe("wireStreamListeners tool_end", () => {
 
     expect(setMessages).toHaveBeenCalledTimes(1);
     expect(onToolEnd).toHaveBeenCalledWith("watcher_update");
+  });
+});
+
+describe("wireStreamListeners tool_pending", () => {
+  it("renders a call the model is still writing arguments for", () => {
+    const { eventSource, setMessages, setIsLoading } = wire();
+
+    eventSource.emit("tool_pending", {
+      turnId: "turn-1",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "git" },
+    });
+
+    // The turn is alive even though nothing is executing yet.
+    expect(setIsLoading).toHaveBeenCalledWith(true);
+
+    const update = setMessages.mock.calls[0]![0] as (prev: Message[]) => Message[];
+    const messages = update([]);
+    expect(messages[0]!.toolCalls).toEqual([
+      { id: "call-1", name: "bash", args: { command: "git" }, status: "pending" },
+    ]);
   });
 });

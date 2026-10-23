@@ -40,9 +40,11 @@ const WATCHDOG_TICK_MS = 15_000;
  * Server events:
  * - `turn_start { turnId, startedAt }`. create a streaming message for the
  *   turn, positioned by the server's turn start
- * - `token` / `thinking` / `tool_start` / `tool_update` / `tool_end`. update
- *   the turn (tool_update carries live partial output from a running tool;
- *   tool_end carries toolName so the UI can react to specific tools)
+ * - `token` / `thinking` / `tool_pending` / `tool_start` / `tool_update` /
+ *   `tool_end`. update the turn (`tool_pending` is a call whose arguments the
+ *   model is still writing, `tool_update` carries live partial output from a
+ *   running tool; tool_end carries toolName so the UI can react to specific
+ *   tools)
  * - `turn_end { turnId }`. finalize the turn (safety net for final token)
  * - `turn_discarded { turnId }`. the SDK discarded a failed turn to retry it
  * - `retry_start` / `retry_end`. the provider call failed and is being retried
@@ -261,6 +263,25 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
     markLoading();
     const parsed = parseEvent<{ turnId: string; thinking: string }>(event.data);
     if (parsed) dispatch({ type: "thinking", turnId: parsed.turnId, thinking: parsed.thinking });
+  });
+
+  eventSource.addEventListener("tool_pending", (event: MessageEvent) => {
+    markLoading();
+    const parsed = parseEvent<{
+      turnId: string;
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    }>(event.data);
+    if (parsed) {
+      dispatch({
+        type: "tool_pending",
+        turnId: parsed.turnId,
+        toolCallId: parsed.toolCallId,
+        toolName: parsed.toolName,
+        args: parsed.args ?? {},
+      });
+    }
   });
 
   eventSource.addEventListener("tool_start", (event: MessageEvent) => {
