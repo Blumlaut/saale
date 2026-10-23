@@ -17,6 +17,7 @@ import {
   type ExecHandle,
   type SandboxChunk,
 } from "@/sandbox/containers";
+import { createExecRegistry } from "@/sandbox/registry";
 
 /** A docker stream frame: type byte, three padding bytes, big-endian length. */
 function frame(type: 1 | 2, text: string): Buffer {
@@ -106,11 +107,13 @@ class FakeContainer implements ContainerHandle {
   }
 
   async inspect(): Promise<never> {
+    const options = this.createOptions;
     return {
       Id: this.name,
       Name: `/${this.name}`,
       State: { Running: this.running, Status: this.running ? "running" : "exited" },
       Created: new Date(this.created).toISOString(),
+      ...(options ? { HostConfig: options.HostConfig } : {}),
     } as never;
   }
 
@@ -252,6 +255,7 @@ afterAll(async () => {
 beforeEach(async () => {
   vi.stubEnv("SANDBOX_WORKSPACES_DIR", workspaces);
   vi.stubEnv("SANDBOX_USER", "root");
+  vi.stubEnv("SANDBOX_MEMORY", "2g");
   vi.stubEnv("SANDBOX_IDLE_MINUTES", "60");
   vi.stubEnv("SANDBOX_CONTAINER_TTL_DAYS", "7");
   for (const entry of await fs.readdir(workspaces)) {
@@ -333,6 +337,50 @@ describe("ensure", () => {
     expect(started.running).toBe(true);
     expect(docker.createdOptions).toHaveLength(1);
     expect(started.startedCount).toBe(2);
+  });
+
+  it("replaces a container the limits changed under", async () => {
+    const stale = (await manager().ensure("user-abc")) as FakeContainer;
+    await stale.stop();
+
+    vi.stubEnv("SANDBOX_MEMORY", "8g");
+    config = sandboxConfig();
+    const replaced = (await manager().ensure("user-abc")) as FakeContainer;
+
+    expect(stale.removed).toBe(true);
+    expect(replaced).not.toBe(stale);
+    expect(replaced.running).toBe(true);
+    expect(docker.createdOptions).toHaveLength(2);
+    expect((docker.createdOptions[1]!.HostConfig as { Memory: number }).Memory).toBe(8 * 1024 ** 3);
+  });
+
+  it("keeps the old limits while a command is still running", async () => {
+    const registry = createExecRegistry();
+    const before = createContainerManager({ docker, config, registry });
+    const busy = (await before.ensure("user-abc")) as FakeContainer;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = await before.run("user-abc", { command: "sleep 600" }, () => {});
+
+    vi.stubEnv("SANDBOX_MEMORY", "8g");
+    config = sandboxConfig();
+    const after = createContainerManager({ docker, config, registry });
+
+    await expect(after.ensure("user-abc")).resolves.toBe(busy);
+    expect(busy.removed).toBe(false);
+    expect(docker.createdOptions).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/keeps its old limits/));
+
+    busy.commandExec().finish(0);
+    await session.result;
+    warn.mockRestore();
+  });
+
+  it("keeps a container whose limits already match", async () => {
+    const first = (await manager().ensure("user-abc")) as FakeContainer;
+
+    await expect(manager().ensure("user-abc")).resolves.toBe(first);
+    expect(first.removed).toBe(false);
+    expect(docker.createdOptions).toHaveLength(1);
   });
 
   it("destroys a container whose mount view is wrong", async () => {

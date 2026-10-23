@@ -233,6 +233,12 @@ Everything with a default is optional. The compose file sets the database and Re
 
 `.env.example` lists the rest, with comments.
 
+Docker fixes a container's limits when it is created, so a changed
+`SANDBOX_MEMORY`, `SANDBOX_PIDS` or `SANDBOX_CPUS` replaces each identity's
+container on its next command — the workspace directory is untouched. Redeploy
+the stack first: the limits reach the containers only through `sandbox-exec`'s
+environment, and only after that service is recreated.
+
 ## Development
 
 ```bash
