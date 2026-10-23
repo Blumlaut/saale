@@ -8,7 +8,7 @@
  */
 
 import { prisma } from "@/lib/db";
-import { readFileDiff, readLog, readNumstat, readStatus } from "./git";
+import { readFileDiff, readLog, readNumstat, readStatus, readWorktreeFile } from "./git";
 import type { GitCommit, GitStatus } from "./git-status";
 
 /** One changed path as the panel lists it. */
@@ -23,6 +23,12 @@ export interface CoderChange {
   untracked: boolean;
 }
 
+/** A runnable script found in the worktree's package.json. */
+export interface CoderScript {
+  name: string;
+  command: string;
+}
+
 /** A chat's worktree and everything git says about it. */
 export interface CoderSessionState {
   worktree: { path: string; branch: string; baseSha: string } | null;
@@ -34,6 +40,7 @@ export interface CoderSessionState {
   behind: number;
   changes: CoderChange[];
   commits: GitCommit[];
+  scripts: CoderScript[];
 }
 
 /** A chat whose worktree has not been built yet, or is gone. */
@@ -47,6 +54,7 @@ const NOT_READY: CoderSessionState = {
   behind: 0,
   changes: [],
   commits: [],
+  scripts: [],
 };
 
 /**
@@ -101,10 +109,11 @@ export async function loadSessionState(
   }
 
   const worktree = session.coderWorktree;
-  const [status, numstat, commits] = await Promise.all([
+  const [status, numstat, commits, packageJson] = await Promise.all([
     readStatus(userId, worktree.path),
     readNumstat(userId, worktree.path),
     readLog(userId, worktree.path),
+    readWorktreeFile(userId, worktree.path, "package.json"),
   ]);
 
   return {
@@ -117,6 +126,7 @@ export async function loadSessionState(
     behind: status.behind,
     changes: mergeChanges(status, numstat),
     commits,
+    scripts: parsePackageScripts(packageJson),
   };
 }
 
@@ -156,4 +166,22 @@ export async function loadSessionDiff(
     staged: options.staged === true,
     untracked,
   });
+}
+
+/** Extract the scripts worth offering from a package.json's contents. */
+function parsePackageScripts(raw: string | null): CoderScript[] {
+  if (!raw) return [];
+  let parsed: { scripts?: Record<string, unknown> } | null = null;
+  try {
+    parsed = JSON.parse(raw) as { scripts?: Record<string, unknown> };
+  } catch {
+    return [];
+  }
+  const scripts = parsed?.scripts ?? {};
+  // Only scripts that start or run a dev environment: the rest (lint, typecheck,
+  // format) are not things a button in this panel should launch.
+  const relevant = /^(dev|start|preview|serve|watch)(:|$)/i;
+  return Object.entries(scripts)
+    .filter(([name]) => relevant.test(name))
+    .map(([name, command]) => ({ name, command: String(command ?? "") }));
 }

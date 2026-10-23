@@ -390,6 +390,21 @@ export async function readFileDiff(
   return result.stdout || result.stderr;
 }
 
+/** One file's contents from a worktree, or null when it is missing. */
+export async function readWorktreeFile(
+  userId: string,
+  dir: string,
+  path: string,
+): Promise<string | null> {
+  const result = await runInWorkspace(userId, {
+    cwd: dir,
+    command: `cat ${shellQuote(path)}`,
+    timeoutSeconds: 10,
+  });
+  if (result.exitCode !== 0) return null;
+  return result.stdout;
+}
+
 /** Recent commits on the current branch. */
 export async function readLog(userId: string, dir: string, limit = 20): Promise<GitCommit[]> {
   const format = ["%H", "%h", "%aI", "%an", "%s"].join("%x1f") + "%x1e";
