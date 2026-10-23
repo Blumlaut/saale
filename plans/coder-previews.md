@@ -5,8 +5,8 @@ needs no tool for this: it runs the project the way it always would (`npm run de
 `python -m http.server 8080`, `flask run`), Saale notices the port, and the panel grows an
 entry with the URL, the process and a kill button. Deleting the chat kills what it started.
 
-Every port gets its own origin: `https://<port>-<token>.preview.<apex>` reverse-proxies to
-`http://saale-sandbox-<identity>:<port>`. An app served at the root of its own hostname
+Every port gets its own origin: `https://<identity>-<port>-<token>.preview.<apex>`
+reverse-proxies to `http://saale-sandbox-<identity>:<port>`. An app served at the root of its own hostname
 emits the URLs it always emits, sets its own cookies, and needs no rewriting, no injected
 `<base>` and no base-path configuration. That is the whole reason for the wildcard host.
 
@@ -31,16 +31,26 @@ Settled in the kickoff conversation:
   list comes from `/proc/net/tcp{,6}` (listening sockets are `st == 0A`), and each socket
   inode maps to a pid through `/proc/<pid>/fd`, which also gives the command line and the
   cwd.
-- **The token is deterministic.** `HMAC(SANDBOX_API_KEY, "saale:preview:<identity>:<chat>:<port>")`,
-  hex, truncated to 16 bytes. Stable across reloads, so the URL survives a refresh and can
-  be bookmarked or handed to the agent as the app's base. No expiry, no server state, no
-  database table: possession of the URL is access to that port, like a share link, and the
-  port stops answering the moment its process dies.
+- **The token is deterministic.** `HMAC(SANDBOX_API_KEY, "saale:preview:<identity>:<port>")`,
+  hex, truncated to 12 bytes. The identity travels in the hostname in front of it, so the
+  proxy can find the container from the URL alone, and the port sits between them for
+  whoever has to read the URL. Stable across reloads, so a preview survives a refresh and
+  can be bookmarked. No expiry, no server state, no database table: possession of the URL
+  is access to that port, like a share link, and the port stops answering the moment its
+  process dies. The hostname is the constraint that shapes the token: a DNS label allows
+  63 characters, and `user-` plus a cuid already uses 30 of them.
 - **The domain comes from `BETTER_AUTH_URL`.** `<scheme>://preview.<host>`, so a deployment
   sets no new variable. `PREVIEW_DOMAIN` overrides it, and previews switch off when the
   derived host is `localhost` or an IP.
 - **A loopback-bound port gets the hint instead of a proxy.** Nothing outside the container
   can dial `127.0.0.1` there, so the row says to bind `0.0.0.0`.
+- **Saale allows its own frames.** The app's CSP is `default-src 'self'`, which blocks the
+  iframe before the browser ever asks the proxy. The middleware adds
+  `frame-src 'self' <scheme>://*.<preview domain>`, and nothing else.
+- **The setup lives where the previews would be.** The Ports tab prints the nginx block,
+  filled in with the derived domain (or `preview.example.com` while previews are off), with
+  a copy button and a check that goes through the public hostname. A settings page would be
+  a second place to look; this one appears exactly when a preview is missing.
 - **The preview listener is a second face of the service, on its own port.** Port
   `SANDBOX_PREVIEW_PORT` serves previews only: the host-and-token handshake, and one
   `__preview/health` endpoint so the settings page can prove that DNS, TLS and nginx are in
@@ -55,9 +65,9 @@ Settled in the kickoff conversation:
 
 ## Setup for a deployment
 
-Three one-time steps, then nothing per project, chat or port. The settings page prints the
-nginx block with the derived domain filled in, and its check button proves the block works,
-so nobody has to guess.
+Three one-time steps, then nothing per project, chat or port. The README carries them, and
+the Ports tab prints the same block with this deployment's domain filled in, with a check
+button that proves it works, so nobody has to guess.
 
 1. DNS: `*.preview.example.com A <ip>`.
 2. A certificate for `*.preview.example.com`. Wildcards need DNS-01:
@@ -84,9 +94,9 @@ server {
 }
 ```
 
-Compose publishes `8101` on `sandbox-exec` (already a service the operator edits). If the
-deployment serves a CSP, `frame-src https://*.preview.example.com` is required for the
-embedded view; "open in new tab" works without it.
+Compose publishes `8101` on `sandbox-exec` and binds it to `127.0.0.1`, so only the proxy
+on the same host can reach the listener. Saale's own CSP already allows the frame; a
+reverse proxy that sets a CSP of its own has to allow it too.
 
 ## How a preview comes up
 
@@ -99,10 +109,11 @@ embedded view; "open in new tab" works without it.
    inodes to pids, and returns `{ port, address, pid, command, cwd, loopback }`. Entries
    whose cwd is outside the chat's worktree are dropped by the app route, so a port is only
    ever attributed to the chat that owns it.
-4. The browser loads `https://5173-<token>.preview.example.com/x`. nginx forwards to 8101
-   with `Host` intact. The proxy parses `<port>-<token>`, verifies the HMAC, derives the
+4. The browser loads
+   `https://user-abc-5173-<token>.preview.example.com/x`. nginx forwards to 8101 with `Host`
+   intact. The proxy parses `<identity>-<port>-<token>`, verifies the HMAC, derives the
    container name with `containerName(identity)` and dials
-   `http://saale-sandbox-<identity>:5173/x` with `Host` set to the preview hostname.
+   `http://saale-sandbox-user-abc:5173/x` with `Host` set to the preview hostname.
 5. Unknown host, bad token, or a port that stopped listening all get a small HTML page that
    says so. Nothing else on the preview listener is reachable.
 6. WebSocket upgrades take the same path through a `net` socket, so Vite HMR and
@@ -153,9 +164,11 @@ App:
 - `src/lib/coder/worktree-removal.ts` — `stopProcesses` also sweeps by cwd (see Cleanup).
 - `src/lib/pi/coder-prompt.ts` — one paragraph: dev servers are reachable from the panel,
   and the two host allowlists.
-- `src/app/dashboard/settings/…` — a Previews section that prints the nginx block with the
-  derived domain and probes `https://probe.<domain>/__preview/health` at the wildcard host
-  to tell the operator whether DNS, TLS and nginx are in place.
+- `src/components/coder/setup` in the Ports tab — the nginx block with a copy button, and a
+  check that probes `https://probe.<domain>/__preview/health` at the wildcard host, so a
+  green answer means DNS, the certificate, nginx and the listener are all in place.
+- `src/middleware.ts` — `frame-src` for the wildcard host, without which the iframe is
+  blocked by Saale's own `default-src 'self'`.
 
 ## Cleanup
 
@@ -183,16 +196,17 @@ Parsing and tokens are pure, so they are unit tests with real fixtures:
 - Token: sign then verify round-trips; a tampered token, a token for another port, and a
   token for another identity are all refused; `containerName` is derived from the identity
   in the token, never from the request.
-- Hostname: `5173-<token>.preview.example.com` parses; uppercase, a missing port, a bare
-  `preview.example.com`, an over-long label, and another domain are refused.
+- Hostname: `user-abc-5173-<token>.preview.example.com` parses; uppercase, a missing port, a
+  bare `preview.example.com`, a port that is not a port, and a token of the wrong length
+  are refused.
 - Proxy, against a real `http.createServer` upstream: path, query and `Host` arrive
   unchanged; a response body passes through byte for byte; a 502 page when nothing listens;
   a real WebSocket echo through the upgrade bridge (both directions).
 - Discovery route: missing bearer is 401; a port whose cwd is outside the chat's worktree is
   absent from the app route's answer; a chat with no worktree is 404.
 - Kill route: kills the pid from the fixture, and an unknown port is 404.
-- Cleanup: a fake `/proc` tree under a temp dir, one process inside the worktree and one
-  outside, assert only the inside one is killed and the sweep's own shell is not.
+- Cleanup: real `sleep` processes with a fake `/proc` tree of symlinks, one inside the
+  worktree and one outside, assert only the inside one dies.
 - Prompt: the preview paragraph is present for a coder chat and absent from the chat prompt.
 - E2E: the Ports tab lists a mocked port, opens the iframe, and the kill button posts; the
   four tabs fit at 320px and 375px. Layout checks reuse the coder spec's mocked API so no

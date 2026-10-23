@@ -1,204 +1,246 @@
 # Saale
 
-> AI-powered personal workspace: chat, email, calendar, tasks — one interface.
+A self-hosted personal workspace with an AI agent in the middle of it. Chat, email,
+calendar, tasks and a coding workspace share one interface, and the agent can act in all
+of them. It runs on your own server, with your own mail and calendar accounts.
 
-Saale connects your email, calendar, AI chat, and background automation into a single workspace. Powered by the Pi SDK for agentic AI, BullMQ for reliable job processing, and direct IMAP/SMTP & CalDAV protocol integrations — no third-party API lock-in.
+The agent is [Pi](https://github.com/earendil-works/pi-coding-agent); every command it runs
+executes inside a Docker container that holds one user's files and nothing else.
 
-## Features
+## What it does
 
-- **AI Chat** — Conversational AI with streaming responses, tool calls, persistent history, and configurable models
-- **Email** — Direct IMAP/SMTP integration with background sync, compose, search, AI-powered drafts, and tagging
-- **Calendar** — CalDAV integration with subscription sync, event management, and AI-powered extraction from emails
-- **Job Queue** — BullMQ-powered background jobs with cron scheduling, retries, and observability
-- **Memory** — Persistent AI memory collections with tagging and semantic search across your knowledge
-- **Web Tools** — Built-in web search (SearXNG) and URL fetching with browser TLS fingerprinting
-- **Sandboxed Bash** — Optional Docker-isolated terminal (open-terminal) for code execution, file operations, and data processing
-- **File Workspace** — Per-user file storage with read/write/edit tools; supports images when bash is enabled
-- **Unified Search** — Search across chat history, email, and calendar in one interface
-- **Installable App** — Web app manifest, generated icon set, offline fallback page, and a safe-area-aware shell for home-screen installs
-- **Per-User Isolation** — Every database query and file operation is scoped to the authenticated user
+- **Chat with tools** — streaming answers, a model per purpose, and tools for mail,
+  calendar, tasks, memory, web search, files and a shell.
+- **Mail** — IMAP/SMTP directly, background sync, search, AI drafts.
+- **Calendar** — CalDAV subscriptions, event editing.
+- **Jobs and watchers** — cron or event-driven agent runs, with history.
+- **Memory** — searchable notes the agent writes and reads across chats.
+- **Files and a sandbox** — a per-user directory and a per-user container with Python,
+  Node, git, ffmpeg, chromium and `gh`.
+- **Coder** — a chat that works in a git worktree of one of your repos, with a panel for
+  the changes, the files, a terminal, and a live preview of the running app.
+- **Installable** — a PWA with an offline page, no cached dashboards.
 
-## Tech Stack
+## Requirements
 
-| Layer         | Choice                                                         |
-| ------------- | -------------------------------------------------------------- |
-| Frontend      | Next.js 15 (App Router) + shadcn/ui + Tailwind 4               |
-| AI Engine     | Pi SDK (`@earendil-works/pi-coding-agent`)                     |
-| Database      | PostgreSQL 17 + Prisma                                         |
-| Queue         | BullMQ + Redis 8                                               |
-| Auth          | better-auth v1                                                 |
-| Email         | imapflow + nodemailer + mailparser                             |
-| Calendar      | CalDAV client + iCalendar parsing                              |
-| Terminal      | [open-terminal](https://github.com/open-webui/open-terminal)    |
-| Web Search    | SearXNG                                                        |
-| Tests         | Vitest + Playwright                                            |
+- Docker and Docker Compose.
+- For HTTPS and previews: a domain, and the ability to add DNS records.
 
-## Quick Start
+## Setup
 
 ```bash
-# Clone and install
 git clone https://github.com/Blumlaut/saale.git
 cd saale
-npm install
-
-# Set up environment variables
 cp .env.example .env
-# Edit .env with your secrets (see Environment Variables below)
-
-# Start everything with hot reload
-npm run docker:dev
 ```
 
-The app will be available at http://localhost:3000.
+Open `.env` and replace the four placeholder secrets. Each is a random string; generate
+them:
 
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Browser                                   │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌──────────┐  │
-│  │  Chat    │ │  Email  │ │Calendar │ │  Tasks  │ │  Admin   │  │
-│  └────┬─────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬─────┘  │
-│       │ SSE/REST    │ REST      │ REST      │ REST      │ REST   │
-│  ┌────▼─────────────────────────────────────────────────────────┐│
-│  │                   Next.js Server                              ││
-│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐  ││
-│  │  │ Pi Session   │ │ Email Client │ │  Calendar Engine     │  ││
-│  │  │ (per-user)   │ │ (IMAP/SMTP)  │ │  (CalDAV + iCalendar)│  ││
-│  │  └──────┬───────┘ └──────┬───────┘ └──────────┬───────────┘  ││
-│  │         │                │                     │              ││
-│  │  ┌──────▼────────────────▼─────────────────────▼──────────┐  ││
-│  │  │              Custom Tools (defineTool)                   │  ││
-│  │  │  Mail │ Jobs │ Calendar │ Memory │ Web │ Chat │ Files   │  ││
-│  │  └─────────────────────────────────────────────────────────┘  ││
-│  └───────────────────────────────────────────────────────────────┘│
-│                            │                                      │
-│         ┌──────────────────┼──────────────────┐                   │
-│         │                  │                  │                   │
-│  ┌──────▼──────┐   ┌───────▼──────┐  ┌───────▼──────┐           │
-│  │ PostgreSQL  │   │    Redis     │  │ open-terminal │           │
-│  │   (Prisma)  │   │  (BullMQ)    │  │  (sandboxed)  │           │
-│  └─────────────┘   └──────────────┘  └──────────────┘           │
-└──────────────────────────────────────────────────────────────────┘
+```bash
+openssl rand -base64 32   # BETTER_AUTH_SECRET
+openssl rand -hex 32      # ENCRYPTION_KEY     (must be exactly 64 hex characters)
+openssl rand -hex 32      # SANDBOX_API_KEY
+openssl rand -hex 32      # WORKER_API_KEY
 ```
 
-### Tool Backends
+Leave `BETTER_AUTH_URL` as `http://localhost:3630` for a local trial. Then:
 
-| Tools          | Default (bash off) | Bash enabled              |
-| -------------- | ------------------ | ------------------------- |
-| read / write / edit | Local filesystem (fast) | Open Terminal (sandboxed, supports images) |
-| bash           | — (disabled)       | Open Terminal (Docker container) |
-| email          | IMAP/SMTP (direct) | —                         |
-| calendar       | CalDAV (direct)    | —                         |
-| web search     | SearXNG            | —                         |
-| memory         | PostgreSQL         | —                         |
-| jobs           | BullMQ/Redis       | —                         |
+```bash
+docker compose up -d --build
+```
+
+That builds the app, the worker and the sandbox image, runs the database migrations and
+starts everything. Open <http://localhost:3630> and create the first account.
+
+### Serving it on a domain
+
+Set `BETTER_AUTH_URL` to the public address and restart. It is the one place the app's
+URL is configured: sessions, OAuth redirects, webhooks and preview hostnames all derive
+from it.
+
+```dotenv
+BETTER_AUTH_URL="https://saale.example.com"
+```
+
+```bash
+docker compose up -d
+```
+
+Terminate TLS at your reverse proxy. A minimal nginx vhost:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name saale.example.com;
+    ssl_certificate     /etc/letsencrypt/live/saale.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/saale.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3630;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;          # chat streams arrive as they are written
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+## Coder previews
+
+A coder chat can start a dev server, and the Ports tab in the panel shows it and opens it.
+Nothing is registered per project: whatever listens inside the chat's worktree shows up.
+
+Each port gets a hostname of its own — `https://<port>-<signature>.preview.example.com` —
+so the app inside it runs at the root of its own origin and needs no base path. That is why
+this needs a wildcard domain: **`*.preview.example.com`**.
+
+Three things to set up once. Saale fills in the block below with your own domain and has a
+**Check** button that tests all three at the same time.
+
+### 1. The DNS record
+
+```
+*.preview.example.com.   A     <the IP of the server running Saale>
+```
+
+Use an AAAA record instead if you serve over IPv6. If your DNS provider is Cloudflare,
+turn the proxy off for this record (grey cloud): the certificate challenge below needs to
+reach your server.
+
+### 2. The certificate
+
+A wildcard cannot be issued by the usual HTTP challenge, so this needs a DNS challenge.
+With certbot and Cloudflare DNS:
+
+```bash
+certbot certonly --dns-cloudflare \
+  -d '*.preview.example.com' \
+  --dns-cloudflare-credentials /root/.secrets/cloudflare.ini
+```
+
+For other providers the plugin name differs (`--dns-route53`, `--dns-google`,
+`--dns-digitalocean`); the pattern is the same. Renewal works like every other certbot
+certificate you already have.
+
+The certificate must be **for `*.preview.example.com` itself**. A certificate for
+`*.example.com` does not cover it.
+
+### 3. The nginx vhost
+
+Add this next to the one that serves Saale. The port matches the preview listener that
+compose publishes on the loopback address, so nothing on the internet reaches it directly.
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name *.preview.example.com;
+    ssl_certificate     /etc/letsencrypt/live/preview.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/preview.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8101;
+        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;          # hot reload and live output
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+Reload nginx: `nginx -t && systemctl reload nginx`.
+
+### 4. Check it
+
+In Saale, open a coder chat and go to the **Ports** tab. If previews are off there, the tab
+shows this setup with your domain already in it. Press **Check**: green means DNS, the
+certificate, nginx, and the listener are all correct.
+
+Nothing else is needed. The port stays `8101` inside your own network: changing it means
+changing `SANDBOX_PREVIEW_PORT` in `.env` and the port in the vhost together.
+
+### Using it
+
+Open a chat, then have the agent start the project, or start it yourself in the **Terminal**
+tab:
+
+```bash
+npm run dev            # or: python3 -m http.server 8080
+```
+
+Within a couple of seconds the port appears in **Ports** with the URL, the command that
+started it, and a menu to copy the link, open it in a new tab, or stop the server. Deleting
+the chat stops everything it left running.
+
+### If a preview does not load
+
+| What you see                        | Why                                               | Fix                                                                                                                |
+| ----------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Check** stays red                 | DNS, certificate or nginx is wrong                | `dig +short 1.preview.example.com`, then `curl -kI https://1.preview.example.com/__preview/health` from the server |
+| "This preview link does not work"   | Wrong signature                                   | Copy the link from the Ports tab; an edited hostname stops working                                                 |
+| "Nothing is listening on port 8080" | The server stopped, or it is bound to `127.0.0.1` | Restart it, and bind `0.0.0.0`                                                                                     |
+| The port says `loopback`            | The dev server only listens inside the container  | `npm run dev -- --host 0.0.0.0`; flask: `flask run --host 0.0.0.0`; Django: `runserver 0.0.0.0:8000`               |
+| Blank frame, `403 Blocked request`  | Vite rejects a host it was not told about         | `server.allowedHosts: ['.preview.example.com']` in `vite.config.ts`                                                |
+| Blank frame, `/_next/*` blocked     | Next blocks cross-origin dev requests             | `allowedDevOrigins: ['*.preview.example.com']` in `next.config.ts`                                                 |
+| Frame is empty, tab works           | The app sends `X-Frame-Options: DENY`             | Use **Open in a new tab**; or remove that header in dev                                                            |
+| Previews are off                    | `BETTER_AUTH_URL` is `localhost` or an IP         | Set the public URL, or set `PREVIEW_DOMAIN="preview.example.com"`                                                  |
+
+If you serve Saale behind a CSP of your own, let it frame the previews:
+`frame-src 'self' https://*.preview.example.com`. Saale's own CSP already does this.
+
+## Configuration
+
+Everything with a default is optional. The compose file sets the database and Redis URLs.
+
+| Variable               | What it does                                                       | Required |
+| ---------------------- | ------------------------------------------------------------------ | -------- |
+| `BETTER_AUTH_URL`      | Public URL of the app. Sessions, redirects, webhooks, previews.    | Yes      |
+| `BETTER_AUTH_SECRET`   | Session encryption (32+ characters).                               | Yes      |
+| `ENCRYPTION_KEY`       | Encrypts stored mail passwords. 64 hex characters.                 | Yes      |
+| `SANDBOX_API_KEY`      | Shared key between the app and the sandbox service.                | Yes      |
+| `WORKER_API_KEY`       | Shared key for internal worker calls.                              | Yes      |
+| `PREVIEW_DOMAIN`       | Preview wildcard, when it is not `preview.<BETTER_AUTH_URL host>`. | No       |
+| `SANDBOX_PREVIEW_PORT` | Port the preview listener binds. `0` turns previews off.           | No       |
+| `SANDBOX_USER`         | `root` lets the agent install packages; `agent` is stricter.       | No       |
+| `SANDBOX_MEMORY`       | Memory limit per container, e.g. `2g`.                             | No       |
+| `SANDBOX_IDLE_MINUTES` | Minutes before an idle container is stopped.                       | No       |
+| `SEARXNG_URL`          | Search backend for the web tools.                                  | No       |
+| `COUNCIL_ENABLED`      | `0` removes the council module entirely.                           | No       |
+
+`.env.example` lists the rest, with comments.
 
 ## Development
 
 ```bash
-# Full check (lint + typecheck + format + tests)
-npm run check
-
-# Database
-npm run db:migrate   # Apply migrations
-npm run db:studio    # Prisma GUI
-
-# Tests
-npm test             # Vitest unit tests
-npm run test:e2e     # Playwright E2E tests
-
-# PWA
-npm run pwa:icons    # Regenerate the icon set from the brand mark
+npm install
+npx prisma generate
+npm run dev          # http://localhost:3630, hot reload
+npm run check        # lint, types, formatting, tests
+npm test             # unit tests only
+npm run test:e2e     # Playwright
 ```
 
-### Docker
+Outside Docker the app needs `DATABASE_URL`, `REDIS_URL` and a running Postgres and Redis;
+`docker compose up postgres redis` gives you both.
 
-The project uses two compose files layered together:
+`npm run docker:dev` runs the whole stack with hot reload instead.
 
-- **`docker-compose.yml`** — base config (production defaults)
-- **`docker-compose.dev.yml`** — dev overrides (build target, hot reload command)
+## How it fits together
 
-```bash
-# Dev mode — hot reload via docker compose watch
-npm run docker:dev
-# or: docker compose -f docker-compose.yml -f docker-compose.dev.yml watch
+`web` runs the app, `worker` runs jobs and watchers, `sandbox-exec` owns the Docker socket
+and runs every agent command in a per-user container, and `postgres`, `redis` and `searxng`
+are infrastructure. A user's container mounts one directory of the `saale_workspaces`
+volume, so no other user's files are at any path inside it.
 
-# Production mode — standalone Next.js server
-npm run docker:prod
-# or: docker compose up
-```
-
-The dev override only changes `build.target`, `NODE_ENV`, and the startup command — everything else (volumes, dependencies, infrastructure services) is shared from the base file.
-
-## Environment Variables
-
-| Variable               | Description                                                   | Required  |
-| ---------------------- | ------------------------------------------------------------- | --------- |
-| `DATABASE_URL`         | PostgreSQL connection string                                  | Yes       |
-| `REDIS_URL`            | Redis connection string                                       | Yes       |
-| `BETTER_AUTH_SECRET`   | Secret for session encryption (32+ chars)                     | Yes       |
-| `BETTER_AUTH_URL`      | Public base URL of the app; also the base for OAuth redirects and the Telegram webhook | Yes |
-| `ENCRYPTION_KEY`       | 64-char hex string for email password encryption              | Yes       |
-| `SANDBOX_URL`          | Sandbox service base URL (commands run in per-workspace containers) | Yes* |
-| `SANDBOX_API_KEY`      | Bearer key for the sandbox service                            | Yes*      |
-| `SANDBOX_WORKSPACES_DIR` | Mount point of the workspaces volume (default `/workspaces`) | No       |
-| `SANDBOX_USER`         | Account commands run as: `root` (installs) or `agent` (tighter) | No      |
-| `SEARXNG_URL`          | SearXNG instance URL for web search                           | No        |
-| `NGROK_URL`            | Dev tunnel in front of the app; overrides `BETTER_AUTH_URL` for webhook registration | No |
-| `UPLOADS_DIR`          | Path for user file storage                                    | No        |
-
-*\* Required only when bash tools are enabled.*
-
-Generate secrets:
-```bash
-# ENCRYPTION_KEY (64-char hex)
-openssl rand -hex 32
-
-# SANDBOX_API_KEY (64-char hex)
-openssl rand -hex 32
-```
-
-## Production
-
-```bash
-# Build and start production image
-npm run docker:prod
-# or: docker compose up -d
-```
-
-The base compose file defaults to the `production` build target — a minimal standalone Next.js server with no dev tools.
-
-## Installable App (PWA)
-
-The dashboard ships a web app manifest (`src/app/manifest.ts`), a generated icon
-set (`public/icons`), and a service worker (`public/sw.js`) that precaches
-`/offline` and serves it whenever a navigation fails.
-
-- **Installing requires HTTPS** (or `localhost`). TLS terminates at the nginx
-  proxy, and `BETTER_AUTH_URL` must match that origin or sign-in is rejected as
-  an invalid origin.
-- **The service worker never caches navigations or `/api/` responses.** The
-  dashboard is authenticated and live-data: a cached page would serve one user's
-  mail and chat state to the next session on a shared device. Only the offline
-  fallback page and content-hashed `/_next/static/*` assets are cached.
-- Icons are generated from `src/lib/pwa/brand.json`; run `npm run pwa:icons`
-  after changing the palette or the mark.
-
-## Open Terminal (Sandboxed Execution)
-
-When bash tools are enabled, every identity gets its own container holding one directory of the `saale_workspaces` volume (`src/sandbox/` holds the service, `src/lib/sandbox/` the app side):
-
-- **Full dev environment** — Python 3, Node.js, git, build tools, ffmpeg, chromium, and `gh` from `Dockerfile.sandbox`
-- **Per-workspace isolation** — a container mounts only its own directory, so another user's files are not at any path
-- **Streamed output** — stdout and stderr arrive as produced, and a stop kills the process group
-- **Image support** — The read tool can return images (PNG, JPEG, GIF, WebP) as binary attachments
-- **User variables** — a user's encrypted environment variables reach their commands, and `GH_TOKEN` authenticates `gh`
-
-To enable, set `bash: true` in the user's tool config and configure `SANDBOX_URL` and `SANDBOX_API_KEY` (see `docker-compose.yml` and `plans/sandbox-service.md`).
-
-Files moved off the old `saale_open-terminal-data` volume once, on 2026-10-22; the volume can be deleted after the workspaces have been checked.
+`docker compose down` stops everything and keeps your data. **`docker compose down -v`
+deletes the workspaces volume** — every user's files, repos and worktrees. Don't.
 
 ## Naming
 
-**Saale** — river through Jena (a place of connection)
+**Saale** — river through Jena.
