@@ -36,33 +36,33 @@ Any UI work (pages, panels, forms, lists, modals, buttons, inputs, styling) **mu
 - Every change **must** be committed before moving on.
 - Commit messages: **max 50 chars**, imperative mood, descriptive (e.g. ✅ `add prisma schema for users and sessions`, ❌ `update stuff`).
 - Group related changes into a single commit. No atomic-one-line commits.
-- Run the checks that cover what you touched **before committing** — scoped, not the whole repo (see below). Nothing lands broken.
+- Run the checks that cover what you touched **before committing** (see below for keeping that fast). Nothing lands broken.
 
-### Check narrowly, and only where it is relevant
+### Scope the checks, don't drop them
 
-A full-repo `npm run check` runs eslint, `tsc` and ~5000 tests over every file. It
-is slow, it is memory-hungry (`tsc` over the whole app exceeds this container's
-2 GB and gets OOM-killed — `NODE_OPTIONS=--max-old-space-size=1700 npx tsc --noEmit`
-completes), and it reports failures in code you never opened. So scope every step
-to the files the change actually touches:
+A full-repo `npm run check` runs eslint, `tsc` and every test in the repo. It is
+slow and memory-hungry (whole-app `tsc` can exceed this container's 2 GB and be
+OOM-killed — `NODE_OPTIONS=--max-old-space-size=1700 npx tsc --noEmit` gets
+through), and it buries a real failure in code you never opened. So start with
+the files the change touches, and widen as far as the change reaches:
 
 1. `npx eslint --fix <changed files>` — eslint `--fix` also applies prettier
    formatting (it runs as a lint rule), so one command clears both cheap failure
    modes. Plain `prettier --write <files>` for anything eslint does not cover
    (`.md`, `e2e/`).
 2. `NODE_OPTIONS=--max-old-space-size=1700 npx tsc --noEmit` — type errors next.
-   `tsc` has no per-file mode and a single file's types pull in its imports, so
-   this one stays whole-project; run it when you changed `.ts`/`.tsx` source, not
-   for docs, styles or config-only edits.
-3. `npx vitest run <paths>` — only the test files covering what changed (the
-   test file you added or edited, plus the ones for modules you modified). Use
-   `npx vitest run <dir>` for a feature area, never the bare suite, while
-   iterating.
+   `tsc` has no per-file mode and a file's types pull in its imports, so this one
+   is whole-project: run it whenever `.ts`/`.tsx` source changed (a docs-only,
+   style-only or config-only edit has no types to check).
+3. `npx vitest run <paths>` — the tests covering what changed: the file you added
+   or edited, plus those for the modules you modified. `npx vitest run <dir>`
+   covers a feature area.
 
-Skip a step that cannot be affected: a docs-only change needs no test run, a
-CSS-only change needs no `tsc`. Reserve the full `npm run check` for a change
-that spans the app (a shared primitive, the Prisma schema, the agent runtime) or
-when the user asks for it — and say so when you do.
+A change that reaches further than a couple of files — a shared primitive, the
+Prisma schema, the agent runtime, anything the whole app imports — deserves the
+full `npm run check`, and so does any run you expect to be cheap. If the machine
+is too saturated for a check, say which one did not run and why, rather than
+quietly leaving it out.
 
 ### A local build needs a production `NODE_ENV`
 
@@ -83,7 +83,7 @@ not a bug in this app: don't go hunting for a context provider or a bad layout.
 - No trivial tests (`1 + 1 = 2`, empty renders, etc.).
 - Test actual behaviour: API responses, auth flows, tool execution, email parsing, task scheduling, edge cases.
 - Every new feature or non-trivial change needs at least one test covering the happy path and one edge case.
-- Tests must pass before committing. Run the tests that cover the change (`npx vitest run <paths>`), not the whole suite. If a test fails, fix the code or the test — don't skip it.
+- Tests must pass before committing. Run the tests that cover the change (`npx vitest run <paths>`, or the feature's directory); the whole suite is welcome too when the change is broad or the machine has room for it. If a test fails, fix the code or the test — don't skip it.
 
 ## Code Style
 
