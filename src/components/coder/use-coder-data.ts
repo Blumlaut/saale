@@ -76,6 +76,15 @@ export interface CoderSessionState {
   scripts: { name: string; command: string; runCommand: string }[];
   /** Set while the chat is building its workspace (first message). */
   provisioning: CoderProvisioning | null;
+  /** Set when a build ran the setup script and it failed. */
+  setupFailure: CoderSetupFailure | null;
+}
+
+/** A setup script that failed while the chat's worktree was being built. */
+export interface CoderSetupFailure {
+  exitCode: number | null;
+  output: string;
+  failedAt: string;
 }
 
 /** How often an open coder list re-reads itself while the tab is visible. */
