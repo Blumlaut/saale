@@ -25,6 +25,7 @@ import {
   projectSkillPaths,
   type SessionWorkspace,
 } from "./project-context";
+import { SESSION_ENV_NAMES } from "@/lib/sandbox/env-vars";
 import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
@@ -68,8 +69,11 @@ Scratch files and throwaway output go under \`.tmp/\` in the working directory. 
  * is. A value in a prompt is a value in a transcript.
  */
 function terminalSection(envNames: string[]): string {
-  if (envNames.length === 0) return TERMINAL_PROMPT;
-  return `${TERMINAL_PROMPT}\nCommands receive these environment variables, set by the user: ${envNames.join(
+  const saaleVars = `Commands also see these variables, set by Saale: ${SESSION_ENV_NAMES.map(
+    (name) => `\`${name}\``,
+  ).join(", ")}. They name the chat and the model answering in it.`;
+  if (envNames.length === 0) return `${TERMINAL_PROMPT}\n${saaleVars}`;
+  return `${TERMINAL_PROMPT}\n${saaleVars}\nCommands receive these environment variables, set by the user: ${envNames.join(
     ", ",
   )}. Their values are not shown to you.`;
 }
