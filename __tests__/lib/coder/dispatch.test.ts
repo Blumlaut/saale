@@ -14,10 +14,12 @@ const CHAT_ID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 vi.mock("@/lib/db", () => ({
   prisma: {
     coderProject: { findFirst: vi.fn() },
-    chatSession: { findFirst: vi.fn() },
+    chatSession: { findFirst: vi.fn(), findMany: vi.fn() },
     scriptWatcher: { update: vi.fn() },
   },
 }));
+
+vi.mock("@/lib/redis", () => ({ getActiveSessions: vi.fn() }));
 
 vi.mock("@/lib/chat/respond-in-chat", () => ({ respondInChat: vi.fn() }));
 
@@ -27,6 +29,7 @@ vi.mock("@/lib/chat/create-session", async (importOriginal) => {
 });
 
 import { prisma } from "@/lib/db";
+import { getActiveSessions } from "@/lib/redis";
 import { respondInChat } from "@/lib/chat/respond-in-chat";
 import { createChatSessionRow } from "@/lib/chat/create-session";
 import { dispatchWatcherRun, fireBranch, fireTitle } from "@/lib/coder/dispatch";
@@ -34,6 +37,8 @@ import { dispatchWatcherRun, fireBranch, fireTitle } from "@/lib/coder/dispatch"
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const findProject = vi.mocked(prisma.coderProject.findFirst as any);
 const findChat = vi.mocked(prisma.chatSession.findFirst as any);
+const findChats = vi.mocked(prisma.chatSession.findMany as any);
+const activeSessions = vi.mocked(getActiveSessions as any);
 const updateWatcher = vi.mocked(prisma.scriptWatcher.update as any);
 const respond = vi.mocked(respondInChat as any);
 const createChat = vi.mocked(createChatSessionRow as any);
@@ -84,6 +89,8 @@ describe("dispatchWatcherRun", () => {
     vi.stubGlobal("crypto", { randomUUID: () => CHAT_ID });
     findProject.mockResolvedValue({ id: "project-1" });
     findChat.mockResolvedValue(null);
+    findChats.mockResolvedValue([]);
+    activeSessions.mockResolvedValue(new Set<string>());
     createChat.mockImplementation(async (userId: string, input: Record<string, unknown>) => ({
       id: input.id,
       title: input.title,
@@ -195,6 +202,48 @@ describe("dispatchWatcherRun", () => {
       where: { id: "w-1" },
       data: { stickySessionId: CHAT_ID },
     });
+  });
+
+  it("refuses a fire while a previous fire is still running", async () => {
+    activeSessions.mockResolvedValue(new Set(["chat-running"]));
+    findChats.mockResolvedValue([{ id: "chat-running" }]);
+
+    await expect(
+      dispatchWatcherRun({
+        userId: "u-1",
+        watcher: {
+          id: "w-1",
+          name: "PR bot",
+          projectId: "project-1",
+          worktreeMode: "per-fire",
+          stickySessionId: null,
+        },
+        modelId: null,
+        message: "Review it",
+        value: { number: 42 },
+      }),
+    ).rejects.toThrow(/still working in chat chat-running/);
+
+    expect(createChat).not.toHaveBeenCalled();
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("does not go looking for its chats when nothing is generating", async () => {
+    await dispatchWatcherRun({
+      userId: "u-1",
+      watcher: {
+        id: "w-1",
+        name: "PR bot",
+        projectId: "project-1",
+        worktreeMode: "per-fire",
+        stickySessionId: null,
+      },
+      modelId: null,
+      message: "Review it",
+      value: { number: 42 },
+    });
+
+    expect(findChats).not.toHaveBeenCalled();
   });
 
   it("refuses a project that is not the watcher owner's", async () => {
