@@ -46,6 +46,7 @@ uploads/
 
 # Misc
 *.tsbuildinfo
+.eslintcache
 .cache/
 .pi-subagents/artifacts/
 # Pi rewrites its subagent config on every session; it is tool state, not project config.
