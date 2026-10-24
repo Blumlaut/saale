@@ -221,12 +221,14 @@ describe("workspace file serving", () => {
 describe("workspace file serving for a coder chat", () => {
   // Computed lazily: `userRoot` only exists once the beforeAll has run.
   const worktree = () => path.join(userRoot, "worktrees", "proj", "chat-1");
+  // What `CoderWorktree.path` holds: relative to the workspace root.
+  const storedWorktree = "worktrees/proj/chat-1";
 
   it("serves a file from the named chat's worktree before the workspace root", async () => {
     await fs.mkdir(worktree(), { recursive: true });
     await fs.writeFile(path.join(worktree(), "notes.md"), "worktree notes");
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    mockLoadCoderSession.mockResolvedValue(coderSession(worktree()));
+    mockLoadCoderSession.mockResolvedValue(coderSession(storedWorktree));
 
     const res = await sessionRequest("notes.md", "chat-1");
 
@@ -237,7 +239,7 @@ describe("workspace file serving for a coder chat", () => {
   it("falls back to the workspace root when the worktree has no such file", async () => {
     await fs.mkdir(worktree(), { recursive: true });
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    mockLoadCoderSession.mockResolvedValue(coderSession(worktree()));
+    mockLoadCoderSession.mockResolvedValue(coderSession(storedWorktree));
 
     const res = await sessionRequest("notes.md", "chat-1");
 
@@ -248,7 +250,7 @@ describe("workspace file serving for a coder chat", () => {
   it("serves a worktree file for a download request", async () => {
     await fs.mkdir(worktree(), { recursive: true });
     await fs.writeFile(path.join(worktree(), "shot.png"), "png-bytes");
-    mockLoadCoderSession.mockResolvedValue(coderSession(worktree()));
+    mockLoadCoderSession.mockResolvedValue(coderSession(storedWorktree));
 
     const res = await GET(
       new NextRequest(
@@ -262,7 +264,7 @@ describe("workspace file serving for a coder chat", () => {
     );
   });
 
-  it("ignores a session whose worktree sits outside the workspace", async () => {
+  it("ignores a session whose worktree is stored outside the workspace", async () => {
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), "saale-outside-"));
     await fs.writeFile(path.join(outside, "leak.txt"), "top secret");
     mockLoadCoderSession.mockResolvedValue(coderSession(outside));

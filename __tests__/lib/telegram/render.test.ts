@@ -32,12 +32,13 @@ import { createTelegramRunRenderer } from "@/lib/telegram/render";
 
 const chatId = BigInt("119075844");
 
-function renderer() {
+function renderer(session?: string) {
   return createTelegramRunRenderer({
     userId: "user-1",
     encryptedToken: "enc",
     telegramChatId: chatId,
     replyToMessageId: 9,
+    session,
   });
 }
 
@@ -182,6 +183,27 @@ describe("createTelegramRunRenderer", () => {
 
     expect(mockSendSharedFileToTelegram).toHaveBeenCalledWith(
       expect.objectContaining({ telegramChatId: chatId, filePath: "/workspace/report.md" }),
+    );
+  });
+
+  it("names the chat when it hands the file on", async () => {
+    const r = renderer("chat-1");
+
+    r.onEvent({
+      type: "tool_execution_start",
+      toolCallId: "call-3",
+      toolName: "show_file",
+      args: { filePath: "notes.md" },
+    } as unknown as AgentSessionEvent);
+    r.onEvent({
+      type: "tool_execution_end",
+      toolCallId: "call-3",
+      isError: false,
+      result: {},
+    } as unknown as AgentSessionEvent);
+
+    expect(mockSendSharedFileToTelegram).toHaveBeenCalledWith(
+      expect.objectContaining({ session: "chat-1", filePath: "notes.md" }),
     );
   });
 

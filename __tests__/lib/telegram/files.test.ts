@@ -308,9 +308,25 @@ describe("sendSharedFileToTelegram", () => {
       description: "Quarterly numbers",
     });
 
-    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "reports/q3.pdf");
+    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "reports/q3.pdf", {
+      session: undefined,
+    });
     expect(mockSendTelegramFile).toHaveBeenCalledWith("tok", BigInt(119075844), file, {
       caption: "Quarterly numbers",
+    });
+  });
+
+  it("resolves the path against the chat the file was shown in", async () => {
+    await filesModule.sendSharedFileToTelegram({
+      userId: "user-1",
+      encryptedToken: "tok",
+      telegramChatId: BigInt(1),
+      filePath: "notes.md",
+      session: "chat-1",
+    });
+
+    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "notes.md", {
+      session: "chat-1",
     });
   });
 
