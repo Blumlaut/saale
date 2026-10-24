@@ -25,8 +25,13 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
     script: "return 1;",
     cronExpression: "*/10 * * * *",
     enabled: true,
+    deliver: "chat",
     sessionId: "chat-1",
     sessionTitle: "Trip planning",
+    projectId: null,
+    projectName: null,
+    worktreeMode: "per-fire",
+    retentionMinutes: 1440,
     wakePrompt: "Check the price.",
     modelId: null,
     cooldownMinutes: 0,
@@ -79,13 +84,49 @@ describe("WatcherList chat link", () => {
     expect(mockFetchJson).toHaveBeenCalledTimes(1);
   });
 
-  it("shows plain text for a standalone watcher without a chat", async () => {
+  it("shows where a fire goes for a watcher with no chat", async () => {
     await renderWith(
       [watcher({ id: "w-2", name: "Standalone", sessionId: null, sessionTitle: null })],
       "Standalone",
     );
-    expect(screen.getByText("No conversation")).toBeInTheDocument();
+    expect(screen.getByText("No target")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Open chat/ })).not.toBeInTheDocument();
+  });
+
+  it("names the project a coder watcher dispatches into", async () => {
+    await renderWith(
+      [
+        watcher({
+          id: "w-3",
+          name: "Review pull requests",
+          deliver: "coder",
+          sessionId: null,
+          sessionTitle: null,
+          projectId: "project-1",
+          projectName: "my-service",
+        }),
+      ],
+      "Review pull requests",
+    );
+
+    expect(screen.getByText("my-service")).toBeInTheDocument();
+  });
+
+  it("says a silent watcher delivers from its own script", async () => {
+    await renderWith(
+      [
+        watcher({
+          id: "w-4",
+          name: "Quiet",
+          deliver: "silent",
+          sessionId: null,
+          sessionTitle: null,
+        }),
+      ],
+      "Quiet",
+    );
+
+    expect(screen.getByText("Delivered by the script")).toBeInTheDocument();
   });
 
   it("falls back to the watcher name in the label when the chat has no title", async () => {
