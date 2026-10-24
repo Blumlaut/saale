@@ -81,6 +81,28 @@ function fetch_(id: string, url: string): ToolCallData {
   };
 }
 
+function shell(id: string, command: string): ToolCallData {
+  return {
+    id,
+    name: "bash",
+    args: { command },
+    status: "completed",
+    result: "ok",
+    error: undefined,
+  };
+}
+
+function fileTool(id: string, name: "read" | "write" | "edit", path: string): ToolCallData {
+  return {
+    id,
+    name,
+    args: { path },
+    status: "completed",
+    result: "ok",
+    error: undefined,
+  };
+}
+
 function showFile(id: string, filePath: string): ToolCallData {
   return {
     id,
@@ -150,20 +172,47 @@ describe("compact activity", () => {
           exec("tc-3", "three"),
           exec("tc-4", "four"),
           exec("tc-5", "five"),
+          exec("tc-6", "six"),
+          exec("tc-7", "seven"),
+          exec("tc-8", "eight"),
         ],
       }),
     ]);
 
     // The counter keeps counting up...
-    expect(screen.getByText("Used 5 tools")).toBeInTheDocument();
+    expect(screen.getByText("Used 8 tools")).toBeInTheDocument();
     // ...over a window of the newest calls, so the row never grows.
-    expect(marksOf(toolsRow())).toHaveLength(3);
+    expect(marksOf(toolsRow())).toHaveLength(6);
 
-    // All five are still reachable.
+    // All eight are still reachable.
     fireEvent.click(toolsRow());
-    for (const command of ["one", "two", "three", "four", "five"]) {
+    for (const command of ["one", "two", "three", "four", "five", "six", "seven", "eight"]) {
       expect(screen.getByText(command)).toBeInTheDocument();
     }
+  });
+
+  it("marks each file tool with its own icon", () => {
+    renderTranscript([
+      step({
+        id: "a1",
+        toolCalls: [
+          shell("tc-1", "uptime"),
+          fileTool("tc-2", "write", "notes.md"),
+          fileTool("tc-3", "edit", "notes.md"),
+          fileTool("tc-4", "read", "notes.md"),
+        ],
+      }),
+    ]);
+
+    const marks = marksOf(toolsRow()).map(
+      (slot) => slot.querySelector("svg")?.getAttribute("class") ?? "",
+    );
+    // A write, an edit, a read and a shell command are four different things.
+    expect(new Set(marks).size).toBe(4);
+    expect(marks[0]).toContain("lucide-terminal");
+    expect(marks[1]).toContain("lucide-file-plus");
+    expect(marks[2]).toContain("lucide-file-pen");
+    expect(marks[3]).toContain("lucide-file-text");
   });
 
   it("keeps one run across steps and splits it at prose", () => {

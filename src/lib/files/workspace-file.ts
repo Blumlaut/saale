@@ -12,9 +12,13 @@
  * has to refuse anything past what a chat can actually deliver.
  */
 
+import path from "node:path";
+
+import { loadCoderSession } from "@/lib/coder/changes";
+
 import { FileNotFoundError } from "./errors";
-import { baseName, requireWithinRoot } from "./paths";
-import { openUserFileTarget } from "./targets";
+import { baseName, isWithinRoot, requireWithinRoot } from "./paths";
+import { openUserFileTarget, type OpenedFileTarget } from "./targets";
 
 /**
  * Largest file a caller may hand to a user.
@@ -37,19 +41,21 @@ export interface WorkspaceFile {
 }
 
 /**
- * Read `filePath`, relative to `userId`'s workspace root.
+ * Read `filePath` for `userId`.
  *
- * The bytes come from the user's workspace directory, the same one the agent's
- * tools read.
+ * A relative path is resolved against the chat's active worktree when `session`
+ * names a coder chat, because that is the directory the agent's tools run in.
+ * Anything else resolves against the user's workspace root. The bytes come
+ * from the user's workspace volume, the same one the agent's tools read.
  */
 export async function readWorkspaceFile(
   userId: string,
   filePath: string,
-  options: { maxBytes?: number } = {},
+  options: { maxBytes?: number; session?: string } = {},
 ): Promise<WorkspaceFile> {
   const maxBytes = options.maxBytes ?? MAX_SHARED_FILE_BYTES;
   const { provider, info } = await openUserFileTarget(userId);
-  const absolute = requireWithinRoot(info.root, filePath);
+  const absolute = await resolveSharedPath(userId, provider, info.root, filePath, options.session);
 
   const stat = await provider.stat(absolute);
   if (!stat) throw new FileNotFoundError(filePath);
@@ -69,4 +75,33 @@ export async function readWorkspaceFile(
     size: bytes.buffer.length,
     buffer: bytes.buffer,
   };
+}
+
+/**
+ * The absolute file a shared path points at.
+ *
+ * The chat's worktree is tried first for relative paths: an agent that shares
+ * `notes.md` means the one in the directory it works in, not a same-named file
+ * at the workspace root. A path that is nowhere to be found still resolves the
+ * root way, so a missing file reports the path the caller used.
+ */
+async function resolveSharedPath(
+  userId: string,
+  provider: OpenedFileTarget["provider"],
+  root: string,
+  filePath: string,
+  session: string | undefined,
+): Promise<string> {
+  if (session && !filePath.startsWith("/")) {
+    const coderSession = await loadCoderSession(userId, session);
+    const worktree = coderSession?.coderWorktree;
+    if (worktree && worktree.status === "active") {
+      const candidate = path.join(worktree.path, filePath);
+      if (isWithinRoot(root, candidate)) {
+        const stat = await provider.stat(candidate);
+        if (stat && stat.kind === "file") return candidate;
+      }
+    }
+  }
+  return requireWithinRoot(root, filePath);
 }
