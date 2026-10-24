@@ -64,7 +64,11 @@ describe("loadCommitDiff", () => {
   it("lists the commit's files", async () => {
     const files = await loadCommitDiff(USER, SESSION, "def");
     expect(files).toEqual([diffFile()]);
-    expect(mocks.readCommitDiff).toHaveBeenCalledWith(USER, WORKTREE, "def45678901234567890123456789012345678901");
+    expect(mocks.readCommitDiff).toHaveBeenCalledWith(
+      USER,
+      WORKTREE,
+      "def45678901234567890123456789012345678901",
+    );
   });
 
   it("returns nothing for a sha that is not hex", async () => {
@@ -121,9 +125,7 @@ describe("loadCommitDiffFile", () => {
   });
 
   it("marks a side over the size cap instead of reading it", async () => {
-    mocks.blobSizeAt
-      .mockResolvedValueOnce(10)
-      .mockResolvedValueOnce(2 * 1024 * 1024);
+    mocks.blobSizeAt.mockResolvedValueOnce(10).mockResolvedValueOnce(2 * 1024 * 1024);
     const result = await loadCommitDiffFile(USER, SESSION, "def", "src/app.ts");
     expect(result).toMatchObject({ binary: true });
     expect(mocks.readBlobAt).not.toHaveBeenCalled();

@@ -197,11 +197,7 @@ export function WorktreePanel({
 
         {diffCommit && (
           <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
-            <CommitDiffView
-              sessionId={sessionId}
-              commit={diffCommit}
-              onClose={closeDiffTab}
-            />
+            <CommitDiffView sessionId={sessionId} commit={diffCommit} onClose={closeDiffTab} />
           </TabsContent>
         )}
 
