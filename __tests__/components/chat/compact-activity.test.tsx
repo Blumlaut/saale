@@ -125,6 +125,11 @@ function reasoningRow(): HTMLElement {
   return screen.getByRole("button", { name: /Thinking/ });
 }
 
+/** Document order: what a reader meets first. */
+function before(a: Node, b: Node): boolean {
+  return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
 /** The marks in the tool row's sliding window, oldest first. */
 function marksOf(toolsButton: HTMLElement): HTMLElement[] {
   // Spans only: lucide marks the row's chevron `aria-hidden` too.
@@ -227,6 +232,48 @@ describe("compact activity", () => {
     expect(screen.getByText("Used 2 tools")).toBeInTheDocument();
     expect(screen.getByText("Used 1 tool")).toBeInTheDocument();
     expect(screen.getByText("That much is clear.")).toBeInTheDocument();
+  });
+
+  it("reads a step's sentence before the tools it asked for", () => {
+    // A step reasons, says its piece ("let me look:"), then calls its tools.
+    // The cost of folding the step's work in above its prose is that the call
+    // the sentence introduced reads as the *next* step's.
+    renderTranscript([
+      step({
+        id: "a1",
+        thinking: "The remote has no credential helper.",
+        content: "The remote wants a token:",
+        toolCalls: [exec("tc-1", "git push")],
+      }),
+      step({
+        id: "a2",
+        thinking: "PR #113 is open.",
+        toolCalls: [exec("tc-2", "gh pr checks")],
+      }),
+    ]);
+
+    const reasoning = screen.getAllByRole("button", { name: /Thinking/ });
+    const tools = screen.getAllByRole("button", { name: /Used \d+ tool/ });
+    expect(reasoning).toHaveLength(2);
+    expect(tools).toHaveLength(2);
+
+    const sentence = screen.getByText("The remote wants a token:");
+    expect(before(reasoning[0]!, sentence)).toBe(true);
+    expect(before(sentence, tools[0]!)).toBe(true);
+    expect(before(tools[0]!, reasoning[1]!)).toBe(true);
+    expect(before(reasoning[1]!, tools[1]!)).toBe(true);
+  });
+
+  it("folds work that follows a sentence into one row", () => {
+    // Sealing the run at prose separates the next step's reasoning; it does not
+    // stop the calls that follow the sentence from counting together.
+    renderTranscript([
+      step({ id: "a1", content: "Checking both machines:", toolCalls: [exec("tc-1", "uptime")] }),
+      step({ id: "a2", toolCalls: [exec("tc-2", "df -h")] }),
+    ]);
+
+    expect(screen.getAllByRole("button", { name: /Used \d+ tool/ })).toHaveLength(1);
+    expect(toolsRow()).toHaveTextContent("Used 2 tools");
   });
 
   it("keeps one block per kind when a step both reasoned and spoke", () => {
