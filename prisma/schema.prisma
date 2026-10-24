@@ -162,10 +162,19 @@ model ChatSession {
   projectId        String?
   coderWorktree    CoderWorktree?
   project          CoderProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// "user" | "watcher". A chat a watcher fire opened is an ordinary coder chat
+  /// everywhere else; this is what lets it be badged and later cleaned up.
+  origin           String        @default("user")
+  /// The watcher that opened it.
+  originId         String?
+  /// Branch its worktree is checked out on. Null derives one from the chat id;
+  /// a watcher sets it so the branch names the watcher that made it.
+  worktreeBranch   String?
 
   @@index([userId, createdAt])
   @@index([projectId, lastActivityAt])
   @@index([shareToken])
+  @@index([origin, originId])
   @@map("ChatSession")
 }
 
@@ -194,6 +203,7 @@ model CoderProject {
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   chats         ChatSession[]
   worktrees     CoderWorktree[]
+  scriptWatchers ScriptWatcher[]
 
   @@unique([userId, slug])
   @@index([userId])
@@ -805,9 +815,20 @@ model ScriptWatcher {
   cronExpression String
   enabled        Boolean @default(true)
 
-  /// The conversation a fired result is posted into. Null runs a standalone
-  /// agent run instead. Deleting the conversation deletes its watchers.
+  /// "chat" | "silent" | "coder": where a fire goes.
+  deliver        String  @default("chat")
+  /// The conversation a `chat` fire is posted into, and the context the script
+  /// runs in. Deleting the conversation deletes its watchers.
   sessionId      String?
+  /// The project a `coder` fire dispatches into.
+  projectId      String?
+  /// "per-fire" | "sticky": a fresh worktree for every fire, or one the watcher
+  /// keeps for a thread that runs across fires.
+  worktreeMode   String  @default("per-fire")
+  /// How long a finished per-fire chat is kept, in minutes.
+  retentionMinutes Int   @default(1440)
+  /// The chat a sticky watcher keeps its work in.
+  stickySessionId String?
   /// Instructions handed to the agent when the watcher fires; the script's
   /// returned value is appended as JSON.
   wakePrompt     String  @db.Text
@@ -831,6 +852,7 @@ model ScriptWatcher {
 
   ticks     ScriptWatcherTick[]
   session   ChatSession?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  project   CoderProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
@@ -838,6 +860,7 @@ model ScriptWatcher {
   @@unique([userId, name])
   @@index([userId, enabled])
   @@index([sessionId])
+  @@index([projectId])
   @@map("ScriptWatcher")
 }
 
@@ -847,7 +870,7 @@ model ScriptWatcher {
 model ScriptWatcherTick {
   id        String @id @default(cuid())
   watcherId String
-  /// "idle" | "fired" | "cooldown" | "blocked" | "error"
+  /// "idle" | "fired" | "reported" | "cooldown" | "blocked" | "error"
   status    String
   /// The script's returned value, JSON-encoded.
   value     String? @db.Text
@@ -856,6 +879,10 @@ model ScriptWatcherTick {
   output    String? @db.Text
   durationMs Int     @default(0)
   callCount  Int     @default(0)
+  /// The tools the script called, so a tick says what delivered it.
+  toolNames  String[] @default([])
+  /// The chat this tick's fire was delivered into.
+  sessionId  String?
 
   watcher   ScriptWatcher @relation(fields: [watcherId], references: [id], onDelete: Cascade)
   createdAt DateTime      @default(now())
