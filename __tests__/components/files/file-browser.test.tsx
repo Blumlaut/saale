@@ -62,6 +62,19 @@ function renderBrowser() {
   return render(<FileBrowser target="council:c1" emptyHint="Members write here as they work." />);
 }
 
+/** Answer each listing request with the folder that was asked for. */
+function listingPerRequest() {
+  vi.mocked(fetchJson).mockImplementation(async (url: string) => {
+    const asked = new URL(url, "http://localhost").searchParams.get("path") ?? ROOT;
+    const path = asked.startsWith("/") ? asked : `${ROOT}/${asked}`;
+    const base = listing({ path });
+    return {
+      ...base,
+      entries: base.entries.map((entry) => ({ ...entry, path: `${path}/${entry.name}` })),
+    };
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(fetchJson).mockResolvedValue(listing());
@@ -121,6 +134,47 @@ describe("FileBrowser", () => {
 
     // From the anchor to the clicked row, inclusive  all three.
     expect(await screen.findByText("3 selected")).toBeInTheDocument();
+  });
+
+  it("keeps the occasional actions in the menu", async () => {
+    renderBrowser();
+    await screen.findByText("artifacts");
+
+    // Nothing but the trail, a refresh and the upload sit in the toolbar.
+    expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Select all" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+
+    expect(await screen.findByRole("menuitem", { name: "New folder" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Select all" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" })).toBeInTheDocument();
+  });
+
+  it("goes home to the folder it was opened at", async () => {
+    listingPerRequest();
+    render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" />);
+
+    // At the worktree root there is nowhere to go back to.
+    await screen.findByText("artifacts");
+    expect(screen.queryByRole("button", { name: "Home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Up one folder" })).toBeNull();
+
+    fireEvent.click(screen.getByText("artifacts"));
+    const home = `${ROOT}/worktrees/c-1a2b3c4d`;
+    await waitFor(() => {
+      expect(vi.mocked(fetchJson).mock.calls.at(-1)?.[0]).toContain(
+        `path=${encodeURIComponent(`${home}/artifacts`)}`,
+      );
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Home" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(fetchJson).mock.calls.at(-1)?.[0]).toContain(
+        `path=${encodeURIComponent(home)}`,
+      );
+    });
   });
 
   it("says so when the workspace is empty", async () => {
