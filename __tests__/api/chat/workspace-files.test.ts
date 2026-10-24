@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { NextRequest } from "next/server";
+import { userWorkspacePath } from "@/lib/sandbox/workspace";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-workspace-files-"));
   vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
   vi.stubEnv("SANDBOX_USER", "root");
-  userRoot = path.join(tmpRoot, `user-${USER_ID}`);
+  userRoot = userWorkspacePath(USER_ID);
   vi.resetModules();
   GET = (await import("@/app/api/chat/workspace-files/route")).GET;
 });
