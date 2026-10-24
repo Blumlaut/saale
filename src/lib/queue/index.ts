@@ -447,6 +447,40 @@ export async function scheduleCoderSweep(intervalMinutes: number): Promise<strin
   return removed;
 }
 
+// ─── Watcher chat retention ────────────────────────────────────────────────
+
+/** Job scheduler id of the watcher chat cleanup. */
+export const WATCHER_CHAT_CLEANUP_SCHEDULER_ID = "watcher-chat-cleanup";
+
+/** Job name the watcher chat cleanup scheduler enqueues. */
+export const WATCHER_CHAT_CLEANUP_JOB_NAME = "watcher_chat_cleanup";
+
+/**
+ * Register the cleanup that removes finished per-fire bot chats.
+ *
+ * Hourly: a chat is only removed once its retention window has passed and its
+ * work is somewhere else, so the exact minute it happens does not matter.
+ *
+ * @param intervalMinutes - How often to look
+ * @returns Scheduler ids removed while cleaning up legacy repeatable jobs
+ */
+export async function scheduleWatcherChatCleanup(intervalMinutes: number): Promise<string[]> {
+  const queue = getQueue();
+  const removed = await removeLegacyRepeatableJobs(
+    queue,
+    WATCHER_CHAT_CLEANUP_JOB_NAME,
+    WATCHER_CHAT_CLEANUP_SCHEDULER_ID,
+  );
+
+  await queue.upsertJobScheduler(
+    WATCHER_CHAT_CLEANUP_SCHEDULER_ID,
+    { pattern: `*/${intervalMinutes} * * * *`, tz: "UTC" },
+    { name: WATCHER_CHAT_CLEANUP_JOB_NAME, data: {} },
+  );
+
+  return removed;
+}
+
 // ─── Council runs ───────────────────────────────────────────────────────────
 
 export const COUNCIL_SWEEP_SCHEDULER_ID = "council-run-sweep";
