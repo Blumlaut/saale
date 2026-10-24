@@ -56,6 +56,25 @@ export interface CoderCommit {
   author: string;
 }
 
+/** One path a commit touched, as the commit-diff endpoint reports it. */
+export interface CommitDiffFile {
+  path: string;
+  originalPath: string | null;
+  /** A, M, D, T, R or C. */
+  status: string;
+  added: number | null;
+  deleted: number | null;
+}
+
+/** One path's two sides at a commit, for the diff editor. */
+export interface CommitDiffFileContent {
+  path: string;
+  /** True when git reports the path as binary, or a side is too large. */
+  binary: boolean;
+  original: string | null;
+  modified: string | null;
+}
+
 /** One stage of building a chat's workspace, as the server reports it. */
 export interface CoderProvisioning {
   step: "worktree" | "setup";
