@@ -11,36 +11,41 @@ Adding a tool means adding a descriptor. It never means adding a component.
 
 ## The pieces
 
-| File                                    | Job                                                                                         |
-| --------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `chat/tool-card.tsx`                    | The card: header, badge, expander, block renderer, row primitive. Knows no tool name.       |
-| `chat/tool-card-model.ts`               | The contract — `ToolCardModel`, `ToolCardBlock`, `ToolRowModel`, `ToolDescriptor`.          |
-| `chat/tool-status.ts`                   | Status vocabulary: `running` / `success` / `danger`, plus the label each one falls back to. |
-| `chat/tool-descriptors/*.ts`            | One descriptor per tool family. Pure data — no JSX, no React, unit-testable without a DOM.  |
-| `chat/tool-cards.tsx`                   | The routing table: name / prefix → card. First match wins.                                  |
-| `chat/tool-call-group.tsx`              | A turn's calls: the work collapsed into one row, its attachments open.                      |
-| `chat/collapsed-tool-calls.tsx`         | A run folded into one summary row — the step-by-step transcript's view.                     |
-| `chat/compact-blocks.ts`                | Folds a turn's steps into activity / prose blocks, for the condensed transcript and shares.  |
-| `chat/compact-activity.tsx`             | The condensed transcript row: newest reasoning + one "Used N tools" counter per run.         |
-| `chat/tool-mark-model.ts`               | The mark vocabulary, the tool's own icon, and the category-icon fallback a redacted (shared) call uses. |
-| `chat/file-card.tsx`                    | The one bespoke renderer — the `show_file` attachment card and its gallery.                 |
-| `lib/chat/tool-meta.ts`                 | Reads the `_saale*Meta` block a tool appends to its result.                                 |
+| File                            | Job                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `chat/tool-card.tsx`            | The card: header, badge, expander, block renderer, row primitive. Knows no tool name.                   |
+| `chat/tool-card-model.ts`       | The contract — `ToolCardModel`, `ToolCardBlock`, `ToolRowModel`, `ToolDescriptor`.                      |
+| `chat/tool-status.ts`           | Status vocabulary: `running` / `success` / `danger`, plus the label each one falls back to.             |
+| `chat/tool-descriptors/*.ts`    | One descriptor per tool family. Pure data — no JSX, no React, unit-testable without a DOM.              |
+| `chat/tool-cards.tsx`           | The routing table: name / prefix → card. First match wins.                                              |
+| `chat/tool-call-group.tsx`      | A turn's calls: the work collapsed into one row, its attachments open.                                  |
+| `chat/collapsed-tool-calls.tsx` | A run folded into one summary row — the step-by-step transcript's view.                                 |
+| `chat/compact-blocks.ts`        | Folds a turn's steps into activity / prose blocks, for the condensed transcript and shares.             |
+| `chat/compact-activity.tsx`     | The condensed transcript row: newest reasoning + one "Used N tools" counter per run.                    |
+| `chat/tool-mark-model.ts`       | The mark vocabulary, the tool's own icon, and the category-icon fallback a redacted (shared) call uses. |
+| `chat/file-card.tsx`            | The one bespoke renderer — the `show_file` attachment card and its gallery.                             |
+| `chat/workspace-file.tsx`       | The owner's file endpoint, the chat a path resolves against, and preview bytes as a URL.                |
+| `chat/workspace-image.tsx`      | A workspace image inside a card — a `read` of a screenshot, fetched when the card opens.                |
+| `lib/chat/tool-meta.ts`         | Reads the `_saale*Meta` block a tool appends to its result.                                             |
 
 ## Rules
 
 - **Status is one vocabulary.** `toolStatus(toolCall, label?, tone?)` derives the
-  badge from the call's own state. A descriptor may supply a better *label*
+  badge from the call's own state. A descriptor may supply a better _label_
   (`exit 0`, `2 edits`, `3 emails`) and, when the result knows better than the
   status, the tone — never a different vocabulary, never its own badge markup.
 - **Collapsed by default.** A card shows one row until the user opens it.
-  `defaultOpen` is for the cards whose rows *are* the answer (web, mail,
+  `defaultOpen` is for the cards whose rows _are_ the answer (web, mail,
   calendar, machine and note lists) — and **always for a failure**: the reason
   is never behind a click.
 - **The title never truncates; the detail always does.** The title is the card's
   identity. The detail (a command, query, path) carries `min-w-0 shrink-8
-  truncate` and absorbs all the pressure. Safe because a title is short by
+truncate` and absorbs all the pressure. Safe because a title is short by
   construction — a descriptor names a tool, and the generic card caps the name of
   a tool it has never seen.
+- **An image is shown from its path.** A tool that reads an image (a `read` of a
+  screenshot) emits an `image` block, and the bytes are fetched from the
+  workspace when the card is unfolded, so the transcript carries no blobs.
 - **A card that cannot read its result falls back to the generic card.** A
   descriptor returns `null` and the call still renders, showing its raw arguments
   and result. A call must never vanish from the transcript.
@@ -94,8 +99,8 @@ silently loses its card.
 block kind, each card collapsed and opened, failures, the generic fallback, the
 attachment card and the redacted share card, in light and dark.
 
-| ![phone width](tool-call-cards-mobile.png) |
-| ------------------------------------------ |
+| ![phone width](tool-call-cards-mobile.png)                   |
+| ------------------------------------------------------------ |
 | The same cards at 375px — titles intact, details truncating. |
 
 `attachment-cards.png` is the `show_file` family on its own: a turn whose work
