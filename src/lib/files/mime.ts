@@ -58,7 +58,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /** Extensions the inline viewer renders as an image. */
-const IMAGE_EXTENSIONS = new Set([
+export const IMAGE_EXTENSIONS = new Set([
   ".png",
   ".jpg",
   ".jpeg",
@@ -85,7 +85,7 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 
 /** Nothing behind these is worth showing as text. */
-const BINARY_EXTENSIONS = new Set([
+export const BINARY_EXTENSIONS = new Set([
   ".zip",
   ".gz",
   ".tgz",
