@@ -12,12 +12,44 @@ const MAX_SLUG_LENGTH = 60;
 /** `projects/saale-web`, `worktrees/saale-web/c-1a2b3c4d`. */
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
+/** Longest branch name kept; git's own limit is far higher. */
+const MAX_BRANCH_LENGTH = 200;
+
+/** Branch names are slugs and slashes, nothing a shell would want quoted. */
+const WORKTREE_BRANCH_PATTERN = /^[a-z0-9][a-z0-9/_-]*$/;
+
 /** A branch name git will take without quoting. */
 const BRANCH_PREFIX = "wt/";
 
 /** Branch a coder chat's worktree is checked out on. */
 export function coderBranchName(chatSlug: string): string {
   return `${BRANCH_PREFIX}${chatSlug}`;
+}
+
+/** Where a watcher's fires are checked out: one name per watcher, then the fire. */
+export function watcherBranchName(watcherSlug: string, key: string): string {
+  return `watch/${assertSlugish(watcherSlug)}/${assertSlugish(key)}`;
+}
+
+/**
+ * A branch name this module could have produced, re-checked before git sees it.
+ *
+ * The value comes from a row, and a row can be edited: git refuses a branch with
+ * `..` or a trailing slash, and a leading dash would read as an option.
+ */
+export function isWorktreeBranch(value: string): boolean {
+  return (
+    value.length <= MAX_BRANCH_LENGTH &&
+    WORKTREE_BRANCH_PATTERN.test(value) &&
+    !value.includes("..") &&
+    !value.endsWith("/") &&
+    !value.endsWith(".lock")
+  );
+}
+
+function assertSlugish(value: string): string {
+  if (!isCoderSlug(value)) throw new Error(`Not a usable name: ${value}`);
+  return value;
 }
 
 /**

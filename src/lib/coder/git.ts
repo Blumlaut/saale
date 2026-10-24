@@ -560,3 +560,23 @@ export async function isRepoFullyPushed(userId: string, dir: string): Promise<bo
   });
   return unpushed.stdout.trim() === "";
 }
+
+/**
+ * Whether one branch has commits git does not already have on a remote.
+ *
+ * Scoped to the branch on purpose: a sibling worktree's unpushed commits are
+ * that chat's work, and asking about every branch would keep a clean checkout
+ * around because of them.
+ */
+export async function isBranchPushed(
+  userId: string,
+  dir: string,
+  branch: string,
+): Promise<boolean> {
+  const unpushed = await runGit(userId, {
+    cwd: dir,
+    args: ["log", branch, "--not", "--remotes", "--format=%H"],
+    allowFailure: true,
+  });
+  return unpushed.stdout.trim() === "";
+}

@@ -35,12 +35,12 @@ vi.mock("@/lib/watchers/access", () => ({
 }));
 
 vi.mock("@/lib/watchers/wake", () => ({
-  wakeAgent: vi.fn(),
+  deliverWake: vi.fn(),
 }));
 
 import { prisma } from "@/lib/db";
 import { loadWatcherToolAccess } from "@/lib/watchers/access";
-import { wakeAgent } from "@/lib/watchers/wake";
+import { deliverWake } from "@/lib/watchers/wake";
 import { runWatcherTick, previewScript } from "@/lib/watchers/tick";
 import { hashScript } from "@/lib/watchers/grant";
 
@@ -50,7 +50,7 @@ const updateWatcher = vi.mocked(prisma.scriptWatcher.update as any);
 const createTick = vi.mocked(prisma.scriptWatcherTick.create as any);
 const findTicks = vi.mocked(prisma.scriptWatcherTick.findMany as any);
 const access = vi.mocked(loadWatcherToolAccess as any);
-const wake = vi.mocked(wakeAgent as any);
+const wake = vi.mocked(deliverWake as any);
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** A stored watcher, with the grant its script earns by default. */
@@ -67,7 +67,12 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
     grantAll: false,
     cronExpression: "*/5 * * * *",
     enabled: true,
+    deliver: "chat",
     sessionId: "chat-1",
+    projectId: null,
+    worktreeMode: "per-fire",
+    retentionMinutes: 1440,
+    stickySessionId: null,
     wakePrompt: "Tell me about it.",
     modelId: null,
     store: {},
@@ -104,6 +109,7 @@ describe("runWatcherTick", () => {
     });
     findTicks.mockResolvedValue([]);
     updateWatcher.mockResolvedValue(watcher());
+    wake.mockResolvedValue({ sessionId: null });
   });
 
   it("records an idle tick when the script has nothing to report", async () => {
@@ -128,14 +134,43 @@ describe("runWatcherTick", () => {
     expect(outcome.value).toBe("one-message");
     expect(wake).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: "u-1",
-        name: "Watch the inbox",
-        sessionId: "chat-1",
+        watcher: expect.objectContaining({
+          id: "w-1",
+          userId: "u-1",
+          name: "Watch the inbox",
+          deliver: "chat",
+          sessionId: "chat-1",
+        }),
         value: "one-message",
       }),
     );
     expect(writtenUpdate()?.fireCount).toEqual({ increment: 1 });
     expect(writtenUpdate()?.lastFiredAt).toBeInstanceOf(Date);
+  });
+
+  it("records a silent report without waking anyone", async () => {
+    const script = "await tools.mail_list({});\nreturn { sent: true };";
+    findWatcher.mockResolvedValue(
+      watcher({ script, scriptHash: hashScript(script), deliver: "silent" }),
+    );
+
+    const outcome = await runWatcherTick("w-1");
+
+    expect(outcome.status).toBe("reported");
+    expect(wake).not.toHaveBeenCalled();
+    expect(writtenTick()?.status).toBe("reported");
+    // A silent fire wakes nobody, so it is not a fire count either.
+    expect(writtenUpdate()?.fireCount).toBeUndefined();
+    expect(writtenUpdate()?.lastFiredAt).toBeUndefined();
+    expect(writtenTick()?.toolNames).toEqual(["mail_list"]);
+  });
+
+  it("records which tools delivered a fire", async () => {
+    findWatcher.mockResolvedValue(watcher({ deliver: "silent" }));
+
+    await runWatcherTick("w-1");
+
+    expect(writtenTick()?.toolNames).toEqual(["mail_list"]);
   });
 
   it("carries the script's store into the next tick", async () => {

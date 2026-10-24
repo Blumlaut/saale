@@ -20,7 +20,7 @@ export async function GET() {
   const watchers = await prisma.scriptWatcher.findMany({
     where: { userId: authResult.user.id },
     orderBy: { createdAt: "desc" },
-    include: { session: { select: { title: true } } },
+    include: { session: { select: { title: true } }, project: { select: { name: true } } },
   });
 
   return NextResponse.json({ watchers: watchers.map(serializeWatcher) });
@@ -62,7 +62,11 @@ export async function POST(request: NextRequest) {
         description: body.description,
         script: body.script,
         cronExpression: body.cronExpression,
+        deliver: body.deliver,
         sessionId: body.sessionId,
+        projectId: body.projectId,
+        worktreeMode: body.worktreeMode,
+        retentionMinutes: body.retentionMinutes,
         wakePrompt: body.wakePrompt,
         modelId: body.modelId,
         cooldownMinutes: body.cooldownMinutes,
@@ -73,7 +77,7 @@ export async function POST(request: NextRequest) {
     // Read it back so the client gets the stored row, not an echo of the input.
     const watcher = await prisma.scriptWatcher.findUniqueOrThrow({
       where: { id: created.id },
-      include: { session: { select: { title: true } } },
+      include: { session: { select: { title: true } }, project: { select: { name: true } } },
     });
 
     return NextResponse.json({ watcher: serializeWatcher(watcher) }, { status: 201 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
  * What the agent is actually told when a watcher fires.
@@ -10,9 +10,27 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("@/lib/db", () => ({ prisma: {} }));
 vi.mock("@/lib/chat/respond-in-chat", () => ({ respondInChat: vi.fn() }));
-vi.mock("@/lib/agent-jobs/run", () => ({ triggerAgentRun: vi.fn() }));
+vi.mock("@/lib/coder/dispatch", () => ({ dispatchWatcherRun: vi.fn() }));
 
-import { buildWakeMessage } from "@/lib/watchers/wake";
+import { respondInChat } from "@/lib/chat/respond-in-chat";
+import { dispatchWatcherRun } from "@/lib/coder/dispatch";
+import { buildWakeMessage, deliverWake, type WakeTarget } from "@/lib/watchers/wake";
+
+function target(overrides: Partial<WakeTarget> = {}): WakeTarget {
+  return {
+    id: "w-1",
+    userId: "u-1",
+    name: "Watch the inbox",
+    deliver: "chat",
+    sessionId: "chat-1",
+    projectId: null,
+    worktreeMode: "per-fire",
+    stickySessionId: null,
+    wakePrompt: "Summarise it.",
+    modelId: null,
+    ...overrides,
+  };
+}
 
 describe("buildWakeMessage", () => {
   it("names the watcher, carries the instructions and the script's value", () => {
@@ -67,5 +85,71 @@ describe("buildWakeMessage", () => {
     // Fenced, so a long single-token value wraps in the transcript instead of
     // running off it.
     expect(message.split("```json")).toHaveLength(2);
+  });
+});
+
+describe("deliverWake", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(respondInChat).mockResolvedValue({
+      sessionId: "chat-1",
+      title: "Trip planning",
+      reply: "done",
+    });
+  });
+
+  it("posts into the chosen conversation", async () => {
+    const delivered = await deliverWake({ watcher: target(), value: { count: 2 } });
+
+    expect(delivered.sessionId).toBe("chat-1");
+    expect(respondInChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "u-1",
+        sessionId: "chat-1",
+        message: expect.stringContaining('Watcher "Watch the inbox" fired.'),
+      }),
+    );
+  });
+
+  it("dispatches into the watcher's project", async () => {
+    vi.mocked(dispatchWatcherRun).mockResolvedValue({ sessionId: "bot-chat" });
+
+    const delivered = await deliverWake({
+      watcher: target({ deliver: "coder", sessionId: null, projectId: "project-1" }),
+      value: { issue: 14 },
+    });
+
+    expect(delivered.sessionId).toBe("bot-chat");
+    expect(dispatchWatcherRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "u-1",
+        value: { issue: 14 },
+        watcher: expect.objectContaining({ projectId: "project-1" }),
+      }),
+    );
+    expect(respondInChat).not.toHaveBeenCalled();
+  });
+
+  it("wakes nobody for a silent watcher", async () => {
+    const delivered = await deliverWake({
+      watcher: target({ deliver: "silent" }),
+      value: { sent: true },
+    });
+
+    expect(delivered.sessionId).toBeNull();
+    expect(respondInChat).not.toHaveBeenCalled();
+    expect(dispatchWatcherRun).not.toHaveBeenCalled();
+  });
+
+  it("says what is missing rather than reporting nowhere", async () => {
+    await expect(
+      deliverWake({ watcher: target({ sessionId: null }), value: { count: 2 } }),
+    ).rejects.toThrow(/no conversation/);
+  });
+
+  it("surfaces a busy conversation so the tick can retry it", async () => {
+    vi.mocked(respondInChat).mockRejectedValue(new Error('Chat "Trip planning" is busy'));
+
+    await expect(deliverWake({ watcher: target(), value: { count: 2 } })).rejects.toThrow(/busy/);
   });
 });

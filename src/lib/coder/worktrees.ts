@@ -42,7 +42,7 @@ import {
 } from "./project-config";
 import { clearProvisioning, setProvisioningStep } from "./provisioning";
 import { clearSetupFailure, recordSetupFailure } from "./setup-failure";
-import { coderBranchName, coderChatSlug } from "./slug";
+import { coderBranchName, coderChatSlug, isWorktreeBranch } from "./slug";
 
 /** The branch and directory a chat runs in. */
 export interface EnsuredWorktree {
@@ -219,7 +219,7 @@ async function evictPooledAgent(userId: string, sessionId: string): Promise<void
 export async function ensureWorktree(userId: string, sessionId: string): Promise<EnsuredWorktree> {
   const chat = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId },
-    select: { id: true, projectId: true },
+    select: { id: true, projectId: true, worktreeBranch: true },
   });
   if (!chat) throw new Error(`Chat not found: ${sessionId}`);
   if (!chat.projectId) throw new Error(`Chat ${sessionId} does not belong to a project`);
@@ -241,7 +241,7 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
 
   try {
     const result = await withProjectLock(project.id, () =>
-      withLockRetry(() => resolveWorktree(userId, sessionId, project)),
+      withLockRetry(() => resolveWorktree(userId, sessionId, project, chat.worktreeBranch)),
     );
     if (result.changed) await evictPooledAgent(userId, sessionId);
     // Outside the lock: an install takes minutes, and a second chat in the same
@@ -271,6 +271,7 @@ async function resolveWorktree(
   userId: string,
   sessionId: string,
   project: ProjectRow,
+  branchOverride: string | null,
 ): Promise<EnsuredWorktree & { changed: boolean; created: boolean }> {
   const envFiles = storedEnvFiles(project.envFiles);
   const row = await prisma.coderWorktree.findUnique({ where: { sessionId } });
@@ -296,7 +297,11 @@ async function resolveWorktree(
   }
 
   const path = worktreePath(project.slug, sessionId);
-  const branch = coderBranchName(coderChatSlug(sessionId));
+  // A watcher names the branch after itself, so the checkout says what made it.
+  if (branchOverride != null && !isWorktreeBranch(branchOverride)) {
+    throw new Error(`Not a branch name: ${branchOverride}`);
+  }
+  const branch = branchOverride ?? coderBranchName(coderChatSlug(sessionId));
   // Set before the first slow step: the fetch alone can take minutes on a big
   // repo, and the chat has to be able to say why it is silent.
   await setProvisioningStep(sessionId, "worktree");
