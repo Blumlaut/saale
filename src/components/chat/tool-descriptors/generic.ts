@@ -1,5 +1,4 @@
-import { Wrench } from "lucide-react";
-import { findToolInfo } from "@/lib/pi/tool-infos";
+import { findToolInfo, toolIcon } from "@/lib/pi/tool-infos";
 import { truncate } from "@/lib/format";
 import { formatToolArgs } from "../tool-args";
 import { toolStatus } from "../tool-status";
@@ -30,7 +29,7 @@ export function describeGenericToolCall(toolCall: ToolCallData): ToolCardModel {
   const info = findToolInfo(toolCall.name);
 
   return {
-    icon: info?.icon ?? Wrench,
+    icon: toolIcon(toolCall.name),
     // The header never truncates a title, so a tool the catalog does not know
     // is capped here rather than allowed to squeeze the row.
     title: info?.label ?? truncate(toolCall.name, MAX_UNKNOWN_TITLE),

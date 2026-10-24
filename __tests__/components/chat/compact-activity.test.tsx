@@ -225,6 +225,22 @@ describe("compact activity", () => {
     expect(marks[3]).toContain("lucide-file-text");
   });
 
+  it("wears the same icon in the row as on the card it opens", () => {
+    // `bash` has no icon of its own, so the row reads the terminal category's
+    // and the card has to read the same one.
+    renderTranscript([step({ id: "a1", toolCalls: [shell("tc-1", "uptime")] })]);
+
+    const mark = marksOf(toolsRow())[0]?.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(mark).toContain("lucide-terminal");
+
+    fireEvent.click(toolsRow());
+    const card = screen.getByText("Bash").closest("button");
+    const cardIcons = Array.from(card?.querySelectorAll("svg") ?? []).map(
+      (svg) => svg.getAttribute("class") ?? "",
+    );
+    expect(cardIcons.some((icon) => icon.includes("lucide-terminal"))).toBe(true);
+  });
+
   it("keeps one run across steps and splits it at prose", () => {
     renderTranscript([
       step({ id: "a1", thinking: "First I looked.", toolCalls: [exec("tc-1", "uptime")] }),

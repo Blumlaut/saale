@@ -1,7 +1,5 @@
-import { Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { getToolCategory } from "@/lib/pi/tool-categories";
-import { findToolInfo } from "@/lib/pi/tool-infos";
+import { toolIcon } from "@/lib/pi/tool-infos";
 
 /** What the compact activity row shows for one call in place of a card. */
 export type ToolMark = { kind: "favicon"; url: string } | { kind: "icon"; icon: LucideIcon };
@@ -17,7 +15,5 @@ export type ToolMark = { kind: "favicon"; url: string } | { kind: "icon"; icon: 
  * surface (see `__tests__/share-redaction-coverage.test.ts`).
  */
 export function categoryToolMark(toolName: string): ToolMark {
-  const info = findToolInfo(toolName);
-  const icon = info?.icon ?? getToolCategory(info?.category ?? "")?.icon ?? Wrench;
-  return { kind: "icon", icon };
+  return { kind: "icon", icon: toolIcon(toolName) };
 }

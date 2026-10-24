@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Shield, Check, X, Loader2, ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { Shield, Check, X, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDateTimeValue, describeToolAction, findToolInfo } from "@/lib/pi/tool-infos";
-import { getToolCategory } from "@/lib/pi/tool-categories";
+import {
+  formatDateTimeValue,
+  describeToolAction,
+  findToolInfo,
+  toolIcon,
+} from "@/lib/pi/tool-infos";
 import { formatToolArgs } from "./tool-args";
 import type { ApprovalBatchData, ApprovalData } from "./types";
 
@@ -66,9 +70,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
   const approved = decision ?? approval.approved;
 
   const action = describeToolAction(approval.toolName, approval.args);
-  // Category icon for the header; Wrench for tools outside the catalog.
-  const info = findToolInfo(approval.toolName);
-  const Icon = getToolCategory(info?.category ?? "")?.icon ?? Wrench;
+  const Icon = toolIcon(approval.toolName);
 
   // What the call is about: the server-resolved summary (ID references
   // looked up against the user's records), then the argument-derived
@@ -110,6 +112,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
         ) : (
           <ChevronRight className="text-muted-foreground h-3 w-3 shrink-0" />
         )}
+        {/* eslint-disable-next-line react-hooks/static-components -- a catalog lookup, not a component made here */}
         <Icon className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0 text-xs font-medium break-words">{action.label}</span>
         <Badge
