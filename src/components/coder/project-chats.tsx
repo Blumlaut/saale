@@ -167,19 +167,7 @@ export function ProjectChats({
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title="Delete this chat?"
-        description={
-          <>
-            It takes the chat&apos;s worktree with it. git refuses a checkout with uncommitted work,
-            and then nothing is deleted.
-            {deleting?.worktree && (
-              <>
-                {" "}
-                Branch <span className="font-mono break-all">{deleting.worktree.branch}</span> stays
-                in the repo.
-              </>
-            )}
-          </>
-        }
+        description="This will delete all data in this worktree."
         discard="this chat's uncommitted changes"
         onDelete={(force) => (deleting ? remove(deleting, force) : Promise.resolve())}
       />
