@@ -5,8 +5,6 @@ import {
   ArrowUp,
   ChevronRight,
   Download,
-  Eye,
-  EyeOff,
   File as FileIcon,
   FileArchive,
   FileCode,
@@ -14,7 +12,10 @@ import {
   FileText,
   Folder,
   FolderPlus,
+  House,
+  ListChecks,
   Loader2,
+  Menu,
   MoreVertical,
   Pencil,
   RefreshCw,
@@ -25,8 +26,10 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -44,7 +47,7 @@ import { cn, formatFileSize, ROW_ACTION } from "@/lib/utils";
 export interface FileBrowserProps {
   /** Workspace token the API understands: `user`, or `council:<id>`. */
   target: string;
-  /** Directory to open at, relative to the workspace root (a worktree). */
+  /** Directory to open at, relative to the workspace root (a worktree). Home goes back to it. */
   rootPath?: string;
   /** Rendered first in the toolbar. e.g. a back link to the room. */
   leading?: ReactNode;
@@ -97,7 +100,7 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
   const listing = browser.listing;
   const root = listing?.target.root ?? "";
   const capabilities = listing?.target.capabilities ?? FULL_CAPABILITIES;
-  const atRoot = Boolean(root) && browser.path === root;
+  const awayFromHome = Boolean(browser.home) && browser.path !== browser.home;
   const entries = listing?.entries ?? [];
   const single = browser.selectedEntries.length === 1 ? browser.selectedEntries[0] : undefined;
 
@@ -167,7 +170,19 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
       >
         {leading}
 
-        {!atRoot && (
+        {awayFromHome && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Home"
+            onClick={() => browser.open(browser.home)}
+          >
+            <House className="h-4 w-4" />
+          </Button>
+        )}
+
+        {browser.canGoUp && (
           <Button
             type="button"
             variant="ghost"
@@ -206,7 +221,7 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
           ))}
           {current && (
             <span className="flex min-w-0 items-center gap-1">
-              <ChevronRight className="text-muted-foreground hidden h-3 w-3 md:block" aria-hidden />
+              <ChevronRight className="text-muted-foreground h-3 w-3" aria-hidden />
               <span className="truncate text-xs font-medium">{current.name}</span>
             </span>
           )}
@@ -222,37 +237,44 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
           >
             <RefreshCw className={cn("h-4 w-4", browser.refreshing && "animate-spin")} />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={browser.hideDotfiles ? "Show hidden files" : "Hide hidden files"}
-            onClick={() => browser.setHideDotfiles(!browser.hideDotfiles)}
-          >
-            {browser.hideDotfiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {entries.length > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Select all"
-              onClick={browser.selectAll}
-            >
-              <FileText className="h-4 w-4" />
-            </Button>
-          )}
-          {capabilities.createDirectory && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="New folder"
-              onClick={() => setPrompt({ mode: "folder" })}
-            >
-              <FolderPlus className="h-4 w-4" />
-            </Button>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={(triggerProps) => (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="More actions"
+                  {...triggerProps}
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+              )}
+            />
+            <DropdownMenuContent align="end" className="w-52">
+              {capabilities.createDirectory && (
+                <DropdownMenuItem onClick={() => setPrompt({ mode: "folder" })}>
+                  <FolderPlus className="h-3.5 w-3.5" />
+                  New folder
+                </DropdownMenuItem>
+              )}
+              {entries.length > 0 && (
+                <DropdownMenuItem onClick={browser.selectAll}>
+                  <ListChecks className="h-3.5 w-3.5" />
+                  Select all
+                </DropdownMenuItem>
+              )}
+              {entries.length > 0 || capabilities.createDirectory ? (
+                <DropdownMenuSeparator />
+              ) : null}
+              <DropdownMenuCheckboxItem
+                checked={!browser.hideDotfiles}
+                onCheckedChange={() => browser.setHideDotfiles(!browser.hideDotfiles)}
+              >
+                Show hidden files
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {capabilities.upload && (
             <Button
               type="button"
