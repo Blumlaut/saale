@@ -16,6 +16,7 @@ import { ProviderErrorNotice } from "./provider-error-notice";
 import { groupMessages } from "@/lib/chat/group-messages";
 import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
+import { dropBlankText } from "@/lib/chat/turn-text";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import type { Message, ToolCallData } from "./types";
 
@@ -194,9 +195,11 @@ function ShareUserMessage({ message }: { message: Message }) {
 
 function ShareAssistantGroup({ messages }: { messages: Message[] }) {
   // An errored turn is kept even when empty. the error notice is all there is.
-  const visibleMessages = messages.filter(
-    (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
-  );
+  const visibleMessages = messages
+    .map(dropBlankText)
+    .filter(
+      (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
+    );
 
   if (visibleMessages.length === 0) {
     return null;
