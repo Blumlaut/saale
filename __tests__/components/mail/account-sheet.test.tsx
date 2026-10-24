@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act } from "react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 const mockPostJson = vi.fn();
 const mockPatchJson = vi.fn();
@@ -24,7 +25,14 @@ function type(input: HTMLInputElement, text: string) {
   }
 }
 
-/** Fill the email field, then wait for the debounced autodiscover request. */
+/** How long the component waits before it asks about a typed address. */
+const DISCOVER_DEBOUNCE_MS = 600;
+
+/**
+ * Fill the email field, then run the debounce out. act() flushes the render
+ * that the resolved lookup schedules; RTL's own waitFor polls on a real
+ * interval, which never fires under fake timers.
+ */
 async function fillEmail(address: string, { replace = false } = {}) {
   const email = screen.getByPlaceholderText("you@example.com") as HTMLInputElement;
   const callsBefore = mockPostJson.mock.calls.length;
@@ -33,9 +41,10 @@ async function fillEmail(address: string, { replace = false } = {}) {
   } else {
     type(email, address);
   }
-  await waitFor(() => expect(mockPostJson.mock.calls.length).toBeGreaterThan(callsBefore), {
-    timeout: 3_000,
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(DISCOVER_DEBOUNCE_MS);
   });
+  expect(mockPostJson.mock.calls.length).toBeGreaterThan(callsBefore);
   return email;
 }
 
@@ -55,6 +64,9 @@ function renderSheet(props: Partial<Parameters<typeof AccountSheet>[0]> = {}) {
 describe("AccountSheet server detection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The lookup is debounced by real milliseconds; fake timers keep the
+    // suite in milliseconds too.
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
@@ -74,7 +86,9 @@ describe("AccountSheet server detection", () => {
     const { imapHost, smtpHost } = renderSheet();
 
     await fillEmail("esthrw1@proton.me");
-    await screen.findByText(/No IMAP\/SMTP server found for proton\.me/);
+    await vi.waitFor(() =>
+      expect(screen.getByText(/No IMAP\/SMTP server found for proton\.me/)).toBeInTheDocument(),
+    );
 
     expect(imapHost().value).toBe("");
     expect(smtpHost().value).toBe("");
@@ -89,7 +103,9 @@ describe("AccountSheet server detection", () => {
     const { imapHost, smtpHost } = renderSheet();
 
     await fillEmail("esthrw1@proton.me");
-    await screen.findByText(/IMAP settings not detected/);
+    await vi.waitFor(() =>
+      expect(screen.getByText(/IMAP settings not detected/)).toBeInTheDocument(),
+    );
 
     expect(imapHost().value).toBe("");
     expect(smtpHost().value).toBe("smtp.protonmail.ch");
@@ -108,7 +124,9 @@ describe("AccountSheet server detection", () => {
     renderSheet();
 
     await fillEmail("user@fastmail.com");
-    await screen.findByText(/Detected via DNS. settings filled in/);
+    await vi.waitFor(() =>
+      expect(screen.getByText(/Detected via DNS. settings filled in/)).toBeInTheDocument(),
+    );
 
     expect(screen.getByRole("button", { name: /Edit server settings/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Edit server settings/ }));
@@ -127,7 +145,9 @@ describe("AccountSheet server detection", () => {
       renderSheet();
 
       await fillEmail("user@example.com");
-      await screen.findByText(/Settings lookup failed/);
+      await vi.waitFor(() =>
+        expect(screen.getByText(/Settings lookup failed/)).toBeInTheDocument(),
+      );
 
       expect(consoleError).toHaveBeenCalled();
       expect(screen.queryByText(/settings filled in/)).toBeNull();
@@ -156,7 +176,7 @@ describe("AccountSheet server detection", () => {
     second.resolve(
       autodiscoverResponse({ host: "imap.fast.example", port: 993, secure: true }, null, "probe"),
     );
-    await waitFor(() => expect(imapHost().value).toBe("imap.fast.example"));
+    await vi.waitFor(() => expect(imapHost().value).toBe("imap.fast.example"));
 
     // …and the stale answer for the address the user edited away must not win.
     const first = pending.find((p) => p.address === "first@slow.example")!;
@@ -167,7 +187,7 @@ describe("AccountSheet server detection", () => {
         "probe",
       ),
     );
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.advanceTimersByTimeAsync(50);
 
     expect(imapHost().value).toBe("imap.fast.example");
     expect(smtpHost().value).toBe("");
@@ -209,7 +229,7 @@ describe("AccountSheet server detection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save Account" }));
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onSuccess).toHaveBeenCalled());
     expect(toast.error).toHaveBeenCalledWith(
       "Account saved, but the first sync failed",
       expect.objectContaining({ description: expect.stringContaining("Invalid login") }),
