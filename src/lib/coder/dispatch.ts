@@ -9,10 +9,13 @@
  *
  * `per-fire` gives every fire its own chat and worktree, so two fires never
  * share a directory and a bot never touches a checkout someone is working in.
- * `sticky` reuses one chat for a thread that runs across fires.
+ * `sticky` reuses one chat for a thread that runs across fires; that chat keeps
+ * the model it was opened with, so a later change of model applies to the chats
+ * opened after it.
  */
 
 import { prisma } from "@/lib/db";
+import { getActiveSessions } from "@/lib/redis";
 import { respondInChat } from "@/lib/chat/respond-in-chat";
 import { createChatSessionRow, sanitizeChatTitle } from "@/lib/chat/create-session";
 import { coderChatSlug, toCoderSlug, watcherBranchName } from "@/lib/coder/slug";
@@ -24,6 +27,12 @@ const TITLE_SUMMARY_LENGTH = 30;
 
 /** Branch key a sticky watcher's single checkout sits on. */
 const STICKY_KEY = "sticky";
+
+/**
+ * How far back a chat is a candidate for "still running" once Redis says
+ * something is generating. A run longer than this is stalled, not running.
+ */
+const RUNNING_CHAT_WINDOW_MINUTES = 6 * 60;
 
 /** What a watcher needs for a fire to land in a project. */
 export interface DispatchTarget {
@@ -105,6 +114,36 @@ async function findStickyChat(options: {
 }
 
 /**
+ * The chat a previous fire of this watcher is still running in, if there is one.
+ *
+ * A cron that keeps firing while a run is in flight would put two runs on the
+ * same pull request, which for a bot that merges things is the one outcome worth
+ * refusing. The tick records the refusal and leaves the script's ledger where it
+ * was, so the fire is delivered once the run that holds it finishes.
+ */
+async function runningWatcherChat(options: {
+  userId: string;
+  watcherId: string;
+}): Promise<string | null> {
+  const active = await getActiveSessions(options.userId);
+  if (active.size === 0) return null;
+
+  const chats = await prisma.chatSession.findMany({
+    where: {
+      userId: options.userId,
+      origin: "watcher",
+      originId: options.watcherId,
+      lastActivityAt: {
+        gte: new Date(Date.now() - RUNNING_CHAT_WINDOW_MINUTES * 60_000),
+      },
+    },
+    select: { id: true },
+  });
+
+  return chats.find((chat) => active.has(chat.id))?.id ?? null;
+}
+
+/**
  * Dispatch a fire into its project and run the turn there.
  *
  * Resolves when the run has settled. The chat and its worktree outlive it: a
@@ -124,6 +163,13 @@ export async function dispatchWatcherRun(options: DispatchTarget): Promise<{ ses
   });
   if (!project) {
     throw new Error("This watcher's project is gone.");
+  }
+
+  const running = await runningWatcherChat({ userId, watcherId: watcher.id });
+  if (running) {
+    throw new Error(
+      `This watcher is still working in chat ${running}. The fire will be delivered on the next tick.`,
+    );
   }
 
   const mode: WorktreeMode = isWorktreeMode(watcher.worktreeMode)
