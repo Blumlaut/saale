@@ -793,7 +793,7 @@ function AttachmentChip({
   return (
     <button
       type="button"
-      onClick={() => downloadFile(url)}
+      onClick={() => void downloadFile(url)}
       aria-label={`Download ${attachment.fileName}`}
       className="border-border/30 bg-muted/50 hover:bg-accent/60 flex items-center gap-2 rounded-xl border px-2.5 py-1.5 transition-colors"
     >
