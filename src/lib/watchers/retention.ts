@@ -27,7 +27,13 @@ export interface WatcherChatSweep {
   kept: number;
 }
 
-/** Whether a chat's worktree is safe to remove: clean, and pushed. */
+/**
+ * Whether a chat's worktree is safe to remove: clean, and pushed.
+ *
+ * Both branches are asked about: the one the chat was opened on, and the one the
+ * checkout is on now. A run that reviewed a pull request by checking its branch
+ * out left it there, and that is the branch holding the work.
+ */
 async function holdsFinishedWork(options: {
   userId: string;
   worktree: { path: string; branch: string };
@@ -38,7 +44,11 @@ async function holdsFinishedWork(options: {
   const status = await readStatus(userId, worktree.path);
   if (status.files.length > 0) return false;
 
-  return isBranchPushed(userId, worktree.path, worktree.branch);
+  const branches = new Set([worktree.branch, status.branch].filter(Boolean));
+  for (const branch of branches) {
+    if (!(await isBranchPushed(userId, worktree.path, branch))) return false;
+  }
+  return true;
 }
 
 /**
