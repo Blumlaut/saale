@@ -41,7 +41,7 @@ describe("ProvisioningNotice", () => {
 
     render(<ProvisioningNotice sessionId="s-1" waiting />);
 
-    expect(await screen.findByText("Running this project's setup script")).toBeTruthy();
+    expect(await screen.findByText("Running setup script")).toBeTruthy();
     // Time already spent is shown, so a slow install is visibly still moving.
     expect(screen.getByText("1m 01s")).toBeTruthy();
   });
@@ -59,7 +59,7 @@ describe("ProvisioningNotice", () => {
 
     const { container } = render(<ProvisioningNotice sessionId="s-1" waiting />);
 
-    expect(await screen.findByText("Running this project's setup script")).toBeTruthy();
+    expect(await screen.findByText("Running setup script")).toBeTruthy();
     // The poll that answers null is the next one after the interval.
     await waitFor(() => expect(container.childElementCount).toBe(0), { timeout: 3_000 });
   });
