@@ -271,6 +271,54 @@ describe("ensureGitconfig", () => {
     expect(await fs.readFile(target, "utf8")).toContain("name = Grace");
   });
 
+  it("keeps a credential helper the user set up", async () => {
+    const { ensureGitconfig, gitIdentityFor } = await import("@/lib/coder/gitconfig");
+    const identity = gitIdentityFor({ name: "Ada", email: "ada@example.com" });
+    const target = await ensureGitconfig(USER, identity);
+    const withHelper = `${await fs.readFile(target, "utf8")}[credential]\n\thelper = store\n`;
+    await fs.writeFile(target, withHelper, "utf8");
+
+    await ensureGitconfig(USER, identity);
+
+    const body = await fs.readFile(target, "utf8");
+    expect(body).toBe(withHelper);
+    expect(body).toContain("helper = store");
+  });
+
+  it("corrects a setting a hand edit changed and keeps the rest", async () => {
+    const { ensureGitconfig, gitIdentityFor } = await import("@/lib/coder/gitconfig");
+    const identity = gitIdentityFor({ name: "Ada", email: "ada@example.com" });
+    const target = await ensureGitconfig(USER, identity);
+    const edited = (await fs.readFile(target, "utf8"))
+      .replace("name = Ada", "name = Someone Else")
+      .concat('[credential "https://gitea.local"]\n\thelper = store\n');
+    await fs.writeFile(target, edited, "utf8");
+
+    await ensureGitconfig(USER, identity);
+
+    const body = await fs.readFile(target, "utf8");
+    expect(body).toContain("name = Ada");
+    expect(body).not.toContain("Someone Else");
+    expect(body).toContain("helper = store");
+  });
+
+  it("adds a setting a file of the user's own is missing", async () => {
+    const { ensureGitconfig, gitIdentityFor } = await import("@/lib/coder/gitconfig");
+    const identity = gitIdentityFor({ name: "Ada", email: "ada@example.com" });
+    const root = path.join(dir, IDENTITY);
+    await fs.mkdir(root, { recursive: true });
+    const target = path.join(root, ".gitconfig");
+    await fs.writeFile(target, "[user]\n\tname = Ada\n\temail = ada@example.com\n", "utf8");
+
+    await ensureGitconfig(USER, identity);
+
+    const body = await fs.readFile(target, "utf8");
+    expect(body).toContain("name = Ada");
+    expect(body).toContain("defaultBranch = main");
+    expect(body).toContain("pager = cat");
+    expect(body).toContain(`directory = ${root}`);
+  });
+
   it("falls back to the account's handle when it has no name", async () => {
     const { gitIdentityFor } = await import("@/lib/coder/gitconfig");
     expect(gitIdentityFor({ name: null, username: "ada", email: "ada@example.com" })).toEqual({
