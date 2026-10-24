@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { userWorkspacePath } from "@/lib/sandbox/workspace";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ const SESSION_ID = "session-1";
 const USER_ID = "user-1";
 
 let tmpRoot: string;
-/** `<volume>/user-<id>`, the directory every attachment lands in. */
+/** The user's workspace directory inside the stubbed volume. */
 let userRoot: string;
 
 // `vi.resetModules()` forces a fresh import of the route, which pulls in its
@@ -69,7 +70,7 @@ beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-msg-upload-"));
   vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
   vi.stubEnv("SANDBOX_USER", "root");
-  userRoot = path.join(tmpRoot, `user-${USER_ID}`);
+  userRoot = userWorkspacePath(USER_ID);
   vi.resetModules();
   const mod = await import("@/app/api/chat/sessions/[sessionId]/messages/route");
   POST = mod.POST;
