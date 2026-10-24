@@ -70,6 +70,27 @@ function readSharedFile(toolCall: ToolCallData): SharedFile {
 }
 
 /**
+ * Why an image has no preview: gone from the workspace, or unreadable.
+ *
+ * A shared `show_file` is a path, and the path is read again every time the
+ * transcript renders. a chat opened tomorrow asks for bytes an agent wrote
+ * today. So a file that was deleted in between is a normal outcome, not a bug,
+ * and it has to say so: a blank tile with no reason reads as a broken app.
+ */
+type PreviewFailure = "missing" | "failed";
+
+const PREVIEW_FAILURE_COPY: Record<PreviewFailure, { tile: string; card: string }> = {
+  missing: {
+    tile: "File not found",
+    card: "This file is no longer in the workspace.",
+  },
+  failed: {
+    tile: "Could not load",
+    card: "This file could not be loaded.",
+  },
+};
+
+/**
  * A file's bytes as an object URL, so an image can be previewed.
  *
  * The fetch is explicit rather than an `<img src>`: a preview that fails should
@@ -79,25 +100,31 @@ function readSharedFile(toolCall: ToolCallData): SharedFile {
 function useFilePreview(
   filePath: string,
   enabled: boolean,
-): { url: string | null; failed: boolean } {
+): { url: string | null; failure: PreviewFailure | null } {
   const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<PreviewFailure | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
     const controller = new AbortController();
+    setFailure(null);
+
     fetch(workspaceFileUrl(filePath), { signal: controller.signal, credentials: "include" })
-      .then((res) => {
+      .then(async (res) => {
+        if (res.status === 404) {
+          if (!controller.signal.aborted) setFailure("missing");
+          return;
+        }
         if (!res.ok) throw new Error(`Failed to load the file (${res.status})`);
-        return res.blob();
+        const blob = await res.blob();
+        if (!controller.signal.aborted) setUrl(URL.createObjectURL(blob));
       })
-      .then((blob) => setUrl(URL.createObjectURL(blob)))
       .catch((err: unknown) => {
         // An abort is this effect cleaning up, not a failure to load.
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Failed to load the workspace file preview:", err);
-        setFailed(true);
+        setFailure("failed");
       });
 
     return () => {
@@ -109,7 +136,7 @@ function useFilePreview(
     };
   }, [filePath, enabled]);
 
-  return { url, failed };
+  return { url, failure };
 }
 
 /**
@@ -126,7 +153,7 @@ function DownloadButton({ file, iconOnly = false }: { file: SharedFile; iconOnly
       variant="secondary"
       size={iconOnly ? "icon-sm" : "sm"}
       className="shrink-0"
-      onClick={() => downloadFile(workspaceFileUrl(file.filePath, { download: true }))}
+      onClick={() => void downloadFile(workspaceFileUrl(file.filePath, { download: true }))}
       aria-label={`Download ${file.fileName}`}
     >
       <Download className={iconOnly ? "size-3.5" : "h-3.5 w-3.5"} />
@@ -183,11 +210,11 @@ function SharedFileRow({ file }: { file: SharedFile }) {
 
 /** An image attachment: a square thumbnail that opens the lightbox. */
 function SharedImageTile({ file }: { file: SharedFile }) {
-  const { url, failed } = useFilePreview(file.filePath, true);
+  const { url, failure } = useFilePreview(file.filePath, true);
 
   return (
     <div className="liquid-glass-inner min-w-0 overflow-hidden rounded-xl">
-      {url && !failed ? (
+      {url && !failure ? (
         <LightboxImage
           src={url}
           alt={file.fileName}
@@ -195,9 +222,14 @@ function SharedImageTile({ file }: { file: SharedFile }) {
           className="aspect-square w-full object-cover"
         />
       ) : (
-        <div className="bg-muted/40 flex aspect-square w-full items-center justify-center">
-          {failed ? (
-            <AlertCircle className="text-muted-foreground h-5 w-5" />
+        <div className="bg-muted/40 flex aspect-square w-full flex-col items-center justify-center gap-1 px-2 text-center">
+          {failure ? (
+            <>
+              <AlertCircle className="text-muted-foreground h-5 w-5" />
+              <span className="text-muted-foreground text-[11px]">
+                {PREVIEW_FAILURE_COPY[failure].tile}
+              </span>
+            </>
           ) : (
             <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
           )}
@@ -236,7 +268,7 @@ function SharedFilePending() {
  */
 export function ShowFileCard({ toolCall }: { toolCall: ToolCallData }) {
   const file = readSharedFile(toolCall);
-  const { url, failed } = useFilePreview(file.filePath, file.isImage && !file.isError);
+  const { url, failure } = useFilePreview(file.filePath, file.isImage && !file.isError);
 
   // The model is still writing this call's arguments, so there is no file
   // behind it yet. An attachment with a half-written name and a download that
@@ -247,7 +279,7 @@ export function ShowFileCard({ toolCall }: { toolCall: ToolCallData }) {
 
   return (
     <div className="liquid-glass-inner overflow-hidden rounded-xl">
-      {file.isImage && url && !failed && (
+      {file.isImage && url && !failure && (
         <div className="border-border/30 border-b">
           <LightboxImage
             src={url}
@@ -255,6 +287,15 @@ export function ShowFileCard({ toolCall }: { toolCall: ToolCallData }) {
             wrapperClassName="w-full"
             className="bg-muted/40 h-auto max-h-64 w-full object-contain"
           />
+        </div>
+      )}
+
+      {file.isImage && failure && (
+        <div className="border-border/30 bg-muted/30 flex items-center gap-2 border-b px-4 py-2">
+          <AlertCircle className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          <p className="text-muted-foreground text-[11px] break-words">
+            {PREVIEW_FAILURE_COPY[failure].card}
+          </p>
         </div>
       )}
 
