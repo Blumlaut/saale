@@ -36,7 +36,7 @@ import type { ToolCallData } from "./types";
 /** Characters of the newest reasoning shown before it is cut off. */
 const SNIPPET_CHARS = 80;
 /** Marks on screen at once. a sliding window over a run of any length. */
-const VISIBLE_MARKS = 3;
+const VISIBLE_MARKS = 6;
 /**
  * One slot: a mark (`h-3.5`) plus a 4px gap. In rem, so the pitch follows the
  * root font size the same way the marks themselves do.
@@ -166,7 +166,8 @@ function ToolsRow({
           ) : (
             <ChevronRight className="text-muted-foreground size-3 shrink-0" />
           )}
-          <span className="shrink-0 text-xs font-medium">
+          {/* The count absorbs the pressure, so a run's marks never widen the row. */}
+          <span className="min-w-0 shrink truncate text-xs font-medium">
             Used {plural(toolCalls.length, "tool", "tools")}
           </span>
 
