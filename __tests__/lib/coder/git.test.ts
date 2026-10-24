@@ -364,7 +364,14 @@ describe("readCommitDiff", () => {
     ];
 
     expect(await readCommitDiff(USER, "worktrees/saale/c-1", "abc123")).toEqual([
-      { path: "src/a.ts", originalPath: null, status: "M", added: 1, deleted: 2, baseRef: "def456" },
+      {
+        path: "src/a.ts",
+        originalPath: null,
+        status: "M",
+        added: 1,
+        deleted: 2,
+        baseRef: "def456",
+      },
       { path: "new.txt", originalPath: null, status: "A", added: 3, deleted: 0, baseRef: "def456" },
     ]);
   });

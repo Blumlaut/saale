@@ -109,9 +109,30 @@ describe("parseDiffTreeNameStatus", () => {
     const Z = "\u0000";
     const stdout = `A${Z}new.txt${Z}M${Z}src/a.ts${Z}D${Z}gone.txt${Z}`;
     expect(parseDiffTreeNameStatus(stdout)).toEqual([
-      { path: "new.txt", originalPath: null, status: "A", added: null, deleted: null, baseRef: null },
-      { path: "src/a.ts", originalPath: null, status: "M", added: null, deleted: null, baseRef: null },
-      { path: "gone.txt", originalPath: null, status: "D", added: null, deleted: null, baseRef: null },
+      {
+        path: "new.txt",
+        originalPath: null,
+        status: "A",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
+      {
+        path: "src/a.ts",
+        originalPath: null,
+        status: "M",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
+      {
+        path: "gone.txt",
+        originalPath: null,
+        status: "D",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
     ]);
   });
 
@@ -122,7 +143,14 @@ describe("parseDiffTreeNameStatus", () => {
 
   it("skips records that are not statuses", () => {
     expect(parseDiffTreeNameStatus("src/a.ts\u0000A\u0000new.txt\u0000")).toEqual([
-      { path: "new.txt", originalPath: null, status: "A", added: null, deleted: null, baseRef: null },
+      {
+        path: "new.txt",
+        originalPath: null,
+        status: "A",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
     ]);
   });
 });
