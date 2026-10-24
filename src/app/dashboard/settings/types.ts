@@ -19,6 +19,8 @@ export interface UserSettings {
   /** Collapse a turn's reasoning and tool calls into one compact line each. */
   compactActivity: boolean;
   agentCustomInstructions: string | null;
+  /** Instructions for coder chats, in place of `agentCustomInstructions`. */
+  coderCustomInstructions: string | null;
   emailWritingStyle: string | null;
   purposeModelOverrides: Record<string, PurposeModelSelection> | null;
   disabledModels: string[] | null; // Array of "provider:modelId" strings

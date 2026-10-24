@@ -83,6 +83,7 @@ export async function ensureChatAgent(options: {
       chatSession: options.chatSession,
       ...(options.model ? { model: options.model } : {}),
       customInstructions: userSettings.customInstructions,
+      coderCustomInstructions: userSettings.coderCustomInstructions,
       toolPolicies: userSettings.toolPolicies,
       toolExposure: userSettings.toolExposure,
       ...(worktree ? { workspaceCwd: worktree.path } : {}),

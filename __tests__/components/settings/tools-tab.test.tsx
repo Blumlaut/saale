@@ -21,6 +21,7 @@ const baseSettings: UserSettings = {
   theme: "system",
   compactActivity: true,
   agentCustomInstructions: null,
+  coderCustomInstructions: null,
   emailWritingStyle: null,
   purposeModelOverrides: null,
   disabledModels: null,
