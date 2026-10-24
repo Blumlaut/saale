@@ -27,13 +27,16 @@ vi.mock("@/lib/sandbox/env", () => ({
 }));
 
 import {
+  EMPTY_TREE,
   GitError,
   addWorktree,
   addWorktreeOnBranch,
   cloneRepo,
   fetchOrigin,
+  readCommitDiff,
   refSha,
   removeWorktree,
+  resolveCommit,
   runGit,
   shellQuote,
   worktreeBaseRef,
@@ -337,5 +340,80 @@ describe("refreshing the repo", () => {
 
     execResult = { stdout: "", stderr: "", exitCode: 1 };
     expect(await refSha(USER, "projects/saale", "origin/gone")).toBe("");
+  });
+});
+
+describe("resolveCommit", () => {
+  it("resolves a ref to its full sha, or nothing when git cannot", async () => {
+    execResult = { stdout: "abc123\n", stderr: "", exitCode: 0 };
+    expect(await resolveCommit(USER, "projects/saale", "abc")).toBe("abc123");
+
+    execResult = { stdout: "", stderr: "", exitCode: 1 };
+    expect(await resolveCommit(USER, "projects/saale", "gone")).toBeNull();
+  });
+});
+
+describe("readCommitDiff", () => {
+  const Z = "\u0000";
+
+  it("lists a commit's files with their line counts and its parent as the base", async () => {
+    execQueue = [
+      { stdout: "abc123 def456\n", stderr: "", exitCode: 0 },
+      { stdout: `M${Z}src/a.ts${Z}A${Z}new.txt${Z}`, stderr: "", exitCode: 0 },
+      { stdout: `1\t2\tsrc/a.ts${Z}3\t0\tnew.txt${Z}`, stderr: "", exitCode: 0 },
+    ];
+
+    expect(await readCommitDiff(USER, "worktrees/saale/c-1", "abc123")).toEqual([
+      { path: "src/a.ts", originalPath: null, status: "M", added: 1, deleted: 2, baseRef: "def456" },
+      { path: "new.txt", originalPath: null, status: "A", added: 3, deleted: 0, baseRef: "def456" },
+    ]);
+  });
+
+  it("diffs a root commit against the empty tree", async () => {
+    execQueue = [
+      { stdout: "abc123\n", stderr: "", exitCode: 0 },
+      { stdout: `A${Z}src/a.ts${Z}`, stderr: "", exitCode: 0 },
+      { stdout: `1\t0\tsrc/a.ts${Z}`, stderr: "", exitCode: 0 },
+    ];
+
+    expect(await readCommitDiff(USER, "worktrees/saale/c-1", "abc123")).toEqual([
+      { path: "src/a.ts", originalPath: null, status: "A", added: 1, deleted: 0, baseRef: null },
+    ]);
+
+    // rev-list, name-status, numstat — the tree form of the diff.
+    expect((execOptions[1] as { command: string }).command).toContain(EMPTY_TREE);
+  });
+
+  it("diffs a merge against its first parent", async () => {
+    execQueue = [
+      { stdout: "m1 p1 p2\n", stderr: "", exitCode: 0 },
+      { stdout: `M${Z}src/a.ts${Z}`, stderr: "", exitCode: 0 },
+      { stdout: `1\t1\tsrc/a.ts${Z}`, stderr: "", exitCode: 0 },
+    ];
+
+    expect((await readCommitDiff(USER, "worktrees/saale/c-1", "m1"))[0]).toMatchObject({
+      path: "src/a.ts",
+      baseRef: "p1",
+    });
+    expect((execOptions[1] as { command: string }).command).toContain("p1 m1");
+  });
+
+  it("keeps a rename's origin and counts", async () => {
+    execQueue = [
+      { stdout: "abc123 def456\n", stderr: "", exitCode: 0 },
+      { stdout: `R100${Z}keep.txt${Z}renamed.txt${Z}`, stderr: "", exitCode: 0 },
+      { stdout: `1\t1\t${Z}keep.txt${Z}renamed.txt${Z}`, stderr: "", exitCode: 0 },
+    ];
+
+    expect(await readCommitDiff(USER, "worktrees/saale/c-1", "abc123")).toEqual([
+      {
+        path: "renamed.txt",
+        originalPath: "keep.txt",
+        status: "R",
+        added: 1,
+        deleted: 1,
+        baseRef: "def456",
+      },
+    ]);
   });
 });

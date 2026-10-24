@@ -17,11 +17,13 @@ import { exec as sandboxExec } from "@/lib/sandbox/client";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 import { userIdentity } from "@/lib/sandbox/identity";
 import {
+  parseDiffTreeNameStatus,
   parseLog,
   parseNumstat,
   parsePorcelainZ,
   parseStatusHeader,
   parseWorktreeList,
+  type CommitDiffFile,
   type GitCommit,
   type GitNumstat,
   type GitStatus,
@@ -438,6 +440,95 @@ export async function readWorktreeFile(
   });
   if (result.exitCode !== 0) return null;
   return result.stdout;
+}
+
+/** A ref's full sha, or null when the repo has no such commit. */
+export async function resolveCommit(
+  userId: string,
+  dir: string,
+  ref: string,
+): Promise<string | null> {
+  const result = await runGit(userId, {
+    cwd: dir,
+    args: ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+    allowFailure: true,
+  });
+  return result.exitCode === 0 && result.stdout.trim() ? result.stdout.trim() : null;
+}
+
+/** The git tree that holds no paths, used as a root commit's base. */
+export const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+/**
+ * The paths a commit changed, with their line counts.
+ *
+ * The base is the commit's first parent, or the empty tree for a root
+ * commit; a merge is diffed against its first parent as well.
+ */
+export async function readCommitDiff(
+  userId: string,
+  dir: string,
+  sha: string,
+): Promise<CommitDiffFile[]> {
+  const { stdout: parents } = await runGit(userId, {
+    cwd: dir,
+    args: ["rev-list", "--parents", "-n1", sha],
+  });
+  const fields = parents.trim().split(/\s+/).filter(Boolean);
+  // diff-tree wants a tree on both sides; the file entries want null for a
+  // root commit, whose original side is simply empty.
+  const baseTree = fields[1] ?? EMPTY_TREE;
+  const baseRef = fields[1] ?? null;
+
+  const [nameStatus, numstat] = await Promise.all([
+    runGit(userId, {
+      cwd: dir,
+      args: ["diff-tree", "-r", "-M", "--no-commit-id", "--name-status", "-z", baseTree, sha],
+    }),
+    runGit(userId, {
+      cwd: dir,
+      args: ["diff-tree", "-r", "-M", "--no-commit-id", "--numstat", "-z", baseTree, sha],
+    }),
+  ]);
+
+  const counts = new Map(parseNumstat(numstat.stdout).map((entry) => [entry.path, entry] as const));
+  return parseDiffTreeNameStatus(nameStatus.stdout).map((file) => {
+    const count =
+      counts.get(file.path) ?? (file.originalPath ? counts.get(file.originalPath) : undefined);
+    return { ...file, added: count?.added ?? null, deleted: count?.deleted ?? null, baseRef };
+  });
+}
+
+/** One path's bytes at a ref, or null when the ref has no such path. */
+export async function readBlobAt(
+  userId: string,
+  dir: string,
+  ref: string,
+  path: string,
+): Promise<string | null> {
+  const result = await runGit(userId, {
+    cwd: dir,
+    args: ["show", `${ref}:${path}`],
+    allowFailure: true,
+  });
+  if (result.exitCode !== 0) return null;
+  return result.stdout;
+}
+
+/** One path's size in bytes at a ref, or null when the ref has no such path. */
+export async function blobSizeAt(
+  userId: string,
+  dir: string,
+  ref: string,
+  path: string,
+): Promise<number | null> {
+  const result = await runGit(userId, {
+    cwd: dir,
+    args: ["cat-file", "-s", `${ref}:${path}`],
+    allowFailure: true,
+  });
+  if (result.exitCode !== 0) return null;
+  return Number(result.stdout.trim());
 }
 
 /** Recent commits on the current branch. */
