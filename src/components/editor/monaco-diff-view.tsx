@@ -127,6 +127,12 @@ export function MonacoDiffView({
         diff.setModel({ original: originalModel, modified: modifiedModel });
         diffRef.current = diff;
         setReady(true);
+
+        // A file that changed at line 900 should not open at line 1. The call
+        // waits for the diff, and the frame lets the editor lay out first.
+        requestAnimationFrame(() => {
+          if (!disposed) void diff?.revealFirstDiff();
+        });
       } catch (err) {
         console.error("[monaco] failed to mount diff:", err);
         setReady(true);

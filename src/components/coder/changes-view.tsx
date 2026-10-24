@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { fetchJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { CommitFileList, CommitFilesStatus, splitPath, useCommitFiles } from "./commit-files";
 import type { CoderChange, CoderCommit, CoderSessionState } from "./use-coder-data";
 
 /** One diff line's tint. */
@@ -44,13 +45,6 @@ export function DiffView({ diff }: { diff: string }) {
   );
 }
 
-/** A repo path as a file name over its (muted) folder. */
-function splitPath(path: string): { dir: string; name: string } {
-  const slash = path.lastIndexOf("/");
-  if (slash === -1) return { dir: "", name: path };
-  return { dir: path.slice(0, slash), name: path.slice(slash + 1) };
-}
-
 /** The status letter a git user reads in half a second. */
 function statusLetter(change: CoderChange): { letter: string; className: string } {
   if (change.untracked) return { letter: "A", className: "text-emerald-600 dark:text-emerald-400" };
@@ -86,8 +80,8 @@ function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-b">
-      <CollapsibleTrigger className="hover:bg-accent/40 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors">
-        <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0 transition-transform data-[state=closed]:-rotate-90" />
+      <CollapsibleTrigger className="group hover:bg-accent/40 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors">
+        <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0 -rotate-90 transition-transform group-data-[panel-open]:rotate-0" />
         <span className="console-label flex-1">{label}</span>
         {right}
       </CollapsibleTrigger>
@@ -96,14 +90,79 @@ function CollapsibleSection({
   );
 }
 
+/**
+ * One commit: a row that unfolds its file list, and rows that open a file's
+ * diff in the Diff tab.
+ *
+ * The files load on the first unfold, because ten commits' file lists is a
+ * lot of git for a list the user may not open.
+ */
+function CommitRow({
+  sessionId,
+  commit,
+  active,
+  onOpenFile,
+}: {
+  sessionId: string;
+  commit: CoderCommit;
+  active: boolean;
+  onOpenFile: (commit: CoderCommit, path: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { files, error, loading } = useCommitFiles(sessionId, commit.sha, open);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className={cn(
+          "group hover:bg-accent/60 flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors",
+          active && "bg-accent",
+        )}
+        title={commit.sha}
+      >
+        <ChevronDown
+          className={cn(
+            "text-muted-foreground mt-0.5 h-3 w-3 shrink-0 transition-transform",
+            !open && "-rotate-90",
+          )}
+        />
+        <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
+          {commit.shortSha}
+        </span>
+        <span className="min-w-0 flex-1 text-xs break-words">{commit.subject}</span>
+        <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
+          {formatRelativeDate(commit.date)}
+        </span>
+      </button>
+      {open && (
+        <div className="border-b">
+          <CommitFilesStatus loading={loading} error={error} />
+          {files && (
+            <CommitFileList
+              files={files}
+              indented
+              onSelect={(file) => onOpenFile(commit, file.path)}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CommitList({
+  sessionId,
   commits,
   activeSha,
-  onOpenCommit,
+  onOpenFile,
 }: {
+  sessionId: string;
   commits: CoderCommit[];
   activeSha: string | null;
-  onOpenCommit: (commit: CoderCommit) => void;
+  onOpenFile: (commit: CoderCommit, path: string) => void;
 }) {
   if (commits.length === 0) {
     return (
@@ -113,24 +172,13 @@ function CommitList({
   return (
     <div className="flex flex-col">
       {commits.slice(0, 10).map((commit) => (
-        <button
+        <CommitRow
           key={commit.sha}
-          type="button"
-          onClick={() => onOpenCommit(commit)}
-          className={cn(
-            "hover:bg-accent/60 flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors",
-            activeSha === commit.sha && "bg-accent",
-          )}
-          title={commit.sha}
-        >
-          <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
-            {commit.shortSha}
-          </span>
-          <span className="min-w-0 flex-1 text-xs break-words">{commit.subject}</span>
-          <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
-            {formatRelativeDate(commit.date)}
-          </span>
-        </button>
+          sessionId={sessionId}
+          commit={commit}
+          active={activeSha === commit.sha}
+          onOpenFile={onOpenFile}
+        />
       ))}
     </div>
   );
@@ -151,7 +199,7 @@ export function ChangesView({
   refreshing,
   onRunScript,
   activeCommitSha,
-  onOpenCommit,
+  onOpenCommitFile,
 }: {
   sessionId: string;
   state: CoderSessionState;
@@ -160,7 +208,7 @@ export function ChangesView({
   onRunScript?: (name: string) => void;
   /** The commit the Diff tab is showing, if one. */
   activeCommitSha: string | null;
-  onOpenCommit: (commit: CoderCommit) => void;
+  onOpenCommitFile: (commit: CoderCommit, path: string) => void;
 }) {
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [diff, setDiff] = useState<string | null>(null);
@@ -358,9 +406,10 @@ export function ChangesView({
           }
         >
           <CommitList
+            sessionId={sessionId}
             commits={state.commits}
             activeSha={activeCommitSha}
-            onOpenCommit={onOpenCommit}
+            onOpenFile={onOpenCommitFile}
           />
         </CollapsibleSection>
       </div>
