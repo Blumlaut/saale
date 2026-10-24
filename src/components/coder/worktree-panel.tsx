@@ -79,13 +79,21 @@ export function WorktreePanel({
   refreshing: boolean;
 }) {
   const [tab, setTab] = useState("changes");
+  // A tab that has been opened keeps its state: leaving the terminal alone
+  // must not fold every commit the user just unfolded.
+  const [openedTabs, setOpenedTabs] = useState<string[]>(["changes"]);
   // The commit and file the Diff tab shows, or null for no tab at all.
   const [diffTarget, setDiffTarget] = useState<{ commit: CoderCommit; path: string } | null>(null);
+
+  const openTab = (next: string) => {
+    setTab(next);
+    setOpenedTabs((current) => (current.includes(next) ? current : [...current, next]));
+  };
 
   // Closing the tab from inside it would strand the panel on a value that
   // has no content, so the previous tab comes back first.
   const closeDiffTab = () => {
-    if (tab === "diff") setTab("changes");
+    if (tab === "diff") openTab("changes");
     setDiffTarget(null);
   };
   const terminalRunRef = useRef<(command: string) => void>(() => {});
@@ -97,7 +105,7 @@ export function WorktreePanel({
     <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">
       <SetupFailureNotice failure={state?.setupFailure ?? null} />
 
-      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
+      <Tabs value={tab} onValueChange={openTab} className="flex min-h-0 flex-1 flex-col gap-0">
         {/* A container query, because the panel is 280px on a phone sheet and
             720px when dragged wide; the icons only earn their room when it is. */}
         <PageTabStrip className="@container border-b px-2 py-1.5">
@@ -158,7 +166,11 @@ export function WorktreePanel({
           </TabsList>
         </PageTabStrip>
 
-        <TabsContent value="changes" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TabsContent
+          value="changes"
+          keepMounted={openedTabs.includes("changes")}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
           {loading && !state ? (
             <div className="flex items-center gap-2 px-3 py-3">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -176,18 +188,22 @@ export function WorktreePanel({
               refreshing={refreshing}
               onRunScript={(command) => {
                 terminalRunRef.current(command);
-                setTab("terminal");
+                openTab("terminal");
               }}
               activeCommitSha={diffTarget?.commit.sha ?? null}
               onOpenCommitFile={(commit, path) => {
                 setDiffTarget({ commit, path });
-                setTab("diff");
+                openTab("diff");
               }}
             />
           )}
         </TabsContent>
 
-        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
+        <TabsContent
+          value="files"
+          keepMounted={openedTabs.includes("files")}
+          className="min-h-0 flex-1 overflow-hidden"
+        >
           {state?.worktree ? (
             <FileBrowser target="user" rootPath={state.worktree.path} dense />
           ) : (
@@ -196,7 +212,11 @@ export function WorktreePanel({
         </TabsContent>
 
         {diffTarget && (
-          <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
+          <TabsContent
+            value="diff"
+            keepMounted={openedTabs.includes("diff")}
+            className="min-h-0 flex-1 overflow-hidden"
+          >
             <CommitDiffView
               sessionId={sessionId}
               commit={diffTarget.commit}

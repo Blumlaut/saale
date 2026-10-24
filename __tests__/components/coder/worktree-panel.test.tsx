@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -66,6 +66,10 @@ function renderPanel(state: CoderSessionState | null) {
 }
 
 describe("WorktreePanel: a commit in the list", () => {
+  beforeEach(() => {
+    http.fetchJson.mockReset();
+  });
+
   const commit = {
     sha: "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0",
     shortSha: "a1b2c3d",
@@ -108,6 +112,21 @@ describe("WorktreePanel: a commit in the list", () => {
     await waitFor(() =>
       expect(http.fetchJson).toHaveBeenCalledWith(expect.stringContaining(`path=src%2Fapp.ts`)),
     );
+  });
+
+  it("keeps the unfolded commit when another tab is opened", async () => {
+    mockCommitDiff();
+    renderPanel({ ...STATE, commits: [commit] });
+
+    fireEvent.click(screen.getByTitle(commit.sha));
+    expect(await screen.findByText("app.ts")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Project" }));
+
+    // A panel that unmounted would come back folded, and would ask git again.
+    expect(screen.getByText("app.ts")).toBeTruthy();
+    expect(http.fetchJson).toHaveBeenCalledTimes(1);
   });
 });
 
