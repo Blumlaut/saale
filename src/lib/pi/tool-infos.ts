@@ -6,9 +6,8 @@
  * MUST stay in sync with the actual tool definitions in src/lib/pi/tools/.
  */
 import type { LucideIcon } from "lucide-react";
-import { FilePen, FilePlus, FileText } from "lucide-react";
-import type { ToolCategoryKey } from "@/lib/pi/tool-categories";
-import type { ToolExposure } from "@/lib/pi/tool-categories";
+import { FilePen, FilePlus, FileText, Wrench } from "lucide-react";
+import { getToolCategory, type ToolCategoryKey, type ToolExposure } from "@/lib/pi/tool-categories";
 
 export type ToolPolicy = "allow" | "auto" | "ask" | "off";
 
@@ -845,6 +844,18 @@ export function resolveTemplate(template: string, args: Record<string, unknown>)
 /** Look up a tool's info entry (or `undefined` if not found). */
 export function findToolInfo(toolName: string): ToolInfo | undefined {
   return ALL_TOOL_INFOS.find((t) => t.name === toolName);
+}
+
+/**
+ * The icon a tool wears when nothing describes the call itself: its own, then
+ * its category's, then the wrench.
+ *
+ * Every surface that shows a tool by name reads its icon here, so the compact
+ * activity row and the card it expands into never disagree.
+ */
+export function toolIcon(toolName: string): LucideIcon {
+  const info = findToolInfo(toolName);
+  return info?.icon ?? getToolCategory(info?.category ?? "")?.icon ?? Wrench;
 }
 
 /**
