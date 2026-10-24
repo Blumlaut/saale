@@ -49,6 +49,7 @@ describe("chat session factory", () => {
     mockCreatePersistentSession.mockResolvedValue({ session: { id: "agent-session" } });
     mockFindUnique.mockResolvedValue({
       agentCustomInstructions: "Be brief.",
+      coderCustomInstructions: "Never add a dependency without asking.",
       toolPolicies: { bash: "ask" },
       toolExposure: { email: "codemode", jobs: "direct", not_a_category: "deferred" },
     });
@@ -58,6 +59,7 @@ describe("chat session factory", () => {
     it("returns the stored instructions, tool policies and exposure", async () => {
       const settings = await loadChatUserSettings("user-1");
       expect(settings.customInstructions).toBe("Be brief.");
+      expect(settings.coderCustomInstructions).toBe("Never add a dependency without asking.");
       expect(settings.toolPolicies).toEqual({ bash: "ask" });
       // Unknown categories are dropped and entries at a category's default are
       // stored as absence, so a hand-edited row can never smuggle an invalid
@@ -70,6 +72,7 @@ describe("chat session factory", () => {
       const settings = await loadChatUserSettings("user-2");
       expect(settings).toEqual({
         customInstructions: null,
+        coderCustomInstructions: null,
         toolPolicies: null,
         toolExposure: null,
       });
@@ -135,6 +138,40 @@ describe("chat session factory", () => {
       expect(String(options.systemPrompt)).toContain("You are Saale");
       expect(String(options.systemPrompt)).toContain("Be brief.");
       expect(created.session).toBeDefined();
+    });
+
+    it("gives a coder chat its own instructions instead of the chat persona", async () => {
+      const create = (projectId: string | null, sessionId: string) =>
+        createChatAgentSession({
+          userId: "user-1",
+          sessionId,
+          chatSession: { ...CHAT, projectId },
+          customInstructions: "Be brief.",
+          coderCustomInstructions: "Never add a dependency without asking.",
+          toolPolicies: null,
+          toolExposure: null,
+          wrapTool: (tool) => tool,
+          emitApprovalRequest: vi.fn(),
+        });
+
+      await create("project-1", "chat-coder");
+      const coderPrompt = String(
+        (mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>).systemPrompt,
+      );
+
+      // A coder chat keeps the coder identity and reads the coder instructions
+      // only: an instruction meant for a conversation can be wrong for a
+      // worktree, which is why the two are separate settings.
+      expect(coderPrompt).toContain("Saale's coding agent");
+      expect(coderPrompt).toContain("Never add a dependency without asking.");
+      expect(coderPrompt).not.toContain("Be brief.");
+
+      await create(null, "chat-plain");
+      const chatPrompt = String(
+        (mockCreatePersistentSession.mock.calls[1]![0] as Record<string, unknown>).systemPrompt,
+      );
+      expect(chatPrompt).toContain("Be brief.");
+      expect(chatPrompt).not.toContain("Never add a dependency without asking.");
     });
 
     it("uses the resolved fallback model when the chat has none", async () => {

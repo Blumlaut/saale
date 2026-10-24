@@ -27,6 +27,8 @@ import { loadUserMcpServers } from "@/lib/mcp/servers";
 export interface ChatUserSettings {
   /** Custom instructions appended to the Saale system prompt. */
   customInstructions: string | null;
+  /** Custom instructions for a coder chat, in place of `customInstructions`. */
+  coderCustomInstructions: string | null;
   /** Per-tool approval policies, keyed by tool name. */
   toolPolicies: Record<string, string> | null;
   /** Per-category exposure. how each category's tools reach the model. */
@@ -37,10 +39,16 @@ export interface ChatUserSettings {
 export async function loadChatUserSettings(userId: string): Promise<ChatUserSettings> {
   const settings = await prisma.appSettings.findUnique({
     where: { userId },
-    select: { agentCustomInstructions: true, toolPolicies: true, toolExposure: true },
+    select: {
+      agentCustomInstructions: true,
+      coderCustomInstructions: true,
+      toolPolicies: true,
+      toolExposure: true,
+    },
   });
   return {
     customInstructions: settings?.agentCustomInstructions ?? null,
+    coderCustomInstructions: settings?.coderCustomInstructions ?? null,
     toolPolicies: (settings?.toolPolicies as Record<string, string> | null) ?? null,
     toolExposure: normalizeToolExposure(settings?.toolExposure),
   };
@@ -76,6 +84,12 @@ export interface CreateChatAgentSessionOptions {
   /** Resolved model; falls back to the user's default chat model when omitted. */
   model?: { provider: string; name: string } | undefined;
   customInstructions: string | null;
+  /**
+   * Custom instructions for a coder session (`projectId` set), used instead of
+   * `customInstructions`: guidance about a worktree is not guidance about a
+   * conversation.
+   */
+  coderCustomInstructions?: string | null;
   /** Per-tool approval policies (`AppSettings.toolPolicies`). */
   toolPolicies: Record<string, string> | null | undefined;
   /** Per-category exposure (`AppSettings.toolExposure`). */
@@ -103,6 +117,7 @@ async function buildSessionPrompt(options: {
   userId: string;
   projectId: string | null;
   customInstructions: string | null;
+  coderCustomInstructions: string | null | undefined;
   toolConfig: ToolConfig;
   toolExposure: ToolExposureConfig | null | undefined;
 }): Promise<string> {
@@ -114,7 +129,11 @@ async function buildSessionPrompt(options: {
     return { entries: [] };
   });
   const shared = {
-    customInstructions: options.customInstructions,
+    // A coder chat carries its own instructions: "answer in German" suits a
+    // conversation but is not what a coding session needs to be told.
+    customInstructions: options.projectId
+      ? options.coderCustomInstructions
+      : options.customInstructions,
     toolConfig: options.toolConfig,
     sandboxEnvNames,
     previewDomain: previewConfig().domain,
@@ -166,6 +185,7 @@ export async function createChatAgentSession(
       userId,
       projectId: chatSession.projectId,
       customInstructions: options.customInstructions,
+      coderCustomInstructions: options.coderCustomInstructions,
       toolConfig,
       toolExposure: options.toolExposure,
     }),
