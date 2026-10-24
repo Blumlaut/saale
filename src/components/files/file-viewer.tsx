@@ -127,7 +127,7 @@ export function FileViewer({ target, entry, onClose }: FileViewerProps) {
               className="w-full"
               onClick={() =>
                 entry &&
-                downloadFile(
+                void downloadFile(
                   `/api/files/raw?${new URLSearchParams({ target, path: entry.path, download: "1" }).toString()}`,
                 )
               }
