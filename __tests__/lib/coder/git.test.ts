@@ -285,6 +285,56 @@ describe("ensureGitconfig", () => {
     expect(body).toContain("helper = store");
   });
 
+  it("leaves gh's own credential setup byte for byte", async () => {
+    const { ensureGitconfig, gitIdentityFor } = await import("@/lib/coder/gitconfig");
+    const identity = gitIdentityFor({ name: "Ada", email: "ada@example.com" });
+    const target = await ensureGitconfig(USER, identity);
+    // What `gh auth setup-git` appends, trailing space and all.
+    const ghBlock = [
+      '[credential "https://github.com"]',
+      "\thelper = ",
+      "\thelper = !/usr/bin/gh auth git-credential",
+      '[credential "https://gist.github.com"]',
+      "\thelper = ",
+      "\thelper = !/usr/bin/gh auth git-credential",
+      "",
+    ].join("\n");
+    const file = `${await fs.readFile(target, "utf8")}${ghBlock}`;
+    await fs.writeFile(target, file, "utf8");
+    const before = await fs.stat(target);
+
+    await ensureGitconfig(USER, identity);
+
+    const after = await fs.stat(target);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+    expect(await fs.readFile(target, "utf8")).toBe(file);
+  });
+
+  it("keeps a config of the user's own and adds only what it needs", async () => {
+    const { ensureGitconfig, gitIdentityFor } = await import("@/lib/coder/gitconfig");
+    const identity = gitIdentityFor({ name: "Ada", email: "ada@example.com" });
+    const root = path.join(dir, IDENTITY);
+    await fs.mkdir(root, { recursive: true });
+    const target = path.join(root, ".gitconfig");
+    const theirs = [
+      '[credential "https://github.com"]',
+      "\thelper = !gh auth git-credential",
+      "[commit]",
+      "\tgpgsign = true",
+      "",
+    ].join("\n");
+    await fs.writeFile(target, theirs, "utf8");
+
+    await ensureGitconfig(USER, identity);
+
+    const body = await fs.readFile(target, "utf8");
+    expect(body.startsWith(theirs)).toBe(true);
+    expect(body).toContain("helper = !gh auth git-credential");
+    expect(body).toContain("gpgsign = true");
+    expect(body).toContain("name = Ada");
+    expect(body).toContain(`directory = ${root}`);
+  });
+
   it("corrects a setting a hand edit changed and keeps the rest", async () => {
     const { ensureGitconfig, gitIdentityFor } = await import("@/lib/coder/gitconfig");
     const identity = gitIdentityFor({ name: "Ada", email: "ada@example.com" });
