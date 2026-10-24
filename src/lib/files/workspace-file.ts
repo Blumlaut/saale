@@ -17,7 +17,7 @@ import path from "node:path";
 import { loadCoderSession } from "@/lib/coder/changes";
 
 import { FileNotFoundError } from "./errors";
-import { baseName, isWithinRoot, requireWithinRoot } from "./paths";
+import { baseName, isWithinRoot, requireWithinRoot, resolveWithinRoot } from "./paths";
 import { openUserFileTarget, type OpenedFileTarget } from "./targets";
 
 /**
@@ -51,7 +51,7 @@ export interface WorkspaceFile {
 export async function readWorkspaceFile(
   userId: string,
   filePath: string,
-  options: { maxBytes?: number; session?: string } = {},
+  options: { maxBytes?: number; session?: string | undefined } = {},
 ): Promise<WorkspaceFile> {
   const maxBytes = options.maxBytes ?? MAX_SHARED_FILE_BYTES;
   const { provider, info } = await openUserFileTarget(userId);
@@ -82,8 +82,10 @@ export async function readWorkspaceFile(
  *
  * The chat's worktree is tried first for relative paths: an agent that shares
  * `notes.md` means the one in the directory it works in, not a same-named file
- * at the workspace root. A path that is nowhere to be found still resolves the
- * root way, so a missing file reports the path the caller used.
+ * at the workspace root. A worktree is stored workspace-relative, so it needs
+ * the root to become a directory anything can stat. A path that is nowhere to
+ * be found still resolves the root way, so a missing file reports the path the
+ * caller used.
  */
 async function resolveSharedPath(
   userId: string,
@@ -96,8 +98,9 @@ async function resolveSharedPath(
     const coderSession = await loadCoderSession(userId, session);
     const worktree = coderSession?.coderWorktree;
     if (worktree && worktree.status === "active") {
-      const candidate = path.join(worktree.path, filePath);
-      if (isWithinRoot(root, candidate)) {
+      const dir = resolveWithinRoot(root, worktree.path);
+      const candidate = dir.inside ? path.join(dir.path, filePath) : null;
+      if (candidate && isWithinRoot(dir.path, candidate)) {
         const stat = await provider.stat(candidate);
         if (stat && stat.kind === "file") return candidate;
       }
