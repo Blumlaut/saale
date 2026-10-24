@@ -11,6 +11,8 @@ import {
   scheduleAllWatchers,
   scheduleCouncilSweep,
   scheduleOrphanCleanup,
+  scheduleWatcherChatCleanup,
+  WATCHER_CHAT_CLEANUP_JOB_NAME,
   WATCHER_TICK_JOB_NAME,
 } from "@/lib/queue";
 import { isCouncilEnabled } from "@/lib/council/flag";
@@ -27,6 +29,9 @@ const COUNCIL_SWEEP_INTERVAL_MINUTES = 2;
 /** How often to reconcile coder worktree rows with their checkouts (daily) */
 const CODER_SWEEP_INTERVAL_MINUTES = 24 * 60;
 
+/** How often to remove finished bot chats past their retention window (hourly) */
+const WATCHER_CHAT_CLEANUP_INTERVAL_MINUTES = 60;
+
 /** URL of the Next.js app (for job execution via API) */
 const APP_URL = process.env.WORKER_APP_URL ?? "http://localhost:3000";
 /** Shared secret for worker → app authentication */
@@ -35,6 +40,14 @@ const WORKER_API_KEY = process.env.WORKER_API_KEY ?? "";
 /** Register the coder worktree sweep, reporting pruned v5 repeatable jobs. */
 async function registerCoderSweep(): Promise<void> {
   const removed = await scheduleCoderSweep(CODER_SWEEP_INTERVAL_MINUTES);
+  for (const id of removed) {
+    console.log(`[worker] Removed legacy repeatable job ${id}`);
+  }
+}
+
+/** Register the watcher chat cleanup, reporting pruned v5 repeatable jobs. */
+async function registerWatcherChatCleanup(): Promise<void> {
+  const removed = await scheduleWatcherChatCleanup(WATCHER_CHAT_CLEANUP_INTERVAL_MINUTES);
   for (const id of removed) {
     console.log(`[worker] Removed legacy repeatable job ${id}`);
   }
@@ -118,6 +131,11 @@ async function executeCoderSweepViaApp(): Promise<unknown> {
   return postToApp("/api/coder/sweep", {});
 }
 
+/** Remove the bot chats whose work is finished and whose window has passed. */
+async function executeWatcherChatCleanupViaApp(): Promise<unknown> {
+  return postToApp("/api/watchers/cleanup", {});
+}
+
 /** Route jobs: system jobs inline, user jobs via Next.js API. */
 function createJobRouter(): Processor {
   return async (job: Job) => {
@@ -139,6 +157,9 @@ function createJobRouter(): Processor {
     }
     if (job.name === CODER_SWEEP_JOB_NAME) {
       return executeCoderSweepViaApp();
+    }
+    if (job.name === WATCHER_CHAT_CLEANUP_JOB_NAME) {
+      return executeWatcherChatCleanupViaApp();
     }
     return executeJobViaApp(job);
   };
@@ -204,6 +225,7 @@ async function main() {
   }
   await retryUntilSuccess("Schedule orphan cleanup", registerOrphanCleanup);
   await retryUntilSuccess("Schedule coder worktree sweep", registerCoderSweep);
+  await retryUntilSuccess("Schedule watcher chat cleanup", registerWatcherChatCleanup);
   await retryUntilSuccess("Register Telegram webhook", registerTelegramWebhook);
 
   process.on("SIGINT", async () => {
