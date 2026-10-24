@@ -18,6 +18,15 @@
 
 import { prisma } from "@/lib/db";
 import type { ScriptWatcher } from "@prisma/client";
+import {
+  DEFAULT_DELIVER,
+  DEFAULT_RETENTION_MINUTES,
+  DEFAULT_WORKTREE_MODE,
+  isDeliverTarget,
+  isWorktreeMode,
+  MAX_RETENTION_MINUTES,
+  type DeliverTarget,
+} from "./delivery";
 import { hashScript, consentFor, UNAPPROVED_SCRIPT_HASH } from "./grant";
 import { loadWatcherToolAccess } from "./access";
 import { scheduleWatcher, syncWatcherSchedule, unscheduleWatcher } from "@/lib/queue";
@@ -141,17 +150,73 @@ async function assertOwnsSession(userId: string, sessionId: string): Promise<voi
   }
 }
 
+/** Refuse a project that is not the user's own. */
+async function assertOwnsProject(userId: string, projectId: string): Promise<void> {
+  const project = await prisma.coderProject.findFirst({
+    where: { id: projectId, userId },
+    select: { id: true },
+  });
+  if (!project) {
+    throw new WatcherInputError(`Project not found: ${projectId}`);
+  }
+}
+
+/** Where a fire goes, from what a caller sent. */
+function normalizeDeliver(value: unknown): DeliverTarget {
+  if (value === undefined || value === null || value === "") return DEFAULT_DELIVER;
+  if (!isDeliverTarget(value)) {
+    throw new WatcherInputError('Delivery must be "chat", "silent" or "coder".');
+  }
+  return value;
+}
+
+/** How many minutes a finished bot chat is kept. */
+function normalizeRetention(value: unknown): number {
+  if (value === undefined || value === null || value === "") return DEFAULT_RETENTION_MINUTES;
+  const minutes = Number(value);
+  if (!Number.isInteger(minutes) || minutes < 0) {
+    throw new WatcherInputError("Retention must be a whole number of minutes.");
+  }
+  if (minutes > MAX_RETENTION_MINUTES) {
+    throw new WatcherInputError(
+      `Retention must be at most ${MAX_RETENTION_MINUTES} minutes (30 days).`,
+    );
+  }
+  return minutes;
+}
+
 /** Fields every watcher write may set. */
 export interface WatcherFields {
   name: string;
   description: string | null;
   script: string;
   cronExpression: string;
+  deliver: DeliverTarget;
   sessionId: string | null;
+  projectId: string | null;
+  worktreeMode: string;
+  retentionMinutes: number;
   wakePrompt: string;
   modelId: string | null;
   cooldownMinutes: number;
   enabled: boolean;
+}
+
+/** The fields a create or an update may set. */
+export interface WatcherFieldInput {
+  name: unknown;
+  description?: unknown;
+  script: unknown;
+  cronExpression: unknown;
+  deliver?: unknown;
+  sessionId?: unknown;
+  projectId?: unknown;
+  worktreeMode?: unknown;
+  retentionMinutes?: unknown;
+  wakePrompt?: unknown;
+  modelId?: unknown;
+  cooldownMinutes?: unknown;
+  enabled?: unknown;
 }
 
 /**
@@ -169,17 +234,7 @@ export interface WatcherFields {
  */
 export async function createWatcher(params: {
   userId: string;
-  fields: {
-    name: unknown;
-    description?: unknown;
-    script: unknown;
-    cronExpression: unknown;
-    sessionId?: unknown;
-    wakePrompt?: unknown;
-    modelId?: unknown;
-    cooldownMinutes?: unknown;
-    enabled?: unknown;
-  };
+  fields: WatcherFieldInput;
   /** Whether a human read this script: the dialog on the API, never a tool call. */
   approvedByUser: boolean;
 }): Promise<{
@@ -234,30 +289,42 @@ export async function createWatcher(params: {
 }
 
 /** Validate and normalize the fields of a create, and resolve defaults. */
-async function validateFields(
-  userId: string,
-  input: {
-    name: unknown;
-    description?: unknown;
-    script: unknown;
-    cronExpression: unknown;
-    sessionId?: unknown;
-    wakePrompt?: unknown;
-    modelId?: unknown;
-    cooldownMinutes?: unknown;
-    enabled?: unknown;
-  },
-): Promise<WatcherFields> {
+async function validateFields(userId: string, input: WatcherFieldInput): Promise<WatcherFields> {
+  const deliver = normalizeDeliver(input.deliver);
+
   const sessionId =
     typeof input.sessionId === "string" && input.sessionId.trim() ? input.sessionId.trim() : null;
   if (sessionId) await assertOwnsSession(userId, sessionId);
+
+  if (deliver === "chat" && !sessionId) {
+    throw new WatcherInputError(
+      "A watcher that reports into a conversation needs one. Pick a chat, dispatch into a project, or deliver from the script.",
+    );
+  }
+
+  // Only a coder watcher has somewhere else to put a project, so switching the
+  // delivery away from it clears the target rather than leaving a stale one.
+  const projectId =
+    deliver === "coder" && typeof input.projectId === "string" && input.projectId.trim()
+      ? input.projectId.trim()
+      : null;
+  if (deliver === "coder") {
+    if (!projectId) {
+      throw new WatcherInputError("A watcher that dispatches into a project needs one.");
+    }
+    await assertOwnsProject(userId, projectId);
+  }
 
   return {
     name: normalizeName(input.name),
     description: typeof input.description === "string" ? input.description.trim() || null : null,
     script: normalizeScript(input.script),
     cronExpression: normalizeCronExpression(input.cronExpression),
+    deliver,
     sessionId,
+    projectId,
+    worktreeMode: isWorktreeMode(input.worktreeMode) ? input.worktreeMode : DEFAULT_WORKTREE_MODE,
+    retentionMinutes: normalizeRetention(input.retentionMinutes),
     wakePrompt:
       typeof input.wakePrompt === "string" && input.wakePrompt.trim()
         ? input.wakePrompt.trim()
@@ -281,17 +348,7 @@ async function validateFields(
 export async function updateWatcher(params: {
   id: string;
   userId: string;
-  fields: Partial<{
-    name: unknown;
-    description: unknown;
-    script: unknown;
-    cronExpression: unknown;
-    sessionId: unknown;
-    wakePrompt: unknown;
-    modelId: unknown;
-    cooldownMinutes: unknown;
-    enabled: unknown;
-  }>;
+  fields: Partial<WatcherFieldInput>;
   approveScript: boolean;
 }): Promise<{ id: string; needsApproval: boolean }> {
   const { id, userId } = params;
@@ -299,16 +356,23 @@ export async function updateWatcher(params: {
   const current = await prisma.scriptWatcher.findFirst({ where: { id, userId } });
   if (!current) throw new WatcherInputError("Watcher not found.");
 
+  // An explicit null clears a field; leaving it out keeps what the row has.
+  const keep = (sent: unknown, stored: unknown): unknown => (sent === undefined ? stored : sent);
+
   const merged = await validateFields(userId, {
-    name: params.fields.name ?? current.name,
-    description: params.fields.description ?? current.description,
-    script: params.fields.script ?? current.script,
-    cronExpression: params.fields.cronExpression ?? current.cronExpression,
-    sessionId: params.fields.sessionId ?? current.sessionId,
-    wakePrompt: params.fields.wakePrompt ?? current.wakePrompt,
-    modelId: params.fields.modelId ?? current.modelId,
-    cooldownMinutes: params.fields.cooldownMinutes ?? current.cooldownMinutes,
-    enabled: params.fields.enabled ?? current.enabled,
+    name: keep(params.fields.name, current.name),
+    description: keep(params.fields.description, current.description),
+    script: keep(params.fields.script, current.script),
+    cronExpression: keep(params.fields.cronExpression, current.cronExpression),
+    deliver: keep(params.fields.deliver, current.deliver),
+    sessionId: keep(params.fields.sessionId, current.sessionId),
+    projectId: keep(params.fields.projectId, current.projectId),
+    worktreeMode: keep(params.fields.worktreeMode, current.worktreeMode),
+    retentionMinutes: keep(params.fields.retentionMinutes, current.retentionMinutes),
+    wakePrompt: keep(params.fields.wakePrompt, current.wakePrompt),
+    modelId: keep(params.fields.modelId, current.modelId),
+    cooldownMinutes: keep(params.fields.cooldownMinutes, current.cooldownMinutes),
+    enabled: keep(params.fields.enabled, current.enabled),
   });
 
   const scriptChanged = merged.script !== current.script;
@@ -438,8 +502,13 @@ export interface SerializedWatcher {
   script: string;
   cronExpression: string;
   enabled: boolean;
+  deliver: string;
   sessionId: string | null;
   sessionTitle: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  worktreeMode: string;
+  retentionMinutes: number;
   wakePrompt: string;
   modelId: string | null;
   cooldownMinutes: number;
@@ -456,7 +525,10 @@ export interface SerializedWatcher {
   updatedAt: string;
 }
 
-type WatcherRow = ScriptWatcher & { session?: { title: string } | null };
+type WatcherRow = ScriptWatcher & {
+  session?: { title: string } | null;
+  project?: { name: string } | null;
+};
 
 export function serializeWatcher(watcher: WatcherRow): SerializedWatcher {
   return {
@@ -466,8 +538,13 @@ export function serializeWatcher(watcher: WatcherRow): SerializedWatcher {
     script: watcher.script,
     cronExpression: watcher.cronExpression,
     enabled: watcher.enabled,
+    deliver: watcher.deliver,
     sessionId: watcher.sessionId,
     sessionTitle: watcher.session?.title ?? null,
+    projectId: watcher.projectId,
+    projectName: watcher.project?.name ?? null,
+    worktreeMode: watcher.worktreeMode,
+    retentionMinutes: watcher.retentionMinutes,
     wakePrompt: watcher.wakePrompt,
     modelId: watcher.modelId,
     cooldownMinutes: watcher.cooldownMinutes,

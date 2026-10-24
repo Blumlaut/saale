@@ -8,7 +8,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockCreate = vi.fn();
 vi.mock("@/lib/db", () => ({
-  prisma: { chatSession: { create: (...args: unknown[]) => mockCreate(...args) } },
+  prisma: {
+    chatSession: { create: (...args: unknown[]) => mockCreate(...args) },
+    appSettings: { findUnique: vi.fn(async () => null) },
+  },
 }));
 
 import { createChatSessionRow, sanitizeChatTitle } from "@/lib/chat/create-session";
@@ -60,6 +63,23 @@ describe("createChatSessionRow", () => {
     });
   });
 
+  it("keeps the id and the origin a watcher fire hands it", async () => {
+    await createChatSessionRow("user-1", {
+      id: "chat-bot",
+      title: "PR bot: issue 14",
+      projectId: "project-1",
+      origin: "watcher",
+      originId: "w-1",
+      worktreeBranch: "watch/pr-bot/c-chatbot",
+    });
+
+    const data = mockCreate.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(data.id).toBe("chat-bot");
+    expect(data.origin).toBe("watcher");
+    expect(data.originId).toBe("w-1");
+    expect(data.worktreeBranch).toBe("watch/pr-bot/c-chatbot");
+  });
+
   it("omits fields the caller did not set so the schema defaults apply", async () => {
     await createChatSessionRow("user-1", { title: "Bare" });
 
@@ -68,5 +88,7 @@ describe("createChatSessionRow", () => {
     expect(data.modelName).toBeNull();
     expect("thinkingLevel" in data).toBe(false);
     expect("toolConfig" in data).toBe(false);
+    expect("origin" in data).toBe(false);
+    expect("worktreeBranch" in data).toBe(false);
   });
 });

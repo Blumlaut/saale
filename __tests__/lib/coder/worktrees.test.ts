@@ -209,6 +209,35 @@ describe("ensureWorktree: refreshing the repo", () => {
   });
 });
 
+describe("ensureWorktree: the branch a chat is checked out on", () => {
+  it("uses the branch the chat names, so a watcher's fires say who made them", async () => {
+    mocks.findChat.mockResolvedValue({
+      id: "chat-bot",
+      projectId: PROJECT.id,
+      worktreeBranch: "watch/pr-bot/c-chatbot",
+    });
+
+    const worktree = await ensureWorktree(USER, "chat-bot");
+
+    expect(worktree.branch).toBe("watch/pr-bot/c-chatbot");
+    expect(mocks.addWorktree).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ branch: "watch/pr-bot/c-chatbot" }),
+    );
+  });
+
+  it("refuses a stored branch git would read as something else", async () => {
+    mocks.findChat.mockResolvedValue({
+      id: "chat-bad",
+      projectId: PROJECT.id,
+      worktreeBranch: "--upload-pack=evil",
+    });
+
+    await expect(ensureWorktree(USER, "chat-bad")).rejects.toThrow(/Not a branch name/);
+    expect(mocks.addWorktree).not.toHaveBeenCalled();
+  });
+});
+
 describe("ensureWorktree", () => {
   it("returns an existing row whose directory is still there without touching git", async () => {
     mocks.findWorktree.mockResolvedValue({
