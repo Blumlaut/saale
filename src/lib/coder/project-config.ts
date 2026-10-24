@@ -194,19 +194,31 @@ export async function excludeEnvFiles(
   await writeOwned(absolute, Buffer.from(body, "utf8"));
 }
 
+/** What running a project's setup script did. */
+export type SetupScriptResult =
+  | { ok: true }
+  | {
+      ok: false;
+      /** Exit status, null when the script never got to run at all. */
+      exitCode: number | null;
+      /** The tail of what it printed, which is where the error is. */
+      output: string;
+    };
+
 /**
  * Run a project's setup script in a new checkout.
  *
- * A failing script is reported and swallowed: the checkout exists and the agent
+ * A failing script is reported, not thrown: the checkout exists and the agent
  * can work in it, and blocking the chat on an install nobody will fix is worse
- * than starting without it.
+ * than starting without it. What it said is returned so the chat can show why
+ * its worktree is missing its dependencies.
  */
 export async function runSetupScript(
   userId: string,
   dir: string,
   script: string | null,
-): Promise<boolean> {
-  if (!script) return true;
+): Promise<SetupScriptResult> {
+  if (!script) return { ok: true };
 
   let result;
   try {
@@ -217,13 +229,17 @@ export async function runSetupScript(
     });
   } catch (err) {
     console.error(`Failed to run the setup script in ${dir} (${userId}):`, err);
-    return false;
+    return {
+      ok: false,
+      exitCode: null,
+      output: err instanceof Error ? err.message : String(err),
+    };
   }
 
   if (result.exitCode !== 0) {
     const output = `${result.stdout}\n${result.stderr}`.trim().slice(-MAX_LOG_LENGTH);
     console.error(`The setup script in ${dir} exited ${result.exitCode}:\n${output}`);
-    return false;
+    return { ok: false, exitCode: result.exitCode, output };
   }
-  return true;
+  return { ok: true };
 }
