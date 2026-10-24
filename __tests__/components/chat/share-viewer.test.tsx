@@ -99,23 +99,18 @@ describe("share viewer tool calls", () => {
   });
 
   it("counts every call while showing only the newest marks", () => {
-    renderShare([
-      step("a1", [
-        call("t1", "read", "Read a file"),
-        call("t2", "bash", "Ran a shell command"),
-        call("t3", "read", "Read a file"),
-        call("t4", "read", "Read a file"),
-        call("t5", "read", "Read a file"),
-      ]),
-    ]);
+    const calls = Array.from({ length: 8 }, (_, index) =>
+      call(`t${index + 1}`, "read", "Read a file"),
+    );
+    renderShare([step("a1", calls)]);
 
     // The counter keeps counting up, over a window of the newest calls.
-    expect(screen.getByText("Used 5 tools")).toBeInTheDocument();
-    expect(marksOf(toolsRow())).toHaveLength(3);
+    expect(screen.getByText("Used 8 tools")).toBeInTheDocument();
+    expect(marksOf(toolsRow())).toHaveLength(6);
 
-    // All five are still reachable.
+    // All eight are still reachable.
     fireEvent.click(toolsRow());
-    expect(screen.getAllByText("Read a file")).toHaveLength(4);
+    expect(screen.getAllByText("Read a file")).toHaveLength(8);
   });
 
   it("splits the run at prose, so a sentence reads where it was said", () => {
