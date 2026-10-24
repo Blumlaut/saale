@@ -45,6 +45,9 @@ export function MonacoDiffView({
   const modifiedModelRef = useRef<monaco.editor.ITextModel | null>(null);
   const [ready, setReady] = useState(false);
   const [sideBySide, setSideBySide] = useState(true);
+  // The host boots async, so the width may flip before the editor exists;
+  // creation must start from the value the width logic has already picked.
+  const sideBySideRef = useRef(true);
 
   // Latest props — the mount effect closes over the first render's values, so
   // the models start from whatever the caller has by the time the host boots.
@@ -63,7 +66,9 @@ export function MonacoDiffView({
     if (!container) return;
     const update = (width: number) => {
       const next = width >= SIDE_BY_SIDE_MIN_WIDTH;
-      setSideBySide((current) => (current === next ? current : next));
+      if (sideBySideRef.current === next) return;
+      sideBySideRef.current = next;
+      setSideBySide(next);
     };
     update(container.clientWidth);
     const observer = new ResizeObserver((entries) => {
@@ -105,7 +110,7 @@ export function MonacoDiffView({
 
         diff = m.editor.createDiffEditor(containerRef.current, {
           readOnly: true,
-          renderSideBySide: true,
+          renderSideBySide: sideBySideRef.current,
           // The container width decides the mode; without this Monaco
           // silently flips any narrow diff to inline on its own.
           useInlineViewWhenSpaceIsLimited: false,
