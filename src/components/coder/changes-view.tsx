@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, GitBranch, Loader2, RefreshCw } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Check, ChevronDown, GitBranch, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { fetchJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -68,7 +68,43 @@ function Counts({ change }: { change: CoderChange }) {
   );
 }
 
-function CommitList({ commits }: { commits: CoderCommit[] }) {
+/**
+ * A foldable area of the panel: a header row that collapses its content, with
+ * the counts on the right where the eye lands before the fold.
+ */
+function CollapsibleSection({
+  label,
+  right,
+  children,
+  defaultOpen = true,
+}: {
+  label: ReactNode;
+  right?: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="border-b">
+      <CollapsibleTrigger className="hover:bg-accent/40 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors">
+        <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0 transition-transform data-[state=closed]:-rotate-90" />
+        <span className="console-label flex-1">{label}</span>
+        {right}
+      </CollapsibleTrigger>
+      <CollapsibleContent>{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function CommitList({
+  commits,
+  activeSha,
+  onOpenCommit,
+}: {
+  commits: CoderCommit[];
+  activeSha: string | null;
+  onOpenCommit: (commit: CoderCommit) => void;
+}) {
   if (commits.length === 0) {
     return (
       <p className="text-muted-foreground px-3 py-2 text-xs">No commits on this branch yet.</p>
@@ -77,7 +113,16 @@ function CommitList({ commits }: { commits: CoderCommit[] }) {
   return (
     <div className="flex flex-col">
       {commits.slice(0, 10).map((commit) => (
-        <div key={commit.sha} className="flex items-start gap-2 px-3 py-1.5" title={commit.sha}>
+        <button
+          key={commit.sha}
+          type="button"
+          onClick={() => onOpenCommit(commit)}
+          className={cn(
+            "hover:bg-accent/60 flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors",
+            activeSha === commit.sha && "bg-accent",
+          )}
+          title={commit.sha}
+        >
           <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
             {commit.shortSha}
           </span>
@@ -85,7 +130,7 @@ function CommitList({ commits }: { commits: CoderCommit[] }) {
           <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
             {formatRelativeDate(commit.date)}
           </span>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -95,6 +140,9 @@ function CommitList({ commits }: { commits: CoderCommit[] }) {
  * The Project tab: which repo and branch this is, where the branch stands,
  * what changed with line counts, the diff of whichever file is open, and the
  * branch's recent commits.
+ *
+ * The areas fold independently, because a panel that always lists everything
+ * gives the same screen whether or not any area has news.
  */
 export function ChangesView({
   sessionId,
@@ -102,12 +150,17 @@ export function ChangesView({
   onRefresh,
   refreshing,
   onRunScript,
+  activeCommitSha,
+  onOpenCommit,
 }: {
   sessionId: string;
   state: CoderSessionState;
   onRefresh: () => void;
   refreshing: boolean;
   onRunScript?: (name: string) => void;
+  /** The commit the Diff tab is showing, if one. */
+  activeCommitSha: string | null;
+  onOpenCommit: (commit: CoderCommit) => void;
 }) {
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [diff, setDiff] = useState<string | null>(null);
@@ -194,84 +247,89 @@ export function ChangesView({
         </div>
       </div>
 
-      {state.changes.length > 0 && (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5">
-          <span className="console-label">
-            {state.changes.length === 1 ? "1 file" : `${state.changes.length} files`}
-          </span>
-          <span className="font-mono text-[11px]">
-            <span className="text-emerald-600 dark:text-emerald-400">+{totals.added}</span>{" "}
-            <span className="text-red-600 dark:text-red-400">−{totals.deleted}</span>
-          </span>
-        </div>
-      )}
-
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {state.changes.length === 0 ? (
-          <div className="flex items-center gap-2 px-3 py-4">
-            <Check className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-            <span className="text-muted-foreground text-xs">
-              Worktree clean. All changes are committed.
+        <CollapsibleSection
+          label={state.changes.length === 1 ? "1 file" : `${state.changes.length} files`}
+          right={
+            <span className="shrink-0 font-mono text-[11px]">
+              <span className="text-emerald-600 dark:text-emerald-400">+{totals.added}</span>{" "}
+              <span className="text-red-600 dark:text-red-400">−{totals.deleted}</span>
             </span>
-          </div>
-        ) : (
-          state.changes.map((change) => {
-            const { dir, name } = splitPath(change.path);
-            const status = statusLetter(change);
-            const open = openPath === change.path;
-            return (
-              <div key={change.path}>
-                <button
-                  type="button"
-                  onClick={() => void openDiff(change)}
-                  className={cn(
-                    "hover:bg-accent/60 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors",
-                    open && "bg-accent",
-                  )}
-                  title={
-                    change.originalPath ? `${change.originalPath} → ${change.path}` : change.path
-                  }
-                >
-                  <span
+          }
+        >
+          {state.changes.length === 0 ? (
+            <div className="flex items-center gap-2 px-3 py-3">
+              <Check className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+              <span className="text-muted-foreground text-xs">
+                Worktree clean. All changes are committed.
+              </span>
+            </div>
+          ) : (
+            state.changes.map((change) => {
+              const { dir, name } = splitPath(change.path);
+              const status = statusLetter(change);
+              const open = openPath === change.path;
+              return (
+                <div key={change.path}>
+                  <button
+                    type="button"
+                    onClick={() => void openDiff(change)}
                     className={cn(
-                      "w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
-                      status.className,
+                      "hover:bg-accent/60 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors",
+                      open && "bg-accent",
                     )}
+                    title={
+                      change.originalPath ? `${change.originalPath} → ${change.path}` : change.path
+                    }
                   >
-                    {status.letter}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs">{name}</span>
-                    <span className="text-muted-foreground block truncate font-mono text-[10px]">
-                      {dir}
-                      {change.staged ? " · staged" : ""}
+                    <span
+                      className={cn(
+                        "w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
+                        status.className,
+                      )}
+                    >
+                      {status.letter}
                     </span>
-                  </span>
-                  <Counts change={change} />
-                </button>
-                {open && (
-                  <div className="border-b">
-                    {loadingDiff && (
-                      <div className="flex items-center gap-2 px-3 py-2">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span className="text-muted-foreground text-xs">Reading diff…</span>
-                      </div>
-                    )}
-                    {diffError && (
-                      <p className="text-destructive px-3 py-2 text-xs break-words">{diffError}</p>
-                    )}
-                    {diff !== null && <DiffView diff={diff} />}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs">{name}</span>
+                      <span className="text-muted-foreground block truncate font-mono text-[10px]">
+                        {dir}
+                        {change.staged ? " · staged" : ""}
+                      </span>
+                    </span>
+                    <Counts change={change} />
+                  </button>
+                  {open && (
+                    <div className="border-b">
+                      {loadingDiff && (
+                        <div className="flex items-center gap-2 px-3 py-2">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span className="text-muted-foreground text-xs">Reading diff…</span>
+                        </div>
+                      )}
+                      {diffError && (
+                        <p className="text-destructive px-3 py-2 text-xs break-words">
+                          {diffError}
+                        </p>
+                      )}
+                      {diff !== null && <DiffView diff={diff} />}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </CollapsibleSection>
 
         {state.scripts.length > 0 && (
-          <>
-            <Separator className="mt-1" />
-            <p className="console-label px-3 pt-2 pb-1">Scripts</p>
+          <CollapsibleSection
+            label="Scripts"
+            right={
+              <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+                {state.scripts.length}
+              </span>
+            }
+          >
             <div className="flex flex-col gap-1 px-3 py-1.5">
               {state.scripts.map((script) => (
                 <button
@@ -288,12 +346,23 @@ export function ChangesView({
                 </button>
               ))}
             </div>
-          </>
+          </CollapsibleSection>
         )}
 
-        <Separator className="mt-1" />
-        <p className="console-label px-3 pt-2 pb-1">Recent commits</p>
-        <CommitList commits={state.commits} />
+        <CollapsibleSection
+          label="Recent commits"
+          right={
+            <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+              {state.commits.length}
+            </span>
+          }
+        >
+          <CommitList
+            commits={state.commits}
+            activeSha={activeCommitSha}
+            onOpenCommit={onOpenCommit}
+          />
+        </CollapsibleSection>
       </div>
     </div>
   );

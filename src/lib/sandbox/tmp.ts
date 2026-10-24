@@ -3,7 +3,9 @@
  *
  * A workspace's `.tmp` is where a command puts throwaway output. Left alone it
  * grows with the volume, so the sandbox service sweeps entries past a
- * configured age.
+ * configured age. An entry is only swept when nothing in its tree is newer
+ * than the age: a directory's mtime does not move when a nested file is
+ * written, so the age is checked down the tree, not on the entry itself.
  */
 
 import fs from "node:fs/promises";
@@ -58,8 +60,7 @@ export async function sweepWorkspaceTmp(
     for (const entry of entries) {
       const target = path.join(tmp, entry);
       try {
-        const stat = await fs.lstat(target);
-        if (stat.mtimeMs > cutoff) continue;
+        if (await treeIsNew(target, cutoff)) continue;
         await fs.rm(target, { recursive: true, force: true });
         result.removed += 1;
       } catch (err) {
@@ -70,4 +71,22 @@ export async function sweepWorkspaceTmp(
   }
 
   return result;
+}
+
+/**
+ * Whether the entry, or anything nested under it, is newer than the cutoff.
+ *
+ * A directory's mtime only moves when its own children are added or removed,
+ * so a stale folder can wrap a file written minutes ago. The tree is walked
+ * until a fresh entry is found; an empty or fully stale tree is swept.
+ */
+async function treeIsNew(target: string, cutoff: number): Promise<boolean> {
+  const stat = await fs.lstat(target);
+  if (stat.mtimeMs > cutoff) return true;
+  if (!stat.isDirectory()) return false;
+  const children = await fs.readdir(target);
+  for (const child of children) {
+    if (await treeIsNew(path.join(target, child), cutoff)) return true;
+  }
+  return false;
 }
