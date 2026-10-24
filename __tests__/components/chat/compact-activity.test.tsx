@@ -125,6 +125,11 @@ function reasoningRow(): HTMLElement {
   return screen.getByRole("button", { name: /Thinking/ });
 }
 
+/** Prose bubbles: the rounded cards the markdown goes in. Empty ones are the bug. */
+function hollowBubbles(): NodeListOf<Element> {
+  return document.querySelectorAll(".liquid-glass-inner.rounded-2xl");
+}
+
 /** Document order: what a reader meets first. */
 function before(a: Node, b: Node): boolean {
   return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
@@ -274,6 +279,30 @@ describe("compact activity", () => {
 
     expect(screen.getAllByRole("button", { name: /Used \d+ tool/ })).toHaveLength(1);
     expect(toolsRow()).toHaveTextContent("Used 2 tools");
+  });
+
+  it("shows no bubble for a turn that only wrote whitespace", () => {
+    // A lone newline between tool rounds is a text block with nothing in it.
+    // It used to render as a hollow bubble above the call it preceded.
+    renderTranscript([
+      step({ id: "a1", content: "\n", toolCalls: [exec("tc-1", "uptime")] }),
+      step({ id: "a2", content: "   ", toolCalls: [exec("tc-2", "df -h")] }),
+    ]);
+
+    expect(toolsRow()).toBeInTheDocument();
+    expect(hollowBubbles()).toHaveLength(0);
+  });
+
+  it("shows no empty thinking card either", () => {
+    renderTranscript(
+      [step({ id: "a1", thinking: " \n ", content: "\n", toolCalls: [exec("tc-1", "uptime")] })],
+      false,
+    );
+
+    expect(screen.queryByRole("button", { name: /Thought process/ })).toBeNull();
+    expect(hollowBubbles()).toHaveLength(0);
+    // The call itself is still there, in the step-by-step transcript's own card.
+    expect(screen.getByText(/uptime/)).toBeInTheDocument();
   });
 
   it("keeps one block per kind when a step both reasoned and spoke", () => {
