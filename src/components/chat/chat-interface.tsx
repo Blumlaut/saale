@@ -32,6 +32,7 @@ import { useChatSessionState } from "./use-chat-session-state";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import type { Message, ApprovalData, TokenUsage } from "./types";
 import { ChatHeader } from "./chat-header";
+import { SharedFileSessionProvider } from "./file-card";
 import { SessionLinksPanel, SessionLinksSheet, useSessionLinks } from "./session-links-panel";
 import { useChatStream } from "./use-chat-stream";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -825,111 +826,115 @@ export function ChatInterface({
   const awaitingFirstReply = isLoading && !messages.some((message) => message.role === "assistant");
 
   return (
-    <div className="relative flex min-h-0 flex-1 md:gap-4">
-      <div
-        data-slot="chat-drop-zone"
-        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
-        {...dropZoneProps}
-      >
-        <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
-          <ChatHeader
-            sessionTitle={sessionTitle}
-            editingTitle={editingTitle}
-            titleDraft={titleDraft}
-            temporaryMode={temporaryMode}
-            isLoading={isLoading}
-            sessionId={sessionId}
-            modelId={modelId}
-            thinkingLevel={thinkingLevel}
-            onTitleChange={setTitleDraft}
-            onStartEditing={() => {
-              setEditingTitle(true);
-              setTitleDraft(sessionTitle);
-            }}
-            onCancelEditing={() => {
-              setEditingTitle(false);
-              setTitleDraft(sessionTitle);
-            }}
-            onSaveTitle={saveTitle}
-            onModelChange={setModelId}
-            onThinkingChange={setThinkingLevel}
-            onTemporaryChange={onTemporaryChange}
-            onNewChat={onNewChat}
-            linksCount={links?.length ?? 0}
-            linksOpen={linksOpen}
-            onToggleLinks={() => setLinksOpen((open) => !open)}
-            {...(mobileListTrigger ? { mobileListTrigger } : {})}
-            {...(headerActions ? { extraActions: headerActions } : {})}
-            {...(hideTemporaryToggle ? { hideTemporaryToggle } : {})}
+    <SharedFileSessionProvider sessionId={sessionId}>
+      <div className="relative flex min-h-0 flex-1 md:gap-4">
+        <div
+          data-slot="chat-drop-zone"
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+          {...dropZoneProps}
+        >
+          <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
+            <ChatHeader
+              sessionTitle={sessionTitle}
+              editingTitle={editingTitle}
+              titleDraft={titleDraft}
+              temporaryMode={temporaryMode}
+              isLoading={isLoading}
+              sessionId={sessionId}
+              modelId={modelId}
+              thinkingLevel={thinkingLevel}
+              onTitleChange={setTitleDraft}
+              onStartEditing={() => {
+                setEditingTitle(true);
+                setTitleDraft(sessionTitle);
+              }}
+              onCancelEditing={() => {
+                setEditingTitle(false);
+                setTitleDraft(sessionTitle);
+              }}
+              onSaveTitle={saveTitle}
+              onModelChange={setModelId}
+              onThinkingChange={setThinkingLevel}
+              onTemporaryChange={onTemporaryChange}
+              onNewChat={onNewChat}
+              linksCount={links?.length ?? 0}
+              linksOpen={linksOpen}
+              onToggleLinks={() => setLinksOpen((open) => !open)}
+              {...(mobileListTrigger ? { mobileListTrigger } : {})}
+              {...(headerActions ? { extraActions: headerActions } : {})}
+              {...(hideTemporaryToggle ? { hideTemporaryToggle } : {})}
+            />
+
+            <div className="flex min-h-0 flex-1 flex-col">
+              <MessageList
+                ref={messageListRef}
+                messages={messages}
+                isLoading={isLoading}
+                isCompacting={isCompacting}
+                onEditMessage={handleEditMessage}
+                onQuoteSelection={handleQuoteSelection}
+                pendingApprovals={pendingApprovals}
+                onApprovalResolved={handleApprovalResolved}
+                sessionId={sessionId}
+                activeTool={activeTool}
+                retry={retryNotice}
+                compactActivity={compactActivity}
+              />
+            </div>
+          </GlassPanel>
+
+          {renderWaitingNotice?.(awaitingFirstReply)}
+
+          <QueuedMessages
+            messages={queuedMessages}
+            sendingId={sendingQueuedId}
+            paused={queuePaused}
+            onEdit={handleEditQueued}
+            onSendNow={handleSendQueuedNow}
+            onCancel={handleCancelQueued}
           />
 
-          <div className="flex min-h-0 flex-1 flex-col">
-            <MessageList
-              ref={messageListRef}
-              messages={messages}
-              isLoading={isLoading}
-              isCompacting={isCompacting}
-              onEditMessage={handleEditMessage}
-              onQuoteSelection={handleQuoteSelection}
-              pendingApprovals={pendingApprovals}
-              onApprovalResolved={handleApprovalResolved}
-              sessionId={sessionId}
-              activeTool={activeTool}
-              retry={retryNotice}
-              compactActivity={compactActivity}
-            />
-          </div>
-        </GlassPanel>
+          <InputBar
+            ref={inputBarRef}
+            onSend={handleSend}
+            onCommand={handleCommandPick}
+            value={draft}
+            onValueChange={setDraft}
+            isLoading={isLoading}
+            onStop={handleStop}
+            toolConfig={toolConfig}
+            onToggleTool={toggleTool}
+            tokenUsage={tokenUsage}
+            isCompacting={isCompacting}
+            onCompact={handleCompact}
+          />
 
-        {renderWaitingNotice?.(awaitingFirstReply)}
+          <CommandSheet
+            open={commandPrompt !== null}
+            onOpenChange={(open) => {
+              if (!open) setCommandPrompt(null);
+            }}
+            prompt={commandPrompt?.prompt ?? null}
+            busy={commandBusy}
+            onSelect={handleCommandChoice}
+          />
 
-        <QueuedMessages
-          messages={queuedMessages}
-          sendingId={sendingQueuedId}
-          paused={queuePaused}
-          onEdit={handleEditQueued}
-          onSendNow={handleSendQueuedNow}
-          onCancel={handleCancelQueued}
-        />
+          {isDragging && <FileDropOverlay />}
+        </div>
 
-        <InputBar
-          ref={inputBarRef}
-          onSend={handleSend}
-          onCommand={handleCommandPick}
-          value={draft}
-          onValueChange={setDraft}
-          isLoading={isLoading}
-          onStop={handleStop}
-          toolConfig={toolConfig}
-          onToggleTool={toggleTool}
-          tokenUsage={tokenUsage}
-          isCompacting={isCompacting}
-          onCompact={handleCompact}
-        />
-
-        <CommandSheet
-          open={commandPrompt !== null}
-          onOpenChange={(open) => {
-            if (!open) setCommandPrompt(null);
-          }}
-          prompt={commandPrompt?.prompt ?? null}
-          busy={commandBusy}
-          onSelect={handleCommandChoice}
-        />
-
-        {isDragging && <FileDropOverlay />}
-      </div>
-
-      {/* Linked panel. desktop: inline, mobile: bottom sheet. Hidden until
+        {/* Linked panel. desktop: inline, mobile: bottom sheet. Hidden until
           the header button opens it; the button itself only shows when there
           is something to show. */}
-      {linksOpen && links !== null && (
-        <div className={cn("w-72 shrink-0", isMobile && "hidden")}>
-          <SessionLinksPanel links={links} onClose={() => setLinksOpen(false)} />
-        </div>
-      )}
+        {linksOpen && links !== null && (
+          <div className={cn("w-72 shrink-0", isMobile && "hidden")}>
+            <SessionLinksPanel links={links} onClose={() => setLinksOpen(false)} />
+          </div>
+        )}
 
-      {isMobile && <SessionLinksSheet links={links} open={linksOpen} onOpenChange={setLinksOpen} />}
-    </div>
+        {isMobile && (
+          <SessionLinksSheet links={links} open={linksOpen} onOpenChange={setLinksOpen} />
+        )}
+      </div>
+    </SharedFileSessionProvider>
   );
 }

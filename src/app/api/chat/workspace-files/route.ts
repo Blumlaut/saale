@@ -7,7 +7,7 @@ import { readWorkspaceFile } from "@/lib/files/workspace-file";
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 
 /**
- * GET /api/chat/workspace-files?file=relative/path[&download=1]
+ * GET /api/chat/workspace-files?file=relative/path[&session=chatId][&download=1]
  *
  * Serve a file from the authenticated user's workspace.
  * Used by the show_file tool's FileCard component for on-demand file delivery.
@@ -33,7 +33,10 @@ export async function GET(request: NextRequest) {
     searchParams.get("download") === "1" ? contentDisposition(path.basename(fileParam)) : undefined;
 
   try {
-    const file = await readWorkspaceFile(userId, fileParam);
+    // `session` is the chat that shared the file: its worktree is where the
+    // agent's relative paths point.
+    const session = searchParams.get("session");
+    const file = await readWorkspaceFile(userId, fileParam, session ? { session } : {});
     return serveBuffer(request, file.buffer, file.mimeType, disposition);
   } catch (err) {
     if (err instanceof FileNotFoundError) {
