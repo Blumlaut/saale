@@ -22,7 +22,7 @@ Adding a tool means adding a descriptor. It never means adding a component.
 | `chat/collapsed-tool-calls.tsx`         | A run folded into one summary row — the step-by-step transcript's view.                     |
 | `chat/compact-blocks.ts`                | Folds a turn's steps into activity / prose blocks, for the condensed transcript and shares.  |
 | `chat/compact-activity.tsx`             | The condensed transcript row: newest reasoning + one "Used N tools" counter per run.         |
-| `chat/tool-mark-model.ts`               | The mark vocabulary, and the category-icon fallback a redacted (shared) call uses.           |
+| `chat/tool-mark-model.ts`               | The mark vocabulary, the tool's own icon, and the category-icon fallback a redacted (shared) call uses. |
 | `chat/file-card.tsx`                    | The one bespoke renderer — the `show_file` attachment card and its gallery.                 |
 | `lib/chat/tool-meta.ts`                 | Reads the `_saale*Meta` block a tool appends to its result.                                 |
 

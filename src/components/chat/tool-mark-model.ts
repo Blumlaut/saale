@@ -7,8 +7,8 @@ import { findToolInfo } from "@/lib/pi/tool-infos";
 export type ToolMark = { kind: "favicon"; url: string } | { kind: "icon"; icon: LucideIcon };
 
 /**
- * The mark a tool wears when nothing describes the call itself: its category's
- * icon, else the generic wrench.
+ * The mark a tool wears when nothing describes the call itself: the tool's own
+ * icon, else its category's, else the generic wrench.
  *
  * `toolMark` (the owner's descriptor-aware mark) falls back to this, and the
  * share page uses it outright. every shared call is redacted, so no descriptor
@@ -18,5 +18,6 @@ export type ToolMark = { kind: "favicon"; url: string } | { kind: "icon"; icon: 
  */
 export function categoryToolMark(toolName: string): ToolMark {
   const info = findToolInfo(toolName);
-  return { kind: "icon", icon: getToolCategory(info?.category ?? "")?.icon ?? Wrench };
+  const icon = info?.icon ?? getToolCategory(info?.category ?? "")?.icon ?? Wrench;
+  return { kind: "icon", icon };
 }
