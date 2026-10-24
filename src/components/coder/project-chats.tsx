@@ -167,7 +167,7 @@ export function ProjectChats({
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title="Delete this chat?"
-        description="It takes the chat's worktree with it."
+        description="This will delete all data in this worktree."
         discard="this chat's uncommitted changes"
         onDelete={(force) => (deleting ? remove(deleting, force) : Promise.resolve())}
       />
