@@ -31,6 +31,14 @@ export function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max - 1) + "…" : str;
 }
 
+/** Cut a path to `max` characters, keeping its end: the file name is the part worth reading. */
+export function truncatePath(path: string, max: number): string {
+  if (path.length <= max) return path;
+  const cut = path.slice(path.length - max + 2);
+  const separator = cut.indexOf("/");
+  return `…/${separator === -1 ? cut : cut.slice(separator + 1)}`;
+}
+
 /** Spell a count with its unit. `plural(1, "email", "emails")` → `"1 email"`. */
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;

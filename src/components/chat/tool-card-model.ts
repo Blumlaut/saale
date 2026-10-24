@@ -68,6 +68,8 @@ export type ToolCardBlock =
   | { kind: "facts"; items: readonly ToolFact[] }
   /** A command's captured output. stdout and stderr share one box. */
   | { kind: "output"; stdout: string; stderr: string }
+  /** An image in the user's workspace, previewed from its path. */
+  | { kind: "image"; path: string }
   | { kind: "diff"; lines: readonly string[]; max?: number }
   | { kind: "code"; text: string; label?: string; tone?: "muted" | "danger"; max?: number }
   | { kind: "text"; text: string; mono?: boolean; clamp?: boolean; tone?: "muted" | "danger" }

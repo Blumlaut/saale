@@ -4,6 +4,7 @@ import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
 import { resolveToolCard, splitToolCalls } from "@/components/chat/tool-cards";
 import { calendarToolDescriptor } from "@/components/chat/tool-descriptors/calendar";
 import { codemodeDescriptor } from "@/components/chat/tool-descriptors/codemode";
+import { fileToolDescriptor } from "@/components/chat/tool-descriptors/file";
 import { describeGenericToolCall } from "@/components/chat/tool-descriptors/generic";
 import { aggregateToolStatus } from "@/components/chat/tool-status";
 import { infraToolDescriptor } from "@/components/chat/tool-descriptors/infra";
@@ -57,6 +58,9 @@ describe("tool card routing", () => {
   const DESCRIBED = new Set([
     "show_file",
     "codemode",
+    "read",
+    "write",
+    "edit",
     "web_search",
     "web_fetch",
     "mail_list",
@@ -551,6 +555,137 @@ describe("codemode descriptor", () => {
 
     expect(model?.detail).toBeUndefined();
     expect(firstBlock(model, "code").text).toBe("step: one");
+  });
+});
+
+describe("file descriptor", () => {
+  const filePath =
+    "/w/user-5ffa02e44299/worktrees/saale/c-188df5a7/src/components/chat/share-viewer.tsx";
+
+  it("shows an edit as a line diff, not the arguments that carry it", () => {
+    const model = fileToolDescriptor.describe(
+      call("edit", "Successfully replaced 1 block(s) in file.", {
+        args: {
+          path: filePath,
+          edits: [
+            {
+              oldText: "const messages = props.messages;\nconst count = messages.length;",
+              newText:
+                "const messages = dropBlankText(props.messages);\nconst count = messages.length;",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(model?.title).toBe("Edit");
+    // The path keeps its file name, which is the part the header is read for.
+    expect(model?.detail?.endsWith("src/components/chat/share-viewer.tsx")).toBe(true);
+    expect(model?.status).toEqual({ tone: "success", label: "1 edit" });
+    expect(firstBlock(model, "diff")).toEqual({
+      kind: "diff",
+      // Unchanged lines are context, so a one-line change does not reprint both
+      // versions of the whole block.
+      lines: [
+        "-const messages = props.messages;",
+        "+const messages = dropBlankText(props.messages);",
+        " const count = messages.length;",
+      ],
+      max: 60,
+    });
+  });
+
+  it("separates the diffs of several edits in one call", () => {
+    const model = fileToolDescriptor.describe(
+      call("edit", "Successfully replaced 2 block(s) in file.", {
+        args: {
+          path: "src/a.ts",
+          edits: [
+            { oldText: "one", newText: "two" },
+            { oldText: "three", newText: "four" },
+          ],
+        },
+      }),
+    );
+
+    expect(model?.status.label).toBe("2 edits");
+    expect(firstBlock(model, "diff").lines).toEqual(["-one", "+two", " ", "-three", "+four"]);
+  });
+
+  it("counts a write's lines and shows what it wrote", () => {
+    const model = fileToolDescriptor.describe(
+      call("write", "Successfully wrote to src/a.ts", {
+        args: { path: "src/a.ts", content: "one\ntwo\nthree\n" },
+      }),
+    );
+
+    expect(model?.status).toEqual({ tone: "success", label: "3 lines" });
+    expect(firstBlock(model, "code")).toMatchObject({
+      label: "Contents",
+      text: "one\ntwo\nthree\n",
+    });
+  });
+
+  it("says a call is preparing rather than counting what it has not written", () => {
+    const model = fileToolDescriptor.describe(
+      call("write", undefined, {
+        status: "pending",
+        args: { path: "src/a.ts", content: "one" },
+      }),
+    );
+
+    expect(model?.status).toEqual({ tone: "running", label: "preparing" });
+  });
+
+  it("moves a read's window into facts and shows the contents it returned", () => {
+    const model = fileToolDescriptor.describe(
+      call("read", "const a = 1;", {
+        args: { path: "src/a.ts", offset: 20, limit: 40 },
+      }),
+    );
+
+    expect(model?.title).toBe("Read");
+    expect(model?.detail).toBe("src/a.ts");
+    expect(firstBlock(model, "facts").items.map((fact) => fact.text)).toEqual([
+      "from line 20",
+      "40 lines",
+    ]);
+    expect(firstBlock(model, "code").text).toBe("const a = 1;");
+  });
+
+  it("previews an image a read looked at, with its type in place of a line range", () => {
+    const model = fileToolDescriptor.describe(
+      call("read", "Read image file [image/png]", {
+        args: { path: "reports/mobile-overflow.png" },
+      }),
+    );
+
+    expect(firstBlock(model, "facts").items.map((fact) => fact.text)).toEqual(["image/png"]);
+    expect(firstBlock(model, "image")).toEqual({
+      kind: "image",
+      path: "reports/mobile-overflow.png",
+    });
+    // The notice is a report of the read, not its contents.
+    expect(blocksOf(model).some((block) => block.kind === "code")).toBe(false);
+  });
+
+  it("hands a failed call back to the generic card", () => {
+    expect(
+      fileToolDescriptor.describe(
+        call("edit", "oldText not found", {
+          status: "error",
+          error: "oldText not found",
+          args: { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("falls back when there is nothing to draw a diff from", () => {
+    expect(
+      fileToolDescriptor.describe(call("edit", "ok", { args: { path: "src/a.ts" } })),
+    ).toBeNull();
+    expect(fileToolDescriptor.describe(call("edit", "ok", { args: {} }))).toBeNull();
   });
 });
 

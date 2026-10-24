@@ -9,6 +9,7 @@ import { ChevronDown, ChevronRight, ExternalLink, Star } from "lucide-react";
 import { plural } from "@/lib/format";
 import { FaviconMark } from "./favicon-mark";
 import { ToolStatusBadge } from "./tool-status-badge";
+import { WorkspaceImage } from "./workspace-image";
 import type {
   ToolCardBlock,
   ToolCardModel,
@@ -133,6 +134,8 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
       return <ToolOutput block={block} />;
     case "diff":
       return <ToolDiff block={block} />;
+    case "image":
+      return <WorkspaceImage path={block.path} />;
     case "code":
       return <ToolCode block={block} />;
     case "text":
@@ -363,20 +366,43 @@ function ToolDiff({ block }: { block: Extract<ToolCardBlock, { kind: "diff" }> }
 
   return (
     <div className="space-y-1">
-      <div className="bg-muted max-h-40 overflow-auto rounded-lg px-2.5 py-1.5 font-mono text-[11px] leading-relaxed">
-        {lines.map((line, index) => (
-          <div
-            key={index}
-            className={cn(
-              "whitespace-pre",
-              line.startsWith("+") && "text-green-700 dark:text-green-400/80",
-              line.startsWith("-") && "text-red-700 dark:text-red-400/80",
-              !line.startsWith("+") && !line.startsWith("-") && "text-muted-foreground",
-            )}
-          >
-            {line}
-          </div>
-        ))}
+      <div className="bg-muted max-h-40 overflow-auto rounded-lg py-1 font-mono text-[11px] leading-relaxed">
+        {lines.map((line, index) => {
+          const added = line.startsWith("+");
+          const removed = line.startsWith("-");
+
+          return (
+            <div
+              key={index}
+              className={cn(
+                "flex px-2 whitespace-pre",
+                added && "bg-green-500/10",
+                removed && "bg-red-500/10",
+              )}
+            >
+              {/* The sign gets its own column so the text itself stays aligned. */}
+              <span
+                className={cn(
+                  "w-3 shrink-0 select-none",
+                  added && "text-green-700 dark:text-green-400/80",
+                  removed && "text-red-700 dark:text-red-400/80",
+                )}
+              >
+                {added || removed ? line[0] : ""}
+              </span>
+              <span
+                className={cn(
+                  "text-muted-foreground",
+                  added && "text-green-700 dark:text-green-400/80",
+                  removed && "text-red-700 dark:text-red-400/80",
+                )}
+              >
+                {/* A line without body still needs a line box. */}
+                {line.slice(1) || " "}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {hidden > 0 && (
