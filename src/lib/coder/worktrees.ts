@@ -41,6 +41,7 @@ import {
   type EnvFile,
 } from "./project-config";
 import { clearProvisioning, setProvisioningStep } from "./provisioning";
+import { clearSetupFailure, recordSetupFailure } from "./setup-failure";
 import { coderBranchName, coderChatSlug } from "./slug";
 
 /** The branch and directory a chat runs in. */
@@ -247,7 +248,16 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
     // project must not wait for it.
     if (result.created) {
       if (project.setupScript) await setProvisioningStep(sessionId, "setup");
-      await runSetupScript(userId, result.path, project.setupScript);
+      const setup = await runSetupScript(userId, result.path, project.setupScript);
+      // Nothing else tells the user their dependencies never installed: the
+      // agent starts in the checkout either way. A build that gets through the
+      // script clears the warning an earlier one left.
+      if (setup.ok) await clearSetupFailure(sessionId);
+      else
+        await recordSetupFailure(sessionId, {
+          exitCode: setup.exitCode,
+          output: setup.output,
+        });
     }
     return { path: result.path, branch: result.branch };
   } finally {

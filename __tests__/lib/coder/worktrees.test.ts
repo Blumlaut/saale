@@ -47,6 +47,8 @@ const mocks = vi.hoisted(() => {
     removePooled: vi.fn(),
     setProvisioning: vi.fn(),
     clearProvisioning: vi.fn(),
+    recordSetupFailure: vi.fn(),
+    clearSetupFailure: vi.fn(),
   };
 });
 
@@ -80,6 +82,11 @@ vi.mock("@/lib/coder/git", () => ({
 vi.mock("@/lib/coder/provisioning", () => ({
   setProvisioningStep: (...args: unknown[]) => mocks.setProvisioning(...args),
   clearProvisioning: (...args: unknown[]) => mocks.clearProvisioning(...args),
+}));
+
+vi.mock("@/lib/coder/setup-failure", () => ({
+  recordSetupFailure: (...args: unknown[]) => mocks.recordSetupFailure(...args),
+  clearSetupFailure: (...args: unknown[]) => mocks.clearSetupFailure(...args),
 }));
 
 vi.mock("@/lib/pi/agent-pool", () => ({
@@ -149,6 +156,8 @@ beforeEach(async () => {
   mocks.removePooled.mockResolvedValue(undefined);
   mocks.setProvisioning.mockResolvedValue(undefined);
   mocks.clearProvisioning.mockResolvedValue(undefined);
+  mocks.recordSetupFailure.mockResolvedValue(undefined);
+  mocks.clearSetupFailure.mockResolvedValue(undefined);
 });
 
 afterEach(async () => {
@@ -545,5 +554,64 @@ describe("ensureWorktree: the provisioning record", () => {
 
     expect(mocks.setProvisioning).toHaveBeenCalledWith("chat-broken", "worktree");
     expect(mocks.clearProvisioning).toHaveBeenCalledWith("chat-broken");
+  });
+});
+
+/**
+ * A setup script that fails leaves a working checkout, so the chat goes ahead.
+ * That makes the record the only thing that can tell the user their dependencies
+ * never installed.
+ */
+describe("ensureWorktree: a setup script that fails", () => {
+  beforeEach(() => {
+    mocks.findProject.mockResolvedValue({ ...PROJECT, setupScript: "npm ci" });
+  });
+
+  it("keeps what the script said, so the sidebar can show it", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.runInWorkspace.mockResolvedValue({
+      stdout: "installing",
+      stderr: "npm ERR! missing script: ci",
+      exitCode: 1,
+    });
+
+    const worktree = await ensureWorktree(USER, "chat-failed-setup");
+
+    // The chat still gets its worktree: the agent works in it either way.
+    expect(worktree.path).toBe(
+      path.relative(path.join(workspaceRoot, IDENTITY), worktreeDir("chat-failed-setup")),
+    );
+    expect(mocks.recordSetupFailure).toHaveBeenCalledWith("chat-failed-setup", {
+      exitCode: 1,
+      output: "installing\nnpm ERR! missing script: ci",
+    });
+    expect(mocks.clearSetupFailure).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("clears the warning an earlier failure left", async () => {
+    mocks.runInWorkspace.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+
+    await ensureWorktree(USER, "chat-fixed-setup");
+
+    expect(mocks.clearSetupFailure).toHaveBeenCalledWith("chat-fixed-setup");
+    expect(mocks.recordSetupFailure).not.toHaveBeenCalled();
+  });
+
+  it("says nothing about a checkout that did not run the script", async () => {
+    mocks.findWorktree.mockResolvedValue({
+      id: "wt-1",
+      projectId: PROJECT.id,
+      sessionId: "chat-1",
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      baseSha: "sha-base",
+    });
+    await fs.mkdir(worktreeDir("chat-1"), { recursive: true });
+
+    await ensureWorktree(USER, "chat-1");
+
+    expect(mocks.recordSetupFailure).not.toHaveBeenCalled();
+    expect(mocks.clearSetupFailure).not.toHaveBeenCalled();
   });
 });

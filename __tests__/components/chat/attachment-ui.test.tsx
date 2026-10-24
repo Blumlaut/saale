@@ -131,7 +131,7 @@ describe("InputBar file attachment", () => {
 // ─── MessageList: attachment rendering ───────────────────────────────────────
 
 describe("MessageList attachments", () => {
-  it("renders a non-image attachment as a downloadable chip", () => {
+  it("renders a non-image attachment as a downloadable chip", async () => {
     const message = makeUserMessage({
       content: "check this out",
       attachments: [
@@ -152,7 +152,16 @@ describe("MessageList attachments", () => {
 
     // The chip fetches the file itself rather than navigating to it: on Firefox
     // for Android a download navigation leaves the custom tab on about:blank.
-    fireEvent.click(screen.getByRole("button", { name: "Download report.pdf" }));
+    // The click checks the URL first, so the frame appears a tick later.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200 })),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Download report.pdf" }));
+    });
+    vi.unstubAllGlobals();
+
     const [frame] = [...document.body.querySelectorAll("iframe")];
     expect(frame?.getAttribute("src")).toBe("/api/chat/attachments/att-real-1");
     expect(frame?.hidden).toBe(true);

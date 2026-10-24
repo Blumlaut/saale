@@ -51,6 +51,11 @@ export default function CoderLayout() {
   // object would restart the timer on each answer and never keep a cadence.
   const provisioningStep = state?.provisioning?.step ?? null;
 
+  // A build that ran the setup script and failed. The worktree panel carries
+  // it, because that is the panel that says what the checkout is missing, and on
+  // phones that panel is behind a button, so the button wears the warning too.
+  const setupFailure = state?.setupFailure ?? null;
+
   useEffect(() => {
     if (!sessionId) return;
     // Building a workspace is a minute-long event, not a background change: the
@@ -144,9 +149,20 @@ export default function CoderLayout() {
             headerActions={
               <div className="lg:hidden">
                 <Sheet>
-                  <SheetTrigger aria-label="Open worktree panel">
-                    <span className="hover:bg-accent/60 inline-flex h-8 w-8 items-center justify-center rounded transition-colors md:h-9 md:w-9">
+                  <SheetTrigger
+                    aria-label={
+                      setupFailure
+                        ? "Open worktree panel, the setup script failed"
+                        : "Open worktree panel"
+                    }
+                  >
+                    <span className="hover:bg-accent/60 relative inline-flex h-8 w-8 items-center justify-center rounded transition-colors md:h-9 md:w-9">
                       <PanelRight className="h-4 w-4" />
+                      {/* The panel is behind this button on a phone, so the
+                          warning it holds has to show from here. */}
+                      {setupFailure && (
+                        <span className="bg-destructive absolute top-1 right-1 size-1.5 rounded-full" />
+                      )}
                     </span>
                   </SheetTrigger>
                   <SheetContent side="right" className="w-4/5 max-w-[380px] p-0">

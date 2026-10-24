@@ -485,9 +485,12 @@ describe("files the agent showed the user", () => {
    * about:blank on Firefox for Android (bugzilla 1919827, 1953287). The server
    * names the file, so the request only needs the URL.
    */
-  it("downloads through a hidden frame instead of navigating the app", () => {
+  it("downloads through a hidden frame instead of navigating the app", async () => {
     render(<MessageList messages={[message([doc("quarterly")])]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Download quarterly.pdf" }));
+    // The click checks the URL first, so the frame appears a tick later.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Download quarterly.pdf" }));
+    });
 
     const [frame] = [...document.body.querySelectorAll("iframe")];
     expect(frame?.getAttribute("src")).toBe(
@@ -530,6 +533,45 @@ describe("files the agent showed the user", () => {
     expect(screen.getByText("quarterly.pdf")).toBeInTheDocument();
     expect(screen.getByText("missing.png")).toBeInTheDocument();
     expect(screen.getByText("File not found: plots/missing.png")).toBeInTheDocument();
+  });
+
+  /**
+   * A shared file is a path, read again every time the transcript renders. A
+   * path an agent wrote yesterday can be gone today, and a card that renders a
+   * blank box for that reads as a broken app: it has to name the reason.
+   */
+  it("says a shared image is gone when its bytes are no longer there", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 404, blob: async () => new Blob([]) })),
+    );
+
+    render(<MessageList messages={[message([image("deleted")])]} />);
+    await act(async () => {});
+
+    expect(screen.getByText("This file is no longer in the workspace.")).toBeInTheDocument();
+    // The name and the download stay: the file may come back, and the click
+    // now reports what went wrong instead of doing nothing.
+    expect(screen.getByText("deleted.png")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download deleted.png" })).toBeInTheDocument();
+    error.mockRestore();
+  });
+
+  it("marks a gallery tile that could not be loaded at all", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+
+    render(<MessageList messages={[message([image("alpha"), image("beta")])]} />);
+    await act(async () => {});
+
+    expect(screen.getAllByText("Could not load")).toHaveLength(2);
+    error.mockRestore();
   });
 });
 

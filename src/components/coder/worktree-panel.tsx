@@ -9,6 +9,7 @@ import { PageTabStrip } from "@/components/layout/page";
 import { ChangesView } from "./changes-view";
 import { PortsView } from "./ports-view";
 import { PROVISIONING_STEP_COPY } from "./provisioning-copy";
+import { SetupFailureNotice } from "./setup-failure-notice";
 import { TerminalView } from "./terminal-view";
 import type { CoderProvisioning, CoderSessionState } from "./use-coder-data";
 import { usePorts } from "./use-ports";
@@ -45,6 +46,10 @@ function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }
  * A chat that has not sent its first message has no worktree yet, so the panel
  * says that instead of rendering a browser over the wrong directory.
  *
+ * Above the tabs, because a failed setup script is about the checkout itself and
+ * not about one view of it: an install that broke matters as much in Files as in
+ * Terminal, and a warning that only lives in one tab is a warning nobody reads.
+ *
  * The terminal keeps running while another tab is open, so it is mounted
  * alongside the tab contents instead of inside one. The ports list pauses its
  * polling with the tab and picks up again when it comes back.
@@ -72,6 +77,8 @@ export function WorktreePanel({
 
   return (
     <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">
+      <SetupFailureNotice failure={state?.setupFailure ?? null} />
+
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
         {/* A container query, because the panel is 280px on a phone sheet and
             720px when dragged wide; the icons only earn their room when it is. */}

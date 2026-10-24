@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { downloadFile } from "@/lib/download";
 
 /**
@@ -10,17 +10,51 @@ import { downloadFile } from "@/lib/download";
  * and 1953287, both still open. The helper therefore routes the request through
  * a hidden frame instead: the navigation happens in a nested context the user
  * never sees.
+ *
+ * The frame is invisible, so the server's answer has to be read first. a shared
+ * file is a path, and a path an agent wrote can be gone by the time the chat is
+ * opened, which used to make the button do nothing at all.
  */
+
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
+
+/** A response whose body we can watch being dropped. */
+function response(status: number) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    body: { cancel: vi.fn(async () => {}) },
+  };
+}
+
+function stubFetch(...answers: Array<ReturnType<typeof response> | Error>) {
+  const mock = vi.fn(async () => {
+    const answer = answers.length > 1 ? answers.shift()! : answers[0]!;
+    if (answer instanceof Error) throw answer;
+    return answer;
+  });
+  vi.stubGlobal("fetch", mock);
+  return mock;
+}
+
 describe("downloadFile", () => {
+  beforeEach(() => {
+    toastError.mockClear();
+  });
+
   afterEach(() => {
     document.body.innerHTML = "";
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
   const frames = () => [...document.body.querySelectorAll("iframe")];
 
-  it("routes the request through a hidden, inert frame", () => {
-    downloadFile("/api/chat/workspace-files?file=reports%2Fq3.pdf&download=1");
+  it("routes the request through a hidden, inert frame", async () => {
+    stubFetch(response(200));
+
+    await downloadFile("/api/chat/workspace-files?file=reports%2Fq3.pdf&download=1");
 
     const [frame] = frames();
     expect(frame).toBeDefined();
@@ -32,12 +66,53 @@ describe("downloadFile", () => {
     // Nothing else is navigated or clicked: the app keeps its document.
     expect(document.body.querySelector("a")).toBeNull();
     expect(document.querySelectorAll("iframe")).toHaveLength(1);
+    expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("leaves the frame in place long enough for the transfer to start, then drops it", () => {
+  it("asks the server first, and drops the body it is answered with", async () => {
+    const answer = response(200);
+    stubFetch(answer);
+
+    await downloadFile("/api/chat/attachments/att-1");
+
+    // The check costs the headers, not the file: the frame fetches the bytes.
+    expect(answer.body.cancel).toHaveBeenCalled();
+  });
+
+  it("says so when the file is gone instead of doing nothing", async () => {
+    stubFetch(response(404));
+
+    await downloadFile("/api/chat/workspace-files?file=shots%2Fgone.png&download=1");
+
+    expect(frames()).toHaveLength(0);
+    expect(toastError).toHaveBeenCalledWith("That file is no longer in the workspace");
+  });
+
+  it("reports any other refusal as a failed download", async () => {
+    stubFetch(response(500));
+
+    await downloadFile("/api/files/zip?dir=shots");
+
+    expect(frames()).toHaveLength(0);
+    expect(toastError).toHaveBeenCalledWith("Could not download that file");
+  });
+
+  it("reports a check that never reached the server", async () => {
+    stubFetch(new Error("offline"));
+
+    await downloadFile("/api/chat/attachments/att-1");
+
+    expect(frames()).toHaveLength(0);
+    expect(toastError).toHaveBeenCalledWith("Could not download that file");
+  });
+
+  it("leaves the frame in place long enough for the transfer to start, then drops it", async () => {
+    stubFetch(response(200));
     vi.useFakeTimers();
 
-    downloadFile("/api/chat/attachments/att-1");
+    void downloadFile("/api/chat/attachments/att-1");
+    // The check answers on the next microtask, before the frame exists.
+    await vi.advanceTimersByTimeAsync(0);
     expect(frames()).toHaveLength(1);
 
     // The download is still running: removing the frame this early can abort it.
@@ -49,12 +124,15 @@ describe("downloadFile", () => {
     expect(frames()).toHaveLength(0);
   });
 
-  it("keeps repeated downloads independent (edge case)", () => {
+  it("keeps repeated downloads independent (edge case)", async () => {
+    stubFetch(response(200));
     vi.useFakeTimers();
 
-    downloadFile("/api/chat/attachments/att-1");
+    void downloadFile("/api/chat/attachments/att-1");
+    await vi.advanceTimersByTimeAsync(0);
     vi.advanceTimersByTime(30_000);
-    downloadFile("/api/chat/attachments/att-2");
+    void downloadFile("/api/chat/attachments/att-2");
+    await vi.advanceTimersByTimeAsync(0);
 
     // The second click must not cancel the first transfer by reusing its frame.
     expect(frames().map((f) => f.getAttribute("src"))).toEqual([
@@ -66,17 +144,19 @@ describe("downloadFile", () => {
     expect(frames().map((f) => f.getAttribute("src"))).toEqual(["/api/chat/attachments/att-2"]);
   });
 
-  it("does nothing without a document (server render)", () => {
+  it("does nothing without a document (server render)", async () => {
     const doc = globalThis.document;
+    const fetchMock = stubFetch(response(200));
     // @ts-expect-error  simulating the server render, where there is no DOM.
     delete globalThis.document;
 
     try {
-      expect(() => downloadFile("/api/chat/attachments/att-1")).not.toThrow();
+      await expect(downloadFile("/api/chat/attachments/att-1")).resolves.toBeUndefined();
     } finally {
       globalThis.document = doc;
     }
 
     expect(frames()).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
