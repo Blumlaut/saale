@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * The right-hand worktree panel.
@@ -16,6 +16,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 vi.mock("@/components/coder/use-ports", () => ({
   usePorts: () => ({ data: null, error: null, load: () => {}, stop: async () => {} }),
 }));
+
+// Monaco needs a real layout pass; the panel only has to reach it.
+vi.mock("@/components/editor/monaco-diff-view", () => ({
+  MonacoDiffView: () => <div data-testid="monaco-diff" />,
+}));
+
+const http = vi.hoisted(() => ({ fetchJson: vi.fn() }));
+vi.mock("@/lib/http", () => ({ fetchJson: http.fetchJson }));
 
 // The terminal opens a stream and the file browser lists a directory. Neither
 // has anything to do with the warning, so both stand in as empty boxes.
@@ -56,6 +64,52 @@ function renderPanel(state: CoderSessionState | null) {
     />,
   );
 }
+
+describe("WorktreePanel: a commit in the list", () => {
+  const commit = {
+    sha: "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0",
+    shortSha: "a1b2c3d",
+    subject: "read a tool's icon from the catalog once",
+    date: new Date().toISOString(),
+    author: "Ada",
+  };
+
+  function mockCommitDiff() {
+    http.fetchJson.mockImplementation((url: string) => {
+      if (url.includes("path=")) {
+        return Promise.resolve({
+          path: "src/app.ts",
+          binary: false,
+          original: "one\n",
+          modified: "two\n",
+        });
+      }
+      return Promise.resolve({
+        files: [{ path: "src/app.ts", originalPath: null, status: "M", added: 1, deleted: 1 }],
+      });
+    });
+  }
+
+  it("unfolds its files in place, and opens a file's diff from there", async () => {
+    mockCommitDiff();
+    renderPanel({ ...STATE, commits: [commit] });
+
+    // Folded, so the panel asks git for nothing.
+    expect(http.fetchJson).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTitle(commit.sha));
+
+    expect(await screen.findByText("app.ts")).toBeTruthy();
+    expect(http.fetchJson).toHaveBeenCalledWith(expect.stringContaining(`sha=${commit.sha}`));
+
+    fireEvent.click(screen.getByText("app.ts"));
+
+    expect(await screen.findByTestId("monaco-diff")).toBeTruthy();
+    await waitFor(() =>
+      expect(http.fetchJson).toHaveBeenCalledWith(expect.stringContaining(`path=src%2Fapp.ts`)),
+    );
+  });
+});
 
 describe("WorktreePanel: a failed setup script", () => {
   it("says nothing when the checkout was built cleanly", () => {
