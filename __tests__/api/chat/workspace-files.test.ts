@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { NextRequest } from "next/server";
-import { userIdentity } from "@/lib/sandbox/identity";
+import { userWorkspacePath } from "@/lib/sandbox/workspace";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ beforeAll(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "saale-workspace-files-"));
   vi.stubEnv("SANDBOX_WORKSPACES_DIR", tmpRoot);
   vi.stubEnv("SANDBOX_USER", "root");
-  userRoot = path.join(tmpRoot, userIdentity(USER_ID));
+  userRoot = userWorkspacePath(USER_ID);
   vi.resetModules();
   GET = (await import("@/app/api/chat/workspace-files/route")).GET;
 });
@@ -167,7 +167,7 @@ describe("workspace file serving", () => {
   });
 
   it("refuses a symlink that points at another user's file", async () => {
-    const other = path.join(tmpRoot, userIdentity("user-2"));
+    const other = userWorkspacePath("user-2");
     await fs.mkdir(other, { recursive: true });
     await fs.writeFile(path.join(other, "secret.txt"), "top secret");
     await fs.symlink(path.join(other, "secret.txt"), path.join(userRoot, "link.txt"));

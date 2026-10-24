@@ -125,6 +125,16 @@ describe("isValidTimeZone / assertValidTimeZone", () => {
     expect(assertValidTimeZone("Europe/Athens")).toBe("Europe/Athens");
     expect(() => assertValidTimeZone("nope")).toThrow(/IANA identifier such as "Europe\/Athens"/);
   });
+
+  it("rejects an empty zone even right after zero-offset zones were used", () => {
+    // @date-fns/tz caches an empty offset key once any zero-offset zone is
+    // formatted, which used to make "" look valid on the next probe.
+    expect(isValidTimeZone("UTC")).toBe(true);
+    expect(isValidTimeZone("Etc/GMT")).toBe(true);
+    expect(isValidTimeZone("")).toBe(false);
+    expect(isValidTimeZone("   ")).toBe(false);
+    expect(() => assertValidTimeZone("")).toThrow(/Unknown timezone/);
+  });
 });
 
 describe("formatWallClock", () => {

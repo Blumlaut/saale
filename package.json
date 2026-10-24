@@ -11,7 +11,7 @@
     "worker:dev": "tsx --watch src/lib/queue/worker.ts",
     "sandbox:dev": "tsx --watch src/sandbox/server.ts",
     "start": "next start",
-    "lint": "eslint . --max-warnings=0",
+    "lint": "eslint . --max-warnings=0 --cache",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,md}\" \"e2e/**/*.{ts,tsx}\"",

@@ -38,19 +38,22 @@ async function observe(pid: number, cwd: string): Promise<void> {
   await fs.symlink(cwd, path.join(dir, "cwd"));
 }
 
-/** Whether the process is gone, and by which signal. */
-function died(pid: number, timeoutMs = 2000): Promise<string | null> {
-  return new Promise((resolve) => {
-    const child = children.find((candidate) => candidate.pid === pid);
-    if (!child) return resolve(null);
-    if (child.exitCode !== null || child.signalCode !== null) return resolve(child.signalCode);
+/**
+ * The sweep's `kill` is delivered by the kernel as it runs, so by the time it
+ * returns every kill has landed; this only lets libuv reap the children before
+ * their exit state is read.
+ */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 250));
+}
 
-    const timer = setTimeout(() => resolve(null), timeoutMs);
-    child.once("exit", (_code, signal) => {
-      clearTimeout(timer);
-      resolve(signal);
-    });
-  });
+/** The signal that took the process down, or null while it is still running. */
+function exitSignal(pid: number): string | null {
+  const child = children.find((candidate) => candidate.pid === pid);
+  if (!child) return null;
+  if (child.signalCode !== null) return child.signalCode;
+  if (child.exitCode !== null) return "exited";
+  return null;
 }
 
 async function runSweep(): Promise<{ code: number }> {
@@ -102,11 +105,12 @@ describe("the worktree sweep", () => {
     await observe(inAnotherWorktree, path.join(root, "worktrees", "saale", "c-1"));
 
     await runSweep();
+    await settle();
 
-    expect(await died(inRoot)).toBe("SIGKILL");
-    expect(await died(inSubdirectory)).toBe("SIGKILL");
-    expect(await died(inProject)).toBeNull();
-    expect(await died(inAnotherWorktree)).toBeNull();
+    expect(exitSignal(inRoot)).toBe("SIGKILL");
+    expect(exitSignal(inSubdirectory)).toBe("SIGKILL");
+    expect(exitSignal(inProject)).toBeNull();
+    expect(exitSignal(inAnotherWorktree)).toBeNull();
   });
 
   it("still runs the command-line pass, for a process whose cwd it cannot read", async () => {
@@ -117,9 +121,10 @@ describe("the worktree sweep", () => {
 
     const result = await runSweep();
 
+    await settle();
     expect(result.code).toBe(0);
     expect(await fs.readFile(log, "utf8")).toContain(`pkill -f ${worktree}`);
-    expect(await died(unreadable)).toBeNull();
+    expect(exitSignal(unreadable)).toBeNull();
   });
 
   it("finishes cleanly with nothing to stop", async () => {
