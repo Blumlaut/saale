@@ -66,7 +66,7 @@ describe("sweepWatcherChats", () => {
     ]);
     findChats.mockResolvedValue([botChat()]);
     dirExists.mockResolvedValue(true);
-    status.mockResolvedValue({ files: [] });
+    status.mockResolvedValue({ files: [], branch: "watch/pr-bot/chat-1" });
     pushed.mockResolvedValue(true);
     active.mockResolvedValue(new Set<string>());
     remove.mockResolvedValue({ title: "PR bot" });
@@ -105,6 +105,28 @@ describe("sweepWatcherChats", () => {
 
     expect(result.removed).toEqual([]);
     expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("asks about the branch the run left the checkout on", async () => {
+    // A review that checked the pull request out is holding that branch, not
+    // the one the chat was opened on.
+    status.mockResolvedValue({ files: [], branch: "fix-login" });
+    pushed.mockImplementation(async (_user: string, _dir: string, branch: string) => {
+      return branch !== "fix-login";
+    });
+
+    const result = await sweepWatcherChats();
+
+    expect(result.removed).toEqual([]);
+    expect(pushed).toHaveBeenCalledWith("u-1", "worktrees/saale-web/chat-1", "fix-login");
+  });
+
+  it("ignores a checkout that is on no branch", async () => {
+    status.mockResolvedValue({ files: [], branch: "" });
+
+    const result = await sweepWatcherChats();
+
+    expect(result.removed).toEqual(["chat-1"]);
   });
 
   it("keeps a chat that is generating right now", async () => {
