@@ -100,6 +100,7 @@ export async function compactChatSession(params: {
       chatSession,
       model,
       customInstructions: userSettings.customInstructions,
+      coderCustomInstructions: userSettings.coderCustomInstructions,
       toolPolicies: userSettings.toolPolicies,
       toolExposure: userSettings.toolExposure,
       wrapTool: approvalWrapper,

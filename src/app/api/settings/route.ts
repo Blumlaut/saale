@@ -14,6 +14,7 @@ function serializeSettings(settings: AppSettings) {
     theme: settings.theme,
     compactActivity: settings.compactActivity,
     agentCustomInstructions: settings.agentCustomInstructions,
+    coderCustomInstructions: settings.coderCustomInstructions,
     emailWritingStyle: settings.emailWritingStyle,
     purposeModelOverrides: settings.purposeModelOverrides,
     disabledModels: settings.disabledModels,

@@ -468,6 +468,7 @@ model AppSettings {
   compactActivity      Boolean  @default(true) // Collapse a turn's reasoning and tool calls into one compact line instead of a card per step
   agentCustomInstructions String?  @db.Text // User-defined custom instructions appended to the default system prompt
   emailWritingStyle      String?  @db.Text // User-defined writing style for email reply drafts
+  coderCustomInstructions String? @db.Text // Custom instructions for coder chats, in place of agentCustomInstructions
   purposeModelOverrides  Json?                  // Per-purpose model overrides: { "email_draft": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } }
   disabledModels       Json?                  // Array of "provider:modelId" strings for models the user has disabled
   defaultToolConfig    Json?                  // Default tool config for new chat sessions: { "files": true, "email": true, ... }

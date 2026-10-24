@@ -13,6 +13,7 @@ import {
   ChevronRight,
   MessageSquare,
   Mail,
+  Terminal,
 } from "lucide-react";
 import { SaveFooter } from "../components/save-footer";
 import { useState, useCallback } from "react";
@@ -38,6 +39,29 @@ const CHAT_EXAMPLE_INSTRUCTIONS = [
     title: "Teach Don't Just Answer",
     instruction:
       "When answering, explain the underlying concepts so the user learns. Use analogies when helpful. Assume the user is curious but not an expert.",
+  },
+];
+
+const CODER_EXAMPLE_INSTRUCTIONS = [
+  {
+    title: "Explain Before Rewriting",
+    instruction:
+      "Never rewrite a file before saying what is wrong with it. Name the failing behaviour, the code that causes it, then make the smallest change that fixes it.",
+  },
+  {
+    title: "Ask Before Adding Dependencies",
+    instruction:
+      "Never add a dependency without asking first. Solve it with what the project already has, or propose the package and wait for a yes.",
+  },
+  {
+    title: "Small, Reviewable Commits",
+    instruction:
+      "One commit per behaviour change, never a mixed commit. If a change touches more than three files, split it or explain why it cannot be split.",
+  },
+  {
+    title: "Match the Existing Code",
+    instruction:
+      "Match the surrounding code before inventing a pattern: read a neighbouring file and follow its naming, structure and comment density instead of your own defaults.",
   },
 ];
 
@@ -206,6 +230,15 @@ export function AgentPersonaTab({
     [settings, onSettingsChange],
   );
 
+  const handleCoderInstructionsChange = useCallback(
+    (value: string | null) => {
+      if (settings) {
+        onSettingsChange({ ...settings, coderCustomInstructions: value });
+      }
+    },
+    [settings, onSettingsChange],
+  );
+
   return (
     <GlassPanel>
       <GlassPanelContent className="space-y-6">
@@ -216,8 +249,8 @@ export function AgentPersonaTab({
             AI Agent Persona
           </h3>
           <p className="text-muted-foreground mt-1 text-sm">
-            Customize how your AI agent behaves in chat and how it writes email replies on your
-            behalf.
+            Customize how your AI agent behaves in chat, in coding sessions, and how it writes email
+            replies on your behalf.
           </p>
         </div>
 
@@ -233,6 +266,22 @@ export function AgentPersonaTab({
           value={settings?.agentCustomInstructions ?? ""}
           onChange={handleCustomInstructionsChange}
           examples={CHAT_EXAMPLE_INSTRUCTIONS}
+          exampleLabel="Example Instructions"
+          fieldKey="instruction"
+        />
+
+        <Separator />
+
+        {/* Coder Custom Instructions Section */}
+        <PromptSection
+          title="Coder instructions"
+          description="Used by coder chats only, in place of the custom chat instructions above. Coder chats also read each project's AGENTS.md and skills from the repo."
+          icon={Terminal}
+          label="Coder Instructions"
+          placeholder="e.g. Never add a dependency without asking. / One commit per behaviour change. / Match the surrounding code style..."
+          value={settings?.coderCustomInstructions ?? ""}
+          onChange={handleCoderInstructionsChange}
+          examples={CODER_EXAMPLE_INSTRUCTIONS}
           exampleLabel="Example Instructions"
           fieldKey="instruction"
         />
