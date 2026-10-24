@@ -10,6 +10,7 @@ import { resolveSandboxEnv } from "@/lib/sandbox/env";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { userWorkspacePath } from "@/lib/sandbox/workspace";
 import { buildModelRuntime } from "./models";
+import { sessionEnvVars } from "./session-env";
 import { resolveTools } from "./tool-registry";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig, type ToolExposureConfig } from "./tool-categories";
 
@@ -30,11 +31,13 @@ function resolveToolConfig(config: ToolConfig | null | undefined): Required<Tool
  * Commands run in the user's sandbox container, files are read and written
  * directly from the volume. The user's own environment variables are resolved
  * once, here: a pooled session is rebuilt when they change (the write path
- * evicts it), which is what keeps a value out of a long-lived object.
+ * evicts it), which is what keeps a value out of a long-lived object. Saale's
+ * own `SAALE_*` variables are read per command instead, so a model switch mid
+ * session shows up in the next command.
  */
 export async function createSandboxScopedTools(
   userId: string,
-  _sessionId: string,
+  sessionId: string,
 ): Promise<{
   read: ToolDefinition;
   write: ToolDefinition;
@@ -43,7 +46,7 @@ export async function createSandboxScopedTools(
 }> {
   const homeDir = userWorkspacePath(userId);
 
-  const env = await resolveSandboxEnv(userId).catch((err) => {
+  const userEnv = await resolveSandboxEnv(userId).catch((err) => {
     console.error("Failed to load sandbox environment variables:", err);
     return {};
   });
@@ -51,7 +54,8 @@ export async function createSandboxScopedTools(
   const ops = createSandboxOperations({
     identity: userIdentity(userId),
     root: homeDir,
-    env,
+    // A name the user set wins over Saale's.
+    env: () => ({ ...sessionEnvVars(userId, sessionId), ...userEnv }),
   });
 
   return {

@@ -25,13 +25,20 @@ import type { FileProvider } from "@/lib/files/provider";
 import { kill, exec as sandboxExec } from "./client";
 import { WORKSPACE_TMP_DIR, workspaceOwner } from "./workspace";
 
+/**
+ * The variables one command runs with: a fixed set, or a function when they
+ * change while the session lives (the model a chat is answering with).
+ */
+export type SandboxEnv =
+  Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
+
 export interface SandboxOperationsOptions {
   /** The workspace every command and every path belongs to. */
   identity: string;
   /** Absolute workspace root. */
   root: string;
-  /** Variables injected into every command (the user's, resolved per session). */
-  env?: Record<string, string> | undefined;
+  /** Variables injected into every command. */
+  env?: SandboxEnv | undefined;
 }
 
 export interface SandboxOperations {
@@ -93,6 +100,9 @@ export function createSandboxOperations(options: SandboxOperationsOptions): Sand
 
       let exitCode: number | null = null;
 
+      // Resolved per command, so a getter sees the state at this moment.
+      const vars = typeof env === "function" ? await env() : env;
+
       // Git has no terminal to answer a credential prompt in a container, so
       // keep it from opening /dev/tty (which fails with "No such device or
       // address") and fail fast instead. User variables still win on conflict.
@@ -101,7 +111,7 @@ export function createSandboxOperations(options: SandboxOperationsOptions): Sand
         GIT_OPTIONAL_LOCKS: "0",
         GIT_PAGER: "cat",
         LC_ALL: "C",
-        ...(env ?? {}),
+        ...(vars ?? {}),
       };
 
       try {
