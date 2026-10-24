@@ -29,6 +29,7 @@ import { toolMark } from "./tool-marks";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages, type MessageGroup } from "@/lib/chat/group-messages";
+import { dropBlankText } from "@/lib/chat/turn-text";
 import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
@@ -889,9 +890,12 @@ function AssistantGroup({
   // it is empty. the error notice is the only thing there is to show.
   const visibleMessages = useMemo(
     () =>
-      messages.filter(
-        (m) => m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
-      ),
+      messages
+        .map(dropBlankText)
+        .filter(
+          (m) =>
+            m.content || m.thinking || m.errorMessage || (m.toolCalls && m.toolCalls.length > 0),
+        ),
     [messages],
   );
 
