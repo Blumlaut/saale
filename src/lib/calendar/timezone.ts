@@ -34,14 +34,25 @@ export interface ResolveEventDateTimeOptions {
 /**
  * Whether `timeZone` is a zone the anchoring code can actually use.
  *
- * Probes with the same constructor used for anchoring: an unknown zone yields
- * an Invalid Date rather than a throw, so this never silently falls back to the
+ * Validated against `Intl.DateTimeFormat` — the same source `TZDate` consults
+ * for offsets — rather than probing a `TZDate` constructor: the library keeps
+ * a module-level offset cache, and zero-offset zones ("UTC") format to a bare
+ * "GMT", which caches an empty key that later makes `tzOffset("")` report a
+ * valid offset. The probe then accepts "" as a zone once any UTC event was
+ * touched in the same process; the Intl constructor has no such state. Unknown
+ * zones are rejected outright, so this never silently falls back to the
  * machine's own zone.
  */
 export function isValidTimeZone(timeZone: string): boolean {
-  if (UTC_OFFSET_ONLY.test(timeZone)) return false;
-  const probe = new TZDate(2026, 0, 1, 0, 0, 0, timeZone);
-  return !Number.isNaN(probe.getTime());
+  if (!timeZone.trim() || UTC_OFFSET_ONLY.test(timeZone)) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return true;
+  } catch {
+    // Intl throws RangeError for every zone it does not know — the expected
+    // validation failure, not an error to report.
+    return false;
+  }
 }
 
 /** Throws a model-readable error when `timeZone` is not a usable zone. */
