@@ -150,18 +150,21 @@ describe("compact activity", () => {
           exec("tc-3", "three"),
           exec("tc-4", "four"),
           exec("tc-5", "five"),
+          exec("tc-6", "six"),
+          exec("tc-7", "seven"),
+          exec("tc-8", "eight"),
         ],
       }),
     ]);
 
     // The counter keeps counting up...
-    expect(screen.getByText("Used 5 tools")).toBeInTheDocument();
+    expect(screen.getByText("Used 8 tools")).toBeInTheDocument();
     // ...over a window of the newest calls, so the row never grows.
-    expect(marksOf(toolsRow())).toHaveLength(3);
+    expect(marksOf(toolsRow())).toHaveLength(6);
 
-    // All five are still reachable.
+    // All eight are still reachable.
     fireEvent.click(toolsRow());
-    for (const command of ["one", "two", "three", "four", "five"]) {
+    for (const command of ["one", "two", "three", "four", "five", "six", "seven", "eight"]) {
       expect(screen.getByText(command)).toBeInTheDocument();
     }
   });
