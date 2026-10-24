@@ -186,6 +186,69 @@ export function parseLog(stdout: string): GitCommit[] {
   return commits;
 }
 
+/** One changed path in a commit, from `git diff-tree --name-status -z`. */
+export interface CommitDiffFile {
+  /** Repo-relative path. The new one for a rename or copy. */
+  path: string;
+  /** Where a rename or copy came from. */
+  originalPath: string | null;
+  /** A, M, D, T, R or C. */
+  status: string;
+  /** null for a binary file, which git reports as `-`. */
+  added: number | null;
+  deleted: number | null;
+  /**
+   * The ref the original side is read from: the commit's first parent, or
+   * null for a root commit, whose original side is the empty tree.
+   */
+  baseRef: string | null;
+}
+
+/**
+ * `git diff-tree -r --name-status -z` as one entry per path.
+ *
+ * A rename or copy prints its status (with a similarity score for R and C)
+ * followed by two NUL records, origin first, so a path is only read as an
+ * origin while the status before it was a rename or a copy.
+ */
+export function parseDiffTreeNameStatus(stdout: string): CommitDiffFile[] {
+  const files: CommitDiffFile[] = [];
+  const records = stdout.split("\0");
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record || !/^[AMDTRC]/.test(record.charAt(0))) continue;
+    const status = record.charAt(0);
+    const twoPaths = status === "R" || status === "C";
+    if (twoPaths) {
+      const original = records[index + 1];
+      const path = records[index + 2];
+      if (original === undefined || path === undefined) continue;
+      index += 2;
+      files.push({
+        path,
+        originalPath: original,
+        status,
+        added: null,
+        deleted: null,
+        baseRef: null,
+      });
+    } else {
+      const path = records[index + 1];
+      if (path === undefined) continue;
+      index += 1;
+      files.push({
+        path,
+        originalPath: null,
+        status,
+        added: null,
+        deleted: null,
+        baseRef: null,
+      });
+    }
+  }
+  return files;
+}
+
 /**
  * `git worktree list --porcelain` as checkouts.
  *
