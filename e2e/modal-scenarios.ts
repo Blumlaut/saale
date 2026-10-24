@@ -1254,7 +1254,10 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: `/dashboard/council/e2e-council/files`,
     sources: ["src/components/files/file-prompt-sheet.tsx"],
     mock: mockCouncilFiles,
-    open: (page) => click(page, 'button[aria-label="New folder"]'),
+    open: async (page) => {
+      await click(page, 'button[aria-label="More actions"]');
+      await click(page, '[role="menuitem"]:has-text("New folder")');
+    },
   },
   {
     name: "council · file delete confirmation",

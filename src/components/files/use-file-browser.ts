@@ -14,6 +14,10 @@ export interface FileBrowserController {
   loading: boolean;
   /** A background refresh is running over an already-visible listing. */
   refreshing: boolean;
+  /** The folder the browser opened at, absolute; empty until the first listing. */
+  home: string;
+  /** Whether {@link up} has somewhere to go. */
+  canGoUp: boolean;
   error: string;
   hideDotfiles: boolean;
   setHideDotfiles: (hide: boolean) => void;
@@ -111,6 +115,7 @@ export function useFileBrowser({
 }: UseFileBrowserOptions): FileBrowserController {
   const [listing, setListing] = useState<FileListing | null>(null);
   const [path, setPath] = useState("");
+  const [home, setHome] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -171,6 +176,8 @@ export function useFileBrowser({
         root.current = body.target.root;
         setListing(body);
         setPath(body.path);
+        // The server resolves a relative start path, so home is only known here.
+        setHome((current) => current || body.path);
         setError("");
       } catch (err) {
         if (ticket !== sequence.current) return;
@@ -284,15 +291,14 @@ export function useFileBrowser({
     [load],
   );
 
+  // A caller that opened one directory keeps the browser inside it, but a
+  // breadcrumb to an ancestor is open travel: up climbs from there too.
+  const canGoUp = Boolean(listing && path && path !== listing.target.root && path !== home);
+
   const up = useCallback(() => {
-    if (!path || !root.current) return;
-    const floor = start.current || root.current;
-    // A caller that opened one directory keeps the browser inside it.
-    if (path === floor || path === root.current) return;
-    const parent = path.slice(0, path.lastIndexOf("/")) || root.current;
-    if (start.current && parent.length < floor.length) return;
-    open(parent);
-  }, [path, open]);
+    if (!canGoUp || !root.current) return;
+    open(path.slice(0, path.lastIndexOf("/")) || root.current);
+  }, [canGoUp, path, open]);
 
   /** Re-read the current folder without dropping what is on screen. */
   const refresh = useCallback(() => {
@@ -359,6 +365,8 @@ export function useFileBrowser({
   return {
     listing,
     path,
+    home,
+    canGoUp,
     loading,
     refreshing,
     error,
