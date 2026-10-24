@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FilePlus, Terminal, Wrench } from "lucide-react";
 import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
 import { resolveToolCard, splitToolCalls } from "@/components/chat/tool-cards";
 import { calendarToolDescriptor } from "@/components/chat/tool-descriptors/calendar";
@@ -574,6 +575,14 @@ describe("generic descriptor", () => {
     expect(model.title).toBe("some_future_tool");
     expect(model.detail).toBeUndefined();
     expect(blocksOf(model)).toEqual([]);
+  });
+
+  it("wears the icon the tool's mark wears", () => {
+    // `bash` names no icon of its own, so both read the terminal category's.
+    expect(describeGenericToolCall(call("bash", "ok")).icon).toBe(Terminal);
+    expect(describeGenericToolCall(call("write", "ok")).icon).toBe(FilePlus);
+    // A name nothing knows still has to render.
+    expect(describeGenericToolCall(call("some_future_tool", undefined)).icon).toBe(Wrench);
   });
 
   it("labels a failed result as an error and colours it", () => {
