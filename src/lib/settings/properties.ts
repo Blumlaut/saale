@@ -318,6 +318,21 @@ const SCALAR_PROPERTIES: UserProperty[] = [
     }),
   },
   {
+    key: "prompt.coderInstructions",
+    group: GROUP.agent,
+    label: "Coder instructions",
+    description:
+      "Extra instructions for coder chats. They replace the custom chat instructions there and are appended to the coder system prompt, applied to new and rebuilt coder sessions. Set to null to remove them.",
+    columns: ["coderCustomInstructions"],
+    apply: "sessions",
+    scope: "user",
+    schema: z.string(),
+    read: (row) => row.coderCustomInstructions,
+    write: (_row, value) => ({
+      coderCustomInstructions: value === null ? null : String(value),
+    }),
+  },
+  {
     key: "prompt.emailWritingStyle",
     group: GROUP.agent,
     label: "Email writing style",

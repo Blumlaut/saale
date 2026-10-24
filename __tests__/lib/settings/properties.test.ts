@@ -53,6 +53,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     theme: "system",
     compactActivity: true,
     agentCustomInstructions: null,
+    coderCustomInstructions: null,
     emailWritingStyle: null,
     purposeModelOverrides: null,
     disabledModels: null,
