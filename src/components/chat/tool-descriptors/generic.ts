@@ -30,7 +30,7 @@ export function describeGenericToolCall(toolCall: ToolCallData): ToolCardModel {
   const info = findToolInfo(toolCall.name);
 
   return {
-    icon: Wrench,
+    icon: info?.icon ?? Wrench,
     // The header never truncates a title, so a tool the catalog does not know
     // is capped here rather than allowed to squeeze the row.
     title: info?.label ?? truncate(toolCall.name, MAX_UNKNOWN_TITLE),

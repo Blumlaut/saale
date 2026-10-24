@@ -81,6 +81,28 @@ function fetch_(id: string, url: string): ToolCallData {
   };
 }
 
+function shell(id: string, command: string): ToolCallData {
+  return {
+    id,
+    name: "bash",
+    args: { command },
+    status: "completed",
+    result: "ok",
+    error: undefined,
+  };
+}
+
+function fileTool(id: string, name: "read" | "write" | "edit", path: string): ToolCallData {
+  return {
+    id,
+    name,
+    args: { path },
+    status: "completed",
+    result: "ok",
+    error: undefined,
+  };
+}
+
 function showFile(id: string, filePath: string): ToolCallData {
   return {
     id,
@@ -167,6 +189,30 @@ describe("compact activity", () => {
     for (const command of ["one", "two", "three", "four", "five", "six", "seven", "eight"]) {
       expect(screen.getByText(command)).toBeInTheDocument();
     }
+  });
+
+  it("marks each file tool with its own icon", () => {
+    renderTranscript([
+      step({
+        id: "a1",
+        toolCalls: [
+          shell("tc-1", "uptime"),
+          fileTool("tc-2", "write", "notes.md"),
+          fileTool("tc-3", "edit", "notes.md"),
+          fileTool("tc-4", "read", "notes.md"),
+        ],
+      }),
+    ]);
+
+    const marks = marksOf(toolsRow()).map(
+      (slot) => slot.querySelector("svg")?.getAttribute("class") ?? "",
+    );
+    // A write, an edit, a read and a shell command are four different things.
+    expect(new Set(marks).size).toBe(4);
+    expect(marks[0]).toContain("lucide-terminal");
+    expect(marks[1]).toContain("lucide-file-plus");
+    expect(marks[2]).toContain("lucide-file-pen");
+    expect(marks[3]).toContain("lucide-file-text");
   });
 
   it("keeps one run across steps and splits it at prose", () => {

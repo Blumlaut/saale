@@ -5,6 +5,8 @@
  *
  * MUST stay in sync with the actual tool definitions in src/lib/pi/tools/.
  */
+import type { LucideIcon } from "lucide-react";
+import { FilePen, FilePlus, FileText } from "lucide-react";
 import type { ToolCategoryKey } from "@/lib/pi/tool-categories";
 import type { ToolExposure } from "@/lib/pi/tool-categories";
 
@@ -31,6 +33,12 @@ export interface ToolInfo {
   name: string;
   label: string;
   description: string;
+  /**
+   * The tool's own icon, for the tools that share a category but do different
+   * work: a `write` and a `bash` in the same category would otherwise both wear
+   * the category's icon. Falls back to the category icon, then the wrench.
+   */
+  icon?: LucideIcon;
   /**
    * Which tool category this tool belongs to. Omitted for a tool no category
    * owns (`codemode` is active whatever categories are enabled, so a category
@@ -80,6 +88,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Read",
     description: "Read file contents",
     category: "terminal",
+    icon: FileText,
     defaultPolicy: "allow",
   },
   {
@@ -87,6 +96,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Write",
     description: "Write content to a file",
     category: "terminal",
+    icon: FilePlus,
     defaultPolicy: "ask",
   },
   {
@@ -94,6 +104,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Edit",
     description: "Edit a file with targeted replacements",
     category: "terminal",
+    icon: FilePen,
     defaultPolicy: "ask",
   },
   {
