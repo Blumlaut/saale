@@ -1,17 +1,26 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FolderTree, GitBranch, Globe, Loader2, SquareTerminal } from "lucide-react";
+import {
+  FolderTree,
+  GitBranch,
+  Globe,
+  GitCommitHorizontal,
+  Loader2,
+  SquareTerminal,
+  X,
+} from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileBrowser } from "@/components/files/file-browser";
 import { PageTabStrip } from "@/components/layout/page";
 import { ChangesView } from "./changes-view";
+import { CommitDiffView } from "./commit-diff-view";
 import { PortsView } from "./ports-view";
 import { PROVISIONING_STEP_COPY } from "./provisioning-copy";
 import { SetupFailureNotice } from "./setup-failure-notice";
 import { TerminalView } from "./terminal-view";
-import type { CoderProvisioning, CoderSessionState } from "./use-coder-data";
+import type { CoderCommit, CoderProvisioning, CoderSessionState } from "./use-coder-data";
 import { usePorts } from "./use-ports";
 
 function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }) {
@@ -70,6 +79,15 @@ export function WorktreePanel({
   refreshing: boolean;
 }) {
   const [tab, setTab] = useState("changes");
+  // The commit the Diff tab shows, or null for no tab at all.
+  const [diffCommit, setDiffCommit] = useState<CoderCommit | null>(null);
+
+  // Closing the tab from inside it would strand the panel on a value that
+  // has no content, so the previous tab comes back first.
+  const closeDiffTab = () => {
+    if (tab === "diff") setTab("changes");
+    setDiffCommit(null);
+  };
   const terminalRunRef = useRef<(command: string) => void>(() => {});
   // Lifted out of the tab, because the badge has to light while another tab is
   // open. The poll slows down when Ports is not the visible one.
@@ -97,6 +115,32 @@ export function WorktreePanel({
               <FolderTree className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Files
             </TabsTrigger>
+            {diffCommit && (
+              <TabsTrigger value="diff" className="gap-1.5 text-xs">
+                <GitCommitHorizontal className="hidden h-3.5 w-3.5 @min-[390px]:block" />
+                Diff
+                {/* A span, because the trigger is the button: a nested close
+                    button would be invalid HTML. */}
+                <span
+                  role="button"
+                  aria-label="Close the diff tab"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeDiffTab();
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.stopPropagation();
+                      closeDiffTab();
+                    }
+                  }}
+                  className="hover:bg-accent focus-visible:outline-ring -mr-1 rounded p-0.5 focus-visible:outline-1"
+                >
+                  <X className="h-3 w-3" />
+                </span>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="terminal" className="gap-1.5 text-xs">
               <SquareTerminal className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Terminal
@@ -134,6 +178,11 @@ export function WorktreePanel({
                 terminalRunRef.current(command);
                 setTab("terminal");
               }}
+              activeCommitSha={diffCommit?.sha ?? null}
+              onOpenCommit={(commit) => {
+                setDiffCommit(commit);
+                setTab("diff");
+              }}
             />
           )}
         </TabsContent>
@@ -145,6 +194,16 @@ export function WorktreePanel({
             <NoWorktree provisioning={state?.provisioning ?? null} />
           )}
         </TabsContent>
+
+        {diffCommit && (
+          <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
+            <CommitDiffView
+              sessionId={sessionId}
+              commit={diffCommit}
+              onClose={closeDiffTab}
+            />
+          </TabsContent>
+        )}
 
         <div
           className={
