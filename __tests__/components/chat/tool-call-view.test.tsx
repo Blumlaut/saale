@@ -192,12 +192,12 @@ describe("tool card shell", () => {
     expect(screen.getByText("2 edits")).toBeInTheDocument();
     expect(screen.getByText("prod-web-01")).toBeInTheDocument();
     expect(screen.getByText("line 2")).toBeInTheDocument();
-    expect(screen.getByText("-2 listen 80;")).toHaveClass("text-red-700");
-    expect(screen.getByText("+2 listen 8080;")).toHaveClass("text-green-700");
+    expect(screen.getByText("2 listen 80;")).toHaveClass("text-red-700");
+    expect(screen.getByText("2 listen 8080;")).toHaveClass("text-green-700");
 
     // 45 diff lines plus the two leading ones, capped at 40 shown.
-    expect(screen.getByText("+38 line 38")).toBeInTheDocument();
-    expect(screen.queryByText("+39 line 39")).not.toBeInTheDocument();
+    expect(screen.getByText("38 line 38")).toBeInTheDocument();
+    expect(screen.queryByText("39 line 39")).not.toBeInTheDocument();
     expect(screen.getByText("7 more lines")).toBeInTheDocument();
   });
 
@@ -247,6 +247,59 @@ describe("tool card shell", () => {
 
     expect(screen.getByText("Read image")).toBeInTheDocument();
     expect(screen.queryByText(/Read image file/)).not.toBeInTheDocument();
+  });
+
+  it("renders a file edit as a diff with a sign column, not as arguments", () => {
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "edit",
+          args: {
+            path: "src/components/chat/share-viewer.tsx",
+            edits: [{ oldText: "const a = 1;", newText: "const a = 2;" }],
+          },
+          result: "Successfully replaced 1 block(s) in src/components/chat/share-viewer.tsx.",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+    expect(screen.getByText("1 edit")).toBeInTheDocument();
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
+
+    fireEvent.click(header(/Edit/));
+    // The sign has its own column, so the diff text is what the row carries.
+    expect(screen.getByText("const a = 1;")).toHaveClass("text-red-700");
+    expect(screen.getByText("const a = 2;")).toHaveClass("text-green-700");
+  });
+
+  it("renders an image a read looked at, once the card is unfolded", async () => {
+    // The bytes are read from the workspace on demand, so the card only carries
+    // the path.
+    globalThis.fetch = vi.fn(async () => new Response("png")) as unknown as typeof fetch;
+    // jsdom has no object URLs.
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+
+    render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "read",
+          args: { path: "reports/mobile-overflow.png" },
+          result: "Read image file [image/png]",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Read")).toBeInTheDocument();
+    expect(screen.getByText("reports/mobile-overflow.png")).toBeInTheDocument();
+    // Nothing is fetched until the user asks to see it.
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+
+    fireEvent.click(header(/Read/));
+    expect(screen.getByText("image/png")).toBeInTheDocument();
+    expect(await screen.findByRole("img")).toBeInTheDocument();
   });
 
   it("hands a result it cannot read to the generic card rather than hiding the call", () => {

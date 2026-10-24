@@ -5,6 +5,7 @@ import { ShowFileCard } from "./file-card";
 import { ToolCard } from "./tool-card";
 import { calendarToolDescriptor } from "./tool-descriptors/calendar";
 import { codemodeDescriptor } from "./tool-descriptors/codemode";
+import { fileToolDescriptor } from "./tool-descriptors/file";
 import { describeGenericToolCall } from "./tool-descriptors/generic";
 import { infraToolDescriptor } from "./tool-descriptors/infra";
 import { mailToolDescriptor } from "./tool-descriptors/mail";
@@ -76,6 +77,7 @@ function route(descriptor: ToolDescriptor): ToolCardRoute {
 const ROUTES: readonly ToolCardRoute[] = [
   { names: ["show_file"], attachment: true, render: ShowFileCard },
   route(webToolDescriptor),
+  route(fileToolDescriptor),
   route(mailToolDescriptor),
   route(calendarToolDescriptor),
   route(infraToolDescriptor),

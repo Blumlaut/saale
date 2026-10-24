@@ -32,7 +32,7 @@ import { useChatSessionState } from "./use-chat-session-state";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import type { Message, ApprovalData, TokenUsage } from "./types";
 import { ChatHeader } from "./chat-header";
-import { SharedFileSessionProvider } from "./file-card";
+import { SharedFileSessionProvider } from "./workspace-file";
 import { SessionLinksPanel, SessionLinksSheet, useSessionLinks } from "./session-links-panel";
 import { useChatStream } from "./use-chat-stream";
 import { useIsMobile } from "@/hooks/use-mobile";
