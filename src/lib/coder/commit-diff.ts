@@ -51,6 +51,7 @@ export async function loadCommitDiffFile(
   sha: string,
   rawPath: string,
 ): Promise<CommitDiffFileContent | null | { error: string; status: number }> {
+  if (!SHA_RE.test(sha)) return null;
   let path: string;
   try {
     path = assertRepoRelativePath(rawPath);
