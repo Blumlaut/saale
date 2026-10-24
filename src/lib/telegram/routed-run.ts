@@ -140,6 +140,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
     encryptedToken,
     telegramChatId,
     replyToMessageId: params.replyToMessageId,
+    session: chat.id,
   });
 
   let session: AgentSession | undefined;
