@@ -40,14 +40,36 @@ let monacoPromise: Promise<MonacoNamespace> | null = null;
 export function initMonaco(): Promise<MonacoNamespace> {
   if (!monacoPromise) {
     monacoPromise = (async () => {
-      // The editor worker runs tokenization off the main thread. One worker
-      // serves every model; the json/css/html feature workers only power
-      // validation and formatting, which the panel does not do.
+      // The editor worker runs tokenization off the main thread; the
+      // language workers answer folding, hints and validation for json, css,
+      // html and typescript. Without the language workers those requests
+      // reject uncaught in the page.
       (self as { MonacoEnvironment?: unknown }).MonacoEnvironment = {
-        getWorker: () =>
-          new Worker(new URL("monaco-editor/editor/editor.worker.js", import.meta.url), {
+        getWorker: (_id: string, label: string) => {
+          if (label === "json")
+            return new Worker(
+              new URL("monaco-editor/language/json/json.worker.js", import.meta.url),
+              { type: "module" },
+            );
+          if (label === "css" || label === "scss" || label === "less")
+            return new Worker(
+              new URL("monaco-editor/language/css/css.worker.js", import.meta.url),
+              { type: "module" },
+            );
+          if (label === "html" || label === "handlebars" || label === "razor")
+            return new Worker(
+              new URL("monaco-editor/language/html/html.worker.js", import.meta.url),
+              { type: "module" },
+            );
+          if (label === "typescript" || label === "javascript")
+            return new Worker(
+              new URL("monaco-editor/language/typescript/ts.worker.js", import.meta.url),
+              { type: "module" },
+            );
+          return new Worker(new URL("monaco-editor/editor/editor.worker.js", import.meta.url), {
             type: "module",
-          }),
+          });
+        },
       };
       await installDiffOverviewWidth();
       return import("monaco-editor");
