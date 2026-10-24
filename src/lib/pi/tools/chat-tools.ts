@@ -306,11 +306,12 @@ export function createShowFileTool(userId: string, sessionId: string) {
       "Send a file from the workspace to the user in the chat. the only way they can receive one, " +
       "since they have no access to the workspace filesystem themselves. Send anything they asked " +
       "for, including a file you just created or changed. Images are shown inline; every other " +
-      "type, known or not, is delivered as-is. Path is relative to the workspace root. " +
-      "Max file size: 50MB.",
+      "type, known or not, is delivered as-is. A relative path resolves against the chat's " +
+      "worktree, which is the directory your tools run in. Max file size: 50MB.",
     parameters: Type.Object({
       filePath: Type.String({
-        description: "Path to the file, relative to the workspace root.",
+        description:
+          "Path to the file, relative to the chat's worktree (or absolute inside the workspace).",
       }),
       description: Type.Optional(
         Type.String({

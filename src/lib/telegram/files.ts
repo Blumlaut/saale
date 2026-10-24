@@ -190,11 +190,13 @@ export async function sendSharedFileToTelegram(params: {
   telegramChatId: bigint;
   filePath: string;
   description?: string | undefined;
+  /** The chat the run belongs to, so a relative path resolves against its worktree. */
+  session?: string | undefined;
 }): Promise<void> {
-  const { userId, encryptedToken, telegramChatId, filePath, description } = params;
+  const { userId, encryptedToken, telegramChatId, filePath, description, session } = params;
 
   try {
-    const file = await readWorkspaceFile(userId, filePath);
+    const file = await readWorkspaceFile(userId, filePath, { session });
     await sendTelegramFile(encryptedToken, telegramChatId, file, {
       caption: description?.trim() || file.fileName,
     });

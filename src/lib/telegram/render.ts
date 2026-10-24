@@ -27,8 +27,10 @@ export function createTelegramRunRenderer(params: {
   telegramChatId: bigint;
   /** The user's message, when replies should thread under it. */
   replyToMessageId?: number | undefined;
+  /** The chat the run belongs to, so a shared path resolves against its worktree. */
+  session?: string | undefined;
 }): TelegramRunRenderer {
-  const { userId, encryptedToken, telegramChatId, replyToMessageId } = params;
+  const { userId, encryptedToken, telegramChatId, replyToMessageId, session } = params;
 
   let turnIndex = 0;
   let currentTurnText = "";
@@ -118,6 +120,7 @@ export function createTelegramRunRenderer(params: {
                 userId,
                 encryptedToken,
                 telegramChatId,
+                session,
                 ...sharedFile,
               }).catch((err) => {
                 console.error("Failed to send a shared file to Telegram:", err);

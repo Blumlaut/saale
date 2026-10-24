@@ -132,6 +132,8 @@ describe("readWorkspaceFile", () => {
 describe("readWorkspaceFile for a coder chat", () => {
   // Computed lazily: `userRoot` only exists once the beforeAll has run.
   const worktree = () => path.join(userRoot, "worktrees", "proj", "chat-1");
+  // What `CoderWorktree.path` holds: relative to the workspace root.
+  const storedWorktree = "worktrees/proj/chat-1";
 
   beforeEach(async () => {
     await fs.mkdir(worktree(), { recursive: true });
@@ -140,7 +142,7 @@ describe("readWorkspaceFile for a coder chat", () => {
   it("resolves a relative path against the chat's active worktree", async () => {
     await fs.writeFile(path.join(worktree(), "notes.md"), "worktree notes");
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(worktree()));
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(storedWorktree));
 
     const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
 
@@ -149,7 +151,7 @@ describe("readWorkspaceFile for a coder chat", () => {
 
   it("falls back to the workspace root when the worktree has no such file", async () => {
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(worktree()));
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(storedWorktree));
 
     const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
 
@@ -165,7 +167,7 @@ describe("readWorkspaceFile for a coder chat", () => {
     expect(Buffer.from(file.buffer).toString()).toBe("root notes");
   });
 
-  it("never reads a worktree that sits outside the workspace", async () => {
+  it("never reads a worktree stored outside the workspace", async () => {
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), "saale-outside-"));
     await fs.writeFile(path.join(outside, "leak.txt"), "top secret");
     vi.mocked(loadCoderSession).mockResolvedValue(coderSession(outside));
@@ -176,7 +178,7 @@ describe("readWorkspaceFile for a coder chat", () => {
   });
 
   it("refuses a traversal that would climb out of the workspace", async () => {
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(worktree()));
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(storedWorktree));
 
     await expect(
       readWorkspaceFile(userId, "../../user-2/secret.txt", { session: "chat-1" }),
