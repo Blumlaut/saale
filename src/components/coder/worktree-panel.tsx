@@ -79,14 +79,14 @@ export function WorktreePanel({
   refreshing: boolean;
 }) {
   const [tab, setTab] = useState("changes");
-  // The commit the Diff tab shows, or null for no tab at all.
-  const [diffCommit, setDiffCommit] = useState<CoderCommit | null>(null);
+  // The commit and file the Diff tab shows, or null for no tab at all.
+  const [diffTarget, setDiffTarget] = useState<{ commit: CoderCommit; path: string } | null>(null);
 
   // Closing the tab from inside it would strand the panel on a value that
   // has no content, so the previous tab comes back first.
   const closeDiffTab = () => {
     if (tab === "diff") setTab("changes");
-    setDiffCommit(null);
+    setDiffTarget(null);
   };
   const terminalRunRef = useRef<(command: string) => void>(() => {});
   // Lifted out of the tab, because the badge has to light while another tab is
@@ -115,7 +115,7 @@ export function WorktreePanel({
               <FolderTree className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Files
             </TabsTrigger>
-            {diffCommit && (
+            {diffTarget && (
               <TabsTrigger value="diff" className="gap-1.5 text-xs">
                 <GitCommitHorizontal className="hidden h-3.5 w-3.5 @min-[390px]:block" />
                 Diff
@@ -178,9 +178,9 @@ export function WorktreePanel({
                 terminalRunRef.current(command);
                 setTab("terminal");
               }}
-              activeCommitSha={diffCommit?.sha ?? null}
-              onOpenCommit={(commit) => {
-                setDiffCommit(commit);
+              activeCommitSha={diffTarget?.commit.sha ?? null}
+              onOpenCommitFile={(commit, path) => {
+                setDiffTarget({ commit, path });
                 setTab("diff");
               }}
             />
@@ -195,9 +195,14 @@ export function WorktreePanel({
           )}
         </TabsContent>
 
-        {diffCommit && (
+        {diffTarget && (
           <TabsContent value="diff" className="min-h-0 flex-1 overflow-hidden">
-            <CommitDiffView sessionId={sessionId} commit={diffCommit} onClose={closeDiffTab} />
+            <CommitDiffView
+              sessionId={sessionId}
+              commit={diffTarget.commit}
+              initialPath={diffTarget.path}
+              onClose={closeDiffTab}
+            />
           </TabsContent>
         )}
 
