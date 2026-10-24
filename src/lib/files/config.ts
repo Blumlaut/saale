@@ -38,8 +38,13 @@ export const MAX_ZIP_ENTRIES = 500;
 /** Uncompressed bytes a single zip download may contain. */
 export const MAX_ZIP_BYTES = 250 * 1024 * 1024;
 
-/** Largest file the inline viewer will render; bigger ones download instead. */
-export const MAX_PREVIEW_BYTES = 1024 * 1024;
+/**
+ * Largest file the inline viewer will render; bigger ones download instead.
+ * Monaco tokenizes a few megabytes comfortably, so the cap sits well above
+ * any source file an agent writes and below what a base64 blob would drag
+ * into the browser.
+ */
+export const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
 
 /**
  * Largest file the API will serve or archive at all.

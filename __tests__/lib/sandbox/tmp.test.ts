@@ -60,6 +60,44 @@ describe("sweepWorkspaceTmp", () => {
     expect((await fs.stat(path.join(volume, "user-a", ".tmp"))).isDirectory()).toBe(true);
   });
 
+  it("keeps a stale directory that wraps a fresh nested file", async () => {
+    // The folder is old but a run wrote into it an hour ago; its mtime does not
+    // reflect that, so the age has to be checked down the tree.
+    const dir = path.join(volume, "user-a", ".tmp", "shots");
+    const fresh = path.join(dir, "runs", "new-run", "preview.png");
+    const oldRun = path.join(dir, "runs", "old-run");
+    await fs.mkdir(path.dirname(fresh), { recursive: true });
+    await fs.mkdir(oldRun, { recursive: true });
+    await fs.writeFile(fresh, "fresh bytes");
+    await fs.writeFile(path.join(oldRun, "preview.png"), "stale bytes");
+    const stale = new Date(AT - 100 * HOUR);
+    await fs.utimes(dir, stale, stale);
+    await fs.utimes(path.join(dir, "runs"), stale, stale);
+    await fs.utimes(oldRun, stale, stale);
+    await fs.utimes(path.join(oldRun, "preview.png"), stale, stale);
+
+    const result = await sweepWorkspaceTmp(volume, { olderThanMs: 72 * HOUR, at: AT });
+
+    expect(result.removed).toBe(0);
+    await expect(fs.stat(fresh)).resolves.toBeDefined();
+  });
+
+  it("removes a stale directory whose deepest files are stale too", async () => {
+    const dir = path.join(volume, "user-a", ".tmp", "npm");
+    const deep = path.join(dir, "cache", "sub");
+    await fs.mkdir(deep, { recursive: true });
+    await fs.writeFile(path.join(deep, "blob"), "x");
+    const stale = new Date(AT - 100 * HOUR);
+    for (const target of [deep, path.join(dir, "cache"), dir, path.join(deep, "blob")]) {
+      await fs.utimes(target, stale, stale);
+    }
+
+    const result = await sweepWorkspaceTmp(volume, { olderThanMs: 72 * HOUR, at: AT });
+
+    expect(result.removed).toBe(1);
+    await expect(fs.stat(dir)).rejects.toThrow();
+  });
+
   it("leaves workspaces that never used a scratch directory alone", async () => {
     await fs.mkdir(path.join(volume, "user-b"), { recursive: true });
     await fs.writeFile(path.join(volume, "user-b", "keep.txt"), "mine");
