@@ -169,8 +169,7 @@ export function ProjectChats({
         title="Delete this chat?"
         description={
           <>
-            It takes the chat&apos;s worktree with it. git refuses a checkout with uncommitted work,
-            and then nothing is deleted.
+            It takes the chat&apos;s worktree with it.
             {deleting?.worktree && (
               <>
                 {" "}
