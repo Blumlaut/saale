@@ -221,7 +221,7 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
           ))}
           {current && (
             <span className="flex min-w-0 items-center gap-1">
-              <ChevronRight className="text-muted-foreground hidden h-3 w-3 md:block" aria-hidden />
+              <ChevronRight className="text-muted-foreground h-3 w-3" aria-hidden />
               <span className="truncate text-xs font-medium">{current.name}</span>
             </span>
           )}
