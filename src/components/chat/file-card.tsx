@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext, createContext } from "react";
 import { Download, Image as ImageIcon, FileText, File, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { downloadFile } from "@/lib/download";
@@ -34,10 +34,36 @@ const MIME_TYPES: Record<string, string> = {
   mp4: "video/mp4",
 };
 
+/**
+ * The chat this tree renders: `show_file` paths are resolved against that
+ * chat's worktree, so the fetch must name it.
+ */
+const SharedFileSessionContext = createContext<string | null>(null);
+
+export function SharedFileSessionProvider({
+  sessionId,
+  children,
+}: {
+  sessionId: string | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <SharedFileSessionContext.Provider value={sessionId}>
+      {children}
+    </SharedFileSessionContext.Provider>
+  );
+}
+
 /** The endpoint that serves a workspace file to its owner. */
-function workspaceFileUrl(filePath: string, { download = false } = {}): string {
-  const url = `/api/chat/workspace-files?file=${encodeURIComponent(filePath)}`;
-  return download ? `${url}&download=1` : url;
+function workspaceFileUrl(
+  filePath: string,
+  session: string | null,
+  { download = false }: { download?: boolean } = {},
+): string {
+  const params = new URLSearchParams({ file: filePath });
+  if (session) params.set("session", session);
+  if (download) params.set("download", "1");
+  return `/api/chat/workspace-files?${params.toString()}`;
 }
 
 /** One `show_file` call, read into the parts every presentation of it needs. */
@@ -104,13 +130,18 @@ function useFilePreview(
   const [url, setUrl] = useState<string | null>(null);
   const [failure, setFailure] = useState<PreviewFailure | null>(null);
 
+  const session = useContext(SharedFileSessionContext);
+
   useEffect(() => {
     if (!enabled) return;
 
     const controller = new AbortController();
     setFailure(null);
 
-    fetch(workspaceFileUrl(filePath), { signal: controller.signal, credentials: "include" })
+    fetch(workspaceFileUrl(filePath, session), {
+      signal: controller.signal,
+      credentials: "include",
+    })
       .then(async (res) => {
         if (res.status === 404) {
           if (!controller.signal.aborted) setFailure("missing");
@@ -134,7 +165,7 @@ function useFilePreview(
         return null;
       });
     };
-  }, [filePath, enabled]);
+  }, [filePath, session, enabled]);
 
   return { url, failure };
 }
@@ -148,12 +179,15 @@ function useFilePreview(
  * installed web app on `about:blank`. See `downloadFile`.
  */
 function DownloadButton({ file, iconOnly = false }: { file: SharedFile; iconOnly?: boolean }) {
+  const session = useContext(SharedFileSessionContext);
   return (
     <Button
       variant="secondary"
       size={iconOnly ? "icon-sm" : "sm"}
       className="shrink-0"
-      onClick={() => void downloadFile(workspaceFileUrl(file.filePath, { download: true }))}
+      onClick={() =>
+        void downloadFile(workspaceFileUrl(file.filePath, session, { download: true }))
+      }
       aria-label={`Download ${file.fileName}`}
     >
       <Download className={iconOnly ? "size-3.5" : "h-3.5 w-3.5"} />

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseDiffTreeNameStatus,
   parseLog,
   parseNumstat,
   parsePorcelainZ,
@@ -100,6 +101,57 @@ describe("parseNumstat", () => {
   it("reports a binary file's counts as null", () => {
     const [entry] = parseNumstat("-\t-\timage.png\u0000");
     expect(entry).toMatchObject({ path: "image.png", added: null, deleted: null });
+  });
+});
+
+describe("parseDiffTreeNameStatus", () => {
+  it("reads adds, modifies and deletes as one entry per path", () => {
+    const Z = "\u0000";
+    const stdout = `A${Z}new.txt${Z}M${Z}src/a.ts${Z}D${Z}gone.txt${Z}`;
+    expect(parseDiffTreeNameStatus(stdout)).toEqual([
+      {
+        path: "new.txt",
+        originalPath: null,
+        status: "A",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
+      {
+        path: "src/a.ts",
+        originalPath: null,
+        status: "M",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
+      {
+        path: "gone.txt",
+        originalPath: null,
+        status: "D",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
+    ]);
+  });
+
+  it("keeps a rename's origin, which git prints with a similarity score", () => {
+    const [entry] = parseDiffTreeNameStatus("R100\u0000keep.txt\u0000renamed.txt\u0000");
+    expect(entry).toMatchObject({ path: "renamed.txt", originalPath: "keep.txt", status: "R" });
+  });
+
+  it("skips records that are not statuses", () => {
+    expect(parseDiffTreeNameStatus("src/a.ts\u0000A\u0000new.txt\u0000")).toEqual([
+      {
+        path: "new.txt",
+        originalPath: null,
+        status: "A",
+        added: null,
+        deleted: null,
+        baseRef: null,
+      },
+    ]);
   });
 });
 

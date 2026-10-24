@@ -4,7 +4,12 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
+import { loadCoderSession } from "@/lib/coder/changes";
 import { userIdentity } from "@/lib/sandbox/identity";
+
+vi.mock("@/lib/coder/changes", () => ({
+  loadCoderSession: vi.fn(),
+}));
 
 const userId = "user-1";
 
@@ -25,9 +30,23 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  vi.mocked(loadCoderSession).mockReset();
+  vi.mocked(loadCoderSession).mockResolvedValue(null);
   await fs.rm(userRoot, { recursive: true, force: true });
   await fs.mkdir(userRoot, { recursive: true });
 });
+
+/** An active coder session whose worktree lives at `worktreePath`. */
+function coderSession(worktreePath: string | null) {
+  return {
+    id: "chat-1",
+    projectId: "proj-1",
+    project: { id: "proj-1", name: "Project", slug: "project" },
+    coderWorktree: worktreePath
+      ? { path: worktreePath, branch: "main", baseSha: "abc1234", status: "active" }
+      : null,
+  };
+}
 
 /** Write a file into the user's workspace and return its relative path. */
 async function writeWorkspaceFile(name: string, content: Buffer | string): Promise<string> {
@@ -107,5 +126,60 @@ describe("readWorkspaceFile", () => {
     await fs.symlink(path.join(other, "secret.txt"), path.join(userRoot, "link.txt"));
 
     await expect(readWorkspaceFile(userId, "link.txt")).rejects.toBeInstanceOf(FilePathEscapeError);
+  });
+});
+
+describe("readWorkspaceFile for a coder chat", () => {
+  // Computed lazily: `userRoot` only exists once the beforeAll has run.
+  const worktree = () => path.join(userRoot, "worktrees", "proj", "chat-1");
+
+  beforeEach(async () => {
+    await fs.mkdir(worktree(), { recursive: true });
+  });
+
+  it("resolves a relative path against the chat's active worktree", async () => {
+    await fs.writeFile(path.join(worktree(), "notes.md"), "worktree notes");
+    await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(worktree()));
+
+    const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
+
+    expect(Buffer.from(file.buffer).toString()).toBe("worktree notes");
+  });
+
+  it("falls back to the workspace root when the worktree has no such file", async () => {
+    await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(worktree()));
+
+    const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
+
+    expect(Buffer.from(file.buffer).toString()).toBe("root notes");
+  });
+
+  it("resolves against the root when the chat has no worktree", async () => {
+    await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(null));
+
+    const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
+
+    expect(Buffer.from(file.buffer).toString()).toBe("root notes");
+  });
+
+  it("never reads a worktree that sits outside the workspace", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "saale-outside-"));
+    await fs.writeFile(path.join(outside, "leak.txt"), "top secret");
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(outside));
+
+    await expect(
+      readWorkspaceFile(userId, "leak.txt", { session: "chat-1" }),
+    ).rejects.toBeInstanceOf(FileNotFoundError);
+  });
+
+  it("refuses a traversal that would climb out of the workspace", async () => {
+    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(worktree()));
+
+    await expect(
+      readWorkspaceFile(userId, "../../user-2/secret.txt", { session: "chat-1" }),
+    ).rejects.toBeInstanceOf(FilePathEscapeError);
   });
 });
