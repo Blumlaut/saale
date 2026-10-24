@@ -22,6 +22,8 @@ export interface CoderProjectChat {
   title: string;
   lastActivityAt: string;
   isGenerating: boolean;
+  /** "watcher" for a chat a watcher fire opened. */
+  origin?: string;
   worktree: { path: string; branch: string; status: string } | null;
 }
 

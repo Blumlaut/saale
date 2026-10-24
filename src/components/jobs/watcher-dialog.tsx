@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,13 +16,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchJson, patchJson, postJson } from "@/lib/http";
+import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
+import { ModelPicker } from "@/components/shared/model-picker";
 import { AlertTriangle, Loader2, Play, Radar, ShieldCheck } from "lucide-react";
 import type { ScriptWatcher, WatcherConsentPreview } from "@/types/shared";
+import { formatDistanceToNow } from "date-fns";
 
 /** The part of a conversation the target picker needs. */
 interface ChatOption {
   id: string;
   title: string;
+}
+
+/** The part of a project the target picker needs. */
+interface ProjectOption {
+  id: string;
+  name: string;
+  slug: string;
 }
 
 interface WatcherDialogProps {
@@ -32,8 +42,20 @@ interface WatcherDialogProps {
   watcher?: ScriptWatcher | null;
 }
 
-/** No conversation selected. the watcher runs a standalone agent run instead. */
+/** No conversation selected. only a delivery that does not need one may leave it out. */
 const NO_TARGET = "none";
+
+/** Where a fire goes, as the dialog offers it. */
+const DELIVERY_OPTIONS = [
+  { value: "chat", label: "A conversation" },
+  { value: "silent", label: "Nothing (the script delivers it)" },
+  { value: "coder", label: "A project's coder chat" },
+];
+
+const WORKTREE_MODE_OPTIONS = [
+  { value: "per-fire", label: "A fresh worktree every fire" },
+  { value: "sticky", label: "One chat and worktree for the whole thread" },
+];
 
 const CRON_PRESETS = [
   { value: "*/5 * * * *", label: "Every 5 minutes" },
@@ -77,12 +99,19 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
   const [description, setDescription] = useState("");
   const [script, setScript] = useState("");
   const [cronExpression, setCronExpression] = useState("*/10 * * * *");
+  const [deliver, setDeliver] = useState("chat");
   const [sessionId, setSessionId] = useState<string>(NO_TARGET);
+  const [projectId, setProjectId] = useState<string>(NO_TARGET);
+  const [worktreeMode, setWorktreeMode] = useState("per-fire");
+  const [retentionMinutes, setRetentionMinutes] = useState("1440");
+  // Canonical `provider:model`; empty means the user's default model.
+  const [modelId, setModelId] = useState("");
   const [wakePrompt, setWakePrompt] = useState("");
   const [cooldownMinutes, setCooldownMinutes] = useState("0");
   const [enabled, setEnabled] = useState(true);
 
   const [chats, setChats] = useState<ChatOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [preview, setPreview] = useState<WatcherConsentPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -92,16 +121,21 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
 
   const isEdit = Boolean(watcher);
 
-  // Load the conversations a watcher can report into, once per open.
+  // Load the conversations and projects a watcher can report into, once per open.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     void (async () => {
       try {
-        const data = await fetchJson<{ sessions: ChatOption[] }>("/api/chat/sessions");
-        if (!cancelled) setChats(data.sessions ?? []);
+        const [chatData, projectData] = await Promise.all([
+          fetchJson<{ sessions: ChatOption[] }>("/api/chat/sessions"),
+          fetchJson<{ projects: ProjectOption[] }>("/api/coder/projects"),
+        ]);
+        if (cancelled) return;
+        setChats(chatData.sessions ?? []);
+        setProjects(projectData.projects ?? []);
       } catch (err) {
-        console.error("Failed to load conversations for the watcher dialog:", err);
+        console.error("Failed to load watcher delivery targets:", err);
       }
     })();
     return () => {
@@ -121,7 +155,12 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
       setDescription(watcher.description ?? "");
       setScript(watcher.script);
       setCronExpression(watcher.cronExpression);
+      setDeliver(watcher.deliver);
       setSessionId(watcher.sessionId ?? NO_TARGET);
+      setProjectId(watcher.projectId ?? NO_TARGET);
+      setWorktreeMode(watcher.worktreeMode);
+      setRetentionMinutes(String(watcher.retentionMinutes));
+      setModelId(watcher.modelId ?? "");
       setWakePrompt(watcher.wakePrompt);
       setCooldownMinutes(String(watcher.cooldownMinutes));
       setEnabled(watcher.enabled);
@@ -130,7 +169,12 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
       setDescription("");
       setScript(STARTER_SCRIPT);
       setCronExpression("*/10 * * * *");
+      setDeliver("chat");
       setSessionId(NO_TARGET);
+      setProjectId(NO_TARGET);
+      setWorktreeMode("per-fire");
+      setRetentionMinutes("1440");
+      setModelId("");
       setWakePrompt("");
       setCooldownMinutes("0");
       setEnabled(true);
@@ -141,6 +185,17 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
     () => (sessionId === NO_TARGET ? null : sessionId),
     [sessionId],
   );
+
+  const resolveProject = useCallback(
+    () => (projectId === NO_TARGET ? null : projectId),
+    [projectId],
+  );
+
+  // The picker speaks `provider/modelId`; the watcher stores `provider:modelId`.
+  const pickerValue = useMemo(() => {
+    const reference = splitModelReference(modelId);
+    return reference ? `${reference.provider}/${reference.name}` : "";
+  }, [modelId]);
 
   // Show what the script would be allowed to call, as it is written.
   useEffect(() => {
@@ -201,7 +256,12 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
         description,
         script,
         cronExpression,
+        deliver,
         sessionId: resolveTarget(),
+        projectId: resolveProject(),
+        worktreeMode,
+        retentionMinutes: Number(retentionMinutes) || 0,
+        modelId: modelId || null,
         wakePrompt,
         cooldownMinutes: Number(cooldownMinutes) || 0,
         enabled,
@@ -226,7 +286,11 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
   };
 
   const canSave =
-    name.trim().length > 0 && script.trim().length > 0 && cronExpression.trim().length > 0;
+    name.trim().length > 0 &&
+    script.trim().length > 0 &&
+    cronExpression.trim().length > 0 &&
+    (deliver !== "chat" || sessionId !== NO_TARGET) &&
+    (deliver !== "coder" || projectId !== NO_TARGET);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -277,24 +341,152 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
           </div>
 
           <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="watcher-target">Report into</Label>
-            <Select value={sessionId} onValueChange={(value) => setSessionId(value ?? NO_TARGET)}>
-              <SelectTrigger id="watcher-target">
+            <Label htmlFor="watcher-deliver">Where should this go?</Label>
+            <Select value={deliver} onValueChange={(value) => setDeliver(value ?? "chat")}>
+              <SelectTrigger id="watcher-deliver">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_TARGET}>No conversation (standalone run)</SelectItem>
-                {chats.map((chat) => (
-                  <SelectItem key={chat.id} value={chat.id}>
-                    {chat.title}
+                {DELIVERY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-muted-foreground text-xs">
-              When the script reports something, the agent is given it here and answers in this
-              conversation.
-            </p>
+
+            {deliver === "chat" && (
+              <>
+                <Select
+                  value={sessionId}
+                  onValueChange={(value) => setSessionId(value ?? NO_TARGET)}
+                >
+                  <SelectTrigger aria-label="Conversation to answer in">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TARGET}>Pick a conversation</SelectItem>
+                    {chats.map((chat) => (
+                      <SelectItem key={chat.id} value={chat.id}>
+                        {chat.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  When the script reports something, the agent is given it here and answers in this
+                  conversation, with the conversation&apos;s own tools and history.
+                </p>
+              </>
+            )}
+
+            {deliver === "silent" && (
+              <p className="text-muted-foreground text-xs">
+                Nothing is woken, and no tokens are spent. The script tells you itself. Send the
+                message from inside it with <code>await tools.telegram_send({"{ message }"})</code>,
+                and return the item you sent as a note in the log. Returning it does not message you
+                again.
+              </p>
+            )}
+
+            {deliver === "coder" && (
+              <>
+                <Select
+                  value={projectId}
+                  onValueChange={(value) => setProjectId(value ?? NO_TARGET)}
+                >
+                  <SelectTrigger aria-label="Project to dispatch into">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TARGET}>Pick a project</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  Each fire opens a coder chat in this project and works in its own worktree, so it
+                  never touches a checkout you are working in.
+                </p>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    <Label htmlFor="watcher-worktree">Worktree</Label>
+                    <Select
+                      value={worktreeMode}
+                      onValueChange={(value) => setWorktreeMode(value ?? "per-fire")}
+                    >
+                      <SelectTrigger id="watcher-worktree">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WORKTREE_MODE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-muted-foreground text-xs">
+                      {worktreeMode === "sticky"
+                        ? "Every fire continues in the same chat, so a thread can pick up where the last one stopped."
+                        : "Every fire gets its own chat and branch, so two runs can never collide."}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    <Label htmlFor="watcher-retention">Keep finished chats (minutes)</Label>
+                    <Input
+                      id="watcher-retention"
+                      type="number"
+                      min={0}
+                      value={retentionMinutes}
+                      onChange={(event) => setRetentionMinutes(event.target.value)}
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      A per-fire chat is removed once this has passed, and only when its branch is
+                      pushed and its tree is clean. Anything with work in it stays.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  <Label>Model for the chat it opens</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ModelPicker
+                      value={pickerValue}
+                      onChange={(value) => {
+                        const reference = splitModelReference(value);
+                        setModelId(
+                          reference
+                            ? (formatModelReference(reference.provider, reference.name) ?? "")
+                            : "",
+                        );
+                      }}
+                      placeholder="Your default model"
+                      className="rounded border"
+                    />
+                    {modelId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setModelId("")}
+                      >
+                        Use the default
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Left alone, the chat uses whichever model you have as your default.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-2">
@@ -440,19 +632,31 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="watcher-wake">When it fires, tell the agent to…</Label>
-            <Textarea
-              id="watcher-wake"
-              value={wakePrompt}
-              onChange={(event) => setWakePrompt(event.target.value)}
-              rows={3}
-              placeholder="Review what changed and tell me briefly what it means."
-            />
+          {deliver !== "silent" && (
+            <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="watcher-wake">When it fires, tell the agent to…</Label>
+              <Textarea
+                id="watcher-wake"
+                value={wakePrompt}
+                onChange={(event) => setWakePrompt(event.target.value)}
+                rows={3}
+                placeholder="Review what changed and tell me briefly what it means."
+              />
+              <p className="text-muted-foreground text-xs">
+                The script&apos;s returned value is included automatically.
+              </p>
+            </div>
+          )}
+
+          {watcher?.lastTickAt && (
             <p className="text-muted-foreground text-xs">
-              The script&apos;s returned value is included automatically.
+              Last checked {formatDistanceToNow(new Date(watcher.lastTickAt), { addSuffix: true })}
+              {watcher.lastFiredAt
+                ? `, last delivered ${formatDistanceToNow(new Date(watcher.lastFiredAt), { addSuffix: true })}`
+                : ", nothing delivered yet"}
+              .
             </p>
-          </div>
+          )}
 
           {error && (
             <p className="text-destructive text-sm break-words whitespace-pre-wrap">{error}</p>
