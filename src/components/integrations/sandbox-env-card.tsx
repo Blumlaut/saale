@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useSandboxEnv } from "@/hooks/use-sandbox-env";
+import { SAALE_SESSION_ENV } from "@/lib/sandbox/env-vars";
 import { ROW_ACTION } from "@/lib/utils";
 
 /**
@@ -148,6 +149,20 @@ export function SandboxEnvCard() {
             {error && <p className="text-destructive text-xs break-words">{error}</p>}
           </>
         )}
+      </div>
+
+      <div className="border-border/60 mt-4 border-t pt-3">
+        <p className="text-muted-foreground text-xs">
+          Saale sets these itself. A variable you set with the same name wins.
+        </p>
+        <ul className="mt-2 space-y-1">
+          {SAALE_SESSION_ENV.map((variable) => (
+            <li key={variable.name} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+              <code className="font-medium">{variable.name}</code>
+              <span className="text-muted-foreground min-w-0 break-words">{variable.what}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

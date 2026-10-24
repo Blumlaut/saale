@@ -265,6 +265,21 @@ survive. A tenant that should keep its system packages needs
 outside the compose project, so `docker compose down` leaves them alone; only an
 explicit remove does.
 
+## Workspace variables
+
+A command an agent runs in a workspace sees the user's own variables (Settings,
+Integrations tab), and four that Saale sets itself:
+
+| Variable               | What it holds                    |
+| ---------------------- | -------------------------------- |
+| `SAALE_CHAT_ID`        | the chat the command belongs to  |
+| `SAALE_MODEL`          | the model answering in that chat |
+| `SAALE_MODEL_PROVIDER` | the provider serving that model  |
+| `SAALE_THINKING_LEVEL` | the thinking level it runs at    |
+
+The four are read when a command starts, so a model switch mid-chat shows up in
+the next command. A variable the user sets with the same name wins.
+
 ## Development
 
 ```bash
