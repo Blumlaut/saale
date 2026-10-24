@@ -270,7 +270,7 @@ export async function readStatus(userId: string, dir: string): Promise<GitStatus
   const [status, head] = await Promise.all([
     runGit(userId, {
       cwd: dir,
-      args: ["status", "--porcelain=v1", "-z", "-b", "--untracked-files=normal"],
+      args: ["status", "--porcelain=v1", "-z", "-b", "--untracked-files=all"],
     }),
     headSha(userId, dir),
   ]);
