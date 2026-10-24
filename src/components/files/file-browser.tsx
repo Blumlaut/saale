@@ -122,8 +122,8 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
   );
 
   const downloadSelection = useCallback(() => {
-    if (single?.kind === "file") downloadFile(browser.downloadUrl(single));
-    else downloadFile(browser.zipUrl());
+    if (single?.kind === "file") void downloadFile(browser.downloadUrl(single));
+    else void downloadFile(browser.zipUrl());
   }, [browser, single]);
 
   const onDrop = useCallback(
@@ -442,7 +442,7 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
                       )}
                       <DropdownMenuItem
                         onClick={() =>
-                          downloadFile(
+                          void downloadFile(
                             entry.kind === "file"
                               ? browser.downloadUrl(entry)
                               : browser.zipUrlFor([entry]),

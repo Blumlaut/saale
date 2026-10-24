@@ -12,7 +12,6 @@ export default defineConfig({
       NODE_ENV: "test",
     },
     include: ["__tests__/**/*.test.{ts,tsx}"],
-    isolate: false,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

@@ -174,7 +174,7 @@ describe("runSetupScript", () => {
   it("runs the script in the checkout with a login shell", async () => {
     mocks.runInWorkspace.mockResolvedValue({ stdout: "installed", stderr: "", exitCode: 0 });
 
-    expect(await runSetupScript(USER, WORKTREE, "npm install")).toBe(true);
+    expect(await runSetupScript(USER, WORKTREE, "npm install")).toEqual({ ok: true });
     expect(mocks.runInWorkspace).toHaveBeenCalledWith(USER, {
       cwd: WORKTREE,
       command: "bash -lc 'npm install'",
@@ -190,13 +190,31 @@ describe("runSetupScript", () => {
       exitCode: 1,
     });
 
-    expect(await runSetupScript(USER, WORKTREE, "npm install")).toBe(false);
+    // The exit status and what it printed travel with the failure: the sidebar
+    // shows them, and neither can be recovered from a bare `false`.
+    expect(await runSetupScript(USER, WORKTREE, "npm install")).toEqual({
+      ok: false,
+      exitCode: 1,
+      output: "npm ERR! could not resolve",
+    });
     expect(error).toHaveBeenCalledWith(expect.stringContaining("exited 1"));
     error.mockRestore();
   });
 
+  it("reports a script that never got to run", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.runInWorkspace.mockRejectedValue(new Error("sandbox is down"));
+
+    expect(await runSetupScript(USER, WORKTREE, "npm install")).toEqual({
+      ok: false,
+      exitCode: null,
+      output: "sandbox is down",
+    });
+    error.mockRestore();
+  });
+
   it("runs nothing when there is no script", async () => {
-    expect(await runSetupScript(USER, WORKTREE, null)).toBe(true);
+    expect(await runSetupScript(USER, WORKTREE, null)).toEqual({ ok: true });
     expect(mocks.runInWorkspace).not.toHaveBeenCalled();
   });
 });
