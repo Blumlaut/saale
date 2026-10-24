@@ -7,6 +7,22 @@ of them. It runs on your own server, with your own mail and calendar accounts.
 The agent is [Pi](https://github.com/earendil-works/pi-coding-agent); every command it runs
 executes inside a Docker container that holds one user's files and nothing else.
 
+## Screenshots
+
+One shell for every module: a left rail to pick the module, and a workspace for it.
+
+**Chat** — a conversation with the agent. Answers stream in as markdown, and each
+turn shows the tools it used. Here it drafted a launch note, checked the calendar
+and the mail to pick a send time, and is ready to send it.
+
+![Chat](docs/screenshots/chat.png)
+
+**Coder** — a chat that works in a git worktree of one of your repos. The panel on the
+right shows the branch and its uncommitted changes, the project's scripts, and the
+recent commits.
+
+![Coder](docs/screenshots/coder.png)
+
 ## What it does
 
 - **Chat with tools** — streaming answers, a model per purpose, and tools for mail,
