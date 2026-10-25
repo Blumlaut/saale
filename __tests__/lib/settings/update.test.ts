@@ -60,6 +60,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     toolPolicies: null,
     toolExposure: null,
     sidebarItems: null,
+    pushNotifications: null,
     features: null,
     updatedAt: new Date(0),
     ...overrides,
@@ -184,6 +185,17 @@ describe("setSetting", () => {
     expect(mocks.evictUserSessions).toHaveBeenCalledWith(USER_ID);
   });
 
+  it("turns one notification category off without touching the others", async () => {
+    const view = await setSetting(USER_ID, "notifications.email", false);
+
+    expect(view.value).toBe(false);
+    expect(lastArgs(mocks.updateUserSettings).data).toEqual({
+      pushNotifications: { email: false },
+    });
+    // A notification switch does not shape an agent session.
+    expect(mocks.evictUserSessions).not.toHaveBeenCalled();
+  });
+
   it("does not evict for a setting sessions do not read", async () => {
     await setSetting(USER_ID, "theme", "light");
 
@@ -271,6 +283,16 @@ describe("applyUserSettingsPatch", () => {
     await applyUserSettingsPatch(USER_ID, { sidebarItems: null });
 
     expect(mocks.evictUserSessions).not.toHaveBeenCalled();
+  });
+
+  it("keeps a notification switch sparse on the column it shares", async () => {
+    await applyUserSettingsPatch(USER_ID, {
+      pushNotifications: { chatDone: true, coderDone: true, calendar: true, email: false },
+    });
+
+    expect(lastArgs(mocks.updateUserSettings).data).toEqual({
+      pushNotifications: { email: false },
+    });
   });
 
   it("returns the current row unchanged when no known column is patched", async () => {

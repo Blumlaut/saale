@@ -5,6 +5,8 @@ export type { ToolConfig };
 export type { ToolExposureConfig };
 import type { ToolPolicy } from "@/lib/pi/tool-infos";
 export type { ToolPolicy };
+import type { NotificationPreferences } from "@/lib/notifications/preferences";
+export type { NotificationPreferences };
 
 export interface PurposeModelSelection {
   provider: string;
@@ -29,6 +31,8 @@ export interface UserSettings {
   coderToolConfig: ToolConfig | null;
   toolPolicies: Record<string, ToolPolicy> | null;
   toolExposure: ToolExposureConfig | null;
+  /** Sparse push switches: a category equal to its default is left out. */
+  pushNotifications: Partial<NotificationPreferences> | null;
 }
 
 export interface AvailableModel {

@@ -62,6 +62,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     toolPolicies: null,
     toolExposure: null,
     sidebarItems: null,
+    pushNotifications: null,
     features: null,
     updatedAt: new Date(0),
     ...overrides,

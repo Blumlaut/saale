@@ -53,6 +53,11 @@ import { ALL_TOOL_INFOS, type ToolPolicy } from "@/lib/pi/tool-infos";
 import { getAllPurposes } from "@/lib/pi/purposes";
 import { normalizeToolExposure } from "@/lib/pi/tool-exposure-rules";
 import { FEATURES, normalizeFeatureOverrides } from "@/lib/permissions/features";
+import {
+  isCategoryEnabled,
+  normalizeNotificationPreferences,
+  NOTIFICATION_CATEGORIES,
+} from "@/lib/notifications/preferences";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -214,6 +219,7 @@ const GROUP = {
   tools: "tools",
   coder: "coder",
   sidebar: "sidebar",
+  notifications: "notifications",
   admin: "admin",
   plugins: "plugins",
 } as const;
@@ -541,6 +547,30 @@ function sidebarProperties(): UserProperty[] {
   }));
 }
 
+/** `notifications.<category>`. which push notifications a user wants. */
+function notificationProperties(): UserProperty[] {
+  return NOTIFICATION_CATEGORIES.map((category) => ({
+    key: `notifications.${category.key}`,
+    group: GROUP.notifications,
+    label: category.label,
+    description: `${category.description} Set to false to stop sending it, or null to restore the default (true).`,
+    columns: ["pushNotifications"],
+    apply: "none" as const,
+    scope: "user" as const,
+    schema: z.boolean(),
+    read: (row) => isCategoryEnabled(row.pushNotifications, category.key),
+    write: (row, value) => {
+      const preferences = normalizeNotificationPreferences(row.pushNotifications);
+      if (value === null) {
+        delete preferences[category.key];
+      } else {
+        preferences[category.key] = Boolean(value);
+      }
+      return { pushNotifications: orDbNull(preferences) };
+    },
+  }));
+}
+
 /** Store a layout, or clear the column when it is the default. */
 export function sidebarColumnValue(entries: readonly SidebarNavEntry[]): JsonColumnValue {
   return isDefaultSidebarNav(entries)
@@ -687,6 +717,7 @@ export const USER_PROPERTIES: readonly UserProperty[] = [
   ...toolPolicyProperties(),
   ...coderCategoryProperties(),
   ...sidebarProperties(),
+  ...notificationProperties(),
 ];
 
 export const ADMIN_PROPERTIES: readonly AdminProperty[] = ADMIN_PROPERTY_DEFINITIONS;

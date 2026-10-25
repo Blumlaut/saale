@@ -1,9 +1,7 @@
 import { prisma } from "@/lib/db";
-import { getRedis } from "@/lib/redis";
 import { sendTelegramToUser } from "@/lib/telegram/notify";
 import type { TelegramDeliveryFailure } from "@/lib/telegram/notify";
-
-const NOTIFICATION_KEY = "notifications:";
+import { addInboxNotification } from "@/lib/notifications/inbox";
 
 export const metadata = {
   type: "task_reminders",
@@ -40,8 +38,6 @@ export async function handler(params: {
 
   let telegramSent = 0;
   let notificationsSent = 0;
-  const redis = getRedis();
-  const key = `${NOTIFICATION_KEY}${userId}`;
 
   for (const task of tasks) {
     const dueDate = new Date(task.dueDate!);
@@ -80,18 +76,12 @@ export async function handler(params: {
       );
     }
 
-    const notification = {
-      id: crypto.randomUUID(),
+    await addInboxNotification(userId, {
       type: "task_reminder",
       title,
       message,
       data: { taskId: task.id },
-      read: false,
-      createdAt: now.toISOString(),
-    };
-
-    await redis.lpush(key, JSON.stringify(notification));
-    await redis.ltrim(key, 0, 99);
+    });
     notificationsSent++;
   }
 
