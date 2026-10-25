@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderGit2, MoreVertical, Plus, Settings, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,15 +35,8 @@ export function ProjectList() {
   const router = useRouter();
   const { projects, loading, error, reload } = useProjects();
   const [creating, setCreating] = useState(false);
-  // The setup flow is the onboarding: an empty module opens it by itself, and
-  // closing it leaves the normal empty state behind.
-  const [dismissed, setDismissed] = useState(false);
   const [deleting, setDeleting] = useState<CoderProjectSummary | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!loading && !error && projects.length === 0 && !dismissed) setCreating(true);
-  }, [loading, error, projects.length, dismissed]);
 
   const created = async (result: { project: { id: string }; prompt: string | null }) => {
     if (!result.prompt) {
@@ -95,13 +88,17 @@ export function ProjectList() {
             {error && <p className="text-destructive p-4 text-sm break-words">{error}</p>}
 
             {!error && !loading && projects.length === 0 && (
-              <div className="flex flex-col items-center gap-3 p-8 text-center">
+              <div className="flex flex-col items-center gap-3 p-6 text-center md:p-8">
                 <FolderGit2 className="text-muted-foreground h-8 w-8" />
-                <p className="text-sm font-medium">No projects yet.</p>
-                <p className="text-muted-foreground max-w-sm text-sm">
-                  A project is a git repo in your workspace. Each chat works in a checkout of it,
-                  with a terminal, the files it changes and a branch of its own.
-                </p>
+                <p className="text-sm font-medium">Set up coder mode.</p>
+                <div className="text-muted-foreground max-w-md text-left text-sm">
+                  <p>A project is a git repo in your workspace.</p>
+                  <p className="mt-2">
+                    Point it at a repo or start from nothing, decide whether each chat gets a branch
+                    of its own, and give the first chat a prompt to work on. You can change all of
+                    it later under the project&apos;s settings.
+                  </p>
+                </div>
                 <Button size="sm" onClick={() => setCreating(true)}>
                   <Plus className="h-4 w-4" />
                   Set up a project
@@ -183,14 +180,7 @@ export function ProjectList() {
         onSaved={reload}
       />
 
-      <ProjectCreateDialog
-        open={creating}
-        onOpenChange={(open) => {
-          setCreating(open);
-          if (!open) setDismissed(true);
-        }}
-        onCreated={created}
-      />
+      <ProjectCreateDialog open={creating} onOpenChange={setCreating} onCreated={created} />
 
       <ForceDeleteDialog
         open={deleting !== null}
