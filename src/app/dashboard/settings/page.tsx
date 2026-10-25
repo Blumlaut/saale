@@ -16,6 +16,7 @@ import {
   Brain,
   Shield,
   Plug,
+  Bell,
 } from "lucide-react";
 import { AccountTab } from "./tabs/account-tab";
 import { AiModelsTab } from "./tabs/ai-models-tab";
@@ -26,6 +27,7 @@ import { AppearanceTab } from "./tabs/appearance-tab";
 import { ToolsTab } from "./tabs/tools-tab";
 import { MemoriesTab } from "./tabs/memories-tab";
 import { IntegrationsTab } from "./tabs/integrations-tab";
+import { NotificationsTab } from "./tabs/notifications-tab";
 import type { UserSettings } from "./types";
 
 const SETTINGS_TABS = [
@@ -33,6 +35,7 @@ const SETTINGS_TABS = [
   "persona",
   "email",
   "calendar",
+  "notifications",
   "appearance",
   "memories",
   "account",
@@ -148,6 +151,10 @@ export default function SettingsPage() {
               <Calendar className="h-4 w-4" />
               Calendar
             </TabsTrigger>
+            <TabsTrigger value="notifications" className="gap-2">
+              <Bell className="h-4 w-4" />
+              Notifications
+            </TabsTrigger>
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="h-4 w-4" />
               Appearance
@@ -198,6 +205,10 @@ export default function SettingsPage() {
 
         <TabsContent value="calendar" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
           <CalendarTab />
+        </TabsContent>
+
+        <TabsContent value="notifications" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <NotificationsTab settings={settings} onPatch={handlePatchSettings} saving={saving} />
         </TabsContent>
 
         <TabsContent value="appearance" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
