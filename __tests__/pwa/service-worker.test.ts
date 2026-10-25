@@ -56,10 +56,20 @@ interface FetchEventRequest {
   mode: string;
 }
 
+/** A window client the worker can see: the running app, on screen or not. */
+interface FakeWindowClient {
+  url: string;
+  visibilityState: "visible" | "hidden";
+  focus: () => Promise<void>;
+  navigate: (url: string) => Promise<unknown>;
+}
+
 interface HarnessOptions {
   mode: string;
   /** Resolves a request to a response; rejecting simulates being offline. */
   network?: (url: string) => Promise<FakeResponse> | FakeResponse;
+  /** Open app windows, as `clients.matchAll` reports them. */
+  windows?: FakeWindowClient[];
 }
 
 /** The pages and assets a healthy deployment serves. */
@@ -69,7 +79,7 @@ function siteNetwork(url: string): FakeResponse {
   return new FakeResponse("asset");
 }
 
-function createHarness({ mode, network = siteNetwork }: HarnessOptions) {
+function createHarness({ mode, network = siteNetwork, windows = [] }: HarnessOptions) {
   const listeners = new Map<string, (event: never) => void>();
   const cacheStores = new Map<string, Map<string, FakeResponse>>();
   const fetched: string[] = [];
@@ -117,13 +127,27 @@ function createHarness({ mode, network = siteNetwork }: HarnessOptions) {
     return network(url);
   });
 
+  const notifications: Array<{ title: string; options: Record<string, unknown> }> = [];
+  const openedWindows: string[] = [];
+
   const self = {
     location: { href: `http://localhost/sw.js?mode=${mode}`, origin: "http://localhost" },
     addEventListener: (type: string, handler: (event: never) => void) => {
       listeners.set(type, handler);
     },
     skipWaiting: vi.fn(async () => {}),
-    clients: { claim: vi.fn(async () => {}) },
+    clients: {
+      claim: vi.fn(async () => {}),
+      matchAll: vi.fn(async () => windows),
+      openWindow: vi.fn(async (url: string) => {
+        openedWindows.push(url);
+      }),
+    },
+    registration: {
+      showNotification: vi.fn(async (title: string, options: Record<string, unknown>) => {
+        notifications.push({ title, options });
+      }),
+    },
   };
 
   const consoleStub = {
@@ -173,13 +197,44 @@ function createHarness({ mode, network = siteNetwork }: HarnessOptions) {
     };
   }
 
+  /** Deliver a push message, as the push service would. */
+  async function dispatchPush(payload: unknown) {
+    const pending: Promise<unknown>[] = [];
+    const handler = listeners.get("push");
+    if (!handler) throw new Error("No push listener registered");
+
+    handler({
+      data: payload === null ? null : { json: () => payload },
+      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+    } as never);
+    await Promise.all(pending);
+  }
+
+  /** Click a shown notification. */
+  async function dispatchNotificationClick(data: unknown) {
+    const pending: Promise<unknown>[] = [];
+    const handler = listeners.get("notificationclick");
+    if (!handler) throw new Error("No notificationclick listener registered");
+
+    handler({
+      notification: { data, close: vi.fn() },
+      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+    } as never);
+    await Promise.all(pending);
+  }
+
   return {
     errors,
     fetchStub,
     cacheStores,
     skipWaiting: self.skipWaiting,
     claim: self.clients.claim,
+    matchAll: self.clients.matchAll,
+    notifications,
+    openedWindows,
     lifecycle,
+    dispatchPush,
+    dispatchNotificationClick,
     dispatchFetch,
     cachedUrls: (name: string) => [...(cacheStores.get(name)?.keys() ?? [])],
     seedCache: (name: string, entries: Record<string, FakeResponse>) => {
@@ -347,5 +402,100 @@ describe("service worker asset caching", () => {
     const result = await harness.dispatchFetch(asset(CHUNK_JS));
 
     expect(result.intercepted).toBe(false);
+  });
+});
+
+// ─── Push notifications ──────────────────────────────────────────────────────
+
+/** A window client that records what the worker did to it. */
+function openWindow(url: string, visibilityState: "visible" | "hidden" = "hidden") {
+  return {
+    url,
+    visibilityState,
+    focus: vi.fn(async () => {}),
+    navigate: vi.fn(async () => {}),
+  };
+}
+
+const PUSH_PAYLOAD = {
+  title: "Finished responding",
+  body: "Weekly planning",
+  url: "/dashboard/chat/chat-1",
+  tag: "chat-chat-1",
+};
+
+describe("service worker push", () => {
+  it("renders the payload as a system notification", async () => {
+    const harness = createHarness({ mode: "production" });
+
+    await harness.dispatchPush(PUSH_PAYLOAD);
+
+    expect(harness.notifications).toHaveLength(1);
+    expect(harness.notifications[0]).toMatchObject({
+      title: PUSH_PAYLOAD.title,
+      options: {
+        body: PUSH_PAYLOAD.body,
+        tag: PUSH_PAYLOAD.tag,
+        data: { url: PUSH_PAYLOAD.url },
+      },
+    });
+  });
+
+  it("stays quiet while the app is on screen", async () => {
+    const harness = createHarness({
+      mode: "production",
+      windows: [openWindow("/dashboard", "visible")],
+    });
+
+    await harness.dispatchPush(PUSH_PAYLOAD);
+
+    expect(harness.notifications).toHaveLength(0);
+  });
+
+  it("still shows one when the open window is in the background", async () => {
+    const harness = createHarness({
+      mode: "production",
+      windows: [openWindow("/dashboard", "hidden")],
+    });
+
+    await harness.dispatchPush(PUSH_PAYLOAD);
+
+    expect(harness.notifications).toHaveLength(1);
+  });
+
+  it("logs a payload it cannot read instead of failing the event", async () => {
+    const harness = createHarness({ mode: "production" });
+
+    await expect(harness.dispatchPush(null)).resolves.toBeUndefined();
+
+    expect(harness.notifications).toHaveLength(0);
+    expect(harness.errors.length).toBeGreaterThan(0);
+  });
+
+  it("opens the notification's page when no window is open", async () => {
+    const harness = createHarness({ mode: "production" });
+
+    await harness.dispatchNotificationClick({ url: PUSH_PAYLOAD.url });
+
+    expect(harness.openedWindows).toEqual(["http://localhost/dashboard/chat/chat-1"]);
+  });
+
+  it("focuses an open window and navigates it to the target", async () => {
+    const window = openWindow("http://localhost/dashboard");
+    const harness = createHarness({ mode: "production", windows: [window] });
+
+    await harness.dispatchNotificationClick({ url: PUSH_PAYLOAD.url });
+
+    expect(window.focus).toHaveBeenCalled();
+    expect(window.navigate).toHaveBeenCalledWith("http://localhost/dashboard/chat/chat-1");
+    expect(harness.openedWindows).toEqual([]);
+  });
+
+  it("opens the app root when the notification carries no page", async () => {
+    const harness = createHarness({ mode: "production" });
+
+    await harness.dispatchNotificationClick(undefined);
+
+    expect(harness.openedWindows).toEqual(["http://localhost/"]);
   });
 });

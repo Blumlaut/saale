@@ -50,6 +50,7 @@ model User {
   mcpOAuthCredentials McpOAuthCredential[]
   councils           Council[]
   coderProjects      CoderProject[]
+  pushSubscriptions  PushSubscription[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -494,11 +495,40 @@ model AppSettings {
   /// This account's feature switches (sparse): { "mail": false }. Absent keys
   /// follow the instance defaults.
   features              Json?
+  /// Which push notifications are wanted (sparse): { "chatDone": false }.
+  /// Absent keys follow the defaults in `src/lib/notifications/preferences.ts`.
+  pushNotifications     Json?
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   updatedAt            DateTime @updatedAt
 
   @@map("AppSettings")
+}
+
+// ─── Web Push ──────────────────────────────────────────────────
+
+/// One browser's Web Push endpoint. A user has one row per device, and one per
+/// browser profile on that device: a subscription belongs to the browser that
+/// created it, so a laptop and a phone store two rows.
+///
+/// `endpoint` is the push service's URL and `p256dh`/`auth` are the browser's
+/// keys, which together are what a payload is encrypted for. A push service
+/// answers 404/410 once a subscription is gone, which is what prunes the row.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  /// unique across users. one browser is subscribed for one account at a time.
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  /// Browser label, so a user can tell their devices apart.
+  userAgent String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("PushSubscription")
 }
 
 // ─── Provider API Keys ─────────────────────────────────────────
@@ -614,6 +644,8 @@ model CalendarEvent {
 
   // Alerts
   alerts           String?    @db.Text // JSON array of { triggerMinutes, action }
+  /// When this event's reminder was pushed, so the sweep sends it once.
+  remindedAt       DateTime?
 
   // Origin tracking
   source           String     @default("manual") // "manual" | "caldav" | "email_extraction" | "ics_import"
