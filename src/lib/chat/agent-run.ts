@@ -29,6 +29,7 @@ import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
+import { notifyChatFinished } from "@/lib/notifications/chat-finished";
 
 /** A pooled chat agent, as the agent pool hands it out. */
 export type PooledChatSession = Awaited<ReturnType<typeof createAndPool>>;
@@ -194,6 +195,10 @@ export async function dispatchChatRun(options: {
     ]);
     entry.promptInFlight = false;
     options.log?.("prompt", "session.prompt() settled");
+    // Reaches a device whose user has walked away from the conversation. Not
+    // awaited: the run is over either way, and a slow push service must not
+    // hold the stream open.
+    void notifyChatFinished({ userId: options.userId, sessionId: options.sessionId });
     return true;
   } catch (err) {
     entry.promptInFlight = false;
