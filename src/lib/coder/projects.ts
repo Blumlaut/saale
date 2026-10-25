@@ -15,7 +15,7 @@
 import type { CoderProject, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ensureWorkspaceDirectory, writeWorkspaceFile } from "@/lib/sandbox/workspace";
-import { GitError, cloneRepo, initRepo, runGit } from "./git";
+import { GitError, cloneRepo, initRepo, refSha, runGit } from "./git";
 import { ensureGitconfig, gitIdentityFor } from "./gitconfig";
 import { CHAT_MODES, normalizeChatMode, type ChatMode } from "./checkout";
 import { CoderProjectError } from "./project-error";
@@ -80,6 +80,9 @@ export interface CreateProjectInput {
   name: string;
   cloneUrl?: string | null | undefined;
   chatMode?: ChatMode | undefined;
+  /** The branch new chats start from. Unset keeps the repo's own. */
+  defaultBranch?: string | null | undefined;
+  setupScript?: string | null | undefined;
 }
 
 /** A project as the list shows it. */
@@ -243,6 +246,8 @@ export async function createProject(
   const name = cleanName(input.name);
   const cloneUrl = cleanCloneUrl(input.cloneUrl);
   const chatMode = parseChatMode(input.chatMode);
+  const setupScript = parseSetupScript(input.setupScript);
+  const branchOverride = input.defaultBranch ? cleanBranch(input.defaultBranch) : null;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -264,6 +269,13 @@ export async function createProject(
       repoPath = repoDirFor(userId, slug);
       try {
         defaultBranch = await prepareRepo(userId, { dir: repoPath, cloneUrl });
+        if (branchOverride && branchOverride !== defaultBranch) {
+          const found = await refSha(userId, repoPath, branchOverride);
+          if (!found) {
+            throw new CoderProjectError(`The branch ${branchOverride} is not in this repo`);
+          }
+          defaultBranch = branchOverride;
+        }
       } catch (err) {
         if (err instanceof GitError) {
           console.error(`Failed to prepare the repo for "${name}" (${userId}):`, err);
@@ -283,6 +295,7 @@ export async function createProject(
           originUrl: cloneUrl,
           defaultBranch,
           chatMode,
+          setupScript,
         },
       });
     } catch (err) {

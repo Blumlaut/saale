@@ -98,7 +98,8 @@ export default function CoderLayout() {
             <FolderGit2 className="text-muted-foreground h-8 w-8" />
             <p className="text-sm font-medium">No chat open</p>
             <p className="text-muted-foreground max-w-sm text-sm">
-              Each chat gets its own worktree.
+              A chat works in a checkout of the project, with a terminal and the files it changed
+              beside it.
             </p>
             <Button size="sm" onClick={newChat}>
               New coder chat

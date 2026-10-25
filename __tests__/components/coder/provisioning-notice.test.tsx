@@ -51,7 +51,7 @@ describe("ProvisioningNotice", () => {
 
     render(<ProvisioningNotice sessionId="s-1" waiting />);
 
-    expect(await screen.findByText("Checking out the worktree")).toBeTruthy();
+    expect(await screen.findByText("Preparing the checkout")).toBeTruthy();
   });
 
   it("disappears once the build is over", async () => {

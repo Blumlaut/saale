@@ -12,9 +12,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, patchJson } from "@/lib/http";
+import type { CoderChatMode } from "./use-coder-data";
 
 /** One env file as the panel edits it. `key` survives a path being retyped. */
 interface EnvFileDraft {
@@ -32,6 +34,7 @@ interface SettingsResponse {
     defaultBranch: string;
     setupScript: string | null;
     envFiles: { path: string; content: string }[];
+    chatMode: CoderChatMode;
   };
 }
 
@@ -61,6 +64,7 @@ export function ProjectSettingsSheet({
   const [name, setName] = useState("");
   const [branch, setBranch] = useState("");
   const [repoPath, setRepoPath] = useState("");
+  const [ownWorktree, setOwnWorktree] = useState(true);
   const [files, setFiles] = useState<EnvFileDraft[]>([]);
   const [script, setScript] = useState("");
   const nextKey = useRef(0);
@@ -77,6 +81,7 @@ export function ProjectSettingsSheet({
         setName(data.project.name);
         setBranch(data.project.defaultBranch);
         setRepoPath(data.project.repoPath);
+        setOwnWorktree(data.project.chatMode !== "repo");
         setScript(data.project.setupScript ?? "");
         setFiles(
           data.project.envFiles.map((file) => ({
@@ -120,6 +125,7 @@ export function ProjectSettingsSheet({
       await patchJson<SettingsResponse>(`/api/coder/projects/${encodeURIComponent(projectId)}`, {
         name: name.trim(),
         defaultBranch: branch.trim(),
+        chatMode: ownWorktree ? ("worktree" as const) : ("repo" as const),
         envFiles: files.map(({ path: filePath, content }) => ({
           path: filePath.trim(),
           content,
@@ -151,6 +157,7 @@ export function ProjectSettingsSheet({
             <div className="border-b px-4 py-2 md:px-6">
               <TabsList>
                 <TabsTrigger value="general">General</TabsTrigger>
+                <TabsTrigger value="chats">Chats</TabsTrigger>
                 <TabsTrigger value="environment">Environment</TabsTrigger>
                 <TabsTrigger value="setup">Setup</TabsTrigger>
               </TabsList>
@@ -177,6 +184,24 @@ export function ProjectSettingsSheet({
                         disk.
                       </p>
                     </div>
+                  </TabsContent>
+
+                  <TabsContent value="chats" className="flex flex-col gap-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <Label htmlFor="project-worktree">Own worktree per chat</Label>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          Every chat gets a branch and a directory of its own. Turn it off and the
+                          chats run in the project&apos;s checkout, one branch for all of them.
+                        </p>
+                      </div>
+                      <Switch
+                        id="project-worktree"
+                        className="mt-1"
+                        checked={ownWorktree}
+                        onCheckedChange={setOwnWorktree}
+                      />
+                    </div>
 
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="project-branch">Default branch</Label>
@@ -188,7 +213,8 @@ export function ProjectSettingsSheet({
                         maxLength={200}
                       />
                       <p className="text-muted-foreground text-xs">
-                        New chats branch from it. Chats that already have a checkout keep theirs.
+                        What a new chat&apos;s branch starts from. Chats that already have a
+                        checkout keep theirs.
                       </p>
                     </div>
                   </TabsContent>

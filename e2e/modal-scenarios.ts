@@ -1191,7 +1191,11 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "coder · new project",
     path: "/dashboard/coder",
     sources: [CODER_CREATE_DIALOG],
-    open: (page) => click(page, 'button:has-text("New project")'),
+    mock: mockCoderProjects,
+    open: async (page) => {
+      await click(page, 'button:has-text("New project")');
+      await click(page, 'button:has-text("Next")');
+    },
   },
   {
     name: "coder · project settings",

@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/http";
 import { CHAT_RENAMED_EVENT, CHAT_SESSIONS_DELETED_EVENT } from "@/lib/chat/session-events";
 
+/** How a project hands its chats their checkout. */
+export type CoderChatMode = "worktree" | "repo";
+
 /** A project as the list shows it. */
 export interface CoderProjectSummary {
   id: string;
@@ -11,6 +14,7 @@ export interface CoderProjectSummary {
   slug: string;
   repoPath: string;
   defaultBranch: string;
+  chatMode: CoderChatMode;
   worktreeCount: number;
   chatCount: number;
   lastActivityAt: string | null;
@@ -35,6 +39,9 @@ export interface CoderProjectDetail {
     repoPath: string;
     defaultBranch: string;
     originUrl: string | null;
+    envFiles: { path: string; content: string }[];
+    setupScript: string | null;
+    chatMode: CoderChatMode;
   };
   chats: CoderProjectChat[];
 }
@@ -85,7 +92,7 @@ export interface CoderProvisioning {
 
 /** `GET /api/coder/sessions/:id/status`. */
 export interface CoderSessionState {
-  worktree: { path: string; branch: string; baseSha: string } | null;
+  worktree: { path: string; branch: string; baseSha: string; mode: CoderChatMode } | null;
   project: { id: string; name: string; slug: string } | null;
   branch: string;
   head: string;

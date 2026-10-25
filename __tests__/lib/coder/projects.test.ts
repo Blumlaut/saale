@@ -17,6 +17,7 @@ const {
   mockInitRepo,
   mockCloneRepo,
   mockRunGit,
+  mockRefSha,
   mockWriteWorkspaceFile,
   mockEnsureWorkspaceDirectory,
   mockEnsureGitconfig,
@@ -50,6 +51,7 @@ const {
     mockInitRepo: vi.fn(),
     mockCloneRepo: vi.fn(),
     mockRunGit: vi.fn(),
+    mockRefSha: vi.fn(),
     mockWriteWorkspaceFile: vi.fn(),
     mockEnsureWorkspaceDirectory: vi.fn(),
     mockEnsureGitconfig: vi.fn(),
@@ -73,6 +75,7 @@ vi.mock("@/lib/coder/git", () => ({
   initRepo: mockInitRepo,
   cloneRepo: mockCloneRepo,
   runGit: mockRunGit,
+  refSha: mockRefSha,
 }));
 
 vi.mock("@/lib/coder/gitconfig", async (importOriginal) => ({
@@ -110,11 +113,41 @@ beforeEach(() => {
   mockInitRepo.mockResolvedValue(undefined);
   mockCloneRepo.mockResolvedValue(undefined);
   mockRunGit.mockResolvedValue({ stdout: "main\n", stderr: "", exitCode: 0 });
+  mockRefSha.mockResolvedValue("sha-main");
   mockWriteWorkspaceFile.mockResolvedValue("unused");
   mockEnsureWorkspaceDirectory.mockResolvedValue("unused");
   mockProjectCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
     Promise.resolve({ id: "project-1", createdAt: NOW, updatedAt: NOW, ...data }),
   );
+});
+
+describe("createProject: what the setup flow asks", () => {
+  it("stores the checkout mode and the setup script it was given", async () => {
+    const project = await createProject(USER, {
+      name: "Saale Web",
+      chatMode: "repo",
+      setupScript: "npm ci",
+    });
+
+    expect(project.chatMode).toBe("repo");
+    expect(project.setupScript).toBe("npm ci");
+  });
+
+  it("keeps a default branch the repo really has", async () => {
+    const project = await createProject(USER, { name: "Saale Web", defaultBranch: "develop" });
+
+    expect(mockRefSha).toHaveBeenCalledWith(USER, "projects/saale-web", "develop");
+    expect(project.defaultBranch).toBe("develop");
+  });
+
+  it("refuses a default branch the repo does not have", async () => {
+    mockRefSha.mockResolvedValue("");
+
+    await expect(
+      createProject(USER, { name: "Saale Web", defaultBranch: "develop" }),
+    ).rejects.toThrow(/not in this repo/);
+    expect(mockProjectCreate).not.toHaveBeenCalled();
+  });
 });
 
 describe("createProject: init", () => {
