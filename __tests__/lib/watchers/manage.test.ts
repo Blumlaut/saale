@@ -241,6 +241,41 @@ describe("where a fire is delivered", () => {
     expect(written?.retentionMinutes).toBe(60);
   });
 
+  it("keeps the chat a fire reports into, and no other", async () => {
+    await createWatcher({
+      userId: "user-1",
+      approvedByUser: true,
+      fields: {
+        name: "Review pull requests",
+        script,
+        cronExpression,
+        deliver: "coder",
+        projectId: "project-1",
+        sessionId: "chat-1",
+      },
+    });
+
+    // The chat it was created from is not a target, so deleting that chat must
+    // not delete a watcher that never reported into it.
+    const writtenCoder = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(writtenCoder?.sessionId).toBeNull();
+
+    await createWatcher({
+      userId: "user-1",
+      approvedByUser: true,
+      fields: {
+        name: "Watch the inbox",
+        script,
+        cronExpression,
+        deliver: "chat",
+        sessionId: "chat-1",
+      },
+    });
+
+    const writtenChat = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(writtenChat?.sessionId).toBe("chat-1");
+  });
+
   it("clears the project when the delivery moves away from a project", async () => {
     vi.mocked(prisma.scriptWatcher.findFirst).mockResolvedValueOnce({
       id: "w-1",
@@ -283,6 +318,8 @@ describe("where a fire is delivered", () => {
     const written = vi.mocked(prisma.scriptWatcher.update).mock.calls.at(-1)?.[0]?.data;
     expect(written?.deliver).toBe("silent");
     expect(written?.projectId).toBeNull();
+    // Moving off a chat fire drops the chat it used to answer in.
+    expect(written?.sessionId).toBeNull();
   });
 
   it("keeps the default model when an update does not name one", async () => {

@@ -817,8 +817,8 @@ model ScriptWatcher {
 
   /// "chat" | "silent" | "coder": where a fire goes.
   deliver        String  @default("chat")
-  /// The conversation a `chat` fire is posted into, and the context the script
-  /// runs in. Deleting the conversation deletes its watchers.
+  /// The conversation a `chat` fire is posted into, and the context its script
+  /// runs in. Only a `chat` watcher has one, so only it goes with the chat.
   sessionId      String?
   /// The project a `coder` fire dispatches into.
   projectId      String?
