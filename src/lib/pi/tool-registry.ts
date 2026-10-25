@@ -19,6 +19,7 @@ import { createWatcherTools } from "./tools/watcher-tools";
 import { createTelegramTools } from "./tools/telegram-tools";
 import { createInfraTools } from "./tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
+import { createProjectTools } from "@/lib/coder/tools";
 
 // ─── Tool Factory Registry ───────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   agentJobs: (userId) => createAgentJobTools(userId),
   watchers: (userId, sessionId) => createWatcherTools(userId, sessionId),
   infra: (userId) => createInfraTools(userId),
+  coder: (userId, sessionId) => createProjectTools(userId, sessionId),
   settings: (userId, sessionId) => createSettingsTools(userId, sessionId),
 };
 

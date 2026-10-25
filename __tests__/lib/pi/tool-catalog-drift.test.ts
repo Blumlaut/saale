@@ -24,6 +24,7 @@ import { createWatcherTools } from "@/lib/pi/tools/watcher-tools";
 import { createTelegramTools } from "@/lib/pi/tools/telegram-tools";
 import { createInfraTools } from "@/lib/pi/tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
+import { createProjectTools } from "@/lib/coder/tools";
 import { CODER_TOOL_DEFAULTS } from "@/lib/pi/coder-tools";
 import { createSandboxScopedTools } from "@/lib/pi/session";
 
@@ -62,6 +63,7 @@ async function implementedTools(): Promise<ToolDefinition[]> {
     createWatcherTools(userId, sessionId),
     createTelegramTools(userId, sessionId),
     createInfraTools(userId),
+    createProjectTools(userId),
     createSettingsTools(userId),
   ];
 
@@ -178,6 +180,7 @@ describe("tool catalog ↔ implementation drift", () => {
       "mail_read",
       "mail_search",
       "model_list",
+      "project_list",
       "project_settings_get",
       "settings_list",
       "task_list_pending",
