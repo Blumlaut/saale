@@ -266,6 +266,13 @@ export function ChangesView({
           <span className="min-w-0 flex-1 truncate text-sm font-medium" title={state.project?.slug}>
             {state.project?.name ?? "—"}
           </span>
+          {/* The same checkout as every other chat of the project, which is
+              worth saying before someone commits on a shared branch. */}
+          {state.worktree?.mode === "repo" && (
+            <span className="text-muted-foreground shrink-0 font-mono text-[10px] tracking-wide uppercase">
+              shared
+            </span>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"

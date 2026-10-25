@@ -140,6 +140,16 @@ describe("createProject: what the setup flow asks", () => {
     expect(project.defaultBranch).toBe("develop");
   });
 
+  it("accepts a branch only the remote has, as a clone leaves the others", async () => {
+    mockRefSha.mockImplementation((_user: string, _dir: string, ref: string) =>
+      Promise.resolve(ref === "origin/develop" ? "sha-develop" : ""),
+    );
+
+    const project = await createProject(USER, { name: "Saale Web", defaultBranch: "develop" });
+
+    expect(project.defaultBranch).toBe("develop");
+  });
+
   it("refuses a default branch the repo does not have", async () => {
     mockRefSha.mockResolvedValue("");
 

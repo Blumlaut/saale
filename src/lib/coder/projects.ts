@@ -270,8 +270,11 @@ export async function createProject(
       try {
         defaultBranch = await prepareRepo(userId, { dir: repoPath, cloneUrl });
         if (branchOverride && branchOverride !== defaultBranch) {
-          const found = await refSha(userId, repoPath, branchOverride);
-          if (!found) {
+          // A clone checks out one branch and keeps the rest as `origin/*`, so
+          // a branch that only the remote has is still one a chat can start from.
+          const local = await refSha(userId, repoPath, branchOverride);
+          const remote = local ? "" : await refSha(userId, repoPath, `origin/${branchOverride}`);
+          if (!local && !remote) {
             throw new CoderProjectError(`The branch ${branchOverride} is not in this repo`);
           }
           defaultBranch = branchOverride;
