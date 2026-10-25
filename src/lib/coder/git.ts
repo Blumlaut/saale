@@ -580,3 +580,22 @@ export async function isBranchPushed(
   });
   return unpushed.stdout.trim() === "";
 }
+
+/**
+ * Delete one local branch.
+ *
+ * The commits go with it, so the caller checks for unpushed work first. The name
+ * is qualified with `refs/heads/` so a branch called `-D` stays a name.
+ */
+export async function deleteBranch(
+  userId: string,
+  options: {
+    repoDir: string;
+    branch: string;
+  },
+): Promise<void> {
+  await runGit(userId, {
+    cwd: options.repoDir,
+    args: ["branch", "-D", `refs/heads/${options.branch}`],
+  });
+}

@@ -43,8 +43,19 @@ export interface RespondInChatOptions {
 export interface RespondInChatResult {
   sessionId: string;
   title: string;
-  /** The target chat's reply; empty when the run produced no text. */
+  /** The turn's reply; empty when the run produced no text. */
   reply: string;
+  /**
+   * Whether the run left an assistant turn at all.
+   *
+   * A run can settle with nothing in the transcript: a provider failure the SDK
+   * retried away, or a turn whose whole attempt was discarded. A caller that
+   * needs an answer, a watcher fire among them, gets to tell that apart from an
+   * empty one.
+   */
+  answered: boolean;
+  /** The provider error the turn ended with, when it ended in one. */
+  error: string | null;
 }
 
 export async function respondInChat(options: RespondInChatOptions): Promise<RespondInChatResult> {
@@ -81,11 +92,13 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
   entry.promptInFlight = true;
 
   let settled = false;
+  let promptedAt: Date | null = null;
   const detachAbort = attachAbort(options.signal, entry.session);
   try {
     const userMessage = await prisma.chatMessage.create({
       data: { sessionId: chatSession.id, role: "user", content: message },
     });
+    promptedAt = userMessage.createdAt;
     await prisma.chatSession.update({
       where: { id: chatSession.id },
       data: { lastActivityAt: new Date(), messageCount: { increment: 1 } },
@@ -122,16 +135,26 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
   if (!settled) throw new Error(`Chat "${chatSession.title}" failed to respond`);
 
   // The tracker publishes `done` only after its pending DB writes settle, so
-  // waiting for teardown guarantees the reply is readable below.
+  // waiting for teardown guarantees the turn is readable below.
   await waitForPersistenceTeardown(chatSession.id);
 
-  const reply = await prisma.chatMessage.findFirst({
-    where: { sessionId: chatSession.id, role: "assistant" },
+  const turn = await prisma.chatMessage.findFirst({
+    where: {
+      sessionId: chatSession.id,
+      role: "assistant",
+      ...(promptedAt ? { createdAt: { gte: promptedAt } } : {}),
+    },
     orderBy: { createdAt: "desc" },
-    select: { content: true },
+    select: { content: true, errorMessage: true },
   });
 
-  return { sessionId: chatSession.id, title: chatSession.title, reply: reply?.content ?? "" };
+  return {
+    sessionId: chatSession.id,
+    title: chatSession.title,
+    reply: turn?.content ?? "",
+    answered: turn !== null,
+    error: turn?.errorMessage ?? null,
+  };
 }
 
 /** Refuse a chat that is already generating. */

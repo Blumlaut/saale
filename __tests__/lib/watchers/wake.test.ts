@@ -95,6 +95,8 @@ describe("deliverWake", () => {
       sessionId: "chat-1",
       title: "Trip planning",
       reply: "done",
+      answered: true,
+      error: null,
     });
   });
 

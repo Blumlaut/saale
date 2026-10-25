@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   removeWorktree: vi.fn(),
   deleteWorktreeDirectory: vi.fn(),
   isRepoFullyPushed: vi.fn(),
+  isBranchPushed: vi.fn(),
+  deleteBranch: vi.fn(),
   runInWorkspace: vi.fn(),
   pooledEntry: vi.fn(),
   removePooled: vi.fn(),
@@ -68,6 +70,8 @@ vi.mock("@/lib/coder/git", () => ({
   removeWorktree: mocks.removeWorktree,
   deleteWorktreeDirectory: mocks.deleteWorktreeDirectory,
   isRepoFullyPushed: mocks.isRepoFullyPushed,
+  isBranchPushed: mocks.isBranchPushed,
+  deleteBranch: mocks.deleteBranch,
   runInWorkspace: mocks.runInWorkspace,
   shellQuote: (value: string) => `'${value}'`,
 }));
@@ -92,7 +96,9 @@ beforeEach(async () => {
   process.env.SANDBOX_WORKSPACES_DIR = workspaceDir;
 
   vi.clearAllMocks();
-  mocks.findChat.mockResolvedValue({ projectId: "project-1" });
+  mocks.findChat.mockResolvedValue({ projectId: "project-1", origin: "user" });
+  mocks.isBranchPushed.mockResolvedValue(true);
+  mocks.deleteBranch.mockResolvedValue(undefined);
   mocks.findProject.mockResolvedValue({ repoPath: "projects/saale", name: "saale" });
   mocks.findWorktree.mockResolvedValue({
     sessionId: SESSION,
@@ -192,6 +198,41 @@ describe("removeChatWorktree", () => {
     expect(mocks.removeWorktree).not.toHaveBeenCalled();
     expect(mocks.deleteWorktreeDirectory).toHaveBeenCalledWith(USER, "worktrees/saale/c-1a2b3c4d");
     expect(mocks.updateWorktree).toHaveBeenCalled();
+  });
+
+  it("drops the branch of a watcher chat whose work is pushed", async () => {
+    mocks.findChat.mockResolvedValue({ projectId: "project-1", origin: "watcher" });
+    mocks.findWorktree.mockResolvedValue({
+      sessionId: SESSION,
+      projectId: "project-1",
+      path: "worktrees/saale/c-1a2b3c4d",
+      branch: "watch/pr-bot/c-1a2b3c4d",
+      status: "active",
+    });
+
+    await removeChatWorktree(USER, SESSION);
+
+    expect(mocks.deleteBranch).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      branch: "watch/pr-bot/c-1a2b3c4d",
+    });
+  });
+
+  it("keeps the branch of a watcher chat whose commits exist only here", async () => {
+    mocks.findChat.mockResolvedValue({ projectId: "project-1", origin: "watcher" });
+    mocks.isBranchPushed.mockResolvedValue(false);
+
+    await removeChatWorktree(USER, SESSION);
+
+    expect(mocks.updateWorktree).toHaveBeenCalled();
+    expect(mocks.deleteBranch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a person's branch, which is theirs to delete", async () => {
+    await removeChatWorktree(USER, SESSION);
+
+    expect(mocks.isBranchPushed).not.toHaveBeenCalled();
+    expect(mocks.deleteBranch).not.toHaveBeenCalled();
   });
 
   it("does nothing for a chat that is not a coder chat", async () => {

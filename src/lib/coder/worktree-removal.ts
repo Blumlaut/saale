@@ -3,9 +3,14 @@
  *
  * git decides whether a checkout may go: `git worktree remove` refuses a dirty
  * tree, and that refusal comes back as `WORKTREE_KEPT_CODE` so the user can
- * decide to discard the uncommitted work and retry with `force`. The branch and
- * its commits stay in the repo either way, so the only thing at stake is
+ * decide to discard the uncommitted work and retry with `force`. A chat's own
+ * branch and its commits stay in the repo, so the only thing at stake is
  * uncommitted work, which exists nowhere else.
+ *
+ * A watcher's chat is the exception: its branch is a bot artifact (`watch/…`)
+ * that piles up one per fire, so it goes with the chat once git says its commits
+ * already exist elsewhere. That is the rule the retention sweep applies before
+ * it removes a finished bot chat.
  *
  * A confirmed delete never gets stuck: git's own removal is tried with both
  * force flags, and the directory is deleted outright when git still refuses.
@@ -16,7 +21,14 @@ import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
 import { WORKTREE_KEPT_CODE, type CleanupCode } from "./force-delete";
-import { deleteWorktreeDirectory, GitError, removeWorktree, runInWorkspace } from "./git";
+import {
+  deleteBranch,
+  deleteWorktreeDirectory,
+  GitError,
+  isBranchPushed,
+  removeWorktree,
+  runInWorkspace,
+} from "./git";
 import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
 import { stopProcessesCommand, SWEEP_TIMEOUT_SECONDS } from "./processes";
 import { stopTerminalExecs } from "./terminal";
@@ -90,7 +102,7 @@ export async function removeChatWorktree(
 ): Promise<RemovedWorktree> {
   const chat = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId },
-    select: { projectId: true },
+    select: { projectId: true, origin: true },
   });
   if (!chat || !chat.projectId) return { path: null, removed: false };
 
@@ -109,6 +121,16 @@ export async function removeChatWorktree(
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw err;
     });
+
+  // Asked while the checkout is still there: after the removal there is no
+  // directory to run git in.
+  const dropBranch =
+    exists &&
+    chat.origin === "watcher" &&
+    (await isBranchPushed(userId, worktree.path, worktree.branch).catch((err: unknown) => {
+      console.error(`Failed to read the branch ${worktree.branch} of ${worktree.path}:`, err);
+      return false;
+    }));
 
   if (exists) {
     await stopProcesses(userId, sessionId, absolute);
@@ -141,6 +163,15 @@ export async function removeChatWorktree(
     where: { sessionId },
     data: { status: "removed", removedAt: new Date() },
   });
+
+  if (dropBranch && project?.repoPath) {
+    await deleteBranch(userId, { repoDir: project.repoPath, branch: worktree.branch }).catch(
+      (err: unknown) => {
+        // The chat is gone either way; a branch left behind is git's to explain.
+        console.error(`Failed to delete the branch ${worktree.branch} of ${sessionId}:`, err);
+      },
+    );
+  }
 
   const poolKey = getPoolKey(userId, sessionId);
   if (getPooledEntry(poolKey)) await removePooled(poolKey);
