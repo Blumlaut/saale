@@ -1,14 +1,16 @@
 /**
  * Removing a project.
  *
- * The repo directory goes only when git proves nothing is left behind: a clean
- * tree with every commit pushed. Anything else is refused and reported, so the
- * only copy of a commit is never deleted by a button.
+ * The repo directory is kept unless git proves nothing is left behind (a clean
+ * tree with every commit pushed) or the user confirmed the delete after being
+ * told what it throws away. A refusal arrives with that confirmation, so the
+ * button never quietly discards work and never gets stuck either.
  */
 
 import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
 import { getActiveSessions } from "@/lib/redis";
+import { WORKTREE_KEPT_CODE } from "./force-delete";
 import { GitError, isRepoFullyPushed, runInWorkspace, shellQuote } from "./git";
 import { workspaceDirectoryExists } from "./paths";
 import { CoderCleanupError, removeChatWorktree } from "./worktree-removal";
@@ -16,9 +18,9 @@ import { CoderCleanupError, removeChatWorktree } from "./worktree-removal";
 /**
  * Remove a project: its worktrees, its chats, then the repo.
  *
- * Each worktree is removed through git, so a dirty one refuses and the project
- * survives. The chats go only after every checkout is gone, and the directory
- * only when the repo is clean and fully pushed.
+ * The repo is checked first, because that refusal names the most work and costs
+ * nothing to answer. Each worktree is removed through git next, so a dirty one
+ * refuses on its own. The chats go only after every checkout is gone.
  */
 export async function removeProject(
   userId: string,
@@ -37,15 +39,10 @@ export async function removeProject(
     throw new CoderCleanupError("A chat in this project is generating. Stop it first.");
   }
 
-  // Worktrees first: a dirty one refuses, and then nothing has been deleted.
-  for (const chat of project.chats) {
-    await removeChatWorktree(userId, chat.id, force);
-  }
-
   // A repo directory deleted by hand leaves no git to ask and no work to lose,
   // so the row is all that is left of the project.
   const repoExists = await workspaceDirectoryExists(userId, project.repoPath);
-  if (repoExists) {
+  if (repoExists && !force) {
     const pushed = await isRepoFullyPushed(userId, project.repoPath).catch((err: unknown) => {
       if (err instanceof GitError) return false;
       throw err;
@@ -53,8 +50,15 @@ export async function removeProject(
     if (!pushed) {
       throw new CoderCleanupError(
         "The project has uncommitted changes or commits that are not pushed. Commit and push them first.",
+        409,
+        WORKTREE_KEPT_CODE,
       );
     }
+  }
+
+  // Worktrees next: a dirty one refuses, and then the chats are still there.
+  for (const chat of project.chats) {
+    await removeChatWorktree(userId, chat.id, force);
   }
 
   for (const chat of project.chats) {

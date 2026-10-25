@@ -377,14 +377,39 @@ describe("removeProject", () => {
   it("refuses a repo with work that exists nowhere else", async () => {
     mocks.isRepoFullyPushed.mockResolvedValue(false);
 
-    await expect(removeProject(USER, "project-1")).rejects.toThrow(/not pushed|uncommitted/i);
+    const error = await removeProject(USER, "project-1").catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(CoderCleanupError);
+    expect((error as CoderCleanupError).message).toMatch(/not pushed|uncommitted/i);
+    // The code is what lets the dialog ask "delete anyway".
+    expect((error as CoderCleanupError).code).toBe(WORKTREE_KEPT_CODE);
+    // Nothing was removed on the way to the refusal, not even the worktrees.
+    expect(mocks.removeWorktree).not.toHaveBeenCalled();
     expect(mocks.deleteChat).not.toHaveBeenCalled();
-    // Only the process kill ran; the repo directory is untouched.
     expect(
       mocks.runInWorkspace.mock.calls.some((call) =>
         String((call[1] as { command: string }).command).includes("rm -rf"),
       ),
     ).toBe(false);
+  });
+
+  it("deletes a repo with work nobody else has once the delete was confirmed", async () => {
+    mocks.isRepoFullyPushed.mockResolvedValue(false);
+
+    await removeProject(USER, "project-1", true);
+
+    // A confirmed delete does not ask git what is in there.
+    expect(mocks.isRepoFullyPushed).not.toHaveBeenCalled();
+    expect(mocks.removeWorktree).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ force: true }),
+    );
+    expect(mocks.deleteChat).toHaveBeenCalledWith(USER, SESSION);
+    expect(mocks.runInWorkspace).toHaveBeenCalledWith(USER, {
+      cwd: ".",
+      command: "rm -rf -- 'projects/saale'",
+    });
+    expect(mocks.deleteManyProject).toHaveBeenCalled();
   });
 
   it("removes the worktrees, the chats, the directory and the row", async () => {
