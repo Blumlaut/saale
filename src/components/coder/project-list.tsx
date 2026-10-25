@@ -187,7 +187,7 @@ export function ProjectList() {
         onOpenChange={(open) => !open && setDeleting(null)}
         title={`Delete ${deleting?.name}?`}
         description="Its chats go with it. The repo directory goes when its tree is clean and every commit is pushed."
-        discard="the uncommitted changes in its chats' checkouts"
+        discard="the uncommitted work in its repo and its chats' checkouts"
         onDelete={(force) => (deleting ? remove(deleting, force) : Promise.resolve())}
       />
     </Page>
