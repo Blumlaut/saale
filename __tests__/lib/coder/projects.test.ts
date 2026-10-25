@@ -18,6 +18,7 @@ const {
   mockCloneRepo,
   mockRunGit,
   mockWriteWorkspaceFile,
+  mockEnsureWorkspaceDirectory,
   mockEnsureGitconfig,
   GitError,
 } = vi.hoisted(() => {
@@ -50,6 +51,7 @@ const {
     mockCloneRepo: vi.fn(),
     mockRunGit: vi.fn(),
     mockWriteWorkspaceFile: vi.fn(),
+    mockEnsureWorkspaceDirectory: vi.fn(),
     mockEnsureGitconfig: vi.fn(),
     GitError,
   };
@@ -81,6 +83,7 @@ vi.mock("@/lib/coder/gitconfig", async (importOriginal) => ({
 vi.mock("@/lib/sandbox/workspace", () => ({
   userWorkspacePath: (userId: string) => `/workspaces/user-${userId}`,
   writeWorkspaceFile: mockWriteWorkspaceFile,
+  ensureWorkspaceDirectory: mockEnsureWorkspaceDirectory,
   writeOwned: vi.fn(),
 }));
 
@@ -108,6 +111,7 @@ beforeEach(() => {
   mockCloneRepo.mockResolvedValue(undefined);
   mockRunGit.mockResolvedValue({ stdout: "main\n", stderr: "", exitCode: 0 });
   mockWriteWorkspaceFile.mockResolvedValue("unused");
+  mockEnsureWorkspaceDirectory.mockResolvedValue("unused");
   mockProjectCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
     Promise.resolve({ id: "project-1", createdAt: NOW, updatedAt: NOW, ...data }),
   );
@@ -125,6 +129,15 @@ describe("createProject: init", () => {
       defaultBranch: "main",
     });
     expect(mockCloneRepo).not.toHaveBeenCalled();
+  });
+
+  it("makes the project directory before git runs in it", async () => {
+    await createProject(USER, { name: "saale-web" });
+
+    expect(mockEnsureWorkspaceDirectory).toHaveBeenCalledWith(USER, "projects/saale-web", 0o770);
+    expect(mockEnsureWorkspaceDirectory.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockInitRepo.mock.invocationCallOrder[0]!,
+    );
   });
 
   it("writes the default .gitignore into the new repo and commits it", async () => {

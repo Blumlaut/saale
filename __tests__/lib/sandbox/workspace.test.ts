@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ensureWorkspace,
+  ensureWorkspaceDirectory,
   identityPath,
   removeWorkspace,
   userWorkspacePath,
@@ -105,6 +106,31 @@ describe("writeWorkspaceFile", () => {
     await expect(
       writeWorkspaceFile("abc", "../../user-other/secret.txt", Buffer.from("x")),
     ).rejects.toThrow(/outside the workspace/);
+  });
+});
+
+describe("ensureWorkspaceDirectory", () => {
+  it("creates the directory and its parents inside the workspace", async () => {
+    const absolute = await ensureWorkspaceDirectory("abc", "projects/saale-web", 0o770);
+
+    expect(absolute).toBe(path.join(root, userIdentity("abc"), "projects", "saale-web"));
+    expect((await fs.stat(absolute)).isDirectory()).toBe(true);
+    expect((await fs.stat(absolute)).mode & 0o777).toBe(0o770);
+  });
+
+  it("keeps what is already in the directory", async () => {
+    const absolute = await ensureWorkspaceDirectory("abc", "projects/saale-web");
+    await fs.writeFile(path.join(absolute, "README.md"), "keep me");
+
+    await ensureWorkspaceDirectory("abc", "projects/saale-web");
+
+    expect(await fs.readFile(path.join(absolute, "README.md"), "utf8")).toBe("keep me");
+  });
+
+  it("refuses a relative path that would climb out of the workspace", async () => {
+    await expect(ensureWorkspaceDirectory("abc", "../../etc")).rejects.toThrow(
+      /outside the workspace/,
+    );
   });
 });
 

@@ -120,6 +120,23 @@ export async function writeOwned(absolutePath: string, data: Buffer | Uint8Array
 }
 
 /**
+ * Create a directory at a workspace-relative path, owned by the account commands run as.
+ *
+ * A command cannot start in a directory that does not exist yet, so a
+ * directory git is about to run in is made from this side first.
+ */
+export async function ensureWorkspaceDirectory(
+  userId: string,
+  relative: string,
+  mode?: number,
+): Promise<string> {
+  const root = userWorkspacePath(userId);
+  const absolute = requireWithinRoot(root, `${root}/${relative}`);
+  await mkdirOwned(absolute, mode);
+  return absolute;
+}
+
+/**
  * Write a file at a workspace-relative path, creating its parents.
  *
  * `relative` is resolved inside the directory, so a caller-supplied file name

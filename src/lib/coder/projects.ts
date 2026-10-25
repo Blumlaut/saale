@@ -14,7 +14,7 @@
 
 import type { CoderProject, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
+import { ensureWorkspaceDirectory, writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { GitError, cloneRepo, initRepo, runGit } from "./git";
 import { ensureGitconfig, gitIdentityFor } from "./gitconfig";
 import { CoderProjectError } from "./project-error";
@@ -204,6 +204,8 @@ async function prepareRepo(
     return head.exitCode === 0 && branch ? branch : DEFAULT_BRANCH;
   }
 
+  // The directory has to exist before git can run in it; a clone makes its own.
+  await ensureWorkspaceDirectory(userId, options.dir, 0o770);
   await initRepo(userId, { dir: options.dir, defaultBranch: DEFAULT_BRANCH });
   await writeWorkspaceFile(userId, `${options.dir}/.gitignore`, Buffer.from(DEFAULT_GITIGNORE));
   // Committed here, because a worktree branches from a commit and it has to
