@@ -89,6 +89,20 @@ jobs:
 
           echo "any=$any" >> "$GITHUB_OUTPUT"
 
+      # Node is not pinned: the runner takes the newest release. Its major goes
+      # into the node_modules cache key, so a new major installs from scratch
+      # instead of restoring a tree built for the one before it.
+      - name: Resolve the latest Node version
+        id: node
+        if: steps.files.outputs.any == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(curl -fsSL https://nodejs.org/dist/index.json | jq -r '.[0].version')"
+          major="${version#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "major=${major%%.*}" >> "$GITHUB_OUTPUT"
+
       # The install itself. Restoring the tree beats re-extracting it and
       # re-running every postinstall (native builds, Prisma engines), and one
       # cache entry per lockfile is small enough to keep. No `restore-keys`: a
@@ -101,12 +115,12 @@ jobs:
         uses: actions/cache@v6
         with:
           path: node_modules
-          key: node-modules-${{ runner.os }}-node26-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ runner.os }}-node${{ steps.node.outputs.major }}-${{ hashFiles('package-lock.json') }}
 
       - uses: actions/setup-node@v7
         if: steps.files.outputs.any == 'true'
         with:
-          node-version: 26
+          node-version: ${{ steps.node.outputs.version }}
           # npm's download cache, so a miss installs offline. Pointless once the
           # tree is restored, and restoring it costs more than it saves.
           cache: ${{ steps.modules.outputs.cache-hit != 'true' && 'npm' || '' }}

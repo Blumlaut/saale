@@ -41,12 +41,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Node 22 with npm: `npm install -g --prefix ~/.local` is how an agent adds a
-# node tool that outlives the container.
-ARG NODE_VERSION=22.20.0
+# Latest LTS node with npm: `npm install -g --prefix ~/.local` is how an agent
+# adds a node tool that outlives the container.
 RUN ARCH="$(dpkg --print-architecture)" \
     && case "$ARCH" in amd64) NODE_ARCH=x64 ;; arm64) NODE_ARCH=arm64 ;; *) echo "unsupported arch $ARCH" >&2; exit 1 ;; esac \
-    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+    && NODE_VERSION="$(curl -fsSL https://nodejs.org/dist/index.json | jq -r 'map(select(.lts))[0].version')" \
+    && curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
       | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
     && node --version && npm --version
 
