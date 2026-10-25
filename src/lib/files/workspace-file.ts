@@ -14,7 +14,7 @@
 
 import path from "node:path";
 
-import { loadCoderSession } from "@/lib/coder/changes";
+import { loadChatCheckout } from "@/lib/coder/checkout";
 
 import { FileNotFoundError } from "./errors";
 import { baseName, isWithinRoot, requireWithinRoot, resolveWithinRoot } from "./paths";
@@ -82,7 +82,7 @@ export async function readWorkspaceFile(
  *
  * The chat's worktree is tried first for relative paths: an agent that shares
  * `notes.md` means the one in the directory it works in, not a same-named file
- * at the workspace root. A worktree is stored workspace-relative, so it needs
+ * at the workspace root. A checkout is stored workspace-relative, so it needs
  * the root to become a directory anything can stat. A path that is nowhere to
  * be found still resolves the root way, so a missing file reports the path the
  * caller used.
@@ -95,10 +95,9 @@ async function resolveSharedPath(
   session: string | undefined,
 ): Promise<string> {
   if (session && !filePath.startsWith("/")) {
-    const coderSession = await loadCoderSession(userId, session);
-    const worktree = coderSession?.coderWorktree;
-    if (worktree && worktree.status === "active") {
-      const dir = resolveWithinRoot(root, worktree.path);
+    const checkout = await loadChatCheckout(userId, session);
+    if (checkout) {
+      const dir = resolveWithinRoot(root, checkout.path);
       const candidate = dir.inside ? path.join(dir.path, filePath) : null;
       if (candidate && isWithinRoot(dir.path, candidate)) {
         const stat = await provider.stat(candidate);

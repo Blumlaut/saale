@@ -8,6 +8,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { checkoutOf, type ChatMode } from "./checkout";
 import { readFileDiff, readLog, readNumstat, readStatus, readWorktreeFile } from "./git";
 import type { GitCommit, GitStatus } from "./git-status";
 
@@ -30,9 +31,9 @@ export interface CoderScript {
   runCommand: string;
 }
 
-/** A chat's worktree and everything git says about it. */
+/** A chat's checkout and everything git says about it. */
 export interface CoderSessionState {
-  worktree: { path: string; branch: string; baseSha: string } | null;
+  worktree: { path: string; branch: string; baseSha: string; mode: ChatMode } | null;
   project: { id: string; name: string; slug: string } | null;
   branch: string;
   head: string;
@@ -70,7 +71,7 @@ export async function loadCoderSession(userId: string, sessionId: string) {
     select: {
       id: true,
       projectId: true,
-      project: { select: { id: true, name: true, slug: true } },
+      project: { select: { id: true, name: true, slug: true, repoPath: true, chatMode: true } },
       coderWorktree: {
         select: { path: true, branch: true, baseSha: true, status: true },
       },
@@ -93,7 +94,7 @@ export function assertRepoRelativePath(path: string): string {
 }
 
 /**
- * The worktree's state, or an empty state when it does not exist yet.
+ * The checkout's state, or an empty state when it does not exist yet.
  *
  * A git failure is not an empty state: a status that cannot be read is
  * surfaced, because a panel that silently shows "no changes" over a tree that
@@ -105,26 +106,27 @@ export async function loadSessionState(
 ): Promise<CoderSessionState | null> {
   const session = await loadCoderSession(userId, sessionId);
   if (!session) return null;
-  if (!session.coderWorktree || session.coderWorktree.status !== "active") {
-    return { ...NOT_READY, project: session.project };
-  }
+  const checkout = checkoutOf(session);
+  if (!checkout) return { ...NOT_READY, project: session.project };
 
-  const worktree = session.coderWorktree;
+  const dir = checkout.path;
   const [status, numstat, commits, packageJson, makefile, pyproject, composerJson] =
     await Promise.all([
-      readStatus(userId, worktree.path),
-      readNumstat(userId, worktree.path),
-      readLog(userId, worktree.path),
-      readWorktreeFile(userId, worktree.path, "package.json"),
-      readWorktreeFile(userId, worktree.path, "Makefile"),
-      readWorktreeFile(userId, worktree.path, "pyproject.toml"),
-      readWorktreeFile(userId, worktree.path, "composer.json"),
+      readStatus(userId, dir),
+      readNumstat(userId, dir),
+      readLog(userId, dir),
+      readWorktreeFile(userId, dir, "package.json"),
+      readWorktreeFile(userId, dir, "Makefile"),
+      readWorktreeFile(userId, dir, "pyproject.toml"),
+      readWorktreeFile(userId, dir, "composer.json"),
     ]);
 
   return {
-    worktree: { path: worktree.path, branch: worktree.branch, baseSha: worktree.baseSha },
+    // The branch git reports is the live one: a shared checkout can have been
+    // switched by hand since the chat opened.
+    worktree: { ...checkout, branch: status.branch || checkout.branch },
     project: session.project,
-    branch: status.branch || worktree.branch,
+    branch: status.branch || checkout.branch,
     head: status.head,
     upstream: status.upstream,
     ahead: status.ahead,
@@ -157,21 +159,22 @@ function mergeChanges(status: GitStatus, numstat: Awaited<ReturnType<typeof read
   });
 }
 
-/** The unified diff for one path in a chat's worktree. */
+/** The unified diff for one path in a chat's checkout. */
 export async function loadSessionDiff(
   userId: string,
   sessionId: string,
   options: { path: string; staged?: boolean },
 ): Promise<string | null> {
   const session = await loadCoderSession(userId, sessionId);
-  if (!session?.coderWorktree || session.coderWorktree.status !== "active") return null;
+  const checkout = session ? checkoutOf(session) : null;
+  if (!checkout) return null;
 
-  const files = await readStatus(userId, session.coderWorktree.path);
+  const files = await readStatus(userId, checkout.path);
   const entry = files.files.find((file) => file.path === options.path);
   const untracked = entry ? entry.index === "?" || entry.worktree === "?" : false;
 
   return readFileDiff(userId, {
-    dir: session.coderWorktree.path,
+    dir: checkout.path,
     path: assertRepoRelativePath(options.path),
     staged: options.staged === true,
     untracked,

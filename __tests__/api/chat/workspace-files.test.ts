@@ -15,12 +15,12 @@ vi.mock("@/lib/auth", () => ({
   requireSession: mockRequireSession,
 }));
 
-const { mockLoadCoderSession } = vi.hoisted(() => ({
-  mockLoadCoderSession: vi.fn(),
+const { mockLoadChatCheckout } = vi.hoisted(() => ({
+  mockLoadChatCheckout: vi.fn(),
 }));
 
-vi.mock("@/lib/coder/changes", () => ({
-  loadCoderSession: mockLoadCoderSession,
+vi.mock("@/lib/coder/checkout", () => ({
+  loadChatCheckout: mockLoadChatCheckout,
 }));
 
 let GET: typeof import("@/app/api/chat/workspace-files/route").GET;
@@ -46,7 +46,7 @@ afterAll(async () => {
 beforeEach(async () => {
   vi.clearAllMocks();
   mockRequireSession.mockResolvedValue({ ok: true, user: { id: USER_ID } });
-  mockLoadCoderSession.mockResolvedValue(null);
+  mockLoadChatCheckout.mockResolvedValue(null);
   await fs.rm(userRoot, { recursive: true, force: true });
   await fs.mkdir(userRoot, { recursive: true });
 });
@@ -77,13 +77,9 @@ function sessionRequest(file: string, sessionId: string) {
   );
 }
 
-function coderSession(worktreePath: string) {
-  return {
-    id: "chat-1",
-    projectId: "proj-1",
-    project: { id: "proj-1", name: "Project", slug: "project" },
-    coderWorktree: { path: worktreePath, branch: "main", baseSha: "abc1234", status: "active" },
-  };
+/** The checkout a coder chat works in. */
+function chatCheckout(checkoutPath: string) {
+  return { path: checkoutPath, branch: "main", baseSha: "abc1234", mode: "worktree" as const };
 }
 
 async function body(res: Response): Promise<Buffer> {
@@ -228,7 +224,7 @@ describe("workspace file serving for a coder chat", () => {
     await fs.mkdir(worktree(), { recursive: true });
     await fs.writeFile(path.join(worktree(), "notes.md"), "worktree notes");
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    mockLoadCoderSession.mockResolvedValue(coderSession(storedWorktree));
+    mockLoadChatCheckout.mockResolvedValue(chatCheckout(storedWorktree));
 
     const res = await sessionRequest("notes.md", "chat-1");
 
@@ -239,7 +235,7 @@ describe("workspace file serving for a coder chat", () => {
   it("falls back to the workspace root when the worktree has no such file", async () => {
     await fs.mkdir(worktree(), { recursive: true });
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    mockLoadCoderSession.mockResolvedValue(coderSession(storedWorktree));
+    mockLoadChatCheckout.mockResolvedValue(chatCheckout(storedWorktree));
 
     const res = await sessionRequest("notes.md", "chat-1");
 
@@ -250,7 +246,7 @@ describe("workspace file serving for a coder chat", () => {
   it("serves a worktree file for a download request", async () => {
     await fs.mkdir(worktree(), { recursive: true });
     await fs.writeFile(path.join(worktree(), "shot.png"), "png-bytes");
-    mockLoadCoderSession.mockResolvedValue(coderSession(storedWorktree));
+    mockLoadChatCheckout.mockResolvedValue(chatCheckout(storedWorktree));
 
     const res = await GET(
       new NextRequest(
@@ -267,7 +263,7 @@ describe("workspace file serving for a coder chat", () => {
   it("ignores a session whose worktree is stored outside the workspace", async () => {
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), "saale-outside-"));
     await fs.writeFile(path.join(outside, "leak.txt"), "top secret");
-    mockLoadCoderSession.mockResolvedValue(coderSession(outside));
+    mockLoadChatCheckout.mockResolvedValue(chatCheckout(outside));
 
     expect((await sessionRequest("leak.txt", "chat-1")).status).toBe(404);
   });

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
+import { CHAT_MODES } from "@/lib/coder/checkout";
 import {
   CoderProjectError,
   createProject,
@@ -15,7 +16,8 @@ import {
  *
  * `name` is what the user reads; the slug, the directory and the branch all
  * derive from it in the lib. A clone URL must not carry whitespace, since it
- * reaches a shell inside the container.
+ * reaches a shell inside the container. `chatMode` is how the first chats get
+ * their checkout, which the setup flow asks before any chat exists.
  */
 const createProjectSchema = z.object({
   name: z.string().min(1).max(100),
@@ -25,6 +27,7 @@ const createProjectSchema = z.object({
     .max(2048)
     .refine((value) => !/\s/.test(value), "A clone URL cannot contain whitespace")
     .optional(),
+  chatMode: z.enum(CHAT_MODES).optional(),
 });
 
 /** GET /api/coder/projects: the user's projects, most recent first. */
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
   });
   const parsed = createProjectSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Expected { name, cloneUrl? }" }, { status: 400 });
+    return NextResponse.json({ error: "Expected { name, cloneUrl?, chatMode? }" }, { status: 400 });
   }
 
   try {

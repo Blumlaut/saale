@@ -12,6 +12,7 @@ import type { ApprovalRequest } from "./tool-approval-gate";
 import { hasCodemodeCategory, type ToolConfig, type ToolExposureConfig } from "./tool-categories";
 import { normalizeToolExposure } from "./tool-exposure";
 import { loadUserMcpServers } from "@/lib/mcp/servers";
+import type { ChatMode } from "@/lib/coder/checkout";
 
 /**
  * The single place a chat session's Pi agent is created.
@@ -110,6 +111,8 @@ export interface CreateChatAgentSessionOptions {
    * worktree; every other chat leaves it unset and gets the workspace root.
    */
   workspaceCwd?: string | undefined;
+  /** Which checkout `workspaceCwd` is, for the prompt a coder chat starts with. */
+  checkoutMode?: ChatMode | undefined;
 }
 
 /** The prompt a session starts with: the coder one for a project chat. */
@@ -120,6 +123,7 @@ async function buildSessionPrompt(options: {
   coderCustomInstructions: string | null | undefined;
   toolConfig: ToolConfig;
   toolExposure: ToolExposureConfig | null | undefined;
+  checkoutMode?: ChatMode | undefined;
 }): Promise<string> {
   const sandboxEnvNames = await listSandboxEnvNames(options.userId);
   // MCP tools are codemode's by default, so a user with servers needs the hint
@@ -141,7 +145,9 @@ async function buildSessionPrompt(options: {
       mcpServers.entries.length > 0 ||
       hasCodemodeCategory(options.toolConfig, options.toolExposure),
   };
-  return options.projectId ? buildCoderSystemPrompt(shared) : buildAgentSystemPrompt(shared);
+  return options.projectId
+    ? buildCoderSystemPrompt({ ...shared, checkout: options.checkoutMode })
+    : buildAgentSystemPrompt(shared);
 }
 
 /**
@@ -188,6 +194,7 @@ export async function createChatAgentSession(
       coderCustomInstructions: options.coderCustomInstructions,
       toolConfig,
       toolExposure: options.toolExposure,
+      ...(options.checkoutMode ? { checkoutMode: options.checkoutMode } : {}),
     }),
   });
 

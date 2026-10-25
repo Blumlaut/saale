@@ -52,7 +52,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("SANDBOX_WORKSPACES_DIR", "/workspaces");
   mocks.findChat.mockResolvedValue({
-    coderWorktree: { path: TARGET.worktreePath, branch: TARGET.branch, status: "active" },
+    project: { repoPath: "projects/saale", chatMode: "worktree" },
+    coderWorktree: {
+      path: TARGET.worktreePath,
+      branch: TARGET.branch,
+      baseSha: "abc1234",
+      status: "active",
+    },
   });
   mocks.registerTerminalExec.mockResolvedValue(undefined);
   mocks.unregisterTerminalExec.mockResolvedValue(undefined);
@@ -67,7 +73,10 @@ describe("resolveTerminalTarget", () => {
 
     expect(mocks.findChat).toHaveBeenCalledWith({
       where: { id: SESSION, userId: USER, projectId: { not: null } },
-      select: { coderWorktree: { select: { path: true, branch: true, status: true } } },
+      select: {
+        project: { select: { repoPath: true, chatMode: true } },
+        coderWorktree: { select: { path: true, branch: true, baseSha: true, status: true } },
+      },
     });
     expect(target).toEqual(TARGET);
   });
@@ -79,7 +88,10 @@ describe("resolveTerminalTarget", () => {
   });
 
   it("refuses a chat that has not built its worktree yet", async () => {
-    mocks.findChat.mockResolvedValue({ coderWorktree: null });
+    mocks.findChat.mockResolvedValue({
+      project: { repoPath: "projects/saale", chatMode: "worktree" },
+      coderWorktree: null,
+    });
 
     await expect(resolveTerminalTarget(USER, SESSION)).rejects.toBeInstanceOf(
       TerminalNotReadyError,
@@ -88,10 +100,29 @@ describe("resolveTerminalTarget", () => {
 
   it("refuses a worktree that was already removed", async () => {
     mocks.findChat.mockResolvedValue({
-      coderWorktree: { path: TARGET.worktreePath, branch: TARGET.branch, status: "removed" },
+      project: { repoPath: "projects/saale", chatMode: "worktree" },
+      coderWorktree: {
+        path: TARGET.worktreePath,
+        branch: TARGET.branch,
+        baseSha: "abc1234",
+        status: "removed",
+      },
     });
 
     await expect(resolveTerminalTarget(USER, SESSION)).rejects.toThrow(/no worktree yet/);
+  });
+
+  it("runs in the project's own checkout when chats share it", async () => {
+    mocks.findChat.mockResolvedValue({
+      project: { repoPath: "projects/saale", chatMode: "repo" },
+      coderWorktree: null,
+    });
+
+    await expect(resolveTerminalTarget(USER, SESSION)).resolves.toEqual({
+      cwd: `/workspaces/${IDENTITY}/projects/saale`,
+      worktreePath: "projects/saale",
+      branch: "",
+    });
   });
 });
 

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
+import { CHAT_MODES } from "@/lib/coder/checkout";
 import { removeProject } from "@/lib/coder/cleanup";
 import {
   CoderProjectError,
@@ -51,11 +52,12 @@ export async function GET(
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   defaultBranch: z.string().min(1).max(200).optional(),
+  chatMode: z.enum(CHAT_MODES).optional(),
   envFiles: z.array(z.object({ path: z.string(), content: z.string() })).optional(),
   setupScript: z.string().nullable().optional(),
 });
 
-/** PATCH /api/coder/projects/:projectId: name, branch, env files, setup script. */
+/** PATCH /api/coder/projects/:projectId: name, branch, chat mode, env files, setup script. */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> },
@@ -72,7 +74,7 @@ export async function PATCH(
   const parsed = updateProjectSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Expected { name?, defaultBranch?, envFiles?, setupScript? }" },
+      { error: "Expected { name?, defaultBranch?, chatMode?, envFiles?, setupScript? }" },
       { status: 400 },
     );
   }
