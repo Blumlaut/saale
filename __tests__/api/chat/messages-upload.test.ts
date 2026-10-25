@@ -81,11 +81,12 @@ afterAll(async () => {
 });
 
 /** A session record shaped like prisma.chatSession.findFirst(). */
-function makeChatSession(title = "New Chat") {
+function makeChatSession(title = "New Chat", titleSource = "default") {
   return {
     id: SESSION_ID,
     userId: USER_ID,
     title,
+    titleSource,
     messageCount: 0,
     lastActivityAt: new Date(),
     toolConfig: null,
@@ -326,6 +327,20 @@ describe("plain JSON messages (no attachments)", () => {
     expect(update.titleSource).toBe("auto");
   });
 
+  it("leaves a chat that already has a title alone", async () => {
+    mockRequireChatSessionOwner.mockResolvedValue(authOk(makeChatSession("Trip planning", "user")));
+    stubDbMessage("msg-8");
+
+    await POST(jsonRequest("add a dark mode toggle to the settings page"), params());
+
+    const update = vi.mocked(mockPrisma.chatSession.update).mock.calls[0]![0]!.data as Record<
+      string,
+      unknown
+    >;
+    expect("title" in update).toBe(false);
+    expect("titleSource" in update).toBe(false);
+  });
+
   it("quotes the prompt when it cannot name a topic", async () => {
     stubDbMessage("msg-7");
 
@@ -333,8 +348,11 @@ describe("plain JSON messages (no attachments)", () => {
 
     const update = vi.mocked(mockPrisma.chatSession.update).mock.calls[0]![0]!.data as {
       title: string;
+      titleSource?: string;
     };
     expect(update.title).toBe("hi");
+    // left open for the next message to name the chat
+    expect(update.titleSource).toBeUndefined();
   });
 });
 

@@ -106,7 +106,13 @@ beforeEach(() => {
   mockRequireChatSessionOwner.mockResolvedValue({
     ok: true,
     userId: USER_ID,
-    session: { id: SESSION_ID, title: "New Chat", toolConfig: {}, thinkingLevel: "default" },
+    session: {
+      id: SESSION_ID,
+      title: "New Chat",
+      titleSource: "default",
+      toolConfig: {},
+      thinkingLevel: "default",
+    },
   });
   mockPrisma.chatMessage.count.mockResolvedValue(0);
   mockPrisma.chatMessage.create.mockResolvedValue({ id: "msg-1" });
