@@ -11,6 +11,8 @@
  *   2. Production asset caching — `/_next/static/*` is content-hashed and served
  *      immutably by Next.js, so it is safe to serve cache-first. This is what
  *      lets the precached offline page render with its real styles and fonts.
+ *   3. Push notifications — a message from Saale's server is rendered as a
+ *      system notification, and clicking it opens the page it is about.
  *
  * The offline page's asset closure is discovered at install time by reading the
  * rendered HTML (and the stylesheets it references), so there is no build-time
@@ -199,4 +201,76 @@ self.addEventListener("fetch", (event) => {
   if (!IS_DEVELOPMENT && url.pathname.startsWith(STATIC_ASSET_PREFIX)) {
     event.respondWith(cacheFirst(request));
   }
+});
+
+/**
+ * Whether the app is on screen right now. A visible window already shows a
+ * reply arriving, so a system banner on top of it is noise.
+ */
+async function appIsVisible() {
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  return windows.some((client) => client.visibilityState === "visible");
+}
+
+async function showPushNotification(payload) {
+  if (!payload || typeof payload.title !== "string") {
+    console.error("Push message without a title:", payload);
+    return;
+  }
+
+  try {
+    if (await appIsVisible()) return;
+  } catch (error) {
+    // Rendering the notification matters more than the visibility check.
+    console.error("Failed to check for a visible window:", error);
+  }
+
+  await self.registration.showNotification(payload.title, {
+    body: typeof payload.body === "string" ? payload.body : "",
+    tag: typeof payload.tag === "string" ? payload.tag : "saale",
+    data: { url: typeof payload.url === "string" ? payload.url : "/" },
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+  });
+}
+
+self.addEventListener("push", (event) => {
+  let payload = null;
+  try {
+    payload = event.data ? event.data.json() : null;
+  } catch (error) {
+    console.error("Push message was not JSON:", error);
+  }
+  event.waitUntil(showPushNotification(payload));
+});
+
+/** Focus the app on the page the notification is about, or open it. */
+async function openNotificationTarget(target) {
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+
+  for (const client of windows) {
+    if (!client.url.startsWith(self.location.origin)) continue;
+
+    await client.focus();
+    if (client.url !== target) {
+      await client.navigate(target).catch((error) => {
+        console.error(`Failed to navigate the app to ${target}:`, error);
+      });
+    }
+    return;
+  }
+
+  await self.clients.openWindow(target);
+}
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const path = event.notification.data && event.notification.data.url;
+  const target = new URL(typeof path === "string" ? path : "/", self.location.origin).href;
+
+  event.waitUntil(
+    openNotificationTarget(target).catch((error) => {
+      console.error("Failed to open the notification target:", error);
+    }),
+  );
 });

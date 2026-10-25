@@ -232,21 +232,24 @@ walk through such a flow.
 
 Everything with a default is optional. The compose file sets the database and Redis URLs.
 
-| Variable                     | What it does                                                       | Required |
-| ---------------------------- | ------------------------------------------------------------------ | -------- |
-| `BETTER_AUTH_URL`            | Public URL of the app. Sessions, redirects, webhooks, previews.    | Yes      |
-| `BETTER_AUTH_SECRET`         | Session encryption (32+ characters).                               | Yes      |
-| `ENCRYPTION_KEY`             | Encrypts stored mail passwords. 64 hex characters.                 | Yes      |
-| `SANDBOX_API_KEY`            | Shared key between the app and the sandbox service.                | Yes      |
-| `WORKER_API_KEY`             | Shared key for internal worker calls.                              | Yes      |
-| `PREVIEW_DOMAIN`             | Preview wildcard, when it is not `preview.<BETTER_AUTH_URL host>`. | No       |
-| `SANDBOX_PREVIEW_PORT`       | Port the preview listener binds. `0` turns previews off.           | No       |
-| `SANDBOX_USER`               | `root` lets the agent install packages; `agent` is stricter.       | No       |
-| `SANDBOX_MEMORY`             | Memory limit per container, e.g. `4g`.                             | No       |
-| `SANDBOX_IDLE_MINUTES`       | Minutes before an idle container is stopped.                       | No       |
-| `SANDBOX_CONTAINER_TTL_DAYS` | Days before a container is removed. `0` keeps them forever.        | No       |
-| `SEARXNG_URL`                | Search backend for the web tools.                                  | No       |
-| `COUNCIL_ENABLED`            | `0` removes the council module entirely.                           | No       |
+| Variable                     | What it does                                                              | Required |
+| ---------------------------- | ------------------------------------------------------------------------- | -------- |
+| `BETTER_AUTH_URL`            | Public URL of the app. Sessions, redirects, webhooks, previews.           | Yes      |
+| `BETTER_AUTH_SECRET`         | Session encryption (32+ characters).                                      | Yes      |
+| `ENCRYPTION_KEY`             | Encrypts stored mail passwords. 64 hex characters.                        | Yes      |
+| `SANDBOX_API_KEY`            | Shared key between the app and the sandbox service.                       | Yes      |
+| `WORKER_API_KEY`             | Shared key for internal worker calls.                                     | Yes      |
+| `PREVIEW_DOMAIN`             | Preview wildcard, when it is not `preview.<BETTER_AUTH_URL host>`.        | No       |
+| `SANDBOX_PREVIEW_PORT`       | Port the preview listener binds. `0` turns previews off.                  | No       |
+| `SANDBOX_USER`               | `root` lets the agent install packages; `agent` is stricter.              | No       |
+| `SANDBOX_MEMORY`             | Memory limit per container, e.g. `4g`.                                    | No       |
+| `SANDBOX_IDLE_MINUTES`       | Minutes before an idle container is stopped.                              | No       |
+| `SANDBOX_CONTAINER_TTL_DAYS` | Days before a container is removed. `0` keeps them forever.               | No       |
+| `SEARXNG_URL`                | Search backend for the web tools.                                         | No       |
+| `VAPID_PUBLIC_KEY`           | Web Push key pair. `npx web-push generate-vapid-keys`.                    | No       |
+| `VAPID_PRIVATE_KEY`          | The other half of the pair. Rotating it drops every subscription.         | No       |
+| `VAPID_SUBJECT`              | Contact URI for push services. Defaults to a `mailto:` on the app's host. | No       |
+| `COUNCIL_ENABLED`            | `0` removes the council module entirely.                                  | No       |
 
 `.env.example` lists the rest, with comments.
 
