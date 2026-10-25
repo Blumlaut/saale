@@ -190,6 +190,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 | **Dialog** | Rare — atomic prompts only | Absolute focus, minimal interaction |
 | **Inline expansion** | Reveal more details in a list item | No overlay needed |
 | **Dropdown menu** | Quick actions on an item | Lightweight, contextual |
+| **Popover** | A small anchored choice — the model picker, the thinking selector | Nothing bigger belongs in a box the user cannot resize |
+| **Panel tab** | A file's editor (`FileView`), in the coder worktree panel | The panel widens; Monaco needs it, and the chat stays visible |
 
 ## Rules
 
@@ -215,3 +217,4 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 | Scrollable header/footer | Keep header/footer fixed, only content scrolls |
 | Modal wider than its bounds / horizontal scrollbar in a modal | Wrap the offending value (`break-all`), add `min-w-0` to the squashed row, give grids a base track (`grid-cols-1`) |
 | Icon-only trigger button with no name | Add `aria-label` (and `title` when it needs a tooltip) |
+| Monaco in a sheet or popover | Open the file as a tab in the resizable panel: `FileBrowser` `onOpenFile` → `FileView` |

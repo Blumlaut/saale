@@ -155,6 +155,21 @@ page-sized variant (`py-2.5 md:px-6`) turns a column into a full-page list.
 - The guard is `e2e/coder-panel.spec.ts` ("keeps the file rows tight"), which
   measures a row at ≤ 28px. A new side-panel list needs the same measurement.
 
+### A File's Editor Lives in the Panel
+
+A file opens in a tab of the resizable panel that holds the files (the coder
+worktree panel). The panel is the one surface the user can drag wider, and
+Monaco needs that width; a sheet has a fixed width and covers the chat the user
+is working in.
+
+- `FileBrowser` takes `onOpenFile` for a host with a panel: it hands the file
+  over, and the worktree panel opens it as a tab with a close control and a
+  download button.
+- `FileView` is the shared body — Monaco for text, the code/preview toggle,
+  markdown and HTML preview, the too-large and binary states. Use it in the tab
+  and in the sheet, so both render a file the same way.
+- The guard is `e2e/coder-panel.spec.ts` ("opens a file as a tab in the panel").
+
 ### Page Layout (App Shell) — ALWAYS use these
 
 Every dashboard/admin page is a fixed-height shell (`h-dvh overflow-hidden`); the
@@ -259,6 +274,7 @@ Section labels, panel footers, and metadata use the `.console-label` class — s
 | Monospace UI text        | Developer-tool vibe (except data)        | Inter for UI; Geist Mono for data, IDs, timestamps, micro-labels |
 | Animated backgrounds     | Distracting                              | Static solid background                |
 | Page-sized rows in a side panel | The panel gutter adds to the component's, so a column scrolls like a page | `dense` variant: `text-xs`, `py-1`, `px-2`; measured in e2e |
+| An editor in a sheet or popover | Its width is fixed and it hides the chat, and Monaco needs the room | `FileBrowser` `onOpenFile` → a tab in the resizable panel (`FileView`) |
 
 ## Review Checklist
 
