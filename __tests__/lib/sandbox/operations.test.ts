@@ -11,7 +11,7 @@ vi.mock("@/lib/sandbox/client", () => ({
   kill: hoisted.kill,
 }));
 
-import { createSandboxOperations } from "@/lib/sandbox/operations";
+import { createSandboxOperations, type SandboxEnv } from "@/lib/sandbox/operations";
 import { FileNotFoundError, isNotFoundError } from "@/lib/files/errors";
 
 let root: string;
@@ -24,7 +24,7 @@ function script(events: SandboxEvent[]) {
   });
 }
 
-function operations(env?: Record<string, string>) {
+function operations(env?: SandboxEnv) {
   return createSandboxOperations({ identity: "user-abc", root, env });
 }
 
@@ -96,6 +96,21 @@ describe("bash", () => {
       GIT_PAGER: "cat",
       LC_ALL: "C",
     });
+  });
+
+  it("asks a getter per command, so a value can change between them", async () => {
+    script([{ type: "exit", exitCode: 0, timedOut: false, durationMs: 1 }]);
+    const env = vi.fn().mockResolvedValueOnce({ SAALE_MODEL: "first" }).mockResolvedValueOnce({
+      SAALE_MODEL: "second",
+    });
+    const ops = operations(env);
+
+    await ops.bash.exec("true", root, { onData: () => {} } as never);
+    await ops.bash.exec("true", root, { onData: () => {} } as never);
+
+    expect(env).toHaveBeenCalledTimes(2);
+    expect(hoisted.exec.mock.calls[0]![0].env).toMatchObject({ SAALE_MODEL: "first" });
+    expect(hoisted.exec.mock.calls[1]![0].env).toMatchObject({ SAALE_MODEL: "second" });
   });
 
   it("clamps a cwd outside the workspace back to its root", async () => {
