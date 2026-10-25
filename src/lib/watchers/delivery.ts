@@ -1,9 +1,10 @@
 /**
  * Where a watcher's fire goes.
  *
- * A watcher's `sessionId` says whose context the script runs in. What happens to
- * what it reports is this: a conversation, a project (a coder chat in its own
- * worktree), or nothing at all because the script told the user itself.
+ * A `chat` fire is the only one with a conversation to report into, so it is the
+ * only delivery that carries a `sessionId`. A `coder` fire opens a chat in its
+ * project, and a `silent` one is delivered by the script itself, so both run
+ * without a chat and survive one being deleted.
  */
 
 /** The ways a fire can be delivered. */
