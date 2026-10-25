@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import {
+  Download,
+  FileText,
   FolderTree,
   GitBranch,
   Globe,
@@ -11,9 +13,15 @@ import {
   X,
 } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileBrowser } from "@/components/files/file-browser";
+import { FileView } from "@/components/files/file-view";
 import { PageTabStrip } from "@/components/layout/page";
+import { downloadFile } from "@/lib/download";
+import { relativeToRoot } from "@/lib/files/paths";
+import { rawFileUrl } from "@/lib/files/urls";
+import type { FileEntry } from "@/lib/files/types";
 import { ChangesView } from "./changes-view";
 import { CommitDiffView } from "./commit-diff-view";
 import { PortsView } from "./ports-view";
@@ -49,6 +57,33 @@ function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }
 }
 
 /**
+ * The close control inside a tab. A span, because the trigger is the button and
+ * a button in a button is invalid HTML.
+ */
+function CloseTab({ label, onClose }: { label: string; onClose: () => void }) {
+  return (
+    <span
+      role="button"
+      aria-label={label}
+      tabIndex={0}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+      className="hover:bg-accent focus-visible:outline-ring -mr-1 rounded p-0.5 focus-visible:outline-1"
+    >
+      <X className="h-3 w-3" />
+    </span>
+  );
+}
+
+/**
  * The right-hand panel: what changed, what is in the worktree, and where the
  * branch stands.
  *
@@ -62,6 +97,9 @@ function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }
  * The terminal keeps running while another tab is open, so it is mounted
  * alongside the tab contents instead of inside one. The ports list pauses its
  * polling with the tab and picks up again when it comes back.
+ *
+ * A file opens as a tab here: the panel is the only surface the user can widen,
+ * and an editor needs the room.
  */
 export function WorktreePanel({
   sessionId,
@@ -84,6 +122,9 @@ export function WorktreePanel({
   const [openedTabs, setOpenedTabs] = useState<string[]>(["changes"]);
   // The commit and file the Diff tab shows, or null for no tab at all.
   const [diffTarget, setDiffTarget] = useState<{ commit: CoderCommit; path: string } | null>(null);
+  // The file the File tab shows. One at a time: the panel is a side column, and
+  // a strip of open files would eat the width the editor needs.
+  const [fileTarget, setFileTarget] = useState<FileEntry | null>(null);
 
   const openTab = (next: string) => {
     setTab(next);
@@ -95,6 +136,10 @@ export function WorktreePanel({
   const closeDiffTab = () => {
     if (tab === "diff") openTab("changes");
     setDiffTarget(null);
+  };
+  const closeFileTab = () => {
+    if (tab === "file") openTab("files");
+    setFileTarget(null);
   };
   const terminalRunRef = useRef<(command: string) => void>(() => {});
   // Lifted out of the tab, because the badge has to light while another tab is
@@ -127,26 +172,14 @@ export function WorktreePanel({
               <TabsTrigger value="diff" className="gap-1.5 text-xs">
                 <GitCommitHorizontal className="hidden h-3.5 w-3.5 @min-[390px]:block" />
                 Diff
-                {/* A span, because the trigger is the button: a nested close
-                    button would be invalid HTML. */}
-                <span
-                  role="button"
-                  aria-label="Close the diff tab"
-                  tabIndex={0}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    closeDiffTab();
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.stopPropagation();
-                      closeDiffTab();
-                    }
-                  }}
-                  className="hover:bg-accent focus-visible:outline-ring -mr-1 rounded p-0.5 focus-visible:outline-1"
-                >
-                  <X className="h-3 w-3" />
-                </span>
+                <CloseTab label="Close the diff tab" onClose={closeDiffTab} />
+              </TabsTrigger>
+            )}
+            {fileTarget && (
+              <TabsTrigger value="file" className="gap-1.5 text-xs">
+                <FileText className="hidden h-3.5 w-3.5 @min-[390px]:block" />
+                <span className="max-w-24 truncate">{fileTarget.name}</span>
+                <CloseTab label="Close the file tab" onClose={closeFileTab} />
               </TabsTrigger>
             )}
             <TabsTrigger value="terminal" className="gap-1.5 text-xs">
@@ -205,11 +238,50 @@ export function WorktreePanel({
           className="min-h-0 flex-1 overflow-hidden"
         >
           {state?.worktree ? (
-            <FileBrowser target="user" rootPath={state.worktree.path} dense />
+            <FileBrowser
+              target="user"
+              rootPath={state.worktree.path}
+              dense
+              onOpenFile={(entry) => {
+                setFileTarget(entry);
+                openTab("file");
+              }}
+            />
           ) : (
             <NoWorktree provisioning={state?.provisioning ?? null} />
           )}
         </TabsContent>
+
+        {fileTarget && (
+          <TabsContent
+            value="file"
+            keepMounted={openedTabs.includes("file")}
+            className="min-h-0 flex-1 overflow-hidden"
+          >
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
+                <p
+                  className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[11px]"
+                  title={fileTarget.path}
+                >
+                  {relativeToRoot(state?.worktree?.path ?? "", fileTarget.path) ?? fileTarget.path}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Download ${fileTarget.name}`}
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => void downloadFile(rawFileUrl("user", fileTarget.path, true))}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col p-2">
+                <FileView target="user" entry={fileTarget} />
+              </div>
+            </div>
+          </TabsContent>
+        )}
 
         {diffTarget && (
           <TabsContent

@@ -195,6 +195,17 @@ describe("FileBrowser", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
+  it("hands a file to the host instead of opening the viewer", async () => {
+    const onOpenFile = vi.fn();
+    render(<FileBrowser target="council:c1" onOpenFile={onOpenFile} />);
+
+    fireEvent.click(await screen.findByText("report.md"));
+
+    expect(onOpenFile).toHaveBeenCalledWith(expect.objectContaining({ path: `${ROOT}/report.md` }));
+    // The host shows it somewhere it can be widened, so no sheet here.
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("marks a listing that was cut off", async () => {
     vi.mocked(fetchJson).mockResolvedValue(listing({ truncated: true }));
 

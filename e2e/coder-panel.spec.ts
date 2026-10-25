@@ -223,6 +223,10 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
     route.fulfill({ json: { port: 5173, killed: true } }),
   );
 
+  await page.route(/\/api\/files\/raw/, (route) =>
+    route.fulfill({ body: "# e2e readme\n", contentType: "text/plain" }),
+  );
+
   await page.route(/\/api\/files\/list/, (route) =>
     route.fulfill({
       json: {
@@ -347,6 +351,27 @@ test.describe("coder panel", () => {
     const row = name.locator("xpath=..");
     const box = await row.boundingBox();
     expect(box?.height ?? 0).toBeLessThanOrEqual(30);
+
+    await context.close();
+  });
+
+  test("opens a file as a tab in the panel", async ({ browser }) => {
+    test.skip(!session, "login failed");
+    const context = await browser.newContext({ storageState: session!.storageState });
+    const page = await context.newPage();
+    await mockCoder(page);
+
+    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await shown(page, '[role="tab"]:text-is("Files")').click();
+    await page.locator('button:has-text("README.md")').first().click();
+
+    // The editor gets the width the user dragged the panel to.
+    await expect(shown(page, '[role="tab"]:has-text("README.md")')).toBeVisible();
+    await expect(shown(page, '[aria-label="Download README.md"]')).toBeVisible();
+    await expect(page.locator('[role="dialog"]:visible')).toHaveCount(0);
+
+    await shown(page, '[aria-label="Close the file tab"]').click();
+    await expect(page.locator('[role="tab"]:has-text("README.md")')).toHaveCount(0);
 
     await context.close();
   });
