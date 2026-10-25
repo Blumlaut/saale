@@ -91,7 +91,7 @@ export function ProjectCreateDialog({
   };
 
   const submit = async () => {
-    if (!canLeaveRepoStep) {
+    if (!projectName) {
       setStep(0);
       setError("Give the project a name.");
       return;
