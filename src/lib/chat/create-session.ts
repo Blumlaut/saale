@@ -16,6 +16,8 @@ import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
 const MAX_TITLE_LENGTH = 50;
 
 export interface NewChatSessionInput {
+  /** Defaults to a random id. A caller that names the branch needs it up front. */
+  id?: string | undefined;
   title?: string | null | undefined;
   temporary?: boolean | undefined;
   modelProvider?: string | null | undefined;
@@ -26,6 +28,12 @@ export interface NewChatSessionInput {
   toolConfig?: unknown;
   /** Set for a coder chat: the project its worktree is built from. */
   projectId?: string | null | undefined;
+  /** "user", or "watcher" for a chat a watcher fire opened. */
+  origin?: string | undefined;
+  /** The watcher that opened it. */
+  originId?: string | null | undefined;
+  /** Branch its worktree is checked out on; null derives one from the id. */
+  worktreeBranch?: string | null | undefined;
 }
 
 export interface NewChatSession {
@@ -66,7 +74,7 @@ export async function createChatSessionRow(
 
   const chatSession = await prisma.chatSession.create({
     data: {
-      id: crypto.randomUUID(),
+      id: input.id ?? crypto.randomUUID(),
       userId,
       title: sanitizeChatTitle(input.title),
       temporary: input.temporary ?? false,
@@ -74,6 +82,9 @@ export async function createChatSessionRow(
       modelName: input.modelName ?? null,
       ...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
       ...(input.projectId ? { projectId: input.projectId } : {}),
+      ...(input.origin ? { origin: input.origin } : {}),
+      ...(input.originId ? { originId: input.originId } : {}),
+      ...(input.worktreeBranch ? { worktreeBranch: input.worktreeBranch } : {}),
       ...(toolConfig === undefined ? {} : { toolConfig: toolConfig as Prisma.InputJsonValue }),
     },
   });

@@ -13,13 +13,13 @@ import { prisma } from "@/lib/db";
 import { loadWatcherToolAccess } from "./access";
 import { checkGrant } from "./grant";
 import { applyStoreWrites, isFiring, runWatcherScript } from "./runner";
-import { wakeAgent } from "./wake";
+import { deliverWake } from "./wake";
 
 /** Ticks kept per watcher. Older rows are pruned after each tick. */
 export const TICK_HISTORY_LIMIT = 50;
 
 /** What one tick concluded. */
-export type TickStatus = "idle" | "fired" | "cooldown" | "blocked" | "error";
+export type TickStatus = "idle" | "fired" | "reported" | "cooldown" | "blocked" | "error";
 
 export interface TickOutcome {
   status: TickStatus;
@@ -30,6 +30,10 @@ export interface TickOutcome {
   output: string;
   durationMs: number;
   callCount: number;
+  /** The tools the script called, so a tick says what delivered it. */
+  callNames: string[];
+  /** The chat a fire was delivered into, if one was. */
+  sessionId?: string | null;
 }
 
 /** The watcher a tick runs for. */
@@ -78,7 +82,7 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
     scopeId,
   );
 
-  const base = { output: "", durationMs: 0, callCount: 0 };
+  const base = { output: "", durationMs: 0, callCount: 0, callNames: [] };
   const store = readStore(watcher.store);
   const empty = { ...store };
 
@@ -114,6 +118,7 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
     output: result.output,
     durationMs: result.durationMs,
     callCount: result.callCount,
+    callNames: result.callNames,
   };
 
   if (!result.ok) {
@@ -132,6 +137,18 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
     return {
       watcher,
       outcome: { ...measured, status: "idle", value: result.value },
+      nextStore,
+      firing: false,
+    };
+  }
+
+  // A silent watcher delivers from its own script (`tools.telegram_send`), so a
+  // returned value is recorded and wakes nobody. Returning one is how the script
+  // leaves a note in the log, not a second message to the user.
+  if (watcher.deliver === "silent") {
+    return {
+      watcher,
+      outcome: { ...measured, status: "reported", value: result.value },
       nextStore,
       firing: false,
     };
@@ -171,6 +188,8 @@ async function recordTick(options: {
       output: outcome.output ? outcome.output.slice(0, 20_000) : null,
       durationMs: outcome.durationMs,
       callCount: outcome.callCount,
+      toolNames: outcome.callNames.slice(0, 50),
+      sessionId: outcome.sessionId ?? null,
     },
   });
 
@@ -233,6 +252,7 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
       output: "",
       durationMs: 0,
       callCount: 0,
+      callNames: [],
     };
   }
 
@@ -272,13 +292,21 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
   }
 
   // ── The wake ────────────────────────────────────────────────────────
+  let delivered: { sessionId: string | null };
   try {
-    await wakeAgent({
-      userId: watcher.userId,
-      name: watcher.name,
-      wakePrompt: watcher.wakePrompt,
-      sessionId: watcher.sessionId,
-      modelId: watcher.modelId,
+    delivered = await deliverWake({
+      watcher: {
+        id: watcher.id,
+        userId: watcher.userId,
+        name: watcher.name,
+        deliver: watcher.deliver,
+        sessionId: watcher.sessionId,
+        projectId: watcher.projectId,
+        worktreeMode: watcher.worktreeMode,
+        stickySessionId: watcher.stickySessionId,
+        wakePrompt: watcher.wakePrompt,
+        modelId: watcher.modelId,
+      },
       value: outcome.value,
     });
   } catch (err) {
@@ -295,7 +323,7 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
 
   return recordTick({
     watcherId: watcher.id,
-    outcome,
+    outcome: { ...outcome, sessionId: delivered.sessionId },
     store: evaluation.nextStore,
     advanceStore: true,
     fired: true,
@@ -318,6 +346,7 @@ export async function previewWatcherTick(watcherId: string): Promise<TickOutcome
       output: "",
       durationMs: 0,
       callCount: 0,
+      callNames: [],
     };
   }
 
@@ -351,6 +380,7 @@ export async function previewScript(params: {
     output: result.output,
     durationMs: result.durationMs,
     callCount: result.callCount,
+    callNames: result.callNames,
   };
 
   if (!result.ok) {

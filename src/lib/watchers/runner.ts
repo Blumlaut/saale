@@ -44,6 +44,8 @@ export interface WatcherScriptResult {
   output: string;
   /** How many tool calls the script made. */
   callCount: number;
+  /** Which tools it called, in the order it first reached them. */
+  callNames: string[];
   durationMs: number;
   /** The script's `store()` writes, to carry into the next tick. */
   storeWrites: { set: Record<string, unknown>; delete: string[] };
@@ -146,6 +148,7 @@ export async function runWatcherScript(options: {
   });
 
   const startedAt = Date.now();
+  const toolNames = new Set(options.tools.map((tool) => tool.name));
   try {
     const result = await sandbox.execute(options.script, {
       store: options.store,
@@ -154,6 +157,11 @@ export async function runWatcherScript(options: {
 
     const durationMs = Date.now() - startedAt;
     const callCount = result.calls.length;
+    // Globals (`text`, `console`) are calls too, and saying a tick ran
+    // `console` has never helped anyone read it.
+    const callNames = [...new Set(result.calls.map((call) => call.name))].filter((name) =>
+      toolNames.has(name),
+    );
 
     if (!result.ok) {
       return {
@@ -161,6 +169,7 @@ export async function runWatcherScript(options: {
         value: undefined,
         output: formatOutput(result.output),
         callCount,
+        callNames,
         durationMs,
         storeWrites: { set: {}, delete: [] },
         error: `${result.error.kind}: ${result.error.message}`,
@@ -172,6 +181,7 @@ export async function runWatcherScript(options: {
       value: result.value,
       output: formatOutput(result.output),
       callCount,
+      callNames,
       durationMs,
       storeWrites: result.storeWrites,
     };
@@ -184,6 +194,7 @@ export async function runWatcherScript(options: {
       value: undefined,
       output: "",
       callCount: 0,
+      callNames: [],
       durationMs: Date.now() - startedAt,
       storeWrites: { set: {}, delete: [] },
       error: err instanceof Error ? err.message : String(err),

@@ -5,6 +5,7 @@ import {
   MAX_COOLDOWN_MINUTES,
   needsScriptApproval,
   normalizeCronExpression,
+  updateWatcher,
   WatcherInputError,
 } from "@/lib/watchers/manage";
 import { hashScript, UNAPPROVED_SCRIPT_HASH } from "@/lib/watchers/grant";
@@ -16,7 +17,10 @@ vi.mock("@/lib/db", () => ({
     scriptWatcher: {
       findFirst: vi.fn(async () => null),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
     },
+    chatSession: { findFirst: vi.fn(async () => ({ id: "chat-1" })) },
+    coderProject: { findFirst: vi.fn(async () => ({ id: "project-1" })) },
   },
 }));
 
@@ -116,6 +120,7 @@ describe("createWatcher and who approved the script", () => {
         name: "Watch the inbox",
         script: "return await tools.mail_list({ folder: 'inbox' });",
         cronExpression: "*/10 * * * *",
+        deliver: "silent",
       },
     });
 
@@ -133,6 +138,7 @@ describe("createWatcher and who approved the script", () => {
         name: "Forward the important mail",
         script: "return await tools.mail_send({ to: 'me@example.com' });",
         cronExpression: "*/10 * * * *",
+        deliver: "silent",
       },
     });
 
@@ -159,11 +165,165 @@ describe("createWatcher and who approved the script", () => {
         name: "Forward the important mail",
         script: "return await tools.mail_send({ to: 'me@example.com' });",
         cronExpression: "*/10 * * * *",
+        deliver: "silent",
       },
     });
 
     expect(created.needsApproval).toBe(false);
     const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
     expect(written?.scriptHash).toBe(hashScript(String(written?.script)));
+  });
+});
+
+describe("where a fire is delivered", () => {
+  const script = "return await tools.mail_list({});";
+  const cronExpression = "*/10 * * * *";
+
+  it("refuses a conversation delivery without a conversation", async () => {
+    await expect(
+      createWatcher({
+        userId: "user-1",
+        approvedByUser: true,
+        fields: { name: "No target", script, cronExpression, deliver: "chat" },
+      }),
+    ).rejects.toThrow(/needs one/);
+  });
+
+  it("refuses a coder delivery without a project", async () => {
+    await expect(
+      createWatcher({
+        userId: "user-1",
+        approvedByUser: true,
+        fields: { name: "No project", script, cronExpression, deliver: "coder" },
+      }),
+    ).rejects.toThrow(/needs one/);
+  });
+
+  it("refuses a target that is not the user's own", async () => {
+    vi.mocked(prisma.coderProject.findFirst).mockResolvedValueOnce(null);
+
+    await expect(
+      createWatcher({
+        userId: "user-1",
+        approvedByUser: true,
+        fields: {
+          name: "Someone else's repo",
+          script,
+          cronExpression,
+          deliver: "coder",
+          projectId: "project-1",
+        },
+      }),
+    ).rejects.toThrow(/Project not found/);
+  });
+
+  it("stores a coder target with its worktree mode and retention", async () => {
+    const created = await createWatcher({
+      userId: "user-1",
+      approvedByUser: true,
+      fields: {
+        name: "Review pull requests",
+        script,
+        cronExpression,
+        deliver: "coder",
+        projectId: "project-1",
+        worktreeMode: "sticky",
+        retentionMinutes: 60,
+      },
+    });
+
+    const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(created.needsApproval).toBe(false);
+    expect(written?.deliver).toBe("coder");
+    expect(written?.projectId).toBe("project-1");
+    expect(written?.worktreeMode).toBe("sticky");
+    expect(written?.retentionMinutes).toBe(60);
+  });
+
+  it("clears the project when the delivery moves away from a project", async () => {
+    vi.mocked(prisma.scriptWatcher.findFirst).mockResolvedValueOnce({
+      id: "w-1",
+      userId: "user-1",
+      name: "Review pull requests",
+      description: null,
+      script,
+      scriptHash: hashScript(script),
+      grantedTools: [],
+      grantAll: false,
+      cronExpression,
+      enabled: true,
+      deliver: "coder",
+      sessionId: "chat-1",
+      projectId: "project-1",
+      worktreeMode: "sticky",
+      retentionMinutes: 60,
+      stickySessionId: null,
+      wakePrompt: "Act.",
+      modelId: null,
+      store: {},
+      lastValue: null,
+      lastTickAt: null,
+      lastError: null,
+      lastFiredAt: null,
+      tickCount: 0,
+      fireCount: 0,
+      cooldownMinutes: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+
+    await updateWatcher({
+      id: "w-1",
+      userId: "user-1",
+      fields: { deliver: "silent" },
+      approveScript: false,
+    });
+
+    const written = vi.mocked(prisma.scriptWatcher.update).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.deliver).toBe("silent");
+    expect(written?.projectId).toBeNull();
+  });
+
+  it("keeps the default model when an update does not name one", async () => {
+    vi.mocked(prisma.scriptWatcher.findFirst).mockResolvedValueOnce({
+      id: "w-1",
+      userId: "user-1",
+      name: "Review pull requests",
+      description: null,
+      script,
+      scriptHash: hashScript(script),
+      grantedTools: [],
+      grantAll: false,
+      cronExpression,
+      enabled: true,
+      deliver: "coder",
+      sessionId: null,
+      projectId: "project-1",
+      worktreeMode: "per-fire",
+      retentionMinutes: 1440,
+      stickySessionId: null,
+      wakePrompt: "Act.",
+      modelId: "anthropic:claude-sonnet-4",
+      store: {},
+      lastValue: null,
+      lastTickAt: null,
+      lastError: null,
+      lastFiredAt: null,
+      tickCount: 0,
+      fireCount: 0,
+      cooldownMinutes: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+
+    await updateWatcher({
+      id: "w-1",
+      userId: "user-1",
+      fields: { modelId: null },
+      approveScript: false,
+    });
+
+    const written = vi.mocked(prisma.scriptWatcher.update).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.modelId).toBeNull();
   });
 });

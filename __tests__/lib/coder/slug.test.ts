@@ -3,9 +3,11 @@ import {
   coderBranchName,
   coderChatSlug,
   isCoderSlug,
+  isWorktreeBranch,
   repoSlugFromUrl,
   toCoderSlug,
   uniqueSlug,
+  watcherBranchName,
 } from "@/lib/coder/slug";
 
 describe("coder slugs", () => {
@@ -49,5 +51,22 @@ describe("coder slugs", () => {
     expect(coderChatSlug(id)).toBe("c-3f2504e0");
     expect(coderChatSlug(id)).toBe(coderChatSlug(id));
     expect(coderBranchName(coderChatSlug(id))).toBe("wt/c-3f2504e0");
+  });
+
+  it("groups a watcher's fires under one branch prefix", () => {
+    expect(watcherBranchName("pr-bot", "c-3f2504e0")).toBe("watch/pr-bot/c-3f2504e0");
+    expect(watcherBranchName("pr-bot", "sticky")).toBe("watch/pr-bot/sticky");
+    // A name that is not usable as a slug is refused rather than quoted.
+    expect(() => watcherBranchName("PR bot!", "c-1")).toThrow(/Not a usable name/);
+  });
+
+  it("recognises only the branch names it could have produced", () => {
+    expect(isWorktreeBranch("watch/pr-bot/c-3f2504e0")).toBe(true);
+    expect(isWorktreeBranch("wt/c-3f2504e0")).toBe(true);
+    expect(isWorktreeBranch("--upload-pack=evil")).toBe(false);
+    expect(isWorktreeBranch("watch/../../etc")).toBe(false);
+    expect(isWorktreeBranch("watch/pr-bot/")).toBe(false);
+    expect(isWorktreeBranch("watch/pr-bot/c-1.lock")).toBe(false);
+    expect(isWorktreeBranch("Upper/Case")).toBe(false);
   });
 });

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Loader2, MessageSquarePlus, MoreVertical, Trash2 } from "lucide-react";
+import { Bot, ChevronLeft, Loader2, MessageSquarePlus, MoreVertical, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
@@ -124,6 +125,13 @@ export function ProjectChats({
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {chat.title || "New Chat"}
                   </span>
+                  {/* Opened by a watcher fire rather than by a person. */}
+                  {chat.origin === "watcher" && (
+                    <Badge variant="secondary" className="shrink-0 gap-1 px-1.5 py-0 text-[10px]">
+                      <Bot className="h-3 w-3" />
+                      Bot
+                    </Badge>
+                  )}
                   {chat.isGenerating && (
                     <Loader2 className="text-primary h-3 w-3 shrink-0 animate-spin" />
                   )}
