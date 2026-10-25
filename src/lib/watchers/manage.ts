@@ -243,6 +243,7 @@ export async function createWatcher(params: {
   grantedTools: string[];
   grantAll: boolean;
   needsApproval: boolean;
+  deliver: DeliverTarget;
 }> {
   const { userId } = params;
   const fields = await validateFields(userId, params.fields);
@@ -285,6 +286,7 @@ export async function createWatcher(params: {
     grantedTools: consent.grantedTools,
     grantAll: consent.grantAll,
     needsApproval,
+    deliver: watcher.deliver as DeliverTarget,
   };
 }
 
@@ -350,7 +352,7 @@ export async function updateWatcher(params: {
   userId: string;
   fields: Partial<WatcherFieldInput>;
   approveScript: boolean;
-}): Promise<{ id: string; needsApproval: boolean }> {
+}): Promise<{ id: string; needsApproval: boolean; deliver: DeliverTarget }> {
   const { id, userId } = params;
 
   const current = await prisma.scriptWatcher.findFirst({ where: { id, userId } });
@@ -402,6 +404,7 @@ export async function updateWatcher(params: {
   return {
     id: watcher.id,
     needsApproval: scriptChanged && !params.approveScript,
+    deliver: merged.deliver,
   };
 }
 

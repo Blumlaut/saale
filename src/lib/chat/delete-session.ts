@@ -6,8 +6,9 @@
  * Order of operations:
  * 1. Verify ownership (`userId` in the query. an id-only delete would let a
  *    guessed id remove another user's chat)
- * 2. For a coder chat, remove its worktree. git refuses a dirty checkout, and
- *    that refusal aborts the delete, so the chat never outlives its work
+ * 2. For a coder chat, remove its worktree and its branch. A checkout holding
+ *    work that exists nowhere else refuses, and that refusal aborts the delete,
+ *    so the chat never outlives its work
  * 3. Delete attachment files from disk (fails fast, leaving the DB intact)
  * 4. Delete the session row (cascade removes messages + attachment records +
  *    watcher rows)

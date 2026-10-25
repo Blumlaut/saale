@@ -44,6 +44,23 @@ const respond = vi.mocked(respondInChat as any);
 const createChat = vi.mocked(createChatSessionRow as any);
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+/** Dispatch a fire for the per-fire watcher every case here uses. */
+function fire() {
+  return dispatchWatcherRun({
+    userId: "u-1",
+    watcher: {
+      id: "w-1",
+      name: "PR bot",
+      projectId: "project-1",
+      worktreeMode: "per-fire",
+      stickySessionId: null,
+    },
+    modelId: null,
+    message: "Review it",
+    value: { number: 42 },
+  });
+}
+
 /** The data of the chat row created, if one was. */
 function createdChat(): Record<string, unknown> | undefined {
   return createChat.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
@@ -96,7 +113,13 @@ describe("dispatchWatcherRun", () => {
       title: input.title,
       createdAt: new Date("2026-01-01"),
     }));
-    respond.mockResolvedValue({ sessionId: CHAT_ID, title: "PR bot", reply: "looked at it" });
+    respond.mockResolvedValue({
+      sessionId: CHAT_ID,
+      title: "PR bot",
+      reply: "looked at it",
+      answered: true,
+      error: null,
+    });
     updateWatcher.mockResolvedValue({});
   });
 
@@ -244,6 +267,30 @@ describe("dispatchWatcherRun", () => {
     });
 
     expect(findChats).not.toHaveBeenCalled();
+  });
+
+  it("refuses a run that left no turn behind", async () => {
+    respond.mockResolvedValue({
+      sessionId: CHAT_ID,
+      title: "PR bot",
+      reply: "",
+      answered: false,
+      error: null,
+    });
+
+    await expect(fire()).rejects.toThrow(/finished without an assistant turn/);
+  });
+
+  it("carries the provider's error out of a failed run", async () => {
+    respond.mockResolvedValue({
+      sessionId: CHAT_ID,
+      title: "PR bot",
+      reply: "",
+      answered: true,
+      error: "429: rate limit exceeded",
+    });
+
+    await expect(fire()).rejects.toThrow(/429: rate limit exceeded/);
   });
 
   it("refuses a project that is not the watcher owner's", async () => {

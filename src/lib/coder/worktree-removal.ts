@@ -1,22 +1,30 @@
 /**
  * Removing a coder chat's worktree.
  *
- * git decides whether a checkout may go: `git worktree remove` refuses a dirty
- * tree, and that refusal comes back as `WORKTREE_KEPT_CODE` so the user can
- * decide to discard the uncommitted work and retry with `force`. The branch and
- * its commits stay in the repo either way, so the only thing at stake is
- * uncommitted work, which exists nowhere else.
+ * This is where a deleted chat's checkout goes, and it decides the whole
+ * question: what exists only here. A dirty tree is git's refusal, and commits
+ * that no other ref carries are this module's, both reported as
+ * `WORKTREE_KEPT_CODE` so the user can decide to discard them and retry with
+ * `force`. A branch that is safe to drop goes with its checkout, so a project
+ * does not fill up with branches nothing points at any more.
  *
  * A confirmed delete never gets stuck: git's own removal is tried with both
  * force flags, and the directory is deleted outright when git still refuses.
  * The row goes last, so a failure leaves something to retry.
  */
 
-import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { get as getPooledEntry, getPoolKey, remove as removePooled } from "@/lib/pi/agent-pool";
 import { WORKTREE_KEPT_CODE, type CleanupCode } from "./force-delete";
-import { deleteWorktreeDirectory, GitError, removeWorktree, runInWorkspace } from "./git";
+import {
+  deleteBranch,
+  deleteWorktreeDirectory,
+  GitError,
+  isBranchPushed,
+  readStatus,
+  removeWorktree,
+  runInWorkspace,
+} from "./git";
 import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
 import { stopProcessesCommand, SWEEP_TIMEOUT_SECONDS } from "./processes";
 import { stopTerminalExecs } from "./terminal";
@@ -78,10 +86,42 @@ async function stopProcesses(
 }
 
 /**
- * Remove a coder chat's worktree, then forget the row.
+ * The branch holding this checkout's work that git has nowhere else, if any.
  *
- * A dirty checkout is refused with git's own message, and nothing is deleted:
- * the chat stays, and so does the work in it.
+ * Both are asked: the branch the chat opened on, and the one the checkout is on
+ * now. A run that reviewed a pull request by checking its branch out left it
+ * there, and that is where the work is. A branch git cannot see has nothing to
+ * lose, so it never blocks a delete.
+ */
+async function unpushedBranch(
+  userId: string,
+  options: { repoDir: string; checkout: string | null; branch: string },
+): Promise<string | null> {
+  const branches = new Set([options.branch]);
+  if (options.checkout) {
+    const status = await readStatus(userId, options.checkout).catch((err: unknown) => {
+      console.error(`Failed to read the checkout ${options.checkout}:`, err);
+      return null;
+    });
+    if (status?.branch) branches.add(status.branch);
+  }
+
+  for (const branch of branches) {
+    const pushed = await isBranchPushed(userId, options.repoDir, branch).catch((err: unknown) => {
+      console.error(`Failed to read the branch ${branch} of ${options.repoDir}:`, err);
+      return false;
+    });
+    if (!pushed) return branch;
+  }
+  return null;
+}
+
+/**
+ * Remove a coder chat's worktree and its branch, then forget the row.
+ *
+ * A checkout holding work that exists nowhere else is refused with a message
+ * the user can act on, and nothing is deleted: the chat stays, and so does the
+ * work in it.
  */
 export async function removeChatWorktree(
   userId: string,
@@ -101,19 +141,25 @@ export async function removeChatWorktree(
   const worktree = await prisma.coderWorktree.findUnique({ where: { sessionId } });
   if (!worktree || worktree.status !== "active") return { path: null, removed: false };
 
-  const absolute = resolveCoderPath(userId, worktree.path);
-  const exists = await fs
-    .stat(absolute)
-    .then(() => true)
-    .catch((err: unknown) => {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
-      throw err;
-    });
+  const repoPath = project?.repoPath ?? null;
+  const repoExists = repoPath !== null && (await workspaceDirectoryExists(userId, repoPath));
+  const checkoutExists = await workspaceDirectoryExists(userId, worktree.path);
 
-  if (exists) {
-    await stopProcesses(userId, sessionId, absolute);
-    const repoPath = project?.repoPath ?? null;
-    const repoExists = repoPath !== null && (await workspaceDirectoryExists(userId, repoPath));
+  if (repoExists && repoPath !== null) {
+    const branch = await unpushedBranch(userId, {
+      repoDir: repoPath,
+      checkout: checkoutExists ? worktree.path : null,
+      branch: worktree.branch,
+    });
+    if (branch && !force) {
+      throw keptWork(
+        `The branch ${branch} has commits that exist nowhere else. Push them, or delete the checkout anyway.`,
+      );
+    }
+  }
+
+  if (checkoutExists) {
+    await stopProcesses(userId, sessionId, resolveCoderPath(userId, worktree.path));
 
     // Nothing left to compare the checkout against, so what is in it is all
     // that is left of the work done there.
@@ -141,6 +187,15 @@ export async function removeChatWorktree(
     where: { sessionId },
     data: { status: "removed", removedAt: new Date() },
   });
+
+  if (repoExists && repoPath !== null) {
+    await deleteBranch(userId, { repoDir: repoPath, branch: worktree.branch }).catch(
+      (err: unknown) => {
+        // The chat is gone either way; a branch left behind is git's to explain.
+        console.error(`Failed to delete the branch ${worktree.branch} of ${sessionId}:`, err);
+      },
+    );
+  }
 
   const poolKey = getPoolKey(userId, sessionId);
   if (getPooledEntry(poolKey)) await removePooled(poolKey);

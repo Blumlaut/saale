@@ -9,6 +9,7 @@ import {
   WatcherInputError,
 } from "@/lib/watchers/manage";
 import { hashScript, UNAPPROVED_SCRIPT_HASH } from "@/lib/watchers/grant";
+import { deliveryNote } from "@/lib/watchers/delivery";
 
 // The create path is decided by the tool set and the consent it earns, so both
 // are stated here rather than resolved: `mail_list` never asks, `mail_send` does.
@@ -325,5 +326,20 @@ describe("where a fire is delivered", () => {
 
     const written = vi.mocked(prisma.scriptWatcher.update).mock.calls.at(-1)?.[0]?.data;
     expect(written?.modelId).toBeNull();
+  });
+});
+
+describe("deliveryNote", () => {
+  it("says where each target puts a fire", () => {
+    expect(deliveryNote("chat")).toMatch(/posted into its conversation/);
+    expect(deliveryNote("coder")).toMatch(/coder chat in its project/);
+    expect(deliveryNote("silent")).toMatch(/wakes nobody/);
+  });
+
+  it("never promises a wake the target does not do", () => {
+    for (const target of ["chat", "coder", "silent"] as const) {
+      expect(deliveryNote(target).length).toBeGreaterThan(0);
+    }
+    expect(deliveryNote("silent")).not.toMatch(/answers you|wakes you/);
   });
 });

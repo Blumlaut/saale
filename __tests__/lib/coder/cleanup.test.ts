@@ -23,6 +23,9 @@ const mocks = vi.hoisted(() => ({
   removeWorktree: vi.fn(),
   deleteWorktreeDirectory: vi.fn(),
   isRepoFullyPushed: vi.fn(),
+  isBranchPushed: vi.fn(),
+  deleteBranch: vi.fn(),
+  readStatus: vi.fn(),
   runInWorkspace: vi.fn(),
   pooledEntry: vi.fn(),
   removePooled: vi.fn(),
@@ -68,6 +71,9 @@ vi.mock("@/lib/coder/git", () => ({
   removeWorktree: mocks.removeWorktree,
   deleteWorktreeDirectory: mocks.deleteWorktreeDirectory,
   isRepoFullyPushed: mocks.isRepoFullyPushed,
+  isBranchPushed: mocks.isBranchPushed,
+  deleteBranch: mocks.deleteBranch,
+  readStatus: mocks.readStatus,
   runInWorkspace: mocks.runInWorkspace,
   shellQuote: (value: string) => `'${value}'`,
 }));
@@ -93,6 +99,9 @@ beforeEach(async () => {
 
   vi.clearAllMocks();
   mocks.findChat.mockResolvedValue({ projectId: "project-1" });
+  mocks.isBranchPushed.mockResolvedValue(true);
+  mocks.deleteBranch.mockResolvedValue(undefined);
+  mocks.readStatus.mockResolvedValue({ files: [], branch: "wt/c-1a2b3c4d" });
   mocks.findProject.mockResolvedValue({ repoPath: "projects/saale", name: "saale" });
   mocks.findWorktree.mockResolvedValue({
     sessionId: SESSION,
@@ -192,6 +201,77 @@ describe("removeChatWorktree", () => {
     expect(mocks.removeWorktree).not.toHaveBeenCalled();
     expect(mocks.deleteWorktreeDirectory).toHaveBeenCalledWith(USER, "worktrees/saale/c-1a2b3c4d");
     expect(mocks.updateWorktree).toHaveBeenCalled();
+  });
+
+  it("drops the chat's branch with its checkout", async () => {
+    await removeChatWorktree(USER, SESSION);
+
+    expect(mocks.deleteBranch).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      branch: "wt/c-1a2b3c4d",
+    });
+  });
+
+  it("drops the branch of a checkout that is already gone", async () => {
+    await fs.rm(path.join(workspaceDir, IDENTITY, "worktrees"), { recursive: true });
+    mocks.isBranchPushed.mockResolvedValue(true);
+
+    const result = await removeChatWorktree(USER, SESSION);
+
+    expect(result.removed).toBe(true);
+    expect(mocks.removeWorktree).not.toHaveBeenCalled();
+    expect(mocks.deleteBranch).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      branch: "wt/c-1a2b3c4d",
+    });
+  });
+
+  it("refuses a branch whose commits exist nowhere else", async () => {
+    mocks.isBranchPushed.mockResolvedValue(false);
+
+    const error = await removeChatWorktree(USER, SESSION).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(CoderCleanupError);
+    expect((error as CoderCleanupError).message).toContain("nowhere else");
+    // The same confirmation the dirty-tree refusal asks for.
+    expect((error as CoderCleanupError).code).toBe(WORKTREE_KEPT_CODE);
+    expect(mocks.removeWorktree).not.toHaveBeenCalled();
+    expect(mocks.deleteBranch).not.toHaveBeenCalled();
+  });
+
+  it("drops an unpushed branch when the caller forced it", async () => {
+    mocks.isBranchPushed.mockResolvedValue(false);
+
+    await removeChatWorktree(USER, SESSION, true);
+
+    expect(mocks.removeWorktree).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ force: true }),
+    );
+    expect(mocks.deleteBranch).toHaveBeenCalled();
+  });
+
+  it("asks the branch the run left the checkout on", async () => {
+    // A review that checked the pull request out holds that branch, not the one
+    // the chat was opened on.
+    mocks.readStatus.mockResolvedValue({ files: [], branch: "fix-login" });
+    mocks.isBranchPushed.mockImplementation(
+      async (_user: string, _dir: string, branch: string) => branch !== "fix-login",
+    );
+
+    await expect(removeChatWorktree(USER, SESSION)).rejects.toThrow(/fix-login/);
+    expect(mocks.isBranchPushed).toHaveBeenCalledWith(USER, "projects/saale", "fix-login");
+  });
+
+  it("still drops the chat's own branch when the checkout moved on", async () => {
+    mocks.readStatus.mockResolvedValue({ files: [], branch: "" });
+
+    await removeChatWorktree(USER, SESSION);
+
+    expect(mocks.deleteBranch).toHaveBeenCalledWith(USER, {
+      repoDir: "projects/saale",
+      branch: "wt/c-1a2b3c4d",
+    });
   });
 
   it("does nothing for a chat that is not a coder chat", async () => {

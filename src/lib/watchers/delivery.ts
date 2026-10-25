@@ -30,6 +30,23 @@ export function isDeliverTarget(value: unknown): value is DeliverTarget {
   return typeof value === "string" && (DELIVER_TARGETS as readonly string[]).includes(value);
 }
 
+/**
+ * What a live watcher does with what its script returns, said in one line.
+ *
+ * The three targets put a fire in different places, so each gets its own
+ * sentence: the model repeats this to the user as what the watcher will do.
+ */
+export function deliveryNote(deliver: DeliverTarget): string {
+  switch (deliver) {
+    case "silent":
+      return "The watcher now ticks on its schedule. A fire wakes nobody: the script has to tell the user itself, for example with telegram_send.";
+    case "coder":
+      return "The watcher now ticks on its schedule. A fire opens a coder chat in its project, works there in its own checkout, and replies in that chat.";
+    default:
+      return "The watcher now ticks on its schedule. A fire is posted into its conversation and answered there.";
+  }
+}
+
 export function isWorktreeMode(value: unknown): value is WorktreeMode {
   return typeof value === "string" && (WORKTREE_MODES as readonly string[]).includes(value);
 }
