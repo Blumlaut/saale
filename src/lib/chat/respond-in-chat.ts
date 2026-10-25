@@ -92,13 +92,16 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
   entry.promptInFlight = true;
 
   let settled = false;
+  // Read off this process's clock, which is also where a turn's row gets its
+  // `createdAt`: comparing against the user message's value would compare the
+  // database's clock with this one.
   let promptedAt: Date | null = null;
   const detachAbort = attachAbort(options.signal, entry.session);
   try {
+    promptedAt = new Date();
     const userMessage = await prisma.chatMessage.create({
       data: { sessionId: chatSession.id, role: "user", content: message },
     });
-    promptedAt = userMessage.createdAt;
     await prisma.chatSession.update({
       where: { id: chatSession.id },
       data: { lastActivityAt: new Date(), messageCount: { increment: 1 } },

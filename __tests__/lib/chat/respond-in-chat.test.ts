@@ -151,17 +151,27 @@ describe("respondInChat", () => {
   });
 
   it("reads the turn this run wrote, not an earlier reply", async () => {
-    const posted = new Date("2026-10-25T10:00:00Z");
-    mockMessageCreate.mockResolvedValue({ id: "msg-1", createdAt: posted });
+    vi.useFakeTimers({ now: new Date("2026-10-25T10:00:00Z") });
+    try {
+      const pending = respondInChat({
+        userId: USER_ID,
+        sessionId: TARGET,
+        message: "How did it go?",
+      });
+      await vi.runAllTimersAsync();
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
 
-    await respondInChat({ userId: USER_ID, sessionId: TARGET, message: "How did it go?" });
-
+    // The prompt's moment comes from this process, the same clock a turn's row
+    // is stamped with, so the two are comparable.
     expect(mockMessageFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           sessionId: TARGET,
           role: "assistant",
-          createdAt: { gte: posted },
+          createdAt: { gte: new Date("2026-10-25T10:00:00Z") },
         },
       }),
     );
