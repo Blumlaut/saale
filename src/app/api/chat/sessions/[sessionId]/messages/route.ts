@@ -251,19 +251,20 @@ export async function POST(
 
     // Update session metadata. sending a message is real chat activity, so
     // also advance lastActivityAt (the UI's sort/display timestamp).
-    // The first message names the chat: read a title off it instead of quoting
-    // it, falling back to a truncated prompt when there is nothing to read.
+    // A chat named by its message is named once: the first message that says
+    // enough. A prompt that says nothing ("hi", a file on its own) leaves the
+    // chat open, so the next message gets the try.
     const titleText = sanitizedContent || attachments[0]?.fileName || "Attachment";
-    const derivedTitle = deriveChatTitle(titleText);
+    const derivedTitle = chatSession.titleSource === "default" ? deriveChatTitle(titleText) : null;
     await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
         messageCount: { increment: 1 },
         lastActivityAt: new Date(),
-        ...(chatSession.title === "New Chat"
+        ...(chatSession.titleSource === "default"
           ? {
               title: derivedTitle ?? titleText.slice(0, 47) + (titleText.length > 47 ? "..." : ""),
-              titleSource: "auto",
+              ...(derivedTitle ? { titleSource: "auto" } : {}),
             }
           : {}),
       },
