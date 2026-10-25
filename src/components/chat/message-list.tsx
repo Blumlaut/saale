@@ -215,6 +215,9 @@ export const MessageList = memo(
       // key, or the window changed under them. Their position wins.
       const movedUp = el.scrollTop < observedTopRef.current - BOTTOM_EPSILON_PX;
       const movedDown = el.scrollTop > observedTopRef.current + BOTTOM_EPSILON_PX;
+      // Past the tail means the box grew or the content shrank under the view,
+      // and the browser clamped it back.
+      const clamped = observedTopRef.current > tailOffset(el) + BOTTOM_EPSILON_PX;
       observedTopRef.current = el.scrollTop;
       setIsAtBottom(atBottom);
       // Reading back: pin the window where the user left it, so arriving turns
@@ -223,8 +226,9 @@ export const MessageList = memo(
       if (movedUp) {
         // Above the last position we saw: nothing drags the view *up* on its
         // own except the browser safeguarding the reader's place, and that is
-        // still the reader's place.
-        armAutoScroll(false);
+        // still the reader's place. A clamp is the browser's, so following
+        // keeps whatever state it had.
+        if (!clamped) armAutoScroll(false);
       } else if (userIsDriving() && (atBottom || (movedDown && atTail(el, RETURN_BAND_PX)))) {
         // On the tail, or moving back down into it: following is what they
         // want. Requires an input behind the movement. a transcript that a
@@ -379,6 +383,17 @@ export const MessageList = memo(
       if (!content || typeof ResizeObserver === "undefined") return;
       const observer = new ResizeObserver(() => followTail());
       observer.observe(content);
+      return () => observer.disconnect();
+    }, [followTail]);
+
+    // The box resizes on its own too: the on-screen keyboard opens or closes,
+    // the composer wraps another line. The tail moves with it, so a followed
+    // view needs putting back.
+    useEffect(() => {
+      const container = containerRef.current;
+      if (!container || typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(() => followTail());
+      observer.observe(container);
       return () => observer.disconnect();
     }, [followTail]);
 

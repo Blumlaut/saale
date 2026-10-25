@@ -21,22 +21,38 @@ import type { Message } from "@/components/chat/types";
 class FakeResizeObserver {
   static instances: FakeResizeObserver[] = [];
   active = true;
+  target: Element | null = null;
   constructor(private readonly cb: () => void) {
     FakeResizeObserver.instances.push(this);
   }
-  observe() {}
+  observe(target: Element) {
+    this.target = target;
+  }
   disconnect() {
     this.active = false;
   }
-  /** Report a content resize, the way the browser does after layout. */
+  /** Report a resize, the way the browser does after layout. */
   fire() {
     if (this.active) this.cb();
   }
 }
 
+/** The transcript is the scroller; the box observers watch it, the rest watch the content. */
+function fireObservers(onScroller: boolean) {
+  for (const observer of FakeResizeObserver.instances) {
+    const watchesScroller = observer.target?.matches(".overflow-y-auto") ?? false;
+    if (watchesScroller === onScroller) observer.fire();
+  }
+}
+
 /** Content height changed without any message changing. */
 function contentResized() {
-  for (const observer of FakeResizeObserver.instances) observer.fire();
+  fireObservers(false);
+}
+
+/** The box itself was resized: the on-screen keyboard, or the composer growing. */
+function boxResized() {
+  fireObservers(true);
 }
 
 function message(overrides: Partial<Message> & { id: string }): Message {
@@ -68,23 +84,25 @@ function scrollerOf(container: HTMLElement): HTMLElement {
 }
 
 const VIEWPORT = 500;
+/** The box the transcript scrolls in: phones resize it as the keyboard comes and goes. */
+let boxHeight = VIEWPORT;
 /** What the transcript is worth once {@link layout} has been applied. */
 let contentHeight = 5000;
 
 /**
- * Give the scroller a layout: `contentHeight` of content in a `VIEWPORT`-tall
+ * Give the scroller a layout: `contentHeight` of content in a `boxHeight`-tall
  * box. jsdom reports 0 for both without this.
  */
 function layout(container: HTMLElement, scrollHeight = contentHeight): HTMLElement {
   const scroller = scrollerOf(container);
   Object.defineProperty(scroller, "scrollHeight", { value: scrollHeight, configurable: true });
-  Object.defineProperty(scroller, "clientHeight", { value: VIEWPORT, configurable: true });
+  Object.defineProperty(scroller, "clientHeight", { value: boxHeight, configurable: true });
   return scroller;
 }
 
 /** The offset that pins the view to the tail. */
 function tailOf(container: HTMLElement, scrollHeight = contentHeight): number {
-  return Math.max(0, scrollHeight - VIEWPORT);
+  return Math.max(0, scrollHeight - boxHeight);
 }
 
 /** Put the scroller at `scrollTop` and deliver the scroll event a browser sends. */
@@ -113,6 +131,7 @@ function letInputGoStale() {
 
 beforeEach(() => {
   contentHeight = 5000;
+  boxHeight = VIEWPORT;
   FakeResizeObserver.instances = [];
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   vi.useFakeTimers();
@@ -238,6 +257,48 @@ describe("MessageList auto-scroll", () => {
     layout(container);
     rerender(<MessageList messages={transcript(4)} isLoading />);
     expect(scroller.scrollTop).toBeLessThan(tailOf(container));
+  });
+
+  it("keeps following when the box grows and clamps the view to a shorter tail", () => {
+    // The on-screen keyboard closing (or the URL bar coming back) grows the
+    // shell, so the browser clamps the view up to the new, shorter tail. That
+    // is not the reader leaving, and the reply that follows would scroll off.
+    const { container, rerender } = render(<MessageList messages={transcript(3)} isLoading />);
+    const scroller = settleAtTail(container);
+
+    boxHeight = 700;
+    scrollTo(container, tailOf(container));
+
+    contentHeight = 6000;
+    layout(container);
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scroller.scrollTop).toBe(tailOf(container));
+  });
+
+  it("follows the tail when the box shrinks under a followed view", () => {
+    // The keyboard opening shortens the box: the tail moves away with no new
+    // message to follow it, so the follow has to notice the box itself.
+    const { container } = render(<MessageList messages={transcript(3)} isLoading />);
+    const scroller = settleAtTail(container);
+
+    boxHeight = 300;
+    layout(container);
+    act(() => boxResized());
+
+    expect(scroller.scrollTop).toBe(tailOf(container));
+  });
+
+  it("leaves a reader who scrolled away alone when the box resizes", () => {
+    const { container } = render(<MessageList messages={transcript(3)} isLoading />);
+    const scroller = settleAtTail(container);
+    const readingAt = tailOf(container) - 400;
+    scrollTo(container, readingAt);
+
+    boxHeight = 300;
+    layout(container);
+    act(() => boxResized());
+
+    expect(scroller.scrollTop).toBe(readingAt);
   });
 
   it("stops following when the scrollbar thumb is grabbed", () => {
