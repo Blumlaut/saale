@@ -22,6 +22,7 @@ import {
   publishQueueUpdate,
   serializeQueuedMessages,
 } from "@/lib/chat/queue";
+import { deriveChatTitle } from "@/lib/chat/derive-title";
 import { serializeChatMessage } from "@/lib/chat/serialize-message";
 import {
   buildAttachmentPromptText,
@@ -250,16 +251,21 @@ export async function POST(
 
     // Update session metadata. sending a message is real chat activity, so
     // also advance lastActivityAt (the UI's sort/display timestamp).
-    const titleSource = sanitizedContent || attachments[0]?.fileName || "Attachment";
+    // The first message names the chat: read a title off it instead of quoting
+    // it, falling back to a truncated prompt when there is nothing to read.
+    const titleText = sanitizedContent || attachments[0]?.fileName || "Attachment";
+    const derivedTitle = deriveChatTitle(titleText);
     await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
         messageCount: { increment: 1 },
         lastActivityAt: new Date(),
-        title:
-          chatSession.title === "New Chat"
-            ? titleSource.slice(0, 47) + (titleSource.length > 47 ? "..." : "")
-            : chatSession.title,
+        ...(chatSession.title === "New Chat"
+          ? {
+              title: derivedTitle ?? titleText.slice(0, 47) + (titleText.length > 47 ? "..." : ""),
+              titleSource: "auto",
+            }
+          : {}),
       },
     });
 

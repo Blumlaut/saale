@@ -308,6 +308,34 @@ describe("plain JSON messages (no attachments)", () => {
     expect(createData().attachments).toBeUndefined();
     await expect(fs.access(path.join(userRoot, "uploads"))).rejects.toThrow();
   });
+
+  it("names the chat from the first message instead of quoting it", async () => {
+    stubDbMessage("msg-6");
+
+    const res = await POST(
+      jsonRequest("can you add a dark mode toggle to the settings page"),
+      params(),
+    );
+
+    expect(res.status).toBe(200);
+    const update = vi.mocked(mockPrisma.chatSession.update).mock.calls[0]![0]!.data as {
+      title: string;
+      titleSource: string;
+    };
+    expect(update.title).toBe("Add dark mode toggle to settings page");
+    expect(update.titleSource).toBe("auto");
+  });
+
+  it("quotes the prompt when it cannot name a topic", async () => {
+    stubDbMessage("msg-7");
+
+    await POST(jsonRequest("hi"), params());
+
+    const update = vi.mocked(mockPrisma.chatSession.update).mock.calls[0]![0]!.data as {
+      title: string;
+    };
+    expect(update.title).toBe("hi");
+  });
 });
 
 // ─── Auth ────────────────────────────────────────────────────────────────────

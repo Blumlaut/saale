@@ -61,6 +61,7 @@
     "bullmq": "^6.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "compromise": "^14.19.0",
     "date-fns": "^4.4.0",
     "defuddle": "^0.19.5",
     "dockerode": "^5.0.1",
