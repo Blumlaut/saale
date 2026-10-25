@@ -181,8 +181,8 @@ model ChatSession {
 // ─── Coder ─────────────────────────────────────────────────────
 //
 // A project is a git repo inside the user's workspace; a coder chat runs in a
-// git worktree of one project. Both paths are workspace-relative, so a chat is
-// never tied to a mount point.
+// checkout of one project, either a git worktree of its own or the repo itself.
+// Both paths are workspace-relative, so a chat is never tied to a mount point.
 
 model CoderProject {
   id            String   @id @default(cuid())
@@ -198,6 +198,11 @@ model CoderProject {
   envFiles      Json?
   /// Command run in a worktree once it exists, e.g. "npm install".
   setupScript   String?
+  /// "worktree" gives every chat a checkout of its own; "repo" runs them all
+  /// in the project's checkout.
+  chatMode      String    @default("worktree")
+  /// When the shared checkout last ran the setup script, null until it has.
+  repoSetupAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
