@@ -294,8 +294,13 @@ export async function createWatcher(params: {
 async function validateFields(userId: string, input: WatcherFieldInput): Promise<WatcherFields> {
   const deliver = normalizeDeliver(input.deliver);
 
+  // A chat fire is the one delivery that reports back into a conversation, so it
+  // is the one delivery that holds a chat id. The rest run scoped to the watcher
+  // and outlive any chat.
   const sessionId =
-    typeof input.sessionId === "string" && input.sessionId.trim() ? input.sessionId.trim() : null;
+    deliver === "chat" && typeof input.sessionId === "string" && input.sessionId.trim()
+      ? input.sessionId.trim()
+      : null;
   if (sessionId) await assertOwnsSession(userId, sessionId);
 
   if (deliver === "chat" && !sessionId) {

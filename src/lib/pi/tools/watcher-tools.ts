@@ -291,7 +291,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         sessionId: Type.Optional(
           Type.String({
             description:
-              'The conversation the script runs in, and where a "chat" fire is answered. Defaults to this conversation. Required for "chat".',
+              'The conversation a "chat" fire is answered in. Defaults to this conversation, and a "coder" or "silent" watcher ignores it. A watcher that dispatches into a project, or is delivered by its script, has no chat of its own and outlives any chat.',
           }),
         ),
         projectId: Type.Optional(
