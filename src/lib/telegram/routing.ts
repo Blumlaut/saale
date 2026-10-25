@@ -86,25 +86,6 @@ export async function resolveExistingTelegramTarget(params: {
   replyToMessageId?: bigint | null | undefined;
   link?: TelegramLinkInfo | null;
 }): Promise<string | null> {
-  const { userId, telegramChatId, replyToMessageId } = params;
-
-  const link = params.link ?? (await getLinkByUserId(userId));
-  if (!link) throw new Error("Telegram link not found");
-  if (link.telegramChatId !== telegramChatId) {
-    throw new Error("Telegram chat does not belong to this user's link");
-  }
-
-  if (replyToMessageId != null) {
-    const source = await findOutboundSource({
-      userId,
-      chatId: telegramChatId,
-      messageId: replyToMessageId,
-    });
-    if (source && (await chatExists(userId, source))) return source;
-  }
-
-  const active = link.activeSessionId;
-  if (active && (await chatExists(userId, active))) return active;
-
-  return null;
+  const target = await resolveTelegramTarget(params);
+  return target ? target.sessionId : null;
 }
