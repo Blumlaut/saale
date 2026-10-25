@@ -34,11 +34,17 @@ import { assertRepoRelativePath, loadSessionDiff, loadSessionState } from "@/lib
 const USER = "user-1";
 const SESSION = "chat-1";
 
-function session(worktree: { status: string } | null) {
+function session(worktree: { status: string } | null, chatMode = "worktree") {
   return {
     id: SESSION,
     projectId: "project-1",
-    project: { id: "project-1", name: "saale", slug: "saale" },
+    project: {
+      id: "project-1",
+      name: "saale",
+      slug: "saale",
+      repoPath: "projects/saale",
+      chatMode,
+    },
     coderWorktree: worktree
       ? { path: "worktrees/saale/c-1a2b3c4d", branch: "wt/c-1a2b3c4d", baseSha: "abc", ...worktree }
       : null,
@@ -133,6 +139,20 @@ describe("loadSessionState", () => {
     mocks.findSession.mockResolvedValue(session({ status: "removed" }));
     expect((await loadSessionState(USER, SESSION))?.worktree).toBeNull();
     expect(mocks.readStatus).not.toHaveBeenCalled();
+  });
+
+  it("reads the project's own checkout for a chat that shares it", async () => {
+    mocks.findSession.mockResolvedValue(session(null, "repo"));
+
+    const state = await loadSessionState(USER, SESSION);
+
+    expect(state?.worktree).toEqual({
+      path: "projects/saale",
+      branch: "wt/c-1a2b3c4d",
+      baseSha: "",
+      mode: "repo",
+    });
+    expect(mocks.readStatus).toHaveBeenCalledWith(USER, "projects/saale");
   });
 
   it("is null for another user's chat, so the route can answer 404", async () => {

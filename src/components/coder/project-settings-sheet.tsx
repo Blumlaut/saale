@@ -191,8 +191,9 @@ export function ProjectSettingsSheet({
                       <div className="min-w-0">
                         <Label htmlFor="project-worktree">Own worktree per chat</Label>
                         <p className="text-muted-foreground mt-1 text-xs">
-                          Every chat gets a branch and a directory of its own. Turn it off and the
-                          chats run in the project&apos;s checkout, one branch for all of them.
+                          Every chat gets a branch and a directory of its own. With it off, chats
+                          run in the project&apos;s checkout on its branch. A chat that already has
+                          a worktree keeps it.
                         </p>
                       </div>
                       <Switch

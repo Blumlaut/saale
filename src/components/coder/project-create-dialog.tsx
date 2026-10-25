@@ -132,7 +132,17 @@ export function ProjectCreateDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className="sm:max-w-lg"
+        onKeyDown={(event) => {
+          // Enter moves the flow along, except where it belongs to a line break.
+          if (event.key !== "Enter" || event.shiftKey || busy) return;
+          if ((event.target as HTMLElement).tagName === "TEXTAREA") return;
+          event.preventDefault();
+          if (last) void submit();
+          else next();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             {step === 0 ? "Set up a project" : projectName || "New project"}
