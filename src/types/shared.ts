@@ -57,7 +57,7 @@ export interface JobSchema {
 
 // --- Script Watchers ---
 
-/** A poll job: runs a script on a schedule and wakes the agent when it reports. */
+/** A poll job: runs a script on a schedule and does something with what it reports. */
 export interface ScriptWatcher {
   id: string;
   name: string;
@@ -65,8 +65,17 @@ export interface ScriptWatcher {
   script: string;
   cronExpression: string;
   enabled: boolean;
+  /** "chat" (answer in a conversation) | "silent" (the script delivers it) | "coder" (a project). */
+  deliver: string;
   sessionId: string | null;
   sessionTitle: string | null;
+  /** The project a "coder" fire dispatches into. */
+  projectId: string | null;
+  projectName: string | null;
+  /** "per-fire" | "sticky". */
+  worktreeMode: string;
+  /** Minutes a finished per-fire bot chat is kept. */
+  retentionMinutes: number;
   wakePrompt: string;
   modelId: string | null;
   cooldownMinutes: number;
@@ -89,13 +98,17 @@ export interface ScriptWatcher {
 /** One recorded tick of a watcher. */
 export interface ScriptWatcherTick {
   id: string;
-  /** "idle" | "fired" | "cooldown" | "blocked" | "error" */
+  /** "idle" | "fired" | "reported" | "cooldown" | "blocked" | "error" */
   status: string;
   value: string | null;
   error: string | null;
   output: string | null;
   durationMs: number;
   callCount: number;
+  /** The tools the script called, so a tick says what delivered it. */
+  toolNames?: string[];
+  /** The chat this tick's fire was delivered into. */
+  sessionId?: string | null;
   createdAt: string;
 }
 

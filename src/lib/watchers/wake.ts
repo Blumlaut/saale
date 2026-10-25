@@ -1,27 +1,26 @@
 /**
- * Delivering a watcher's fire to the agent.
+ * Delivering a watcher's fire.
  *
- * A tick is cheap and answers "did anything change?". When the answer is yes the
- * work needs a model, and this is where the script's return value becomes the
- * agent's problem:
+ * A tick is cheap and answers "did anything change?". When the answer is yes,
+ * `deliver` says where the finding goes:
  *
- * - bound to a conversation → posted into that chat as a message and answered
- *   there, so the finding lands in the thread the user asked from, with the
- *   thread's own context and tools;
- * - unbound → a standalone run under a per-user system definition, for a watcher
- *   created outside any conversation.
- *
- * Both are the existing turn paths (`respondInChat`, `triggerAgentRun`) rather
- * than a new one. a wake is a normal agent run that happens to have been
- * started by a script.
+ * - `chat` → posted into the chosen conversation and answered there, so it lands
+ *   in the thread the user asked from, with the thread's own context and tools;
+ * - `coder` → a coder chat in the watcher's project, in a worktree of its own
+ *   (`coder/dispatch.ts`);
+ * - `silent` → nowhere. The script told the user itself, and the tick records
+ *   what it returned. A silent fire is settled in `tick.ts` and never reaches
+ *   here, because a wake that would run an agent is the whole thing it declines.
  */
 
-import { prisma } from "@/lib/db";
 import { respondInChat } from "@/lib/chat/respond-in-chat";
-import { triggerAgentRun } from "@/lib/agent-jobs/run";
+import { dispatchWatcherRun } from "@/lib/coder/dispatch";
 
-/** Name of the per-user definition standalone watcher wakes run under. */
-const WATCHER_AGENT_NAME = "Watchers";
+/** What a fire produced that is worth telling the tick log about. */
+export interface WakeDelivery {
+  /** The chat the fire was delivered into, when there is one. */
+  sessionId: string | null;
+}
 
 /** How the agent is told what fired. */
 export function buildWakeMessage(options: {
@@ -51,53 +50,20 @@ export function buildWakeMessage(options: {
   ].join("\n");
 }
 
-/**
- * The definition standalone watcher wakes run under.
- *
- * One per user, system-managed so it cannot be edited or run by hand. it exists
- * to own watcher runs and their transcripts, mirroring the Telegram agent.
- * Adopted rather than duplicated if a definition with this name already exists,
- * since `name` is unique per user.
- */
-export async function ensureWatcherAgentDefinition(userId: string): Promise<{ id: string }> {
-  const existing = await prisma.agentDefinition.findFirst({
-    where: { userId, name: WATCHER_AGENT_NAME },
-    select: { id: true, systemManaged: true },
-  });
-
-  if (existing) {
-    if (!existing.systemManaged) {
-      await prisma.agentDefinition.update({
-        where: { id: existing.id },
-        data: { systemManaged: true },
-      });
-    }
-    return { id: existing.id };
-  }
-
-  const created = await prisma.agentDefinition.create({
-    data: {
-      userId,
-      name: WATCHER_AGENT_NAME,
-      description: "Runs started by script watchers",
-      prompt: "",
-      systemManaged: true,
-      enabled: true,
-      toolConfig: {
-        email: true,
-        calendar: true,
-        chatSearch: true,
-        web: true,
-        memory: true,
-        tasks: true,
-        telegram: true,
-        terminal: true,
-      },
-    },
-    select: { id: true },
-  });
-
-  return { id: created.id };
+/** The watcher fields delivery reads. */
+export interface WakeTarget {
+  id: string;
+  userId: string;
+  name: string;
+  /** "chat" | "silent" | "coder". */
+  deliver: string;
+  sessionId: string | null;
+  projectId: string | null;
+  worktreeMode: string;
+  stickySessionId: string | null;
+  wakePrompt: string;
+  /** Model for a fire that opens its own chat; a `chat` fire uses the chat's. */
+  modelId: string | null;
 }
 
 /**
@@ -105,41 +71,51 @@ export async function ensureWatcherAgentDefinition(userId: string): Promise<{ id
  *
  * A chat that is already generating is refused rather than queued: the watcher
  * will fire again on the next tick (its `lastFiredAt` is only written on a
- * delivered wake), which is simpler than racing a run that is mid-transcript
- * and a queued message would be answered against a conversation that has moved
- * on since.
+ * delivered wake), which is simpler than racing a run that is mid-transcript and
+ * a queued message would be answered against a conversation that has moved on
+ * since. A coder fire behaves the same way in `sticky` mode, where the fire
+ * shares a chat with the one before it.
+ *
+ * @throws when the delivery could not happen, so the caller records a blocked
+ * tick and leaves the script's ledger where it was.
  */
-export async function wakeAgent(options: {
-  userId: string;
-  name: string;
-  wakePrompt: string;
-  sessionId: string | null;
-  /** Model for a standalone wake; a chat-bound wake uses its conversation's model. */
-  modelId: string | null;
+export async function deliverWake(options: {
+  watcher: WakeTarget;
   value: unknown;
-}): Promise<void> {
+}): Promise<WakeDelivery> {
+  const { watcher } = options;
+
+  if (watcher.deliver === "silent") return { sessionId: null };
+
   const message = buildWakeMessage({
-    name: options.name,
-    wakePrompt: options.wakePrompt,
+    name: watcher.name,
+    wakePrompt: watcher.wakePrompt,
     value: options.value,
   });
 
-  if (options.sessionId) {
-    // `respondInChat` refuses a busy or missing chat with a thrown error, which
-    // the caller records on the tick.
-    await respondInChat({
-      userId: options.userId,
-      sessionId: options.sessionId,
+  if (watcher.deliver === "coder") {
+    const dispatched = await dispatchWatcherRun({
+      userId: watcher.userId,
+      watcher,
+      modelId: watcher.modelId,
       message,
+      value: options.value,
     });
-    return;
+    return { sessionId: dispatched.sessionId };
   }
 
-  const definition = await ensureWatcherAgentDefinition(options.userId);
-  await triggerAgentRun({
-    definitionId: definition.id,
-    userId: options.userId,
-    promptOverride: message,
-    ...(options.modelId ? { modelId: options.modelId } : {}),
+  if (!watcher.sessionId) {
+    throw new Error(
+      "This watcher has no conversation to report into. Pick one, dispatch into a project, or deliver from the script.",
+    );
+  }
+
+  // `respondInChat` refuses a busy or missing chat with a thrown error, which
+  // the caller records on the tick.
+  await respondInChat({
+    userId: watcher.userId,
+    sessionId: watcher.sessionId,
+    message,
   });
+  return { sessionId: watcher.sessionId };
 }

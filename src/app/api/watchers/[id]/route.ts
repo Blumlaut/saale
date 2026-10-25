@@ -34,7 +34,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
   const withSession = await prisma.scriptWatcher.findUniqueOrThrow({
     where: { id },
-    include: { session: { select: { title: true } } },
+    include: { session: { select: { title: true } }, project: { select: { name: true } } },
   });
 
   return NextResponse.json({
@@ -47,6 +47,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
       output: tick.output,
       durationMs: tick.durationMs,
       callCount: tick.callCount,
+      toolNames: tick.toolNames,
+      sessionId: tick.sessionId,
       createdAt: tick.createdAt.toISOString(),
     })),
   });
@@ -80,7 +82,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         "description",
         "script",
         "cronExpression",
+        "deliver",
         "sessionId",
+        "projectId",
+        "worktreeMode",
+        "retentionMinutes",
         "wakePrompt",
         "modelId",
         "cooldownMinutes",
@@ -99,7 +105,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
     const watcher = await prisma.scriptWatcher.findUniqueOrThrow({
       where: { id },
-      include: { session: { select: { title: true } } },
+      include: { session: { select: { title: true } }, project: { select: { name: true } } },
     });
 
     return NextResponse.json({ watcher: serializeWatcher(watcher) });

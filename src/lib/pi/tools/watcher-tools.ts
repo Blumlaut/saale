@@ -35,6 +35,8 @@ const SCRIPT_CONTRACT = [
   "(`ALL_TOOLS` lists every tool); a tool reached that way cannot be read from the source,",
   "so the user approves every tool the script could call instead of the ones it names.",
   "A call resolves to the tool's value, so read its fields (`r.exitCode`, `r.stdout`).",
+  "A script that should tell the user something itself calls `tools.telegram_send({ message })`",
+  'during the run. with `deliver: "silent"` that is the whole delivery and no model is woken.',
   "Never match a marker against a whole result. it echoes the arguments it was called with ",
   "and never paste a result into the script text: keep it in a variable, or in `store()`.",
   "Timers, `fetch`, `require` and `process` do not exist.",
@@ -46,6 +48,8 @@ const watcherSchema = Type.Object({
   name: Type.String(),
   cron: Type.String(),
   enabled: Type.Boolean(),
+  /** "chat" | "silent" | "coder". */
+  deliver: Type.String(),
   reportsTo: Type.Union([
     Type.Object({ chatId: Type.String(), title: Type.Union([Type.String(), Type.Null()]) }),
     Type.String(),
@@ -73,6 +77,8 @@ const runOutcomeSchema = Type.Object({
   output: Type.String(),
   durationMs: Type.Number(),
   toolCalls: Type.Integer(),
+  /** The tools it called, which is how a silent watcher delivered. */
+  tools: Type.Array(Type.String()),
 });
 
 const watcherTestSchema = Type.Object({
@@ -115,6 +121,9 @@ const watcherTicksSchema = Type.Object({
       output: Type.Union([Type.String(), Type.Null()]),
       durationMs: Type.Number(),
       toolCalls: Type.Integer(),
+      tools: Type.Array(Type.String()),
+      /** The chat the fire was delivered into, when one was. */
+      chatId: Type.Union([Type.String(), Type.Null()]),
     }),
   ),
 });
@@ -129,6 +138,7 @@ function tickView(outcome: {
   output: string;
   durationMs: number;
   callCount: number;
+  callNames: string[];
 }): Static<typeof runOutcomeSchema> {
   return {
     status: outcome.status,
@@ -137,6 +147,7 @@ function tickView(outcome: {
     output: outcome.output,
     durationMs: outcome.durationMs,
     toolCalls: outcome.callCount,
+    tools: outcome.callNames,
   };
 }
 
@@ -154,7 +165,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         const watchers = await prisma.scriptWatcher.findMany({
           where: { userId },
           orderBy: { createdAt: "desc" },
-          include: { session: { select: { title: true } } },
+          include: { session: { select: { title: true } }, project: { select: { name: true } } },
         });
 
         return {
@@ -167,9 +178,15 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
                 name: serialized.name,
                 cron: serialized.cronExpression,
                 enabled: serialized.enabled,
-                reportsTo: serialized.sessionId
-                  ? { chatId: serialized.sessionId, title: serialized.sessionTitle }
-                  : "no conversation (runs a standalone agent run)",
+                deliver: serialized.deliver,
+                reportsTo:
+                  serialized.deliver === "coder"
+                    ? `project ${serialized.projectName ?? serialized.projectId}`
+                    : serialized.deliver === "silent"
+                      ? "nothing (the script delivers it)"
+                      : serialized.sessionId
+                        ? { chatId: serialized.sessionId, title: serialized.sessionTitle }
+                        : "nothing",
                 approvedTools: serialized.grantedTools,
                 unrestricted: serialized.grantAll,
                 needsApproval: serialized.needsApproval,
@@ -256,7 +273,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
     defineStructuredTool({
       name: "watcher_create",
       label: "Create Watcher",
-      description: `Create a script watcher: it runs a script on a cron schedule and wakes you only when the script returns something. Use it for anything you would otherwise poll for on a timer. checking a mailbox, a remote host, a feed. where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} A script that calls a tool needing approval is created paused: the watcher starts ticking once the user approves its script on the Watchers page, so tell them it is waiting. A script that only calls tools which never ask runs from the moment you create it.`,
+      description: `Create a script watcher: it runs a script on a cron schedule and does something with what the script returns. Use it for anything you would otherwise poll for on a timer. checking a mailbox, a remote host, a feed, a git repo. where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} \`deliver\` decides where a returned value goes: a conversation you answer in, a project where you get a coder chat and a worktree of your own, or nothing because the script itself told the user. A script that calls a tool needing approval is created paused: the watcher starts ticking once the user approves its script on the Watchers page, so tell them it is waiting. A script that only calls tools which never ask runs from the moment you create it.`,
       parameters: Type.Object({
         name: Type.String({ description: "Watcher name (max 100 chars, unique per user)." }),
         script: Type.String({ description: `The script body. ${SCRIPT_CONTRACT}` }),
@@ -264,10 +281,33 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           description:
             "When to tick, as a 5-field cron expression (minute hour day month weekday), e.g. '*/10 * * * *'. Cron granularity is one minute.",
         }),
+        deliver: Type.Optional(
+          Type.String({
+            description:
+              'Where a fire goes: "chat" (answer in a conversation, the default), "silent" (nothing is woken. the script tells the user itself, e.g. with `tools.telegram_send`), or "coder" (a coder chat in `projectId`, in a worktree of its own, for work like reviewing a pull request).',
+          }),
+        ),
         sessionId: Type.Optional(
           Type.String({
             description:
-              "Conversation to report into. Defaults to this conversation; omit only for a watcher that should run standalone.",
+              'The conversation the script runs in, and where a "chat" fire is answered. Defaults to this conversation. Required for "chat".',
+          }),
+        ),
+        projectId: Type.Optional(
+          Type.String({
+            description: 'The project a "coder" fire dispatches into. Required for "coder".',
+          }),
+        ),
+        worktreeMode: Type.Optional(
+          Type.String({
+            description:
+              'For "coder": "per-fire" (default) gives every fire a fresh worktree, so two runs never share a directory. "sticky" keeps one chat and worktree for a thread that runs across fires.',
+          }),
+        ),
+        retentionMinutes: Type.Optional(
+          Type.Number({
+            description:
+              'For "coder": minutes a finished per-fire chat is kept before it is removed. Only a chat whose branch is pushed and whose tree is clean is ever removed. Default 1440.',
           }),
         ),
         wakePrompt: Type.Optional(
@@ -285,7 +325,8 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         ),
         modelId: Type.Optional(
           Type.String({
-            description: "Model override for a standalone wake (format 'provider:modelId').",
+            description:
+              "Model for the chat a \"coder\" fire opens (format 'provider:modelId'). Omit to use the user's default model.",
           }),
         ),
       }),
@@ -300,7 +341,11 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
               name: params.name,
               script: params.script,
               cronExpression: params.cronExpression,
+              deliver: params.deliver,
               sessionId: params.sessionId ?? sessionId,
+              projectId: params.projectId,
+              worktreeMode: params.worktreeMode,
+              retentionMinutes: params.retentionMinutes,
               wakePrompt: params.wakePrompt,
               description: params.description,
               cooldownMinutes: params.cooldownMinutes,
@@ -333,17 +378,34 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
       name: "watcher_update",
       label: "Update Watcher",
       description:
-        "Update a watcher's script, cadence, target, wake instructions, cooldown or enabled state. Changing the script does not renew its tool approval: the watcher pauses until the user approves the new script, because an approval covers the script it was given for and nothing else. Tell the user when that happens.",
+        "Update a watcher's script, cadence, delivery target, wake instructions, cooldown or enabled state. Changing the script does not renew its tool approval: the watcher pauses until the user approves the new script, because an approval covers the script it was given for and nothing else. Tell the user when that happens.",
       parameters: Type.Object({
         watcherId: Type.String({ description: "Watcher id." }),
         script: Type.Optional(Type.String({ description: "New script body." })),
         cronExpression: Type.Optional(Type.String({ description: "New cron expression." })),
         name: Type.Optional(Type.String({ description: "New name." })),
         description: Type.Optional(Type.String({ description: "New description." })),
+        deliver: Type.Optional(
+          Type.String({ description: 'New delivery: "chat", "silent" or "coder".' }),
+        ),
         sessionId: Type.Optional(Type.String({ description: "New target conversation id." })),
+        projectId: Type.Optional(
+          Type.String({ description: 'New project for a "coder" watcher.' }),
+        ),
+        worktreeMode: Type.Optional(
+          Type.String({ description: 'New worktree mode: "per-fire" or "sticky".' }),
+        ),
+        retentionMinutes: Type.Optional(
+          Type.Number({ description: "New retention window for finished per-fire chats." }),
+        ),
         wakePrompt: Type.Optional(Type.String({ description: "New wake instructions." })),
         cooldownMinutes: Type.Optional(Type.Number({ description: "New cooldown in minutes." })),
-        modelId: Type.Optional(Type.String({ description: "New model override." })),
+        modelId: Type.Optional(
+          Type.String({
+            description:
+              'New model for the chat a "coder" fire opens. Null clears it, so the chat uses the default model.',
+          }),
+        ),
         enabled: Type.Optional(Type.Boolean({ description: "Enable or disable the watcher." })),
       }),
       outputSchema: watcherUpdateSchema,
@@ -354,7 +416,11 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           "cronExpression",
           "name",
           "description",
+          "deliver",
           "sessionId",
+          "projectId",
+          "worktreeMode",
+          "retentionMinutes",
           "wakePrompt",
           "cooldownMinutes",
           "modelId",
@@ -443,6 +509,8 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
               output: tick.output,
               durationMs: tick.durationMs,
               toolCalls: tick.callCount,
+              tools: tick.toolNames,
+              chatId: tick.sessionId,
             })),
           },
         };

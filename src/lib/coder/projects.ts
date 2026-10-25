@@ -98,6 +98,8 @@ export interface CoderProjectChat {
   id: string;
   title: string;
   lastActivityAt: Date;
+  /** "user", or "watcher" for a chat a watcher fire opened. */
+  origin: string;
   worktree: { path: string; branch: string; status: string } | null;
 }
 
@@ -326,6 +328,7 @@ export async function getProject(
           id: true,
           title: true,
           lastActivityAt: true,
+          origin: true,
           coderWorktree: { select: { path: true, branch: true, status: true } },
         },
       },
@@ -346,6 +349,7 @@ export async function getProject(
       id: chat.id,
       title: chat.title,
       lastActivityAt: chat.lastActivityAt,
+      origin: chat.origin,
       worktree: chat.coderWorktree,
     })),
   };
@@ -525,6 +529,7 @@ export function serializeProjectDetail(
       title: chat.title,
       lastActivityAt: chat.lastActivityAt.toISOString(),
       isGenerating: generating.has(chat.id),
+      origin: chat.origin,
       worktree: chat.worktree,
     })),
   };

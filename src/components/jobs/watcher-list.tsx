@@ -16,8 +16,10 @@ import {
 import {
   AlertCircle,
   AlertTriangle,
+  BellOff,
   CheckCircle,
   Clock,
+  FolderGit2,
   Lock,
   Loader2,
   MessageSquare,
@@ -61,6 +63,13 @@ function TickBadge({ status }: { status: string }) {
         >
           <Zap className="mr-1 h-3 w-3" />
           Fired
+        </Badge>
+      );
+    case "reported":
+      return (
+        <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400">
+          <CheckCircle className="mr-1 h-3 w-3" />
+          Reported
         </Badge>
       );
     case "error":
@@ -286,7 +295,20 @@ export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
                           <Clock className="h-3 w-3" />
                           {getCronLabel(watcher.cronExpression)}
                         </span>
-                        {watcher.sessionId ? (
+                        {watcher.deliver === "coder" ? (
+                          <span className="inline-flex max-w-full items-center gap-1">
+                            <FolderGit2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">
+                              {watcher.projectName ?? "Project"}
+                              {watcher.worktreeMode === "sticky" ? " · one worktree" : ""}
+                            </span>
+                          </span>
+                        ) : watcher.deliver === "silent" ? (
+                          <span className="inline-flex max-w-full items-center gap-1">
+                            <BellOff className="h-3 w-3 shrink-0" />
+                            <span className="truncate">Delivered by the script</span>
+                          </span>
+                        ) : watcher.sessionId ? (
                           <button
                             type="button"
                             className="hover:text-foreground inline-flex max-w-full items-center gap-1 hover:underline"
@@ -302,7 +324,7 @@ export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
                             </span>
                           </button>
                         ) : (
-                          <span className="truncate">No conversation</span>
+                          <span className="truncate">No target</span>
                         )}
                         {watcher.fireCount > 0 && <span>· fired {watcher.fireCount}×</span>}
                       </div>
@@ -420,6 +442,27 @@ export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
                             {tick.callCount > 0 && ` · ${tick.callCount} call(s)`}
                           </span>
                         </div>
+
+                        {(tick.toolNames?.length ?? 0) > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {tick.toolNames!.map((name) => (
+                              <Badge key={name} variant="secondary" className="font-mono text-xs">
+                                {name}
+                              </Badge>
+                            ))}
+                            {tick.sessionId && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => openChat(tick.sessionId!)}
+                              >
+                                <MessageSquare className="mr-1 h-3 w-3" />
+                                Delivered chat
+                              </Button>
+                            )}
+                          </div>
+                        )}
 
                         {tick.value && (
                           <pre className="bg-muted/50 mt-2 max-h-40 overflow-auto rounded p-2 font-mono text-xs break-all whitespace-pre-wrap">

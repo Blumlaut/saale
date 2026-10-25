@@ -34,7 +34,13 @@ function makeRequest(watcherId?: string, key = "test-worker-secret") {
   });
 }
 
-const IDLE: TickOutcome = { status: "idle", output: "", durationMs: 12, callCount: 0 };
+const IDLE: TickOutcome = {
+  status: "idle",
+  output: "",
+  durationMs: 12,
+  callCount: 0,
+  callNames: [],
+};
 
 describe("POST /api/watchers/execute", () => {
   beforeEach(() => {
