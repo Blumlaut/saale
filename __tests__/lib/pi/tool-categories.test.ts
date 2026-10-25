@@ -9,8 +9,8 @@ import {
 } from "@/lib/pi/tool-categories";
 
 describe("tool categories", () => {
-  it("has 14 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(14);
+  it("has 15 tool categories", () => {
+    expect(TOOL_CATEGORIES).toHaveLength(15);
   });
 
   it("has unique keys", () => {
@@ -32,6 +32,7 @@ describe("tool categories", () => {
     expect(keys).toContain("tasks");
     expect(keys).toContain("agentJobs");
     expect(keys).toContain("infra");
+    expect(keys).toContain("coder");
     expect(keys).toContain("settings");
   });
 

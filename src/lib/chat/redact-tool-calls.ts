@@ -181,6 +181,11 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   settings_set: { text: "Changed a setting" },
   project_settings_get: { text: "Read a project's setup" },
   project_settings_set: { text: "Changed a project's setup" },
+  project_list: {
+    text: "Listed projects",
+    count: { field: "count", one: "project", many: "projects" },
+  },
+  project_chat_start: { text: "Started a coding chat" },
 };
 
 const UNKNOWN_TOOL_SUMMARY: SummaryRule = { text: "Ran a tool" };

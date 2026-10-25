@@ -14,18 +14,33 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 const mocks = vi.hoisted(() => ({
   findProject: vi.fn(),
+  findProjects: vi.fn(),
   findChat: vi.fn(),
   updateProject: vi.fn(),
   findWorktrees: vi.fn(),
+  createChatSessionRow: vi.fn(),
+  respondInChat: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     user: { findUnique: vi.fn() },
     chatSession: { findFirst: mocks.findChat },
-    coderProject: { findFirst: mocks.findProject, update: mocks.updateProject },
+    coderProject: {
+      findFirst: mocks.findProject,
+      findMany: mocks.findProjects,
+      update: mocks.updateProject,
+    },
     coderWorktree: { findMany: mocks.findWorktrees },
   },
+}));
+
+vi.mock("@/lib/chat/create-session", () => ({
+  createChatSessionRow: mocks.createChatSessionRow,
+}));
+
+vi.mock("@/lib/chat/respond-in-chat", () => ({
+  respondInChat: mocks.respondInChat,
 }));
 
 vi.mock("@/lib/coder/git", () => ({
@@ -42,7 +57,7 @@ vi.mock("@/lib/coder/gitconfig", async (importOriginal) => ({
   ensureGitconfig: vi.fn(),
 }));
 
-import { createProjectSettingsTools } from "@/lib/coder/tools";
+import { createProjectSettingsTools, createProjectTools } from "@/lib/coder/tools";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { createSettingsTools } from "@/lib/settings/tools";
 
@@ -84,6 +99,21 @@ async function run(tool: ToolDefinition, params: Record<string, unknown>) {
     envFiles: { path: string; content: string }[];
     setupScript: string | null;
   };
+}
+
+/** Run one of the project tools and read the value it returns. */
+async function runValue<T>(tool: ToolDefinition, params: Record<string, unknown>): Promise<T> {
+  const execute = tool.execute as unknown as (
+    id: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ content: { type: string; text: string }[] }>;
+  return JSON.parse((await execute("call-1", params)).content[0]!.text) as T;
+}
+
+function projectTool(name: string, sessionId: string | undefined = SESSION): ToolDefinition {
+  const found = createProjectTools(USER, sessionId).find((candidate) => candidate.name === name);
+  if (!found) throw new Error(`tool ${name} not found`);
+  return found;
 }
 
 function tool(name: string, sessionId: string | undefined = SESSION): ToolDefinition {
@@ -202,5 +232,120 @@ describe("where the tools live", () => {
     expect(names).toContain("project_settings_get");
     expect(names).toContain("project_settings_set");
     expect(names).toContain("settings_list");
+  });
+
+  it("lists and dispatches from the coder category", () => {
+    const names = createProjectTools(USER, SESSION).map((candidate) => candidate.name);
+
+    expect(names).toEqual(["project_list", "project_chat_start"]);
+  });
+});
+
+describe("project_list", () => {
+  const projectRow = (overrides: Record<string, unknown> = {}) => ({
+    id: PROJECT_ID,
+    name: "Saale Web",
+    slug: "saale-web",
+    repoPath: "projects/saale-web",
+    defaultBranch: "main",
+    worktrees: [{ id: "wt-1" }, { id: "wt-2" }],
+    _count: { chats: 3 },
+    chats: [{ lastActivityAt: new Date("2026-02-01T10:00:00Z") }],
+    ...overrides,
+  });
+
+  it("reports every project and which one this chat is in", async () => {
+    mocks.findProjects.mockResolvedValue([projectRow()]);
+
+    const value = await runValue<{
+      count: number;
+      current: string | null;
+      projects: Record<string, unknown>[];
+    }>(projectTool("project_list"), {});
+
+    expect(mocks.findProjects).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: USER } }),
+    );
+    expect(value.count).toBe(1);
+    expect(value.current).toBe(PROJECT_ID);
+    expect(value.projects[0]).toEqual({
+      id: PROJECT_ID,
+      name: "Saale Web",
+      slug: "saale-web",
+      repoPath: "projects/saale-web",
+      defaultBranch: "main",
+      worktreeCount: 2,
+      chatCount: 3,
+      lastActivityAt: "2026-02-01T10:00:00.000Z",
+    });
+  });
+
+  it("reports no current project for a chat outside one", async () => {
+    mocks.findProjects.mockResolvedValue([]);
+    mocks.findChat.mockResolvedValue({ projectId: null });
+
+    const value = await runValue<{ count: number; current: string | null }>(
+      projectTool("project_list"),
+      {},
+    );
+
+    expect(value).toEqual({ count: 0, current: null, projects: [] });
+  });
+});
+
+describe("project_chat_start", () => {
+  it("starts a chat in the named project and returns its reply", async () => {
+    mocks.createChatSessionRow.mockResolvedValue({ id: "chat-2", title: "Fix the build" });
+    mocks.respondInChat.mockResolvedValue({
+      sessionId: "chat-2",
+      title: "Fix the build",
+      reply: "Done, the build passes.",
+    });
+
+    const value = await runValue<Record<string, unknown>>(projectTool("project_chat_start"), {
+      message: "Fix the build",
+      project: "saale-web",
+    });
+
+    expect(mocks.createChatSessionRow).toHaveBeenCalledWith(USER, {
+      title: undefined,
+      projectId: PROJECT_ID,
+    });
+    expect(mocks.respondInChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: USER,
+        sessionId: "chat-2",
+        callerSessionId: SESSION,
+        message: "Fix the build",
+      }),
+    );
+    expect(value).toEqual({
+      started: true,
+      projectId: PROJECT_ID,
+      projectName: "Saale Web",
+      sessionId: "chat-2",
+      title: "Fix the build",
+      reply: "Done, the build passes.",
+    });
+  });
+
+  it("defaults to the project of this chat", async () => {
+    mocks.createChatSessionRow.mockResolvedValue({ id: "chat-2", title: "Work" });
+    mocks.respondInChat.mockResolvedValue({ sessionId: "chat-2", title: "Work", reply: "ok" });
+
+    const value = await runValue<{ projectId: string }>(projectTool("project_chat_start"), {
+      message: "Work",
+    });
+
+    expect(value.projectId).toBe(PROJECT_ID);
+  });
+
+  it("says so when this chat is in no project and none was named", async () => {
+    mocks.findChat.mockResolvedValue({ projectId: null });
+
+    await expect(runValue(projectTool("project_chat_start"), { message: "Work" })).rejects.toThrow(
+      /not in a coder project/,
+    );
+    expect(mocks.createChatSessionRow).not.toHaveBeenCalled();
   });
 });
