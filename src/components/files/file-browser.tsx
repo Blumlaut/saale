@@ -58,6 +58,11 @@ export interface FileBrowserProps {
    * and the browser's own add up otherwise, and the list reads as a page.
    */
   dense?: boolean;
+  /**
+   * Show a file through the host. The coder panel opens it as a tab, so the
+   * editor gets the width the user gave the panel.
+   */
+  onOpenFile?: (entry: FileEntry) => void;
 }
 
 type PromptState = { mode: "folder" } | { mode: "rename"; entry: FileEntry };
@@ -87,7 +92,14 @@ function iconFor(entry: FileEntry) {
  * toolbar (context left, actions right, icon-only on phones) and whose list is
  * the only scroll region.
  */
-export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: FileBrowserProps) {
+export function FileBrowser({
+  target,
+  rootPath,
+  leading,
+  emptyHint,
+  dense,
+  onOpenFile,
+}: FileBrowserProps) {
   const browser = useFileBrowser({ target, ...(rootPath ? { startPath: rootPath } : {}) });
   const [viewing, setViewing] = useState<FileEntry | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
@@ -116,12 +128,20 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
 
   const current = crumbs[crumbs.length - 1];
 
+  const openFile = useCallback(
+    (entry: FileEntry) => {
+      if (onOpenFile) onOpenFile(entry);
+      else setViewing(entry);
+    },
+    [onOpenFile],
+  );
+
   const openEntry = useCallback(
     (entry: FileEntry) => {
       if (entry.kind === "directory") browser.open(entry.path);
-      else setViewing(entry);
+      else openFile(entry);
     },
-    [browser],
+    [browser, openFile],
   );
 
   const downloadSelection = useCallback(() => {
@@ -457,7 +477,7 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
                     />
                     <DropdownMenuContent align="end">
                       {entry.kind === "file" && (
-                        <DropdownMenuItem onClick={() => setViewing(entry)}>
+                        <DropdownMenuItem onClick={() => openFile(entry)}>
                           <FileText className="mr-2 h-3.5 w-3.5" />
                           Preview
                         </DropdownMenuItem>
@@ -533,7 +553,9 @@ export function FileBrowser({ target, rootPath, leading, emptyHint, dense }: Fil
         }}
       />
 
-      <FileViewer target={target} entry={viewing} onClose={() => setViewing(null)} />
+      {onOpenFile ? null : (
+        <FileViewer target={target} entry={viewing} onClose={() => setViewing(null)} />
+      )}
 
       <FilePromptSheet
         open={prompt !== null}

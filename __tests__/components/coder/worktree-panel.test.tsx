@@ -31,11 +31,31 @@ vi.mock("@/components/coder/terminal-view", () => ({
   TerminalView: () => <div data-testid="terminal" />,
 }));
 vi.mock("@/components/files/file-browser", () => ({
-  FileBrowser: () => <div data-testid="files" />,
+  FileBrowser: ({ onOpenFile }: { onOpenFile?: (entry: FileEntry) => void }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onOpenFile?.({
+          name: "notes.md",
+          path: "worktrees/saale/c-1/notes.md",
+          kind: "file",
+          size: 12,
+          modified: 0,
+          writable: true,
+        })
+      }
+    >
+      open notes
+    </button>
+  ),
+}));
+vi.mock("@/components/files/file-view", () => ({
+  FileView: ({ entry }: { entry: FileEntry }) => <div data-testid="file-view">{entry.name}</div>,
 }));
 
 import { WorktreePanel } from "@/components/coder/worktree-panel";
 import type { CoderSessionState } from "@/components/coder/use-coder-data";
+import type { FileEntry } from "@/lib/files/types";
 
 const STATE: CoderSessionState = {
   worktree: { path: "worktrees/saale/c-1", branch: "wt/c-1", baseSha: "sha", mode: "worktree" },
@@ -127,6 +147,26 @@ describe("WorktreePanel: a commit in the list", () => {
     // A panel that unmounted would come back folded, and would ask git again.
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(http.fetchJson).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("WorktreePanel: a file from the Files tab", () => {
+  it("opens it as a tab in the panel, and closes back to the browser", async () => {
+    renderPanel(STATE);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    fireEvent.click(screen.getByRole("button", { name: "open notes" }));
+
+    // The editor gets the panel's width, which a sheet would not.
+    expect(await screen.findByTestId("file-view")).toHaveTextContent("notes.md");
+    expect(screen.getByRole("tab", { name: /notes\.md/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close the file tab" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download notes.md" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close the file tab" }));
+
+    expect(screen.queryByTestId("file-view")).toBeNull();
+    expect(screen.getByRole("button", { name: "open notes" })).toBeTruthy();
   });
 });
 
