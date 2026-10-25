@@ -8,6 +8,7 @@ import {
   createSystemPromptLoader,
 } from "@/lib/pi/processing-state";
 import { sessionWorkspace } from "@/lib/pi/project-context";
+import { SESSION_ENV_NAMES } from "@/lib/sandbox/env-vars";
 import { userIdentity } from "@/lib/sandbox/identity";
 
 describe("buildAgentSystemPrompt", () => {
@@ -40,6 +41,11 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).not.toContain("searchTools");
     // The tools the session does have are still described.
     expect(prompt).toContain("A Terminal is available");
+  });
+
+  it("names the variables Saale sets for a command", () => {
+    const prompt = buildAgentSystemPrompt({ toolConfig: { terminal: true } });
+    for (const name of SESSION_ENV_NAMES) expect(prompt).toContain(name);
   });
 
   it("includes custom instructions when provided", () => {
