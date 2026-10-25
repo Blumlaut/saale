@@ -51,6 +51,8 @@ describe("createChatSessionRow", () => {
     const data = mockCreate.mock.calls[0]![0].data as Record<string, unknown>;
     expect(data.userId).toBe("user-1");
     expect(data.title).toBe("Trip planning");
+    // a title the caller gave is not one the title job may replace
+    expect(data.titleSource).toBe("user");
     expect(data.temporary).toBe(false);
     expect(data.modelProvider).toBe("anthropic");
     expect(data.thinkingLevel).toBe("high");
@@ -90,5 +92,13 @@ describe("createChatSessionRow", () => {
     expect("toolConfig" in data).toBe(false);
     expect("origin" in data).toBe(false);
     expect("worktreeBranch" in data).toBe(false);
+  });
+
+  it("leaves an unnamed chat to the title job", async () => {
+    await createChatSessionRow("user-1");
+
+    const data = mockCreate.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(data.title).toBe("New Chat");
+    expect(data.titleSource).toBe("default");
   });
 });

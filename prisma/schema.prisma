@@ -132,6 +132,10 @@ model ChatSession {
   id               String        @id @default(cuid())
   userId           String
   title            String   @db.VarChar(50)
+  /// Where the title came from: "default" (no message yet), "auto" (read off
+  /// the first message), "ai" (title job) or "user" (renamed or named on
+  /// creation). The title job only retitles default and auto.
+  titleSource      String        @default("default")
   temporary        Boolean       @default(false) // auto-deleted when user navigates away
   modelProvider    String?
   modelName        String?
