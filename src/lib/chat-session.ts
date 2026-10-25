@@ -45,3 +45,16 @@ export async function createChatSession(options?: {
 
   return data.session;
 }
+
+/**
+ * Open a coder chat and give it something to do.
+ *
+ * The message is written before the chat page opens: the page's stream claims
+ * an unanswered message when it connects, so there is no second place that
+ * starts a run.
+ */
+export async function startCoderChat(projectId: string, message: string): Promise<{ id: string }> {
+  const session = await createChatSession({ projectId });
+  await postJson(`/api/chat/sessions/${session.id}/messages`, { content: message });
+  return session;
+}

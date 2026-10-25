@@ -28,6 +28,7 @@ const PROJECT = {
   defaultBranch: "main",
   setupScript: "npm install",
   envFiles: [{ path: ".env.local", content: "A=1\n" }],
+  chatMode: "worktree",
 };
 
 function setup(onOpenChange = vi.fn(), onSaved = vi.fn()) {
@@ -53,7 +54,8 @@ describe("ProjectSettingsSheet", () => {
     setup();
 
     expect(await screen.findByDisplayValue("Saale Web")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("main")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Chats" }));
+    expect(await screen.findByDisplayValue("main")).toBeInTheDocument();
     expect(mocks.fetchJson).toHaveBeenCalledWith("/api/coder/projects/project-1");
   });
 
@@ -75,6 +77,7 @@ describe("ProjectSettingsSheet", () => {
     expect(mocks.patchJson).toHaveBeenCalledWith("/api/coder/projects/project-1", {
       name: "Saale Web",
       defaultBranch: "main",
+      chatMode: "worktree",
       envFiles: [
         { path: ".env.local", content: "A=1\n" },
         { path: "apps/web/.env", content: "API=1\n" },
@@ -82,6 +85,22 @@ describe("ProjectSettingsSheet", () => {
       setupScript: "npm install",
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("moves the chats into the shared checkout when the switch is turned off", async () => {
+    setup();
+    await screen.findByDisplayValue("Saale Web");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Chats" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Own worktree per chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.patchJson).toHaveBeenCalledWith(
+        "/api/coder/projects/project-1",
+        expect.objectContaining({ chatMode: "repo" }),
+      ),
+    );
   });
 
   it("keeps the box open and shows why the server refused", async () => {

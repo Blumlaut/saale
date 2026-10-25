@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderGit2, MoreVertical, Plus, Settings, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
 import { Page } from "@/components/layout/page";
 import { Separator } from "@/components/ui/separator";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
+import { startCoderChat } from "@/lib/chat-session";
 import { deleteJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { ROW_ACTION, cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ import { useProjects, type CoderProjectSummary } from "./use-coder-data";
 /** What a project row says under its name. */
 function projectMeta(project: CoderProjectSummary): string {
   const chats = project.chatCount === 1 ? "1 chat" : `${project.chatCount} chats`;
+  if (project.chatMode === "repo") return `${project.slug} · ${chats} · shared checkout`;
   const trees = project.worktreeCount === 1 ? "1 worktree" : `${project.worktreeCount} worktrees`;
   return `${project.slug} · ${chats} · ${trees}`;
 }
@@ -33,8 +35,29 @@ export function ProjectList() {
   const router = useRouter();
   const { projects, loading, error, reload } = useProjects();
   const [creating, setCreating] = useState(false);
+  // The setup flow is the onboarding: an empty module opens it by itself, and
+  // closing it leaves the normal empty state behind.
+  const [dismissed, setDismissed] = useState(false);
   const [deleting, setDeleting] = useState<CoderProjectSummary | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading && !error && projects.length === 0 && !dismissed) setCreating(true);
+  }, [loading, error, projects.length, dismissed]);
+
+  const created = async (result: { project: { id: string }; prompt: string | null }) => {
+    if (!result.prompt) {
+      router.push(`/dashboard/coder/${result.project.id}`);
+      return;
+    }
+    try {
+      const chat = await startCoderChat(result.project.id, result.prompt);
+      router.push(`/dashboard/coder/${result.project.id}/${chat.id}`);
+    } catch (err) {
+      console.error(`Failed to start the first chat of ${result.project.id}:`, err);
+      router.push(`/dashboard/coder/${result.project.id}`);
+    }
+  };
 
   const remove = async (project: CoderProjectSummary, force: boolean) => {
     try {
@@ -76,11 +99,12 @@ export function ProjectList() {
                 <FolderGit2 className="text-muted-foreground h-8 w-8" />
                 <p className="text-sm font-medium">No projects yet.</p>
                 <p className="text-muted-foreground max-w-sm text-sm">
-                  A project is a git repo in your workspace.
+                  A project is a git repo in your workspace. Each chat works in a checkout of it,
+                  with a terminal, the files it changes and a branch of its own.
                 </p>
                 <Button size="sm" onClick={() => setCreating(true)}>
                   <Plus className="h-4 w-4" />
-                  New project
+                  Set up a project
                 </Button>
               </div>
             )}
@@ -161,8 +185,11 @@ export function ProjectList() {
 
       <ProjectCreateDialog
         open={creating}
-        onOpenChange={setCreating}
-        onCreated={(project) => router.push(`/dashboard/coder/${project.id}`)}
+        onOpenChange={(open) => {
+          setCreating(open);
+          if (!open) setDismissed(true);
+        }}
+        onCreated={created}
       />
 
       <ForceDeleteDialog

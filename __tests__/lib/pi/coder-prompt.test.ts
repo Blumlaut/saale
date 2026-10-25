@@ -57,6 +57,24 @@ describe("buildCoderSystemPrompt git rules", () => {
   });
 });
 
+describe("buildCoderSystemPrompt for a shared checkout", () => {
+  const prompt = buildCoderSystemPrompt({ toolConfig: { terminal: true }, checkout: "repo" });
+
+  it("describes the checkout every chat of the project runs in", () => {
+    expect(prompt).toContain("which every chat of that project runs in");
+    expect(prompt).toContain("Every path outside it is out of bounds");
+  });
+
+  it("leaves the shared branch alone", () => {
+    expect(prompt).toContain("leave its branch alone");
+    expect(prompt).not.toContain("Only this worktree's branch");
+  });
+
+  it("still reports against the checkout it worked in", () => {
+    expect(prompt).toContain("what is still uncommitted in the checkout");
+  });
+});
+
 describe("buildCoderSystemPrompt capability sections", () => {
   it("describes the terminal contract only while that category is on", () => {
     const on = buildCoderSystemPrompt({ toolConfig: { terminal: true } });

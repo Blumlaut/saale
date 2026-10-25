@@ -12,8 +12,8 @@ export const PROVISIONING_STEP_COPY: Record<
   { label: string; detail: string }
 > = {
   worktree: {
-    label: "Checking out the worktree",
-    detail: "This chat gets its own branch of the project to work on.",
+    label: "Preparing the checkout",
+    detail: "This chat gets a branch of the project to work on.",
   },
   setup: {
     label: "Running setup script",

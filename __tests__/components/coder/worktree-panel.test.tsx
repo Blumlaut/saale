@@ -38,7 +38,7 @@ import { WorktreePanel } from "@/components/coder/worktree-panel";
 import type { CoderSessionState } from "@/components/coder/use-coder-data";
 
 const STATE: CoderSessionState = {
-  worktree: { path: "worktrees/saale/c-1", branch: "wt/c-1", baseSha: "sha" },
+  worktree: { path: "worktrees/saale/c-1", branch: "wt/c-1", baseSha: "sha", mode: "worktree" },
   project: { id: "project-1", name: "Saale", slug: "saale" },
   branch: "wt/c-1",
   head: "sha",
