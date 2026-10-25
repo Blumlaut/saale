@@ -580,3 +580,23 @@ export async function isBranchPushed(
   });
   return unpushed.stdout.trim() === "";
 }
+
+/**
+ * Delete one local branch.
+ *
+ * `update-ref -d` is idempotent, so a branch that is already gone is not an
+ * error. The commits go with it, so the caller checks for unpushed work first,
+ * and the name is a full ref so a branch called `-D` stays a name.
+ */
+export async function deleteBranch(
+  userId: string,
+  options: {
+    repoDir: string;
+    branch: string;
+  },
+): Promise<void> {
+  await runGit(userId, {
+    cwd: options.repoDir,
+    args: ["update-ref", "-d", `refs/heads/${options.branch}`],
+  });
+}

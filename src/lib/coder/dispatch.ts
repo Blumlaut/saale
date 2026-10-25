@@ -146,9 +146,12 @@ async function runningWatcherChat(options: {
 /**
  * Dispatch a fire into its project and run the turn there.
  *
- * Resolves when the run has settled. The chat and its worktree outlive it: a
- * `per-fire` chat is removed later only when its branch is pushed and its tree
- * is clean (`retention.ts`), and a sticky one stays until someone deletes it.
+ * Resolves once the turn is in the chat's transcript. The chat and its worktree
+ * outlive it: a `per-fire` chat is removed later only when its branch is pushed
+ * and its tree is clean (`retention.ts`), and a sticky one stays until someone
+ * deletes it.
+ *
+ * @throws when the turn did not happen, so the tick records why.
  */
 export async function dispatchWatcherRun(options: DispatchTarget): Promise<{ sessionId: string }> {
   const { watcher, userId } = options;
@@ -205,7 +208,19 @@ export async function dispatchWatcherRun(options: DispatchTarget): Promise<{ ses
 
   // The ordinary chat run: it builds the worktree (the chat is a coder chat, so
   // `ensureChatAgent` does) and persists the turn like any other.
-  await respondInChat({ userId, sessionId, message: options.message });
+  const result = await respondInChat({ userId, sessionId, message: options.message });
+
+  // A run can settle with nothing in the transcript. A fire that looks
+  // delivered and did nothing is the worst kind of quiet, so it becomes a
+  // blocked tick: the reason lands in the log and the script's ledger stays
+  // where it was, for the next tick to deliver again.
+  if (!result.answered || result.error) {
+    throw new Error(
+      `The run in chat ${sessionId} ${
+        result.error ? `failed: ${result.error}` : "finished without an assistant turn"
+      }.`,
+    );
+  }
 
   return { sessionId };
 }

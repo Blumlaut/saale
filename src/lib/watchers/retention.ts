@@ -1,22 +1,15 @@
 /**
  * What happens to a bot chat once its run is over.
  *
- * A `per-fire` chat exists for one fire. Once its branch is pushed and its tree
- * is clean, the checkout is a copy of work git already has, so the chat is
- * removed after the watcher's retention window. Anything dirty or unpushed is
- * simply kept: the work in it is the reason it is still there, and it reads as
- * an ordinary chat in the project list until someone deals with it.
- *
- * Removal goes through `deleteChatSession`, which asks git first
- * (`removeChatWorktree`) and refuses a dirty checkout on its own. The push check
- * here is the other half: git will happily remove a clean tree whose commits
- * exist nowhere else.
+ * A `per-fire` chat exists for one fire. `deleteChatSession` decides whether it
+ * may go: it removes the checkout through `removeChatWorktree`, which refuses
+ * work that exists nowhere else (a dirty tree, or commits no other ref carries)
+ * and takes the branch with it. Anything refused is simply kept, and reads as an
+ * ordinary chat in the project list until someone deals with it.
  */
 
 import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
-import { isBranchPushed, readStatus } from "@/lib/coder/git";
-import { workspaceDirectoryExists } from "@/lib/coder/paths";
 import { CoderCleanupError } from "@/lib/coder/worktree-removal";
 import { getActiveSessions } from "@/lib/redis";
 
@@ -25,30 +18,6 @@ export interface WatcherChatSweep {
   removed: string[];
   /** Chats left alone: still busy, still dirty, or with commits nowhere else. */
   kept: number;
-}
-
-/**
- * Whether a chat's worktree is safe to remove: clean, and pushed.
- *
- * Both branches are asked about: the one the chat was opened on, and the one the
- * checkout is on now. A run that reviewed a pull request by checking its branch
- * out left it there, and that is the branch holding the work.
- */
-async function holdsFinishedWork(options: {
-  userId: string;
-  worktree: { path: string; branch: string };
-}): Promise<boolean> {
-  const { userId, worktree } = options;
-  if (!(await workspaceDirectoryExists(userId, worktree.path))) return true;
-
-  const status = await readStatus(userId, worktree.path);
-  if (status.files.length > 0) return false;
-
-  const branches = new Set([worktree.branch, status.branch].filter(Boolean));
-  for (const branch of branches) {
-    if (!(await isBranchPushed(userId, worktree.path, branch))) return false;
-  }
-  return true;
 }
 
 /**
@@ -77,7 +46,7 @@ export async function sweepWatcherChats(): Promise<WatcherChatSweep> {
         originId: watcher.id,
         lastActivityAt: { lt: cutoff },
       },
-      select: { id: true, coderWorktree: { select: { path: true, branch: true, status: true } } },
+      select: { id: true },
     });
     if (chats.length === 0) continue;
 
@@ -90,22 +59,12 @@ export async function sweepWatcherChats(): Promise<WatcherChatSweep> {
       }
 
       try {
-        const worktree = chat.coderWorktree;
-        if (worktree && worktree.status === "active") {
-          const finished = await holdsFinishedWork({ userId: watcher.userId, worktree });
-          if (!finished) {
-            kept += 1;
-            continue;
-          }
-        }
-
         await deleteChatSession(watcher.userId, chat.id);
         removed.push(chat.id);
       } catch (err) {
-        // A dirty checkout, an unreachable sandbox, a git that would not answer:
-        // all of them leave the chat where it is, with its work.
-        const refusal = err instanceof CoderCleanupError;
-        if (!refusal) {
+        // A checkout kept for the work in it is the expected answer; anything
+        // else (an unreachable sandbox, git refusing) means the same here.
+        if (!(err instanceof CoderCleanupError)) {
           console.error(
             `[watcher:${watcher.id}] Could not clean up chat ${chat.id}, keeping it:`,
             err,

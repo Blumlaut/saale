@@ -10,6 +10,7 @@ import {
   updateWatcher,
   WatcherInputError,
 } from "@/lib/watchers/manage";
+import { deliveryNote } from "@/lib/watchers/delivery";
 import { previewScript, previewWatcherTick } from "@/lib/watchers/tick";
 
 /**
@@ -363,7 +364,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
               needsApproval: created.needsApproval,
               note: created.needsApproval
                 ? "The watcher is created but paused: tell the user it needs their approval on the Watchers page before it starts ticking."
-                : "The watcher now ticks on its schedule. It wakes you only when the script returns a value.",
+                : deliveryNote(created.deliver),
             },
           };
         } catch (err) {
@@ -462,7 +463,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
                     toolsItWillAskToApprove: consent.grantedTools,
                     unrestricted: consent.grantAll,
                   }
-                : {}),
+                : { note: deliveryNote(updated.deliver) }),
             },
           };
         } catch (err) {

@@ -96,7 +96,7 @@ describe("respondInChat", () => {
     mockSessionFindFirst.mockResolvedValue(CHAT);
     mockResolveChatModel.mockResolvedValue({ provider: "anthropic", name: "claude-sonnet-4-5" });
     mockMessageCreate.mockResolvedValue({ id: "msg-1", createdAt: new Date() });
-    mockMessageFindFirst.mockResolvedValue({ content: "Packed and ready." });
+    mockMessageFindFirst.mockResolvedValue({ content: "Packed and ready.", errorMessage: null });
     mockSessionUpdate.mockResolvedValue({});
     mockPublish.mockResolvedValue(1);
     mockWaitTeardown.mockResolvedValue(undefined);
@@ -145,7 +145,53 @@ describe("respondInChat", () => {
       sessionId: TARGET,
       title: "Trip planning",
       reply: "Packed and ready.",
+      answered: true,
+      error: null,
     });
+  });
+
+  it("reads the turn this run wrote, not an earlier reply", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-25T10:00:00Z") });
+    try {
+      const pending = respondInChat({
+        userId: USER_ID,
+        sessionId: TARGET,
+        message: "How did it go?",
+      });
+      await vi.runAllTimersAsync();
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The prompt's moment comes from this process, the same clock a turn's row
+    // is stamped with, so the two are comparable.
+    expect(mockMessageFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          sessionId: TARGET,
+          role: "assistant",
+          createdAt: { gte: new Date("2026-10-25T10:00:00Z") },
+        },
+      }),
+    );
+  });
+
+  it("says a run that wrote no turn was not answered", async () => {
+    mockMessageFindFirst.mockResolvedValue(null);
+
+    const result = await respondInChat({ userId: USER_ID, sessionId: TARGET, message: "hi" });
+
+    expect(result.answered).toBe(false);
+    expect(result.reply).toBe("");
+  });
+
+  it("hands back the provider error a turn ended with", async () => {
+    mockMessageFindFirst.mockResolvedValue({ content: "", errorMessage: "400: bad request" });
+
+    const result = await respondInChat({ userId: USER_ID, sessionId: TARGET, message: "hi" });
+
+    expect(result).toMatchObject({ answered: true, error: "400: bad request" });
   });
 
   it("refuses to respond in the caller's own chat", async () => {
