@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * What happens to a bot chat once its run is over.
+ * Retiring a bot chat.
  *
- * Every case here is the same question: is the work in this checkout somewhere
- * else yet? A clean pushed branch is a copy of work git already has; anything
- * else is the only place that work exists.
+ * Which chats are due is this module's whole job. What may happen to the
+ * checkout, the branch and the work in them belongs to `deleteChatSession` and
+ * `removeChatWorktree`, and their refusal is a chat that stays.
  */
 
 vi.mock("@/lib/db", () => ({
@@ -17,22 +17,12 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/chat/delete-session", () => ({ deleteChatSession: vi.fn() }));
 
-vi.mock("@/lib/coder/git", () => ({
-  isBranchPushed: vi.fn(),
-  readStatus: vi.fn(),
-}));
-
-vi.mock("@/lib/coder/paths", () => ({
-  workspaceDirectoryExists: vi.fn(),
-}));
-
 vi.mock("@/lib/redis", () => ({ getActiveSessions: vi.fn() }));
 
 import { prisma } from "@/lib/db";
 import { deleteChatSession } from "@/lib/chat/delete-session";
-import { isBranchPushed, readStatus } from "@/lib/coder/git";
-import { workspaceDirectoryExists } from "@/lib/coder/paths";
 import { getActiveSessions } from "@/lib/redis";
+import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { CoderCleanupError } from "@/lib/coder/worktree-removal";
 import { sweepWatcherChats } from "@/lib/watchers/retention";
 
@@ -40,23 +30,8 @@ import { sweepWatcherChats } from "@/lib/watchers/retention";
 const findWatchers = vi.mocked(prisma.scriptWatcher.findMany as any);
 const findChats = vi.mocked(prisma.chatSession.findMany as any);
 const remove = vi.mocked(deleteChatSession as any);
-const pushed = vi.mocked(isBranchPushed as any);
-const status = vi.mocked(readStatus as any);
-const dirExists = vi.mocked(workspaceDirectoryExists as any);
 const active = vi.mocked(getActiveSessions as any);
 /* eslint-enable @typescript-eslint/no-explicit-any */
-
-/** A per-fire bot chat with the worktree it runs in. */
-function botChat(id = "chat-1") {
-  return {
-    id,
-    coderWorktree: {
-      path: `worktrees/saale-web/${id}`,
-      branch: `watch/pr-bot/${id}`,
-      status: "active",
-    },
-  };
-}
 
 describe("sweepWatcherChats", () => {
   beforeEach(() => {
@@ -64,18 +39,15 @@ describe("sweepWatcherChats", () => {
     findWatchers.mockResolvedValue([
       { id: "w-1", userId: "u-1", name: "PR bot", retentionMinutes: 60 },
     ]);
-    findChats.mockResolvedValue([botChat()]);
-    dirExists.mockResolvedValue(true);
-    status.mockResolvedValue({ files: [], branch: "watch/pr-bot/chat-1" });
-    pushed.mockResolvedValue(true);
+    findChats.mockResolvedValue([{ id: "chat-1" }]);
     active.mockResolvedValue(new Set<string>());
     remove.mockResolvedValue({ title: "PR bot" });
   });
 
-  it("removes a finished per-fire chat past its window", async () => {
+  it("removes a per-fire chat past its window", async () => {
     const result = await sweepWatcherChats();
 
-    expect(result.removed).toEqual(["chat-1"]);
+    expect(result).toEqual({ removed: ["chat-1"], kept: 0 });
     expect(remove).toHaveBeenCalledWith("u-1", "chat-1");
   });
 
@@ -88,45 +60,14 @@ describe("sweepWatcherChats", () => {
     expect(age).toBeLessThanOrEqual(61 * 60_000);
   });
 
-  it("keeps a checkout with uncommitted work", async () => {
-    status.mockResolvedValue({ files: [{ path: "src/index.ts" }] });
+  it("only looks at the chats this watcher opened", async () => {
+    await sweepWatcherChats();
 
-    const result = await sweepWatcherChats();
-
-    expect(result.removed).toEqual([]);
-    expect(result.kept).toBe(1);
-    expect(remove).not.toHaveBeenCalled();
-  });
-
-  it("keeps a clean checkout whose commits are nowhere else", async () => {
-    pushed.mockResolvedValue(false);
-
-    const result = await sweepWatcherChats();
-
-    expect(result.removed).toEqual([]);
-    expect(remove).not.toHaveBeenCalled();
-  });
-
-  it("asks about the branch the run left the checkout on", async () => {
-    // A review that checked the pull request out is holding that branch, not
-    // the one the chat was opened on.
-    status.mockResolvedValue({ files: [], branch: "fix-login" });
-    pushed.mockImplementation(async (_user: string, _dir: string, branch: string) => {
-      return branch !== "fix-login";
+    expect(findChats.mock.calls[0]?.[0]?.where).toMatchObject({
+      userId: "u-1",
+      origin: "watcher",
+      originId: "w-1",
     });
-
-    const result = await sweepWatcherChats();
-
-    expect(result.removed).toEqual([]);
-    expect(pushed).toHaveBeenCalledWith("u-1", "worktrees/saale-web/chat-1", "fix-login");
-  });
-
-  it("ignores a checkout that is on no branch", async () => {
-    status.mockResolvedValue({ files: [], branch: "" });
-
-    const result = await sweepWatcherChats();
-
-    expect(result.removed).toEqual(["chat-1"]);
   });
 
   it("keeps a chat that is generating right now", async () => {
@@ -134,27 +75,31 @@ describe("sweepWatcherChats", () => {
 
     const result = await sweepWatcherChats();
 
-    expect(result.removed).toEqual([]);
-    expect(result.kept).toBe(1);
-    expect(status).not.toHaveBeenCalled();
+    expect(result).toEqual({ removed: [], kept: 1 });
+    expect(remove).not.toHaveBeenCalled();
   });
 
-  it("keeps a chat when git refuses to let the checkout go", async () => {
-    remove.mockRejectedValue(new CoderCleanupError("worktree is dirty"));
+  it("keeps a chat whose checkout holds work that exists nowhere else", async () => {
+    remove.mockRejectedValue(new CoderCleanupError("worktree is dirty", 409, WORKTREE_KEPT_CODE));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = await sweepWatcherChats();
 
-    expect(result.removed).toEqual([]);
-    expect(result.kept).toBe(1);
+    expect(result).toEqual({ removed: [], kept: 1 });
+    // A kept checkout is the expected answer, not something to log as a fault.
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 
-  it("removes a chat whose checkout is already gone", async () => {
-    dirExists.mockResolvedValue(false);
+  it("keeps the chat and says so when the delete broke on something else", async () => {
+    remove.mockRejectedValue(new Error("database is down"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = await sweepWatcherChats();
 
-    expect(result.removed).toEqual(["chat-1"]);
-    expect(status).not.toHaveBeenCalled();
+    expect(result).toEqual({ removed: [], kept: 1 });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it("leaves a watcher alone when it has no chats past the window", async () => {
