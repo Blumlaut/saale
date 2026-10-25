@@ -60,6 +60,44 @@ describe("ProjectCreateDialog", () => {
     expect(onCreated).toHaveBeenCalledWith({ project: PROJECT, prompt: null });
   });
 
+  it("names the remote's default branch before the project exists", async () => {
+    mocks.postJson.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith("/default-branch") ? { branch: "develop" } : { project: PROJECT },
+      ),
+    );
+    setup();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Saale Web" } });
+    fireEvent.change(screen.getByLabelText("Clone URL"), {
+      target: { value: "https://github.com/owner/repo.git" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByLabelText("Default branch")).toHaveAttribute(
+      "placeholder",
+      "develop",
+    );
+    expect(mocks.postJson).toHaveBeenCalledWith("/api/coder/projects/default-branch", {
+      cloneUrl: "https://github.com/owner/repo.git",
+    });
+  });
+
+  it("offers main when the remote does not answer", async () => {
+    mocks.postJson.mockImplementation((url: string) =>
+      Promise.resolve(url.endsWith("/default-branch") ? { branch: null } : { project: PROJECT }),
+    );
+    setup();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Saale Web" } });
+    fireEvent.change(screen.getByLabelText("Clone URL"), {
+      target: { value: "https://github.com/owner/private.git" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByLabelText("Default branch")).toHaveAttribute("placeholder", "main");
+  });
+
   it("hands a first prompt back to the caller to start a chat with", async () => {
     const onCreated = setup();
 

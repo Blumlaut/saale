@@ -5,6 +5,7 @@ import {
   parseNumstat,
   parsePorcelainZ,
   parseStatusHeader,
+  parseSymrefHead,
   parseWorktreeList,
 } from "@/lib/coder/git-status";
 
@@ -198,5 +199,17 @@ describe("parseWorktreeList", () => {
     expect(worktrees[0]).toMatchObject({ branch: "main", main: true, prunable: false });
     expect(worktrees[1]).toMatchObject({ branch: "wt/c-1a2b3c4d", main: false });
     expect(worktrees[2]).toMatchObject({ branch: "", prunable: true });
+  });
+});
+
+describe("parseSymrefHead", () => {
+  it("reads the branch a remote's HEAD points at", () => {
+    const out = `ref: refs/heads/develop\tHEAD\n${"1".repeat(40)}\tHEAD\n`;
+    expect(parseSymrefHead(out)).toBe("develop");
+  });
+
+  it("is null when HEAD names a tag or nothing at all", () => {
+    expect(parseSymrefHead(`${"1".repeat(40)}\tHEAD\n`)).toBeNull();
+    expect(parseSymrefHead("")).toBeNull();
   });
 });

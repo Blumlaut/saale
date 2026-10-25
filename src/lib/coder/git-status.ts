@@ -288,3 +288,18 @@ export function parseWorktreeList(stdout: string): GitWorktreeEntry[] {
   }
   return worktrees;
 }
+
+/**
+ * A remote's default branch, from `git ls-remote --symref <url> HEAD`.
+ *
+ * The remote answers with `ref: refs/heads/main\tHEAD` and the sha of that ref,
+ * or with just a sha for a HEAD that points nowhere. A tag or a detached head
+ * has no branch to report, so it reads as null.
+ */
+export function parseSymrefHead(stdout: string): string | null {
+  for (const line of stdout.split("\n")) {
+    const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/.exec(line.trim());
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}

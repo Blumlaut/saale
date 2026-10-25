@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Loader2, Rocket, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,6 +62,9 @@ export function ProjectCreateDialog({
   const [cloneUrl, setCloneUrl] = useState("");
   const [ownWorktree, setOwnWorktree] = useState(true);
   const [branch, setBranch] = useState("");
+  /** The remote's own branch, asked for once the clone URL is known. */
+  const [detectedBranch, setDetectedBranch] = useState<string | null>(null);
+  const [probing, setProbing] = useState(false);
   const [script, setScript] = useState("");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,6 +76,7 @@ export function ProjectCreateDialog({
     setCloneUrl("");
     setOwnWorktree(true);
     setBranch("");
+    setDetectedBranch(null);
     setScript("");
     setPrompt("");
     setError(null);
@@ -80,6 +84,31 @@ export function ProjectCreateDialog({
 
   const projectName = name.trim() || suggestedName(cloneUrl);
   const canLeaveRepoStep = Boolean(projectName || cloneUrl.trim());
+  const cloneSource = cloneUrl.trim();
+
+  useEffect(() => {
+    setDetectedBranch(null);
+    if (step !== 1 || !cloneSource) return;
+
+    let cancelled = false;
+    setProbing(true);
+    postJson<{ branch: string | null }>("/api/coder/projects/default-branch", {
+      cloneUrl: cloneSource,
+    })
+      .then((body) => {
+        if (!cancelled) setDetectedBranch(body.branch);
+      })
+      .catch((err: unknown) => {
+        console.error(`Failed to read the default branch of ${cloneSource}:`, err);
+      })
+      .finally(() => {
+        if (!cancelled) setProbing(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, cloneSource]);
 
   const next = () => {
     if (step === 0 && !canLeaveRepoStep) {
@@ -229,15 +258,20 @@ export function ProjectCreateDialog({
                   id="coder-project-branch"
                   value={branch}
                   onChange={(event) => setBranch(event.target.value)}
-                  placeholder="the repo's own"
+                  placeholder={detectedBranch ?? "main"}
                   className="font-mono text-xs"
                   autoComplete="off"
                   spellCheck={false}
                   maxLength={200}
                 />
                 <p className="text-muted-foreground text-xs">
-                  What a new chat&apos;s branch starts from. An empty field keeps the branch the
-                  repo is cloned on.
+                  {probing
+                    ? "Reading the remote's default branch…"
+                    : detectedBranch
+                      ? `What a new chat's branch starts from. The remote is on ${detectedBranch}.`
+                      : cloneSource
+                        ? "What a new chat's branch starts from. The remote did not say which branch it checks out, so main is the guess."
+                        : "What a new chat's branch starts from. A new repo starts on main."}
                 </p>
               </div>
             </>
