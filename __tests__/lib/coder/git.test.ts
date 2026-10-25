@@ -33,6 +33,7 @@ import {
   addWorktreeOnBranch,
   cloneRepo,
   fetchOrigin,
+  isRepoFullyPushed,
   readCommitDiff,
   refSha,
   removeWorktree,
@@ -438,6 +439,47 @@ describe("refreshing the repo", () => {
 
     execResult = { stdout: "", stderr: "", exitCode: 1 };
     expect(await refSha(USER, "projects/saale", "origin/gone")).toBe("");
+  });
+});
+
+describe("isRepoFullyPushed", () => {
+  const CLEAN = { stdout: "## main", stderr: "", exitCode: 0 };
+  const HEAD = { stdout: "abc123\n", stderr: "", exitCode: 0 };
+
+  it("is true for a clean repo with no remote to push to", async () => {
+    execQueue = [CLEAN, HEAD, { stdout: "", stderr: "", exitCode: 0 }];
+
+    await expect(isRepoFullyPushed(USER, "projects/local-only")).resolves.toBe(true);
+  });
+
+  it("is false for a clean repo with commits a remote does not have", async () => {
+    execQueue = [
+      CLEAN,
+      HEAD,
+      { stdout: "origin\n", stderr: "", exitCode: 0 },
+      { stdout: "abc123\n", stderr: "", exitCode: 0 },
+    ];
+
+    await expect(isRepoFullyPushed(USER, "projects/saale")).resolves.toBe(false);
+  });
+
+  it("is true for a clean repo whose remote carries every commit", async () => {
+    execQueue = [
+      CLEAN,
+      HEAD,
+      { stdout: "origin\n", stderr: "", exitCode: 0 },
+      { stdout: "", stderr: "", exitCode: 0 },
+    ];
+
+    await expect(isRepoFullyPushed(USER, "projects/saale")).resolves.toBe(true);
+  });
+
+  it("is false for a tree with changes, without asking about the remote", async () => {
+    execQueue = [{ stdout: "## main\0 M src/a.ts\0", stderr: "", exitCode: 0 }, HEAD];
+
+    await expect(isRepoFullyPushed(USER, "projects/local-only")).resolves.toBe(false);
+    const commands = execOptions.map((options) => (options as { command: string }).command);
+    expect(commands).not.toContain("git --no-pager remote");
   });
 });
 

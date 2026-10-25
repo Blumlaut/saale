@@ -543,15 +543,27 @@ export async function readLog(userId: string, dir: string, limit = 20): Promise<
 }
 
 /**
+ * Whether the repo has anywhere to push to.
+ *
+ * A project started empty has no remote, and its commits stay local by design.
+ */
+async function hasRemote(userId: string, dir: string): Promise<boolean> {
+  const remotes = await runGit(userId, { cwd: dir, args: ["remote"], allowFailure: true });
+  return remotes.exitCode === 0 && remotes.stdout.trim() !== "";
+}
+
+/**
  * Whether a repo has nothing to lose: a clean tree and no commit that exists
  * only here.
  *
  * Used before a project's directory is deleted, so a checkout is never removed
- * while it holds the only copy of something.
+ * while it holds the only copy of something. Without a remote there is no copy
+ * to keep anywhere else, so the tree is the whole question.
  */
 export async function isRepoFullyPushed(userId: string, dir: string): Promise<boolean> {
   const status = await readStatus(userId, dir);
   if (status.files.length > 0) return false;
+  if (!(await hasRemote(userId, dir))) return true;
 
   const unpushed = await runGit(userId, {
     cwd: dir,
