@@ -5,6 +5,7 @@ import { decrypt } from "@/lib/crypto";
 import { discoverFolders } from "@/lib/email/folders";
 import { sanitizePostgresString } from "@/lib/email/utils";
 import { chunk, IN_LIST_CHUNK_SIZE } from "@/lib/db-batch";
+import { notifyNewMail, type NewMailSummary } from "@/lib/notifications/new-email";
 
 /**
  * Extract a comma-separated address list from an imapflow address array.
@@ -90,7 +91,13 @@ async function upsertEmailMessages(
   messages: FetchMessageObject[],
   accountId: string,
   folder: string,
-): Promise<{ created: number; updated: number; errors: string[] }> {
+): Promise<{
+  created: number;
+  updated: number;
+  errors: string[];
+  /** The rows that were written, so the caller can announce what is new. */
+  createdMessages: ParsedEmailRow["data"][];
+}> {
   const parsed = messages.map((msg) => parseEmailRow(msg, folder));
   const errors: string[] = [];
 
@@ -111,11 +118,13 @@ async function upsertEmailMessages(
   const toUpdate = parsed.filter((p) => byUid.has(p.uid));
 
   let created = 0;
+  const createdMessages: ParsedEmailRow["data"][] = [];
   for (const batch of chunk(toCreate, CREATE_BATCH_SIZE)) {
     const rows = batch.map((p) => ({ ...p.data, accountId }));
     try {
       await prisma.emailMessage.createMany({ data: rows });
       created += rows.length;
+      createdMessages.push(...batch.map((p) => p.data));
     } catch (err) {
       // A single bad row would otherwise discard the whole batch; retry
       // message by message so one error does not block the rest.
@@ -129,6 +138,7 @@ async function upsertEmailMessages(
         try {
           await prisma.emailMessage.create({ data: row });
           created++;
+          createdMessages.push(row);
         } catch (rowErr) {
           const msgErr = rowErr as Error;
           console.error(
@@ -164,7 +174,35 @@ async function upsertEmailMessages(
     }
   }
 
-  return { created, updated, errors };
+  return { created, updated, errors, createdMessages };
+}
+
+/** Most new inbox messages one sync keeps to describe; the rest become a count. */
+const MAX_ANNOUNCED_MESSAGES = 25;
+
+/** Only INBOX is news. Sent, Drafts and Archive gain rows that need no alert. */
+function isInbox(folder: string): boolean {
+  return folder.toUpperCase() === "INBOX";
+}
+
+/**
+ * Add the unread messages of a created batch to the notification list, and
+ * count all of them. Returns how many were unread, including the ones the list
+ * had no room for.
+ */
+function collectNewInbox(messages: ParsedEmailRow["data"][], into: NewMailSummary[]): number {
+  let unread = 0;
+  for (const message of messages) {
+    if (message.isRead) continue;
+    unread++;
+    if (into.length >= MAX_ANNOUNCED_MESSAGES) continue;
+    into.push({
+      fromName: message.fromName,
+      fromEmail: message.fromEmail,
+      subject: message.subject,
+    });
+  }
+  return unread;
 }
 
 /**
@@ -198,6 +236,10 @@ export async function syncEmailAccount(accountId: string): Promise<{
   let newMessages = 0;
   let updatedMessages = 0;
   const errors: string[] = [];
+  // A first sync walks the whole mailbox: those messages are history, not news.
+  const isFirstSync = account.lastSyncedAt === null;
+  const newInbox: NewMailSummary[] = [];
+  let newInboxCount = 0;
 
   try {
     await mailbox.connect();
@@ -266,6 +308,9 @@ export async function syncEmailAccount(accountId: string): Promise<{
           newMessages += outcome.created;
           updatedMessages += outcome.updated;
           errors.push(...outcome.errors);
+          if (isInbox(folder) && !isFirstSync) {
+            newInboxCount += collectNewInbox(outcome.createdMessages, newInbox);
+          }
           batch = [];
         };
 
@@ -340,6 +385,16 @@ export async function syncEmailAccount(accountId: string): Promise<{
   }
 
   await recordSyncOutcome(accountId, errors);
+
+  if (newInboxCount > 0) {
+    await notifyNewMail({
+      userId: account.userId,
+      accountId,
+      address: account.email,
+      messages: newInbox,
+      total: newInboxCount,
+    });
+  }
 
   return { newMessages, updatedMessages, errors };
 }
