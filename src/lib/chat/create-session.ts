@@ -77,6 +77,7 @@ export async function createChatSessionRow(
       id: input.id ?? crypto.randomUUID(),
       userId,
       title: sanitizeChatTitle(input.title),
+      titleSource: input.title ? "user" : "default",
       temporary: input.temporary ?? false,
       modelProvider: input.modelProvider ?? null,
       modelName: input.modelName ?? null,

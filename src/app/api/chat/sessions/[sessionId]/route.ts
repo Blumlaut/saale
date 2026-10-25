@@ -46,7 +46,10 @@ export async function PATCH(
 
   // Build data only for fields that actually differ from current values (skip unchanged to avoid touching updatedAt)
   const data: Record<string, unknown> = {};
-  if (title && title !== authResult.session.title) data.title = title;
+  if (title && title !== authResult.session.title) {
+    data.title = title;
+    data.titleSource = "user";
+  }
   if (typeof temporary === "boolean" && temporary !== authResult.session.temporary)
     data.temporary = temporary;
   if (modelProvider && modelProvider !== authResult.session.modelProvider)

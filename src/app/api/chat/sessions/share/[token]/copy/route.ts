@@ -78,6 +78,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ to
       data: {
         userId: authResult.user.id,
         title: sourceSession.title.slice(0, 47) + (sourceSession.title.length > 47 ? "..." : ""),
+        // a copy keeps its title, the title job must not rename it back
+        titleSource: "user",
         temporary: false,
         modelProvider: sourceSession.modelProvider,
         modelName: sourceSession.modelName,
